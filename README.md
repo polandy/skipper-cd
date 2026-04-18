@@ -68,6 +68,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `name` | string | yes | — | Name of the stack. Used as the working directory name when `working_dir` is absent and `stacks_base_dir` is set. Also used as the key in the deploy state file. |
 | `working_dir` | string | no | `<stacks_base_dir>/<name>` | Absolute path to the directory containing `docker-compose.yml`. Takes precedence over `stacks_base_dir`. |
 | `env_files` | list of strings | no | — | Absolute paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. |
+| `watch_dirs` | list of strings | no | — | Absolute paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). |
 
 ### `vars_file`
 
@@ -100,18 +101,107 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint:
 
 ## NixOS Module
 
-skipper-cd ships with a NixOS module. After adding the flake as an input:
+skipper-cd ships with a NixOS module at `nixosModules.default`.
+
+### Flake Input
 
 ```nix
+# flake.nix
+inputs = {
+  skipper-cd.url = "path:/path/to/skipper-cd";   # or a git+https URL
+  skipper-cd.inputs.nixpkgs.follows = "nixpkgs";
+};
+```
+
+Pass it through `specialArgs` so the module can access the flake:
+
+```nix
+nixosConfigurations.myhost = lib.nixosSystem {
+  specialArgs = { inherit skipper-cd; };
+  modules = [ ./configuration.nix ];
+};
+```
+
+### Importing the Module
+
+```nix
+# configuration.nix (or any imported module)
+{ skipper-cd, ... }:
 {
+  imports = [ skipper-cd.nixosModules.default ];
+
   services.skipper-cd = {
-    enable = true;
-    configFile = "/etc/skipper/skipper.yml";
+    enable    = true;
+    package   = skipper-cd.packages.x86_64-linux.default;
+    configFile = "/run/secrets/skipper.yml";  # path to the rendered skipper.yml
   };
 }
 ```
 
-The module creates a dedicated `skipper` system user, sets up the state directory at `/var/lib/skipper`, and runs skipper-cd as a systemd service.
+The module creates the state directory at `/var/lib/skipper`, adds `git`, `docker`, and `docker-compose` to the service `PATH`, and runs skipper-cd as a hardened systemd service under the `root` user (Docker socket access via `SupplementaryGroups = [ "docker" ]`).
+
+### Service Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enable` | bool | `false` | Enable the skipper-cd systemd service. |
+| `package` | package | — | The skipper-cd derivation to use. |
+| `configFile` | path | — | Absolute path to `skipper.yml`. |
+| `stateDir` | string | `/var/lib/skipper` | Directory for deploy state and the repository clone. |
+
+### Recommended Pattern: Self-Registering Stacks
+
+To avoid maintaining a manual stack list that can diverge from the services actually enabled, define a `services.skipper-cd.stacks` option in the skipper-cd wrapper module and have each service module register itself:
+
+**`modules/skipper-cd/default.nix`** — defines the option and generates the config:
+
+```nix
+{ config, lib, skipper-cd, ... }:
+let
+  stackType = lib.types.submodule {
+    options = {
+      name      = lib.mkOption { type = lib.types.str; };
+      watch_dirs = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
+    };
+  };
+in {
+  imports = [ skipper-cd.nixosModules.default ];
+
+  options.services.skipper-cd.stacks = lib.mkOption {
+    type        = lib.types.listOf stackType;
+    default     = [];
+    description = "Stacks managed by skipper-cd. Each service module appends itself here when enabled.";
+  };
+
+  config = lib.mkIf config.services.skipper-cd.enable {
+    services.skipper-cd = {
+      package    = skipper-cd.packages.x86_64-linux.default;
+      configFile = config.sops.templates."skipper/skipper.yml".path;
+    };
+  };
+}
+```
+
+**`modules/gitea/default.nix`** — self-registration inside the existing `mkIf` block:
+
+```nix
+config = lib.mkIf config.services.gitea-docker.enable {
+  # ... existing gitea config ...
+
+  services.skipper-cd.stacks = [{ name = "gitea"; }];
+};
+```
+
+**`modules/monitoring/default.nix`** — with `watch_dirs`:
+
+```nix
+services.skipper-cd.stacks = [{
+  name       = "monitoring";
+  watch_dirs = [ "/var/lib/skipper/repo/modules/monitoring/grafana-data/provisioning" ];
+}];
+```
+
+Because the list is only populated when a service's `enable = true`, disabled services are automatically absent from `skipper.yml`. There is no risk of skipper-cd deploying a stack for a service that has been turned off.
 
 ## State File
 
