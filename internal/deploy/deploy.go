@@ -21,7 +21,7 @@ func RunAll(cfg *config.Config) {
 	}
 
 	for _, stack := range cfg.Stacks {
-		if err := deployStack(stack, state); err != nil {
+		if err := deployStack(stack, cfg.StacksBaseDir, state); err != nil {
 			slog.Error("deploy failed", "stack", stack.Name, "err", err)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
 		}
@@ -32,8 +32,9 @@ func RunAll(cfg *config.Config) {
 	}
 }
 
-func deployStack(stack config.Stack, state map[string]string) error {
-	hash, err := hashStack(stack.WorkingDir, stack.EnvFiles)
+func deployStack(stack config.Stack, baseDir string, state map[string]string) error {
+	workingDir := stack.ResolvedWorkingDir(baseDir)
+	hash, err := hashStack(workingDir, stack.EnvFiles)
 	if err != nil {
 		return fmt.Errorf("hash stack: %w", err)
 	}
@@ -47,11 +48,11 @@ func deployStack(stack config.Stack, state map[string]string) error {
 	slog.Info("deploying stack", "stack", stack.Name)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
-	if err := run(stack, "docker", "compose", "pull"); err != nil {
+	if err := runIn(workingDir, stack.EnvFiles, "docker", "compose", "pull"); err != nil {
 		return fmt.Errorf("compose pull: %w", err)
 	}
 
-	if err := run(stack, "docker", "compose", "up", "-d", "--remove-orphans"); err != nil {
+	if err := runIn(workingDir, stack.EnvFiles, "docker", "compose", "up", "-d", "--remove-orphans"); err != nil {
 		return fmt.Errorf("compose up: %w", err)
 	}
 
@@ -61,14 +62,14 @@ func deployStack(stack config.Stack, state map[string]string) error {
 	return nil
 }
 
-func run(stack config.Stack, name string, args ...string) error {
+func runIn(workingDir string, envFiles []string, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
-	cmd.Dir = stack.WorkingDir
+	cmd.Dir = workingDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	env := os.Environ()
-	for _, ef := range stack.EnvFiles {
+	for _, ef := range envFiles {
 		entries, err := parseEnvFile(ef)
 		if err != nil {
 			return fmt.Errorf("parse env file %s: %w", ef, err)
