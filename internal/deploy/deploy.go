@@ -13,14 +13,27 @@ import (
 	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
+// CommitReader retrieves git commit information from the repository.
+// It is used to log file diffs between the last deployed commit and HEAD.
+type CommitReader interface {
+	HeadCommitSHA() (string, error)
+	DiffSinceCommit(fromSHA, filePath string) (string, error)
+}
+
 // Deployer orchestrates deployments for all configured stacks.
 // Inject a custom Runner to replace real docker/git calls in tests.
+// Optionally inject a CommitReader to enable diff logging on deploy.
 type Deployer struct {
-	runner Runner
+	runner       Runner
+	commitReader CommitReader // nil disables diff logging
 }
 
 func NewDeployer() *Deployer {
 	return &Deployer{runner: ShellRunner{}}
+}
+
+func NewDeployerWithCommitReader(commitReader CommitReader) *Deployer {
+	return &Deployer{runner: ShellRunner{}, commitReader: commitReader}
 }
 
 func newDeployerWithRunner(r Runner) *Deployer {
@@ -36,25 +49,34 @@ func (d *Deployer) DeployAllStacks(cfg *config.Config) {
 		return
 	}
 
-	lastDeployState, err := loadPersistedDeployState()
+	state, err := loadPersistedDeployState()
 	if err != nil {
 		slog.Error("could not load deploy state, deploying all stacks", "err", err)
-		lastDeployState = deployState{}
+		state = persistedState{Stacks: map[string]stackFileHashes{}}
 	}
 
 	for _, stack := range cfg.Stacks {
-		if err := d.deployStackIfChanged(stack, cfg.StacksBaseDir, varsEnv, lastDeployState); err != nil {
+		if err := d.deployStackIfChanged(stack, cfg.StacksBaseDir, varsEnv, state); err != nil {
 			slog.Error("deploy failed", "stack", stack.Name, "err", err)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
 		}
 	}
 
-	if err := persistDeployState(lastDeployState); err != nil {
+	// Record the current HEAD commit so future deploys can diff against it.
+	if d.commitReader != nil {
+		if sha, err := d.commitReader.HeadCommitSHA(); err != nil {
+			slog.Warn("could not read HEAD commit SHA", "err", err)
+		} else {
+			state.LastDeployedCommit = sha
+		}
+	}
+
+	if err := saveDeployState(state); err != nil {
 		slog.Error("could not save deploy state", "err", err)
 	}
 }
 
-func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, varsEnv []string, lastDeployState deployState) error {
+func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, varsEnv []string, state persistedState) error {
 	workDir := stack.WorkDir(baseDir)
 
 	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles)
@@ -62,7 +84,7 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, vars
 		return fmt.Errorf("compute per-file hashes: %w", err)
 	}
 
-	changed := changedFiles(currentHashes, lastDeployState[stack.Name])
+	changed := changedFiles(currentHashes, state.Stacks[stack.Name])
 	if len(changed) == 0 {
 		slog.Info("skipping stack, no changes detected", "stack", stack.Name)
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
@@ -70,6 +92,7 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, vars
 	}
 
 	slog.Info("deploying stack", "stack", stack.Name, "dir", workDir, "changed_files", changed)
+	d.logDiffsForChangedFiles(changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
 	if err := d.runDockerCompose(workDir, varsEnv, stack.EnvFiles, "pull"); err != nil {
@@ -81,10 +104,28 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, vars
 		return fmt.Errorf("docker compose up: %w", err)
 	}
 
-	lastDeployState[stack.Name] = currentHashes
+	state.Stacks[stack.Name] = currentHashes
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
 	slog.Info("deploy complete", "stack", stack.Name)
 	return nil
+}
+
+// logDiffsForChangedFiles logs the git diff for each changed file.
+// Skipped when no CommitReader is configured or no previous commit is known.
+func (d *Deployer) logDiffsForChangedFiles(changedFilePaths []string, lastDeployedCommit string) {
+	if d.commitReader == nil || lastDeployedCommit == "" {
+		return
+	}
+	for _, filePath := range changedFilePaths {
+		diff, err := d.commitReader.DiffSinceCommit(lastDeployedCommit, filePath)
+		if err != nil {
+			slog.Warn("could not compute diff", "file", filePath, "err", err)
+			continue
+		}
+		if diff != "" {
+			slog.Info("file changed", "file", filePath, "diff", "\n"+diff)
+		}
+	}
 }
 
 // changedFiles returns the paths of files whose hash differs between current and last.

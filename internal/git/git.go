@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 const defaultCloneDir = "/var/lib/skipper/repo"
@@ -72,4 +73,36 @@ func (s *Syncer) cloneRepository() error {
 func (s *Syncer) pullLatestCommits() error {
 	slog.Info("pulling latest commits", "dir", s.cloneDir)
 	return s.runner.Run(s.cloneDir, nil, "git", "pull")
+}
+
+// RepoReader reads commit information from a local git repository.
+// It implements the deploy.CommitReader interface.
+type RepoReader struct {
+	repoDir string
+}
+
+func NewRepoReader(repoDir string) *RepoReader {
+	return &RepoReader{repoDir: repoDir}
+}
+
+// HeadCommitSHA returns the SHA of the current HEAD commit.
+func (r *RepoReader) HeadCommitSHA() (string, error) {
+	output, err := exec.Command("git", "-C", r.repoDir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// DiffSinceCommit returns the git diff of a file between fromSHA and HEAD.
+// Returns an empty string when fromSHA is empty (first deploy — no previous commit to diff against).
+func (r *RepoReader) DiffSinceCommit(fromSHA, filePath string) (string, error) {
+	if fromSHA == "" {
+		return "", nil
+	}
+	output, err := exec.Command("git", "-C", r.repoDir, "diff", fromSHA+"..HEAD", "--", filePath).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git diff: %w\n%s", err, output)
+	}
+	return string(output), nil
 }

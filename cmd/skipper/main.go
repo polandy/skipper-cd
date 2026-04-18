@@ -34,7 +34,8 @@ func main() {
 	)
 
 	syncer := git.NewSyncer(cfg.RepoURL, cfg.CloneDir)
-	deployer := deploy.NewDeployer()
+	repoReader := git.NewRepoReader(syncer.CloneDir())
+	deployer := deploy.NewDeployerWithCommitReader(repoReader)
 
 	// Deploy on startup to catch changes that occurred while skipper-cd was not running.
 	go deployer.DeployAllStacks(cfg)

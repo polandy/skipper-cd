@@ -36,7 +36,7 @@ func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
 	d := newDeployerWithRunner(runner)
 
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
-	state := deployState{}
+	state := persistedState{Stacks: map[string]stackFileHashes{}}
 
 	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -45,7 +45,7 @@ func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
 	assertCommandCalled(t, runner.calls, "pull")
 	assertCommandCalled(t, runner.calls, "up")
 
-	if state["gitea"] == nil {
+	if state.Stacks["gitea"] == nil {
 		t.Error("expected state to be updated after deploy")
 	}
 }
@@ -62,7 +62,7 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}
-	state := deployState{"gitea": hashes}
+	state := persistedState{Stacks: map[string]stackFileHashes{"gitea": hashes}}
 
 	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -79,14 +79,14 @@ func TestDeployStack_FailsOnPullError(t *testing.T) {
 	d := newDeployerWithRunner(runner)
 
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
-	state := deployState{}
+	state := persistedState{Stacks: map[string]stackFileHashes{}}
 
 	err := d.deployStackIfChanged(stack, "", nil, state)
 	if err == nil {
 		t.Fatal("expected error when docker compose pull fails")
 	}
 
-	if state["gitea"] != nil {
+	if state.Stacks["gitea"] != nil {
 		t.Error("state should not be updated after a failed deploy")
 	}
 }
@@ -103,7 +103,7 @@ func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
 	d := newDeployerWithRunner(runner)
 
 	stack := config.Stack{Name: "gitea"}
-	state := deployState{}
+	state := persistedState{Stacks: map[string]stackFileHashes{}}
 
 	if err := d.deployStackIfChanged(stack, baseDir, nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -15,8 +15,15 @@ const deployStateFilePath = "/var/lib/skipper/state.yaml"
 // stackFileHashes maps each tracked file path to its SHA-256 hash.
 type stackFileHashes map[string]string
 
-// deployState maps stack names to their per-file hashes.
-type deployState map[string]stackFileHashes
+// persistedState holds the full deploy state written to disk.
+type persistedState struct {
+	// LastDeployedCommit is the git commit SHA of the last successful deploy run.
+	// It is used to compute diffs between the last deploy and the current HEAD.
+	LastDeployedCommit string `yaml:"last_deployed_commit,omitempty"`
+
+	// Stacks maps stack names to their per-file hashes from the last deployment.
+	Stacks map[string]stackFileHashes `yaml:"stacks"`
+}
 
 // computePerFileHashes returns a SHA-256 hash for each tracked file in the stack.
 // Any change to any of these files triggers a new deployment.
@@ -46,24 +53,27 @@ func addFileContentsToHash(hasher io.Writer, path string) error {
 	return err
 }
 
-func loadPersistedDeployState() (deployState, error) {
+func loadPersistedDeployState() (persistedState, error) {
 	data, err := os.ReadFile(deployStateFilePath)
 	if os.IsNotExist(err) {
-		return deployState{}, nil
+		return persistedState{Stacks: map[string]stackFileHashes{}}, nil
 	}
 	if err != nil {
-		return nil, err
+		return persistedState{}, err
 	}
 
-	state := deployState{}
+	state := persistedState{}
 	if err := yaml.Unmarshal(data, &state); err != nil {
-		// Old format (JSON) or corrupt file — start fresh and redeploy everything.
-		return deployState{}, nil
+		// Old format or corrupt file — start fresh and redeploy everything.
+		return persistedState{Stacks: map[string]stackFileHashes{}}, nil
+	}
+	if state.Stacks == nil {
+		state.Stacks = map[string]stackFileHashes{}
 	}
 	return state, nil
 }
 
-func persistDeployState(state deployState) error {
+func saveDeployState(state persistedState) error {
 	if err := os.MkdirAll(filepath.Dir(deployStateFilePath), 0o755); err != nil {
 		return err
 	}
