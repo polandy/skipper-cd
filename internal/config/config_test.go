@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/polandy/orpheus-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/config"
 )
 
 func TestLoad_ValidConfig(t *testing.T) {
 	content := `
-repo_path: /etc/nixos
-stacks_base_dir: /etc/nixos/modules
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
 webhook_secret: secret123
 port: 9090
 metrics_port: 9999
@@ -24,8 +24,8 @@ stacks:
 `
 	cfg := loadFromString(t, content)
 
-	if cfg.RepoPath != "/etc/nixos" {
-		t.Errorf("expected repo_path /etc/nixos, got %s", cfg.RepoPath)
+	if cfg.RepoURL != "ssh://git@gitea.example.com/user/nixos.git" {
+		t.Errorf("unexpected repo_url: %s", cfg.RepoURL)
 	}
 	if cfg.Port != 9090 {
 		t.Errorf("expected port 9090, got %d", cfg.Port)
@@ -37,8 +37,8 @@ stacks:
 
 func TestLoad_DefaultPorts(t *testing.T) {
 	content := `
-repo_path: /etc/nixos
-stacks_base_dir: /etc/nixos/modules
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -51,20 +51,20 @@ stacks: []
 	}
 }
 
-func TestLoad_MissingRepoPath(t *testing.T) {
+func TestLoad_MissingRepoURL(t *testing.T) {
 	content := `
-stacks_base_dir: /etc/nixos/modules
+stacks_base_dir: /var/lib/skipper/repo/modules
 stacks: []
 `
 	_, err := loadStringToConfig(t, content)
 	if err == nil {
-		t.Error("expected error for missing repo_path, got nil")
+		t.Error("expected error for missing repo_url, got nil")
 	}
 }
 
 func TestLoad_MissingWorkingDirWithoutBaseDir(t *testing.T) {
 	content := `
-repo_path: /etc/nixos
+repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks:
   - name: gitea
 `
@@ -79,7 +79,7 @@ func TestStack_WorkDir_ExplicitOverridesBaseDir(t *testing.T) {
 		Name:       "gitea",
 		WorkingDir: "/custom/gitea",
 	}
-	got := s.WorkDir("/etc/nixos/modules")
+	got := s.WorkDir("/var/lib/skipper/repo/modules")
 	if got != "/custom/gitea" {
 		t.Errorf("expected /custom/gitea, got %s", got)
 	}
@@ -87,14 +87,12 @@ func TestStack_WorkDir_ExplicitOverridesBaseDir(t *testing.T) {
 
 func TestStack_WorkDir_DerivedFromBaseDir(t *testing.T) {
 	s := config.Stack{Name: "gitea"}
-	got := s.WorkDir("/etc/nixos/modules")
-	if got != "/etc/nixos/modules/gitea" {
-		t.Errorf("expected /etc/nixos/modules/gitea, got %s", got)
+	got := s.WorkDir("/var/lib/skipper/repo/modules")
+	if got != "/var/lib/skipper/repo/modules/gitea" {
+		t.Errorf("expected /var/lib/skipper/repo/modules/gitea, got %s", got)
 	}
 }
 
-// loadFromString is a test helper that writes content to a temp file and loads it.
-// It calls t.Fatal on any error, keeping test bodies clean.
 func loadFromString(t *testing.T, content string) *config.Config {
 	t.Helper()
 	cfg, err := loadStringToConfig(t, content)
@@ -106,7 +104,7 @@ func loadFromString(t *testing.T, content string) *config.Config {
 
 func loadStringToConfig(t *testing.T, content string) (*config.Config, error) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "orpheus.yml")
+	path := filepath.Join(t.TempDir(), "skipper.yml")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
 	}

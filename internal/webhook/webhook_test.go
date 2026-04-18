@@ -5,29 +5,35 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/polandy/orpheus-cd/internal/config"
-	"github.com/polandy/orpheus-cd/internal/deploy"
-	"github.com/polandy/orpheus-cd/internal/webhook"
+	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/deploy"
+	"github.com/polandy/skipper-cd/internal/webhook"
 )
 
-// newTestConfig returns a minimal config suitable for webhook tests.
-// It points repo_path to a temp dir so git pull does not run against a real repo.
+type noopSyncer struct{}
+
+func (noopSyncer) Sync() error { return nil }
+
+type failingSyncer struct{}
+
+func (failingSyncer) Sync() error { return fmt.Errorf("simulated sync failure") }
+
 func newTestConfig(t *testing.T, secret string) *config.Config {
 	t.Helper()
 	return &config.Config{
-		RepoPath:      t.TempDir(),
+		RepoURL:       "ssh://git@example.com/repo.git",
 		WebhookSecret: secret,
 		Stacks:        []config.Stack{},
 	}
 }
 
 func TestHandler_RejectsNonPostRequests(t *testing.T) {
-	cfg := newTestConfig(t, "")
-	handler := webhook.Handler(cfg, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, ""), noopSyncer{}, deploy.NewDeployer())
 
 	req := httptest.NewRequest(http.MethodGet, "/webhook", nil)
 	rec := httptest.NewRecorder()
@@ -39,14 +45,12 @@ func TestHandler_RejectsNonPostRequests(t *testing.T) {
 }
 
 func TestHandler_AcceptsRequestWithoutSecret(t *testing.T) {
-	cfg := newTestConfig(t, "") // no secret configured
-	handler := webhook.Handler(cfg, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, ""), noopSyncer{}, deploy.NewDeployer())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
 	rec := httptest.NewRecorder()
 	handler(rec, req)
 
-	// 202 Accepted because the deploy runs in the background.
 	if rec.Code != http.StatusAccepted {
 		t.Errorf("expected 202, got %d", rec.Code)
 	}
@@ -56,8 +60,7 @@ func TestHandler_AcceptsRequestWithValidSignature(t *testing.T) {
 	secret := "supersecret"
 	body := []byte(`{"ref":"refs/heads/master"}`)
 
-	cfg := newTestConfig(t, secret)
-	handler := webhook.Handler(cfg, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, secret), noopSyncer{}, deploy.NewDeployer())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBuffer(body))
 	req.Header.Set("X-Gitea-Signature", computeSignature(body, secret))
@@ -70,8 +73,7 @@ func TestHandler_AcceptsRequestWithValidSignature(t *testing.T) {
 }
 
 func TestHandler_RejectsRequestWithInvalidSignature(t *testing.T) {
-	cfg := newTestConfig(t, "supersecret")
-	handler := webhook.Handler(cfg, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, "supersecret"), noopSyncer{}, deploy.NewDeployer())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
 	req.Header.Set("X-Gitea-Signature", "sha256=invalidsignature")
@@ -84,11 +86,9 @@ func TestHandler_RejectsRequestWithInvalidSignature(t *testing.T) {
 }
 
 func TestHandler_RejectsMissingSignatureWhenSecretIsConfigured(t *testing.T) {
-	cfg := newTestConfig(t, "supersecret")
-	handler := webhook.Handler(cfg, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, "supersecret"), noopSyncer{}, deploy.NewDeployer())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
-	// No X-Gitea-Signature header set
 	rec := httptest.NewRecorder()
 	handler(rec, req)
 
@@ -97,7 +97,6 @@ func TestHandler_RejectsMissingSignatureWhenSecretIsConfigured(t *testing.T) {
 	}
 }
 
-// computeSignature produces the HMAC-SHA256 signature that Gitea would send.
 func computeSignature(body []byte, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)

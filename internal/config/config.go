@@ -1,4 +1,4 @@
-// Package config handles loading and validating the orpheus.yml configuration file.
+// Package config handles loading and validating the skipper.yml configuration file.
 package config
 
 import (
@@ -32,9 +32,21 @@ func (s Stack) WorkDir(baseDir string) string {
 	return filepath.Join(baseDir, s.Name)
 }
 
-// Config holds the full orpheus-cd configuration.
+// Config holds the full skipper-cd configuration.
 type Config struct {
-	RepoPath      string  `yaml:"repo_path"`
+	// RepoURL is the Git remote URL. skipper-cd clones it to CloneDir and
+	// runs git pull on every incoming webhook.
+	RepoURL string `yaml:"repo_url"`
+
+	// CloneDir is the local directory where the repository is cloned.
+	// Defaults to /var/lib/skipper/repo when left empty.
+	CloneDir string `yaml:"clone_dir"`
+
+	// VarsFile is an optional path to a YAML file of key→value pairs that are
+	// injected as KEY=VALUE env vars into every stack deployment, enabling
+	// ${VAR} substitution in docker-compose.yml (e.g. for domain names).
+	VarsFile string `yaml:"vars_file"`
+
 	StacksBaseDir string  `yaml:"stacks_base_dir"`
 	WebhookSecret string  `yaml:"webhook_secret"`
 	Port          int     `yaml:"port"`
@@ -61,8 +73,8 @@ func Load(path string) (*Config, error) {
 }
 
 func validateConfig(cfg *Config) error {
-	if cfg.RepoPath == "" {
-		return fmt.Errorf("repo_path is required")
+	if cfg.RepoURL == "" {
+		return fmt.Errorf("repo_url is required")
 	}
 
 	for _, s := range cfg.Stacks {

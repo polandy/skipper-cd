@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/polandy/orpheus-cd/internal/config"
-	"github.com/polandy/orpheus-cd/internal/metrics"
+	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
 // Deployer orchestrates deployments for all configured stacks.
@@ -30,58 +30,77 @@ func newDeployerWithRunner(r Runner) *Deployer {
 func (d *Deployer) DeployAllStacks(cfg *config.Config) {
 	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
 
-	lastDeployHashByStack, err := loadPersistedDeployState()
+	varsEnv, err := loadVarsFile(cfg.VarsFile)
+	if err != nil {
+		slog.Error("could not load vars_file, aborting", "err", err)
+		return
+	}
+
+	lastDeployState, err := loadPersistedDeployState()
 	if err != nil {
 		slog.Error("could not load deploy state, deploying all stacks", "err", err)
-		lastDeployHashByStack = map[string]string{}
+		lastDeployState = deployState{}
 	}
 
 	for _, stack := range cfg.Stacks {
-		if err := d.deployStackIfChanged(stack, cfg.StacksBaseDir, lastDeployHashByStack); err != nil {
+		if err := d.deployStackIfChanged(stack, cfg.StacksBaseDir, varsEnv, lastDeployState); err != nil {
 			slog.Error("deploy failed", "stack", stack.Name, "err", err)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
 		}
 	}
 
-	if err := persistDeployState(lastDeployHashByStack); err != nil {
+	if err := persistDeployState(lastDeployState); err != nil {
 		slog.Error("could not save deploy state", "err", err)
 	}
 }
 
-func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, lastDeployHashByStack map[string]string) error {
+func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, varsEnv []string, lastDeployState deployState) error {
 	workDir := stack.WorkDir(baseDir)
 
-	currentHash, err := computeStackConfigHash(workDir, stack.EnvFiles)
+	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles)
 	if err != nil {
-		return fmt.Errorf("compute stack hash: %w", err)
+		return fmt.Errorf("compute per-file hashes: %w", err)
 	}
 
-	if lastDeployHashByStack[stack.Name] == currentHash {
+	changed := changedFiles(currentHashes, lastDeployState[stack.Name])
+	if len(changed) == 0 {
 		slog.Info("skipping stack, no changes detected", "stack", stack.Name)
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
 		return nil
 	}
 
-	slog.Info("deploying stack", "stack", stack.Name, "dir", workDir)
+	slog.Info("deploying stack", "stack", stack.Name, "dir", workDir, "changed_files", changed)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
-	if err := d.runDockerCompose(workDir, stack.EnvFiles, "pull"); err != nil {
+	if err := d.runDockerCompose(workDir, varsEnv, stack.EnvFiles, "pull"); err != nil {
 		return fmt.Errorf("docker compose pull: %w", err)
 	}
 
 	// --remove-orphans removes containers for services deleted from docker-compose.yml.
-	if err := d.runDockerCompose(workDir, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
+	if err := d.runDockerCompose(workDir, varsEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
 		return fmt.Errorf("docker compose up: %w", err)
 	}
 
-	lastDeployHashByStack[stack.Name] = currentHash
+	lastDeployState[stack.Name] = currentHashes
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
 	slog.Info("deploy complete", "stack", stack.Name)
 	return nil
 }
 
-func (d *Deployer) runDockerCompose(workDir string, envFiles []string, args ...string) error {
+// changedFiles returns the paths of files whose hash differs between current and last.
+func changedFiles(current, last stackFileHashes) []string {
+	var changed []string
+	for path, hash := range current {
+		if last[path] != hash {
+			changed = append(changed, path)
+		}
+	}
+	return changed
+}
+
+func (d *Deployer) runDockerCompose(workDir string, varsEnv []string, envFiles []string, args ...string) error {
 	env := os.Environ()
+	env = append(env, varsEnv...)
 	for _, envFile := range envFiles {
 		envVars, err := parseEnvFile(envFile)
 		if err != nil {

@@ -1,4 +1,4 @@
-module github.com/polandy/orpheus-cd
+module github.com/polandy/skipper-cd
 
 go 1.25.7
 

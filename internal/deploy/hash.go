@@ -2,35 +2,40 @@ package deploy
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+
+	"gopkg.in/yaml.v3"
 )
 
-const deployStateFilePath = "/var/lib/orpheus/state.json"
+const deployStateFilePath = "/var/lib/skipper/state.yaml"
 
-// computeStackConfigHash returns a SHA-256 hash of docker-compose.yml and all
-// env files. Any change to these files produces a different hash, triggering
-// a new deployment.
-func computeStackConfigHash(workDir string, envFiles []string) (string, error) {
-	hasher := sha256.New()
+// stackFileHashes maps each tracked file path to its SHA-256 hash.
+type stackFileHashes map[string]string
 
-	if err := writeFileToHash(hasher, filepath.Join(workDir, "docker-compose.yml")); err != nil {
-		return "", fmt.Errorf("hash docker-compose.yml: %w", err)
-	}
+// deployState maps stack names to their per-file hashes.
+type deployState map[string]stackFileHashes
 
-	for _, envFile := range envFiles {
-		if err := writeFileToHash(hasher, envFile); err != nil {
-			return "", fmt.Errorf("hash env file %s: %w", envFile, err)
+// computePerFileHashes returns a SHA-256 hash for each tracked file in the stack.
+// Any change to any of these files triggers a new deployment.
+func computePerFileHashes(workDir string, envFiles []string) (stackFileHashes, error) {
+	filePaths := append([]string{filepath.Join(workDir, "docker-compose.yml")}, envFiles...)
+	hashes := make(stackFileHashes, len(filePaths))
+
+	for _, path := range filePaths {
+		hasher := sha256.New()
+		if err := addFileContentsToHash(hasher, path); err != nil {
+			return nil, fmt.Errorf("hash file %s: %w", path, err)
 		}
+		hashes[path] = fmt.Sprintf("%x", hasher.Sum(nil))
 	}
 
-	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
+	return hashes, nil
 }
 
-func writeFileToHash(hasher io.Writer, path string) error {
+func addFileContentsToHash(hasher io.Writer, path string) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -41,27 +46,28 @@ func writeFileToHash(hasher io.Writer, path string) error {
 	return err
 }
 
-func loadPersistedDeployState() (map[string]string, error) {
+func loadPersistedDeployState() (deployState, error) {
 	data, err := os.ReadFile(deployStateFilePath)
 	if os.IsNotExist(err) {
-		return map[string]string{}, nil
+		return deployState{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	state := map[string]string{}
-	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, err
+	state := deployState{}
+	if err := yaml.Unmarshal(data, &state); err != nil {
+		// Old format (JSON) or corrupt file — start fresh and redeploy everything.
+		return deployState{}, nil
 	}
 	return state, nil
 }
 
-func persistDeployState(state map[string]string) error {
+func persistDeployState(state deployState) error {
 	if err := os.MkdirAll(filepath.Dir(deployStateFilePath), 0o755); err != nil {
 		return err
 	}
-	data, err := json.Marshal(state)
+	data, err := yaml.Marshal(state)
 	if err != nil {
 		return err
 	}

@@ -10,17 +10,21 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os/exec"
 
-	"github.com/polandy/orpheus-cd/internal/config"
-	"github.com/polandy/orpheus-cd/internal/deploy"
-	"github.com/polandy/orpheus-cd/internal/metrics"
+	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/deploy"
+	"github.com/polandy/skipper-cd/internal/metrics"
 )
+
+// RepoSyncer abstracts the git sync operation so webhook tests do not need a real repository.
+type RepoSyncer interface {
+	Sync() error
+}
 
 // Handler returns an http.HandlerFunc that processes incoming Gitea webhooks.
 // The response is sent immediately with HTTP 202 Accepted; the deploy runs
 // in a goroutine so Gitea does not time out waiting for it to complete.
-func Handler(cfg *config.Config, deployer *deploy.Deployer) http.HandlerFunc {
+func Handler(cfg *config.Config, syncer RepoSyncer, deployer *deploy.Deployer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -46,8 +50,8 @@ func Handler(cfg *config.Config, deployer *deploy.Deployer) http.HandlerFunc {
 		slog.Info("webhook accepted, starting deploy in background")
 
 		go func() {
-			if err := pullLatestCommits(cfg.RepoPath); err != nil {
-				slog.Error("git pull failed, aborting deploy", "err", err)
+			if err := syncer.Sync(); err != nil {
+				slog.Error("git sync failed, aborting deploy", "err", err)
 				return
 			}
 			deployer.DeployAllStacks(cfg)
@@ -67,17 +71,5 @@ func verifyHMACSignature(body []byte, signature, secret string) error {
 	if !hmac.Equal([]byte(expected), []byte(signature)) {
 		return fmt.Errorf("signature mismatch")
 	}
-	return nil
-}
-
-func pullLatestCommits(repoPath string) error {
-	cmd := exec.Command("git", "pull")
-	cmd.Dir = repoPath
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git pull: %w\n%s", err, output)
-	}
-	slog.Info("git pull successful", "output", string(output))
 	return nil
 }

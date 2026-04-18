@@ -1,5 +1,5 @@
 {
-  description = "orpheus-cd — Sablier-aware Docker Compose CD for NixOS";
+  description = "skipper-cd — Sablier-aware Docker Compose CD for NixOS";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -15,15 +15,15 @@
         let pkgs = nixpkgs.legacyPackages.${system}; in
         {
           default = pkgs.buildGoModule {
-            pname = "orpheus-cd";
+            pname = "skipper-cd";
             version = "0.1.0";
             src = ./.;
             vendorHash = null;
             meta = {
               description = "Sablier-aware Docker Compose CD triggered by Git webhooks";
-              homepage = "https://github.com/polandy/orpheus-cd";
+              homepage = "https://github.com/polandy/skipper-cd";
               license = nixpkgs.lib.licenses.mit;
-              mainProgram = "orpheus";
+              mainProgram = "skipper";
             };
           };
         });
