@@ -1,0 +1,20 @@
+repo_path: /etc/nixos
+webhook_secret: "your-secret-here"
+port: 8080
+metrics_port: 9120
+
+stacks:
+  - name: traefik
+    working_dir: /etc/nixos/modules/traefik
+    env_files:
+      - /run/secrets/rendered/orpheus/compose.env
+
+  - name: gitea
+    working_dir: /etc/nixos/modules/gitea
+    env_files:
+      - /run/secrets/rendered/orpheus/compose.env
+
+  - name: monitoring
+    working_dir: /etc/nixos/modules/monitoring
+    env_files:
+      - /run/secrets/rendered/orpheus/compose.env
