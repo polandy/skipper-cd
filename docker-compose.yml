@@ -1,0 +1,14 @@
+services:
+  skipper:
+    image: ghcr.io/polandy/skipper-cd:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "9120:9120"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./skipper.yml:/etc/skipper/skipper.yml:ro
+      - skipper-data:/var/lib/skipper
+
+volumes:
+  skipper-data:
