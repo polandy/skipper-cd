@@ -9,22 +9,20 @@ import (
 	"path/filepath"
 )
 
-// stateFile is where the deploy state (stack name -> last deployed hash) is persisted.
-const stateFile = "/var/lib/orpheus/state.json"
+const deployStateFilePath = "/var/lib/orpheus/state.json"
 
-// hashStack computes a SHA-256 hash over docker-compose.yml and all env files
-// for a stack. If any of these files change, the hash changes and a new
-// deployment is triggered.
-func hashStack(workDir string, envFiles []string) (string, error) {
+// computeStackConfigHash returns a SHA-256 hash of docker-compose.yml and all
+// env files. Any change to these files produces a different hash, triggering
+// a new deployment.
+func computeStackConfigHash(workDir string, envFiles []string) (string, error) {
 	h := sha256.New()
 
-	composePath := filepath.Join(workDir, "docker-compose.yml")
-	if err := hashFile(h, composePath); err != nil {
+	if err := writeFileToHash(h, filepath.Join(workDir, "docker-compose.yml")); err != nil {
 		return "", fmt.Errorf("hash docker-compose.yml: %w", err)
 	}
 
 	for _, envFile := range envFiles {
-		if err := hashFile(h, envFile); err != nil {
+		if err := writeFileToHash(h, envFile); err != nil {
 			return "", fmt.Errorf("hash env file %s: %w", envFile, err)
 		}
 	}
@@ -32,9 +30,7 @@ func hashStack(workDir string, envFiles []string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
-// hashFile writes the contents of the file at path into the given writer.
-// It is used to feed files into a running SHA-256 hash.
-func hashFile(dst io.Writer, path string) error {
+func writeFileToHash(dst io.Writer, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -45,10 +41,8 @@ func hashFile(dst io.Writer, path string) error {
 	return err
 }
 
-// loadState reads the persisted deploy state from disk.
-// Returns an empty map if the state file does not exist yet (first run).
-func loadState() (map[string]string, error) {
-	data, err := os.ReadFile(stateFile)
+func loadPersistedDeployState() (map[string]string, error) {
+	data, err := os.ReadFile(deployStateFilePath)
 	if os.IsNotExist(err) {
 		return map[string]string{}, nil
 	}
@@ -63,14 +57,13 @@ func loadState() (map[string]string, error) {
 	return state, nil
 }
 
-// saveState writes the deploy state to disk so it survives restarts.
-func saveState(state map[string]string) error {
-	if err := os.MkdirAll(filepath.Dir(stateFile), 0o755); err != nil {
+func persistDeployState(state map[string]string) error {
+	if err := os.MkdirAll(filepath.Dir(deployStateFilePath), 0o755); err != nil {
 		return err
 	}
 	data, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(stateFile, data, 0o644)
+	return os.WriteFile(deployStateFilePath, data, 0o644)
 }

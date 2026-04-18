@@ -39,7 +39,7 @@ func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
 	state := map[string]string{} // empty state = first deploy
 
-	if err := d.deployStack(stack, "", state); err != nil {
+	if err := d.deployStackIfChanged(stack, "", state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -60,10 +60,10 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 
 	// Pre-populate state with the current hash to simulate "already deployed".
 	state := map[string]string{}
-	hash, _ := hashStack(workDir, nil)
+	hash, _ := computeStackConfigHash(workDir, nil)
 	state["gitea"] = hash
 
-	if err := d.deployStack(stack, "", state); err != nil {
+	if err := d.deployStackIfChanged(stack, "", state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -80,7 +80,7 @@ func TestDeployStack_FailsOnPullError(t *testing.T) {
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
 	state := map[string]string{}
 
-	err := d.deployStack(stack, "", state)
+	err := d.deployStackIfChanged(stack, "", state)
 	if err == nil {
 		t.Fatal("expected error when docker compose pull fails")
 	}
@@ -105,7 +105,7 @@ func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
 	stack := config.Stack{Name: "gitea"} // no working_dir set
 	state := map[string]string{}
 
-	if err := d.deployStack(stack, baseDir, state); err != nil {
+	if err := d.deployStackIfChanged(stack, baseDir, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -118,7 +118,7 @@ func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
 }
 
 // makeStackDir creates a temp directory with a docker-compose.yml,
-// which is the minimum required for hashStack to succeed.
+// which is the minimum required for computeStackConfigHash to succeed.
 func makeStackDir(t *testing.T, envContent string) string {
 	t.Helper()
 	dir := t.TempDir()

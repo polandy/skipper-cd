@@ -34,18 +34,13 @@ func main() {
 
 	deployer := deploy.NewDeployer()
 
-	// Deploy all stacks once on startup to catch any changes made while
-	// orpheus-cd was not running (e.g. after a NixOS rebuild).
-	go func() {
-		slog.Info("running initial deploy on startup")
-		deployer.RunAll(cfg)
-	}()
+	// Deploy on startup to catch changes that occurred while orpheus-cd was not running.
+	go deployer.DeployAllStacks(cfg)
 
 	startMetricsServer(cfg.MetricsPort)
-	startWebhookServer(cfg, deployer) // blocks until the process exits
+	startWebhookServer(cfg, deployer)
 }
 
-// startMetricsServer starts the Prometheus metrics endpoint in the background.
 func startMetricsServer(port int) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
@@ -60,11 +55,10 @@ func startMetricsServer(port int) {
 	}()
 }
 
-// startWebhookServer starts the webhook HTTP server and blocks.
 func startWebhookServer(cfg *config.Config, deployer *deploy.Deployer) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", webhook.Handler(cfg, deployer))
-	mux.HandleFunc("/healthz", healthHandler)
+	mux.HandleFunc("/healthz", respondOK)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	slog.Info("webhook server listening", "addr", addr)
@@ -74,9 +68,7 @@ func startWebhookServer(cfg *config.Config, deployer *deploy.Deployer) {
 	}
 }
 
-// healthHandler responds with 200 OK. Used by Docker and load balancers
-// to verify the process is alive.
-func healthHandler(w http.ResponseWriter, _ *http.Request) {
+func respondOK(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintln(w, "ok")
 }

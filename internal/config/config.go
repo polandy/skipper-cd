@@ -12,22 +12,19 @@ import (
 // Stack represents a single Docker Compose project to be deployed.
 type Stack struct {
 	// Name is a unique identifier for the stack. When working_dir is omitted,
-	// it is also used to locate the stack under stacks_base_dir.
+	// the working directory is derived as stacks_base_dir/<name>.
 	Name string `yaml:"name"`
 
 	// WorkingDir is the absolute path to the directory containing docker-compose.yml.
-	// Optional: if omitted, the path is derived as stacks_base_dir/<name>.
+	// Optional when stacks_base_dir is set.
 	WorkingDir string `yaml:"working_dir"`
 
-	// EnvFiles is a list of paths to env files whose KEY=VALUE pairs are injected
-	// into the environment when docker-compose is invoked. This enables
-	// ${VAR} substitution inside docker-compose.yml (e.g. for Traefik labels).
+	// EnvFiles lists KEY=VALUE files injected into the environment when docker-compose
+	// is invoked, enabling ${VAR} substitution inside docker-compose.yml.
 	EnvFiles []string `yaml:"env_files"`
 }
 
 // WorkDir returns the effective working directory for this stack.
-// When working_dir is set explicitly it is used as-is; otherwise the path
-// is constructed as <baseDir>/<name>.
 func (s Stack) WorkDir(baseDir string) string {
 	if s.WorkingDir != "" {
 		return s.WorkingDir
@@ -37,26 +34,12 @@ func (s Stack) WorkDir(baseDir string) string {
 
 // Config holds the full orpheus-cd configuration.
 type Config struct {
-	// RepoPath is the absolute path to the git repository that is pulled
-	// on each incoming webhook before deploying.
-	RepoPath string `yaml:"repo_path"`
-
-	// StacksBaseDir is the default parent directory for all stacks.
-	// Individual stacks may override this with an explicit working_dir.
-	StacksBaseDir string `yaml:"stacks_base_dir"`
-
-	// WebhookSecret is the shared secret used to validate incoming Gitea
-	// webhooks via HMAC-SHA256. Leave empty to disable signature validation.
-	WebhookSecret string `yaml:"webhook_secret"`
-
-	// Port is the HTTP port for the webhook endpoint (default: 8080).
-	Port int `yaml:"port"`
-
-	// MetricsPort is the HTTP port for the Prometheus /metrics endpoint (default: 9120).
-	MetricsPort int `yaml:"metrics_port"`
-
-	// Stacks is the list of Docker Compose projects managed by orpheus-cd.
-	Stacks []Stack `yaml:"stacks"`
+	RepoPath      string  `yaml:"repo_path"`
+	StacksBaseDir string  `yaml:"stacks_base_dir"`
+	WebhookSecret string  `yaml:"webhook_secret"`
+	Port          int     `yaml:"port"`
+	MetricsPort   int     `yaml:"metrics_port"`
+	Stacks        []Stack `yaml:"stacks"`
 }
 
 // Load reads and validates the configuration file at the given path.
@@ -66,7 +49,6 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
 
-	// Set defaults before unmarshalling so they are overridden by explicit values.
 	cfg := &Config{
 		Port:        8080,
 		MetricsPort: 9120,
@@ -75,15 +57,10 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config file: %w", err)
 	}
 
-	if err := validate(cfg); err != nil {
-		return nil, err
-	}
-
-	return cfg, nil
+	return cfg, validateConfig(cfg)
 }
 
-// validate checks that all required fields are present and consistent.
-func validate(cfg *Config) error {
+func validateConfig(cfg *Config) error {
 	if cfg.RepoPath == "" {
 		return fmt.Errorf("repo_path is required")
 	}
