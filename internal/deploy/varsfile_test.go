@@ -1,7 +1,6 @@
 package deploy
 
 import (
-	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -17,9 +16,9 @@ func TestLoadVarsFile_EmptyPathReturnsNil(t *testing.T) {
 	}
 }
 
-func TestLoadVarsFile_ConvertsKeysToUppercase(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "vars.yml")
-	writeFile(t, path, "domain: example.com\nsmtp_host: mail.example.com\n")
+func TestLoadVarsFile_ParsesKeyValuePairs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vars.env")
+	writeFile(t, path, "DOMAIN=example.com\nSMTP_HOST=mail.example.com\n")
 
 	vars, err := loadVarsFile(path)
 	if err != nil {
@@ -34,19 +33,23 @@ func TestLoadVarsFile_ConvertsKeysToUppercase(t *testing.T) {
 	}
 }
 
-func TestLoadVarsFile_MissingFileReturnsError(t *testing.T) {
-	_, err := loadVarsFile("/nonexistent/vars.yml")
-	if err == nil {
-		t.Error("expected error for missing file, got nil")
+func TestLoadVarsFile_IgnoresCommentsAndBlankLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vars.env")
+	writeFile(t, path, "# this is a comment\n\nDOMAIN=example.com\n")
+
+	vars, err := loadVarsFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(vars) != 1 || vars[0] != "DOMAIN=example.com" {
+		t.Errorf("expected [DOMAIN=example.com], got %v", vars)
 	}
 }
 
-func TestLoadVarsFile_InvalidYAMLReturnsError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "vars.yml")
-	os.WriteFile(path, []byte("key: [invalid: yaml"), 0o644)
-
-	_, err := loadVarsFile(path)
+func TestLoadVarsFile_MissingFileReturnsError(t *testing.T) {
+	_, err := loadVarsFile("/nonexistent/vars.env")
 	if err == nil {
-		t.Error("expected error for invalid YAML, got nil")
+		t.Error("expected error for missing file, got nil")
 	}
 }
