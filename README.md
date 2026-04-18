@@ -99,6 +99,27 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint:
 | `skipper_deploy_errors_total` | counter | Total number of failed deploys, labelled by `stack`. |
 | `skipper_last_deploy_timestamp` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |
 
+## Docker
+
+```yaml
+services:
+  skipper:
+    image: ghcr.io/polandy/skipper-cd:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # webhook
+      - "9120:9120"   # metrics
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./skipper.yml:/etc/skipper/skipper.yml:ro
+      - skipper-data:/var/lib/skipper
+
+volumes:
+  skipper-data:
+```
+
+The Docker socket mount is required — skipper-cd uses it to manage compose stacks. The `skipper-data` volume persists the cloned repository and deploy state across restarts.
+
 ## NixOS Module
 
 skipper-cd ships with a NixOS module at `nixosModules.default`.
