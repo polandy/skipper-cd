@@ -24,7 +24,7 @@ type runCall struct {
 
 func (r *recordingRunner) Run(dir string, _ []string, name string, args ...string) error {
 	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
-	if r.errOnCommand != "" && len(args) > 0 && args[len(args)-1] == r.errOnCommand {
+	if r.errOnCommand != "" && containsArg(args, r.errOnCommand) {
 		return fmt.Errorf("simulated error for command: %s", r.errOnCommand)
 	}
 	return nil
@@ -185,4 +185,13 @@ func assertCommandCalled(t *testing.T, calls []runCall, subcommand string) {
 		}
 	}
 	t.Errorf("expected command %q to be called, but it was not", subcommand)
+}
+
+func containsArg(args []string, target string) bool {
+	for _, a := range args {
+		if a == target {
+			return true
+		}
+	}
+	return false
 }

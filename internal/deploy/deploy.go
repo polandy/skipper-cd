@@ -95,7 +95,7 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, vars
 	d.logDiffsForChangedFiles(changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
-	if err := d.runDockerCompose(workDir, varsEnv, stack.EnvFiles, "pull"); err != nil {
+	if err := d.runDockerCompose(workDir, varsEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
 		return fmt.Errorf("docker compose pull: %w", err)
 	}
 
