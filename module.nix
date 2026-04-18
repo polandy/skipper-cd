@@ -31,6 +31,8 @@ in
       after = [ "docker.service" "network-online.target" ];
       requires = [ "docker.service" ];
 
+      path = [ pkgs.git pkgs.docker pkgs.docker-compose ];
+
       serviceConfig = {
         ExecStart = "${cfg.package}/bin/skipper -config ${cfg.configFile}";
         Restart = "on-failure";
@@ -46,7 +48,7 @@ in
         ProtectSystem = "strict";
         ProtectHome = true;
         ReadWritePaths = [ cfg.stateDir ];
-        ReadOnlyPaths = [ "/run/secrets" "/etc/nixos" ];
+        ReadOnlyPaths = [ "/run/secrets" ];
       };
     };
   };

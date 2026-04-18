@@ -79,7 +79,7 @@ func (d *Deployer) DeployAllStacks(cfg *config.Config) {
 func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, varsEnv []string, state persistedState) error {
 	workDir := stack.WorkDir(baseDir)
 
-	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles)
+	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles, stack.WatchDirs)
 	if err != nil {
 		return fmt.Errorf("compute per-file hashes: %w", err)
 	}
@@ -123,7 +123,8 @@ func (d *Deployer) logDiffsForChangedFiles(changedFilePaths []string, lastDeploy
 			continue
 		}
 		if diff != "" {
-			slog.Info("file changed", "file", filePath, "diff", "\n"+diff)
+			slog.Info("file changed", "file", filePath)
+			fmt.Print(diff)
 		}
 	}
 }

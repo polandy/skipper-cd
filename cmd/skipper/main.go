@@ -37,8 +37,14 @@ func main() {
 	repoReader := git.NewRepoReader(syncer.CloneDir())
 	deployer := deploy.NewDeployerWithCommitReader(repoReader)
 
-	// Deploy on startup to catch changes that occurred while skipper-cd was not running.
-	go deployer.DeployAllStacks(cfg)
+	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
+	go func() {
+		if err := syncer.Sync(); err != nil {
+			slog.Error("initial git sync failed, skipping startup deploy", "err", err)
+			return
+		}
+		deployer.DeployAllStacks(cfg)
+	}()
 
 	startMetricsServer(cfg.MetricsPort)
 	startWebhookServer(cfg, syncer, deployer)

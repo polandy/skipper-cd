@@ -65,7 +65,7 @@ func Handler(cfg *config.Config, syncer RepoSyncer, deployer *deploy.Deployer) h
 func verifyHMACSignature(body []byte, signature, secret string) error {
 	signer := hmac.New(sha256.New, []byte(secret))
 	signer.Write(body)
-	expected := "sha256=" + hex.EncodeToString(signer.Sum(nil))
+	expected := hex.EncodeToString(signer.Sum(nil))
 
 	// hmac.Equal uses constant-time comparison to prevent timing attacks.
 	if !hmac.Equal([]byte(expected), []byte(signature)) {

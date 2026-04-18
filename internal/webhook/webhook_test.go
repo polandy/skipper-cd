@@ -76,7 +76,7 @@ func TestHandler_RejectsRequestWithInvalidSignature(t *testing.T) {
 	handler := webhook.Handler(newTestConfig(t, "supersecret"), noopSyncer{}, deploy.NewDeployer())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
-	req.Header.Set("X-Gitea-Signature", "sha256=invalidsignature")
+	req.Header.Set("X-Gitea-Signature", "invalidsignature")
 	rec := httptest.NewRecorder()
 	handler(rec, req)
 
@@ -100,5 +100,5 @@ func TestHandler_RejectsMissingSignatureWhenSecretIsConfigured(t *testing.T) {
 func computeSignature(body []byte, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
-	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	return hex.EncodeToString(mac.Sum(nil))
 }

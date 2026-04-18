@@ -22,6 +22,11 @@ type Stack struct {
 	// EnvFiles lists KEY=VALUE files injected into the environment when docker-compose
 	// is invoked, enabling ${VAR} substitution inside docker-compose.yml.
 	EnvFiles []string `yaml:"env_files"`
+
+	// WatchDirs lists additional directories (relative to the repo root or absolute)
+	// whose contents are hashed alongside docker-compose.yml. Any change inside
+	// these directories triggers a redeployment.
+	WatchDirs []string `yaml:"watch_dirs"`
 }
 
 // WorkDir returns the effective working directory for this stack.

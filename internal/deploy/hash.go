@@ -27,9 +27,9 @@ type persistedState struct {
 
 // computePerFileHashes returns a SHA-256 hash for each tracked file in the stack.
 // Any change to any of these files triggers a new deployment.
-func computePerFileHashes(workDir string, envFiles []string) (stackFileHashes, error) {
+func computePerFileHashes(workDir string, envFiles []string, watchDirs []string) (stackFileHashes, error) {
 	filePaths := append([]string{filepath.Join(workDir, "docker-compose.yml")}, envFiles...)
-	hashes := make(stackFileHashes, len(filePaths))
+	hashes := make(stackFileHashes)
 
 	for _, path := range filePaths {
 		hasher := sha256.New()
@@ -37,6 +37,22 @@ func computePerFileHashes(workDir string, envFiles []string) (stackFileHashes, e
 			return nil, fmt.Errorf("hash file %s: %w", path, err)
 		}
 		hashes[path] = fmt.Sprintf("%x", hasher.Sum(nil))
+	}
+
+	for _, dir := range watchDirs {
+		if err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			hasher := sha256.New()
+			if err := addFileContentsToHash(hasher, path); err != nil {
+				return fmt.Errorf("hash file %s: %w", path, err)
+			}
+			hashes[path] = fmt.Sprintf("%x", hasher.Sum(nil))
+			return nil
+		}); err != nil {
+			return nil, fmt.Errorf("walk watch_dir %s: %w", dir, err)
+		}
 	}
 
 	return hashes, nil

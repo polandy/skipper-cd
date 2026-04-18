@@ -58,7 +58,7 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
 
 	// Pre-populate state with the current hashes to simulate "already deployed".
-	hashes, err := computePerFileHashes(workDir, nil)
+	hashes, err := computePerFileHashes(workDir, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestComputePerFileHashes_ReturnsHashForEachFile(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "app.env")
 	writeFile(t, envFile, "KEY=value\n")
 
-	hashes, err := computePerFileHashes(workDir, []string{envFile})
+	hashes, err := computePerFileHashes(workDir, []string{envFile}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
