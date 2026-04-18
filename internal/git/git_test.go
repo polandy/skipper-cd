@@ -44,12 +44,13 @@ func TestSync_PullsWhenCloneDirExists(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(runner.calls) == 0 {
-		t.Fatal("expected git pull to be called")
+	if len(runner.calls) < 2 {
+		t.Fatalf("expected at least 2 git calls (fetch + reset), got %d", len(runner.calls))
 	}
-	assertArgPresent(t, runner.calls[0].args, "pull")
+	assertArgPresent(t, runner.calls[0].args, "fetch")
+	assertArgPresent(t, runner.calls[1].args, "reset")
 	if runner.calls[0].dir != cloneDir {
-		t.Errorf("expected pull in %s, got %s", cloneDir, runner.calls[0].dir)
+		t.Errorf("expected fetch in %s, got %s", cloneDir, runner.calls[0].dir)
 	}
 }
 

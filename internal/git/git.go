@@ -72,7 +72,10 @@ func (s *Syncer) cloneRepository() error {
 
 func (s *Syncer) pullLatestCommits() error {
 	slog.Info("pulling latest commits", "dir", s.cloneDir)
-	return s.runner.Run(s.cloneDir, nil, "git", "pull")
+	if err := s.runner.Run(s.cloneDir, nil, "git", "fetch", "origin"); err != nil {
+		return err
+	}
+	return s.runner.Run(s.cloneDir, nil, "git", "reset", "--hard", "origin/master")
 }
 
 // RepoReader reads commit information from a local git repository.
