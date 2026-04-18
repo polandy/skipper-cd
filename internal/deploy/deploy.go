@@ -83,11 +83,11 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, last
 func (d *Deployer) runDockerCompose(workDir string, envFiles []string, args ...string) error {
 	env := os.Environ()
 	for _, envFile := range envFiles {
-		entries, err := parseEnvFile(envFile)
+		envVars, err := parseEnvFile(envFile)
 		if err != nil {
 			return fmt.Errorf("read env file %s: %w", envFile, err)
 		}
-		env = append(env, entries...)
+		env = append(env, envVars...)
 	}
 
 	return d.runner.Run(workDir, env, "docker", append([]string{"compose"}, args...)...)

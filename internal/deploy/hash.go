@@ -15,29 +15,29 @@ const deployStateFilePath = "/var/lib/orpheus/state.json"
 // env files. Any change to these files produces a different hash, triggering
 // a new deployment.
 func computeStackConfigHash(workDir string, envFiles []string) (string, error) {
-	h := sha256.New()
+	hasher := sha256.New()
 
-	if err := writeFileToHash(h, filepath.Join(workDir, "docker-compose.yml")); err != nil {
+	if err := writeFileToHash(hasher, filepath.Join(workDir, "docker-compose.yml")); err != nil {
 		return "", fmt.Errorf("hash docker-compose.yml: %w", err)
 	}
 
 	for _, envFile := range envFiles {
-		if err := writeFileToHash(h, envFile); err != nil {
+		if err := writeFileToHash(hasher, envFile); err != nil {
 			return "", fmt.Errorf("hash env file %s: %w", envFile, err)
 		}
 	}
 
-	return fmt.Sprintf("%x", h.Sum(nil)), nil
+	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
 
-func writeFileToHash(dst io.Writer, path string) error {
-	f, err := os.Open(path)
+func writeFileToHash(hasher io.Writer, path string) error {
+	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer file.Close()
 
-	_, err = io.Copy(dst, f)
+	_, err = io.Copy(hasher, file)
 	return err
 }
 

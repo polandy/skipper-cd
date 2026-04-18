@@ -59,9 +59,9 @@ func Handler(cfg *config.Config, deployer *deploy.Deployer) http.HandlerFunc {
 }
 
 func verifyHMACSignature(body []byte, signature, secret string) error {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	signer := hmac.New(sha256.New, []byte(secret))
+	signer.Write(body)
+	expected := "sha256=" + hex.EncodeToString(signer.Sum(nil))
 
 	// hmac.Equal uses constant-time comparison to prevent timing attacks.
 	if !hmac.Equal([]byte(expected), []byte(signature)) {
@@ -74,10 +74,10 @@ func pullLatestCommits(repoPath string) error {
 	cmd := exec.Command("git", "pull")
 	cmd.Dir = repoPath
 
-	out, err := cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("git pull: %w\n%s", err, out)
+		return fmt.Errorf("git pull: %w\n%s", err, output)
 	}
-	slog.Info("git pull successful", "output", string(out))
+	slog.Info("git pull successful", "output", string(output))
 	return nil
 }

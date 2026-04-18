@@ -11,20 +11,20 @@ import (
 // suitable for appending to exec.Cmd.Env. Empty lines and lines starting
 // with # (comments) are ignored.
 func parseEnvFile(path string) ([]string, error) {
-	f, err := os.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open env file: %w", err)
 	}
-	defer f.Close()
+	defer file.Close()
 
-	var entries []string
-	scanner := bufio.NewScanner(f)
+	var envVars []string
+	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		entries = append(entries, line)
+		envVars = append(envVars, line)
 	}
-	return entries, scanner.Err()
+	return envVars, scanner.Err()
 }
