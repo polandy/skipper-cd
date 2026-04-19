@@ -1,6 +1,8 @@
 repo_url: ssh://git@gitea.example.com/user/nixos-config.git
-clone_dir: /var/lib/skipper/repo  # optional, this is the default
-vars_file: /etc/skipper/vars.env  # optional
+clone_dir: /var/lib/skipper/repo        # optional, default: /var/lib/skipper/repo
+branch: master                          # optional, default: master
+vars_file: /etc/skipper/vars.env        # optional, changes trigger redeploy
+command_timeout_seconds: 300            # optional, default: 300 (5 minutes)
 stacks_base_dir: /var/lib/skipper/repo/modules
 webhook_secret: "your-secret-here"
 port: 8080
