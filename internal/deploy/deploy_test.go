@@ -64,7 +64,7 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 	}
 	state := persistedState{
 		Stacks: map[string]stackFileHashes{"gitea": hashes},
-		Images: map[string]map[string]string{},
+		Images: map[string]serviceImageByName{},
 	}
 
 	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
@@ -132,7 +132,7 @@ func TestDeployStack_SkipsPullWhenOnlyConfigChanges(t *testing.T) {
 	// Simulate a previous deploy with the same image but different file hash.
 	state := persistedState{
 		Stacks: map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
-		Images: map[string]map[string]string{"mystack": {"app": "redis:7.2"}},
+		Images: map[string]serviceImageByName{"mystack": {"app": "redis:7.2"}},
 	}
 
 	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
@@ -155,7 +155,7 @@ func TestDeployStack_PullsWhenImageChanges(t *testing.T) {
 	// Previous deploy had a different image version.
 	state := persistedState{
 		Stacks: map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
-		Images: map[string]map[string]string{"mystack": {"app": "redis:7.2"}},
+		Images: map[string]serviceImageByName{"mystack": {"app": "redis:7.2"}},
 	}
 
 	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {

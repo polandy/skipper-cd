@@ -98,7 +98,7 @@ func loadPersistedDeployState() (persistedState, error) {
 		state.Stacks = map[string]stackFileHashes{}
 	}
 	if state.Images == nil {
-		state.Images = map[string]map[string]string{}
+		state.Images = map[string]serviceImageByName{}
 	}
 	return state, nil
 }
