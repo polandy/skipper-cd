@@ -81,14 +81,14 @@ func (d *Deployer) SyncAndDeployAll(ctx context.Context, cfg *config.Config) {
 func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
 
-	var varsEnv []string
+	baseEnv := os.Environ()
 	if cfg.VarsFile != "" {
-		var err error
-		varsEnv, err = parseEnvFile(cfg.VarsFile)
+		varsEnv, err := parseEnvFile(cfg.VarsFile)
 		if err != nil {
 			slog.Error("could not load vars_file, aborting", "err", err)
 			return
 		}
+		baseEnv = append(baseEnv, varsEnv...)
 	}
 
 	state, err := loadPersistedDeployState(d.stateDir)
@@ -98,7 +98,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	}
 
 	for _, stack := range cfg.Stacks {
-		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, varsEnv, state); err != nil {
+		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state); err != nil {
 			slog.Error("deploy failed", "stack", stack.Name, "err", err)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
 		}
@@ -118,7 +118,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	}
 }
 
-func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, varsEnv []string, state persistedState) error {
+func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state persistedState) error {
 	workDir := stack.WorkDir(baseDir)
 
 	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles, stack.WatchDirs, varsFile)
@@ -145,7 +145,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}
 
 	if currentImages == nil || hasAnyImageChanged(currentImages, state.Images[stack.Name]) {
-		if err := d.runDockerCompose(ctx, workDir, varsEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
+		if err := d.runDockerCompose(ctx, workDir, baseEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
 			return fmt.Errorf("docker compose pull: %w", err)
 		}
 	} else {
@@ -153,7 +153,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}
 
 	// --remove-orphans removes containers for services deleted from docker-compose.yml.
-	if err := d.runDockerCompose(ctx, workDir, varsEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
+	if err := d.runDockerCompose(ctx, workDir, baseEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
 		return fmt.Errorf("docker compose up: %w", err)
 	}
 
@@ -196,9 +196,9 @@ func (d *Deployer) logDiffsForChangedFiles(ctx context.Context, changedFilePaths
 	}
 }
 
-func (d *Deployer) runDockerCompose(ctx context.Context, workDir string, varsEnv []string, envFiles []string, args ...string) error {
-	env := os.Environ()
-	env = append(env, varsEnv...)
+func (d *Deployer) runDockerCompose(ctx context.Context, workDir string, baseEnv []string, envFiles []string, args ...string) error {
+	env := make([]string, len(baseEnv))
+	copy(env, baseEnv)
 	for _, envFile := range envFiles {
 		envVars, err := parseEnvFile(envFile)
 		if err != nil {
