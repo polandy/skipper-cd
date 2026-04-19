@@ -51,6 +51,40 @@ stacks: []
 	}
 }
 
+func TestLoad_DefaultTimeoutAndBranch(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.CommandTimeoutSeconds != 300 {
+		t.Errorf("expected default command_timeout_seconds 300, got %d", cfg.CommandTimeoutSeconds)
+	}
+	if cfg.Branch != "master" {
+		t.Errorf("expected default branch 'master', got %q", cfg.Branch)
+	}
+}
+
+func TestLoad_CustomTimeoutAndBranch(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+command_timeout_seconds: 600
+branch: main
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.CommandTimeoutSeconds != 600 {
+		t.Errorf("expected command_timeout_seconds 600, got %d", cfg.CommandTimeoutSeconds)
+	}
+	if cfg.Branch != "main" {
+		t.Errorf("expected branch 'main', got %q", cfg.Branch)
+	}
+}
+
 func TestLoad_MissingRepoURL(t *testing.T) {
 	content := `
 stacks_base_dir: /var/lib/skipper/repo/modules

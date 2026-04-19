@@ -52,10 +52,18 @@ type Config struct {
 	// Defaults to /var/lib/skipper/repo when left empty.
 	CloneDir string `yaml:"clone_dir"`
 
+	// Branch is the Git branch to track. Defaults to "master".
+	Branch string `yaml:"branch"`
+
 	// VarsFile is an optional path to a YAML file of key→value pairs that are
 	// injected as KEY=VALUE env vars into every stack deployment, enabling
 	// ${VAR} substitution in docker-compose.yml (e.g. for domain names).
 	VarsFile string `yaml:"vars_file"`
+
+	// CommandTimeoutSeconds is the maximum number of seconds a single shell
+	// command (docker compose pull/up, git clone/fetch) is allowed to run
+	// before being killed. Defaults to 300 (5 minutes).
+	CommandTimeoutSeconds int `yaml:"command_timeout_seconds"`
 
 	StacksBaseDir string  `yaml:"stacks_base_dir"`
 	WebhookSecret string  `yaml:"webhook_secret"`
@@ -77,6 +85,13 @@ func Load(path string) (*Config, error) {
 	}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config file: %w", err)
+	}
+
+	if cfg.CommandTimeoutSeconds == 0 {
+		cfg.CommandTimeoutSeconds = 300
+	}
+	if cfg.Branch == "" {
+		cfg.Branch = "master"
 	}
 
 	return cfg, validateConfig(cfg)

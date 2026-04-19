@@ -5,23 +5,15 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/webhook"
 )
-
-type noopSyncer struct{}
-
-func (noopSyncer) Sync() error { return nil }
-
-type failingSyncer struct{}
-
-func (failingSyncer) Sync() error { return fmt.Errorf("simulated sync failure") }
 
 func newTestConfig(t *testing.T, secret string) *config.Config {
 	t.Helper()
@@ -33,7 +25,7 @@ func newTestConfig(t *testing.T, secret string) *config.Config {
 }
 
 func TestHandler_RejectsNonPostRequests(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, ""), noopSyncer{}, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, ""), deploy.NewDeployer(), 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodGet, "/webhook", nil)
 	rec := httptest.NewRecorder()
@@ -45,7 +37,7 @@ func TestHandler_RejectsNonPostRequests(t *testing.T) {
 }
 
 func TestHandler_AcceptsRequestWithoutSecret(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, ""), noopSyncer{}, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, ""), deploy.NewDeployer(), 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
 	rec := httptest.NewRecorder()
@@ -60,7 +52,7 @@ func TestHandler_AcceptsRequestWithValidSignature(t *testing.T) {
 	secret := "supersecret"
 	body := []byte(`{"ref":"refs/heads/master"}`)
 
-	handler := webhook.Handler(newTestConfig(t, secret), noopSyncer{}, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, secret), deploy.NewDeployer(), 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBuffer(body))
 	req.Header.Set("X-Gitea-Signature", computeSignature(body, secret))
@@ -73,7 +65,7 @@ func TestHandler_AcceptsRequestWithValidSignature(t *testing.T) {
 }
 
 func TestHandler_RejectsRequestWithInvalidSignature(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, "supersecret"), noopSyncer{}, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, "supersecret"), deploy.NewDeployer(), 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
 	req.Header.Set("X-Gitea-Signature", "invalidsignature")
@@ -86,7 +78,7 @@ func TestHandler_RejectsRequestWithInvalidSignature(t *testing.T) {
 }
 
 func TestHandler_RejectsMissingSignatureWhenSecretIsConfigured(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, "supersecret"), noopSyncer{}, deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, "supersecret"), deploy.NewDeployer(), 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
 	rec := httptest.NewRecorder()

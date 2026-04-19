@@ -3,6 +3,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,14 +16,14 @@ const defaultCloneDir = "/var/lib/skipper/repo"
 // Runner executes shell commands. Defined here independently of the deploy
 // package to avoid cross-package dependencies.
 type Runner interface {
-	Run(dir string, env []string, name string, args ...string) error
+	Run(ctx context.Context, dir string, env []string, name string, args ...string) error
 }
 
 // ShellRunner is the real Runner that executes commands via os/exec.
 type ShellRunner struct{}
 
-func (ShellRunner) Run(dir string, env []string, name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+func (ShellRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	cmd.Env = env
 	cmd.Stdout = os.Stdout
@@ -35,26 +36,27 @@ type Syncer struct {
 	runner   Runner
 	repoURL  string
 	cloneDir string
+	branch   string
 }
 
-func NewSyncer(repoURL, cloneDir string) *Syncer {
+func NewSyncer(repoURL, cloneDir, branch string) *Syncer {
 	if cloneDir == "" {
 		cloneDir = defaultCloneDir
 	}
-	return &Syncer{runner: ShellRunner{}, repoURL: repoURL, cloneDir: cloneDir}
+	return &Syncer{runner: ShellRunner{}, repoURL: repoURL, cloneDir: cloneDir, branch: branch}
 }
 
-func newSyncerWithRunner(r Runner, repoURL, cloneDir string) *Syncer {
-	return &Syncer{runner: r, repoURL: repoURL, cloneDir: cloneDir}
+func newSyncerWithRunner(r Runner, repoURL, cloneDir, branch string) *Syncer {
+	return &Syncer{runner: r, repoURL: repoURL, cloneDir: cloneDir, branch: branch}
 }
 
 // Sync clones the repository if the clone directory does not exist,
 // or runs git pull if it does.
-func (s *Syncer) Sync() error {
+func (s *Syncer) Sync(ctx context.Context) error {
 	if _, err := os.Stat(s.cloneDir); os.IsNotExist(err) {
-		return s.cloneRepository()
+		return s.cloneRepository(ctx)
 	}
-	return s.pullLatestCommits()
+	return s.pullLatestCommits(ctx)
 }
 
 // CloneDir returns the effective local clone directory.
@@ -62,20 +64,20 @@ func (s *Syncer) CloneDir() string {
 	return s.cloneDir
 }
 
-func (s *Syncer) cloneRepository() error {
-	slog.Info("cloning repository", "url", s.repoURL, "dir", s.cloneDir)
+func (s *Syncer) cloneRepository(ctx context.Context) error {
+	slog.Info("cloning repository", "url", s.repoURL, "dir", s.cloneDir, "branch", s.branch)
 	if err := os.MkdirAll(s.cloneDir, 0o755); err != nil {
 		return fmt.Errorf("create clone dir: %w", err)
 	}
-	return s.runner.Run("", nil, "git", "clone", s.repoURL, s.cloneDir)
+	return s.runner.Run(ctx, "", nil, "git", "clone", "--branch", s.branch, s.repoURL, s.cloneDir)
 }
 
-func (s *Syncer) pullLatestCommits() error {
-	slog.Info("pulling latest commits", "dir", s.cloneDir)
-	if err := s.runner.Run(s.cloneDir, nil, "git", "fetch", "origin"); err != nil {
+func (s *Syncer) pullLatestCommits(ctx context.Context) error {
+	slog.Info("pulling latest commits", "dir", s.cloneDir, "branch", s.branch)
+	if err := s.runner.Run(ctx, s.cloneDir, nil, "git", "fetch", "origin"); err != nil {
 		return err
 	}
-	return s.runner.Run(s.cloneDir, nil, "git", "reset", "--hard", "origin/master")
+	return s.runner.Run(ctx, s.cloneDir, nil, "git", "reset", "--hard", "origin/"+s.branch)
 }
 
 // RepoReader reads commit information from a local git repository.

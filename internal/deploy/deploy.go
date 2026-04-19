@@ -4,10 +4,12 @@
 package deploy
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
@@ -21,27 +23,54 @@ type CommitReader interface {
 	DiffSinceCommit(fromSHA, filePath string) (string, error)
 }
 
+// GitSyncer abstracts the git sync operation so the deployer can
+// coordinate sync + deploy under a single lock.
+type GitSyncer interface {
+	Sync(ctx context.Context) error
+}
+
 // Deployer orchestrates deployments for all configured stacks.
 // Inject a custom Runner to replace real docker/git calls in tests.
 // Optionally inject a CommitReader to enable diff logging on deploy.
 type Deployer struct {
 	runner       Runner
 	commitReader CommitReader // nil disables diff logging
+	syncer       GitSyncer   // nil when using DeployAllStacks directly
+	timeout      time.Duration
+	mu           sync.Mutex
 }
 
 func NewDeployer() *Deployer {
 	return &Deployer{runner: ShellRunner{}}
 }
 
-func NewDeployerWithCommitReader(commitReader CommitReader) *Deployer {
-	return &Deployer{runner: ShellRunner{}, commitReader: commitReader}
+func NewDeployerWithCommitReader(commitReader CommitReader, syncer GitSyncer, timeout time.Duration) *Deployer {
+	return &Deployer{runner: ShellRunner{}, commitReader: commitReader, syncer: syncer, timeout: timeout}
 }
 
 func newDeployerWithRunner(r Runner) *Deployer {
 	return &Deployer{runner: r}
 }
 
-func (d *Deployer) DeployAllStacks(cfg *config.Config) {
+// SyncAndDeployAll acquires the deploy lock, syncs the repository, and
+// deploys all stacks. Concurrent callers wait for their turn.
+func (d *Deployer) SyncAndDeployAll(ctx context.Context, cfg *config.Config) {
+	if !d.mu.TryLock() {
+		slog.Info("deploy already in progress, waiting")
+		d.mu.Lock()
+	}
+	defer d.mu.Unlock()
+
+	if d.syncer != nil {
+		if err := d.syncer.Sync(ctx); err != nil {
+			slog.Error("git sync failed, aborting deploy", "err", err)
+			return
+		}
+	}
+	d.DeployAllStacks(ctx, cfg)
+}
+
+func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
 
 	varsEnv, err := loadVarsFile(cfg.VarsFile)
@@ -57,7 +86,7 @@ func (d *Deployer) DeployAllStacks(cfg *config.Config) {
 	}
 
 	for _, stack := range cfg.Stacks {
-		if err := d.deployStackIfChanged(stack, cfg.StacksBaseDir, varsEnv, state); err != nil {
+		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, varsEnv, state); err != nil {
 			slog.Error("deploy failed", "stack", stack.Name, "err", err)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
 		}
@@ -77,10 +106,10 @@ func (d *Deployer) DeployAllStacks(cfg *config.Config) {
 	}
 }
 
-func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, varsEnv []string, state persistedState) error {
+func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, varsEnv []string, state persistedState) error {
 	workDir := stack.WorkDir(baseDir)
 
-	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles, stack.WatchDirs)
+	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles, stack.WatchDirs, varsFile)
 	if err != nil {
 		return fmt.Errorf("compute per-file hashes: %w", err)
 	}
@@ -104,7 +133,7 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, vars
 	}
 
 	if currentImages == nil || hasAnyImageChanged(currentImages, state.Images[stack.Name]) {
-		if err := d.runDockerCompose(workDir, varsEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
+		if err := d.runDockerCompose(ctx, workDir, varsEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
 			return fmt.Errorf("docker compose pull: %w", err)
 		}
 	} else {
@@ -112,13 +141,13 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, vars
 	}
 
 	// --remove-orphans removes containers for services deleted from docker-compose.yml.
-	if err := d.runDockerCompose(workDir, varsEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
+	if err := d.runDockerCompose(ctx, workDir, varsEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
 		return fmt.Errorf("docker compose up: %w", err)
 	}
 
 	if len(stack.OnDemandContainers) > 0 {
 		slog.Info("stopping on-demand containers after deploy", "stack", stack.Name, "containers", stack.OnDemandContainers)
-		if err := d.runner.Run("", nil, "docker", append([]string{"stop"}, stack.OnDemandContainers...)...); err != nil {
+		if err := d.runner.Run(ctx, "", nil, "docker", append([]string{"stop"}, stack.OnDemandContainers...)...); err != nil {
 			slog.Warn("could not stop on-demand containers", "stack", stack.Name, "err", err)
 		}
 	}
@@ -162,7 +191,7 @@ func changedFiles(current, last stackFileHashes) []string {
 	return changed
 }
 
-func (d *Deployer) runDockerCompose(workDir string, varsEnv []string, envFiles []string, args ...string) error {
+func (d *Deployer) runDockerCompose(ctx context.Context, workDir string, varsEnv []string, envFiles []string, args ...string) error {
 	env := os.Environ()
 	env = append(env, varsEnv...)
 	for _, envFile := range envFiles {
@@ -173,5 +202,5 @@ func (d *Deployer) runDockerCompose(workDir string, varsEnv []string, envFiles [
 		env = append(env, envVars...)
 	}
 
-	return d.runner.Run(workDir, env, "docker", append([]string{"compose"}, args...)...)
+	return d.runner.Run(ctx, workDir, env, "docker", append([]string{"compose"}, args...)...)
 }

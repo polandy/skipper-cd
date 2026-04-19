@@ -1,19 +1,23 @@
 package deploy
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 )
 
 // recordingRunner is a fake Runner that records every command it receives
-// instead of executing it. This is the Go equivalent of a mock in Java.
+// instead of executing it.
 type recordingRunner struct {
 	calls        []runCall
 	errOnCommand string
+	delay        time.Duration // optional delay per call for concurrency tests
 }
 
 type runCall struct {
@@ -22,11 +26,24 @@ type runCall struct {
 	args []string
 }
 
-func (r *recordingRunner) Run(dir string, _ []string, name string, args ...string) error {
+func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
+	if r.delay > 0 {
+		time.Sleep(r.delay)
+	}
 	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
 	if r.errOnCommand != "" && containsArg(args, r.errOnCommand) {
 		return fmt.Errorf("simulated error for command: %s", r.errOnCommand)
 	}
+	return nil
+}
+
+// fakeSyncer implements GitSyncer for tests.
+type fakeSyncer struct {
+	called atomic.Int32
+}
+
+func (f *fakeSyncer) Sync(_ context.Context) error {
+	f.called.Add(1)
 	return nil
 }
 
@@ -38,7 +55,7 @@ func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -58,7 +75,7 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
 
 	// Pre-populate state with the current hashes to simulate "already deployed".
-	hashes, err := computePerFileHashes(workDir, nil, nil)
+	hashes, err := computePerFileHashes(workDir, nil, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}
@@ -67,7 +84,7 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 		Images: map[string]serviceImageByName{},
 	}
 
-	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -84,7 +101,7 @@ func TestDeployStack_FailsOnPullError(t *testing.T) {
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
 	state := newEmptyState()
 
-	err := d.deployStackIfChanged(stack, "", nil, state)
+	err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state)
 	if err == nil {
 		t.Fatal("expected error when docker compose pull fails")
 	}
@@ -108,7 +125,7 @@ func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
 	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(stack, baseDir, nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -135,7 +152,7 @@ func TestDeployStack_SkipsPullWhenOnlyConfigChanges(t *testing.T) {
 		Images: map[string]serviceImageByName{"mystack": {"app": "redis:7.2"}},
 	}
 
-	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -158,7 +175,7 @@ func TestDeployStack_PullsWhenImageChanges(t *testing.T) {
 		Images: map[string]serviceImageByName{"mystack": {"app": "redis:7.2"}},
 	}
 
-	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -178,7 +195,7 @@ func TestDeployStack_PullsWhenNoStoredImages(t *testing.T) {
 	// No previous image state — first deploy or upgrade from old state format.
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -201,7 +218,7 @@ func TestDeployStack_StoresImagesInStateAfterDeploy(t *testing.T) {
 	stack := config.Stack{Name: "db", WorkingDir: workDir}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -225,7 +242,7 @@ func TestDeployStack_StopsOnDemandContainersAfterDeploy(t *testing.T) {
 	}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -252,7 +269,7 @@ func TestDeployStack_SkipsStopWhenNoOnDemandContainers(t *testing.T) {
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -260,6 +277,101 @@ func TestDeployStack_SkipsStopWhenNoOnDemandContainers(t *testing.T) {
 		if c.name == "docker" && containsArg(c.args, "stop") {
 			t.Errorf("expected docker stop NOT to be called, but it was: %v", c.args)
 		}
+	}
+}
+
+func TestDeployStack_RedeploysWhenVarsFileChanges(t *testing.T) {
+	workDir := makeStackDir(t)
+	varsFile := filepath.Join(t.TempDir(), "vars.env")
+	writeFile(t, varsFile, "DOMAIN=example.com\n")
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+
+	// First deploy to populate state.
+	state := newEmptyState()
+	if err := d.deployStackIfChanged(context.Background(), stack, "", varsFile, nil, state); err != nil {
+		t.Fatalf("unexpected error on first deploy: %v", err)
+	}
+
+	// Reset runner calls.
+	runner.calls = nil
+
+	// Modify the vars file.
+	writeFile(t, varsFile, "DOMAIN=new.example.com\n")
+
+	// Second deploy should trigger because vars_file changed.
+	if err := d.deployStackIfChanged(context.Background(), stack, "", varsFile, nil, state); err != nil {
+		t.Fatalf("unexpected error on second deploy: %v", err)
+	}
+
+	assertCommandCalled(t, runner.calls, "up")
+}
+
+func TestDeployStack_SkipsWhenVarsFileUnchanged(t *testing.T) {
+	workDir := makeStackDir(t)
+	varsFile := filepath.Join(t.TempDir(), "vars.env")
+	writeFile(t, varsFile, "DOMAIN=example.com\n")
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+
+	// First deploy to populate state.
+	state := newEmptyState()
+	if err := d.deployStackIfChanged(context.Background(), stack, "", varsFile, nil, state); err != nil {
+		t.Fatalf("unexpected error on first deploy: %v", err)
+	}
+
+	// Reset runner calls.
+	runner.calls = nil
+
+	// Second deploy with unchanged vars_file should be skipped.
+	if err := d.deployStackIfChanged(context.Background(), stack, "", varsFile, nil, state); err != nil {
+		t.Fatalf("unexpected error on second deploy: %v", err)
+	}
+
+	if len(runner.calls) != 0 {
+		t.Errorf("expected no commands when vars_file is unchanged, got %d call(s)", len(runner.calls))
+	}
+}
+
+func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
+	runner := &recordingRunner{delay: 10 * time.Millisecond}
+	syncer := &fakeSyncer{}
+
+	d := &Deployer{runner: runner, syncer: syncer, timeout: 10 * time.Second}
+
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: t.TempDir(),
+		Stacks:        []config.Stack{},
+	}
+
+	done := make(chan struct{}, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			d.SyncAndDeployAll(ctx, cfg)
+			done <- struct{}{}
+		}()
+	}
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for goroutines to finish")
+		}
+	}
+
+	// Both goroutines ran sync — they should not have overlapped.
+	if syncer.called.Load() != 2 {
+		t.Errorf("expected syncer to be called 2 times, got %d", syncer.called.Load())
 	}
 }
 
@@ -293,7 +405,7 @@ func TestComputePerFileHashes_ReturnsHashForEachFile(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "app.env")
 	writeFile(t, envFile, "KEY=value\n")
 
-	hashes, err := computePerFileHashes(workDir, []string{envFile}, nil)
+	hashes, err := computePerFileHashes(workDir, []string{envFile}, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -304,6 +416,21 @@ func TestComputePerFileHashes_ReturnsHashForEachFile(t *testing.T) {
 	}
 	if hashes[envFile] == "" {
 		t.Errorf("expected hash for env file")
+	}
+}
+
+func TestComputePerFileHashes_IncludesVarsFile(t *testing.T) {
+	workDir := makeStackDir(t)
+	varsFile := filepath.Join(t.TempDir(), "vars.env")
+	writeFile(t, varsFile, "DOMAIN=example.com\n")
+
+	hashes, err := computePerFileHashes(workDir, nil, nil, varsFile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if hashes[varsFile] == "" {
+		t.Errorf("expected hash for vars_file")
 	}
 }
 

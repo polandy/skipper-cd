@@ -4,11 +4,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
@@ -27,27 +29,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	timeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
+
 	slog.Info("skipper-cd starting",
 		"stacks", len(cfg.Stacks),
 		"webhook_port", cfg.Port,
 		"metrics_port", cfg.MetricsPort,
+		"branch", cfg.Branch,
+		"command_timeout", timeout,
 	)
 
-	syncer := git.NewSyncer(cfg.RepoURL, cfg.CloneDir)
+	syncer := git.NewSyncer(cfg.RepoURL, cfg.CloneDir, cfg.Branch)
 	repoReader := git.NewRepoReader(syncer.CloneDir())
-	deployer := deploy.NewDeployerWithCommitReader(repoReader)
+	deployer := deploy.NewDeployerWithCommitReader(repoReader, syncer, timeout)
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
 	go func() {
-		if err := syncer.Sync(); err != nil {
-			slog.Error("initial git sync failed, skipping startup deploy", "err", err)
-			return
-		}
-		deployer.DeployAllStacks(cfg)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		deployer.SyncAndDeployAll(ctx, cfg)
 	}()
 
 	startMetricsServer(cfg.MetricsPort)
-	startWebhookServer(cfg, syncer, deployer)
+	startWebhookServer(cfg, deployer, timeout)
 }
 
 func startMetricsServer(port int) {
@@ -64,9 +68,9 @@ func startMetricsServer(port int) {
 	}()
 }
 
-func startWebhookServer(cfg *config.Config, syncer webhook.RepoSyncer, deployer *deploy.Deployer) {
+func startWebhookServer(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duration) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/webhook", webhook.Handler(cfg, syncer, deployer))
+	mux.HandleFunc("/webhook", webhook.Handler(cfg, deployer, timeout))
 	mux.HandleFunc("/healthz", respondOK)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)

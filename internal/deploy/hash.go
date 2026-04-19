@@ -38,8 +38,13 @@ type persistedState struct {
 
 // computePerFileHashes returns a SHA-256 hash for each tracked file in the stack.
 // Any change to any of these files triggers a new deployment.
-func computePerFileHashes(workDir string, envFiles []string, watchDirs []string) (stackFileHashes, error) {
+// When varsFile is non-empty, it is included in the hash set so that changes
+// to global variables also trigger redeployment.
+func computePerFileHashes(workDir string, envFiles []string, watchDirs []string, varsFile string) (stackFileHashes, error) {
 	filePaths := append([]string{filepath.Join(workDir, "docker-compose.yml")}, envFiles...)
+	if varsFile != "" {
+		filePaths = append(filePaths, varsFile)
+	}
 	hashes := make(stackFileHashes)
 
 	for _, path := range filePaths {
