@@ -81,10 +81,14 @@ func (d *Deployer) SyncAndDeployAll(ctx context.Context, cfg *config.Config) {
 func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
 
-	varsEnv, err := loadVarsFile(cfg.VarsFile)
-	if err != nil {
-		slog.Error("could not load vars_file, aborting", "err", err)
-		return
+	var varsEnv []string
+	if cfg.VarsFile != "" {
+		var err error
+		varsEnv, err = parseEnvFile(cfg.VarsFile)
+		if err != nil {
+			slog.Error("could not load vars_file, aborting", "err", err)
+			return
+		}
 	}
 
 	state, err := loadPersistedDeployState(d.stateDir)
