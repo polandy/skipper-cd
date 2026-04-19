@@ -27,7 +27,7 @@ The configuration file is a YAML file passed via the `-config` flag (default: `/
 ```yaml
 repo_url: ssh://git@gitea.example.com/user/nixos-config.git
 clone_dir: /var/lib/skipper/repo        # optional, this is the default
-branch: master                          # optional, default: master
+branch: main                            # optional, default: main
 vars_file: /etc/skipper/vars.env        # optional
 command_timeout_seconds: 300            # optional, default: 300
 stacks_base_dir: /var/lib/skipper/repo/modules
@@ -57,7 +57,7 @@ stacks:
 |---|---|---|---|---|
 | `repo_url` | string | yes | — | URL of the Git repository to clone and pull (supports SSH and HTTPS). |
 | `clone_dir` | string | no | `/var/lib/skipper/repo` | Local directory where the repository is cloned. skipper-cd manages this directory independently of any live checkout. |
-| `branch` | string | no | `master` | Git branch to track. Used for `git clone --branch` and `git reset --hard origin/<branch>`. |
+| `branch` | string | no | `main` | Git branch to track. Used for `git clone --branch` and `git reset --hard origin/<branch>`. |
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. |
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`) is allowed to run before being killed. |
 | `stacks_base_dir` | string | no | — | Base directory prepended to a stack's `name` to derive its working directory when `working_dir` is not set. Avoids repeating long paths across stacks. |

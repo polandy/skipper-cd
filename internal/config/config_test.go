@@ -62,8 +62,8 @@ stacks: []
 	if cfg.CommandTimeoutSeconds != 300 {
 		t.Errorf("expected default command_timeout_seconds 300, got %d", cfg.CommandTimeoutSeconds)
 	}
-	if cfg.Branch != "master" {
-		t.Errorf("expected default branch 'master', got %q", cfg.Branch)
+	if cfg.Branch != "main" {
+		t.Errorf("expected default branch 'main', got %q", cfg.Branch)
 	}
 }
 

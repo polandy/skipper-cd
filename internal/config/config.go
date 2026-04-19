@@ -91,7 +91,7 @@ func Load(path string) (*Config, error) {
 		cfg.CommandTimeoutSeconds = 300
 	}
 	if cfg.Branch == "" {
-		cfg.Branch = "master"
+		cfg.Branch = "main"
 	}
 
 	return cfg, validateConfig(cfg)
