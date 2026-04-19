@@ -116,6 +116,13 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, vars
 		return fmt.Errorf("docker compose up: %w", err)
 	}
 
+	if len(stack.OnDemandContainers) > 0 {
+		slog.Info("stopping on-demand containers after deploy", "stack", stack.Name, "containers", stack.OnDemandContainers)
+		if err := d.runner.Run("", nil, "docker", append([]string{"stop"}, stack.OnDemandContainers...)...); err != nil {
+			slog.Warn("could not stop on-demand containers", "stack", stack.Name, "err", err)
+		}
+	}
+
 	state.Stacks[stack.Name] = currentHashes
 	if currentImages != nil {
 		state.Images[stack.Name] = currentImages

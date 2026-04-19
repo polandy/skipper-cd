@@ -27,6 +27,11 @@ type Stack struct {
 	// whose contents are hashed alongside docker-compose.yml. Any change inside
 	// these directories triggers a redeployment.
 	WatchDirs []string `yaml:"watch_dirs"`
+
+	// OnDemandContainers lists container names to stop after a successful deployment.
+	// Use this for containers managed by an on-demand scheduler (e.g. Sablier):
+	// the scheduler will start them again on the next incoming request.
+	OnDemandContainers []string `yaml:"on_demand_containers,omitempty"`
 }
 
 // WorkDir returns the effective working directory for this stack.

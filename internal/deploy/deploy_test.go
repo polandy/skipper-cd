@@ -213,6 +213,56 @@ func TestDeployStack_StoresImagesInStateAfterDeploy(t *testing.T) {
 	}
 }
 
+func TestDeployStack_StopsOnDemandContainersAfterDeploy(t *testing.T) {
+	workDir := makeStackDir(t)
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{
+		Name:               "monica",
+		WorkingDir:         workDir,
+		OnDemandContainers: []string{"monica-app", "monica-db"},
+	}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var stopCall *runCall
+	for i := range runner.calls {
+		if runner.calls[i].name == "docker" && containsArg(runner.calls[i].args, "stop") {
+			stopCall = &runner.calls[i]
+			break
+		}
+	}
+	if stopCall == nil {
+		t.Fatal("expected docker stop to be called")
+	}
+	if !containsArg(stopCall.args, "monica-app") || !containsArg(stopCall.args, "monica-db") {
+		t.Errorf("expected docker stop monica-app monica-db, got %v", stopCall.args)
+	}
+}
+
+func TestDeployStack_SkipsStopWhenNoOnDemandContainers(t *testing.T) {
+	workDir := makeStackDir(t)
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range runner.calls {
+		if c.name == "docker" && containsArg(c.args, "stop") {
+			t.Errorf("expected docker stop NOT to be called, but it was: %v", c.args)
+		}
+	}
+}
+
 func TestChangedFiles_NoneWhenHashesMatch(t *testing.T) {
 	hashes := stackFileHashes{"docker-compose.yml": "abc123"}
 	if got := changedFiles(hashes, hashes); len(got) != 0 {

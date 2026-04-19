@@ -11,9 +11,10 @@ On each incoming webhook (or on startup), skipper-cd:
 3. Compares the current hashes against the hashes from the previous deployment.
 4. Skips stacks whose files have not changed.
 5. For changed stacks, runs `docker compose pull` followed by `docker compose up -d --remove-orphans`.
-6. Logs the git diff of each changed file (relative to the last deployed commit).
+6. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
+7. Logs the git diff of each changed file (relative to the last deployed commit).
 
-This makes skipper-cd compatible with [Sablier](https://github.com/acouvreur/sablier): containers are started normally on deploy, and Sablier stops them again after the configured idle timeout.
+This makes skipper-cd compatible with [Sablier](https://github.com/acouvreur/sablier): after a deploy, containers listed in `on_demand_containers` are stopped immediately. Sablier starts them again on the next incoming request and stops them after the configured idle timeout.
 
 ## Configuration
 
@@ -69,6 +70,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `working_dir` | string | no | `<stacks_base_dir>/<name>` | Absolute path to the directory containing `docker-compose.yml`. Takes precedence over `stacks_base_dir`. |
 | `env_files` | list of strings | no | — | Absolute paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. |
 | `watch_dirs` | list of strings | no | — | Absolute paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). |
+| `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. |
 
 ### `vars_file`
 
@@ -181,8 +183,9 @@ To avoid maintaining a manual stack list that can diverge from the services actu
 let
   stackType = lib.types.submodule {
     options = {
-      name      = lib.mkOption { type = lib.types.str; };
-      watch_dirs = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
+      name                = lib.mkOption { type = lib.types.str; };
+      watch_dirs          = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
+      on_demand_containers = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
     };
   };
 in {
@@ -219,6 +222,15 @@ config = lib.mkIf config.services.gitea-docker.enable {
 services.skipper-cd.stacks = [{
   name       = "monitoring";
   watch_dirs = [ "/var/lib/skipper/repo/modules/monitoring/grafana-data/provisioning" ];
+}];
+```
+
+**`modules/monica/default.nix`** — with `on_demand_containers` for Sablier:
+
+```nix
+services.skipper-cd.stacks = [{
+  name                 = "monica";
+  on_demand_containers = [ "monica-app" "monica-db" ];
 }];
 ```
 
