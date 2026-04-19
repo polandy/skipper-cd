@@ -9,31 +9,15 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/polandy/skipper-cd/internal/command"
 )
 
 const defaultCloneDir = "/var/lib/skipper/repo"
 
-// Runner executes shell commands. Defined here independently of the deploy
-// package to avoid cross-package dependencies.
-type Runner interface {
-	Run(ctx context.Context, dir string, env []string, name string, args ...string) error
-}
-
-// ShellRunner is the real Runner that executes commands via os/exec.
-type ShellRunner struct{}
-
-func (ShellRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	cmd.Env = env
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
 // Syncer keeps a local clone of a remote Git repository up to date.
 type Syncer struct {
-	runner   Runner
+	runner   command.Runner
 	repoURL  string
 	cloneDir string
 	branch   string
@@ -43,10 +27,10 @@ func NewSyncer(repoURL, cloneDir, branch string) *Syncer {
 	if cloneDir == "" {
 		cloneDir = defaultCloneDir
 	}
-	return &Syncer{runner: ShellRunner{}, repoURL: repoURL, cloneDir: cloneDir, branch: branch}
+	return &Syncer{runner: command.ShellRunner{}, repoURL: repoURL, cloneDir: cloneDir, branch: branch}
 }
 
-func newSyncerWithRunner(r Runner, repoURL, cloneDir, branch string) *Syncer {
+func newSyncerWithRunner(r command.Runner, repoURL, cloneDir, branch string) *Syncer {
 	return &Syncer{runner: r, repoURL: repoURL, cloneDir: cloneDir, branch: branch}
 }
 
