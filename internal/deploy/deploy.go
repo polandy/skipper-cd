@@ -20,8 +20,8 @@ import (
 // CommitReader retrieves git commit information from the repository.
 // It is used to log file diffs between the last deployed commit and HEAD.
 type CommitReader interface {
-	HeadCommitSHA() (string, error)
-	DiffSinceCommit(fromSHA, filePath string) (string, error)
+	HeadCommitSHA(ctx context.Context) (string, error)
+	DiffSinceCommit(ctx context.Context, fromSHA, filePath string) (string, error)
 }
 
 // GitSyncer abstracts the git sync operation so the deployer can
@@ -96,7 +96,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 
 	// Record the current HEAD commit so future deploys can diff against it.
 	if d.commitReader != nil {
-		if sha, err := d.commitReader.HeadCommitSHA(); err != nil {
+		if sha, err := d.commitReader.HeadCommitSHA(ctx); err != nil {
 			slog.Warn("could not read HEAD commit SHA", "err", err)
 		} else {
 			state.LastDeployedCommit = sha
@@ -124,7 +124,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}
 
 	slog.Info("deploying stack", "stack", stack.Name, "dir", workDir, "changed_files", changed)
-	d.logDiffsForChangedFiles(changed, state.LastDeployedCommit)
+	d.logDiffsForChangedFiles(ctx, changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
 	composePath := filepath.Join(workDir, "docker-compose.yml")
@@ -166,7 +166,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 // logDiffsForChangedFiles logs the git diff for each changed file.
 // Skipped when no CommitReader is configured or no previous commit is known.
 // Files outside the repo directory (e.g. vars_file, working_dir stacks) are silently skipped.
-func (d *Deployer) logDiffsForChangedFiles(changedFilePaths []string, lastDeployedCommit string) {
+func (d *Deployer) logDiffsForChangedFiles(ctx context.Context, changedFilePaths []string, lastDeployedCommit string) {
 	if d.commitReader == nil || lastDeployedCommit == "" {
 		return
 	}
@@ -174,7 +174,7 @@ func (d *Deployer) logDiffsForChangedFiles(changedFilePaths []string, lastDeploy
 		if d.repoDir != "" && !strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(d.repoDir)) {
 			continue
 		}
-		diff, err := d.commitReader.DiffSinceCommit(lastDeployedCommit, filePath)
+		diff, err := d.commitReader.DiffSinceCommit(ctx, lastDeployedCommit, filePath)
 		if err != nil {
 			slog.Warn("could not compute diff", "file", filePath, "err", err)
 			continue

@@ -75,8 +75,8 @@ func NewRepoReader(repoDir string) *RepoReader {
 }
 
 // HeadCommitSHA returns the SHA of the current HEAD commit.
-func (r *RepoReader) HeadCommitSHA() (string, error) {
-	output, err := exec.Command("git", "-C", r.repoDir, "rev-parse", "HEAD").Output()
+func (r *RepoReader) HeadCommitSHA(ctx context.Context) (string, error) {
+	output, err := exec.CommandContext(ctx, "git", "-C", r.repoDir, "rev-parse", "HEAD").Output()
 	if err != nil {
 		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
 	}
@@ -85,11 +85,11 @@ func (r *RepoReader) HeadCommitSHA() (string, error) {
 
 // DiffSinceCommit returns the git diff of a file between fromSHA and HEAD.
 // Returns an empty string when fromSHA is empty (first deploy — no previous commit to diff against).
-func (r *RepoReader) DiffSinceCommit(fromSHA, filePath string) (string, error) {
+func (r *RepoReader) DiffSinceCommit(ctx context.Context, fromSHA, filePath string) (string, error) {
 	if fromSHA == "" {
 		return "", nil
 	}
-	output, err := exec.Command("git", "-C", r.repoDir, "diff", fromSHA+"..HEAD", "--", filePath).CombinedOutput()
+	output, err := exec.CommandContext(ctx, "git", "-C", r.repoDir, "diff", fromSHA+"..HEAD", "--", filePath).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("git diff: %w\n%s", err, output)
 	}
