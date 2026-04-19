@@ -36,7 +36,7 @@ func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
 	d := newDeployerWithRunner(runner)
 
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
-	state := persistedState{Stacks: map[string]stackFileHashes{}}
+	state := newEmptyState()
 
 	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -62,7 +62,10 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}
-	state := persistedState{Stacks: map[string]stackFileHashes{"gitea": hashes}}
+	state := persistedState{
+		Stacks: map[string]stackFileHashes{"gitea": hashes},
+		Images: map[string]map[string]string{},
+	}
 
 	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -79,7 +82,7 @@ func TestDeployStack_FailsOnPullError(t *testing.T) {
 	d := newDeployerWithRunner(runner)
 
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
-	state := persistedState{Stacks: map[string]stackFileHashes{}}
+	state := newEmptyState()
 
 	err := d.deployStackIfChanged(stack, "", nil, state)
 	if err == nil {
@@ -97,13 +100,13 @@ func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), "version: '3'\n")
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
 	stack := config.Stack{Name: "gitea"}
-	state := persistedState{Stacks: map[string]stackFileHashes{}}
+	state := newEmptyState()
 
 	if err := d.deployStackIfChanged(stack, baseDir, nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -114,6 +117,99 @@ func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
 	}
 	if runner.calls[0].dir != workDir {
 		t.Errorf("expected working dir %s, got %s", workDir, runner.calls[0].dir)
+	}
+}
+
+func TestDeployStack_SkipsPullWhenOnlyConfigChanges(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("redis:7.2"))
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+
+	// Simulate a previous deploy with the same image but different file hash.
+	state := persistedState{
+		Stacks: map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images: map[string]map[string]string{"mystack": {"app": "redis:7.2"}},
+	}
+
+	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertCommandNotCalled(t, runner.calls, "pull")
+	assertCommandCalled(t, runner.calls, "up")
+}
+
+func TestDeployStack_PullsWhenImageChanges(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("redis:7.4"))
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+
+	// Previous deploy had a different image version.
+	state := persistedState{
+		Stacks: map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images: map[string]map[string]string{"mystack": {"app": "redis:7.2"}},
+	}
+
+	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertCommandCalled(t, runner.calls, "pull")
+	assertCommandCalled(t, runner.calls, "up")
+}
+
+func TestDeployStack_PullsWhenNoStoredImages(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("redis:7.2"))
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+
+	// No previous image state — first deploy or upgrade from old state format.
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertCommandCalled(t, runner.calls, "pull")
+	assertCommandCalled(t, runner.calls, "up")
+
+	// After deploy, images should be stored in state.
+	if state.Images["mystack"] == nil || state.Images["mystack"]["app"] != "redis:7.2" {
+		t.Errorf("expected images to be stored in state, got %v", state.Images["mystack"])
+	}
+}
+
+func TestDeployStack_StoresImagesInStateAfterDeploy(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("postgres:16-alpine"))
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "db", WorkingDir: workDir}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(stack, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if state.Images["db"] == nil {
+		t.Fatal("expected images to be stored in state")
+	}
+	if state.Images["db"]["app"] != "postgres:16-alpine" {
+		t.Errorf("expected postgres:16-alpine, got %s", state.Images["db"]["app"])
 	}
 }
 
@@ -161,11 +257,77 @@ func TestComputePerFileHashes_ReturnsHashForEachFile(t *testing.T) {
 	}
 }
 
+// --- images.go tests ---
+
+func TestExtractComposeImages_ParsesImages(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: gitea/gitea:1.21
+  db:
+    image: postgres:16-alpine
+  builder:
+    build: .
+`)
+
+	images, err := extractComposeImages(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(images) != 2 {
+		t.Fatalf("expected 2 images, got %d: %v", len(images), images)
+	}
+	if images["app"] != "gitea/gitea:1.21" {
+		t.Errorf("expected gitea/gitea:1.21, got %s", images["app"])
+	}
+	if images["db"] != "postgres:16-alpine" {
+		t.Errorf("expected postgres:16-alpine, got %s", images["db"])
+	}
+}
+
+func TestImagesChanged_DetectsChange(t *testing.T) {
+	current := map[string]string{"app": "redis:7.4"}
+	previous := map[string]string{"app": "redis:7.2"}
+	if !hasAnyImageChanged(current, previous) {
+		t.Error("expected images to be detected as changed")
+	}
+}
+
+func TestImagesChanged_DetectsNoChange(t *testing.T) {
+	images := map[string]string{"app": "redis:7.2", "db": "postgres:16"}
+	if hasAnyImageChanged(images, images) {
+		t.Error("expected images to be detected as unchanged")
+	}
+}
+
+func TestImagesChanged_DetectsNewService(t *testing.T) {
+	current := map[string]string{"app": "redis:7.2", "cache": "memcached:1.6"}
+	previous := map[string]string{"app": "redis:7.2"}
+	if !hasAnyImageChanged(current, previous) {
+		t.Error("expected new service to be detected as change")
+	}
+}
+
+func TestImagesChanged_NilPreviousIsChanged(t *testing.T) {
+	current := map[string]string{"app": "redis:7.2"}
+	if !hasAnyImageChanged(current, nil) {
+		t.Error("expected nil previous to be detected as changed")
+	}
+}
+
+// --- helpers ---
+
 func makeStackDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "docker-compose.yml"), "version: '3'\n")
+	writeFile(t, filepath.Join(dir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 	return dir
+}
+
+func composeWithImage(image string) string {
+	return fmt.Sprintf("services:\n  app:\n    image: %s\n", image)
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -185,6 +347,18 @@ func assertCommandCalled(t *testing.T, calls []runCall, subcommand string) {
 		}
 	}
 	t.Errorf("expected command %q to be called, but it was not", subcommand)
+}
+
+func assertCommandNotCalled(t *testing.T, calls []runCall, subcommand string) {
+	t.Helper()
+	for _, c := range calls {
+		for _, arg := range c.args {
+			if arg == subcommand {
+				t.Errorf("expected command %q NOT to be called, but it was", subcommand)
+				return
+			}
+		}
+	}
 }
 
 func containsArg(args []string, target string) bool {

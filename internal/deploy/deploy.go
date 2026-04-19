@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
@@ -52,7 +53,7 @@ func (d *Deployer) DeployAllStacks(cfg *config.Config) {
 	state, err := loadPersistedDeployState()
 	if err != nil {
 		slog.Error("could not load deploy state, deploying all stacks", "err", err)
-		state = persistedState{Stacks: map[string]stackFileHashes{}}
+		state = newEmptyState()
 	}
 
 	for _, stack := range cfg.Stacks {
@@ -95,8 +96,19 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, vars
 	d.logDiffsForChangedFiles(changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
-	if err := d.runDockerCompose(workDir, varsEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
-		return fmt.Errorf("docker compose pull: %w", err)
+	composePath := filepath.Join(workDir, "docker-compose.yml")
+	currentImages, err := extractComposeImages(composePath)
+	if err != nil {
+		slog.Warn("could not extract images, pulling to be safe", "stack", stack.Name, "err", err)
+		currentImages = nil
+	}
+
+	if currentImages == nil || hasAnyImageChanged(currentImages, state.Images[stack.Name]) {
+		if err := d.runDockerCompose(workDir, varsEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
+			return fmt.Errorf("docker compose pull: %w", err)
+		}
+	} else {
+		slog.Info("skipping pull, no image changes", "stack", stack.Name)
 	}
 
 	// --remove-orphans removes containers for services deleted from docker-compose.yml.
@@ -105,6 +117,9 @@ func (d *Deployer) deployStackIfChanged(stack config.Stack, baseDir string, vars
 	}
 
 	state.Stacks[stack.Name] = currentHashes
+	if currentImages != nil {
+		state.Images[stack.Name] = currentImages
+	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
 	slog.Info("deploy complete", "stack", stack.Name)
 	return nil

@@ -15,6 +15,13 @@ const deployStateFilePath = "/var/lib/skipper/state.yaml"
 // stackFileHashes maps each tracked file path to its SHA-256 hash.
 type stackFileHashes map[string]string
 
+func newEmptyState() persistedState {
+	return persistedState{
+		Stacks: map[string]stackFileHashes{},
+		Images: map[string]serviceImageByName{},
+	}
+}
+
 // persistedState holds the full deploy state written to disk.
 type persistedState struct {
 	// LastDeployedCommit is the git commit SHA of the last successful deploy run.
@@ -23,6 +30,10 @@ type persistedState struct {
 
 	// Stacks maps stack names to their per-file hashes from the last deployment.
 	Stacks map[string]stackFileHashes `yaml:"stacks"`
+
+	// Images maps stack names to their service→image references from the last deployment.
+	// Used to determine whether docker compose pull is necessary.
+	Images map[string]serviceImageByName `yaml:"images,omitempty"`
 }
 
 // computePerFileHashes returns a SHA-256 hash for each tracked file in the stack.
@@ -72,7 +83,7 @@ func addFileContentsToHash(hasher io.Writer, path string) error {
 func loadPersistedDeployState() (persistedState, error) {
 	data, err := os.ReadFile(deployStateFilePath)
 	if os.IsNotExist(err) {
-		return persistedState{Stacks: map[string]stackFileHashes{}}, nil
+		return newEmptyState(), nil
 	}
 	if err != nil {
 		return persistedState{}, err
@@ -81,10 +92,13 @@ func loadPersistedDeployState() (persistedState, error) {
 	state := persistedState{}
 	if err := yaml.Unmarshal(data, &state); err != nil {
 		// Old format or corrupt file — start fresh and redeploy everything.
-		return persistedState{Stacks: map[string]stackFileHashes{}}, nil
+		return newEmptyState(), nil
 	}
 	if state.Stacks == nil {
 		state.Stacks = map[string]stackFileHashes{}
+	}
+	if state.Images == nil {
+		state.Images = map[string]map[string]string{}
 	}
 	return state, nil
 }
