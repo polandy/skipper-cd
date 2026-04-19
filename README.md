@@ -189,8 +189,9 @@ To avoid maintaining a manual stack list that can diverge from the services actu
 let
   stackType = lib.types.submodule {
     options = {
-      name                = lib.mkOption { type = lib.types.str; };
-      watch_dirs          = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
+      name                 = lib.mkOption { type = lib.types.str; };
+      working_dir          = lib.mkOption { type = lib.types.str; default = ""; };
+      watch_dirs           = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
       on_demand_containers = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
     };
   };
@@ -231,16 +232,30 @@ services.skipper-cd.stacks = [{
 }];
 ```
 
-**`modules/monica/default.nix`** — with `on_demand_containers` for Sablier:
+**`modules/monica/default.nix`** — with `on_demand_containers` and `working_dir` for Sablier:
 
 ```nix
 services.skipper-cd.stacks = [{
   name                 = "monica";
+  working_dir          = "/etc/nixos/modules/monica";
   on_demand_containers = [ "monica-app" "monica-db" ];
 }];
 ```
 
 Because the list is only populated when a service's `enable = true`, disabled services are automatically absent from `skipper.yml`. There is no risk of skipper-cd deploying a stack for a service that has been turned off.
+
+#### `working_dir` and Docker Compose Project Identity
+
+When a NixOS systemd service manages a Docker Compose stack (via `WorkingDirectory = /etc/nixos/modules/<name>`), Docker labels containers with `com.docker.compose.project.working_dir=/etc/nixos/modules/<name>`. skipper-cd by default runs stacks from its own clone at `/var/lib/skipper/repo/modules/<name>` — a different path, even though the directory basename (and therefore the project name) is identical.
+
+Docker Compose uses `project.working_dir` to match running containers to a project. When the paths differ, skipper-cd does not recognise the containers created by systemd as belonging to its deployment and tries to create new ones, causing a name conflict:
+
+```
+Container <name>  Creating
+Error response from daemon: Conflict. The container name "/<name>" is already in use
+```
+
+Setting `working_dir` to the NixOS modules path aligns both systemd and skipper-cd on the same Docker Compose project identity, eliminating the conflict. This is the recommended approach for any stack that is managed by both a NixOS systemd service and skipper-cd.
 
 ## State File
 
