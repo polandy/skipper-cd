@@ -343,7 +343,7 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	runner := &recordingRunner{delay: 10 * time.Millisecond}
 	syncer := &fakeSyncer{}
 
-	d := &Deployer{runner: runner, syncer: syncer, timeout: 10 * time.Second}
+	d := &Deployer{runner: runner, syncer: syncer, stateDir: t.TempDir(), timeout: 10 * time.Second}
 
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",

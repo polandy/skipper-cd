@@ -38,20 +38,26 @@ type Deployer struct {
 	commitReader CommitReader // nil disables diff logging
 	syncer       GitSyncer   // nil when using DeployAllStacks directly
 	repoDir      string      // used to skip diff for files outside the repo
+	stateDir     string      // directory for state.yaml persistence
 	timeout      time.Duration
 	mu           sync.Mutex
 }
 
+const defaultStateDir = "/var/lib/skipper"
+
 func NewDeployer() *Deployer {
-	return &Deployer{runner: ShellRunner{}}
+	return &Deployer{runner: ShellRunner{}, stateDir: defaultStateDir}
 }
 
-func NewDeployerWithCommitReader(commitReader CommitReader, syncer GitSyncer, repoDir string, timeout time.Duration) *Deployer {
-	return &Deployer{runner: ShellRunner{}, commitReader: commitReader, syncer: syncer, repoDir: repoDir, timeout: timeout}
+func NewDeployerWithCommitReader(commitReader CommitReader, syncer GitSyncer, repoDir, stateDir string, timeout time.Duration) *Deployer {
+	if stateDir == "" {
+		stateDir = defaultStateDir
+	}
+	return &Deployer{runner: ShellRunner{}, commitReader: commitReader, syncer: syncer, repoDir: repoDir, stateDir: stateDir, timeout: timeout}
 }
 
 func newDeployerWithRunner(r Runner) *Deployer {
-	return &Deployer{runner: r}
+	return &Deployer{runner: r, stateDir: defaultStateDir}
 }
 
 // SyncAndDeployAll acquires the deploy lock, syncs the repository, and
@@ -81,7 +87,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		return
 	}
 
-	state, err := loadPersistedDeployState()
+	state, err := loadPersistedDeployState(d.stateDir)
 	if err != nil {
 		slog.Error("could not load deploy state, deploying all stacks", "err", err)
 		state = newEmptyState()
@@ -103,7 +109,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		}
 	}
 
-	if err := saveDeployState(state); err != nil {
+	if err := saveDeployState(d.stateDir, state); err != nil {
 		slog.Error("could not save deploy state", "err", err)
 	}
 }

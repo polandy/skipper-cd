@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
@@ -41,7 +42,8 @@ func main() {
 
 	syncer := git.NewSyncer(cfg.RepoURL, cfg.CloneDir, cfg.Branch)
 	repoReader := git.NewRepoReader(syncer.CloneDir())
-	deployer := deploy.NewDeployerWithCommitReader(repoReader, syncer, syncer.CloneDir(), timeout)
+	stateDir := filepath.Dir(syncer.CloneDir())
+	deployer := deploy.NewDeployerWithCommitReader(repoReader, syncer, syncer.CloneDir(), stateDir, timeout)
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
 	go func() {

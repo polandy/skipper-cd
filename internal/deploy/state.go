@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const deployStateFilePath = "/var/lib/skipper/state.yaml"
+const stateFileName = "state.yaml"
 
 // stackFileHashes maps each tracked file path to its SHA-256 hash.
 type stackFileHashes map[string]string
@@ -33,8 +33,8 @@ func newEmptyState() persistedState {
 	}
 }
 
-func loadPersistedDeployState() (persistedState, error) {
-	data, err := os.ReadFile(deployStateFilePath)
+func loadPersistedDeployState(stateDir string) (persistedState, error) {
+	data, err := os.ReadFile(filepath.Join(stateDir, stateFileName))
 	if os.IsNotExist(err) {
 		return newEmptyState(), nil
 	}
@@ -55,13 +55,13 @@ func loadPersistedDeployState() (persistedState, error) {
 	return state, nil
 }
 
-func saveDeployState(state persistedState) error {
-	if err := os.MkdirAll(filepath.Dir(deployStateFilePath), 0o755); err != nil {
+func saveDeployState(stateDir string, state persistedState) error {
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return err
 	}
 	data, err := yaml.Marshal(state)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(deployStateFilePath, data, 0o644)
+	return os.WriteFile(filepath.Join(stateDir, stateFileName), data, 0o644)
 }
