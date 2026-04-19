@@ -186,17 +186,6 @@ func (d *Deployer) logDiffsForChangedFiles(changedFilePaths []string, lastDeploy
 	}
 }
 
-// changedFiles returns the paths of files whose hash differs between current and last.
-func changedFiles(current, last stackFileHashes) []string {
-	var changed []string
-	for path, hash := range current {
-		if last[path] != hash {
-			changed = append(changed, path)
-		}
-	}
-	return changed
-}
-
 func (d *Deployer) runDockerCompose(ctx context.Context, workDir string, varsEnv []string, envFiles []string, args ...string) error {
 	env := os.Environ()
 	env = append(env, varsEnv...)
