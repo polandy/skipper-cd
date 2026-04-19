@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +37,7 @@ type Deployer struct {
 	runner       Runner
 	commitReader CommitReader // nil disables diff logging
 	syncer       GitSyncer   // nil when using DeployAllStacks directly
+	repoDir      string      // used to skip diff for files outside the repo
 	timeout      time.Duration
 	mu           sync.Mutex
 }
@@ -44,8 +46,8 @@ func NewDeployer() *Deployer {
 	return &Deployer{runner: ShellRunner{}}
 }
 
-func NewDeployerWithCommitReader(commitReader CommitReader, syncer GitSyncer, timeout time.Duration) *Deployer {
-	return &Deployer{runner: ShellRunner{}, commitReader: commitReader, syncer: syncer, timeout: timeout}
+func NewDeployerWithCommitReader(commitReader CommitReader, syncer GitSyncer, repoDir string, timeout time.Duration) *Deployer {
+	return &Deployer{runner: ShellRunner{}, commitReader: commitReader, syncer: syncer, repoDir: repoDir, timeout: timeout}
 }
 
 func newDeployerWithRunner(r Runner) *Deployer {
@@ -163,11 +165,15 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 // logDiffsForChangedFiles logs the git diff for each changed file.
 // Skipped when no CommitReader is configured or no previous commit is known.
+// Files outside the repo directory (e.g. vars_file, working_dir stacks) are silently skipped.
 func (d *Deployer) logDiffsForChangedFiles(changedFilePaths []string, lastDeployedCommit string) {
 	if d.commitReader == nil || lastDeployedCommit == "" {
 		return
 	}
 	for _, filePath := range changedFilePaths {
+		if d.repoDir != "" && !strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(d.repoDir)) {
+			continue
+		}
 		diff, err := d.commitReader.DiffSinceCommit(lastDeployedCommit, filePath)
 		if err != nil {
 			slog.Warn("could not compute diff", "file", filePath, "err", err)
