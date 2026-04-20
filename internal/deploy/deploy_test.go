@@ -38,12 +38,12 @@ func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name st
 	return nil
 }
 
-// fakeSyncer implements GitSyncer for tests.
-type fakeSyncer struct {
+// fakeRepoSyncer implements RepoSyncer for tests.
+type fakeRepoSyncer struct {
 	called atomic.Int32
 }
 
-func (f *fakeSyncer) Sync(_ context.Context) error {
+func (f *fakeRepoSyncer) Sync(_ context.Context) error {
 	f.called.Add(1)
 	return nil
 }
@@ -342,7 +342,7 @@ func TestDeployStack_SkipsWhenVarsFileUnchanged(t *testing.T) {
 
 func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	runner := &recordingRunner{delay: 10 * time.Millisecond}
-	syncer := &fakeSyncer{}
+	syncer := &fakeRepoSyncer{}
 
 	d := &Deployer{runner: runner, syncer: syncer, stateDir: t.TempDir(), timeout: 10 * time.Second}
 

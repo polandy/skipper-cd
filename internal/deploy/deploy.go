@@ -24,9 +24,9 @@ type CommitReader interface {
 	DiffSinceCommit(ctx context.Context, fromSHA, filePath string) (string, error)
 }
 
-// GitSyncer abstracts the git sync operation so the deployer can
+// RepoSyncer abstracts the git sync operation so the deployer can
 // coordinate sync + deploy under a single lock.
-type GitSyncer interface {
+type RepoSyncer interface {
 	Sync(ctx context.Context) error
 }
 
@@ -36,7 +36,7 @@ type GitSyncer interface {
 type Deployer struct {
 	runner       Runner
 	commitReader CommitReader // nil disables diff logging
-	syncer       GitSyncer   // nil when using DeployAllStacks directly
+	syncer       RepoSyncer  // nil when using DeployAllStacks directly
 	repoDir      string      // used to skip diff for files outside the repo
 	stateDir     string      // directory for state.yaml persistence
 	timeout      time.Duration
@@ -49,7 +49,7 @@ func NewDeployer() *Deployer {
 	return &Deployer{runner: ShellRunner{}, stateDir: defaultStateDir}
 }
 
-func NewDeployerWithCommitReader(commitReader CommitReader, syncer GitSyncer, repoDir, stateDir string, timeout time.Duration) *Deployer {
+func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, repoDir, stateDir string, timeout time.Duration) *Deployer {
 	if stateDir == "" {
 		stateDir = defaultStateDir
 	}
