@@ -1,5 +1,5 @@
 {
-  description = "skipper-cd — Sablier-aware Docker Compose CD for NixOS";
+  description = "skipper-cd — lightweight Docker Compose CD for NixOS";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -20,7 +20,7 @@
             src = ./.;
             vendorHash = null;
             meta = {
-              description = "Sablier-aware Docker Compose CD triggered by Git webhooks";
+              description = "Lightweight Docker Compose CD triggered by Git webhooks";
               homepage = "https://github.com/polandy/skipper-cd";
               license = nixpkgs.lib.licenses.mit;
               mainProgram = "skipper";

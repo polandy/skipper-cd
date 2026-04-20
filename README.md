@@ -1,6 +1,6 @@
 # skipper-cd
 
-A lightweight, Sablier-aware Docker Compose CD tool. It listens for Gitea push webhooks, maintains a local clone of a Git repository, and deploys changed Docker Compose stacks. Unchanged stacks are skipped via per-file SHA-256 hash tracking.
+A lightweight Docker Compose CD tool. It listens for Gitea push webhooks, maintains a local clone of a Git repository, and deploys changed Docker Compose stacks. Unchanged stacks are skipped via per-file SHA-256 hash tracking.
 
 ## How It Works
 
@@ -13,8 +13,6 @@ On each incoming webhook (or on startup), skipper-cd:
 5. For changed stacks, runs `docker compose pull` followed by `docker compose up -d --remove-orphans`.
 6. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
 7. Logs the git diff of each changed file (relative to the last deployed commit).
-
-This makes skipper-cd compatible with [Sablier](https://github.com/acouvreur/sablier): after a deploy, containers listed in `on_demand_containers` are stopped immediately. Sablier starts them again on the next incoming request and stops them after the configured idle timeout.
 
 Concurrent webhook requests and the startup deploy are serialized by a deployment lock. If a deploy is already in progress, subsequent requests wait for it to finish before starting their own sync+deploy cycle.
 
@@ -232,7 +230,7 @@ services.skipper-cd.stacks = [{
 }];
 ```
 
-**`modules/monica/default.nix`** — with `on_demand_containers` and `working_dir` for Sablier:
+**`modules/monica/default.nix`** — with `on_demand_containers` and `working_dir`:
 
 ```nix
 services.skipper-cd.stacks = [{

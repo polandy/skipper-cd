@@ -29,7 +29,7 @@ type Stack struct {
 	WatchDirs []string `yaml:"watch_dirs"`
 
 	// OnDemandContainers lists container names to stop after a successful deployment.
-	// Use this for containers managed by an on-demand scheduler (e.g. Sablier):
+	// Use this for containers managed by an on-demand scheduler:
 	// the scheduler will start them again on the next incoming request.
 	OnDemandContainers []string `yaml:"on_demand_containers,omitempty"`
 }
