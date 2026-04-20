@@ -13,55 +13,55 @@ import (
 	"github.com/polandy/skipper-cd/internal/command"
 )
 
-const defaultCloneDir = "/var/lib/skipper/repo"
+const defaultRepoDir = "/var/lib/skipper/repo"
 
 // RepoSync keeps a local clone of a remote Git repository up to date.
 type RepoSync struct {
 	runner   command.Runner
 	repoURL  string
-	cloneDir string
+	repoDir string
 	branch   string
 }
 
-func NewRepoSync(repoURL, cloneDir, branch string) *RepoSync {
-	if cloneDir == "" {
-		cloneDir = defaultCloneDir
+func NewRepoSync(repoURL, repoDir, branch string) *RepoSync {
+	if repoDir == "" {
+		repoDir = defaultRepoDir
 	}
-	return &RepoSync{runner: command.ShellRunner{}, repoURL: repoURL, cloneDir: cloneDir, branch: branch}
+	return &RepoSync{runner: command.ShellRunner{}, repoURL: repoURL, repoDir: repoDir, branch: branch}
 }
 
-func newRepoSyncWithRunner(r command.Runner, repoURL, cloneDir, branch string) *RepoSync {
-	return &RepoSync{runner: r, repoURL: repoURL, cloneDir: cloneDir, branch: branch}
+func newRepoSyncWithRunner(r command.Runner, repoURL, repoDir, branch string) *RepoSync {
+	return &RepoSync{runner: r, repoURL: repoURL, repoDir: repoDir, branch: branch}
 }
 
 // Sync clones the repository if the clone directory does not exist,
 // or runs git pull if it does.
 func (s *RepoSync) Sync(ctx context.Context) error {
-	if _, err := os.Stat(s.cloneDir); os.IsNotExist(err) {
+	if _, err := os.Stat(s.repoDir); os.IsNotExist(err) {
 		return s.cloneRepository(ctx)
 	}
 	return s.pullLatestCommits(ctx)
 }
 
-// CloneDir returns the effective local clone directory.
-func (s *RepoSync) CloneDir() string {
-	return s.cloneDir
+// RepoDir returns the effective local repository directory.
+func (s *RepoSync) RepoDir() string {
+	return s.repoDir
 }
 
 func (s *RepoSync) cloneRepository(ctx context.Context) error {
-	slog.Info("cloning repository", "url", s.repoURL, "dir", s.cloneDir, "branch", s.branch)
-	if err := os.MkdirAll(s.cloneDir, 0o755); err != nil {
-		return fmt.Errorf("create clone dir: %w", err)
+	slog.Info("cloning repository", "url", s.repoURL, "dir", s.repoDir, "branch", s.branch)
+	if err := os.MkdirAll(s.repoDir, 0o755); err != nil {
+		return fmt.Errorf("create repo dir: %w", err)
 	}
-	return s.runner.Run(ctx, "", nil, "git", "clone", "--branch", s.branch, s.repoURL, s.cloneDir)
+	return s.runner.Run(ctx, "", nil, "git", "clone", "--branch", s.branch, s.repoURL, s.repoDir)
 }
 
 func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
-	slog.Info("pulling latest commits", "dir", s.cloneDir, "branch", s.branch)
-	if err := s.runner.Run(ctx, s.cloneDir, nil, "git", "fetch", "origin"); err != nil {
+	slog.Info("pulling latest commits", "dir", s.repoDir, "branch", s.branch)
+	if err := s.runner.Run(ctx, s.repoDir, nil, "git", "fetch", "origin"); err != nil {
 		return err
 	}
-	return s.runner.Run(ctx, s.cloneDir, nil, "git", "reset", "--hard", "origin/"+s.branch)
+	return s.runner.Run(ctx, s.repoDir, nil, "git", "reset", "--hard", "origin/"+s.branch)
 }
 
 // RepoReader reads commit information from a local git repository.

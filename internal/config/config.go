@@ -44,13 +44,13 @@ func (s Stack) WorkDir(baseDir string) string {
 
 // Config holds the full skipper-cd configuration.
 type Config struct {
-	// RepoURL is the Git remote URL. skipper-cd clones it to CloneDir and
+	// RepoURL is the Git remote URL. skipper-cd clones it to RepoDir and
 	// runs git pull on every incoming webhook.
 	RepoURL string `yaml:"repo_url"`
 
-	// CloneDir is the local directory where the repository is cloned.
+	// RepoDir is the local directory where the repository is cloned.
 	// Defaults to /var/lib/skipper/repo when left empty.
-	CloneDir string `yaml:"clone_dir"`
+	RepoDir string `yaml:"repo_dir"`
 
 	// Branch is the Git branch to track. Defaults to "master".
 	Branch string `yaml:"branch"`

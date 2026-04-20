@@ -21,10 +21,10 @@ func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name st
 	return nil
 }
 
-func TestSync_ClonesWhenCloneDirDoesNotExist(t *testing.T) {
-	cloneDir := filepath.Join(t.TempDir(), "repo") // does not exist yet
+func TestSync_ClonesWhenRepoDirDoesNotExist(t *testing.T) {
+	repoDir := filepath.Join(t.TempDir(), "repo") // does not exist yet
 	runner := &recordingRunner{}
-	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", cloneDir, "master")
+	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", repoDir, "master")
 
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -36,10 +36,10 @@ func TestSync_ClonesWhenCloneDirDoesNotExist(t *testing.T) {
 	assertArgPresent(t, runner.calls[0].args, "clone")
 }
 
-func TestSync_PullsWhenCloneDirExists(t *testing.T) {
-	cloneDir := t.TempDir() // already exists
+func TestSync_PullsWhenRepoDirExists(t *testing.T) {
+	repoDir := t.TempDir() // already exists
 	runner := &recordingRunner{}
-	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", cloneDir, "master")
+	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", repoDir, "master")
 
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -50,15 +50,15 @@ func TestSync_PullsWhenCloneDirExists(t *testing.T) {
 	}
 	assertArgPresent(t, runner.calls[0].args, "fetch")
 	assertArgPresent(t, runner.calls[1].args, "reset")
-	if runner.calls[0].dir != cloneDir {
-		t.Errorf("expected fetch in %s, got %s", cloneDir, runner.calls[0].dir)
+	if runner.calls[0].dir != repoDir {
+		t.Errorf("expected fetch in %s, got %s", repoDir, runner.calls[0].dir)
 	}
 }
 
 func TestSync_ResetUsesConfiguredBranch(t *testing.T) {
-	cloneDir := t.TempDir()
+	repoDir := t.TempDir()
 	runner := &recordingRunner{}
-	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", cloneDir, "main")
+	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", repoDir, "main")
 
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -70,9 +70,9 @@ func TestSync_ResetUsesConfiguredBranch(t *testing.T) {
 }
 
 func TestSync_CloneUsesConfiguredBranch(t *testing.T) {
-	cloneDir := filepath.Join(t.TempDir(), "repo")
+	repoDir := filepath.Join(t.TempDir(), "repo")
 	runner := &recordingRunner{}
-	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", cloneDir, "develop")
+	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", repoDir, "develop")
 
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -83,10 +83,10 @@ func TestSync_CloneUsesConfiguredBranch(t *testing.T) {
 	assertArgPresent(t, cloneCall.args, "develop")
 }
 
-func TestNewRepoSync_UsesDefaultCloneDirWhenEmpty(t *testing.T) {
+func TestNewRepoSync_UsesDefaultRepoDirWhenEmpty(t *testing.T) {
 	s := NewRepoSync("ssh://git@example.com/repo.git", "", "master")
-	if s.CloneDir() != defaultCloneDir {
-		t.Errorf("expected default clone dir %s, got %s", defaultCloneDir, s.CloneDir())
+	if s.RepoDir() != defaultRepoDir {
+		t.Errorf("expected default clone dir %s, got %s", defaultRepoDir, s.RepoDir())
 	}
 }
 

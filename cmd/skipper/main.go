@@ -40,10 +40,10 @@ func main() {
 		"command_timeout", timeout,
 	)
 
-	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.CloneDir, cfg.Branch)
-	repoReader := git.NewRepoReader(repoSync.CloneDir())
-	stateDir := filepath.Dir(repoSync.CloneDir())
-	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.CloneDir(), stateDir, timeout)
+	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch)
+	repoReader := git.NewRepoReader(repoSync.RepoDir())
+	stateDir := filepath.Dir(repoSync.RepoDir())
+	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir, timeout)
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
 	go func() {
