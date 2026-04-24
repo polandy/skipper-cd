@@ -1,6 +1,17 @@
-# skipper-cd
+<p align="center">
+  <img src="skipper-cd.png" alt="skipper-cd logo" width="200">
+</p>
 
-A lightweight Docker Compose CD tool. It listens for Gitea push webhooks, maintains a local clone of a Git repository, and deploys changed Docker Compose stacks. Unchanged stacks are skipped via per-file SHA-256 hash tracking.
+<h1 align="center">skipper-cd</h1>
+
+<p align="center"><i>Simple, fast Docker Compose CD</i></p>
+<br>
+
+A lightweight Docker Compose CD tool that listens for push webhooks, maintains a local clone of a Git repository, and deploys changed Docker Compose stacks. Unchanged stacks are skipped automatically.
+
+Supported webhook signatures: **Gitea** (`X-Gitea-Signature`) and **GitHub/Forgejo** (`X-Hub-Signature-256`).
+
+> **Note:** Only Gitea webhooks have been tested so far. GitHub and Forgejo support should work but is untested — feedback welcome via [GitHub Issues](https://github.com/polandy/skipper-cd/issues).
 
 ## How It Works
 
@@ -59,7 +70,7 @@ stacks:
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. |
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`) is allowed to run before being killed. |
 | `stacks_base_dir` | string | no | — | Base directory prepended to a stack's `name` to derive its working directory when `working_dir` is not set. Avoids repeating long paths across stacks. |
-| `webhook_secret` | string | no | — | HMAC-SHA256 secret used to validate incoming Gitea webhook payloads. When empty, signature validation is skipped (not recommended for production). |
+| `webhook_secret` | string | no | — | HMAC-SHA256 secret used to validate incoming webhook payloads (supports Gitea and GitHub/Forgejo signatures). When empty, signature validation is skipped (not recommended for production). |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz`. |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. |
 | `stacks` | list | yes | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). |
@@ -106,6 +117,8 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint:
 | `skipper_last_deploy_timestamp` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |
 
 ## Docker
+
+> **Note:** Running skipper-cd as a Docker container has not been tested yet. If you try it, feedback and bug reports are welcome via [GitHub Issues](https://github.com/polandy/skipper-cd/issues).
 
 ```yaml
 services:

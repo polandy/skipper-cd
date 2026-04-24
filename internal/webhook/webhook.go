@@ -1,4 +1,4 @@
-// Package webhook provides an HTTP handler that receives Gitea push events,
+// Package webhook provides an HTTP handler that receives push events,
 // validates their HMAC-SHA256 signature, and triggers a deployment.
 package webhook
 
@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
@@ -18,9 +19,11 @@ import (
 	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
-// Handler returns an http.HandlerFunc that processes incoming Gitea webhooks.
-// The response is sent immediately with HTTP 202 Accepted; the deploy runs
-// in a goroutine so Gitea does not time out waiting for it to complete.
+// Handler returns an http.HandlerFunc that processes incoming webhooks.
+// It supports signature validation for Gitea (X-Gitea-Signature) and
+// GitHub/Forgejo (X-Hub-Signature-256). The response is sent immediately
+// with HTTP 202 Accepted; the deploy runs in a goroutine so the caller
+// does not time out waiting for it to complete.
 func Handler(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -35,7 +38,7 @@ func Handler(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duratio
 		}
 
 		if cfg.WebhookSecret != "" {
-			signature := r.Header.Get("X-Gitea-Signature")
+			signature := extractSignature(r)
 			if err := verifyHMACSignature(body, signature, cfg.WebhookSecret); err != nil {
 				slog.Warn("webhook rejected: invalid signature", "err", err)
 				http.Error(w, "invalid signature", http.StatusUnauthorized)
@@ -55,6 +58,19 @@ func Handler(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duratio
 		w.WriteHeader(http.StatusAccepted)
 		fmt.Fprintln(w, "deploy triggered")
 	}
+}
+
+// extractSignature returns the HMAC-SHA256 hex signature from the request.
+// It checks X-Gitea-Signature first (plain hex), then X-Hub-Signature-256
+// (GitHub/Forgejo format: "sha256=<hex>").
+func extractSignature(r *http.Request) string {
+	if sig := r.Header.Get("X-Gitea-Signature"); sig != "" {
+		return sig
+	}
+	if sig := r.Header.Get("X-Hub-Signature-256"); sig != "" {
+		return strings.TrimPrefix(sig, "sha256=")
+	}
+	return ""
 }
 
 func verifyHMACSignature(body []byte, signature, secret string) error {

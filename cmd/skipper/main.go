@@ -1,5 +1,5 @@
 // skipper-cd is a lightweight Docker Compose CD tool.
-// It listens for Gitea push webhooks, pulls the repository, and deploys
+// It listens for push webhooks, pulls the repository, and deploys
 // changed Docker Compose stacks. Unchanged stacks are skipped via hash tracking.
 package main
 

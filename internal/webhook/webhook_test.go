@@ -64,6 +64,22 @@ func TestHandler_AcceptsRequestWithValidSignature(t *testing.T) {
 	}
 }
 
+func TestHandler_AcceptsRequestWithHubSignature256(t *testing.T) {
+	secret := "supersecret"
+	body := []byte(`{"ref":"refs/heads/master"}`)
+
+	handler := webhook.Handler(newTestConfig(t, secret), deploy.NewDeployer(), 5*time.Minute)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBuffer(body))
+	req.Header.Set("X-Hub-Signature-256", "sha256="+computeSignature(body, secret))
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d", rec.Code)
+	}
+}
+
 func TestHandler_RejectsRequestWithInvalidSignature(t *testing.T) {
 	handler := webhook.Handler(newTestConfig(t, "supersecret"), deploy.NewDeployer(), 5*time.Minute)
 
