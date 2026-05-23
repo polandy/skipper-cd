@@ -76,7 +76,7 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
 
 	// Pre-populate state with the current hashes to simulate "already deployed".
-	hashes, err := computePerFileHashes(workDir, nil, nil, "")
+	hashes, err := computePerFileHashes(workDir, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}
@@ -406,7 +406,7 @@ func TestComputePerFileHashes_ReturnsHashForEachFile(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "app.env")
 	writeFile(t, envFile, "KEY=value\n")
 
-	hashes, err := computePerFileHashes(workDir, []string{envFile}, nil, "")
+	hashes, err := computePerFileHashes(workDir, []string{envFile}, nil, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestComputePerFileHashes_IncludesVarsFile(t *testing.T) {
 	varsFile := filepath.Join(t.TempDir(), "vars.env")
 	writeFile(t, varsFile, "DOMAIN=example.com\n")
 
-	hashes, err := computePerFileHashes(workDir, nil, nil, varsFile)
+	hashes, err := computePerFileHashes(workDir, nil, nil, varsFile, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -433,6 +433,170 @@ func TestComputePerFileHashes_IncludesVarsFile(t *testing.T) {
 	if hashes[varsFile] == "" {
 		t.Errorf("expected hash for vars_file")
 	}
+}
+
+func TestComputePerFileHashes_IncludesExtraFiles(t *testing.T) {
+	workDir := makeStackDir(t)
+	dockerfilePath := filepath.Join(workDir, "Dockerfile")
+	writeFile(t, dockerfilePath, "FROM nginx:1.25\n")
+
+	hashes, err := computePerFileHashes(workDir, nil, nil, "", []string{dockerfilePath})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if hashes[dockerfilePath] == "" {
+		t.Errorf("expected hash for Dockerfile")
+	}
+}
+
+// --- extractDockerfilePaths tests ---
+
+func TestExtractDockerfilePaths_StringForm(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build: "."
+`)
+	writeFile(t, filepath.Join(workDir, "Dockerfile"), "FROM nginx:1.25\n")
+
+	paths, err := extractDockerfilePaths(filepath.Join(workDir, "docker-compose.yml"), workDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path, got %d: %v", len(paths), paths)
+	}
+	if paths[0] != filepath.Join(workDir, "Dockerfile") {
+		t.Errorf("unexpected path: %s", paths[0])
+	}
+}
+
+func TestExtractDockerfilePaths_MapForm(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build:
+      context: "."
+      dockerfile: "Dockerfile.custom"
+`)
+	writeFile(t, filepath.Join(workDir, "Dockerfile.custom"), "FROM nginx:1.25\n")
+
+	paths, err := extractDockerfilePaths(filepath.Join(workDir, "docker-compose.yml"), workDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path, got %d: %v", len(paths), paths)
+	}
+	if paths[0] != filepath.Join(workDir, "Dockerfile.custom") {
+		t.Errorf("unexpected path: %s", paths[0])
+	}
+}
+
+func TestExtractDockerfilePaths_MissingDockerfileSkipped(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build: "."
+`)
+	// No Dockerfile written — should return empty, not an error.
+
+	paths, err := extractDockerfilePaths(filepath.Join(workDir, "docker-compose.yml"), workDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Errorf("expected no paths, got %v", paths)
+	}
+}
+
+func TestExtractDockerfilePaths_NoBuildServicesReturnsEmpty(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	paths, err := extractDockerfilePaths(filepath.Join(workDir, "docker-compose.yml"), workDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Errorf("expected no paths, got %v", paths)
+	}
+}
+
+func TestDeployStack_BuildsWhenDockerfilePresent(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build: "."
+    image: myapp:latest
+`)
+	writeFile(t, filepath.Join(workDir, "Dockerfile"), "FROM nginx:1.25\n")
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "myapp", WorkingDir: workDir}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertCommandCalled(t, runner.calls, "build")
+	assertCommandCalled(t, runner.calls, "up")
+}
+
+func TestDeployStack_NoBuildWhenNoBuildSection(t *testing.T) {
+	workDir := makeStackDir(t)
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertCommandNotCalled(t, runner.calls, "build")
+}
+
+func TestDeployStack_DockerfileTrackedInHash(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build: "."
+`)
+	dockerfilePath := filepath.Join(workDir, "Dockerfile")
+	writeFile(t, dockerfilePath, "FROM nginx:1.25\n")
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "myapp", WorkingDir: workDir}
+
+	// First deploy to populate state.
+	state := newEmptyState()
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error on first deploy: %v", err)
+	}
+	runner.calls = nil
+
+	// Second deploy with unchanged files — should be skipped.
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error on second deploy: %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Errorf("expected no commands when nothing changed, got %d call(s)", len(runner.calls))
+	}
+
+	// Modify the Dockerfile — third deploy should trigger.
+	writeFile(t, dockerfilePath, "FROM nginx:1.27\n")
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error on third deploy: %v", err)
+	}
+	assertCommandCalled(t, runner.calls, "build")
 }
 
 // --- images.go tests ---

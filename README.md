@@ -18,10 +18,10 @@ Supported webhook signatures: **Gitea** (`X-Gitea-Signature`) and **GitHub/Forge
 On each incoming webhook (or on startup), skipper-cd:
 
 1. Pulls the latest commits from the configured repository.
-2. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, and the global `vars_file`.
+2. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, and any `Dockerfile`s referenced by services with a `build:` section.
 3. Compares the current hashes against the hashes from the previous deployment.
 4. Skips stacks whose files have not changed.
-5. For changed stacks, runs `docker compose pull` followed by `docker compose up -d --remove-orphans`.
+5. For changed stacks, runs `docker compose pull` (skipped when only non-image config changed), then `docker compose build --pull` (only when `build:` services are present), followed by `docker compose up -d --remove-orphans`.
 6. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
 7. Logs the git diff of each changed file (relative to the last deployed commit).
 

@@ -120,8 +120,15 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 
 func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state persistedState) error {
 	workDir := stack.WorkDir(baseDir)
+	composePath := filepath.Join(workDir, "docker-compose.yml")
 
-	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles, stack.WatchDirs, varsFile)
+	dockerfilePaths, err := extractDockerfilePaths(composePath, workDir)
+	if err != nil {
+		slog.Warn("could not extract dockerfile paths, continuing without build tracking", "stack", stack.Name, "err", err)
+		dockerfilePaths = nil
+	}
+
+	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
 	if err != nil {
 		return fmt.Errorf("compute per-file hashes: %w", err)
 	}
@@ -137,7 +144,6 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.logDiffsForChangedFiles(ctx, changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
-	composePath := filepath.Join(workDir, "docker-compose.yml")
 	currentImages, err := extractComposeImages(composePath)
 	if err != nil {
 		slog.Warn("could not extract images, pulling to be safe", "stack", stack.Name, "err", err)
@@ -150,6 +156,13 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		}
 	} else {
 		slog.Info("skipping pull, no image changes", "stack", stack.Name)
+	}
+
+	if len(dockerfilePaths) > 0 {
+		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", dockerfilePaths)
+		if err := d.runDockerCompose(ctx, workDir, baseEnv, stack.EnvFiles, "build", "--pull"); err != nil {
+			return fmt.Errorf("docker compose build: %w", err)
+		}
 	}
 
 	// --remove-orphans removes containers for services deleted from docker-compose.yml.
