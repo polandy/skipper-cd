@@ -135,7 +135,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	changed := changedFiles(currentHashes, state.Stacks[stack.Name])
 	if len(changed) == 0 {
-		slog.Info("skipping stack, no changes detected", "stack", stack.Name)
+		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
 		return nil
 	}
