@@ -89,11 +89,11 @@ func startMetricsServer(port int) {
 
 func startWebhookServer(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duration, broadcaster *events.Broadcaster, history *events.History) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/webhook", webhook.Handler(cfg, deployer, timeout))
-	mux.HandleFunc("/healthz", respondOK)
+	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer, timeout))
+	mux.HandleFunc("GET /healthz", respondOK)
 
 	if broadcaster != nil {
-		mux.Handle("GET /", ui.IndexHandler())
+		mux.Handle("GET /{$}", ui.IndexHandler())
 		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, history))
 	}
 
