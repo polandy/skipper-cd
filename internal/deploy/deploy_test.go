@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/events"
 )
 
 // recordingRunner is a fake Runner that records every command it receives
@@ -696,6 +697,178 @@ func TestParseEnvFile_MissingFileReturnsError(t *testing.T) {
 	_, err := parseEnvFile("/nonexistent/vars.env")
 	if err == nil {
 		t.Error("expected error for missing file, got nil")
+	}
+}
+
+// --- event sink tests ---
+
+func TestDeployStack_EmitsDeployingAndSuccessEvents(t *testing.T) {
+	workDir := makeStackDir(t)
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	var emitted []events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		emitted = append(emitted, e)
+	})
+
+	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(emitted) != 2 {
+		t.Fatalf("expected 2 events (deploying + success), got %d", len(emitted))
+	}
+	if emitted[0].Status != events.StatusDeploying {
+		t.Errorf("expected first event to be deploying, got %s", emitted[0].Status)
+	}
+	if emitted[0].Stack != "gitea" {
+		t.Errorf("expected stack 'gitea', got %q", emitted[0].Stack)
+	}
+	if emitted[1].Status != events.StatusSuccess {
+		t.Errorf("expected second event to be success, got %s", emitted[1].Status)
+	}
+	if emitted[1].DurationMs < 0 {
+		t.Error("expected non-negative duration for success event")
+	}
+}
+
+func TestDeployStack_EmitsSkippedEvent(t *testing.T) {
+	workDir := makeStackDir(t)
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	var emitted []events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		emitted = append(emitted, e)
+	})
+
+	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+
+	hashes, err := computePerFileHashes(workDir, nil, nil, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error computing hashes: %v", err)
+	}
+	state := persistedState{
+		Stacks: map[string]stackFileHashes{"gitea": hashes},
+		Images: map[string]serviceImageByName{},
+	}
+
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(emitted) != 1 {
+		t.Fatalf("expected 1 skipped event, got %d", len(emitted))
+	}
+	if emitted[0].Status != events.StatusSkipped {
+		t.Errorf("expected skipped, got %s", emitted[0].Status)
+	}
+}
+
+func TestDeployAllStacks_EmitsFailedEventOnError(t *testing.T) {
+	workDir := makeStackDir(t)
+	runner := &recordingRunner{errOnCommand: "pull"}
+	d := &Deployer{runner: runner, stateDir: t.TempDir()}
+
+	var emitted []events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		emitted = append(emitted, e)
+	})
+
+	cfg := &config.Config{
+		RepoURL: "ssh://git@example.com/repo.git",
+		Stacks:  []config.Stack{{Name: "gitea", WorkingDir: workDir}},
+	}
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	// Expect: deploying, then failed (from DeployAllStacks error handler).
+	var failed *events.DeployEvent
+	for i := range emitted {
+		if emitted[i].Status == events.StatusFailed {
+			failed = &emitted[i]
+			break
+		}
+	}
+	if failed == nil {
+		t.Fatal("expected a failed event")
+	}
+	if failed.Error == "" {
+		t.Error("expected error message in failed event")
+	}
+}
+
+func TestDeployStack_NoEventsWithoutSink(t *testing.T) {
+	workDir := makeStackDir(t)
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+	// No SetEventSink called — should not panic.
+
+	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeployStack_EventIDsAreMonotonic(t *testing.T) {
+	workDir := makeStackDir(t)
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+	d.InitEventID(100)
+
+	var ids []int64
+	d.SetEventSink(func(e events.DeployEvent) {
+		ids = append(ids, e.ID)
+	})
+
+	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(ids) < 2 {
+		t.Fatalf("expected at least 2 events, got %d", len(ids))
+	}
+	if ids[0] != 101 {
+		t.Errorf("expected first ID 101, got %d", ids[0])
+	}
+	if ids[1] != 102 {
+		t.Errorf("expected second ID 102, got %d", ids[1])
+	}
+}
+
+func TestDeployStack_DeployingEventIncludesChangedFiles(t *testing.T) {
+	workDir := makeStackDir(t)
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	var deploying *events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Status == events.StatusDeploying {
+			deploying = &e
+		}
+	})
+
+	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if deploying == nil {
+		t.Fatal("expected a deploying event")
+	}
+	if len(deploying.ChangedFiles) == 0 {
+		t.Error("expected changed files in deploying event")
 	}
 }
 

@@ -15,7 +15,9 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
+	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/git"
+	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -45,6 +47,21 @@ func main() {
 	stateDir := filepath.Dir(repoSync.RepoDir())
 	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir, timeout)
 
+	var (
+		broadcaster *events.Broadcaster
+		history     *events.History
+	)
+	if cfg.UIEnabled {
+		history = events.NewHistory(stateDir)
+		broadcaster = events.NewBroadcaster()
+		deployer.InitEventID(history.MaxEventID())
+		deployer.SetEventSink(func(e events.DeployEvent) {
+			history.Add(e)
+			broadcaster.Publish(e)
+		})
+		slog.Info("web UI enabled")
+	}
+
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -53,7 +70,7 @@ func main() {
 	}()
 
 	startMetricsServer(cfg.MetricsPort)
-	startWebhookServer(cfg, deployer, timeout)
+	startWebhookServer(cfg, deployer, timeout, broadcaster, history)
 }
 
 func startMetricsServer(port int) {
@@ -70,10 +87,15 @@ func startMetricsServer(port int) {
 	}()
 }
 
-func startWebhookServer(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duration) {
+func startWebhookServer(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duration, broadcaster *events.Broadcaster, history *events.History) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", webhook.Handler(cfg, deployer, timeout))
 	mux.HandleFunc("/healthz", respondOK)
+
+	if broadcaster != nil {
+		mux.Handle("GET /", ui.IndexHandler())
+		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, history))
+	}
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	slog.Info("webhook server listening", "addr", addr)

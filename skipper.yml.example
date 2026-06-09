@@ -7,6 +7,7 @@ stacks_base_dir: /var/lib/skipper/repo/modules
 webhook_secret: "your-secret-here"
 port: 8080
 metrics_port: 9120
+ui_enabled: false                      # enable the real-time web UI on the webhook port
 
 stacks:
   - name: traefik

@@ -69,6 +69,7 @@ type Config struct {
 	WebhookSecret string  `yaml:"webhook_secret"`
 	Port          int     `yaml:"port"`
 	MetricsPort   int     `yaml:"metrics_port"`
+	UIEnabled     bool    `yaml:"ui_enabled"`
 	Stacks        []Stack `yaml:"stacks"`
 }
 

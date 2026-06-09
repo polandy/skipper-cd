@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>skipper-cd</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  header {
+    background: rgba(22, 27, 34, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid #21262d;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #e6edf3;
+  }
+
+  .brand svg { width: 24px; height: 24px; }
+
+  .status-area {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+  }
+
+  .connection-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3fb950;
+  }
+
+  .dot.disconnected { background: #f85149; }
+  .dot.connecting { background: #d29922; animation: pulse 1.5s ease-in-out infinite; }
+
+  .deploy-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #8b949e;
+  }
+
+  .deploy-status.active { color: #d29922; }
+  .deploy-status.active .deploy-dot { background: #d29922; animation: pulse 1.5s ease-in-out infinite; }
+
+  .deploy-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3fb950;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  main {
+    max-width: 960px;
+    margin: 24px auto;
+    padding: 0 16px;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 80px 24px;
+    color: #484f58;
+  }
+
+  .empty-state svg { width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.5; }
+  .empty-state p { font-size: 14px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #21262d;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid #161b22;
+    transition: background 0.15s;
+  }
+
+  tbody tr:hover { background: rgba(136, 198, 255, 0.04); }
+  tbody tr.new-row { animation: slideIn 0.3s ease-out; }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  td {
+    padding: 10px 12px;
+    font-size: 14px;
+    vertical-align: top;
+  }
+
+  .stack-name {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 13px;
+    color: #e6edf3;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .badge-success { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
+  .badge-failed { background: rgba(248, 81, 73, 0.15); color: #f85149; }
+  .badge-skipped { background: rgba(139, 148, 158, 0.1); color: #636c76; }
+  .badge-deploying { background: rgba(210, 153, 34, 0.15); color: #d29922; }
+  .badge-deploying .spinner { animation: pulse 1.2s ease-in-out infinite; }
+
+  .spinner {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  tr.skipped td { opacity: 0.5; }
+
+  .duration { color: #8b949e; font-size: 13px; }
+
+  .files-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: rgba(136, 198, 255, 0.08);
+    color: #58a6ff;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+
+  .files-pill:hover { background: rgba(136, 198, 255, 0.15); }
+
+  .files-list {
+    display: none;
+    margin-top: 6px;
+    padding: 8px 12px;
+    background: #161b22;
+    border-radius: 6px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12px;
+    color: #8b949e;
+    line-height: 1.8;
+    word-break: break-all;
+  }
+
+  .files-list.open { display: block; }
+
+  .error-row td {
+    padding: 0 12px 10px 12px;
+    border-bottom: 1px solid #161b22;
+  }
+
+  .error-box {
+    padding: 8px 12px;
+    background: rgba(248, 81, 73, 0.08);
+    border: 1px solid rgba(248, 81, 73, 0.2);
+    border-radius: 6px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12px;
+    color: #f85149;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .time-cell {
+    color: #8b949e;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 640px) {
+    header { padding: 10px 12px; }
+    main { margin: 12px auto; }
+    td, th { padding: 8px 6px; }
+    .col-files { display: none; }
+    .col-files-header { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <polygon points="10,8 16,12 10,16" fill="#58a6ff" stroke="none"/>
+    </svg>
+    skipper-cd
+  </div>
+  <div class="status-area">
+    <div class="deploy-status" id="deploy-status">
+      <div class="deploy-dot"></div>
+      <span>Idle</span>
+    </div>
+    <div class="connection-status">
+      <div class="dot connecting" id="conn-dot"></div>
+      <span id="conn-text">Connecting</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="empty-state" id="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+    </svg>
+    <p>No deployments yet. Events will appear here in real time.</p>
+  </div>
+  <table id="deploy-table" style="display:none">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Stack</th>
+        <th>Status</th>
+        <th>Duration</th>
+        <th class="col-files-header">Files</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</main>
+
+<script>
+(function() {
+  const tbody = document.getElementById('tbody');
+  const table = document.getElementById('deploy-table');
+  const emptyState = document.getElementById('empty-state');
+  const connDot = document.getElementById('conn-dot');
+  const connText = document.getElementById('conn-text');
+  const deployStatus = document.getElementById('deploy-status');
+
+  // Track in-progress deploys by stack name -> row element
+  const deployingRows = {};
+  let hasRows = false;
+
+  function showTable() {
+    if (!hasRows) {
+      hasRows = true;
+      table.style.display = '';
+      emptyState.style.display = 'none';
+    }
+  }
+
+  function formatDuration(ms) {
+    if (!ms || ms <= 0) return '-';
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return m + 'm ' + rem + 's';
+  }
+
+  function formatTime(ts) {
+    const d = new Date(ts);
+    const now = new Date();
+    const diffS = Math.floor((now - d) / 1000);
+    if (diffS < 5) return 'just now';
+    if (diffS < 60) return diffS + 's ago';
+    if (diffS < 3600) return Math.floor(diffS / 60) + 'm ago';
+    if (diffS < 86400) return Math.floor(diffS / 3600) + 'h ago';
+    return Math.floor(diffS / 86400) + 'd ago';
+  }
+
+  function fullTime(ts) {
+    return new Date(ts).toLocaleString();
+  }
+
+  function badgeHTML(status) {
+    const cls = 'badge badge-' + status;
+    if (status === 'deploying') return '<span class="' + cls + '"><span class="spinner"></span>deploying</span>';
+    return '<span class="' + cls + '">' + status + '</span>';
+  }
+
+  function filesHTML(files) {
+    if (!files || files.length === 0) return '<span class="duration">-</span>';
+    const id = 'f' + Math.random().toString(36).substr(2, 8);
+    let html = '<button class="files-pill" onclick="document.getElementById(\'' + id + '\').classList.toggle(\'open\')">';
+    html += files.length + ' file' + (files.length > 1 ? 's' : '');
+    html += '</button>';
+    html += '<div class="files-list" id="' + id + '">' + files.map(escapeHtml).join('<br>') + '</div>';
+    return html;
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function createRow(evt, isHistory) {
+    const tr = document.createElement('tr');
+    if (evt.status === 'skipped') tr.className = 'skipped';
+    if (!isHistory) tr.className = (tr.className + ' new-row').trim();
+    tr.dataset.stack = evt.stack;
+    tr.dataset.eventId = evt.id;
+
+    tr.innerHTML =
+      '<td class="time-cell" title="' + fullTime(evt.timestamp) + '">' + formatTime(evt.timestamp) + '</td>' +
+      '<td class="stack-name">' + escapeHtml(evt.stack) + '</td>' +
+      '<td class="status-cell">' + badgeHTML(evt.status) + '</td>' +
+      '<td class="duration">' + formatDuration(evt.duration_ms) + '</td>' +
+      '<td class="col-files">' + filesHTML(evt.changed_files) + '</td>';
+
+    return tr;
+  }
+
+  function createErrorRow(evt) {
+    const tr = document.createElement('tr');
+    tr.className = 'error-row';
+    tr.dataset.errorFor = evt.stack;
+    tr.innerHTML = '<td colspan="5"><div class="error-box">' + escapeHtml(evt.error) + '</div></td>';
+    return tr;
+  }
+
+  function updateDeployingIndicator() {
+    const active = Object.keys(deployingRows);
+    if (active.length > 0) {
+      deployStatus.className = 'deploy-status active';
+      deployStatus.querySelector('span').textContent = 'Deploying ' + active.join(', ');
+    } else {
+      deployStatus.className = 'deploy-status';
+      deployStatus.querySelector('span').textContent = 'Idle';
+    }
+  }
+
+  function handleEvent(evt, isHistory) {
+    showTable();
+
+    if (evt.status === 'deploying') {
+      const row = createRow(evt, isHistory);
+      tbody.insertBefore(row, tbody.firstChild);
+      deployingRows[evt.stack] = row;
+      updateDeployingIndicator();
+      return;
+    }
+
+    // For terminal states, update existing deploying row if present.
+    if ((evt.status === 'success' || evt.status === 'failed') && deployingRows[evt.stack]) {
+      const existing = deployingRows[evt.stack];
+      existing.className = evt.status === 'failed' ? '' : '';
+      existing.querySelector('.status-cell').innerHTML = badgeHTML(evt.status);
+      existing.querySelector('.duration').textContent = formatDuration(evt.duration_ms);
+      existing.querySelector('.time-cell').textContent = formatTime(evt.timestamp);
+      existing.querySelector('.time-cell').title = fullTime(evt.timestamp);
+      if (!isHistory) {
+        existing.className = 'new-row';
+      }
+      if (evt.error) {
+        const errRow = createErrorRow(evt);
+        existing.after(errRow);
+      }
+      delete deployingRows[evt.stack];
+      updateDeployingIndicator();
+      return;
+    }
+
+    // Skipped or terminal without a matching deploying row.
+    const row = createRow(evt, isHistory);
+    tbody.insertBefore(row, tbody.firstChild);
+    if (evt.error) {
+      const errRow = createErrorRow(evt);
+      row.after(errRow);
+    }
+  }
+
+  // Refresh relative timestamps every 30s.
+  setInterval(function() {
+    tbody.querySelectorAll('.time-cell').forEach(function(cell) {
+      // Re-parse from title attribute (full timestamp).
+      const full = cell.title;
+      if (full) cell.textContent = formatTime(full);
+    });
+  }, 30000);
+
+  // SSE connection.
+  function connect() {
+    connDot.className = 'dot connecting';
+    connText.textContent = 'Connecting';
+
+    const es = new EventSource('/api/events');
+
+    es.onopen = function() {
+      connDot.className = 'dot';
+      connText.textContent = 'Connected';
+    };
+
+    es.addEventListener('deploy', function(e) {
+      const evt = JSON.parse(e.data);
+      handleEvent(evt, false);
+    });
+
+    es.onerror = function() {
+      connDot.className = 'dot disconnected';
+      connText.textContent = 'Reconnecting';
+    };
+  }
+
+  connect();
+})();
+</script>
+</body>
+</html>

@@ -11,9 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
@@ -41,6 +43,8 @@ type Deployer struct {
 	stateDir     string      // directory for state.yaml persistence
 	timeout      time.Duration
 	mu           sync.Mutex
+	eventSink    func(events.DeployEvent) // nil = no event tracking
+	nextEventID  atomic.Int64
 }
 
 const defaultStateDir = "/var/lib/skipper"
@@ -58,6 +62,32 @@ func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, r
 
 func newDeployerWithRunner(r Runner) *Deployer {
 	return &Deployer{runner: r, stateDir: defaultStateDir}
+}
+
+// SetEventSink configures an optional callback invoked on every deploy
+// status change. Must be called before any deployments start.
+func (d *Deployer) SetEventSink(fn func(events.DeployEvent)) {
+	d.eventSink = fn
+}
+
+// InitEventID sets the starting event ID counter (e.g. from persisted history).
+func (d *Deployer) InitEventID(startID int64) {
+	d.nextEventID.Store(startID)
+}
+
+func (d *Deployer) emit(status events.Status, stack string, duration time.Duration, errMsg string, changedFiles []string) {
+	if d.eventSink == nil {
+		return
+	}
+	d.eventSink(events.DeployEvent{
+		ID:           d.nextEventID.Add(1),
+		Timestamp:    time.Now(),
+		Stack:        stack,
+		Status:       status,
+		DurationMs:   duration.Milliseconds(),
+		Error:        errMsg,
+		ChangedFiles: changedFiles,
+	})
 }
 
 // SyncAndDeployAll acquires the deploy lock, syncs the repository, and
@@ -98,9 +128,11 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	}
 
 	for _, stack := range cfg.Stacks {
+		startTime := time.Now()
 		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state); err != nil {
 			slog.Error("deploy failed", "stack", stack.Name, "err", err)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
+			d.emit(events.StatusFailed, stack.Name, time.Since(startTime), err.Error(), nil)
 		}
 	}
 
@@ -137,9 +169,12 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	if len(changed) == 0 {
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
+		d.emit(events.StatusSkipped, stack.Name, 0, "", nil)
 		return nil
 	}
 
+	deployStart := time.Now()
+	d.emit(events.StatusDeploying, stack.Name, 0, "", changed)
 	slog.Info("deploying stack", "stack", stack.Name, "dir", workDir, "changed_files", changed)
 	d.logDiffsForChangedFiles(ctx, changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
@@ -182,6 +217,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		state.Images[stack.Name] = currentImages
 	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
+	d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed)
 	slog.Info("deploy complete", "stack", stack.Name)
 	return nil
 }
