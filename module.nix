@@ -31,13 +31,17 @@ in
       after = [ "docker.service" "network-online.target" ];
       requires = [ "docker.service" ];
 
-      path = [ pkgs.git pkgs.docker pkgs.docker-compose ];
+      path = [ pkgs.git pkgs.docker pkgs.docker-compose pkgs.docker-buildx ];
 
       serviceConfig = {
         ExecStart = "${cfg.package}/bin/skipper -config ${cfg.configFile}";
         Restart = "on-failure";
         RestartSec = "5s";
         StateDirectory = "skipper";
+
+        # Use the state directory as HOME so docker compose can write
+        # CLI config (e.g. buildx state) under ProtectSystem=strict.
+        Environment = "HOME=${cfg.stateDir}";
 
         # Allow Docker socket access
         SupplementaryGroups = [ "docker" ];
