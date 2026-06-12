@@ -35,7 +35,7 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
 ## Deploy table
 
-5-column grid (`110px 1fr 110px 80px 100px`): **Time · Stack · Status · Duration · Files**
+5-column grid (`160px 1fr 110px 80px 100px`): **Time · Stack · Status · Duration · Files**
 
 Rows are prepended (newest first) with a slide-in animation. Time cells show relative or absolute time depending on the header toggle. Relative times refresh every 30 s; tooltip always shows the other format.
 
