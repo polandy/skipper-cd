@@ -612,6 +612,10 @@
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
       <span>hide skipped</span>
     </button>
+    <button class="filter-toggle" id="time-mode" title="Switch to absolute time">
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <span>abs time</span>
+    </button>
     <div class="indicator">
       <div class="indicator-dot warn" id="conn-dot"></div>
       <span id="conn-text">connecting</span>
@@ -655,6 +659,7 @@
 
   const deployingRows = {};
   let hasRows = false;
+  let absoluteTime = localStorage.getItem('timeMode') === 'absolute';
 
   function showTable() {
     if (!hasRows) {
@@ -729,8 +734,10 @@
     row.dataset.stack = evt.stack;
     row.dataset.eventId = evt.id;
 
+    var absTs = fullTime(evt.timestamp);
+    var relTs = formatTime(evt.timestamp);
     row.innerHTML =
-      '<span class="cell-time" title="' + fullTime(evt.timestamp) + '">' + formatTime(evt.timestamp) + '</span>' +
+      '<span class="cell-time" data-ts="' + evt.timestamp + '" title="' + (absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
       '<span class="cell-stack">' + escapeHtml(evt.stack) + '</span>' +
       '<span class="status-cell">' + badgeHTML(evt.status) + '</span>' +
       '<span class="cell-duration">' + formatDuration(evt.duration_ms) + '</span>' +
@@ -774,8 +781,10 @@
       existing.className = rowClass(evt.status, isHistory);
       existing.querySelector('.status-cell').innerHTML = badgeHTML(evt.status);
       existing.querySelector('.cell-duration').textContent = formatDuration(evt.duration_ms);
-      existing.querySelector('.cell-time').textContent = formatTime(evt.timestamp);
-      existing.querySelector('.cell-time').title = fullTime(evt.timestamp);
+      var tc = existing.querySelector('.cell-time');
+      tc.dataset.ts = evt.timestamp;
+      tc.textContent = absoluteTime ? fullTime(evt.timestamp) : formatTime(evt.timestamp);
+      tc.title = absoluteTime ? formatTime(evt.timestamp) : fullTime(evt.timestamp);
       if (evt.error) {
         existing.after(createErrorDetail(evt));
       }
@@ -792,10 +801,12 @@
   }
 
   setInterval(function() {
-    tbody.querySelectorAll('.cell-time').forEach(function(cell) {
-      var full = cell.title;
-      if (full) cell.textContent = formatTime(full);
-    });
+    if (!absoluteTime) {
+      tbody.querySelectorAll('.cell-time').forEach(function(cell) {
+        var abs = cell.dataset.ts;
+        if (abs) cell.textContent = formatTime(abs);
+      });
+    }
   }, 30000);
 
   function connect() {
@@ -819,6 +830,33 @@
       connText.textContent = 'reconnecting';
     };
   }
+
+  // Time mode toggle (default: relative)
+  const timeModeBtn = document.getElementById('time-mode');
+
+  function applyTimeMode() {
+    if (absoluteTime) {
+      timeModeBtn.classList.add('active');
+      timeModeBtn.title = 'Switch to relative time';
+    } else {
+      timeModeBtn.classList.remove('active');
+      timeModeBtn.title = 'Switch to absolute time';
+    }
+    tbody.querySelectorAll('.cell-time').forEach(function(cell) {
+      var ts = cell.dataset.ts;
+      if (!ts) return;
+      cell.textContent = absoluteTime ? fullTime(ts) : formatTime(ts);
+      cell.title = absoluteTime ? formatTime(ts) : fullTime(ts);
+    });
+  }
+
+  timeModeBtn.addEventListener('click', function() {
+    absoluteTime = !absoluteTime;
+    localStorage.setItem('timeMode', absoluteTime ? 'absolute' : 'relative');
+    applyTimeMode();
+  });
+
+  applyTimeMode();
 
   // Skipped-filter toggle (default: hidden)
   const skipFilter = document.getElementById('skip-filter');

@@ -27,7 +27,8 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
 **Header — right:**
 - **Deploy indicator** — shows active stack name(s) or `idle`; amber pulsing dot when deploying.
-- **Skip filter toggle** — hides/shows skipped rows. Default: active (hidden). State persisted in `localStorage`.
+- **Skip filter toggle** — hides/shows skipped rows. Default: active (hidden). State persisted in `localStorage` key `hideSkipped`.
+- **Time mode toggle** — switches Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). State persisted in `localStorage` key `timeMode`. Tooltip always shows the other format.
 - **Connection indicator** — `connecting` (amber pulse) → `connected` (teal) → `reconnecting` (red).
 
 ---
@@ -36,7 +37,7 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
 5-column grid (`110px 1fr 110px 80px 100px`): **Time · Stack · Status · Duration · Files**
 
-Rows are prepended (newest first) with a slide-in animation. Timestamps shown as relative (`just now`, `Xs ago`, `Xm ago`, …), refreshed every 30 s. Full timestamp in `title` attribute.
+Rows are prepended (newest first) with a slide-in animation. Time cells show relative or absolute time depending on the header toggle. Relative times refresh every 30 s; tooltip always shows the other format.
 
 ### Status badges
 
