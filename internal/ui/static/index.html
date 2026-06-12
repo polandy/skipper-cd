@@ -437,9 +437,6 @@
   }
 
   .files-list {
-    display: none;
-    grid-column: 1 / -1;
-    margin-top: 8px;
     padding: 10px 14px;
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid var(--border);
@@ -449,10 +446,6 @@
     color: var(--text-secondary);
     line-height: 2;
     word-break: break-all;
-  }
-
-  .files-list.open {
-    display: block;
     animation: expand 0.2s ease-out;
   }
 
@@ -701,15 +694,21 @@
 
   function filesHTML(files) {
     if (!files || files.length === 0) return '<span class="cell-duration">\u2014</span>';
-    var id = 'f' + Math.random().toString(36).substr(2, 8);
-    var html = '<button class="files-pill" onclick="document.getElementById(\'' + id + '\').classList.toggle(\'open\')">';
+    var encoded = escapeHtml(JSON.stringify(files));
+    var html = '<button class="files-pill" data-files="' + encoded + '">';
     html += '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h5l2 2h5v7H2z"/></svg>';
     html += files.length + ' file' + (files.length > 1 ? 's' : '');
     html += '</button>';
-    html += '<div class="files-list" id="' + id + '">' + files.map(function(f) {
-      return '<span class="file-path">' + escapeHtml(f) + '</span>';
-    }).join('<br>') + '</div>';
     return html;
+  }
+
+  function createFilesPanel(files) {
+    var el = document.createElement('div');
+    el.className = 'files-list';
+    el.innerHTML = files.map(function(f) {
+      return '<span class="file-path">' + escapeHtml(f) + '</span>';
+    }).join('<br>');
+    return el;
   }
 
   function escapeHtml(s) {
@@ -879,6 +878,21 @@
   });
 
   applySkipFilter();
+
+  // Files panel — open/close as full-width sibling below the row
+  tbody.addEventListener('click', function(e) {
+    var pill = e.target.closest('.files-pill');
+    if (!pill) return;
+    var row = pill.closest('.event-row');
+    if (!row) return;
+    var existing = row.nextElementSibling;
+    if (existing && existing.classList.contains('files-list')) {
+      existing.remove();
+      return;
+    }
+    var files = JSON.parse(pill.dataset.files);
+    row.after(createFilesPanel(files));
+  });
 
   connect();
 })();

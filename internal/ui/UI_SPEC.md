@@ -50,7 +50,7 @@ Rows are prepended (newest first) with a slide-in animation. Time cells show rel
 
 ### Expandable panels
 
-- **Files pill** — shown when `changed_files` is non-empty. Click toggles a list of file paths below the row.
+- **Files pill** — shown when `changed_files` is non-empty. Click inserts a full-width panel as a sibling element directly below the row (same pattern as the error detail panel). Clicking again removes the panel.
 - **Error detail** — shown for `failed` events with an `error` field. Monospace, red-tinted, `pre-wrap`.
 
 ---
