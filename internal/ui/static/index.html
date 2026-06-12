@@ -507,6 +507,61 @@
     background: var(--border);
   }
 
+  /* ─── FILTER TOGGLE ─── */
+  .filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    background: none;
+    border: none;
+    padding: 0;
+    transition: color 0.2s;
+  }
+
+  .filter-toggle:hover { color: var(--text-secondary); }
+
+  .toggle-track {
+    width: 28px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-lit);
+    position: relative;
+    transition: background 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform 0.2s, background 0.2s;
+  }
+
+  .filter-toggle.active .toggle-track {
+    background: var(--amber-dim);
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+
+  .filter-toggle.active .toggle-thumb {
+    transform: translateX(12px);
+    background: var(--amber);
+  }
+
+  .filter-toggle.active { color: var(--amber); }
+
+  #tbody.hide-skipped .event-row.skipped { display: none; }
+
   /* ─── RESPONSIVE ─── */
   @media (max-width: 700px) {
     header { padding: 0 16px; height: 48px; }
@@ -553,6 +608,10 @@
       <div class="deploy-dot"></div>
       <span>idle</span>
     </div>
+    <button class="filter-toggle active" id="skip-filter" title="Show/hide skipped deployments">
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <span>hide skipped</span>
+    </button>
     <div class="indicator">
       <div class="indicator-dot warn" id="conn-dot"></div>
       <span id="conn-text">connecting</span>
@@ -760,6 +819,28 @@
       connText.textContent = 'reconnecting';
     };
   }
+
+  // Skipped-filter toggle (default: hidden)
+  const skipFilter = document.getElementById('skip-filter');
+  let hideSkipped = localStorage.getItem('hideSkipped') !== 'false';
+
+  function applySkipFilter() {
+    if (hideSkipped) {
+      tbody.classList.add('hide-skipped');
+      skipFilter.classList.add('active');
+    } else {
+      tbody.classList.remove('hide-skipped');
+      skipFilter.classList.remove('active');
+    }
+  }
+
+  skipFilter.addEventListener('click', function() {
+    hideSkipped = !hideSkipped;
+    localStorage.setItem('hideSkipped', String(hideSkipped));
+    applySkipFilter();
+  });
+
+  applySkipFilter();
 
   connect();
 })();
