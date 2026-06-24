@@ -56,7 +56,9 @@ func main() {
 		broadcaster = events.NewBroadcaster()
 		deployer.InitEventID(history.MaxEventID())
 		deployer.SetEventSink(func(e events.DeployEvent) {
-			history.Add(e)
+			if e.Status != events.StatusSkipped {
+				history.Add(e)
+			}
 			broadcaster.Publish(e)
 		})
 		slog.Info("web UI enabled")
