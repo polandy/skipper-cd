@@ -23,7 +23,7 @@ Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). 
 
 Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
-**Header — left:** compass/helm SVG icon, `skipper-cd` wordmark (amber `-cd`), `LIVE` pill.
+**Header — left:** skipper-cd ship logo (transparent PNG, embedded as base64 data URI, 32 px), `skipper-cd` wordmark (amber `-cd`), `LIVE` pill. Same logo used as favicon.
 
 **Header — right:**
 - **Deploy indicator** — shows active stack name(s) or `idle`; amber pulsing dot when deploying.
