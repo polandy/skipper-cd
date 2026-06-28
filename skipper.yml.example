@@ -22,8 +22,9 @@ stacks:
     env_files:
       - /run/secrets/rendered/skipper/compose.env
 
-  # Override working_dir for stacks not directly under stacks_base_dir
-  - name: apc-monitor
-    working_dir: /var/lib/skipper/repo/modules/monitoring/apc-monitor
+  # Set working_dir when a NixOS systemd service also manages this stack,
+  # so Docker Compose uses the same project identity for both.
+  - name: nextcloud
+    working_dir: /etc/nixos/modules/nextcloud
     env_files:
       - /run/secrets/rendered/skipper/compose.env

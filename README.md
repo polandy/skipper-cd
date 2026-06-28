@@ -53,9 +53,10 @@ stacks:
     env_files:
       - /run/secrets/rendered/skipper/compose.env
 
-  # Override working_dir for stacks not directly under stacks_base_dir
-  - name: apc-monitor
-    working_dir: /var/lib/skipper/repo/modules/monitoring/apc-monitor
+  # Set working_dir when a NixOS systemd service also manages this stack,
+  # so Docker Compose uses the same project identity for both.
+  - name: nextcloud
+    working_dir: /etc/nixos/modules/nextcloud
     env_files:
       - /run/secrets/rendered/skipper/compose.env
 ```
@@ -81,8 +82,8 @@ Each entry under `stacks` configures one Docker Compose stack.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `name` | string | yes | — | Name of the stack. Used as the working directory name when `working_dir` is absent and `stacks_base_dir` is set. Also used as the key in the deploy state file. |
-| `working_dir` | string | no | `<stacks_base_dir>/<name>` | Absolute path to the directory containing `docker-compose.yml`. Takes precedence over `stacks_base_dir`. |
+| `name` | string | yes | — | Name of the stack. The compose file is always read from `<stacks_base_dir>/<name>/docker-compose.yml`. Also used as the key in the deploy state file. |
+| `working_dir` | string | no | — | Absolute path passed as `--project-directory` to `docker compose`. Controls Docker Compose project identity (container labels) and `.env` file loading. Change detection and the compose file always come from `<stacks_base_dir>/<name>`. |
 | `env_files` | list of strings | no | — | Absolute paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. |
 | `watch_dirs` | list of strings | no | — | Absolute paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). |
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. |
@@ -257,16 +258,20 @@ Because the list is only populated when a service's `enable = true`, disabled se
 
 #### `working_dir` and Docker Compose Project Identity
 
-When a NixOS systemd service manages a Docker Compose stack (via `WorkingDirectory = /etc/nixos/modules/<name>`), Docker labels containers with `com.docker.compose.project.working_dir=/etc/nixos/modules/<name>`. skipper-cd by default runs stacks from its own clone at `/var/lib/skipper/repo/modules/<name>` — a different path, even though the directory basename (and therefore the project name) is identical.
-
-Docker Compose uses `project.working_dir` to match running containers to a project. When the paths differ, skipper-cd does not recognise the containers created by systemd as belonging to its deployment and tries to create new ones, causing a name conflict:
+When a NixOS systemd service manages a Docker Compose stack (via `WorkingDirectory = /etc/nixos/modules/<name>`), Docker labels containers with `com.docker.compose.project.working_dir=/etc/nixos/modules/<name>`. skipper-cd always reads the compose file from its repo clone at `<stacks_base_dir>/<name>/docker-compose.yml` for change detection and deployment. When `working_dir` is set, skipper-cd passes it as `--project-directory` so Docker Compose uses the same project identity as systemd:
 
 ```
-Container <name>  Creating
-Error response from daemon: Conflict. The container name "/<name>" is already in use
+docker compose \
+  -f /var/lib/skipper/repo/modules/<name>/docker-compose.yml \
+  --project-directory /etc/nixos/modules/<name> \
+  up -d
 ```
 
-Setting `working_dir` to the NixOS modules path aligns both systemd and skipper-cd on the same Docker Compose project identity, eliminating the conflict. This is the recommended approach for any stack that is managed by both a NixOS systemd service and skipper-cd.
+This ensures:
+- **Change detection** uses the repo clone (merged PRs are detected immediately)
+- **Compose file** is always read from the repo clone (latest version)
+- **Project identity** matches the NixOS systemd path (no container name conflicts)
+- **`.env` files** at `working_dir` are loaded automatically via `--project-directory`
 
 ## State File
 

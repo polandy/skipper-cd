@@ -15,8 +15,10 @@ type Stack struct {
 	// the working directory is derived as stacks_base_dir/<name>.
 	Name string `yaml:"name"`
 
-	// WorkingDir is the absolute path to the directory containing docker-compose.yml.
-	// Optional when stacks_base_dir is set.
+	// WorkingDir is an optional absolute path passed as --project-directory to
+	// docker compose. It controls Docker Compose project identity (container
+	// labels) and .env file loading. Change detection and the compose file
+	// always come from stacks_base_dir/<name>.
 	WorkingDir string `yaml:"working_dir"`
 
 	// EnvFiles lists KEY=VALUE files injected into the environment when docker-compose

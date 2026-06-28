@@ -151,16 +151,22 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 }
 
 func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state persistedState) error {
-	workDir := stack.WorkDir(baseDir)
-	composePath := filepath.Join(workDir, "docker-compose.yml")
+	// Change detection always uses the repo clone so that merged PRs are detected.
+	repoDir := filepath.Join(baseDir, stack.Name)
+	composePath := filepath.Join(repoDir, "docker-compose.yml")
 
-	dockerfilePaths, err := extractDockerfilePaths(composePath, workDir)
+	// When working_dir is set, use it as --project-directory for Docker Compose
+	// project identity (container labels, .env loading) while the compose file
+	// is always read from the repo clone via -f.
+	projectDir := stack.WorkingDir
+
+	dockerfilePaths, err := extractDockerfilePaths(composePath, repoDir)
 	if err != nil {
 		slog.Warn("could not extract dockerfile paths, continuing without build tracking", "stack", stack.Name, "err", err)
 		dockerfilePaths = nil
 	}
 
-	currentHashes, err := computePerFileHashes(workDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
+	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
 	if err != nil {
 		return fmt.Errorf("compute per-file hashes: %w", err)
 	}
@@ -175,7 +181,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	deployStart := time.Now()
 	d.emit(events.StatusDeploying, stack.Name, 0, "", changed)
-	slog.Info("deploying stack", "stack", stack.Name, "dir", workDir, "changed_files", changed)
+	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", projectDir, "changed_files", changed)
 	d.logDiffsForChangedFiles(ctx, changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
@@ -186,7 +192,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}
 
 	if currentImages == nil || hasAnyImageChanged(currentImages, state.Images[stack.Name]) {
-		if err := d.runDockerCompose(ctx, workDir, baseEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
+		if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
 			return fmt.Errorf("docker compose pull: %w", err)
 		}
 	} else {
@@ -195,13 +201,13 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	if len(dockerfilePaths) > 0 {
 		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", dockerfilePaths)
-		if err := d.runDockerCompose(ctx, workDir, baseEnv, stack.EnvFiles, "build", "--pull"); err != nil {
+		if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "build", "--pull"); err != nil {
 			return fmt.Errorf("docker compose build: %w", err)
 		}
 	}
 
 	// --remove-orphans removes containers for services deleted from docker-compose.yml.
-	if err := d.runDockerCompose(ctx, workDir, baseEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
+	if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
 		return fmt.Errorf("docker compose up: %w", err)
 	}
 
@@ -245,7 +251,13 @@ func (d *Deployer) logDiffsForChangedFiles(ctx context.Context, changedFilePaths
 	}
 }
 
-func (d *Deployer) runDockerCompose(ctx context.Context, workDir string, baseEnv []string, envFiles []string, args ...string) error {
+// runDockerCompose executes a docker compose command.
+//
+// composePath is the absolute path to the docker-compose.yml file (always from the repo clone).
+// projectDir, when non-empty, is passed as --project-directory so Docker Compose uses it for
+// project identity (container labels) and .env loading. When empty, docker compose runs from the
+// directory containing composePath.
+func (d *Deployer) runDockerCompose(ctx context.Context, composePath, projectDir string, baseEnv []string, envFiles []string, args ...string) error {
 	env := make([]string, len(baseEnv))
 	copy(env, baseEnv)
 	for _, envFile := range envFiles {
@@ -256,5 +268,13 @@ func (d *Deployer) runDockerCompose(ctx context.Context, workDir string, baseEnv
 		env = append(env, envVars...)
 	}
 
-	return d.runner.Run(ctx, workDir, env, "docker", append([]string{"compose"}, args...)...)
+	composeArgs := []string{"compose"}
+	runDir := filepath.Dir(composePath)
+	if projectDir != "" {
+		composeArgs = append(composeArgs, "-f", composePath, "--project-directory", projectDir)
+		runDir = projectDir
+	}
+	composeArgs = append(composeArgs, args...)
+
+	return d.runner.Run(ctx, runDir, env, "docker", composeArgs...)
 }
