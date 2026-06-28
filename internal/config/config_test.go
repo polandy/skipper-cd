@@ -20,7 +20,6 @@ stacks:
     env_files:
       - /run/secrets/compose.env
   - name: traefik
-    working_dir: /custom/path
 `
 	cfg := loadFromString(t, content)
 
@@ -96,7 +95,7 @@ stacks: []
 	}
 }
 
-func TestLoad_MissingWorkingDirWithoutBaseDir(t *testing.T) {
+func TestLoad_MissingStacksBaseDir(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks:
@@ -104,24 +103,13 @@ stacks:
 `
 	_, err := loadStringToConfig(t, content)
 	if err == nil {
-		t.Error("expected error when working_dir and stacks_base_dir are both absent")
+		t.Error("expected error when stacks_base_dir is absent")
 	}
 }
 
-func TestStack_WorkDir_ExplicitOverridesBaseDir(t *testing.T) {
-	s := config.Stack{
-		Name:       "gitea",
-		WorkingDir: "/custom/gitea",
-	}
-	got := s.WorkDir("/var/lib/skipper/repo/modules")
-	if got != "/custom/gitea" {
-		t.Errorf("expected /custom/gitea, got %s", got)
-	}
-}
-
-func TestStack_WorkDir_DerivedFromBaseDir(t *testing.T) {
+func TestStack_Dir_DerivedFromBaseDir(t *testing.T) {
 	s := config.Stack{Name: "gitea"}
-	got := s.WorkDir("/var/lib/skipper/repo/modules")
+	got := s.Dir("/var/lib/skipper/repo/modules")
 	if got != "/var/lib/skipper/repo/modules/gitea" {
 		t.Errorf("expected /var/lib/skipper/repo/modules/gitea, got %s", got)
 	}

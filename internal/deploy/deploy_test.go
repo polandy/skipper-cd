@@ -50,14 +50,14 @@ func (f *fakeRepoSyncer) Sync(_ context.Context) error {
 }
 
 func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -70,11 +70,11 @@ func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
 }
 
 func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, workDir := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 
 	// Pre-populate state with the current hashes to simulate "already deployed".
 	hashes, err := computePerFileHashes(workDir, nil, nil, "", nil)
@@ -86,7 +86,7 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 		Images: map[string]serviceImageByName{},
 	}
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -96,14 +96,14 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 }
 
 func TestDeployStack_FailsOnPullError(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{errOnCommand: "pull"}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
 
-	err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state)
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
 	if err == nil {
 		t.Fatal("expected error when docker compose pull fails")
 	}
@@ -113,13 +113,8 @@ func TestDeployStack_FailsOnPullError(t *testing.T) {
 	}
 }
 
-func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
-	baseDir := t.TempDir()
-	workDir := filepath.Join(baseDir, "gitea")
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+func TestDeployStack_UsesBaseDir(t *testing.T) {
+	baseDir, workDir := makeStackInBaseDir(t, "gitea")
 
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
@@ -140,13 +135,12 @@ func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
 }
 
 func TestDeployStack_SkipsPullWhenOnlyConfigChanges(t *testing.T) {
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("redis:7.2"))
+	baseDir, _ := makeStackInBaseDirWithImage(t, "mystack", "redis:7.2")
 
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+	stack := config.Stack{Name: "mystack"}
 
 	// Simulate a previous deploy with the same image but different file hash.
 	state := persistedState{
@@ -154,7 +148,7 @@ func TestDeployStack_SkipsPullWhenOnlyConfigChanges(t *testing.T) {
 		Images: map[string]serviceImageByName{"mystack": {"app": "redis:7.2"}},
 	}
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -163,13 +157,12 @@ func TestDeployStack_SkipsPullWhenOnlyConfigChanges(t *testing.T) {
 }
 
 func TestDeployStack_PullsWhenImageChanges(t *testing.T) {
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("redis:7.4"))
+	baseDir, _ := makeStackInBaseDirWithImage(t, "mystack", "redis:7.4")
 
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+	stack := config.Stack{Name: "mystack"}
 
 	// Previous deploy had a different image version.
 	state := persistedState{
@@ -177,7 +170,7 @@ func TestDeployStack_PullsWhenImageChanges(t *testing.T) {
 		Images: map[string]serviceImageByName{"mystack": {"app": "redis:7.2"}},
 	}
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -186,18 +179,17 @@ func TestDeployStack_PullsWhenImageChanges(t *testing.T) {
 }
 
 func TestDeployStack_PullsWhenNoStoredImages(t *testing.T) {
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("redis:7.2"))
+	baseDir, _ := makeStackInBaseDirWithImage(t, "mystack", "redis:7.2")
 
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+	stack := config.Stack{Name: "mystack"}
 
 	// No previous image state — first deploy or upgrade from old state format.
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -211,16 +203,15 @@ func TestDeployStack_PullsWhenNoStoredImages(t *testing.T) {
 }
 
 func TestDeployStack_StoresImagesInStateAfterDeploy(t *testing.T) {
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("postgres:16-alpine"))
+	baseDir, _ := makeStackInBaseDirWithImage(t, "db", "postgres:16-alpine")
 
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "db", WorkingDir: workDir}
+	stack := config.Stack{Name: "db"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -233,18 +224,17 @@ func TestDeployStack_StoresImagesInStateAfterDeploy(t *testing.T) {
 }
 
 func TestDeployStack_StopsOnDemandContainersAfterDeploy(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "monica")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
 	stack := config.Stack{
 		Name:               "monica",
-		WorkingDir:         workDir,
 		OnDemandContainers: []string{"monica-app", "monica-db"},
 	}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -264,14 +254,14 @@ func TestDeployStack_StopsOnDemandContainersAfterDeploy(t *testing.T) {
 }
 
 func TestDeployStack_SkipsStopWhenNoOnDemandContainers(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -283,18 +273,18 @@ func TestDeployStack_SkipsStopWhenNoOnDemandContainers(t *testing.T) {
 }
 
 func TestDeployStack_RedeploysWhenVarsFileChanges(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "mystack")
 	varsFile := filepath.Join(t.TempDir(), "vars.env")
 	writeFile(t, varsFile, "DOMAIN=example.com\n")
 
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+	stack := config.Stack{Name: "mystack"}
 
 	// First deploy to populate state.
 	state := newEmptyState()
-	if err := d.deployStackIfChanged(context.Background(), stack, "", varsFile, nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, varsFile, nil, state); err != nil {
 		t.Fatalf("unexpected error on first deploy: %v", err)
 	}
 
@@ -305,7 +295,7 @@ func TestDeployStack_RedeploysWhenVarsFileChanges(t *testing.T) {
 	writeFile(t, varsFile, "DOMAIN=new.example.com\n")
 
 	// Second deploy should trigger because vars_file changed.
-	if err := d.deployStackIfChanged(context.Background(), stack, "", varsFile, nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, varsFile, nil, state); err != nil {
 		t.Fatalf("unexpected error on second deploy: %v", err)
 	}
 
@@ -313,18 +303,18 @@ func TestDeployStack_RedeploysWhenVarsFileChanges(t *testing.T) {
 }
 
 func TestDeployStack_SkipsWhenVarsFileUnchanged(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "mystack")
 	varsFile := filepath.Join(t.TempDir(), "vars.env")
 	writeFile(t, varsFile, "DOMAIN=example.com\n")
 
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "mystack", WorkingDir: workDir}
+	stack := config.Stack{Name: "mystack"}
 
 	// First deploy to populate state.
 	state := newEmptyState()
-	if err := d.deployStackIfChanged(context.Background(), stack, "", varsFile, nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, varsFile, nil, state); err != nil {
 		t.Fatalf("unexpected error on first deploy: %v", err)
 	}
 
@@ -332,7 +322,7 @@ func TestDeployStack_SkipsWhenVarsFileUnchanged(t *testing.T) {
 	runner.calls = nil
 
 	// Second deploy with unchanged vars_file should be skipped.
-	if err := d.deployStackIfChanged(context.Background(), stack, "", varsFile, nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, varsFile, nil, state); err != nil {
 		t.Fatalf("unexpected error on second deploy: %v", err)
 	}
 
@@ -403,7 +393,7 @@ func TestChangedFiles_DetectsNewFile(t *testing.T) {
 }
 
 func TestComputePerFileHashes_ReturnsHashForEachFile(t *testing.T) {
-	workDir := makeStackDir(t)
+	_, workDir := makeStackInBaseDir(t, "mystack")
 	envFile := filepath.Join(t.TempDir(), "app.env")
 	writeFile(t, envFile, "KEY=value\n")
 
@@ -422,7 +412,7 @@ func TestComputePerFileHashes_ReturnsHashForEachFile(t *testing.T) {
 }
 
 func TestComputePerFileHashes_IncludesVarsFile(t *testing.T) {
-	workDir := makeStackDir(t)
+	_, workDir := makeStackInBaseDir(t, "mystack")
 	varsFile := filepath.Join(t.TempDir(), "vars.env")
 	writeFile(t, varsFile, "DOMAIN=example.com\n")
 
@@ -437,7 +427,7 @@ func TestComputePerFileHashes_IncludesVarsFile(t *testing.T) {
 }
 
 func TestComputePerFileHashes_IncludesExtraFiles(t *testing.T) {
-	workDir := makeStackDir(t)
+	_, workDir := makeStackInBaseDir(t, "mystack")
 	dockerfilePath := filepath.Join(workDir, "Dockerfile")
 	writeFile(t, dockerfilePath, "FROM nginx:1.25\n")
 
@@ -526,7 +516,11 @@ func TestExtractDockerfilePaths_NoBuildServicesReturnsEmpty(t *testing.T) {
 }
 
 func TestDeployStack_BuildsWhenDockerfilePresent(t *testing.T) {
-	workDir := t.TempDir()
+	baseDir := t.TempDir()
+	workDir := filepath.Join(baseDir, "myapp")
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
   app:
     build: "."
@@ -537,10 +531,10 @@ func TestDeployStack_BuildsWhenDockerfilePresent(t *testing.T) {
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "myapp", WorkingDir: workDir}
+	stack := config.Stack{Name: "myapp"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -549,14 +543,14 @@ func TestDeployStack_BuildsWhenDockerfilePresent(t *testing.T) {
 }
 
 func TestDeployStack_NoBuildWhenNoBuildSection(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -564,7 +558,11 @@ func TestDeployStack_NoBuildWhenNoBuildSection(t *testing.T) {
 }
 
 func TestDeployStack_DockerfileTrackedInHash(t *testing.T) {
-	workDir := t.TempDir()
+	baseDir := t.TempDir()
+	workDir := filepath.Join(baseDir, "myapp")
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
   app:
     build: "."
@@ -575,17 +573,17 @@ func TestDeployStack_DockerfileTrackedInHash(t *testing.T) {
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
-	stack := config.Stack{Name: "myapp", WorkingDir: workDir}
+	stack := config.Stack{Name: "myapp"}
 
 	// First deploy to populate state.
 	state := newEmptyState()
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error on first deploy: %v", err)
 	}
 	runner.calls = nil
 
 	// Second deploy with unchanged files — should be skipped.
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error on second deploy: %v", err)
 	}
 	if len(runner.calls) != 0 {
@@ -594,7 +592,7 @@ func TestDeployStack_DockerfileTrackedInHash(t *testing.T) {
 
 	// Modify the Dockerfile — third deploy should trigger.
 	writeFile(t, dockerfilePath, "FROM nginx:1.27\n")
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error on third deploy: %v", err)
 	}
 	assertCommandCalled(t, runner.calls, "build")
@@ -703,7 +701,7 @@ func TestParseEnvFile_MissingFileReturnsError(t *testing.T) {
 // --- event sink tests ---
 
 func TestDeployStack_EmitsDeployingAndSuccessEvents(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
@@ -712,10 +710,10 @@ func TestDeployStack_EmitsDeployingAndSuccessEvents(t *testing.T) {
 		emitted = append(emitted, e)
 	})
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -737,7 +735,7 @@ func TestDeployStack_EmitsDeployingAndSuccessEvents(t *testing.T) {
 }
 
 func TestDeployStack_EmitsSkippedEvent(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, workDir := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
@@ -746,7 +744,7 @@ func TestDeployStack_EmitsSkippedEvent(t *testing.T) {
 		emitted = append(emitted, e)
 	})
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 
 	hashes, err := computePerFileHashes(workDir, nil, nil, "", nil)
 	if err != nil {
@@ -757,7 +755,7 @@ func TestDeployStack_EmitsSkippedEvent(t *testing.T) {
 		Images: map[string]serviceImageByName{},
 	}
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -770,7 +768,7 @@ func TestDeployStack_EmitsSkippedEvent(t *testing.T) {
 }
 
 func TestDeployAllStacks_EmitsFailedEventOnError(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{errOnCommand: "pull"}
 	d := &Deployer{runner: runner, stateDir: t.TempDir()}
 
@@ -780,8 +778,9 @@ func TestDeployAllStacks_EmitsFailedEventOnError(t *testing.T) {
 	})
 
 	cfg := &config.Config{
-		RepoURL: "ssh://git@example.com/repo.git",
-		Stacks:  []config.Stack{{Name: "gitea", WorkingDir: workDir}},
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: baseDir,
+		Stacks:        []config.Stack{{Name: "gitea"}},
 	}
 
 	d.DeployAllStacks(context.Background(), cfg)
@@ -803,21 +802,21 @@ func TestDeployAllStacks_EmitsFailedEventOnError(t *testing.T) {
 }
 
 func TestDeployStack_NoEventsWithoutSink(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 	// No SetEventSink called — should not panic.
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestDeployStack_EventIDsAreMonotonic(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 	d.InitEventID(100)
@@ -827,10 +826,10 @@ func TestDeployStack_EventIDsAreMonotonic(t *testing.T) {
 		ids = append(ids, e.ID)
 	})
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -846,7 +845,7 @@ func TestDeployStack_EventIDsAreMonotonic(t *testing.T) {
 }
 
 func TestDeployStack_DeployingEventIncludesChangedFiles(t *testing.T) {
-	workDir := makeStackDir(t)
+	baseDir, _ := makeStackInBaseDir(t, "gitea")
 	runner := &recordingRunner{}
 	d := newDeployerWithRunner(runner)
 
@@ -857,10 +856,10 @@ func TestDeployStack_DeployingEventIncludesChangedFiles(t *testing.T) {
 		}
 	})
 
-	stack := config.Stack{Name: "gitea", WorkingDir: workDir}
+	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
 
-	if err := d.deployStackIfChanged(context.Background(), stack, "", "", nil, state); err != nil {
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -874,11 +873,21 @@ func TestDeployStack_DeployingEventIncludesChangedFiles(t *testing.T) {
 
 // --- helpers ---
 
-func makeStackDir(t *testing.T) string {
+// makeStackInBaseDir creates baseDir/<name>/docker-compose.yml and returns (baseDir, stackDir).
+func makeStackInBaseDir(t *testing.T, name string) (string, string) {
 	t.Helper()
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
-	return dir
+	return makeStackInBaseDirWithImage(t, name, "nginx:1.25")
+}
+
+func makeStackInBaseDirWithImage(t *testing.T, name, image string) (string, string) {
+	t.Helper()
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, name)
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage(image))
+	return baseDir, stackDir
 }
 
 func composeWithImage(image string) string {

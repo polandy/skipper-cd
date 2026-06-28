@@ -11,13 +11,9 @@ import (
 
 // Stack represents a single Docker Compose project to be deployed.
 type Stack struct {
-	// Name is a unique identifier for the stack. When working_dir is omitted,
-	// the working directory is derived as stacks_base_dir/<name>.
+	// Name is a unique identifier for the stack.
+	// The working directory is derived as stacks_base_dir/<name>.
 	Name string `yaml:"name"`
-
-	// WorkingDir is the absolute path to the directory containing docker-compose.yml.
-	// Optional when stacks_base_dir is set.
-	WorkingDir string `yaml:"working_dir"`
 
 	// EnvFiles lists KEY=VALUE files injected into the environment when docker-compose
 	// is invoked, enabling ${VAR} substitution inside docker-compose.yml.
@@ -34,11 +30,8 @@ type Stack struct {
 	OnDemandContainers []string `yaml:"on_demand_containers,omitempty"`
 }
 
-// WorkDir returns the effective working directory for this stack.
-func (s Stack) WorkDir(baseDir string) string {
-	if s.WorkingDir != "" {
-		return s.WorkingDir
-	}
+// Dir returns the working directory for this stack: stacks_base_dir/<name>.
+func (s Stack) Dir(baseDir string) string {
 	return filepath.Join(baseDir, s.Name)
 }
 
@@ -103,10 +96,8 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("repo_url is required")
 	}
 
-	for _, s := range cfg.Stacks {
-		if s.WorkingDir == "" && cfg.StacksBaseDir == "" {
-			return fmt.Errorf("stack %q: working_dir is required when stacks_base_dir is not set", s.Name)
-		}
+	if cfg.StacksBaseDir == "" {
+		return fmt.Errorf("stacks_base_dir is required")
 	}
 
 	return nil

@@ -151,7 +151,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 }
 
 func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state persistedState) error {
-	workDir := stack.WorkDir(baseDir)
+	workDir := stack.Dir(baseDir)
 	composePath := filepath.Join(workDir, "docker-compose.yml")
 
 	dockerfilePaths, err := extractDockerfilePaths(composePath, workDir)
@@ -224,7 +224,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 // logDiffsForChangedFiles logs the git diff for each changed file.
 // Skipped when no CommitReader is configured or no previous commit is known.
-// Files outside the repo directory (e.g. vars_file, working_dir stacks) are silently skipped.
+// Files outside the repo directory (e.g. vars_file) are silently skipped.
 func (d *Deployer) logDiffsForChangedFiles(ctx context.Context, changedFilePaths []string, lastDeployedCommit string) {
 	if d.commitReader == nil || lastDeployedCommit == "" {
 		return
