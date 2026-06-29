@@ -147,6 +147,116 @@ func TestSSEHandler_SetsCorrectHeaders(t *testing.T) {
 	}
 }
 
+func TestDiffHandler_ReturnsNotFoundForUnknownID(t *testing.T) {
+	history := events.NewHistory("")
+	history.Add(events.DeployEvent{ID: 1, Stack: "gitea"})
+
+	handler := DiffHandler(history)
+	req := httptest.NewRequest(http.MethodGet, "/api/events/999/diffs", nil)
+	req.SetPathValue("id", "999")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestDiffHandler_ReturnsDiffsForKnownEvent(t *testing.T) {
+	history := events.NewHistory("")
+	history.Add(events.DeployEvent{
+		ID:    1,
+		Stack: "gitea",
+		Diffs: map[string]string{"docker-compose.yml": "+new line"},
+	})
+
+	handler := DiffHandler(history)
+	req := httptest.NewRequest(http.MethodGet, "/api/events/1/diffs", nil)
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	ct := rec.Header().Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("expected application/json, got %q", ct)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "docker-compose.yml") {
+		t.Error("expected diff content in response")
+	}
+	if !strings.Contains(body, "+new line") {
+		t.Error("expected diff text in response")
+	}
+}
+
+func TestDiffHandler_ReturnsNullDiffsForEventWithoutDiffs(t *testing.T) {
+	history := events.NewHistory("")
+	history.Add(events.DeployEvent{ID: 1, Stack: "gitea"})
+
+	handler := DiffHandler(history)
+	req := httptest.NewRequest(http.MethodGet, "/api/events/1/diffs", nil)
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"diffs":null`) {
+		t.Errorf("expected null diffs, got %s", body)
+	}
+}
+
+func TestDiffHandler_InvalidID(t *testing.T) {
+	history := events.NewHistory("")
+	handler := DiffHandler(history)
+	req := httptest.NewRequest(http.MethodGet, "/api/events/abc/diffs", nil)
+	req.SetPathValue("id", "abc")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestSSEHandler_StripsDiffsFromStream(t *testing.T) {
+	broadcaster := events.NewBroadcaster()
+	history := events.NewHistory("")
+	history.Add(events.DeployEvent{
+		ID:    1,
+		Stack: "gitea",
+		Status: events.StatusSuccess,
+		Diffs: map[string]string{"file.yml": "+added"},
+	})
+
+	handler := SSEHandler(broadcaster, history)
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+	rec := httptest.NewRecorder()
+
+	go func() {
+		handler.ServeHTTP(rec, req)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "+added") {
+		t.Error("SSE stream should not contain diff content")
+	}
+	if !strings.Contains(body, `"has_diffs":true`) {
+		t.Error("SSE stream should contain has_diffs flag")
+	}
+}
+
 func TestWriteSSE_Format(t *testing.T) {
 	rec := httptest.NewRecorder()
 	evt := events.DeployEvent{

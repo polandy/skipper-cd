@@ -70,6 +70,18 @@ func (h *History) Events() []DeployEvent {
 	return out
 }
 
+// EventByID returns the event with the given ID, or false if not found.
+func (h *History) EventByID(id int64) (DeployEvent, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, e := range h.events {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return DeployEvent{}, false
+}
+
 // EventsAfterID returns events with ID > afterID, for SSE reconnection.
 func (h *History) EventsAfterID(afterID int64) []DeployEvent {
 	h.mu.RLock()

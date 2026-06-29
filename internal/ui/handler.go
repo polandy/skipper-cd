@@ -88,8 +88,31 @@ func SSEHandler(broadcaster *events.Broadcaster, history *events.History) http.H
 	})
 }
 
+// DiffHandler serves GET /api/events/{id}/diffs — returns the diff content
+// for a specific deploy event as JSON.
+func DiffHandler(history *events.History) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		idStr := r.PathValue("id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid event id", http.StatusBadRequest)
+			return
+		}
+		evt, ok := history.EventByID(id)
+		if !ok {
+			http.Error(w, "event not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"diffs": evt.Diffs,
+		})
+	})
+}
+
 func writeSSE(w http.ResponseWriter, evt events.DeployEvent) error {
-	data, err := json.Marshal(evt)
+	payload := evt.SSEPayload()
+	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}

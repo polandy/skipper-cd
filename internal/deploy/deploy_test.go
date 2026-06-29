@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1054,6 +1055,135 @@ func TestDeployStack_DeployingEventIncludesChangedFiles(t *testing.T) {
 	}
 	if len(deploying.ChangedFiles) == 0 {
 		t.Error("expected changed files in deploying event")
+	}
+}
+
+// --- collectDiffs tests ---
+
+type fakeCommitReader struct {
+	diffs map[string]string
+}
+
+func (f *fakeCommitReader) HeadCommitSHA(_ context.Context) (string, error) {
+	return "abc123", nil
+}
+
+func (f *fakeCommitReader) DiffSinceCommit(_ context.Context, _, filePath string) (string, error) {
+	if d, ok := f.diffs[filePath]; ok {
+		return d, nil
+	}
+	return "", nil
+}
+
+func TestCollectDiffs_ReturnsDiffs(t *testing.T) {
+	cr := &fakeCommitReader{
+		diffs: map[string]string{
+			"/repo/docker-compose.yml": "+new line\n-old line\n",
+		},
+	}
+	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+
+	diffs := d.collectDiffs(context.Background(), []string{"/repo/docker-compose.yml"}, "old-sha")
+
+	if diffs == nil {
+		t.Fatal("expected diffs to be returned")
+	}
+	if diffs["/repo/docker-compose.yml"] != "+new line\n-old line\n" {
+		t.Errorf("unexpected diff: %q", diffs["/repo/docker-compose.yml"])
+	}
+}
+
+func TestCollectDiffs_NilWithoutCommitReader(t *testing.T) {
+	d := &Deployer{runner: &recordingRunner{}, stateDir: t.TempDir()}
+	diffs := d.collectDiffs(context.Background(), []string{"file.yml"}, "old-sha")
+	if diffs != nil {
+		t.Error("expected nil diffs without commit reader")
+	}
+}
+
+func TestCollectDiffs_NilWithEmptyCommit(t *testing.T) {
+	cr := &fakeCommitReader{diffs: map[string]string{}}
+	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, stateDir: t.TempDir()}
+	diffs := d.collectDiffs(context.Background(), []string{"file.yml"}, "")
+	if diffs != nil {
+		t.Error("expected nil diffs with empty last deployed commit")
+	}
+}
+
+func TestCollectDiffs_TruncatesLargeDiff(t *testing.T) {
+	largeDiff := strings.Repeat("x", 12*1024)
+	cr := &fakeCommitReader{
+		diffs: map[string]string{"/repo/big.yml": largeDiff},
+	}
+	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+
+	diffs := d.collectDiffs(context.Background(), []string{"/repo/big.yml"}, "old-sha")
+
+	if diffs == nil {
+		t.Fatal("expected diffs")
+	}
+	if len(diffs["/repo/big.yml"]) > maxDiffPerFile+20 { // +20 for truncation message
+		t.Errorf("diff should be truncated, got %d bytes", len(diffs["/repo/big.yml"]))
+	}
+	if !strings.Contains(diffs["/repo/big.yml"], "truncated") {
+		t.Error("truncated diff should contain truncation marker")
+	}
+}
+
+func TestCollectDiffs_SkipsFilesOutsideRepo(t *testing.T) {
+	cr := &fakeCommitReader{
+		diffs: map[string]string{"/other/file.yml": "+diff"},
+	}
+	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+
+	diffs := d.collectDiffs(context.Background(), []string{"/other/file.yml"}, "old-sha")
+	if diffs != nil {
+		t.Error("expected nil for files outside repo")
+	}
+}
+
+func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{
+			filepath.Join(stackDir, "docker-compose.yml"): "+image: nginx:1.25\n",
+		},
+	}
+	runner := &recordingRunner{}
+	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+
+	var successEvt *events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Status == events.StatusSuccess {
+			successEvt = &e
+		}
+	})
+
+	stack := config.Stack{Name: "gitea"}
+	state := persistedState{
+		Stacks:              map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
+		Images:              map[string]serviceImageByName{},
+		LastDeployedCommit:  "old-sha",
+	}
+
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if successEvt == nil {
+		t.Fatal("expected success event")
+	}
+	if successEvt.Diffs == nil {
+		t.Fatal("expected diffs in success event")
+	}
+	if !strings.Contains(successEvt.Diffs[filepath.Join(stackDir, "docker-compose.yml")], "nginx:1.25") {
+		t.Error("expected diff content in success event")
 	}
 }
 

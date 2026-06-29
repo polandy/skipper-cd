@@ -479,6 +479,101 @@
     animation: expand 0.2s ease-out;
   }
 
+  /* ─── DIFF PANEL ─── */
+  .diff-panel {
+    padding: 0;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    animation: expand 0.2s ease-out;
+  }
+
+  .diff-file-section {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diff-file-section:last-child {
+    border-bottom: none;
+  }
+
+  .diff-file-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: rgba(148, 163, 184, 0.04);
+    cursor: pointer;
+    user-select: none;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 11px;
+    transition: background 0.15s;
+  }
+
+  .diff-file-header:hover {
+    background: rgba(148, 163, 184, 0.08);
+  }
+
+  .diff-file-header svg {
+    width: 10px;
+    height: 10px;
+    opacity: 0.5;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+
+  .diff-file-header.expanded svg {
+    transform: rotate(90deg);
+  }
+
+  .diff-content {
+    display: none;
+    padding: 0;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.6;
+    background: rgba(0, 0, 0, 0.2);
+  }
+
+  .diff-file-header.expanded + .diff-content {
+    display: block;
+  }
+
+  .diff-line {
+    padding: 0 14px;
+    display: block;
+  }
+
+  .diff-add {
+    background: rgba(45, 212, 191, 0.08);
+    color: var(--teal);
+  }
+
+  .diff-del {
+    background: rgba(248, 113, 113, 0.08);
+    color: var(--red);
+  }
+
+  .diff-hunk {
+    background: rgba(245, 158, 11, 0.06);
+    color: var(--amber);
+    font-weight: 500;
+  }
+
+  .diff-meta {
+    color: var(--text-muted);
+  }
+
+  .diff-loading {
+    padding: 12px 14px;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
   /* ─── SEPARATOR ─── */
   .sep {
     display: flex;
@@ -703,6 +798,58 @@
     return el;
   }
 
+  function classifyDiffLine(line) {
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ')) return 'diff-meta';
+    if (line.startsWith('@@')) return 'diff-hunk';
+    if (line.startsWith('+')) return 'diff-add';
+    if (line.startsWith('-')) return 'diff-del';
+    return '';
+  }
+
+  function renderDiffContent(diff) {
+    return diff.split('\n').map(function(line) {
+      var cls = classifyDiffLine(line);
+      return '<span class="diff-line' + (cls ? ' ' + cls : '') + '">' + escapeHtml(line) + '</span>';
+    }).join('\n');
+  }
+
+  function renderDiffPanel(diffs) {
+    var el = document.createElement('div');
+    el.className = 'diff-panel';
+    var files = Object.keys(diffs);
+    var singleFile = files.length === 1;
+    el.innerHTML = files.map(function(f) {
+      var name = f.split('/').pop() || f;
+      return '<div class="diff-file-section">' +
+        '<div class="diff-file-header' + (singleFile ? ' expanded' : '') + '">' +
+        '<svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>' +
+        '<span>' + escapeHtml(name) + '</span></div>' +
+        '<div class="diff-content">' + renderDiffContent(diffs[f]) + '</div>' +
+        '</div>';
+    }).join('');
+    return el;
+  }
+
+  var diffCache = {};
+
+  function fetchDiffs(eventId, callback) {
+    if (diffCache[eventId]) {
+      callback(diffCache[eventId]);
+      return;
+    }
+    fetch('/api/events/' + eventId + '/diffs')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (data && data.diffs) {
+          diffCache[eventId] = data.diffs;
+          callback(data.diffs);
+        } else {
+          callback(null);
+        }
+      })
+      .catch(function() { callback(null); });
+  }
+
   function escapeHtml(s) {
     var d = document.createElement('div');
     d.textContent = s;
@@ -724,6 +871,7 @@
     row.className = rowClass(evt.status, isHistory);
     row.dataset.stack = evt.stack;
     row.dataset.eventId = evt.id;
+    if (evt.has_diffs) row.dataset.hasDiffs = '1';
 
     var absTs = fullTime(evt.timestamp);
     var relTs = formatTime(evt.timestamp);
@@ -770,12 +918,17 @@
     if ((evt.status === 'success' || evt.status === 'failed') && deployingRows[evt.stack]) {
       var existing = deployingRows[evt.stack];
       existing.className = rowClass(evt.status, isHistory);
+      existing.dataset.eventId = evt.id;
+      if (evt.has_diffs) existing.dataset.hasDiffs = '1';
       existing.querySelector('.status-cell').innerHTML = badgeHTML(evt.status);
       existing.querySelector('.cell-duration').textContent = formatDuration(evt.duration_ms);
       var tc = existing.querySelector('.cell-time');
       tc.dataset.ts = evt.timestamp;
       tc.textContent = absoluteTime ? fullTime(evt.timestamp) : formatTime(evt.timestamp);
       tc.title = absoluteTime ? formatTime(evt.timestamp) : fullTime(evt.timestamp);
+      if (evt.changed_files && evt.changed_files.length > 0) {
+        existing.querySelector('.col-files').innerHTML = filesHTML(evt.changed_files);
+      }
       if (evt.error) {
         existing.after(createErrorDetail(evt));
       }
@@ -871,19 +1024,47 @@
 
   applySkipFilter();
 
-  // Files panel — open/close as full-width sibling below the row
+  // Files panel — open/close as full-width sibling below the row.
+  // When diffs are available, shows a diff panel; otherwise shows file list.
   tbody.addEventListener('click', function(e) {
+    // Handle diff file section collapse/expand
+    var fileHeader = e.target.closest('.diff-file-header');
+    if (fileHeader) {
+      fileHeader.classList.toggle('expanded');
+      return;
+    }
+
     var pill = e.target.closest('.files-pill');
     if (!pill) return;
     var row = pill.closest('.event-row');
     if (!row) return;
     var existing = row.nextElementSibling;
-    if (existing && existing.classList.contains('files-list')) {
+    if (existing && (existing.classList.contains('files-list') || existing.classList.contains('diff-panel'))) {
       existing.remove();
       return;
     }
-    var files = JSON.parse(pill.dataset.files);
-    row.after(createFilesPanel(files));
+
+    var eventId = row.dataset.eventId;
+    var hasDiffs = row.dataset.hasDiffs === '1';
+
+    if (hasDiffs && eventId) {
+      var loading = document.createElement('div');
+      loading.className = 'diff-panel';
+      loading.innerHTML = '<div class="diff-loading">Loading diffs...</div>';
+      row.after(loading);
+      fetchDiffs(eventId, function(diffs) {
+        if (loading.parentNode) loading.remove();
+        if (diffs && Object.keys(diffs).length > 0) {
+          row.after(renderDiffPanel(diffs));
+        } else {
+          var files = JSON.parse(pill.dataset.files);
+          row.after(createFilesPanel(files));
+        }
+      });
+    } else {
+      var files = JSON.parse(pill.dataset.files);
+      row.after(createFilesPanel(files));
+    }
   });
 
   connect();

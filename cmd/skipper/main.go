@@ -97,6 +97,7 @@ func startWebhookServer(cfg *config.Config, deployer *deploy.Deployer, timeout t
 	if broadcaster != nil {
 		mux.Handle("GET /{$}", ui.IndexHandler())
 		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, history))
+		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Port)

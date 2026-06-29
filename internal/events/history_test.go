@@ -131,6 +131,47 @@ func TestHistory_MissingFileIsOK(t *testing.T) {
 	}
 }
 
+func TestHistory_EventByID_Found(t *testing.T) {
+	h := NewHistory("")
+	h.Add(DeployEvent{ID: 1, Stack: "gitea", Status: StatusSuccess})
+	h.Add(DeployEvent{ID: 2, Stack: "traefik", Status: StatusFailed})
+
+	evt, ok := h.EventByID(2)
+	if !ok {
+		t.Fatal("expected event to be found")
+	}
+	if evt.Stack != "traefik" {
+		t.Errorf("expected stack 'traefik', got %q", evt.Stack)
+	}
+}
+
+func TestHistory_EventByID_NotFound(t *testing.T) {
+	h := NewHistory("")
+	h.Add(DeployEvent{ID: 1, Stack: "gitea"})
+
+	_, ok := h.EventByID(999)
+	if ok {
+		t.Error("expected event not to be found")
+	}
+}
+
+func TestHistory_EventByID_WithDiffs(t *testing.T) {
+	h := NewHistory("")
+	h.Add(DeployEvent{
+		ID:    1,
+		Stack: "gitea",
+		Diffs: map[string]string{"docker-compose.yml": "+new line"},
+	})
+
+	evt, ok := h.EventByID(1)
+	if !ok {
+		t.Fatal("expected event to be found")
+	}
+	if evt.Diffs == nil || evt.Diffs["docker-compose.yml"] != "+new line" {
+		t.Errorf("expected diffs to be preserved, got %v", evt.Diffs)
+	}
+}
+
 func TestHistory_EventsReturnsCopy(t *testing.T) {
 	h := NewHistory("")
 	h.Add(DeployEvent{ID: 1, Stack: "test"})

@@ -89,6 +89,43 @@ done:
 	}
 }
 
+func TestSSEPayload_StripsDiffsAndSetsHasDiffs(t *testing.T) {
+	evt := DeployEvent{
+		ID:     1,
+		Stack:  "gitea",
+		Status: StatusSuccess,
+		Diffs:  map[string]string{"docker-compose.yml": "+new line"},
+	}
+
+	payload := evt.SSEPayload()
+	if !payload.HasDiffs {
+		t.Error("expected HasDiffs to be true")
+	}
+	if payload.Diffs != nil {
+		t.Error("expected Diffs to be nil in SSE payload")
+	}
+	// Original event should be unchanged.
+	if evt.Diffs == nil || len(evt.Diffs) != 1 {
+		t.Error("original event Diffs should not be modified")
+	}
+}
+
+func TestSSEPayload_NoDiffs(t *testing.T) {
+	evt := DeployEvent{
+		ID:     2,
+		Stack:  "traefik",
+		Status: StatusDeploying,
+	}
+
+	payload := evt.SSEPayload()
+	if payload.HasDiffs {
+		t.Error("expected HasDiffs to be false when no diffs")
+	}
+	if payload.Diffs != nil {
+		t.Error("expected Diffs to be nil")
+	}
+}
+
 func TestBroadcaster_ConcurrentPubSub(t *testing.T) {
 	b := NewBroadcaster()
 

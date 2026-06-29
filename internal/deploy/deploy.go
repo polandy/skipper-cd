@@ -75,7 +75,7 @@ func (d *Deployer) InitEventID(startID int64) {
 	d.nextEventID.Store(startID)
 }
 
-func (d *Deployer) emit(status events.Status, stack string, duration time.Duration, errMsg string, changedFiles []string) {
+func (d *Deployer) emit(status events.Status, stack string, duration time.Duration, errMsg string, changedFiles []string, diffs map[string]string) {
 	if d.eventSink == nil {
 		return
 	}
@@ -87,6 +87,7 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		DurationMs:   duration.Milliseconds(),
 		Error:        errMsg,
 		ChangedFiles: changedFiles,
+		Diffs:        diffs,
 	})
 }
 
@@ -132,7 +133,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state); err != nil {
 			slog.Error("deploy failed", "stack", stack.Name, "err", err)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
-			d.emit(events.StatusFailed, stack.Name, time.Since(startTime), err.Error(), nil)
+			d.emit(events.StatusFailed, stack.Name, time.Since(startTime), err.Error(), nil, nil)
 		}
 	}
 
@@ -175,14 +176,14 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	if len(changed) == 0 {
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
-		d.emit(events.StatusSkipped, stack.Name, 0, "", nil)
+		d.emit(events.StatusSkipped, stack.Name, 0, "", nil, nil)
 		return nil
 	}
 
 	deployStart := time.Now()
-	d.emit(events.StatusDeploying, stack.Name, 0, "", changed)
+	d.emit(events.StatusDeploying, stack.Name, 0, "", changed, nil)
 	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", projectDir, "changed_files", changed)
-	d.logDiffsForChangedFiles(ctx, changed, state.LastDeployedCommit)
+	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
 	currentImages, err := extractComposeImages(composePath)
@@ -223,18 +224,26 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		state.Images[stack.Name] = currentImages
 	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
-	d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed)
+	d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs)
 	slog.Info("deploy complete", "stack", stack.Name)
 	return nil
 }
 
-// logDiffsForChangedFiles logs the git diff for each changed file.
-// Skipped when no CommitReader is configured or no previous commit is known.
-// Files outside the repo directory (e.g. vars_file, working_dir stacks) are silently skipped.
-func (d *Deployer) logDiffsForChangedFiles(ctx context.Context, changedFilePaths []string, lastDeployedCommit string) {
+const (
+	maxDiffPerFile = 10 * 1024 // 10 KB per file
+	maxDiffTotal   = 50 * 1024 // 50 KB total per event
+)
+
+// collectDiffs collects git diffs for each changed file and returns them
+// as a map of file path to diff content. Diffs are also logged to stdout
+// (preserving existing behavior). Large diffs are truncated.
+// Returns nil when no CommitReader is configured or no previous commit is known.
+func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, lastDeployedCommit string) map[string]string {
 	if d.commitReader == nil || lastDeployedCommit == "" {
-		return
+		return nil
 	}
+	result := make(map[string]string)
+	totalSize := 0
 	for _, filePath := range changedFilePaths {
 		if d.repoDir != "" && !strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(d.repoDir)) {
 			continue
@@ -244,11 +253,30 @@ func (d *Deployer) logDiffsForChangedFiles(ctx context.Context, changedFilePaths
 			slog.Warn("could not compute diff", "file", filePath, "err", err)
 			continue
 		}
-		if diff != "" {
-			slog.Info("file changed", "file", filePath)
-			fmt.Print(diff)
+		if diff == "" {
+			continue
 		}
+		slog.Info("file changed", "file", filePath)
+		fmt.Print(diff)
+
+		if len(diff) > maxDiffPerFile {
+			diff = diff[:maxDiffPerFile] + "\n... (truncated)"
+		}
+		if totalSize+len(diff) > maxDiffTotal {
+			remaining := maxDiffTotal - totalSize
+			if remaining > 0 {
+				diff = diff[:remaining] + "\n... (truncated)"
+			} else {
+				break
+			}
+		}
+		result[filePath] = diff
+		totalSize += len(diff)
 	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // runDockerCompose executes a docker compose command.

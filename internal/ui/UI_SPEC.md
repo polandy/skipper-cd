@@ -51,6 +51,7 @@ Rows are prepended (newest first) with a slide-in animation. Time cells show rel
 ### Expandable panels
 
 - **Files pill** — shown when `changed_files` is non-empty. Click inserts a full-width panel as a sibling element directly below the row (same pattern as the error detail panel). Clicking again removes the panel.
+- **Diff panel** — when `has_diffs` is `true` on the event, clicking the files pill fetches diffs from `GET /api/events/{id}/diffs` and renders a syntax-colored diff panel instead of the plain file list. Each file is a collapsible section (single-file diffs default to expanded). Diff lines are colored: additions (teal), deletions (red), hunk headers (amber), metadata (muted). Diffs are cached client-side after the first fetch.
 - **Error detail** — shown for `failed` events with an `error` field. Monospace, red-tinted, `pre-wrap`.
 
 ---
@@ -65,6 +66,14 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `success` / `failed` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
 | `success` / `failed` (no existing row) | New row created directly. |
 | `skipped` | New row created; hidden immediately if filter is active. |
+
+---
+
+## Diff API
+
+`GET /api/events/{id}/diffs` — returns `{"diffs": {"filepath": "diff content", ...}}` or `{"diffs": null}`. Returns 404 for unknown event IDs.
+
+Diffs are stored in `deploy-history.yaml` alongside events but are **not** included in SSE payloads (only `has_diffs: true` is sent). This keeps the real-time stream lightweight. Large diffs are truncated at 10 KB per file and 50 KB total per event.
 
 ---
 

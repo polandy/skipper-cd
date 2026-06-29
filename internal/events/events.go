@@ -19,13 +19,23 @@ const (
 
 // DeployEvent represents a single deployment status change.
 type DeployEvent struct {
-	ID           int64     `json:"id" yaml:"id"`
-	Timestamp    time.Time `json:"timestamp" yaml:"timestamp"`
-	Stack        string    `json:"stack" yaml:"stack"`
-	Status       Status    `json:"status" yaml:"status"`
-	DurationMs   int64     `json:"duration_ms,omitempty" yaml:"duration_ms,omitempty"`
-	Error        string    `json:"error,omitempty" yaml:"error,omitempty"`
-	ChangedFiles []string  `json:"changed_files,omitempty" yaml:"changed_files,omitempty"`
+	ID           int64             `json:"id" yaml:"id"`
+	Timestamp    time.Time         `json:"timestamp" yaml:"timestamp"`
+	Stack        string            `json:"stack" yaml:"stack"`
+	Status       Status            `json:"status" yaml:"status"`
+	DurationMs   int64             `json:"duration_ms,omitempty" yaml:"duration_ms,omitempty"`
+	Error        string            `json:"error,omitempty" yaml:"error,omitempty"`
+	ChangedFiles []string          `json:"changed_files,omitempty" yaml:"changed_files,omitempty"`
+	Diffs        map[string]string `json:"diffs,omitempty" yaml:"diffs,omitempty"`
+	HasDiffs     bool              `json:"has_diffs,omitempty" yaml:"-"`
+}
+
+// SSEPayload returns a copy suitable for SSE streaming: diffs are stripped
+// and HasDiffs is set so the UI knows diffs are available on demand.
+func (e DeployEvent) SSEPayload() DeployEvent {
+	e.HasDiffs = len(e.Diffs) > 0
+	e.Diffs = nil
+	return e
 }
 
 // Broadcaster fans out DeployEvents to all connected subscribers.
