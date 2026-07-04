@@ -80,3 +80,5 @@ Diffs are stored in `deploy-history.yaml` alongside events but are **not** inclu
 ## Responsive (≤ 700 px)
 
 Column header hidden. Rows collapse to 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden.
+
+Since the Files pill is not visible on mobile, tapping anywhere on a row (that has `changed_files`) triggers the files/diff panel instead. Rows with changed files get `cursor: pointer` on mobile. The toggle behaviour (tap again to close) is identical to the desktop pill behaviour.

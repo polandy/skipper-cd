@@ -670,6 +670,7 @@
     .status-cell { grid-column: 2; grid-row: 1; }
     .cell-duration { grid-column: 2; grid-row: 2; text-align: right; }
     .col-files { display: none; }
+    .event-row:has(.files-pill) { cursor: pointer; }
   }
 </style>
 </head>
@@ -1035,9 +1036,10 @@
     }
 
     var pill = e.target.closest('.files-pill');
-    if (!pill) return;
-    var row = pill.closest('.event-row');
+    var row = pill ? pill.closest('.event-row') : e.target.closest('.event-row');
     if (!row) return;
+    var pillEl = pill || row.querySelector('.files-pill');
+    if (!pillEl) return;
     var existing = row.nextElementSibling;
     if (existing && (existing.classList.contains('files-list') || existing.classList.contains('diff-panel'))) {
       existing.remove();
@@ -1057,12 +1059,12 @@
         if (diffs && Object.keys(diffs).length > 0) {
           row.after(renderDiffPanel(diffs));
         } else {
-          var files = JSON.parse(pill.dataset.files);
+          var files = JSON.parse(pillEl.dataset.files);
           row.after(createFilesPanel(files));
         }
       });
     } else {
-      var files = JSON.parse(pill.dataset.files);
+      var files = JSON.parse(pillEl.dataset.files);
       row.after(createFilesPanel(files));
     }
   });
