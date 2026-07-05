@@ -149,6 +149,10 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		} else {
 			currentHashes, _ := nixos.HashFiles(d.repoDir)
 			state.Stacks[nixosStateKey] = currentHashes
+			// Save state immediately — nixos-rebuild may have restarted
+			// the skipper-cd service, so we must persist before the
+			// process is potentially killed.
+			_ = saveDeployState(d.stateDir, state)
 			metrics.DeploysTriggered.WithLabelValues(nixosStateKey).Inc()
 			metrics.LastDeployTimestamp.WithLabelValues(nixosStateKey).Set(float64(time.Now().Unix()))
 			d.emit(events.StatusSuccess, nixosStateKey, time.Since(startTime), "", changed, nil)
