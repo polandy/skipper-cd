@@ -7,7 +7,7 @@
 <p align="center"><i>Simple, fast Docker Compose CD</i></p>
 <br>
 
-A lightweight Docker Compose CD tool that listens for push webhooks, maintains a local clone of a Git repository, and deploys changed Docker Compose stacks. Unchanged stacks are skipped automatically.
+A lightweight CD tool that listens for push webhooks, maintains a local clone of a Git repository, and deploys changed Docker Compose stacks. It can also trigger `nixos-rebuild switch` when `.nix` files or `flake.lock` change. Unchanged stacks are skipped automatically.
 
 Supported webhook signatures: **Gitea** (`X-Gitea-Signature`) and **GitHub/Forgejo** (`X-Hub-Signature-256`).
 
@@ -18,12 +18,13 @@ Supported webhook signatures: **Gitea** (`X-Gitea-Signature`) and **GitHub/Forge
 On each incoming webhook (or on startup), skipper-cd:
 
 1. Pulls the latest commits from the configured repository.
-2. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, and any `Dockerfile`s referenced by services with a `build:` section.
-3. Compares the current hashes against the hashes from the previous deployment.
-4. Skips stacks whose files have not changed.
-5. For changed stacks, runs `docker compose pull` (skipped when only non-image config changed), then `docker compose build --pull` (only when `build:` services are present), followed by `docker compose up -d --remove-orphans`.
-6. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
-7. Logs the git diff of each changed file (relative to the last deployed commit).
+2. **NixOS rebuild** (optional): If `nixos_rebuild` is configured, hashes all `*.nix` files and `flake.lock`. When any file has changed, runs `nixos-rebuild switch --flake <flake>`. If the rebuild fails, all subsequent Docker stack deploys are aborted.
+3. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, and any `Dockerfile`s referenced by services with a `build:` section.
+4. Compares the current hashes against the hashes from the previous deployment.
+5. Skips stacks whose files have not changed.
+6. For changed stacks, runs `docker compose pull` (skipped when only non-image config changed), then `docker compose build --pull` (only when `build:` services are present), followed by `docker compose up -d --remove-orphans`.
+7. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
+8. Logs the git diff of each changed file (relative to the last deployed commit).
 
 Concurrent webhook requests and the startup deploy are serialized by a deployment lock. If a deploy is already in progress, subsequent requests wait for it to finish before starting their own sync+deploy cycle.
 
@@ -59,6 +60,10 @@ stacks:
     working_dir: /etc/nixos/modules/nextcloud
     env_files:
       - /run/secrets/rendered/skipper/compose.env
+
+# Optional: trigger nixos-rebuild when .nix files or flake.lock change.
+nixos_rebuild:
+  flake: ".#nuc"
 ```
 
 ### Top-level Fields
@@ -75,6 +80,7 @@ stacks:
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz`. |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. |
 | `stacks` | list | yes | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). |
+| `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS Rebuild](#nixos-rebuild)). Omit the section entirely to disable. |
 
 ### Stack Fields
 
@@ -104,6 +110,19 @@ INTERNAL_IP=192.168.1.10
 3. Process environment (`os.Environ()`)
 
 The `vars_file` is included in hash tracking — any change to it triggers a redeploy of all stacks.
+
+### NixOS Rebuild
+
+The optional `nixos_rebuild` section triggers `nixos-rebuild switch` when any `*.nix` file or `flake.lock` in the repository changes. This closes the GitOps loop for NixOS configurations: a merged PR or Renovate automerge triggers a webhook, skipper-cd pulls the change and runs the rebuild automatically.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `enabled` | bool | no | `true` | Set to `false` to temporarily disable without removing the section. When the section is present and `enabled` is omitted, it defaults to `true`. Omitting the entire `nixos_rebuild` section disables the feature. |
+| `flake` | string | yes | — | Flake reference passed to `nixos-rebuild switch --flake <flake>` (e.g. `.#nuc`). |
+
+**Important:** The skipper-cd systemd service must run as root for `nixos-rebuild` to work. The NixOS rebuild runs **before** any Docker stack deployments. If the rebuild fails, all Docker stack deploys are aborted to prevent deploying against a potentially broken system.
+
+NixOS rebuild state is tracked under the reserved key `_nixos` in the [state file](#state-file) and appears in [Prometheus metrics](#prometheus-metrics) with the label `stack="_nixos"`.
 
 ## Prometheus Metrics
 

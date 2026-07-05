@@ -28,3 +28,10 @@ stacks:
     working_dir: /etc/nixos/modules/nextcloud
     env_files:
       - /run/secrets/rendered/skipper/compose.env
+
+# NixOS rebuild: triggered when any .nix file or flake.lock changes.
+# The skipper-cd systemd service must run as root for nixos-rebuild to work.
+# Omit this section entirely to disable NixOS rebuild.
+nixos_rebuild:
+  flake: ".#nuc"    # required; passed as: nixos-rebuild switch --flake <flake>
+  # enabled: false  # set to false to temporarily disable without removing the section

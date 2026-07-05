@@ -17,6 +17,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/metrics"
+	"github.com/polandy/skipper-cd/internal/nixos"
 )
 
 // CommitReader retrieves git commit information from the repository.
@@ -47,7 +48,10 @@ type Deployer struct {
 	nextEventID  atomic.Int64
 }
 
-const defaultStateDir = "/var/lib/skipper"
+const (
+	defaultStateDir = "/var/lib/skipper"
+	nixosStateKey   = "_nixos"
+)
 
 func NewDeployer() *Deployer {
 	return &Deployer{runner: ShellRunner{}, stateDir: defaultStateDir}
@@ -126,6 +130,30 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	if err != nil {
 		slog.Error("could not load deploy state, deploying all stacks", "err", err)
 		state = newEmptyState()
+	}
+
+	if cfg.NixOSRebuild.IsEnabled() {
+		startTime := time.Now()
+		nixRebuilder := nixos.New(d.runner)
+		changed, nixErr := nixRebuilder.RebuildIfChanged(ctx, d.repoDir, cfg.NixOSRebuild.Flake, state.Stacks[nixosStateKey])
+
+		if changed == nil && nixErr == nil {
+			metrics.DeploysSkipped.WithLabelValues(nixosStateKey).Inc()
+			d.emit(events.StatusSkipped, nixosStateKey, 0, "", nil, nil)
+		} else if nixErr != nil {
+			slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", nixErr)
+			metrics.DeployErrors.WithLabelValues(nixosStateKey).Inc()
+			d.emit(events.StatusFailed, nixosStateKey, time.Since(startTime), nixErr.Error(), changed, nil)
+			_ = saveDeployState(d.stateDir, state)
+			return
+		} else {
+			currentHashes, _ := nixos.HashFiles(d.repoDir)
+			state.Stacks[nixosStateKey] = currentHashes
+			metrics.DeploysTriggered.WithLabelValues(nixosStateKey).Inc()
+			metrics.LastDeployTimestamp.WithLabelValues(nixosStateKey).Set(float64(time.Now().Unix()))
+			d.emit(events.StatusSuccess, nixosStateKey, time.Since(startTime), "", changed, nil)
+			slog.Info("nixos-rebuild complete", "changed_files", changed)
+		}
 	}
 
 	for _, stack := range cfg.Stacks {

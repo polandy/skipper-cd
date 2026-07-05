@@ -73,6 +73,31 @@ type Config struct {
 	MetricsPort   int     `yaml:"metrics_port"`
 	UIEnabled     bool    `yaml:"ui_enabled"`
 	Stacks        []Stack `yaml:"stacks"`
+
+	// NixOSRebuild configures automatic nixos-rebuild when nix files change.
+	// Omit the section entirely to disable. When present without an explicit
+	// "enabled" key, it defaults to enabled.
+	NixOSRebuild *NixOSRebuild `yaml:"nixos_rebuild"`
+}
+
+// NixOSRebuild configures automatic NixOS rebuilds when .nix files or
+// flake.lock change in the repository.
+type NixOSRebuild struct {
+	Enabled *bool  `yaml:"enabled"` // nil = true when section present
+	Flake   string `yaml:"flake"`   // e.g. ".#nuc", required when enabled
+}
+
+// IsEnabled returns whether NixOS rebuild is enabled.
+// Section omitted → disabled. Section present without enabled key → enabled.
+// Explicit enabled value → that value.
+func (n *NixOSRebuild) IsEnabled() bool {
+	if n == nil {
+		return false
+	}
+	if n.Enabled == nil {
+		return true
+	}
+	return *n.Enabled
 }
 
 // Load reads and validates the configuration file at the given path.
@@ -109,6 +134,10 @@ func validateConfig(cfg *Config) error {
 		if s.WorkingDir == "" && cfg.StacksBaseDir == "" {
 			return fmt.Errorf("stack %q: working_dir is required when stacks_base_dir is not set", s.Name)
 		}
+	}
+
+	if cfg.NixOSRebuild.IsEnabled() && cfg.NixOSRebuild.Flake == "" {
+		return fmt.Errorf("nixos_rebuild.flake is required when nixos_rebuild is enabled")
 	}
 
 	return nil

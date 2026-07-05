@@ -1239,3 +1239,96 @@ func containsArg(args []string, target string) bool {
 	}
 	return false
 }
+
+// --- NixOS rebuild integration tests ---
+
+func TestDeployAllStacks_AbortsStacksWhenNixOSFails(t *testing.T) {
+	baseDir := t.TempDir()
+
+	// Create a nix file so nixos rebuild detects changes.
+	writeFile(t, filepath.Join(baseDir, "flake.nix"), "{ }")
+
+	// Create a docker stack that should NOT be deployed.
+	stackDir := filepath.Join(baseDir, "modules", "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	runner := &recordingRunner{errOnCommand: "switch"}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
+
+	enabled := true
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: filepath.Join(baseDir, "modules"),
+		Stacks:        []config.Stack{{Name: "gitea"}},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+	}
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	// nixos-rebuild should have been attempted.
+	nixosCalled := false
+	for _, c := range runner.calls {
+		if c.name == "nixos-rebuild" {
+			nixosCalled = true
+		}
+	}
+	if !nixosCalled {
+		t.Error("expected nixos-rebuild to be called")
+	}
+
+	// docker compose should NOT have been called since nixos-rebuild failed.
+	for _, c := range runner.calls {
+		if c.name == "docker" && containsArg(c.args, "compose") {
+			t.Error("expected docker compose NOT to be called after nixos-rebuild failure")
+			break
+		}
+	}
+}
+
+func TestDeployAllStacks_NixOSSuccessContinuesToDockerStacks(t *testing.T) {
+	baseDir := t.TempDir()
+
+	// Create a nix file so nixos rebuild detects changes.
+	writeFile(t, filepath.Join(baseDir, "flake.nix"), "{ }")
+
+	// Create a docker stack.
+	stackDir := filepath.Join(baseDir, "modules", "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	runner := &recordingRunner{}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
+
+	enabled := true
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: filepath.Join(baseDir, "modules"),
+		Stacks:        []config.Stack{{Name: "gitea"}},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+	}
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	// Both nixos-rebuild and docker compose should have been called.
+	nixosCalled := false
+	dockerCalled := false
+	for _, c := range runner.calls {
+		if c.name == "nixos-rebuild" {
+			nixosCalled = true
+		}
+		if c.name == "docker" && containsArg(c.args, "compose") {
+			dockerCalled = true
+		}
+	}
+	if !nixosCalled {
+		t.Error("expected nixos-rebuild to be called")
+	}
+	if !dockerCalled {
+		t.Error("expected docker compose to be called after successful nixos-rebuild")
+	}
+}

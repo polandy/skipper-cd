@@ -127,6 +127,66 @@ func TestStack_WorkDir_DerivedFromBaseDir(t *testing.T) {
 	}
 }
 
+func TestLoad_NixOSRebuild_OmittedSectionIsDisabled(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.NixOSRebuild.IsEnabled() {
+		t.Error("expected NixOSRebuild to be disabled when section is omitted")
+	}
+}
+
+func TestLoad_NixOSRebuild_EnabledWithFlake(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+nixos_rebuild:
+  flake: ".#nuc"
+`
+	cfg := loadFromString(t, content)
+
+	if !cfg.NixOSRebuild.IsEnabled() {
+		t.Error("expected NixOSRebuild to be enabled")
+	}
+	if cfg.NixOSRebuild.Flake != ".#nuc" {
+		t.Errorf("expected flake '.#nuc', got %q", cfg.NixOSRebuild.Flake)
+	}
+}
+
+func TestLoad_NixOSRebuild_ExplicitlyDisabled(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+nixos_rebuild:
+  enabled: false
+  flake: ".#nuc"
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.NixOSRebuild.IsEnabled() {
+		t.Error("expected NixOSRebuild to be disabled when enabled: false")
+	}
+}
+
+func TestLoad_NixOSRebuild_MissingFlakeErrors(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+nixos_rebuild: {}
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil {
+		t.Error("expected error when nixos_rebuild is enabled but flake is missing")
+	}
+}
+
 func loadFromString(t *testing.T, content string) *config.Config {
 	t.Helper()
 	cfg, err := loadStringToConfig(t, content)
