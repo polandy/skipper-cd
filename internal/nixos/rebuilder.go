@@ -67,7 +67,7 @@ func (r *Rebuilder) RebuildIfChanged(ctx context.Context, repoDir, flake string,
 		return nil, err
 	}
 
-	changed := diffHashes(currentHashes, prevHashes)
+	changed := DiffHashes(currentHashes, prevHashes)
 	if len(changed) == 0 {
 		return nil, nil
 	}
@@ -78,8 +78,16 @@ func (r *Rebuilder) RebuildIfChanged(ctx context.Context, repoDir, flake string,
 	return changed, nil
 }
 
-// diffHashes returns file paths that are new or changed compared to prev.
-func diffHashes(current, prev map[string]string) []string {
+// Rebuild runs `nixos-rebuild switch --flake <flake>` from repoDir.
+func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string) error {
+	if err := r.runner.Run(ctx, repoDir, nil, "nixos-rebuild", "switch", "--flake", flake); err != nil {
+		return fmt.Errorf("nixos-rebuild switch --flake %s: %w", flake, err)
+	}
+	return nil
+}
+
+// DiffHashes returns file paths that are new or changed compared to prev.
+func DiffHashes(current, prev map[string]string) []string {
 	var changed []string
 	for path, hash := range current {
 		if prev[path] != hash {

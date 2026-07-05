@@ -135,24 +135,28 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	if cfg.NixOSRebuild.IsEnabled() {
 		startTime := time.Now()
 		nixRebuilder := nixos.New(d.runner)
-		changed, nixErr := nixRebuilder.RebuildIfChanged(ctx, d.repoDir, cfg.NixOSRebuild.Flake, state.Stacks[nixosStateKey])
 
-		if changed == nil && nixErr == nil {
+		// Compute hashes before the rebuild. If nix files changed, persist
+		// the new hashes to state *before* running nixos-rebuild, because
+		// the rebuild may restart the skipper-cd service (killing this
+		// process). Pre-saving avoids a redundant rebuild on restart.
+		currentNixHashes, _ := nixos.HashFiles(d.repoDir)
+		changed := nixos.DiffHashes(currentNixHashes, state.Stacks[nixosStateKey])
+
+		if len(changed) == 0 {
 			metrics.DeploysSkipped.WithLabelValues(nixosStateKey).Inc()
 			d.emit(events.StatusSkipped, nixosStateKey, 0, "", nil, nil)
-		} else if nixErr != nil {
-			slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", nixErr)
-			metrics.DeployErrors.WithLabelValues(nixosStateKey).Inc()
-			d.emit(events.StatusFailed, nixosStateKey, time.Since(startTime), nixErr.Error(), changed, nil)
-			_ = saveDeployState(d.stateDir, state)
-			return
 		} else {
-			currentHashes, _ := nixos.HashFiles(d.repoDir)
-			state.Stacks[nixosStateKey] = currentHashes
-			// Save state immediately — nixos-rebuild may have restarted
-			// the skipper-cd service, so we must persist before the
-			// process is potentially killed.
+			state.Stacks[nixosStateKey] = currentNixHashes
 			_ = saveDeployState(d.stateDir, state)
+
+			nixErr := nixRebuilder.Rebuild(ctx, d.repoDir, cfg.NixOSRebuild.Flake)
+			if nixErr != nil {
+				slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", nixErr)
+				metrics.DeployErrors.WithLabelValues(nixosStateKey).Inc()
+				d.emit(events.StatusFailed, nixosStateKey, time.Since(startTime), nixErr.Error(), changed, nil)
+				return
+			}
 			metrics.DeploysTriggered.WithLabelValues(nixosStateKey).Inc()
 			metrics.LastDeployTimestamp.WithLabelValues(nixosStateKey).Set(float64(time.Now().Unix()))
 			d.emit(events.StatusSuccess, nixosStateKey, time.Since(startTime), "", changed, nil)
