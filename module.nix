@@ -22,6 +22,12 @@ in
       default = "/var/lib/skipper";
       description = "Directory for storing deploy state.";
     };
+
+    nixosRebuild = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether nixos_rebuild is configured in skipper.yml. Relaxes sandboxing so nixos-rebuild can run.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -31,7 +37,12 @@ in
       after = [ "docker.service" "network-online.target" ];
       requires = [ "docker.service" ];
 
-      path = [ pkgs.git pkgs.docker pkgs.docker-compose pkgs.docker-buildx ];
+      path = [ pkgs.git pkgs.docker pkgs.docker-compose pkgs.docker-buildx ]
+        ++ lib.optionals cfg.nixosRebuild [
+          pkgs.nixos-rebuild
+          pkgs.nix
+          pkgs.systemd
+        ];
 
       serviceConfig = {
         ExecStart = "${cfg.package}/bin/skipper -config ${cfg.configFile}";
@@ -47,11 +58,12 @@ in
         SupplementaryGroups = [ "docker" ];
 
         # Hardening
-        NoNewPrivileges = true;
+        NoNewPrivileges = !cfg.nixosRebuild;
         PrivateTmp = true;
-        ProtectSystem = "strict";
-        ProtectHome = true;
-        ReadWritePaths = [ cfg.stateDir ];
+        ProtectSystem = if cfg.nixosRebuild then "false" else "strict";
+        ProtectHome = if cfg.nixosRebuild then "read-only" else true;
+        ReadWritePaths = [ cfg.stateDir ]
+          ++ lib.optionals cfg.nixosRebuild [ "/nix" "/run" "/etc/NIXOS" ];
         ReadOnlyPaths = [ "/run/secrets" ];
       };
     };
