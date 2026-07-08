@@ -22,12 +22,31 @@ On each incoming webhook (or on startup), skipper-cd:
 3. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, and any `Dockerfile`s referenced by services with a `build:` section.
 4. Compares the current hashes against the hashes from the previous deployment.
 5. Skips stacks whose files have not changed.
-6. For changed stacks, runs `docker compose pull` (skipped when only non-image config changed), then `docker compose build --pull` (only when `build:` services are present), followed by `docker compose up -d --remove-orphans`.
+6. For changed stacks, runs `docker compose pull` for services with remote images only (services with `build:` and services sharing a locally-built image name are excluded), then `docker compose build --pull` (only when `build:` services are present), followed by `docker compose up -d --remove-orphans`.
 7. **Automatic rollback:** If `docker compose up` fails, skipper-cd retrieves the previous `docker-compose.yml` from the last deployed Git commit and runs `docker compose up -d` with it to restore containers. The deploy is marked as `rolled_back` in the UI and metrics. If no previous commit is available or the rollback itself fails, the deploy is marked as `failed`.
 8. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
 9. Logs the git diff of each changed file (relative to the last deployed commit).
 
 Concurrent webhook requests and the startup deploy are serialized by a deployment lock. If a deploy is already in progress, subsequent requests wait for it to finish before starting their own sync+deploy cycle.
+
+## Locally Built Images
+
+Services with a `build:` section are automatically detected. skipper-cd runs `docker compose build --pull` for them and excludes them from `docker compose pull`. If a build service also has an `image:` field (tagging the built image), any other service referencing that same image name is also excluded from pull — since the image is produced locally, not available on a registry.
+
+**Example:**
+
+```yaml
+services:
+  app:
+    build: "."
+    image: nextcloud:34-ghostscript  # locally built, tagged with this name
+  cron:
+    image: nextcloud:34-ghostscript  # uses the same locally-built image
+  db:
+    image: postgres:16-alpine        # remote image, pulled normally
+```
+
+In this example, `docker compose pull` runs only for `db`. The `app` service is excluded because it has `build:`, and `cron` is excluded because its image name matches the locally-built `nextcloud:34-ghostscript`.
 
 ## Configuration
 

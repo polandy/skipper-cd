@@ -46,6 +46,44 @@ func extractComposeImages(composePath string) (serviceImageByName, error) {
 	return images, nil
 }
 
+// extractPullableServices parses a docker-compose.yml and returns the names
+// of services whose images should be pulled from a registry. Services with a
+// build: field are excluded (they are built locally). Services whose image
+// name matches a locally-built image (from a build: service) are also excluded,
+// since that image won't exist on any registry.
+func extractPullableServices(composePath string) ([]string, error) {
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		return nil, fmt.Errorf("read compose file: %w", err)
+	}
+
+	var cf composeFile
+	if err := yaml.Unmarshal(data, &cf); err != nil {
+		return nil, fmt.Errorf("parse compose file: %w", err)
+	}
+
+	// Collect image names produced by build: services.
+	localImages := make(map[string]struct{})
+	for _, svc := range cf.Services {
+		if svc.BuildRaw != nil && svc.Image != "" {
+			localImages[svc.Image] = struct{}{}
+		}
+	}
+
+	var pullable []string
+	for name, svc := range cf.Services {
+		if svc.Image == "" || svc.BuildRaw != nil {
+			continue
+		}
+		if _, isLocal := localImages[svc.Image]; isLocal {
+			slog.Debug("skipping pull for service using locally-built image", "service", name, "image", svc.Image)
+			continue
+		}
+		pullable = append(pullable, name)
+	}
+	return pullable, nil
+}
+
 // extractDockerfilePaths parses a docker-compose.yml and returns the absolute paths of
 // all Dockerfiles referenced by services with a build: section. Both the string form
 // (build: ".") and the map form (build: {context: ".", dockerfile: "Dockerfile"}) are

@@ -809,6 +809,166 @@ func TestImagesChanged_NilPreviousIsChanged(t *testing.T) {
 	}
 }
 
+// --- extractPullableServices tests ---
+
+func TestExtractPullableServices_ExcludesBuildServices(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    build: "."
+    image: myapp:custom
+  db:
+    image: postgres:16-alpine
+  redis:
+    image: redis:7.2
+`)
+
+	pullable, err := extractPullableServices(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(pullable) != 2 {
+		t.Fatalf("expected 2 pullable services, got %d: %v", len(pullable), pullable)
+	}
+	if !slices.Contains(pullable, "db") {
+		t.Errorf("expected db in pullable services: %v", pullable)
+	}
+	if !slices.Contains(pullable, "redis") {
+		t.Errorf("expected redis in pullable services: %v", pullable)
+	}
+	if slices.Contains(pullable, "app") {
+		t.Errorf("build service app should not be pullable: %v", pullable)
+	}
+}
+
+func TestExtractPullableServices_ExcludesLocalImageConsumers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    build: "."
+    image: nextcloud:34-ghostscript
+  cron:
+    image: nextcloud:34-ghostscript
+  db:
+    image: postgres:16-alpine
+`)
+
+	pullable, err := extractPullableServices(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(pullable) != 1 {
+		t.Fatalf("expected 1 pullable service, got %d: %v", len(pullable), pullable)
+	}
+	if pullable[0] != "db" {
+		t.Errorf("expected only db to be pullable, got %v", pullable)
+	}
+}
+
+func TestExtractPullableServices_AllRemoteImages(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: nginx:1.25
+  db:
+    image: postgres:16-alpine
+`)
+
+	pullable, err := extractPullableServices(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(pullable) != 2 {
+		t.Fatalf("expected 2 pullable services, got %d: %v", len(pullable), pullable)
+	}
+}
+
+func TestExtractPullableServices_AllBuildServices(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    build: "."
+    image: myapp:latest
+  worker:
+    image: myapp:latest
+`)
+
+	pullable, err := extractPullableServices(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(pullable) != 0 {
+		t.Errorf("expected no pullable services, got %v", pullable)
+	}
+}
+
+func TestDeployStack_PullsOnlyRemoteServices(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "nextcloud")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), `services:
+  app:
+    build: "."
+    image: nextcloud:34-ghostscript
+  cron:
+    image: nextcloud:34-ghostscript
+  db:
+    image: postgres:16-alpine
+  redis:
+    image: redis:7.2
+`)
+	writeFile(t, filepath.Join(stackDir, "Dockerfile"), "FROM nextcloud:34\n")
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "nextcloud"}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find the pull command and verify it specifies service names.
+	var pullCall *runCall
+	for i, c := range runner.calls {
+		if containsArg(c.args, "pull") {
+			pullCall = &runner.calls[i]
+			break
+		}
+	}
+	if pullCall == nil {
+		t.Fatal("expected pull command to be called")
+	}
+
+	// pull should include db and redis but not app or cron.
+	if !containsArg(pullCall.args, "db") {
+		t.Errorf("expected db in pull args: %v", pullCall.args)
+	}
+	if !containsArg(pullCall.args, "redis") {
+		t.Errorf("expected redis in pull args: %v", pullCall.args)
+	}
+	if containsArg(pullCall.args, "app") {
+		t.Errorf("build service app should not be in pull args: %v", pullCall.args)
+	}
+	if containsArg(pullCall.args, "cron") {
+		t.Errorf("local image consumer cron should not be in pull args: %v", pullCall.args)
+	}
+
+	// Build should still be called.
+	assertCommandCalled(t, runner.calls, "build")
+}
+
 // --- parseEnvFile tests ---
 
 func TestParseEnvFile_ParsesKeyValuePairs(t *testing.T) {

@@ -237,8 +237,24 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}
 
 	if currentImages == nil || hasAnyImageChanged(currentImages, state.Images[stack.Name]) {
-		if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
-			return fmt.Errorf("docker compose pull: %w", err)
+		pullableServices, pullErr := extractPullableServices(composePath)
+		if pullErr != nil {
+			slog.Warn("could not determine pullable services, pulling all", "stack", stack.Name, "err", pullErr)
+			pullableServices = nil
+		}
+
+		if pullableServices == nil {
+			// Fallback: pull everything (couldn't parse compose file).
+			if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
+				return fmt.Errorf("docker compose pull: %w", err)
+			}
+		} else if len(pullableServices) > 0 {
+			pullArgs := append([]string{"pull", "--quiet"}, pullableServices...)
+			if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, pullArgs...); err != nil {
+				return fmt.Errorf("docker compose pull: %w", err)
+			}
+		} else {
+			slog.Info("skipping pull, all services use locally-built images", "stack", stack.Name)
 		}
 	} else {
 		slog.Info("skipping pull, no image changes", "stack", stack.Name)
