@@ -384,6 +384,14 @@ func (d *Deployer) rollbackStack(ctx context.Context, composePath, projectDir st
 	}
 	tmpFile.Close()
 
+	// When projectDir is empty, runDockerCompose uses filepath.Dir(composePath)
+	// as the working directory. Since composePath here is a temp file in /tmp/,
+	// we must explicitly set projectDir to the original compose file's directory.
+	rbProjectDir := projectDir
+	if rbProjectDir == "" {
+		rbProjectDir = filepath.Dir(composePath)
+	}
+
 	slog.Info("rolling back with previous compose file", "stack", stack.Name, "commit", state.LastDeployedCommit)
-	return d.runDockerCompose(ctx, tmpFile.Name(), projectDir, baseEnv, stack.EnvFiles, "up", "-d")
+	return d.runDockerCompose(ctx, tmpFile.Name(), rbProjectDir, baseEnv, stack.EnvFiles, "up", "-d")
 }
