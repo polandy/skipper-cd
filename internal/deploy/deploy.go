@@ -21,10 +21,12 @@ import (
 )
 
 // CommitReader retrieves git commit information from the repository.
-// It is used to log file diffs between the last deployed commit and HEAD.
+// It is used to log file diffs between the last deployed commit and HEAD,
+// and to retrieve old compose files for rollback.
 type CommitReader interface {
 	HeadCommitSHA(ctx context.Context) (string, error)
 	DiffSinceCommit(ctx context.Context, fromSHA, filePath string) (string, error)
+	FileAtCommit(ctx context.Context, commitSHA, filePath string) ([]byte, error)
 }
 
 // RepoSyncer abstracts the git sync operation so the deployer can
@@ -167,9 +169,15 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	for _, stack := range cfg.Stacks {
 		startTime := time.Now()
 		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state); err != nil {
-			slog.Error("deploy failed", "stack", stack.Name, "err", err)
+			duration := time.Since(startTime)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
-			d.emit(events.StatusFailed, stack.Name, time.Since(startTime), err.Error(), nil, nil)
+			if strings.Contains(err.Error(), "rolled back") {
+				slog.Warn("deploy failed but rolled back", "stack", stack.Name, "err", err)
+				d.emit(events.StatusRolledBack, stack.Name, duration, err.Error(), nil, nil)
+			} else {
+				slog.Error("deploy failed", "stack", stack.Name, "err", err)
+				d.emit(events.StatusFailed, stack.Name, duration, err.Error(), nil, nil)
+			}
 		}
 	}
 
@@ -245,7 +253,15 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	// --remove-orphans removes containers for services deleted from docker-compose.yml.
 	if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
-		return fmt.Errorf("docker compose up: %w", err)
+		slog.Error("docker compose up failed, attempting rollback", "stack", stack.Name, "err", err)
+
+		if rbErr := d.rollbackStack(ctx, composePath, projectDir, baseEnv, stack, state); rbErr != nil {
+			slog.Error("rollback failed", "stack", stack.Name, "err", rbErr)
+			return fmt.Errorf("docker compose up: %w (rollback also failed: %v)", err, rbErr)
+		}
+		slog.Info("rollback successful, old containers restored", "stack", stack.Name)
+		metrics.DeployRollbacks.WithLabelValues(stack.Name).Inc()
+		return fmt.Errorf("docker compose up: %w (rolled back to previous version)", err)
 	}
 
 	if len(stack.OnDemandContainers) > 0 {
@@ -341,4 +357,33 @@ func (d *Deployer) runDockerCompose(ctx context.Context, composePath, projectDir
 	composeArgs = append(composeArgs, args...)
 
 	return d.runner.Run(ctx, runDir, env, "docker", composeArgs...)
+}
+
+// rollbackStack restores containers to the previous compose file version after
+// a failed docker compose up. It retrieves the old compose file from git and
+// runs docker compose up with it.
+func (d *Deployer) rollbackStack(ctx context.Context, composePath, projectDir string, baseEnv []string, stack config.Stack, state persistedState) error {
+	if d.commitReader == nil || state.LastDeployedCommit == "" {
+		return fmt.Errorf("no previous commit available for rollback")
+	}
+
+	oldContent, err := d.commitReader.FileAtCommit(ctx, state.LastDeployedCommit, composePath)
+	if err != nil {
+		return fmt.Errorf("retrieve old compose file: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "skipper-rollback-*.yml")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(oldContent); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	slog.Info("rolling back with previous compose file", "stack", stack.Name, "commit", state.LastDeployedCommit)
+	return d.runDockerCompose(ctx, tmpFile.Name(), projectDir, baseEnv, stack.EnvFiles, "up", "-d")
 }

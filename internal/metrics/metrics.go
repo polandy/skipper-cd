@@ -40,4 +40,10 @@ var (
 		Name: "skipper_last_deploy_timestamp_seconds",
 		Help: "Unix timestamp of the last successful deploy per stack.",
 	}, []string{"stack"})
+
+	// DeployRollbacks counts successful rollbacks after failed deploys per stack.
+	DeployRollbacks = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "skipper_deploy_rollbacks_total",
+		Help: "Total number of successful rollbacks after failed deploys per stack.",
+	}, []string{"stack"})
 )

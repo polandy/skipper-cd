@@ -23,8 +23,9 @@ On each incoming webhook (or on startup), skipper-cd:
 4. Compares the current hashes against the hashes from the previous deployment.
 5. Skips stacks whose files have not changed.
 6. For changed stacks, runs `docker compose pull` (skipped when only non-image config changed), then `docker compose build --pull` (only when `build:` services are present), followed by `docker compose up -d --remove-orphans`.
-7. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
-8. Logs the git diff of each changed file (relative to the last deployed commit).
+7. **Automatic rollback:** If `docker compose up` fails, skipper-cd retrieves the previous `docker-compose.yml` from the last deployed Git commit and runs `docker compose up -d` with it to restore containers. The deploy is marked as `rolled_back` in the UI and metrics. If no previous commit is available or the rollback itself fails, the deploy is marked as `failed`.
+8. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
+9. Logs the git diff of each changed file (relative to the last deployed commit).
 
 Concurrent webhook requests and the startup deploy are serialized by a deployment lock. If a deploy is already in progress, subsequent requests wait for it to finish before starting their own sync+deploy cycle.
 
@@ -134,6 +135,7 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint:
 | `skipper_deploys_triggered_total` | counter | Total number of stack deploys triggered, labelled by `stack`. |
 | `skipper_deploys_skipped_total` | counter | Total number of stack deploys skipped (no changes), labelled by `stack`. |
 | `skipper_deploy_errors_total` | counter | Total number of failed deploys, labelled by `stack`. |
+| `skipper_deploy_rollbacks_total` | counter | Total number of successful rollbacks after failed deploys, labelled by `stack`. |
 | `skipper_last_deploy_timestamp` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |
 
 ## Docker

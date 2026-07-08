@@ -11,10 +11,11 @@ import (
 type Status string
 
 const (
-	StatusDeploying Status = "deploying"
-	StatusSuccess   Status = "success"
-	StatusFailed    Status = "failed"
-	StatusSkipped   Status = "skipped"
+	StatusDeploying  Status = "deploying"
+	StatusSuccess    Status = "success"
+	StatusFailed     Status = "failed"
+	StatusSkipped    Status = "skipped"
+	StatusRolledBack Status = "rolled_back"
 )
 
 // DeployEvent represents a single deployment status change.

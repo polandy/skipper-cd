@@ -13,6 +13,7 @@ Nautical-industrial dark theme. Key colour tokens:
 | `--amber` | `#f59e0b` | Active deploy, brand accent |
 | `--teal` | `#2dd4bf` | Success, connected |
 | `--red` | `#f87171` | Failed, error |
+| `--orange` | `#fb923c` | Rolled back |
 | `--slate` | `#64748b` | Skipped |
 
 Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). Background: deep navy (`#060a14`) with subtle grid overlay and amber radial glow at top centre.
@@ -46,6 +47,7 @@ Rows are prepended (newest first) with a slide-in animation. Time cells show rel
 | `deploying` | amber | Animated spinner dot |
 | `success` | teal | |
 | `failed` | red | Error panel expanded below row |
+| `rolled_back` | orange | Deploy failed but old containers restored; error panel shows details |
 | `skipped` | slate | 35 % opacity row; hidden when filter active |
 
 ### Expandable panels
@@ -63,8 +65,8 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | Transition | Behaviour |
 |---|---|
 | `deploying` | New row prepended, tracked in memory. |
-| `success` / `failed` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
-| `success` / `failed` (no existing row) | New row created directly. |
+| `success` / `failed` / `rolled_back` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
+| `success` / `failed` / `rolled_back` (no existing row) | New row created directly. |
 | `skipped` | New row created; hidden immediately if filter is active. |
 
 ---

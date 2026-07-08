@@ -28,6 +28,8 @@
     --red-dim: rgba(248, 113, 113, 0.10);
     --slate: #64748b;
     --slate-dim: rgba(100, 116, 139, 0.10);
+    --orange: #fb923c;
+    --orange-dim: rgba(251, 146, 60, 0.12);
     --font-display: 'DM Sans', sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
     --radius: 8px;
@@ -317,6 +319,22 @@
     border-radius: 0 2px 2px 0;
   }
 
+  .event-row.rolled_back-row {
+    background: var(--orange-dim);
+  }
+
+  .event-row.rolled_back-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--orange);
+    border-radius: 0 2px 2px 0;
+  }
+
   .event-row.success-row::before {
     content: '';
     position: absolute;
@@ -397,6 +415,12 @@
     background: var(--amber-dim);
     color: var(--amber);
     border: 1px solid rgba(245, 158, 11, 0.15);
+  }
+
+  .badge-rolled_back {
+    background: var(--orange-dim);
+    color: var(--orange);
+    border: 1px solid rgba(251, 146, 60, 0.15);
   }
 
   .spinner {
@@ -777,7 +801,8 @@
   function badgeHTML(status) {
     var cls = 'badge badge-' + status;
     if (status === 'deploying') return '<span class="' + cls + '"><span class="spinner"></span>deploying</span>';
-    return '<span class="' + cls + '">' + status + '</span>';
+    var label = status === 'rolled_back' ? 'rolled back' : status;
+    return '<span class="' + cls + '">' + label + '</span>';
   }
 
   function filesHTML(files) {
@@ -863,6 +888,7 @@
     if (status === 'deploying') cls += ' deploying-row';
     if (status === 'failed') cls += ' failed-row';
     if (status === 'success') cls += ' success-row';
+    if (status === 'rolled_back') cls += ' rolled_back-row';
     if (!isHistory) cls += ' new-row';
     return cls;
   }

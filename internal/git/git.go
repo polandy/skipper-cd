@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/polandy/skipper-cd/internal/command"
@@ -81,6 +82,19 @@ func (r *RepoReader) HeadCommitSHA(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// FileAtCommit returns the contents of a file at a specific git commit.
+func (r *RepoReader) FileAtCommit(ctx context.Context, commitSHA, filePath string) ([]byte, error) {
+	relPath, err := filepath.Rel(r.repoDir, filePath)
+	if err != nil {
+		return nil, fmt.Errorf("make relative path: %w", err)
+	}
+	output, err := exec.CommandContext(ctx, "git", "-C", r.repoDir, "show", commitSHA+":"+relPath).Output()
+	if err != nil {
+		return nil, fmt.Errorf("git show %s:%s: %w", commitSHA, relPath, err)
+	}
+	return output, nil
 }
 
 // DiffSinceCommit returns the git diff of a file between fromSHA and HEAD.
