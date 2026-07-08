@@ -18,10 +18,10 @@ const defaultRepoDir = "/var/lib/skipper/repo"
 
 // RepoSync keeps a local clone of a remote Git repository up to date.
 type RepoSync struct {
-	runner   command.Runner
-	repoURL  string
+	runner  command.Runner
+	repoURL string
 	repoDir string
-	branch   string
+	branch  string
 }
 
 func NewRepoSync(repoURL, repoDir, branch string) *RepoSync {

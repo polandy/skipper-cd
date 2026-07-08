@@ -232,10 +232,10 @@ func TestSSEHandler_StripsDiffsFromStream(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")
 	history.Add(events.DeployEvent{
-		ID:    1,
-		Stack: "gitea",
+		ID:     1,
+		Stack:  "gitea",
 		Status: events.StatusSuccess,
-		Diffs: map[string]string{"file.yml": "+added"},
+		Diffs:  map[string]string{"file.yml": "+added"},
 	})
 
 	handler := SSEHandler(broadcaster, history)

@@ -1340,9 +1340,9 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 
 	stack := config.Stack{Name: "gitea"}
 	state := persistedState{
-		Stacks:              map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
-		Images:              map[string]serviceImageByName{},
-		LastDeployedCommit:  "old-sha",
+		Stacks:             map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
 	}
 
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {

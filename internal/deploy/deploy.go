@@ -41,9 +41,9 @@ type RepoSyncer interface {
 type Deployer struct {
 	runner       Runner
 	commitReader CommitReader // nil disables diff logging
-	syncer       RepoSyncer  // nil when using DeployAllStacks directly
-	repoDir      string      // used to skip diff for files outside the repo
-	stateDir     string      // directory for state.yaml persistence
+	syncer       RepoSyncer   // nil when using DeployAllStacks directly
+	repoDir      string       // used to skip diff for files outside the repo
+	stateDir     string       // directory for state.yaml persistence
 	timeout      time.Duration
 	mu           sync.Mutex
 	eventSink    func(events.DeployEvent) // nil = no event tracking
