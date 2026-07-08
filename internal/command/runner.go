@@ -1,3 +1,5 @@
+// Package command provides a Runner abstraction over os/exec so that
+// callers can inject fake implementations in tests.
 package command
 
 import (
