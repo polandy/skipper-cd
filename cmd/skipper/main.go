@@ -109,7 +109,7 @@ func metricsMux() *http.ServeMux {
 func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster, history *events.History) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
-	mux.HandleFunc("GET /healthz", respondOK)
+	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
 
 	if broadcaster != nil {
 		mux.Handle("GET /{$}", ui.IndexHandler())
@@ -137,7 +137,15 @@ func startServer(name string, port int, mux *http.ServeMux) *http.Server {
 	return srv
 }
 
-func respondOK(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintln(w, "ok")
+// healthzHandler reports 200 while the last repository sync succeeded (or
+// none ran yet) and 503 with the sync error otherwise.
+func healthzHandler(deployer *deploy.Deployer) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if err := deployer.Health(); err != nil {
+			http.Error(w, "last repository sync failed: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintln(w, "ok")
+	}
 }

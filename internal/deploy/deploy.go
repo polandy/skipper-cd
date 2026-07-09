@@ -54,6 +54,12 @@ type Deployer struct {
 	mu           sync.Mutex
 	eventSink    func(events.DeployEvent) // nil = no event tracking
 	nextEventID  atomic.Int64
+	lastSyncErr  atomic.Pointer[syncOutcome] // nil until the first run
+}
+
+// syncOutcome records the result of the most recent repository sync.
+type syncOutcome struct {
+	err error // nil on success
 }
 
 const (
@@ -115,10 +121,23 @@ func (d *Deployer) SyncAndDeployAll(ctx context.Context, cfg *config.Config) {
 	if d.syncer != nil {
 		if err := d.syncer.Sync(ctx); err != nil {
 			slog.Error("git sync failed, aborting deploy", "err", err)
+			d.lastSyncErr.Store(&syncOutcome{err: err})
 			return
 		}
 	}
+	d.lastSyncErr.Store(&syncOutcome{})
 	d.DeployAllStacks(ctx, cfg)
+}
+
+// Health reports the outcome of the most recent repository sync: nil while
+// no run has happened yet (still starting up) or when the last sync
+// succeeded, and the sync error otherwise. Individual stack failures do not
+// make the service unhealthy — they are reported per stack via events.
+func (d *Deployer) Health() error {
+	if outcome := d.lastSyncErr.Load(); outcome != nil {
+		return outcome.err
+	}
+	return nil
 }
 
 // WaitIdle blocks until no deploy run is in progress. It is used during

@@ -39,11 +39,12 @@ func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name st
 // fakeRepoSyncer implements RepoSyncer for tests.
 type fakeRepoSyncer struct {
 	called atomic.Int32
+	err    error // returned from every Sync call
 }
 
 func (f *fakeRepoSyncer) Sync(_ context.Context) error {
 	f.called.Add(1)
-	return nil
+	return f.err
 }
 
 type fakeCommitReader struct {

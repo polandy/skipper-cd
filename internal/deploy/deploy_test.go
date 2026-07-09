@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -472,6 +473,43 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	// Both goroutines ran sync — they should not have overlapped.
 	if syncer.called.Load() != 2 {
 		t.Errorf("expected syncer to be called 2 times, got %d", syncer.called.Load())
+	}
+}
+
+func TestHealth_NilBeforeFirstRun(t *testing.T) {
+	d := newDeployerWithRunner(&recordingRunner{})
+	if err := d.Health(); err != nil {
+		t.Errorf("expected healthy before first run, got %v", err)
+	}
+}
+
+func TestHealth_ReportsFailedSync(t *testing.T) {
+	syncer := &fakeRepoSyncer{err: errors.New("remote unreachable")}
+	d := &Deployer{runner: &recordingRunner{}, syncer: syncer, stateDir: t.TempDir()}
+	cfg := &config.Config{RepoURL: "ssh://git@example.com/repo.git", StacksBaseDir: t.TempDir()}
+
+	d.SyncAndDeployAll(context.Background(), cfg)
+
+	if err := d.Health(); err == nil {
+		t.Error("expected Health to report the sync failure")
+	}
+}
+
+func TestHealth_RecoversAfterSuccessfulRun(t *testing.T) {
+	syncer := &fakeRepoSyncer{err: errors.New("remote unreachable")}
+	d := &Deployer{runner: &recordingRunner{}, syncer: syncer, stateDir: t.TempDir()}
+	cfg := &config.Config{RepoURL: "ssh://git@example.com/repo.git", StacksBaseDir: t.TempDir()}
+
+	d.SyncAndDeployAll(context.Background(), cfg)
+	if err := d.Health(); err == nil {
+		t.Fatal("expected Health to report the sync failure")
+	}
+
+	syncer.err = nil
+	d.SyncAndDeployAll(context.Background(), cfg)
+
+	if err := d.Health(); err != nil {
+		t.Errorf("expected healthy after successful run, got %v", err)
 	}
 }
 
