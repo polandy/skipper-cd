@@ -4,7 +4,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -34,14 +33,6 @@ type Stack struct {
 	// Use this for containers managed by an on-demand scheduler:
 	// the scheduler will start them again on the next incoming request.
 	OnDemandContainers []string `yaml:"on_demand_containers,omitempty"`
-}
-
-// WorkDir returns the effective working directory for this stack.
-func (s Stack) WorkDir(baseDir string) string {
-	if s.WorkingDir != "" {
-		return s.WorkingDir
-	}
-	return filepath.Join(baseDir, s.Name)
 }
 
 // Config holds the full skipper-cd configuration.

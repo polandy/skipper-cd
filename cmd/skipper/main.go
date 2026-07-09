@@ -45,7 +45,7 @@ func main() {
 	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch)
 	repoReader := git.NewRepoReader(repoSync.RepoDir())
 	stateDir := filepath.Dir(repoSync.RepoDir())
-	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir, timeout)
+	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir)
 
 	var (
 		broadcaster *events.Broadcaster

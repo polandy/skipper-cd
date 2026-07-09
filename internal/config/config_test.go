@@ -108,25 +108,6 @@ stacks:
 	}
 }
 
-func TestStack_WorkDir_ExplicitOverridesBaseDir(t *testing.T) {
-	s := config.Stack{
-		Name:       "gitea",
-		WorkingDir: "/custom/gitea",
-	}
-	got := s.WorkDir("/var/lib/skipper/repo/modules")
-	if got != "/custom/gitea" {
-		t.Errorf("expected /custom/gitea, got %s", got)
-	}
-}
-
-func TestStack_WorkDir_DerivedFromBaseDir(t *testing.T) {
-	s := config.Stack{Name: "gitea"}
-	got := s.WorkDir("/var/lib/skipper/repo/modules")
-	if got != "/var/lib/skipper/repo/modules/gitea" {
-		t.Errorf("expected /var/lib/skipper/repo/modules/gitea, got %s", got)
-	}
-}
-
 func TestLoad_NixOSRebuild_OmittedSectionIsDisabled(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git

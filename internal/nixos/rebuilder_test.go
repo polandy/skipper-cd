@@ -103,46 +103,15 @@ func TestHashFiles_SkipsGitDirectory(t *testing.T) {
 	}
 }
 
-// --- RebuildIfChanged tests ---
+// --- Rebuild tests ---
 
-func TestRebuildIfChanged_SkipsWhenUnchanged(t *testing.T) {
+func TestRebuild_RunsNixosRebuildSwitch(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "flake.nix"), "{ }")
-
 	runner := &recordingRunner{}
 	r := New(runner)
 
-	prevHashes, err := HashFiles(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	changed, err := r.RebuildIfChanged(context.Background(), dir, ".#nuc", prevHashes)
-	if err != nil {
+	if err := r.Rebuild(context.Background(), dir, ".#nuc"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if changed != nil {
-		t.Errorf("expected nil changed files, got %v", changed)
-	}
-	if len(runner.calls) != 0 {
-		t.Errorf("expected no commands, got %d", len(runner.calls))
-	}
-}
-
-func TestRebuildIfChanged_RunsWhenChanged(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "flake.nix"), "{ }")
-
-	runner := &recordingRunner{}
-	r := New(runner)
-
-	// Empty prevHashes → everything is new.
-	changed, err := r.RebuildIfChanged(context.Background(), dir, ".#nuc", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(changed) == 0 {
-		t.Fatal("expected changed files")
 	}
 	if len(runner.calls) != 1 {
 		t.Fatalf("expected 1 command, got %d", len(runner.calls))
@@ -163,58 +132,33 @@ func TestRebuildIfChanged_RunsWhenChanged(t *testing.T) {
 	}
 }
 
-func TestRebuildIfChanged_ReturnsErrorOnFailure(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "flake.nix"), "{ }")
-
+func TestRebuild_ReturnsErrorOnFailure(t *testing.T) {
 	runner := &recordingRunner{errOnCommand: "switch"}
 	r := New(runner)
 
-	changed, err := r.RebuildIfChanged(context.Background(), dir, ".#nuc", nil)
-	if err == nil {
+	if err := r.Rebuild(context.Background(), t.TempDir(), ".#nuc"); err == nil {
 		t.Fatal("expected error when nixos-rebuild fails")
-	}
-	if len(changed) == 0 {
-		t.Error("expected changed files even on error")
 	}
 }
 
-func TestRebuildIfChanged_ReturnsChangedFiles(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "flake.nix"), "{ }")
-	writeFile(t, filepath.Join(dir, "flake.lock"), "{}")
+// --- DiffHashes tests ---
 
-	runner := &recordingRunner{}
-	r := New(runner)
-
-	// Start with only flake.nix hashed.
-	prevHashes := map[string]string{
-		filepath.Join(dir, "flake.nix"): "stale-hash",
+func TestDiffHashes_NoneWhenEqual(t *testing.T) {
+	hashes := map[string]string{"/repo/flake.nix": "abc"}
+	if changed := DiffHashes(hashes, hashes); changed != nil {
+		t.Errorf("expected no changed files, got %v", changed)
 	}
+}
 
-	changed, err := r.RebuildIfChanged(context.Background(), dir, ".#nuc", prevHashes)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestDiffHashes_DetectsChangedAndNewFiles(t *testing.T) {
+	current := map[string]string{
+		"/repo/flake.nix":  "new-hash",
+		"/repo/flake.lock": "lock-hash",
 	}
+	prev := map[string]string{"/repo/flake.nix": "stale-hash"}
 
-	// Both flake.nix (changed hash) and flake.lock (new file) should be in the list.
+	changed := DiffHashes(current, prev)
 	if len(changed) != 2 {
-		t.Fatalf("expected 2 changed files, got %d: %v", len(changed), changed)
-	}
-
-	hasFlakeNix, hasFlakeLock := false, false
-	for _, f := range changed {
-		if f == filepath.Join(dir, "flake.nix") {
-			hasFlakeNix = true
-		}
-		if f == filepath.Join(dir, "flake.lock") {
-			hasFlakeLock = true
-		}
-	}
-	if !hasFlakeNix {
-		t.Error("expected flake.nix in changed files")
-	}
-	if !hasFlakeLock {
-		t.Error("expected flake.lock in changed files")
+		t.Fatalf("expected 2 changed files (modified + new), got %d: %v", len(changed), changed)
 	}
 }

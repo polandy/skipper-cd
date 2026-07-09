@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -480,7 +481,7 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	runner := &recordingRunner{delay: 10 * time.Millisecond}
 	syncer := &fakeRepoSyncer{}
 
-	d := &Deployer{runner: runner, syncer: syncer, stateDir: t.TempDir(), timeout: 10 * time.Second}
+	d := &Deployer{runner: runner, syncer: syncer, stateDir: t.TempDir()}
 
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
@@ -509,6 +510,32 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	// Both goroutines ran sync — they should not have overlapped.
 	if syncer.called.Load() != 2 {
 		t.Errorf("expected syncer to be called 2 times, got %d", syncer.called.Load())
+	}
+}
+
+func TestSaveDeployState_RoundTripsAndLeavesNoTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	state := newEmptyState()
+	state.Stacks["mystack"] = stackFileHashes{"file": "hash"}
+
+	if err := saveDeployState(dir, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != stateFileName {
+		t.Errorf("expected only %s in state dir, got %v", stateFileName, entries)
+	}
+
+	loaded, err := loadPersistedDeployState(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if loaded.Stacks["mystack"]["file"] != "hash" {
+		t.Errorf("expected round-tripped state, got %+v", loaded)
 	}
 }
 
@@ -1454,8 +1481,8 @@ func TestDeployStack_RollbackSucceeds(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from failed deploy")
 	}
-	if !strings.Contains(err.Error(), "rolled back to previous version") {
-		t.Errorf("expected 'rolled back to previous version' in error, got: %s", err.Error())
+	if !errors.Is(err, ErrRolledBack) {
+		t.Errorf("expected error wrapping ErrRolledBack, got: %s", err.Error())
 	}
 
 	// State should NOT be updated (the deploy failed).

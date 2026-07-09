@@ -5,6 +5,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -35,6 +36,11 @@ type RepoSyncer interface {
 	Sync(ctx context.Context) error
 }
 
+// ErrRolledBack marks a failed deploy whose stack was successfully rolled
+// back to the previous compose file version. DeployAllStacks checks it with
+// errors.Is to emit a rolled_back (instead of failed) event.
+var ErrRolledBack = errors.New("rolled back to previous version")
+
 // Deployer orchestrates deployments for all configured stacks.
 // Inject a custom Runner to replace real docker/git calls in tests.
 // Optionally inject a CommitReader to enable diff logging on deploy.
@@ -44,7 +50,6 @@ type Deployer struct {
 	syncer       RepoSyncer   // nil when using DeployAllStacks directly
 	repoDir      string       // used to skip diff for files outside the repo
 	stateDir     string       // directory for state.yaml persistence
-	timeout      time.Duration
 	mu           sync.Mutex
 	eventSink    func(events.DeployEvent) // nil = no event tracking
 	nextEventID  atomic.Int64
@@ -59,11 +64,11 @@ func NewDeployer() *Deployer {
 	return &Deployer{runner: ShellRunner{}, stateDir: defaultStateDir}
 }
 
-func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, repoDir, stateDir string, timeout time.Duration) *Deployer {
+func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, repoDir, stateDir string) *Deployer {
 	if stateDir == "" {
 		stateDir = defaultStateDir
 	}
-	return &Deployer{runner: ShellRunner{}, commitReader: commitReader, syncer: syncer, repoDir: repoDir, stateDir: stateDir, timeout: timeout}
+	return &Deployer{runner: ShellRunner{}, commitReader: commitReader, syncer: syncer, repoDir: repoDir, stateDir: stateDir}
 }
 
 func newDeployerWithRunner(r Runner) *Deployer {
@@ -134,36 +139,8 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		state = newEmptyState()
 	}
 
-	if cfg.NixOSRebuild.IsEnabled() {
-		startTime := time.Now()
-		nixRebuilder := nixos.New(d.runner)
-
-		// Compute hashes before the rebuild. If nix files changed, persist
-		// the new hashes to state *before* running nixos-rebuild, because
-		// the rebuild may restart the skipper-cd service (killing this
-		// process). Pre-saving avoids a redundant rebuild on restart.
-		currentNixHashes, _ := nixos.HashFiles(d.repoDir)
-		changed := nixos.DiffHashes(currentNixHashes, state.Stacks[nixosStateKey])
-
-		if len(changed) == 0 {
-			metrics.DeploysSkipped.WithLabelValues(nixosStateKey).Inc()
-			d.emit(events.StatusSkipped, nixosStateKey, 0, "", nil, nil)
-		} else {
-			state.Stacks[nixosStateKey] = currentNixHashes
-			_ = saveDeployState(d.stateDir, state)
-
-			nixErr := nixRebuilder.Rebuild(ctx, d.repoDir, cfg.NixOSRebuild.Flake)
-			if nixErr != nil {
-				slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", nixErr)
-				metrics.DeployErrors.WithLabelValues(nixosStateKey).Inc()
-				d.emit(events.StatusFailed, nixosStateKey, time.Since(startTime), nixErr.Error(), changed, nil)
-				return
-			}
-			metrics.DeploysTriggered.WithLabelValues(nixosStateKey).Inc()
-			metrics.LastDeployTimestamp.WithLabelValues(nixosStateKey).Set(float64(time.Now().Unix()))
-			d.emit(events.StatusSuccess, nixosStateKey, time.Since(startTime), "", changed, nil)
-			slog.Info("nixos-rebuild complete", "changed_files", changed)
-		}
+	if cfg.NixOSRebuild.IsEnabled() && !d.rebuildNixOSIfChanged(ctx, cfg, state) {
+		return
 	}
 
 	for _, stack := range cfg.Stacks {
@@ -171,7 +148,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state); err != nil {
 			duration := time.Since(startTime)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
-			if strings.Contains(err.Error(), "rolled back") {
+			if errors.Is(err, ErrRolledBack) {
 				slog.Warn("deploy failed but rolled back", "stack", stack.Name, "err", err)
 				d.emit(events.StatusRolledBack, stack.Name, duration, err.Error(), nil, nil)
 			} else {
@@ -193,6 +170,40 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	if err := saveDeployState(d.stateDir, state); err != nil {
 		slog.Error("could not save deploy state", "err", err)
 	}
+}
+
+// rebuildNixOSIfChanged hashes the repo's nix files and runs nixos-rebuild
+// when any of them changed. The new hashes are persisted to state *before*
+// the rebuild, because the rebuild may restart the skipper-cd service
+// (killing this process); pre-saving avoids a redundant rebuild on restart.
+// Returns false when the rebuild failed and all stack deploys must abort.
+func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config, state persistedState) bool {
+	startTime := time.Now()
+
+	currentNixHashes, _ := nixos.HashFiles(d.repoDir)
+	changed := nixos.DiffHashes(currentNixHashes, state.Stacks[nixosStateKey])
+
+	if len(changed) == 0 {
+		metrics.DeploysSkipped.WithLabelValues(nixosStateKey).Inc()
+		d.emit(events.StatusSkipped, nixosStateKey, 0, "", nil, nil)
+		return true
+	}
+
+	state.Stacks[nixosStateKey] = currentNixHashes
+	_ = saveDeployState(d.stateDir, state)
+
+	if err := nixos.New(d.runner).Rebuild(ctx, d.repoDir, cfg.NixOSRebuild.Flake); err != nil {
+		slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", err)
+		metrics.DeployErrors.WithLabelValues(nixosStateKey).Inc()
+		d.emit(events.StatusFailed, nixosStateKey, time.Since(startTime), err.Error(), changed, nil)
+		return false
+	}
+
+	metrics.DeploysTriggered.WithLabelValues(nixosStateKey).Inc()
+	metrics.LastDeployTimestamp.WithLabelValues(nixosStateKey).Set(float64(time.Now().Unix()))
+	d.emit(events.StatusSuccess, nixosStateKey, time.Since(startTime), "", changed, nil)
+	slog.Info("nixos-rebuild complete", "changed_files", changed)
+	return true
 }
 
 func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state persistedState) error {
@@ -277,7 +288,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		}
 		slog.Info("rollback successful, old containers restored", "stack", stack.Name)
 		metrics.DeployRollbacks.WithLabelValues(stack.Name).Inc()
-		return fmt.Errorf("docker compose up: %w (rolled back to previous version)", err)
+		return fmt.Errorf("docker compose up: %w (%w)", err, ErrRolledBack)
 	}
 
 	if len(stack.OnDemandContainers) > 0 {

@@ -57,27 +57,6 @@ func HashFiles(repoDir string) (map[string]string, error) {
 	return hashes, nil
 }
 
-// RebuildIfChanged compares currentHashes with prevHashes. If any file changed,
-// it runs `nixos-rebuild switch --flake <flake>` from repoDir.
-// Returns the list of changed files and any error.
-// Returns nil, nil when nothing changed.
-func (r *Rebuilder) RebuildIfChanged(ctx context.Context, repoDir, flake string, prevHashes map[string]string) ([]string, error) {
-	currentHashes, err := HashFiles(repoDir)
-	if err != nil {
-		return nil, err
-	}
-
-	changed := DiffHashes(currentHashes, prevHashes)
-	if len(changed) == 0 {
-		return nil, nil
-	}
-
-	if err := r.runner.Run(ctx, repoDir, nil, "nixos-rebuild", "switch", "--flake", flake); err != nil {
-		return changed, fmt.Errorf("nixos-rebuild switch --flake %s: %w", flake, err)
-	}
-	return changed, nil
-}
-
 // Rebuild runs `nixos-rebuild switch --flake <flake>` from repoDir.
 func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string) error {
 	if err := r.runner.Run(ctx, repoDir, nil, "nixos-rebuild", "switch", "--flake", flake); err != nil {
