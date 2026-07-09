@@ -231,6 +231,8 @@ The module creates the state directory at `/var/lib/skipper`, adds `git`, `docke
 | `package` | package | — | The skipper-cd derivation to use. |
 | `configFile` | path | — | Absolute path to `skipper.yml`. |
 | `stateDir` | string | `/var/lib/skipper` | Directory for deploy state and the repository clone. |
+| `nixosRebuild` | bool | `false` | Set when `nixos_rebuild` is configured in `skipper.yml`. Relaxes the systemd sandboxing so `nixos-rebuild` can run. |
+| `stopTimeout` | string | `15min` | systemd `TimeoutStopSec`. On shutdown skipper-cd waits for an in-flight deploy to finish; keep this longer than a typical deploy run or systemd will kill the service mid-deploy. |
 
 ### Recommended Pattern: Self-Registering Stacks
 

@@ -28,13 +28,27 @@ in
       default = false;
       description = "Whether nixos_rebuild is configured in skipper.yml. Relaxes sandboxing so nixos-rebuild can run.";
     };
+
+    stopTimeout = lib.mkOption {
+      type = lib.types.str;
+      default = "15min";
+      description = ''
+        systemd TimeoutStopSec for the service. On shutdown skipper-cd
+        waits for an in-flight deploy to finish (see ADR-0007); this must
+        be longer than a typical deploy run or systemd will SIGKILL the
+        service mid-deploy after the default 90 seconds.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
     systemd.services.skipper-cd = {
       description = "skipper-cd Docker Compose CD";
       wantedBy = [ "multi-user.target" ];
+      # After= alone does not pull network-online.target into the boot
+      # transaction; Wants= is required for the ordering to take effect.
       after = [ "docker.service" "network-online.target" ];
+      wants = [ "network-online.target" ];
       requires = [ "docker.service" ];
 
       path = [ pkgs.git pkgs.docker pkgs.docker-compose pkgs.docker-buildx ]
@@ -48,6 +62,7 @@ in
         ExecStart = "${cfg.package}/bin/skipper -config ${cfg.configFile}";
         Restart = "on-failure";
         RestartSec = "5s";
+        TimeoutStopSec = cfg.stopTimeout;
         StateDirectory = "skipper";
 
         # Use the state directory as HOME so docker compose can write
