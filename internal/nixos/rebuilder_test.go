@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -22,12 +23,8 @@ type runCall struct {
 
 func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
 	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
-	if r.errOnCommand != "" {
-		for _, a := range args {
-			if a == r.errOnCommand {
-				return fmt.Errorf("simulated error for command: %s", r.errOnCommand)
-			}
-		}
+	if r.errOnCommand != "" && slices.Contains(args, r.errOnCommand) {
+		return fmt.Errorf("simulated error for command: %s", r.errOnCommand)
 	}
 	return nil
 }

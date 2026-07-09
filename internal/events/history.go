@@ -40,13 +40,13 @@ func (h *History) MaxEventID() int64 {
 	if len(h.events) == 0 {
 		return 0
 	}
-	var max int64
+	var maxID int64
 	for _, e := range h.events {
-		if e.ID > max {
-			max = e.ID
+		if e.ID > maxID {
+			maxID = e.ID
 		}
 	}
-	return max
+	return maxID
 }
 
 // Add appends an event, trims to maxHistorySize, and persists to disk.

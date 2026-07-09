@@ -1,0 +1,11 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # Idiomatic deferred cleanup where the error is meaningless:
+        # closing read-only files and removing already-renamed temp files.
+        # Writes that must be durable (writeFileAtomic) check Close explicitly.
+        - (*os.File).Close
+        - os.Remove

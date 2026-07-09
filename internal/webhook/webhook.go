@@ -62,7 +62,7 @@ func Handler(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duratio
 		}()
 
 		w.WriteHeader(http.StatusAccepted)
-		fmt.Fprintln(w, "deploy triggered")
+		_, _ = fmt.Fprintln(w, "deploy triggered")
 	}
 }
 
