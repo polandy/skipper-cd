@@ -1,0 +1,28 @@
+# Enables auto-merge on Dependabot PRs for patch and minor updates; GitHub
+# then merges once the required status checks (branch protection on main)
+# pass. Major updates stay open for manual review.
+#
+# The merge is performed via GITHUB_TOKEN, so it does not trigger the push
+# workflows on main (CI, release-please); the release PR picks the commit
+# up on the next regular push. Dependency bumps are `build(deps):` commits
+# and do not cause a release on their own.
+name: Dependabot auto-merge
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dependabot/fetch-metadata@v2
+        id: metadata
+      - if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
