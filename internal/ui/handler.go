@@ -104,7 +104,7 @@ func DiffHandler(history *events.History) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"diffs": evt.Diffs,
 		})
 	})

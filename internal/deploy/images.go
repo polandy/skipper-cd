@@ -19,8 +19,8 @@ type composeFile struct {
 }
 
 type composeService struct {
-	Image    string      `yaml:"image"`
-	BuildRaw interface{} `yaml:"build"`
+	Image    string `yaml:"image"`
+	BuildRaw any    `yaml:"build"`
 }
 
 // extractComposeImages parses a docker-compose.yml and returns a map of
@@ -112,7 +112,7 @@ func extractDockerfilePaths(composePath, workDir string) ([]string, error) {
 		case string:
 			context = v
 			dockerfile = "Dockerfile"
-		case map[string]interface{}:
+		case map[string]any:
 			if c, ok := v["context"].(string); ok {
 				context = c
 			}
