@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/polandy/skipper-cd/internal/config"
-	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
@@ -23,13 +23,20 @@ import (
 // so anything larger is rejected with 413.
 const MaxBodyBytes = 1 << 20 // 1 MiB
 
+// deployTrigger starts a full sync+deploy run. It is implemented by
+// *deploy.Deployer and faked in tests.
+type deployTrigger interface {
+	SyncAndDeployAll(ctx context.Context, cfg *config.Config)
+}
+
 // Handler returns an http.HandlerFunc that processes incoming webhooks.
 // It supports signature validation for Gitea (X-Gitea-Signature) and
-// GitHub/Forgejo (X-Hub-Signature-256). The response is sent immediately
-// with HTTP 202 Accepted; the deploy runs in a goroutine so the caller
-// does not time out waiting for it to complete.
+// GitHub/Forgejo (X-Hub-Signature-256). Pushes to branches other than the
+// configured one are acknowledged but ignored. The response is sent
+// immediately with HTTP 202 Accepted; the deploy runs in a goroutine so the
+// caller does not time out waiting for it to complete.
 // Method enforcement is left to the mux route pattern ("POST /webhook").
-func Handler(cfg *config.Config, deployer *deploy.Deployer) http.HandlerFunc {
+func Handler(cfg *config.Config, deployer deployTrigger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
 		if err != nil {
@@ -52,6 +59,14 @@ func Handler(cfg *config.Config, deployer *deploy.Deployer) http.HandlerFunc {
 		}
 
 		metrics.WebhooksReceived.Inc()
+
+		if ref, ok := pushRef(body); ok && !refMatchesBranch(ref, cfg.Branch) {
+			slog.Info("webhook ignored, push is for a different branch", "ref", ref, "branch", cfg.Branch)
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprintf(w, "ignoring push to %s\n", ref)
+			return
+		}
+
 		slog.Info("webhook accepted, starting deploy in background")
 
 		// No run-wide deadline: each shell command is bounded individually
@@ -61,6 +76,25 @@ func Handler(cfg *config.Config, deployer *deploy.Deployer) http.HandlerFunc {
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = fmt.Fprintln(w, "deploy triggered")
 	}
+}
+
+// pushRef extracts the git ref (e.g. "refs/heads/main") from a push payload.
+// Returns ok=false when the body is not JSON or carries no ref — such
+// requests (manual curl, other event types) trigger a deploy to be safe.
+func pushRef(body []byte) (string, bool) {
+	var payload struct {
+		Ref string `json:"ref"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil || payload.Ref == "" {
+		return "", false
+	}
+	return payload.Ref, true
+}
+
+// refMatchesBranch reports whether ref points at the configured branch.
+// An empty configured branch disables filtering.
+func refMatchesBranch(ref, branch string) bool {
+	return branch == "" || ref == "refs/heads/"+branch
 }
 
 // extractSignature returns the HMAC-SHA256 hex signature from the request.
