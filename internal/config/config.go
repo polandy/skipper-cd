@@ -48,8 +48,8 @@ type Config struct {
 	// Branch is the Git branch to track. Defaults to "master".
 	Branch string `yaml:"branch"`
 
-	// VarsFile is an optional path to a YAML file of key→value pairs that are
-	// injected as KEY=VALUE env vars into every stack deployment, enabling
+	// VarsFile is an optional path to a KEY=VALUE env file whose entries are
+	// injected into the environment of every stack deployment, enabling
 	// ${VAR} substitution in docker-compose.yml (e.g. for domain names).
 	VarsFile string `yaml:"vars_file"`
 
