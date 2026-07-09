@@ -34,3 +34,11 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12
+
+  # Verifies the image still builds. Without this, base-image bumps from
+  # Dependabot would be untested on PRs — docker.yml only builds on release.
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build .
