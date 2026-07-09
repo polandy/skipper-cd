@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+  # Dispatched by the release workflow with --ref <tag>, because tags
+  # created with the default GITHUB_TOKEN do not trigger push events.
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io

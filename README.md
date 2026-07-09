@@ -334,3 +334,7 @@ stacks:
 ```
 
 If the state file is absent or cannot be parsed (e.g. after a fresh install or corruption), all stacks are redeployed on the next run.
+
+## Releases
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please) based on the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) history (see [ADR-0011](docs/adr/0011-release-automation-via-conventional-commits.md)). Every push to `main` updates a release PR that collects the pending changes; merging it creates the GitHub release, the `v*` tag, the CHANGELOG entry, and triggers the Docker image build.

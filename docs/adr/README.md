@@ -15,3 +15,4 @@ One file per decision, numbered sequentially (see
 | [0008](0008-per-command-timeouts.md) | Timeouts apply per command, not per deploy run |
 | [0009](0009-webhook-branch-filter.md) | Webhook filters pushes by branch ref |
 | [0010](0010-no-deploy-coalescing.md) | Concurrent deploy runs serialize and wait — no coalescing (yet) |
+| [0011](0011-release-automation-via-conventional-commits.md) | Releases are automated from Conventional Commits |
