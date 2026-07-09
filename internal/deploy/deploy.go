@@ -120,6 +120,14 @@ func (d *Deployer) SyncAndDeployAll(ctx context.Context, cfg *config.Config) {
 	d.DeployAllStacks(ctx, cfg)
 }
 
+// WaitIdle blocks until no deploy run is in progress. It is used during
+// shutdown to let an in-flight deploy finish instead of interrupting
+// docker compose mid-run.
+func (d *Deployer) WaitIdle() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+}
+
 func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
 

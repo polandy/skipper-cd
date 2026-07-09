@@ -475,6 +475,34 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	}
 }
 
+func TestWaitIdle_BlocksUntilRunningDeployFinishes(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	runner := &recordingRunner{delay: 150 * time.Millisecond}
+	d := &Deployer{runner: runner, stateDir: t.TempDir()}
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: baseDir,
+		Stacks:        []config.Stack{{Name: "mystack"}},
+	}
+
+	go d.SyncAndDeployAll(context.Background(), cfg)
+
+	// Give the deploy goroutine time to acquire the lock and start running.
+	time.Sleep(50 * time.Millisecond)
+
+	d.WaitIdle()
+
+	// WaitIdle must only return after the running deploy released the lock,
+	// i.e. after docker compose up completed.
+	assertCommandCalled(t, runner.calls, "up")
+}
+
 func TestDeployStack_BuildsWhenDockerfilePresent(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "myapp")
