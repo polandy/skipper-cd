@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +10,38 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/events"
 )
+
+// serveSSE runs the blocking SSE handler in a goroutine, gives it time to
+// write, optionally runs `during` (e.g. publishing a live event), then
+// cancels the request and waits for the handler to exit. Reading the
+// recorder afterwards is race-free because the handler has returned.
+func serveSSE(t *testing.T, handler http.Handler, req *http.Request, during func()) *httptest.ResponseRecorder {
+	t.Helper()
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		handler.ServeHTTP(rec, req)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	if during != nil {
+		during()
+		time.Sleep(50 * time.Millisecond)
+	}
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("SSE handler did not exit after context cancel")
+	}
+	return rec
+}
 
 func TestIndexHandler_ServesHTML(t *testing.T) {
 	handler := IndexHandler()
@@ -38,17 +71,7 @@ func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 
 	handler := SSEHandler(broadcaster, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	rec := httptest.NewRecorder()
-
-	// Run handler in goroutine since it blocks.
-	done := make(chan struct{})
-	go func() {
-		handler.ServeHTTP(rec, req)
-		close(done)
-	}()
-
-	// Give the handler a moment to write history events.
-	time.Sleep(50 * time.Millisecond)
+	rec := serveSSE(t, handler, req, nil)
 
 	body := rec.Body.String()
 	if !strings.Contains(body, `"stack":"gitea"`) {
@@ -68,13 +91,7 @@ func TestSSEHandler_FiltersHistoryByLastEventID(t *testing.T) {
 	handler := SSEHandler(broadcaster, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	req.Header.Set("Last-Event-ID", "1")
-	rec := httptest.NewRecorder()
-
-	go func() {
-		handler.ServeHTTP(rec, req)
-	}()
-
-	time.Sleep(50 * time.Millisecond)
+	rec := serveSSE(t, handler, req, nil)
 
 	body := rec.Body.String()
 	if strings.Contains(body, `"stack":"old"`) {
@@ -91,26 +108,13 @@ func TestSSEHandler_StreamsLiveEvents(t *testing.T) {
 
 	handler := SSEHandler(broadcaster, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	rec := httptest.NewRecorder()
-
-	// Subscribe before the handler starts, so we know when the handler has
-	// subscribed and is ready to receive events.
-	// Instead, run handler and publish after a short delay.
-	go func() {
-		handler.ServeHTTP(rec, req)
-	}()
-
-	// Wait for handler to subscribe to broadcaster.
-	time.Sleep(50 * time.Millisecond)
-
-	broadcaster.Publish(events.DeployEvent{
-		ID:     10,
-		Stack:  "monitoring",
-		Status: events.StatusDeploying,
+	rec := serveSSE(t, handler, req, func() {
+		broadcaster.Publish(events.DeployEvent{
+			ID:     10,
+			Stack:  "monitoring",
+			Status: events.StatusDeploying,
+		})
 	})
-
-	// Give handler time to write the event.
-	time.Sleep(50 * time.Millisecond)
 
 	body := rec.Body.String()
 	if !strings.Contains(body, `"stack":"monitoring"`) {
@@ -127,13 +131,7 @@ func TestSSEHandler_SetsCorrectHeaders(t *testing.T) {
 
 	handler := SSEHandler(broadcaster, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	rec := httptest.NewRecorder()
-
-	go func() {
-		handler.ServeHTTP(rec, req)
-	}()
-
-	time.Sleep(50 * time.Millisecond)
+	rec := serveSSE(t, handler, req, nil)
 
 	headers := rec.Header()
 	if headers.Get("Content-Type") != "text/event-stream" {
@@ -240,13 +238,7 @@ func TestSSEHandler_StripsDiffsFromStream(t *testing.T) {
 
 	handler := SSEHandler(broadcaster, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	rec := httptest.NewRecorder()
-
-	go func() {
-		handler.ServeHTTP(rec, req)
-	}()
-
-	time.Sleep(50 * time.Millisecond)
+	rec := serveSSE(t, handler, req, nil)
 
 	body := rec.Body.String()
 	if strings.Contains(body, "+added") {

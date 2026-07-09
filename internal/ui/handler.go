@@ -25,7 +25,7 @@ func IndexHandler() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(data)
+		_, _ = w.Write(data)
 	})
 }
 
@@ -81,7 +81,10 @@ func SSEHandler(broadcaster *events.Broadcaster, history *events.History) http.H
 				}
 				flusher.Flush()
 			case <-keepalive.C:
-				fmt.Fprintf(w, ": keepalive\n\n")
+				// A failed keepalive means the client is gone.
+				if _, err := fmt.Fprintf(w, ": keepalive\n\n"); err != nil {
+					return
+				}
 				flusher.Flush()
 			}
 		}
@@ -104,7 +107,9 @@ func DiffHandler(history *events.History) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		// The status header is already written; a failed body write cannot
+		// be reported to the client anymore.
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"diffs": evt.Diffs,
 		})
 	})
