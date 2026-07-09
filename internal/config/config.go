@@ -58,6 +58,10 @@ type Config struct {
 	// before being killed. Defaults to 300 (5 minutes).
 	CommandTimeoutSeconds int `yaml:"command_timeout_seconds"`
 
+	// LogFormat selects the log output format: "text" (logfmt, the default)
+	// or "json" for structured logs (e.g. for Loki ingestion).
+	LogFormat string `yaml:"log_format"`
+
 	StacksBaseDir string  `yaml:"stacks_base_dir"`
 	WebhookSecret string  `yaml:"webhook_secret"`
 	Port          int     `yaml:"port"`
@@ -112,9 +116,18 @@ func Load(path string) (*Config, error) {
 	if cfg.Branch == "" {
 		cfg.Branch = "main"
 	}
+	if cfg.LogFormat == "" {
+		cfg.LogFormat = LogFormatText
+	}
 
 	return cfg, validateConfig(cfg)
 }
+
+// Valid values for the log_format config field.
+const (
+	LogFormatText = "text"
+	LogFormatJSON = "json"
+)
 
 // reservedStackName is used internally as the state key for NixOS rebuild
 // hashes and must not collide with a configured stack.
@@ -145,6 +158,10 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.NixOSRebuild.IsEnabled() && cfg.NixOSRebuild.Flake == "" {
 		return fmt.Errorf("nixos_rebuild.flake is required when nixos_rebuild is enabled")
+	}
+
+	if cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {
+		return fmt.Errorf("log_format must be %q or %q, got %q", LogFormatText, LogFormatJSON, cfg.LogFormat)
 	}
 
 	return nil

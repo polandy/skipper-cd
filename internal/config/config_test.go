@@ -149,6 +149,46 @@ stacks:
 	}
 }
 
+func TestLoad_LogFormatDefaultsToText(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.LogFormat != config.LogFormatText {
+		t.Errorf("expected default log_format %q, got %q", config.LogFormatText, cfg.LogFormat)
+	}
+}
+
+func TestLoad_LogFormatJSON(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+log_format: json
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.LogFormat != config.LogFormatJSON {
+		t.Errorf("expected log_format %q, got %q", config.LogFormatJSON, cfg.LogFormat)
+	}
+}
+
+func TestLoad_RejectsUnknownLogFormat(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+log_format: xml
+stacks: []
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil {
+		t.Error("expected error for unknown log_format, got nil")
+	}
+}
+
 func TestLoad_NixOSRebuild_OmittedSectionIsDisabled(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git

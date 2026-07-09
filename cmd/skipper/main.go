@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -42,6 +43,7 @@ func main() {
 		slog.Error("failed to load config", "path", *configPath, "err", err)
 		os.Exit(1)
 	}
+	slog.SetDefault(newLogger(cfg.LogFormat, os.Stderr))
 
 	timeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 
@@ -98,6 +100,15 @@ func main() {
 	slog.Info("waiting for in-flight deploy to finish")
 	deployer.WaitIdle()
 	slog.Info("skipper-cd stopped")
+}
+
+// newLogger returns the process logger for the configured log_format:
+// a JSON handler for "json", a logfmt text handler otherwise.
+func newLogger(format string, w io.Writer) *slog.Logger {
+	if format == config.LogFormatJSON {
+		return slog.New(slog.NewJSONHandler(w, nil))
+	}
+	return slog.New(slog.NewTextHandler(w, nil))
 }
 
 func metricsMux() *http.ServeMux {
