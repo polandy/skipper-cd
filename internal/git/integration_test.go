@@ -58,7 +58,7 @@ func TestIntegration_SyncClonesAndPulls(t *testing.T) {
 	origin := makeOriginRepo(t)
 	repoDir := filepath.Join(t.TempDir(), "repo")
 
-	s := NewRepoSync(origin, repoDir, "main", time.Minute)
+	s := NewRepoSync(origin, repoDir, "main", time.Minute, nil)
 
 	// First sync clones.
 	if err := s.Sync(context.Background()); err != nil {
@@ -85,7 +85,7 @@ func TestIntegration_RepoReaderReadsCommits(t *testing.T) {
 	origin := makeOriginRepo(t)
 	repoDir := filepath.Join(t.TempDir(), "repo")
 
-	s := NewRepoSync(origin, repoDir, "main", time.Minute)
+	s := NewRepoSync(origin, repoDir, "main", time.Minute, nil)
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestIntegration_RepoReaderReadsCommits(t *testing.T) {
 		t.Fatalf("second sync: %v", err)
 	}
 
-	r := NewRepoReader(repoDir, time.Minute)
+	r := NewRepoReader(repoDir, time.Minute, nil)
 	composePath := filepath.Join(repoDir, "docker-compose.yml")
 
 	sha, err := r.HeadCommitSHA(context.Background())
