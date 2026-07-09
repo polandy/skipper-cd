@@ -10,7 +10,7 @@ COPY internal/ internal/
 RUN go build -o /skipper ./cmd/skipper
 
 # Stage 2: Runtime
-FROM alpine:3.21
+FROM alpine:3.24
 
 RUN apk add --no-cache git docker-cli docker-cli-compose
 
