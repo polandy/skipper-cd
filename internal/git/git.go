@@ -34,10 +34,12 @@ func newRepoSyncWithRunner(r command.Runner, repoURL, repoDir, branch string) *R
 	return &RepoSync{runner: r, repoURL: repoURL, repoDir: repoDir, branch: branch}
 }
 
-// Sync clones the repository if the clone directory does not exist,
-// or runs git pull if it does.
+// Sync clones the repository if no clone exists yet, or fetches and resets
+// to the remote branch if it does. The check looks for repoDir/.git rather
+// than repoDir itself: a failed first clone leaves an empty repoDir behind,
+// and fetching in a non-repository would fail forever.
 func (s *RepoSync) Sync(ctx context.Context) error {
-	if _, err := os.Stat(s.repoDir); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(s.repoDir, ".git")); os.IsNotExist(err) {
 		return s.cloneRepository(ctx)
 	}
 	return s.pullLatestCommits(ctx)

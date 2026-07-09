@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -37,8 +38,8 @@ func TestSync_ClonesWhenRepoDirDoesNotExist(t *testing.T) {
 	assertArgPresent(t, runner.calls[0].args, "clone")
 }
 
-func TestSync_PullsWhenRepoDirExists(t *testing.T) {
-	repoDir := t.TempDir() // already exists
+func TestSync_PullsWhenCloneExists(t *testing.T) {
+	repoDir := makeFakeClone(t) // contains a .git directory
 	runner := &recordingRunner{}
 	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", repoDir, "master")
 
@@ -56,8 +57,25 @@ func TestSync_PullsWhenRepoDirExists(t *testing.T) {
 	}
 }
 
+func TestSync_ReclonesWhenRepoDirIsNotAClone(t *testing.T) {
+	// A failed first clone leaves an empty repoDir behind. Sync must retry
+	// the clone instead of running git fetch in a non-repository forever.
+	repoDir := t.TempDir() // exists, but has no .git
+	runner := &recordingRunner{}
+	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", repoDir, "master")
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(runner.calls) == 0 {
+		t.Fatal("expected git clone to be called")
+	}
+	assertArgPresent(t, runner.calls[0].args, "clone")
+}
+
 func TestSync_ResetUsesConfiguredBranch(t *testing.T) {
-	repoDir := t.TempDir()
+	repoDir := makeFakeClone(t)
 	runner := &recordingRunner{}
 	s := newRepoSyncWithRunner(runner, "ssh://git@example.com/repo.git", repoDir, "main")
 
@@ -185,6 +203,17 @@ func TestDiffSinceCommit_DiffsAgainstHead(t *testing.T) {
 	assertArgPresent(t, call.args, "diff")
 	assertArgPresent(t, call.args, "abc123..HEAD")
 	assertArgPresent(t, call.args, "/repo/mystack/docker-compose.yml")
+}
+
+// makeFakeClone returns a temp dir containing a .git directory, i.e. what a
+// successful clone leaves behind.
+func makeFakeClone(t *testing.T) string {
+	t.Helper()
+	repoDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return repoDir
 }
 
 func assertArgPresent(t *testing.T, args []string, expected string) {
