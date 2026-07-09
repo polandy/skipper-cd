@@ -39,6 +39,8 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 
 Table-style tests with `t.TempDir()` and real files on disk; inject `recordingRunner` fakes (implementing `command.Runner`) and assert the exact docker/git argv — never shell out for real. Test files in `internal/deploy` mirror the source files (`hash_test.go`, `images_test.go`, …); shared fakes and helpers live in `internal/deploy/helpers_test.go`.
 
+Two deliberate exceptions run real commands: `internal/command` tests (the process boundary — faking exec there would test nothing) and `internal/git/integration_test.go` (real `git` against a local repo, catches argv mistakes the fakes cannot; skips when git is missing).
+
 ## Engineering principles
 
 Andy's priorities for all work in this repo:
@@ -56,3 +58,4 @@ Andy's priorities for all work in this repo:
 - Never edit or search `vendor/` (committed on purpose; the nix flake depends on it).
 - `./skipper` at the repo root is a build artifact — ignore it.
 - Don't duplicate README content. Deploy/config/state semantics live in README.md ("How It Works", "Configuration", "State File") — read the relevant section when touching `internal/deploy` or `internal/config`.
+- Architecture decisions and their reasoning live in `docs/adr/` (one file per decision). Significant design changes need a new ADR; the invariants above are the enforcement summary of those ADRs.

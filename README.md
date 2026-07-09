@@ -17,15 +17,16 @@ Supported webhook signatures: **Gitea** (`X-Gitea-Signature`) and **GitHub/Forge
 
 On each incoming webhook (or on startup), skipper-cd:
 
-1. Pulls the latest commits from the configured repository.
-2. **NixOS rebuild** (optional): If `nixos_rebuild` is configured, hashes all `*.nix` files and `flake.lock`. When any file has changed, runs `nixos-rebuild switch --flake <flake>`. If the rebuild fails, all subsequent Docker stack deploys are aborted.
-3. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, and any `Dockerfile`s referenced by services with a `build:` section.
-4. Compares the current hashes against the hashes from the previous deployment.
-5. Skips stacks whose files have not changed.
-6. For changed stacks, runs `docker compose pull` for services with remote images only (services with `build:` and services sharing a locally-built image name are excluded), then `docker compose build --pull` (only when `build:` services are present), followed by `docker compose up -d --remove-orphans`.
-7. **Automatic rollback:** If `docker compose up` fails, skipper-cd retrieves the previous `docker-compose.yml` from the last deployed Git commit and runs `docker compose up -d` with it to restore containers. The deploy is marked as `rolled_back` in the UI and metrics. If no previous commit is available or the rollback itself fails, the deploy is marked as `failed`.
-8. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
-9. Logs the git diff of each changed file (relative to the last deployed commit).
+1. Checks the push payload's `ref`: only pushes to the configured `branch` trigger a deploy (payloads without a `ref`, e.g. a manual `curl`, always trigger one).
+2. Pulls the latest commits from the configured repository.
+3. **NixOS rebuild** (optional): If `nixos_rebuild` is configured, hashes all `*.nix` files and `flake.lock`. When any file has changed, runs `nixos-rebuild switch --flake <flake>`. If the rebuild fails, all subsequent Docker stack deploys are aborted.
+4. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, and any `Dockerfile`s referenced by services with a `build:` section.
+5. Compares the current hashes against the hashes from the previous deployment.
+6. Skips stacks whose files have not changed.
+7. For changed stacks, runs `docker compose pull` for services with remote images only (services with `build:` and services sharing a locally-built image name are excluded), then `docker compose build --pull` (only when `build:` services are present), followed by `docker compose up -d --remove-orphans`.
+8. **Automatic rollback:** If `docker compose up` fails, skipper-cd retrieves the previous `docker-compose.yml` from the last deployed Git commit and runs `docker compose up -d` with it to restore containers. The deploy is marked as `rolled_back` in the UI and metrics. If no previous commit is available or the rollback itself fails, the deploy is marked as `failed`.
+9. Stops any containers listed in `on_demand_containers` (see below) so that an on-demand scheduler can take over lifecycle management.
+10. Logs the git diff of each changed file (relative to the last deployed commit).
 
 Concurrent webhook requests and the startup deploy are serialized by a deployment lock. If a deploy is already in progress, subsequent requests wait for it to finish before starting their own sync+deploy cycle.
 
@@ -94,10 +95,10 @@ nixos_rebuild:
 | `repo_dir` | string | no | `/var/lib/skipper/repo` | Local directory where the repository is cloned. skipper-cd manages this directory independently of any live checkout. |
 | `branch` | string | no | `main` | Git branch to track. Used for `git clone --branch` and `git reset --hard origin/<branch>`. |
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. |
-| `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`) is allowed to run before being killed. |
+| `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. |
 | `stacks_base_dir` | string | no | — | Base directory prepended to a stack's `name` to derive its working directory when `working_dir` is not set. Avoids repeating long paths across stacks. |
 | `webhook_secret` | string | no | — | HMAC-SHA256 secret used to validate incoming webhook payloads (supports Gitea and GitHub/Forgejo signatures). When empty, signature validation is skipped (not recommended for production). |
-| `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz`. |
+| `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. |
 | `stacks` | list | yes | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS Rebuild](#nixos-rebuild)). Omit the section entirely to disable. |
@@ -156,6 +157,7 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint:
 | `skipper_deploy_errors_total` | counter | Total number of failed deploys, labelled by `stack`. |
 | `skipper_deploy_rollbacks_total` | counter | Total number of successful rollbacks after failed deploys, labelled by `stack`. |
 | `skipper_last_deploy_timestamp` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |
+| `skipper_deploy_lock_waits_total` | counter | Deploy runs that had to wait for a running deploy to finish (queueing indicator, see ADR-0010). |
 
 ## Docker
 
