@@ -20,4 +20,9 @@ RUN mkdir -p /var/lib/skipper /etc/skipper
 
 EXPOSE 8080 9120
 
+# /healthz returns 503 when the last repository sync failed. Assumes the
+# default webhook port 8080; override the check when configuring another port.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
+
 ENTRYPOINT ["skipper", "-config", "/etc/skipper/skipper.yml"]
