@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/polandy/skipper-cd/internal/command"
 )
@@ -23,11 +24,11 @@ type RepoSync struct {
 	branch  string
 }
 
-func NewRepoSync(repoURL, repoDir, branch string) *RepoSync {
+func NewRepoSync(repoURL, repoDir, branch string, commandTimeout time.Duration) *RepoSync {
 	if repoDir == "" {
 		repoDir = defaultRepoDir
 	}
-	return &RepoSync{runner: command.ShellRunner{}, repoURL: repoURL, repoDir: repoDir, branch: branch}
+	return &RepoSync{runner: command.NewShellRunner(commandTimeout), repoURL: repoURL, repoDir: repoDir, branch: branch}
 }
 
 func newRepoSyncWithRunner(r command.Runner, repoURL, repoDir, branch string) *RepoSync {
@@ -79,8 +80,8 @@ type RepoReader struct {
 	repoDir string
 }
 
-func NewRepoReader(repoDir string) *RepoReader {
-	return &RepoReader{runner: command.ShellRunner{}, repoDir: repoDir}
+func NewRepoReader(repoDir string, commandTimeout time.Duration) *RepoReader {
+	return &RepoReader{runner: command.NewShellRunner(commandTimeout), repoDir: repoDir}
 }
 
 func newRepoReaderWithRunner(r outputRunner, repoDir string) *RepoReader {

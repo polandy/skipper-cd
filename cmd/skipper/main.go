@@ -53,10 +53,10 @@ func main() {
 		"command_timeout", timeout,
 	)
 
-	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch)
-	repoReader := git.NewRepoReader(repoSync.RepoDir())
+	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch, timeout)
+	repoReader := git.NewRepoReader(repoSync.RepoDir(), timeout)
 	stateDir := filepath.Dir(repoSync.RepoDir())
-	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir)
+	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir, timeout)
 
 	var (
 		broadcaster *events.Broadcaster
@@ -76,14 +76,10 @@ func main() {
 	}
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		deployer.SyncAndDeployAll(ctx, cfg)
-	}()
+	go deployer.SyncAndDeployAll(context.Background(), cfg)
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, timeout, broadcaster, history))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -110,9 +106,9 @@ func metricsMux() *http.ServeMux {
 	return mux
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duration, broadcaster *events.Broadcaster, history *events.History) *http.ServeMux {
+func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster, history *events.History) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer, timeout))
+	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", respondOK)
 
 	if broadcaster != nil {

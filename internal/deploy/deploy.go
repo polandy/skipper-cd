@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/metrics"
@@ -64,11 +65,11 @@ func NewDeployer() *Deployer {
 	return &Deployer{runner: ShellRunner{}, stateDir: defaultStateDir}
 }
 
-func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, repoDir, stateDir string) *Deployer {
+func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, repoDir, stateDir string, commandTimeout time.Duration) *Deployer {
 	if stateDir == "" {
 		stateDir = defaultStateDir
 	}
-	return &Deployer{runner: ShellRunner{}, commitReader: commitReader, syncer: syncer, repoDir: repoDir, stateDir: stateDir}
+	return &Deployer{runner: command.NewShellRunner(commandTimeout), commitReader: commitReader, syncer: syncer, repoDir: repoDir, stateDir: stateDir}
 }
 
 func newDeployerWithRunner(r Runner) *Deployer {

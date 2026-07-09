@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
@@ -30,7 +29,7 @@ const MaxBodyBytes = 1 << 20 // 1 MiB
 // with HTTP 202 Accepted; the deploy runs in a goroutine so the caller
 // does not time out waiting for it to complete.
 // Method enforcement is left to the mux route pattern ("POST /webhook").
-func Handler(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duration) http.HandlerFunc {
+func Handler(cfg *config.Config, deployer *deploy.Deployer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
 		if err != nil {
@@ -55,11 +54,9 @@ func Handler(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duratio
 		metrics.WebhooksReceived.Inc()
 		slog.Info("webhook accepted, starting deploy in background")
 
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			defer cancel()
-			deployer.SyncAndDeployAll(ctx, cfg)
-		}()
+		// No run-wide deadline: each shell command is bounded individually
+		// by the deployer's per-command timeout.
+		go deployer.SyncAndDeployAll(context.Background(), cfg)
 
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = fmt.Fprintln(w, "deploy triggered")
