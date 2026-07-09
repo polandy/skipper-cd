@@ -282,22 +282,8 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		currentImages = compose.images()
 	}
 
-	if currentImages == nil || hasAnyImageChanged(currentImages, state.imagesFor(stack.Name)) {
-		if compose == nil {
-			// Fallback: pull everything (couldn't parse compose file).
-			if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
-				return fmt.Errorf("docker compose pull: %w", err)
-			}
-		} else if pullable := compose.pullableServices(); len(pullable) > 0 {
-			pullArgs := append([]string{"pull", "--quiet"}, pullable...)
-			if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, pullArgs...); err != nil {
-				return fmt.Errorf("docker compose pull: %w", err)
-			}
-		} else {
-			slog.Info("skipping pull, all services use locally-built images", "stack", stack.Name)
-		}
-	} else {
-		slog.Info("skipping pull, no image changes", "stack", stack.Name)
+	if err := d.pullIfImagesChanged(ctx, stack, composePath, projectDir, baseEnv, compose, currentImages, state.imagesFor(stack.Name)); err != nil {
+		return fmt.Errorf("docker compose pull: %w", err)
 	}
 
 	if len(dockerfilePaths) > 0 {
@@ -335,6 +321,29 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs)
 	slog.Info("deploy complete", "stack", stack.Name)
 	return nil
+}
+
+// pullIfImagesChanged runs docker compose pull unless no image: reference
+// changed since the last deploy. build:-only services are excluded from the
+// pull; when the compose file could not be parsed (compose == nil), every
+// service is pulled as a safe fallback.
+func (d *Deployer) pullIfImagesChanged(ctx context.Context, stack config.Stack, composePath, projectDir string, baseEnv []string, compose *composeFile, currentImages, previousImages serviceImageByName) error {
+	if currentImages != nil && !hasAnyImageChanged(currentImages, previousImages) {
+		slog.Info("skipping pull, no image changes", "stack", stack.Name)
+		return nil
+	}
+
+	if compose == nil {
+		return d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "pull", "--quiet")
+	}
+
+	pullable := compose.pullableServices()
+	if len(pullable) == 0 {
+		slog.Info("skipping pull, all services use locally-built images", "stack", stack.Name)
+		return nil
+	}
+	pullArgs := append([]string{"pull", "--quiet"}, pullable...)
+	return d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, pullArgs...)
 }
 
 const (
