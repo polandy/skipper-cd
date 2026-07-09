@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -90,12 +91,105 @@ func TestNewRepoSync_UsesDefaultRepoDirWhenEmpty(t *testing.T) {
 	}
 }
 
+// fakeOutputRunner records Output calls and returns canned output.
+type fakeOutputRunner struct {
+	calls  []runCall
+	output []byte
+	err    error
+}
+
+func (f *fakeOutputRunner) Output(_ context.Context, dir string, name string, args ...string) ([]byte, error) {
+	f.calls = append(f.calls, runCall{dir: dir, name: name, args: args})
+	return f.output, f.err
+}
+
+func TestHeadCommitSHA_RunsRevParseAndTrimsOutput(t *testing.T) {
+	runner := &fakeOutputRunner{output: []byte("abc123\n")}
+	r := newRepoReaderWithRunner(runner, "/repo")
+
+	sha, err := r.HeadCommitSHA(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sha != "abc123" {
+		t.Errorf("expected trimmed SHA abc123, got %q", sha)
+	}
+
+	if len(runner.calls) != 1 {
+		t.Fatalf("expected 1 git call, got %d", len(runner.calls))
+	}
+	call := runner.calls[0]
+	if call.name != "git" {
+		t.Errorf("expected git, got %s", call.name)
+	}
+	assertArgPresent(t, call.args, "rev-parse")
+	assertArgPresent(t, call.args, "HEAD")
+	assertArgPresent(t, call.args, "/repo")
+}
+
+func TestHeadCommitSHA_PropagatesRunnerError(t *testing.T) {
+	runner := &fakeOutputRunner{err: context.DeadlineExceeded}
+	r := newRepoReaderWithRunner(runner, "/repo")
+
+	if _, err := r.HeadCommitSHA(context.Background()); err == nil {
+		t.Fatal("expected error when git fails")
+	}
+}
+
+func TestFileAtCommit_ShowsPathRelativeToRepo(t *testing.T) {
+	runner := &fakeOutputRunner{output: []byte("services: {}")}
+	r := newRepoReaderWithRunner(runner, "/repo")
+
+	content, err := r.FileAtCommit(context.Background(), "abc123", "/repo/mystack/docker-compose.yml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(content) != "services: {}" {
+		t.Errorf("expected file content, got %q", content)
+	}
+
+	call := runner.calls[0]
+	assertArgPresent(t, call.args, "show")
+	assertArgPresent(t, call.args, "abc123:mystack/docker-compose.yml")
+}
+
+func TestDiffSinceCommit_ReturnsEmptyWithoutFromSHA(t *testing.T) {
+	runner := &fakeOutputRunner{}
+	r := newRepoReaderWithRunner(runner, "/repo")
+
+	diff, err := r.DiffSinceCommit(context.Background(), "", "/repo/mystack/docker-compose.yml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if diff != "" {
+		t.Errorf("expected empty diff, got %q", diff)
+	}
+	if len(runner.calls) != 0 {
+		t.Errorf("expected no git calls, got %d", len(runner.calls))
+	}
+}
+
+func TestDiffSinceCommit_DiffsAgainstHead(t *testing.T) {
+	runner := &fakeOutputRunner{output: []byte("+ image: nginx:1.26\n")}
+	r := newRepoReaderWithRunner(runner, "/repo")
+
+	diff, err := r.DiffSinceCommit(context.Background(), "abc123", "/repo/mystack/docker-compose.yml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if diff != "+ image: nginx:1.26\n" {
+		t.Errorf("unexpected diff: %q", diff)
+	}
+
+	call := runner.calls[0]
+	assertArgPresent(t, call.args, "diff")
+	assertArgPresent(t, call.args, "abc123..HEAD")
+	assertArgPresent(t, call.args, "/repo/mystack/docker-compose.yml")
+}
+
 func assertArgPresent(t *testing.T, args []string, expected string) {
 	t.Helper()
-	for _, arg := range args {
-		if arg == expected {
-			return
-		}
+	if !slices.Contains(args, expected) {
+		t.Errorf("expected argument %q to be present in %v", expected, args)
 	}
-	t.Errorf("expected argument %q to be present in %v", expected, args)
 }

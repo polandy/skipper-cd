@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -65,19 +64,30 @@ func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
 	return s.runner.Run(ctx, s.repoDir, nil, "git", "reset", "--hard", "origin/"+s.branch)
 }
 
+// outputRunner runs a command and captures its stdout. It is satisfied by
+// command.ShellRunner and faked in tests.
+type outputRunner interface {
+	Output(ctx context.Context, dir string, name string, args ...string) ([]byte, error)
+}
+
 // RepoReader reads commit information from a local git repository.
 // It implements the deploy.CommitReader interface.
 type RepoReader struct {
+	runner  outputRunner
 	repoDir string
 }
 
 func NewRepoReader(repoDir string) *RepoReader {
-	return &RepoReader{repoDir: repoDir}
+	return &RepoReader{runner: command.ShellRunner{}, repoDir: repoDir}
+}
+
+func newRepoReaderWithRunner(r outputRunner, repoDir string) *RepoReader {
+	return &RepoReader{runner: r, repoDir: repoDir}
 }
 
 // HeadCommitSHA returns the SHA of the current HEAD commit.
 func (r *RepoReader) HeadCommitSHA(ctx context.Context) (string, error) {
-	output, err := exec.CommandContext(ctx, "git", "-C", r.repoDir, "rev-parse", "HEAD").Output()
+	output, err := r.runner.Output(ctx, "", "git", "-C", r.repoDir, "rev-parse", "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
 	}
@@ -90,7 +100,7 @@ func (r *RepoReader) FileAtCommit(ctx context.Context, commitSHA, filePath strin
 	if err != nil {
 		return nil, fmt.Errorf("make relative path: %w", err)
 	}
-	output, err := exec.CommandContext(ctx, "git", "-C", r.repoDir, "show", commitSHA+":"+relPath).Output()
+	output, err := r.runner.Output(ctx, "", "git", "-C", r.repoDir, "show", commitSHA+":"+relPath)
 	if err != nil {
 		return nil, fmt.Errorf("git show %s:%s: %w", commitSHA, relPath, err)
 	}
@@ -103,9 +113,9 @@ func (r *RepoReader) DiffSinceCommit(ctx context.Context, fromSHA, filePath stri
 	if fromSHA == "" {
 		return "", nil
 	}
-	output, err := exec.CommandContext(ctx, "git", "-C", r.repoDir, "diff", fromSHA+"..HEAD", "--", filePath).CombinedOutput()
+	output, err := r.runner.Output(ctx, "", "git", "-C", r.repoDir, "diff", fromSHA+"..HEAD", "--", filePath)
 	if err != nil {
-		return "", fmt.Errorf("git diff: %w\n%s", err, output)
+		return "", fmt.Errorf("git diff: %w", err)
 	}
 	return string(output), nil
 }
