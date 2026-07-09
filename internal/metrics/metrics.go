@@ -46,4 +46,12 @@ var (
 		Name: "skipper_deploy_rollbacks_total",
 		Help: "Total number of successful rollbacks after failed deploys per stack.",
 	}, []string{"stack"})
+
+	// DeployLockWaits counts deploy runs that had to wait for an earlier run
+	// to finish. Sustained growth means webhooks queue up and would justify
+	// coalescing queued runs (see ADR-0010).
+	DeployLockWaits = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "skipper_deploy_lock_waits_total",
+		Help: "Total number of deploy runs that waited for a running deploy to finish.",
+	})
 )

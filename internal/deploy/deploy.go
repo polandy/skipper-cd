@@ -114,6 +114,7 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 func (d *Deployer) SyncAndDeployAll(ctx context.Context, cfg *config.Config) {
 	if !d.mu.TryLock() {
 		slog.Info("deploy already in progress, waiting")
+		metrics.DeployLockWaits.Inc()
 		d.mu.Lock()
 	}
 	defer d.mu.Unlock()
