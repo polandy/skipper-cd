@@ -28,7 +28,7 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 
 1. Change detection and the compose file always come from the repo clone (`<stacks_base_dir>/<name>/docker-compose.yml`). `working_dir` only sets `--project-directory` (compose project identity + `.env` loading) — never conflate the two.
 2. Hashed inputs per stack: compose file, `env_files`, global `vars_file`, `watch_dirs` contents (recursive), and Dockerfiles of `build:` services. A missing/corrupt `state.yaml` means all stacks redeploy — by design, not a bug.
-3. Rollback fetches the old compose file from `state.LastDeployedCommit` into a temp file; `--project-directory` must then point at the original compose dir (the temp file lives in /tmp). A successful rollback still returns an error containing "rolled back" — that substring drives the `rolled_back` event status in deploy.go.
+3. Rollback fetches the old compose file from `state.LastDeployedCommit` into a temp file; `--project-directory` must then point at the original compose dir (the temp file lives in /tmp). A successful rollback still returns an error wrapping `deploy.ErrRolledBack` — `errors.Is` on it drives the `rolled_back` event status in deploy.go.
 4. NixOS rebuild runs before stack deploys; if it fails, all stack deploys abort. Nix hashes are saved to state *before* the rebuild because the rebuild may restart the skipper service. Nix state uses the reserved stack key `_nixos`.
 5. `compose pull` is skipped entirely when no `image:` reference changed; otherwise it excludes `build:` services and services whose `image:` matches a locally-built image name.
 6. Env precedence (highest wins): `env_files` > `vars_file` > `os.Environ()`.
@@ -37,6 +37,18 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 ## Testing
 
 Table-style tests with `t.TempDir()` and real files on disk; inject `recordingRunner` fakes (implementing `command.Runner`) and assert the exact docker/git argv — never shell out for real. All patterns live in `internal/deploy/deploy_test.go`.
+
+## Engineering principles
+
+Andy's priorities for all work in this repo:
+
+- **Test-first**: a new feature starts with tests that specify its behavior (behavior-revealing names like `TestDeployStack_SkipsWhenUnchanged`), then implement until green. Bug fixes start with a failing test reproducing the bug.
+- **Readability first**: small files, doc comments on exported symbols, names that reveal behavior. Readable beats clever.
+- **Clear responsibilities & encapsulation**: each package/type owns its data — don't pass raw mutable maps/structs around when a type with methods would hide the representation. Delete dead code instead of keeping it "for later"; unused APIs are complexity.
+- **Extensibility**: consumer-side interfaces (like `Runner`, `CommitReader`) instead of concrete coupling; keep packages small with one job.
+- **Coverage**: every non-trivial package has tests; check `go test ./... -cover` for regressions when touching a package.
+- **Go conventions**: gofmt/vet clean, sentinel errors (`errors.Is`) instead of matching error strings, `any` instead of `interface{}`, atomic writes (temp file + rename) for persisted state.
+- **Commit messages** follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): `<type>(<optional scope>): <description>` with types like `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci` (see existing history: `fix: gitignore actual binary name skipper`).
 
 ## Don'ts & pointers
 
