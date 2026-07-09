@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,20 +20,25 @@ import (
 	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
+// MaxBodyBytes caps the webhook request body size. Push payloads are small,
+// so anything larger is rejected with 413.
+const MaxBodyBytes = 1 << 20 // 1 MiB
+
 // Handler returns an http.HandlerFunc that processes incoming webhooks.
 // It supports signature validation for Gitea (X-Gitea-Signature) and
 // GitHub/Forgejo (X-Hub-Signature-256). The response is sent immediately
 // with HTTP 202 Accepted; the deploy runs in a goroutine so the caller
 // does not time out waiting for it to complete.
+// Method enforcement is left to the mux route pattern ("POST /webhook").
 func Handler(cfg *config.Config, deployer *deploy.Deployer, timeout time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		body, err := io.ReadAll(r.Body)
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
 		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, "failed to read request body", http.StatusBadRequest)
 			return
 		}

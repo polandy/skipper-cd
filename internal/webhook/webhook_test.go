@@ -25,14 +25,30 @@ func newTestConfig(t *testing.T, secret string) *config.Config {
 }
 
 func TestHandler_RejectsNonPostRequests(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, ""), deploy.NewDeployer(), 5*time.Minute)
+	// Method enforcement happens at the mux level ("POST /webhook"),
+	// mirroring the production route registration in main.go.
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /webhook", webhook.Handler(newTestConfig(t, ""), deploy.NewDeployer(), 5*time.Minute))
 
 	req := httptest.NewRequest(http.MethodGet, "/webhook", nil)
 	rec := httptest.NewRecorder()
-	handler(rec, req)
+	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestHandler_RejectsOversizedBody(t *testing.T) {
+	handler := webhook.Handler(newTestConfig(t, ""), deploy.NewDeployer(), 5*time.Minute)
+
+	body := bytes.NewReader(make([]byte, webhook.MaxBodyBytes+1))
+	req := httptest.NewRequest(http.MethodPost, "/webhook", body)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413, got %d", rec.Code)
 	}
 }
 
