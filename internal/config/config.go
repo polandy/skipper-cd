@@ -116,12 +116,28 @@ func Load(path string) (*Config, error) {
 	return cfg, validateConfig(cfg)
 }
 
+// reservedStackName is used internally as the state key for NixOS rebuild
+// hashes and must not collide with a configured stack.
+const reservedStackName = "_nixos"
+
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
 		return fmt.Errorf("repo_url is required")
 	}
 
+	seen := make(map[string]struct{}, len(cfg.Stacks))
 	for _, s := range cfg.Stacks {
+		if s.Name == "" {
+			return fmt.Errorf("every stack needs a name")
+		}
+		if s.Name == reservedStackName {
+			return fmt.Errorf("stack name %q is reserved", reservedStackName)
+		}
+		if _, dup := seen[s.Name]; dup {
+			return fmt.Errorf("duplicate stack name %q", s.Name)
+		}
+		seen[s.Name] = struct{}{}
+
 		if s.WorkingDir == "" && cfg.StacksBaseDir == "" {
 			return fmt.Errorf("stack %q: working_dir is required when stacks_base_dir is not set", s.Name)
 		}

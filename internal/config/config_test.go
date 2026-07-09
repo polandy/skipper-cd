@@ -108,6 +108,47 @@ stacks:
 	}
 }
 
+func TestLoad_RejectsDuplicateStackNames(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks:
+  - name: gitea
+  - name: gitea
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil {
+		t.Error("expected error for duplicate stack names, got nil")
+	}
+}
+
+func TestLoad_RejectsReservedStackName(t *testing.T) {
+	// "_nixos" is the reserved state key for NixOS rebuild hashes.
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks:
+  - name: _nixos
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil {
+		t.Error("expected error for reserved stack name _nixos, got nil")
+	}
+}
+
+func TestLoad_RejectsEmptyStackName(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks:
+  - env_files: [/etc/foo.env]
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil {
+		t.Error("expected error for stack without name, got nil")
+	}
+}
+
 func TestLoad_NixOSRebuild_OmittedSectionIsDisabled(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
