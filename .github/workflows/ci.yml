@@ -16,6 +16,13 @@ jobs:
       - run: go vet ./...
       - run: test -z "$(gofmt -l cmd internal)"
       - run: go test ./... -race
+      # The nix flake builds with vendorHash = null, so vendor/ must stay
+      # committed and in sync with go.mod.
+      - name: check vendor is in sync
+        run: |
+          go mod tidy
+          go mod vendor
+          git diff --exit-code
 
   lint:
     runs-on: ubuntu-latest
