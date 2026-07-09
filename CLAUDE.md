@@ -9,6 +9,7 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 - Verify before finishing any change:
   `go build ./... && go vet ./... && go test ./... && test -z "$(gofmt -l cmd internal)"`
   (the `test -z` wrapper is required — `gofmt -l` exits 0 even when files need formatting; the paths `cmd internal` keep `vendor/` out)
+- Lint: `golangci-lint run ./...` (config in `.golangci.yml`; locally via `nix run nixpkgs#golangci-lint -- run ./...`). CI runs it plus `go test -race`.
 - Nix: `nix build` / `nix develop`. After dependency changes run `go mod tidy && go mod vendor` — the flake uses `vendorHash = null`, so `vendor/` must stay committed and in sync.
 
 ## Packages
@@ -36,7 +37,7 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 
 ## Testing
 
-Table-style tests with `t.TempDir()` and real files on disk; inject `recordingRunner` fakes (implementing `command.Runner`) and assert the exact docker/git argv — never shell out for real. All patterns live in `internal/deploy/deploy_test.go`.
+Table-style tests with `t.TempDir()` and real files on disk; inject `recordingRunner` fakes (implementing `command.Runner`) and assert the exact docker/git argv — never shell out for real. Test files in `internal/deploy` mirror the source files (`hash_test.go`, `images_test.go`, …); shared fakes and helpers live in `internal/deploy/helpers_test.go`.
 
 ## Engineering principles
 
