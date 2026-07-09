@@ -1,0 +1,27 @@
+# Dependabot cannot update Nix flake inputs, so a weekly job opens a PR
+# with a refreshed flake.lock instead.
+#
+# Note: PRs created with the default GITHUB_TOKEN do not trigger CI runs.
+# Close and reopen the PR to run CI, or configure a PAT/GitHub App token.
+name: Update flake.lock
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # Mondays 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update-flake-lock:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+
+      - uses: DeterminateSystems/update-flake-lock@v28
+        with:
+          pr-title: "chore(nix): update flake.lock"
+          commit-msg: "chore(nix): update flake.lock"
