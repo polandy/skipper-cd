@@ -12,8 +12,8 @@ import (
 // serviceImageByName maps each compose service name to its image reference.
 type serviceImageByName map[string]string
 
-// composeFile is a minimal representation of a docker-compose.yml,
-// used only to extract image references.
+// composeFile is a minimal parsed representation of a docker-compose.yml.
+// It is parsed once per stack deploy; all image/build lookups are methods on it.
 type composeFile struct {
 	Services map[string]composeService `yaml:"services"`
 }
@@ -23,11 +23,9 @@ type composeService struct {
 	BuildRaw any    `yaml:"build"`
 }
 
-// extractComposeImages parses a docker-compose.yml and returns a map of
-// service name to image reference. Services without an image field (e.g.
-// those using build:) are omitted.
-func extractComposeImages(composePath string) (serviceImageByName, error) {
-	data, err := os.ReadFile(composePath)
+// parseComposeFile reads and parses a docker-compose.yml.
+func parseComposeFile(path string) (*composeFile, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read compose file: %w", err)
 	}
@@ -36,32 +34,27 @@ func extractComposeImages(composePath string) (serviceImageByName, error) {
 	if err := yaml.Unmarshal(data, &cf); err != nil {
 		return nil, fmt.Errorf("parse compose file: %w", err)
 	}
+	return &cf, nil
+}
 
+// images returns a map of service name to image reference. Services without
+// an image field (e.g. those using build:) are omitted.
+func (cf *composeFile) images() serviceImageByName {
 	images := make(serviceImageByName)
 	for name, svc := range cf.Services {
 		if svc.Image != "" {
 			images[name] = svc.Image
 		}
 	}
-	return images, nil
+	return images
 }
 
-// extractPullableServices parses a docker-compose.yml and returns the names
-// of services whose images should be pulled from a registry. Services with a
-// build: field are excluded (they are built locally). Services whose image
-// name matches a locally-built image (from a build: service) are also excluded,
-// since that image won't exist on any registry.
-func extractPullableServices(composePath string) ([]string, error) {
-	data, err := os.ReadFile(composePath)
-	if err != nil {
-		return nil, fmt.Errorf("read compose file: %w", err)
-	}
-
-	var cf composeFile
-	if err := yaml.Unmarshal(data, &cf); err != nil {
-		return nil, fmt.Errorf("parse compose file: %w", err)
-	}
-
+// pullableServices returns the names of services whose images should be
+// pulled from a registry. Services with a build: field are excluded (they are
+// built locally). Services whose image name matches a locally-built image
+// (from a build: service) are also excluded, since that image won't exist on
+// any registry.
+func (cf *composeFile) pullableServices() []string {
 	// Collect image names produced by build: services.
 	localImages := make(map[string]struct{})
 	for _, svc := range cf.Services {
@@ -81,24 +74,14 @@ func extractPullableServices(composePath string) ([]string, error) {
 		}
 		pullable = append(pullable, name)
 	}
-	return pullable, nil
+	return pullable
 }
 
-// extractDockerfilePaths parses a docker-compose.yml and returns the absolute paths of
-// all Dockerfiles referenced by services with a build: section. Both the string form
-// (build: ".") and the map form (build: {context: ".", dockerfile: "Dockerfile"}) are
-// supported. Missing Dockerfiles are skipped with a warning.
-func extractDockerfilePaths(composePath, workDir string) ([]string, error) {
-	data, err := os.ReadFile(composePath)
-	if err != nil {
-		return nil, fmt.Errorf("read compose file: %w", err)
-	}
-
-	var cf composeFile
-	if err := yaml.Unmarshal(data, &cf); err != nil {
-		return nil, fmt.Errorf("parse compose file: %w", err)
-	}
-
+// dockerfilePaths returns the absolute paths of all Dockerfiles referenced by
+// services with a build: section. Both the string form (build: ".") and the
+// map form (build: {context: ".", dockerfile: "Dockerfile"}) are supported.
+// Missing Dockerfiles are skipped with a warning.
+func (cf *composeFile) dockerfilePaths(workDir string) []string {
 	seen := make(map[string]struct{})
 	var paths []string
 
@@ -147,7 +130,7 @@ func extractDockerfilePaths(composePath, workDir string) ([]string, error) {
 		}
 	}
 
-	return paths, nil
+	return paths
 }
 
 // hasAnyImageChanged returns true if the current images differ from the previous ones.

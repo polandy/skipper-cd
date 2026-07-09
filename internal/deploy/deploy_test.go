@@ -2,54 +2,16 @@ package deploy
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 )
-
-// recordingRunner is a fake Runner that records every command it receives
-// instead of executing it.
-type recordingRunner struct {
-	calls        []runCall
-	errOnCommand string
-	delay        time.Duration // optional delay per call for concurrency tests
-}
-
-type runCall struct {
-	dir  string
-	name string
-	args []string
-}
-
-func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
-	if r.delay > 0 {
-		time.Sleep(r.delay)
-	}
-	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
-	if r.errOnCommand != "" && containsArg(args, r.errOnCommand) {
-		return fmt.Errorf("simulated error for command: %s", r.errOnCommand)
-	}
-	return nil
-}
-
-// fakeRepoSyncer implements RepoSyncer for tests.
-type fakeRepoSyncer struct {
-	called atomic.Int32
-}
-
-func (f *fakeRepoSyncer) Sync(_ context.Context) error {
-	f.called.Add(1)
-	return nil
-}
 
 func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
 	baseDir := t.TempDir()
@@ -95,7 +57,7 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}
-	state := persistedState{
+	state := &persistedState{
 		Stacks: map[string]stackFileHashes{"gitea": hashes},
 		Images: map[string]serviceImageByName{},
 	}
@@ -181,19 +143,19 @@ func TestDeployStack_WorkingDirUsesProjectDirectoryFlag(t *testing.T) {
 	// All docker compose calls should use -f and --project-directory flags.
 	composePath := filepath.Join(stackDir, "docker-compose.yml")
 	for _, c := range runner.calls {
-		if c.name != "docker" || !containsArg(c.args, "compose") {
+		if c.name != "docker" || !slices.Contains(c.args, "compose") {
 			continue
 		}
-		if !containsArg(c.args, "-f") {
+		if !slices.Contains(c.args, "-f") {
 			t.Errorf("expected -f flag in docker compose call: %v", c.args)
 		}
-		if !containsArg(c.args, composePath) {
+		if !slices.Contains(c.args, composePath) {
 			t.Errorf("expected compose path %s in args: %v", composePath, c.args)
 		}
-		if !containsArg(c.args, "--project-directory") {
+		if !slices.Contains(c.args, "--project-directory") {
 			t.Errorf("expected --project-directory flag in docker compose call: %v", c.args)
 		}
-		if !containsArg(c.args, projectDir) {
+		if !slices.Contains(c.args, projectDir) {
 			t.Errorf("expected project dir %s in args: %v", projectDir, c.args)
 		}
 		if c.dir != projectDir {
@@ -223,13 +185,13 @@ func TestDeployStack_NoWorkingDirRunsFromRepoClone(t *testing.T) {
 	// Without working_dir, docker compose should run from the repo clone dir
 	// without -f or --project-directory flags.
 	for _, c := range runner.calls {
-		if c.name != "docker" || !containsArg(c.args, "compose") {
+		if c.name != "docker" || !slices.Contains(c.args, "compose") {
 			continue
 		}
-		if containsArg(c.args, "-f") {
+		if slices.Contains(c.args, "-f") {
 			t.Errorf("unexpected -f flag without working_dir: %v", c.args)
 		}
-		if containsArg(c.args, "--project-directory") {
+		if slices.Contains(c.args, "--project-directory") {
 			t.Errorf("unexpected --project-directory flag without working_dir: %v", c.args)
 		}
 		if c.dir != stackDir {
@@ -252,7 +214,7 @@ func TestDeployStack_SkipsPullWhenOnlyConfigChanges(t *testing.T) {
 	stack := config.Stack{Name: "mystack"}
 
 	// Simulate a previous deploy with the same image but different file hash.
-	state := persistedState{
+	state := &persistedState{
 		Stacks: map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
 		Images: map[string]serviceImageByName{"mystack": {"app": "redis:7.2"}},
 	}
@@ -279,7 +241,7 @@ func TestDeployStack_PullsWhenImageChanges(t *testing.T) {
 	stack := config.Stack{Name: "mystack"}
 
 	// Previous deploy had a different image version.
-	state := persistedState{
+	state := &persistedState{
 		Stacks: map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
 		Images: map[string]serviceImageByName{"mystack": {"app": "redis:7.2"}},
 	}
@@ -370,7 +332,7 @@ func TestDeployStack_StopsOnDemandContainersAfterDeploy(t *testing.T) {
 
 	var stopCall *runCall
 	for i := range runner.calls {
-		if runner.calls[i].name == "docker" && containsArg(runner.calls[i].args, "stop") {
+		if runner.calls[i].name == "docker" && slices.Contains(runner.calls[i].args, "stop") {
 			stopCall = &runner.calls[i]
 			break
 		}
@@ -378,7 +340,7 @@ func TestDeployStack_StopsOnDemandContainersAfterDeploy(t *testing.T) {
 	if stopCall == nil {
 		t.Fatal("expected docker stop to be called")
 	}
-	if !containsArg(stopCall.args, "monica-app") || !containsArg(stopCall.args, "monica-db") {
+	if !slices.Contains(stopCall.args, "monica-app") || !slices.Contains(stopCall.args, "monica-db") {
 		t.Errorf("expected docker stop monica-app monica-db, got %v", stopCall.args)
 	}
 }
@@ -402,7 +364,7 @@ func TestDeployStack_SkipsStopWhenNoOnDemandContainers(t *testing.T) {
 	}
 
 	for _, c := range runner.calls {
-		if c.name == "docker" && containsArg(c.args, "stop") {
+		if c.name == "docker" && slices.Contains(c.args, "stop") {
 			t.Errorf("expected docker stop NOT to be called, but it was: %v", c.args)
 		}
 	}
@@ -490,7 +452,7 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	}
 
 	done := make(chan struct{}, 2)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -499,7 +461,7 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 		}()
 	}
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
@@ -510,180 +472,6 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	// Both goroutines ran sync — they should not have overlapped.
 	if syncer.called.Load() != 2 {
 		t.Errorf("expected syncer to be called 2 times, got %d", syncer.called.Load())
-	}
-}
-
-func TestSaveDeployState_RoundTripsAndLeavesNoTempFiles(t *testing.T) {
-	dir := t.TempDir()
-	state := newEmptyState()
-	state.Stacks["mystack"] = stackFileHashes{"file": "hash"}
-
-	if err := saveDeployState(dir, state); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 || entries[0].Name() != stateFileName {
-		t.Errorf("expected only %s in state dir, got %v", stateFileName, entries)
-	}
-
-	loaded, err := loadPersistedDeployState(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if loaded.Stacks["mystack"]["file"] != "hash" {
-		t.Errorf("expected round-tripped state, got %+v", loaded)
-	}
-}
-
-func TestChangedFiles_NoneWhenHashesMatch(t *testing.T) {
-	hashes := stackFileHashes{"docker-compose.yml": "abc123"}
-	if got := changedFiles(hashes, hashes); len(got) != 0 {
-		t.Errorf("expected no changed files, got %v", got)
-	}
-}
-
-func TestChangedFiles_DetectsChangedFile(t *testing.T) {
-	current := stackFileHashes{"docker-compose.yml": "newHash"}
-	last := stackFileHashes{"docker-compose.yml": "oldHash"}
-	changed := changedFiles(current, last)
-	if len(changed) != 1 || changed[0] != "docker-compose.yml" {
-		t.Errorf("expected [docker-compose.yml], got %v", changed)
-	}
-}
-
-func TestChangedFiles_DetectsNewFile(t *testing.T) {
-	current := stackFileHashes{"docker-compose.yml": "abc", "app.env": "def"}
-	last := stackFileHashes{"docker-compose.yml": "abc"}
-	changed := changedFiles(current, last)
-	if len(changed) != 1 || changed[0] != "app.env" {
-		t.Errorf("expected [app.env], got %v", changed)
-	}
-}
-
-func TestComputePerFileHashes_ReturnsHashForEachFile(t *testing.T) {
-	workDir := makeStackDir(t)
-	envFile := filepath.Join(t.TempDir(), "app.env")
-	writeFile(t, envFile, "KEY=value\n")
-
-	hashes, err := computePerFileHashes(workDir, []string{envFile}, nil, "", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	composePath := filepath.Join(workDir, "docker-compose.yml")
-	if hashes[composePath] == "" {
-		t.Errorf("expected hash for docker-compose.yml")
-	}
-	if hashes[envFile] == "" {
-		t.Errorf("expected hash for env file")
-	}
-}
-
-func TestComputePerFileHashes_IncludesVarsFile(t *testing.T) {
-	workDir := makeStackDir(t)
-	varsFile := filepath.Join(t.TempDir(), "vars.env")
-	writeFile(t, varsFile, "DOMAIN=example.com\n")
-
-	hashes, err := computePerFileHashes(workDir, nil, nil, varsFile, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if hashes[varsFile] == "" {
-		t.Errorf("expected hash for vars_file")
-	}
-}
-
-func TestComputePerFileHashes_IncludesExtraFiles(t *testing.T) {
-	workDir := makeStackDir(t)
-	dockerfilePath := filepath.Join(workDir, "Dockerfile")
-	writeFile(t, dockerfilePath, "FROM nginx:1.25\n")
-
-	hashes, err := computePerFileHashes(workDir, nil, nil, "", []string{dockerfilePath})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if hashes[dockerfilePath] == "" {
-		t.Errorf("expected hash for Dockerfile")
-	}
-}
-
-// --- extractDockerfilePaths tests ---
-
-func TestExtractDockerfilePaths_StringForm(t *testing.T) {
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
-  app:
-    build: "."
-`)
-	writeFile(t, filepath.Join(workDir, "Dockerfile"), "FROM nginx:1.25\n")
-
-	paths, err := extractDockerfilePaths(filepath.Join(workDir, "docker-compose.yml"), workDir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(paths) != 1 {
-		t.Fatalf("expected 1 path, got %d: %v", len(paths), paths)
-	}
-	if paths[0] != filepath.Join(workDir, "Dockerfile") {
-		t.Errorf("unexpected path: %s", paths[0])
-	}
-}
-
-func TestExtractDockerfilePaths_MapForm(t *testing.T) {
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
-  app:
-    build:
-      context: "."
-      dockerfile: "Dockerfile.custom"
-`)
-	writeFile(t, filepath.Join(workDir, "Dockerfile.custom"), "FROM nginx:1.25\n")
-
-	paths, err := extractDockerfilePaths(filepath.Join(workDir, "docker-compose.yml"), workDir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(paths) != 1 {
-		t.Fatalf("expected 1 path, got %d: %v", len(paths), paths)
-	}
-	if paths[0] != filepath.Join(workDir, "Dockerfile.custom") {
-		t.Errorf("unexpected path: %s", paths[0])
-	}
-}
-
-func TestExtractDockerfilePaths_MissingDockerfileSkipped(t *testing.T) {
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
-  app:
-    build: "."
-`)
-	// No Dockerfile written — should return empty, not an error.
-
-	paths, err := extractDockerfilePaths(filepath.Join(workDir, "docker-compose.yml"), workDir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(paths) != 0 {
-		t.Errorf("expected no paths, got %v", paths)
-	}
-}
-
-func TestExtractDockerfilePaths_NoBuildServicesReturnsEmpty(t *testing.T) {
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
-
-	paths, err := extractDockerfilePaths(filepath.Join(workDir, "docker-compose.yml"), workDir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(paths) != 0 {
-		t.Errorf("expected no paths, got %v", paths)
 	}
 }
 
@@ -776,150 +564,13 @@ func TestDeployStack_DockerfileTrackedInHash(t *testing.T) {
 	assertCommandCalled(t, runner.calls, "build")
 }
 
-// --- images.go tests ---
-
-func TestExtractComposeImages_ParsesImages(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "docker-compose.yml")
-	writeFile(t, path, `services:
-  app:
-    image: gitea/gitea:1.21
-  db:
-    image: postgres:16-alpine
-  builder:
-    build: .
-`)
-
-	images, err := extractComposeImages(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestDeployStack_SkipsPullWhenAllServicesLocallyBuilt(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "myapp")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
-
-	if len(images) != 2 {
-		t.Fatalf("expected 2 images, got %d: %v", len(images), images)
-	}
-	if images["app"] != "gitea/gitea:1.21" {
-		t.Errorf("expected gitea/gitea:1.21, got %s", images["app"])
-	}
-	if images["db"] != "postgres:16-alpine" {
-		t.Errorf("expected postgres:16-alpine, got %s", images["db"])
-	}
-}
-
-func TestImagesChanged_DetectsChange(t *testing.T) {
-	current := map[string]string{"app": "redis:7.4"}
-	previous := map[string]string{"app": "redis:7.2"}
-	if !hasAnyImageChanged(current, previous) {
-		t.Error("expected images to be detected as changed")
-	}
-}
-
-func TestImagesChanged_DetectsNoChange(t *testing.T) {
-	images := map[string]string{"app": "redis:7.2", "db": "postgres:16"}
-	if hasAnyImageChanged(images, images) {
-		t.Error("expected images to be detected as unchanged")
-	}
-}
-
-func TestImagesChanged_DetectsNewService(t *testing.T) {
-	current := map[string]string{"app": "redis:7.2", "cache": "memcached:1.6"}
-	previous := map[string]string{"app": "redis:7.2"}
-	if !hasAnyImageChanged(current, previous) {
-		t.Error("expected new service to be detected as change")
-	}
-}
-
-func TestImagesChanged_NilPreviousIsChanged(t *testing.T) {
-	current := map[string]string{"app": "redis:7.2"}
-	if !hasAnyImageChanged(current, nil) {
-		t.Error("expected nil previous to be detected as changed")
-	}
-}
-
-// --- extractPullableServices tests ---
-
-func TestExtractPullableServices_ExcludesBuildServices(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "docker-compose.yml")
-	writeFile(t, path, `services:
-  app:
-    build: "."
-    image: myapp:custom
-  db:
-    image: postgres:16-alpine
-  redis:
-    image: redis:7.2
-`)
-
-	pullable, err := extractPullableServices(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(pullable) != 2 {
-		t.Fatalf("expected 2 pullable services, got %d: %v", len(pullable), pullable)
-	}
-	if !slices.Contains(pullable, "db") {
-		t.Errorf("expected db in pullable services: %v", pullable)
-	}
-	if !slices.Contains(pullable, "redis") {
-		t.Errorf("expected redis in pullable services: %v", pullable)
-	}
-	if slices.Contains(pullable, "app") {
-		t.Errorf("build service app should not be pullable: %v", pullable)
-	}
-}
-
-func TestExtractPullableServices_ExcludesLocalImageConsumers(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "docker-compose.yml")
-	writeFile(t, path, `services:
-  app:
-    build: "."
-    image: nextcloud:34-ghostscript
-  cron:
-    image: nextcloud:34-ghostscript
-  db:
-    image: postgres:16-alpine
-`)
-
-	pullable, err := extractPullableServices(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(pullable) != 1 {
-		t.Fatalf("expected 1 pullable service, got %d: %v", len(pullable), pullable)
-	}
-	if pullable[0] != "db" {
-		t.Errorf("expected only db to be pullable, got %v", pullable)
-	}
-}
-
-func TestExtractPullableServices_AllRemoteImages(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "docker-compose.yml")
-	writeFile(t, path, `services:
-  app:
-    image: nginx:1.25
-  db:
-    image: postgres:16-alpine
-`)
-
-	pullable, err := extractPullableServices(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(pullable) != 2 {
-		t.Fatalf("expected 2 pullable services, got %d: %v", len(pullable), pullable)
-	}
-}
-
-func TestExtractPullableServices_AllBuildServices(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "docker-compose.yml")
-	writeFile(t, path, `services:
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), `services:
   app:
     build: "."
     image: myapp:latest
@@ -927,13 +578,25 @@ func TestExtractPullableServices_AllBuildServices(t *testing.T) {
     image: myapp:latest
 `)
 
-	pullable, err := extractPullableServices(path)
-	if err != nil {
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "myapp"}
+	// Previous images differ so the pull decision is actually evaluated.
+	state := newEmptyState()
+	state.recordImages("myapp", serviceImageByName{"app": "myapp:old"})
+
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(pullable) != 0 {
-		t.Errorf("expected no pullable services, got %v", pullable)
+	for _, call := range runner.calls {
+		if slices.Contains(call.args, "pull") && !slices.Contains(call.args, "build") {
+			t.Errorf("expected no pull for locally-built-only stack, got %v", call.args)
+		}
+	}
+	if len(runner.calls) == 0 || !slices.Contains(runner.calls[len(runner.calls)-1].args, "up") {
+		t.Errorf("expected docker compose up to run, got %v", runner.calls)
 	}
 }
 
@@ -969,7 +632,7 @@ func TestDeployStack_PullsOnlyRemoteServices(t *testing.T) {
 	// Find the pull command and verify it specifies service names.
 	var pullCall *runCall
 	for i, c := range runner.calls {
-		if containsArg(c.args, "pull") {
+		if slices.Contains(c.args, "pull") {
 			pullCall = &runner.calls[i]
 			break
 		}
@@ -979,61 +642,21 @@ func TestDeployStack_PullsOnlyRemoteServices(t *testing.T) {
 	}
 
 	// pull should include db and redis but not app or cron.
-	if !containsArg(pullCall.args, "db") {
+	if !slices.Contains(pullCall.args, "db") {
 		t.Errorf("expected db in pull args: %v", pullCall.args)
 	}
-	if !containsArg(pullCall.args, "redis") {
+	if !slices.Contains(pullCall.args, "redis") {
 		t.Errorf("expected redis in pull args: %v", pullCall.args)
 	}
-	if containsArg(pullCall.args, "app") {
+	if slices.Contains(pullCall.args, "app") {
 		t.Errorf("build service app should not be in pull args: %v", pullCall.args)
 	}
-	if containsArg(pullCall.args, "cron") {
+	if slices.Contains(pullCall.args, "cron") {
 		t.Errorf("local image consumer cron should not be in pull args: %v", pullCall.args)
 	}
 
 	// Build should still be called.
 	assertCommandCalled(t, runner.calls, "build")
-}
-
-// --- parseEnvFile tests ---
-
-func TestParseEnvFile_ParsesKeyValuePairs(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "vars.env")
-	writeFile(t, path, "DOMAIN=example.com\nSMTP_HOST=mail.example.com\n")
-
-	vars, err := parseEnvFile(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if !slices.Contains(vars, "DOMAIN=example.com") {
-		t.Errorf("expected DOMAIN=example.com in %v", vars)
-	}
-	if !slices.Contains(vars, "SMTP_HOST=mail.example.com") {
-		t.Errorf("expected SMTP_HOST=mail.example.com in %v", vars)
-	}
-}
-
-func TestParseEnvFile_IgnoresCommentsAndBlankLines(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "vars.env")
-	writeFile(t, path, "# this is a comment\n\nDOMAIN=example.com\n")
-
-	vars, err := parseEnvFile(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(vars) != 1 || vars[0] != "DOMAIN=example.com" {
-		t.Errorf("expected [DOMAIN=example.com], got %v", vars)
-	}
-}
-
-func TestParseEnvFile_MissingFileReturnsError(t *testing.T) {
-	_, err := parseEnvFile("/nonexistent/vars.env")
-	if err == nil {
-		t.Error("expected error for missing file, got nil")
-	}
 }
 
 // --- event sink tests ---
@@ -1100,7 +723,7 @@ func TestDeployStack_EmitsSkippedEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}
-	state := persistedState{
+	state := &persistedState{
 		Stacks: map[string]stackFileHashes{"gitea": hashes},
 		Images: map[string]serviceImageByName{},
 	}
@@ -1247,34 +870,6 @@ func TestDeployStack_DeployingEventIncludesChangedFiles(t *testing.T) {
 
 // --- collectDiffs tests ---
 
-type fakeCommitReader struct {
-	diffs   map[string]string
-	files   map[string][]byte // commitSHA:filePath -> content
-	fileErr error             // error to return from FileAtCommit
-}
-
-func (f *fakeCommitReader) HeadCommitSHA(_ context.Context) (string, error) {
-	return "abc123", nil
-}
-
-func (f *fakeCommitReader) DiffSinceCommit(_ context.Context, _, filePath string) (string, error) {
-	if d, ok := f.diffs[filePath]; ok {
-		return d, nil
-	}
-	return "", nil
-}
-
-func (f *fakeCommitReader) FileAtCommit(_ context.Context, commitSHA, filePath string) ([]byte, error) {
-	if f.fileErr != nil {
-		return nil, f.fileErr
-	}
-	key := commitSHA + ":" + filePath
-	if content, ok := f.files[key]; ok {
-		return content, nil
-	}
-	return nil, fmt.Errorf("file not found at %s:%s", commitSHA, filePath)
-}
-
 func TestCollectDiffs_ReturnsDiffs(t *testing.T) {
 	cr := &fakeCommitReader{
 		diffs: map[string]string{
@@ -1366,7 +961,7 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 	})
 
 	stack := config.Stack{Name: "gitea"}
-	state := persistedState{
+	state := &persistedState{
 		Stacks:             map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
 		Images:             map[string]serviceImageByName{},
 		LastDeployedCommit: "old-sha",
@@ -1385,263 +980,6 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 	if !strings.Contains(successEvt.Diffs[filepath.Join(stackDir, "docker-compose.yml")], "nginx:1.25") {
 		t.Error("expected diff content in success event")
 	}
-}
-
-// --- rollback tests ---
-
-// selectiveErrRunner fails only on specific compose subcommands.
-type selectiveErrRunner struct {
-	calls       []runCall
-	errCommands map[string]bool // compose subcommands that should fail (e.g. "up")
-}
-
-func (r *selectiveErrRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
-	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
-	for _, a := range args {
-		if r.errCommands[a] {
-			return fmt.Errorf("simulated error for command: %s", a)
-		}
-	}
-	return nil
-}
-
-func TestDeployStack_RollbackOnUpFailure(t *testing.T) {
-	baseDir := t.TempDir()
-	stackDir := filepath.Join(baseDir, "mystack")
-	if err := os.MkdirAll(stackDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
-
-	composePath := filepath.Join(stackDir, "docker-compose.yml")
-	oldCompose := composeWithImage("nginx:1.25")
-
-	cr := &fakeCommitReader{
-		diffs: map[string]string{},
-		files: map[string][]byte{
-			"old-sha:" + composePath: []byte(oldCompose),
-		},
-	}
-
-	// Fail on "up" but succeed on everything else (including rollback up).
-	runner := &selectiveErrRunner{errCommands: map[string]bool{"up": true}}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-
-	stack := config.Stack{Name: "mystack"}
-	state := persistedState{
-		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
-		Images:             map[string]serviceImageByName{},
-		LastDeployedCommit: "old-sha",
-	}
-
-	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
-	if err == nil {
-		t.Fatal("expected error from failed deploy")
-	}
-
-	// The rollback also calls "up", so it will also fail. Let's test the
-	// case where rollback succeeds instead — need a smarter runner.
-	// This test verifies the error message format when rollback also fails.
-	if !strings.Contains(err.Error(), "rollback also failed") {
-		t.Errorf("expected 'rollback also failed' in error, got: %s", err.Error())
-	}
-}
-
-func TestDeployStack_RollbackSucceeds(t *testing.T) {
-	baseDir := t.TempDir()
-	stackDir := filepath.Join(baseDir, "mystack")
-	if err := os.MkdirAll(stackDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
-
-	composePath := filepath.Join(stackDir, "docker-compose.yml")
-	oldCompose := composeWithImage("nginx:1.25")
-
-	cr := &fakeCommitReader{
-		diffs: map[string]string{},
-		files: map[string][]byte{
-			"old-sha:" + composePath: []byte(oldCompose),
-		},
-	}
-
-	// Use a runner that fails only the first "up" call (the deploy), not the rollback "up".
-	upCallCount := 0
-	runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-
-	stack := config.Stack{Name: "mystack"}
-	state := persistedState{
-		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
-		Images:             map[string]serviceImageByName{},
-		LastDeployedCommit: "old-sha",
-	}
-
-	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
-	if err == nil {
-		t.Fatal("expected error from failed deploy")
-	}
-	if !errors.Is(err, ErrRolledBack) {
-		t.Errorf("expected error wrapping ErrRolledBack, got: %s", err.Error())
-	}
-
-	// State should NOT be updated (the deploy failed).
-	if state.Stacks["mystack"] != nil && state.Stacks["mystack"]["old"] != "oldhash" {
-		t.Error("state should not be updated after a rolled-back deploy")
-	}
-}
-
-func TestDeployStack_RollbackSkippedWithoutPreviousCommit(t *testing.T) {
-	baseDir := t.TempDir()
-	stackDir := filepath.Join(baseDir, "mystack")
-	if err := os.MkdirAll(stackDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
-
-	runner := &recordingRunner{errOnCommand: "up"}
-	d := newDeployerWithRunner(runner)
-
-	stack := config.Stack{Name: "mystack"}
-	state := newEmptyState()
-
-	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
-	if err == nil {
-		t.Fatal("expected error from failed deploy")
-	}
-	// Without commitReader or LastDeployedCommit, rollback should fail with "no previous commit".
-	if !strings.Contains(err.Error(), "rollback also failed") {
-		t.Errorf("expected 'rollback also failed' in error, got: %s", err.Error())
-	}
-}
-
-func TestDeployAllStacks_EmitsRolledBackEvent(t *testing.T) {
-	baseDir := t.TempDir()
-	stackDir := filepath.Join(baseDir, "mystack")
-	if err := os.MkdirAll(stackDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
-
-	composePath := filepath.Join(stackDir, "docker-compose.yml")
-	oldCompose := composeWithImage("nginx:1.25")
-
-	cr := &fakeCommitReader{
-		diffs: map[string]string{},
-		files: map[string][]byte{
-			"old-sha:" + composePath: []byte(oldCompose),
-		},
-	}
-
-	upCallCount := 0
-	runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-
-	var emitted []events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
-		emitted = append(emitted, e)
-	})
-
-	cfg := &config.Config{
-		RepoURL:       "ssh://git@example.com/repo.git",
-		StacksBaseDir: baseDir,
-		Stacks:        []config.Stack{{Name: "mystack"}},
-	}
-
-	// Pre-seed state with old hashes and commit.
-	state, _ := loadPersistedDeployState(d.stateDir)
-	state.Stacks["mystack"] = stackFileHashes{"old": "oldhash"}
-	state.LastDeployedCommit = "old-sha"
-	_ = saveDeployState(d.stateDir, state)
-
-	d.DeployAllStacks(context.Background(), cfg)
-
-	var rolledBack *events.DeployEvent
-	for i := range emitted {
-		if emitted[i].Status == events.StatusRolledBack {
-			rolledBack = &emitted[i]
-			break
-		}
-	}
-	if rolledBack == nil {
-		t.Fatal("expected a rolled_back event")
-	}
-	if rolledBack.Stack != "mystack" {
-		t.Errorf("expected stack 'mystack', got %q", rolledBack.Stack)
-	}
-}
-
-// countingErrRunner fails only the Nth "up" call (1-indexed).
-type countingErrRunner struct {
-	calls       []runCall
-	failOnNthUp int
-	upCount     *int
-}
-
-func (r *countingErrRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
-	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
-	for _, a := range args {
-		if a == "up" {
-			*r.upCount++
-			if *r.upCount == r.failOnNthUp {
-				return fmt.Errorf("simulated error for command: up")
-			}
-		}
-	}
-	return nil
-}
-
-// --- helpers ---
-
-func makeStackDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
-	return dir
-}
-
-func composeWithImage(image string) string {
-	return fmt.Sprintf("services:\n  app:\n    image: %s\n", image)
-}
-
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("failed to write file %s: %v", path, err)
-	}
-}
-
-func assertCommandCalled(t *testing.T, calls []runCall, subcommand string) {
-	t.Helper()
-	for _, c := range calls {
-		for _, arg := range c.args {
-			if arg == subcommand {
-				return
-			}
-		}
-	}
-	t.Errorf("expected command %q to be called, but it was not", subcommand)
-}
-
-func assertCommandNotCalled(t *testing.T, calls []runCall, subcommand string) {
-	t.Helper()
-	for _, c := range calls {
-		for _, arg := range c.args {
-			if arg == subcommand {
-				t.Errorf("expected command %q NOT to be called, but it was", subcommand)
-				return
-			}
-		}
-	}
-}
-
-func containsArg(args []string, target string) bool {
-	for _, a := range args {
-		if a == target {
-			return true
-		}
-	}
-	return false
 }
 
 // --- NixOS rebuild integration tests ---
@@ -1685,7 +1023,7 @@ func TestDeployAllStacks_AbortsStacksWhenNixOSFails(t *testing.T) {
 
 	// docker compose should NOT have been called since nixos-rebuild failed.
 	for _, c := range runner.calls {
-		if c.name == "docker" && containsArg(c.args, "compose") {
+		if c.name == "docker" && slices.Contains(c.args, "compose") {
 			t.Error("expected docker compose NOT to be called after nixos-rebuild failure")
 			break
 		}
@@ -1725,7 +1063,7 @@ func TestDeployAllStacks_NixOSSuccessContinuesToDockerStacks(t *testing.T) {
 		if c.name == "nixos-rebuild" {
 			nixosCalled = true
 		}
-		if c.name == "docker" && containsArg(c.args, "compose") {
+		if c.name == "docker" && slices.Contains(c.args, "compose") {
 			dockerCalled = true
 		}
 	}

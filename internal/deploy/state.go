@@ -27,24 +27,44 @@ type persistedState struct {
 	Images map[string]serviceImageByName `yaml:"images,omitempty"`
 }
 
-func newEmptyState() persistedState {
-	return persistedState{
+func newEmptyState() *persistedState {
+	return &persistedState{
 		Stacks: map[string]stackFileHashes{},
 		Images: map[string]serviceImageByName{},
 	}
 }
 
-func loadPersistedDeployState(stateDir string) (persistedState, error) {
+// hashesFor returns the per-file hashes recorded for a stack (nil when unknown).
+func (s *persistedState) hashesFor(stack string) stackFileHashes {
+	return s.Stacks[stack]
+}
+
+// recordStack stores the per-file hashes of a successfully deployed stack.
+func (s *persistedState) recordStack(stack string, hashes stackFileHashes) {
+	s.Stacks[stack] = hashes
+}
+
+// imagesFor returns the service→image map recorded for a stack (nil when unknown).
+func (s *persistedState) imagesFor(stack string) serviceImageByName {
+	return s.Images[stack]
+}
+
+// recordImages stores the service→image map of a successfully deployed stack.
+func (s *persistedState) recordImages(stack string, images serviceImageByName) {
+	s.Images[stack] = images
+}
+
+func loadPersistedDeployState(stateDir string) (*persistedState, error) {
 	data, err := os.ReadFile(filepath.Join(stateDir, stateFileName))
 	if os.IsNotExist(err) {
 		return newEmptyState(), nil
 	}
 	if err != nil {
-		return persistedState{}, err
+		return nil, err
 	}
 
-	state := persistedState{}
-	if err := yaml.Unmarshal(data, &state); err != nil {
+	state := &persistedState{}
+	if err := yaml.Unmarshal(data, state); err != nil {
 		// A corrupt state file means all stacks redeploy — by design.
 		slog.Warn("state file corrupt, all stacks will redeploy", "err", err)
 		return newEmptyState(), nil
@@ -58,7 +78,7 @@ func loadPersistedDeployState(stateDir string) (persistedState, error) {
 	return state, nil
 }
 
-func saveDeployState(stateDir string, state persistedState) error {
+func saveDeployState(stateDir string, state *persistedState) error {
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return err
 	}

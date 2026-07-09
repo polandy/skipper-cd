@@ -177,11 +177,11 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 // the rebuild, because the rebuild may restart the skipper-cd service
 // (killing this process); pre-saving avoids a redundant rebuild on restart.
 // Returns false when the rebuild failed and all stack deploys must abort.
-func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config, state persistedState) bool {
+func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config, state *persistedState) bool {
 	startTime := time.Now()
 
 	currentNixHashes, _ := nixos.HashFiles(d.repoDir)
-	changed := nixos.DiffHashes(currentNixHashes, state.Stacks[nixosStateKey])
+	changed := nixos.DiffHashes(currentNixHashes, state.hashesFor(nixosStateKey))
 
 	if len(changed) == 0 {
 		metrics.DeploysSkipped.WithLabelValues(nixosStateKey).Inc()
@@ -189,7 +189,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		return true
 	}
 
-	state.Stacks[nixosStateKey] = currentNixHashes
+	state.recordStack(nixosStateKey, currentNixHashes)
 	_ = saveDeployState(d.stateDir, state)
 
 	if err := nixos.New(d.runner).Rebuild(ctx, d.repoDir, cfg.NixOSRebuild.Flake); err != nil {
@@ -206,7 +206,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	return true
 }
 
-func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state persistedState) error {
+func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) error {
 	// Change detection always uses the repo clone so that merged PRs are detected.
 	repoDir := filepath.Join(baseDir, stack.Name)
 	composePath := filepath.Join(repoDir, "docker-compose.yml")
@@ -216,10 +216,17 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// is always read from the repo clone via -f.
 	projectDir := stack.WorkingDir
 
-	dockerfilePaths, err := extractDockerfilePaths(composePath, repoDir)
+	// Parse the compose file once; images, pullable services and Dockerfile
+	// paths are all derived from this single parse. When parsing fails, the
+	// deploy degrades gracefully: no build tracking and pull everything.
+	compose, err := parseComposeFile(composePath)
 	if err != nil {
-		slog.Warn("could not extract dockerfile paths, continuing without build tracking", "stack", stack.Name, "err", err)
-		dockerfilePaths = nil
+		slog.Warn("could not parse compose file, pulling all services and skipping build tracking", "stack", stack.Name, "err", err)
+	}
+
+	var dockerfilePaths []string
+	if compose != nil {
+		dockerfilePaths = compose.dockerfilePaths(repoDir)
 	}
 
 	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
@@ -227,7 +234,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		return fmt.Errorf("compute per-file hashes: %w", err)
 	}
 
-	changed := changedFiles(currentHashes, state.Stacks[stack.Name])
+	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
 	if len(changed) == 0 {
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
@@ -241,26 +248,19 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
-	currentImages, err := extractComposeImages(composePath)
-	if err != nil {
-		slog.Warn("could not extract images, pulling to be safe", "stack", stack.Name, "err", err)
-		currentImages = nil
+	var currentImages serviceImageByName
+	if compose != nil {
+		currentImages = compose.images()
 	}
 
-	if currentImages == nil || hasAnyImageChanged(currentImages, state.Images[stack.Name]) {
-		pullableServices, pullErr := extractPullableServices(composePath)
-		if pullErr != nil {
-			slog.Warn("could not determine pullable services, pulling all", "stack", stack.Name, "err", pullErr)
-			pullableServices = nil
-		}
-
-		if pullableServices == nil {
+	if currentImages == nil || hasAnyImageChanged(currentImages, state.imagesFor(stack.Name)) {
+		if compose == nil {
 			// Fallback: pull everything (couldn't parse compose file).
 			if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "pull", "--quiet"); err != nil {
 				return fmt.Errorf("docker compose pull: %w", err)
 			}
-		} else if len(pullableServices) > 0 {
-			pullArgs := append([]string{"pull", "--quiet"}, pullableServices...)
+		} else if pullable := compose.pullableServices(); len(pullable) > 0 {
+			pullArgs := append([]string{"pull", "--quiet"}, pullable...)
 			if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, pullArgs...); err != nil {
 				return fmt.Errorf("docker compose pull: %w", err)
 			}
@@ -298,9 +298,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		}
 	}
 
-	state.Stacks[stack.Name] = currentHashes
+	state.recordStack(stack.Name, currentHashes)
 	if currentImages != nil {
-		state.Images[stack.Name] = currentImages
+		state.recordImages(stack.Name, currentImages)
 	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
 	d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs)
@@ -314,8 +314,7 @@ const (
 )
 
 // collectDiffs collects git diffs for each changed file and returns them
-// as a map of file path to diff content. Diffs are also logged to stdout
-// (preserving existing behavior). Large diffs are truncated.
+// as a map of file path to diff content. Large diffs are truncated.
 // Returns nil when no CommitReader is configured or no previous commit is known.
 func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, lastDeployedCommit string) map[string]string {
 	if d.commitReader == nil || lastDeployedCommit == "" {
@@ -336,7 +335,6 @@ func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, 
 			continue
 		}
 		slog.Info("file changed", "file", filePath)
-		fmt.Print(diff)
 
 		if len(diff) > maxDiffPerFile {
 			diff = diff[:maxDiffPerFile] + "\n... (truncated)"
@@ -389,7 +387,7 @@ func (d *Deployer) runDockerCompose(ctx context.Context, composePath, projectDir
 // rollbackStack restores containers to the previous compose file version after
 // a failed docker compose up. It retrieves the old compose file from git and
 // runs docker compose up with it.
-func (d *Deployer) rollbackStack(ctx context.Context, composePath, projectDir string, baseEnv []string, stack config.Stack, state persistedState) error {
+func (d *Deployer) rollbackStack(ctx context.Context, composePath, projectDir string, baseEnv []string, stack config.Stack, state *persistedState) error {
 	if d.commitReader == nil || state.LastDeployedCommit == "" {
 		return fmt.Errorf("no previous commit available for rollback")
 	}
