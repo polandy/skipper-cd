@@ -1,10 +1,26 @@
 package events
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestHistory_SaveLeavesOnlyHistoryFile(t *testing.T) {
+	dir := t.TempDir()
+	h := NewHistory(dir)
+
+	h.Add(DeployEvent{ID: 1, Stack: "gitea", Status: StatusSuccess})
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != historyFileName {
+		t.Errorf("expected only %s in state dir, got %v", historyFileName, entries)
+	}
+}
 
 func TestHistory_AddAndRetrieve(t *testing.T) {
 	h := NewHistory("")
