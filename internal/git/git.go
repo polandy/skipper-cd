@@ -64,6 +64,12 @@ func (s *RepoSync) cloneRepository(ctx context.Context) error {
 
 func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
 	slog.Info("pulling latest commits", "dir", s.repoDir, "branch", s.branch)
+	// Pin origin to the configured URL on every sync: the clone may predate
+	// a repo_url config change (e.g. an ssh:// to https:// migration) and
+	// would otherwise fetch from the stale remote forever.
+	if err := s.runner.Run(ctx, s.repoDir, nil, "git", "remote", "set-url", "origin", s.repoURL); err != nil {
+		return err
+	}
 	if err := s.runner.Run(ctx, s.repoDir, nil, "git", "fetch", "origin"); err != nil {
 		return err
 	}
