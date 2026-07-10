@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,7 +53,7 @@ func (s *RepoSync) RepoDir() string {
 }
 
 func (s *RepoSync) cloneRepository(ctx context.Context) error {
-	slog.Info("cloning repository", "url", s.repoURL, "dir", s.repoDir, "branch", s.branch)
+	slog.Info("cloning repository", "url", redactedURL(s.repoURL), "dir", s.repoDir, "branch", s.branch)
 	if err := os.MkdirAll(s.repoDir, 0o755); err != nil {
 		return fmt.Errorf("create repo dir: %w", err)
 	}
@@ -65,6 +66,17 @@ func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
 		return err
 	}
 	return s.runner.Run(ctx, s.repoDir, nil, "git", "reset", "--hard", "origin/"+s.branch)
+}
+
+// redactedURL returns rawURL with any userinfo password masked, for logging.
+// URLs the parser rejects (e.g. scp-like syntax) are returned unchanged —
+// they cannot carry a password.
+func redactedURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	return u.Redacted()
 }
 
 // outputRunner runs a command and captures its stdout. It is satisfied by
