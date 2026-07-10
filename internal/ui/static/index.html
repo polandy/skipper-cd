@@ -9,7 +9,7 @@
   // Latte preference must be applied before first paint to avoid a flash.
   if (localStorage.getItem('theme') === 'latte') document.documentElement.classList.add('latte');
 </script>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2Utd2lkdGg9IjMuNSI+PHN0eWxlPnN2Z3tjb2xvcjojNGM0ZjY5fS5he2ZpbGw6I2ZlNjQwYn1AbWVkaWEocHJlZmVycy1jb2xvci1zY2hlbWU6ZGFyayl7c3Zne2NvbG9yOiNjZGQ2ZjR9LmF7ZmlsbDojZmFiMzg3fX08L3N0eWxlPjxnIHN0cm9rZT0iY3VycmVudENvbG9yIj48cGF0aCBkPSJNMzIgMzJWMTFNMzIgMzJsMTQuOC0xNC44TTMyIDMyaDIxTTMyIDMybDE0LjggMTQuOE0zMiAzMnYyMU0zMiAzMiAxNy4yIDQ2LjhNMzIgMzJIMTFNMzIgMzIgMTcuMiAxNy4yIi8+PGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMTYiLz48L2c+PGcgZmlsbD0iY3VycmVudENvbG9yIj48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSI2Ii8+PGNpcmNsZSBjeD0iNDguOSIgY3k9IjE1LjEiIHI9IjMiLz48Y2lyY2xlIGN4PSI1NiIgY3k9IjMyIiByPSIzIi8+PGNpcmNsZSBjeD0iNDguOSIgY3k9IjQ4LjkiIHI9IjMiLz48Y2lyY2xlIGN4PSIzMiIgY3k9IjU2IiByPSIzIi8+PGNpcmNsZSBjeD0iMTUuMSIgY3k9IjQ4LjkiIHI9IjMiLz48Y2lyY2xlIGN4PSI4IiBjeT0iMzIiIHI9IjMiLz48Y2lyY2xlIGN4PSIxNS4xIiBjeT0iMTUuMSIgcj0iMyIvPjwvZz48Y2lyY2xlIGNsYXNzPSJhIiBjeD0iMzIiIGN5PSI4IiByPSI0LjIiLz48L3N2Zz4=">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSI+PHN0eWxlPnN2Z3tjb2xvcjojNGM0ZjY5fS5he2ZpbGw6I2ZlNjQwYn0uYntmaWxsOiMxNzkyOTl9QG1lZGlhKHByZWZlcnMtY29sb3Itc2NoZW1lOmRhcmspe3N2Z3tjb2xvcjojY2RkNmY0fS5he2ZpbGw6I2ZhYjM4N30uYntmaWxsOiM5NGUyZDV9fTwvc3R5bGU+PHBhdGggZD0iTTkgNDEgSDU1IEw0NSA1MyBIMTkgWiIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMy41IiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PHJlY3QgY2xhc3M9ImEiIHg9IjE5IiB5PSIzMCIgd2lkdGg9IjEyIiBoZWlnaHQ9IjkiIHJ4PSIyIi8+PHJlY3QgeD0iMzMiIHk9IjMwIiB3aWR0aD0iMTIiIGhlaWdodD0iOSIgcng9IjIiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2Utd2lkdGg9IjMiLz48cmVjdCBjbGFzcz0iYiIgeD0iMjYiIHk9IjE4IiB3aWR0aD0iMTIiIGhlaWdodD0iOSIgcng9IjIiLz48cGF0aCBkPSJNMTQgNjAgcTUgLTUgMTAgMCB0MTAgMCB0MTAgMCB0MTAgMCIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBvcGFjaXR5PSIuNSIvPjwvc3ZnPg==">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
@@ -860,10 +860,12 @@
 <header>
   <div class="brand">
     <div class="brand-icon">
-      <svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-width="3.5" role="img" aria-label="skipper-cd">
-        <g stroke="currentColor"><path d="M32 32V11M32 32l14.8-14.8M32 32h21M32 32l14.8 14.8M32 32v21M32 32 17.2 46.8M32 32H11M32 32 17.2 17.2"/><circle cx="32" cy="32" r="16"/></g>
-        <g fill="currentColor"><circle cx="32" cy="32" r="6"/><circle cx="48.9" cy="15.1" r="3"/><circle cx="56" cy="32" r="3"/><circle cx="48.9" cy="48.9" r="3"/><circle cx="32" cy="56" r="3"/><circle cx="15.1" cy="48.9" r="3"/><circle cx="8" cy="32" r="3"/><circle cx="15.1" cy="15.1" r="3"/></g>
-        <circle cx="32" cy="8" r="4.2" fill="var(--accent)"/>
+      <svg viewBox="0 0 64 64" fill="none" role="img" aria-label="skipper-cd">
+        <path d="M9 41 H55 L45 53 H19 Z" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/>
+        <rect x="19" y="30" width="12" height="9" rx="2" fill="var(--accent)"/>
+        <rect x="33" y="30" width="12" height="9" rx="2" stroke="currentColor" stroke-width="3"/>
+        <rect x="26" y="18" width="12" height="9" rx="2" fill="var(--success)"/>
+        <path d="M14 60 q5 -5 10 0 t10 0 t10 0 t10 0" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".5"/>
       </svg>
     </div>
     <span class="brand-name">skipper<span>-cd</span></span>
