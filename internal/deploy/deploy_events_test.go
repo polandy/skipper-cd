@@ -1,7 +1,10 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -331,5 +334,74 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 	}
 	if !strings.Contains(successEvt.Diffs[filepath.Join(stackDir, "docker-compose.yml")], "nginx:1.25") {
 		t.Error("expected diff content in success event")
+	}
+}
+
+func TestDeployStack_LogsEventIDForDiffLookupOnSuccess(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+
+	var successID int64
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Status == events.StatusSuccess {
+			successID = e.ID
+		}
+	})
+
+	stack := config.Stack{Name: "gitea"}
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if successID == 0 {
+		t.Fatal("expected a success event with an ID")
+	}
+	want := fmt.Sprintf("event_id=%d", successID)
+	found := false
+	for _, line := range strings.Split(logBuf.String(), "\n") {
+		if strings.Contains(line, "deploy complete") && strings.Contains(line, want) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'deploy complete' log line with %s, got:\n%s", want, logBuf.String())
+	}
+}
+
+func TestDeployStack_LogsNoEventIDWithoutSink(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	d := newDeployerWithRunner(&recordingRunner{})
+
+	if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "gitea"}, baseDir, "", nil, newEmptyState()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(logBuf.String(), "event_id=") {
+		t.Errorf("expected no event_id attr without an event sink, got:\n%s", logBuf.String())
 	}
 }

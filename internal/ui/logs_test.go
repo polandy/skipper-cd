@@ -111,7 +111,7 @@ func TestIndexHandler_ContainsLogsViewToggle(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	for _, want := range []string{`id="view-toggle"`, `id="log-pane"`, "/api/logs", `id="follow-logs"`} {
+	for _, want := range []string{`id="view-toggle"`, `id="log-pane"`, "/api/logs", `id="follow-logs"`, "log-diff-pill"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected index.html to contain %q", want)
 		}

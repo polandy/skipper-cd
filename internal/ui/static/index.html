@@ -818,6 +818,10 @@
     flex-shrink: 0;
   }
 
+  .log-diff-pill {
+    flex-shrink: 0;
+  }
+
   .log-msg {
     color: var(--text-primary);
     white-space: pre-wrap;
@@ -1302,8 +1306,13 @@
         html += '<span class="log-stack">[' + escapeHtml(attrs.stack) + ']</span>';
       }
       html += '<span class="log-msg">' + escapeHtml(entry.msg) + '</span>';
+      // Deploy completion lines carry the deploy event's ID — render a
+      // pill that loads the deploy's diff below the line on demand.
+      if (attrs.event_id) {
+        html += '<button class="files-pill log-diff-pill" data-event-id="' + escapeAttr(attrs.event_id) + '">diff</button>';
+      }
       var pairs = Object.keys(attrs).filter(function(k) {
-        return k !== 'stack';
+        return k !== 'stack' && k !== 'event_id';
       }).map(function(k) {
         return escapeHtml(k) + '=' + escapeHtml(attrs[k]);
       });
@@ -1312,6 +1321,35 @@
     line.innerHTML = html;
     return line;
   }
+
+  // Diff pill in the log view — same fetch/render/toggle behaviour as the
+  // files pill in the deploy table, but anchored below the log line.
+  logPane.addEventListener('click', function(e) {
+    var fileHeader = e.target.closest('.diff-file-header');
+    if (fileHeader) {
+      fileHeader.classList.toggle('expanded');
+      return;
+    }
+
+    var pill = e.target.closest('.log-diff-pill');
+    if (!pill) return;
+    var line = pill.closest('.log-line');
+    var existing = line.nextElementSibling;
+    if (existing && (existing.classList.contains('diff-panel') || existing.classList.contains('files-list'))) {
+      existing.remove();
+      return;
+    }
+    fetchDiffs(pill.dataset.eventId, function(diffs) {
+      if (diffs && Object.keys(diffs).length > 0) {
+        line.after(renderDiffPanel(diffs));
+      } else {
+        var note = document.createElement('div');
+        note.className = 'files-list';
+        note.textContent = 'No diff recorded for this deploy.';
+        line.after(note);
+      }
+    });
+  });
 
   function appendLog(entry) {
     var empty = document.getElementById('log-empty');

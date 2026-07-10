@@ -96,12 +96,16 @@ func (d *Deployer) InitEventID(startID int64) {
 	d.nextEventID.Store(startID)
 }
 
-func (d *Deployer) emit(status events.Status, stack string, duration time.Duration, errMsg string, changedFiles []string, diffs map[string]string) {
+// emit sends a deploy event to the sink and returns its ID (0 when no
+// sink is configured). The ID lets log lines reference the event, e.g.
+// for diff lookups via /api/events/{id}/diffs.
+func (d *Deployer) emit(status events.Status, stack string, duration time.Duration, errMsg string, changedFiles []string, diffs map[string]string) int64 {
 	if d.eventSink == nil {
-		return
+		return 0
 	}
+	id := d.nextEventID.Add(1)
 	d.eventSink(events.DeployEvent{
-		ID:           d.nextEventID.Add(1),
+		ID:           id,
 		Timestamp:    time.Now(),
 		Stack:        stack,
 		Status:       status,
@@ -110,6 +114,7 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		ChangedFiles: changedFiles,
 		Diffs:        diffs,
 	})
+	return id
 }
 
 // SyncAndDeployAll acquires the deploy lock, syncs the repository, and
@@ -321,8 +326,13 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		state.recordImages(stack.Name, currentImages)
 	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
-	d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs)
-	slog.Info("deploy complete", "stack", stack.Name)
+	eventID := d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs)
+	if eventID != 0 {
+		// The event ID lets the log view fetch this deploy's diffs.
+		slog.Info("deploy complete", "stack", stack.Name, "event_id", eventID)
+	} else {
+		slog.Info("deploy complete", "stack", stack.Name)
+	}
 	return nil
 }
 
