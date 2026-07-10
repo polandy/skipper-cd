@@ -82,9 +82,11 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 
 ## Log view
 
-Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output, newest line at the **bottom** (terminal semantics — unlike the deploy table's prepend). Each line: muted `toLocaleTimeString()` timestamp, level badge, message, then dim `key=value` attrs.
+Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output, newest line at the **bottom** (terminal semantics — unlike the deploy table's prepend). Each line: muted timestamp, level badge, optional stack prefix, message, then dim `key=value` attrs.
 
-Level colours: `ERROR` → red, `WARN` → yellow, `DEBUG` → muted, `INFO` → secondary text. Child-process lines (attrs contain `cmd` and `stream`) render a muted `[docker]`-style command prefix instead of a level badge and the message in primary text.
+Timestamps show the time of day; lines from another day get a date prefix, and the full `toLocaleString()` timestamp is always in the tooltip.
+
+Level colours: `ERROR` → red, `WARN` → yellow, `DEBUG` → muted, `INFO` → secondary text. Lines with a `stack` attr (the deploy lifecycle: `deploying stack`, `deploy complete`, failures) render it as an accent-coloured `[gitea]`-style prefix and omit it from the trailing attrs, so what was deployed when is scannable. Child-process lines (attrs contain `cmd` and `stream`) render a muted `[docker]`-style command prefix instead of a level badge and the message in primary text; child output carries no stack attribution (known limitation — the runner does not know which stack it runs for).
 
 The rendered DOM is capped at 1000 lines; the oldest line is removed on overflow. The `EventSource` for `/api/logs` is created lazily on first activation of the view and kept open afterwards.
 
