@@ -80,6 +80,35 @@ func TestIntegration_SyncClonesAndPulls(t *testing.T) {
 	}
 }
 
+func TestIntegration_SyncFollowsChangedRemoteURL(t *testing.T) {
+	requireGit(t)
+	originA := makeOriginRepo(t)
+	repoDir := filepath.Join(t.TempDir(), "repo")
+
+	if err := NewRepoSync(originA, repoDir, "main", time.Minute).Sync(context.Background()); err != nil {
+		t.Fatalf("initial sync: %v", err)
+	}
+
+	// The configured repo_url changes to a different remote (as in an
+	// ssh:// to https:// migration). Sync must follow it.
+	originB := t.TempDir()
+	runGit(t, originB, "init", "-b", "main")
+	writeFile(t, filepath.Join(originB, "docker-compose.yml"), "services:\n  app:\n    image: nginx:2.0\n")
+	runGit(t, originB, "add", ".")
+	runGit(t, originB, "commit", "-m", "initial on new remote")
+
+	if err := NewRepoSync(originB, repoDir, "main", time.Minute).Sync(context.Background()); err != nil {
+		t.Fatalf("sync after remote change: %v", err)
+	}
+
+	if got := runGit(t, repoDir, "remote", "get-url", "origin"); got != originB {
+		t.Errorf("expected origin %q, got %q", originB, got)
+	}
+	if got := runGit(t, repoDir, "show", "HEAD:docker-compose.yml"); !strings.Contains(got, "nginx:2.0") {
+		t.Errorf("expected content from new remote, got %q", got)
+	}
+}
+
 func TestIntegration_RepoReaderReadsCommits(t *testing.T) {
 	requireGit(t)
 	origin := makeOriginRepo(t)

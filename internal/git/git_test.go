@@ -50,13 +50,34 @@ func TestSync_PullsWhenCloneExists(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(runner.calls) < 2 {
-		t.Fatalf("expected at least 2 git calls (fetch + reset), got %d", len(runner.calls))
+	if len(runner.calls) < 3 {
+		t.Fatalf("expected at least 3 git calls (set-url + fetch + reset), got %d", len(runner.calls))
 	}
-	assertArgPresent(t, runner.calls[0].args, "fetch")
-	assertArgPresent(t, runner.calls[1].args, "reset")
-	if runner.calls[0].dir != repoDir {
-		t.Errorf("expected fetch in %s, got %s", repoDir, runner.calls[0].dir)
+	assertArgPresent(t, runner.calls[1].args, "fetch")
+	assertArgPresent(t, runner.calls[2].args, "reset")
+	if runner.calls[1].dir != repoDir {
+		t.Errorf("expected fetch in %s, got %s", repoDir, runner.calls[1].dir)
+	}
+}
+
+func TestSync_PinsRemoteURLToConfiguredURL(t *testing.T) {
+	// The clone may predate a repo_url config change (e.g. ssh:// to
+	// https://); syncing must not keep fetching from the stale remote.
+	repoDir := makeFakeClone(t)
+	runner := &recordingRunner{}
+	s := newRepoSyncWithRunner(runner, "https://example.com/repo.git", repoDir, "master")
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	setURL := runner.calls[0]
+	want := []string{"remote", "set-url", "origin", "https://example.com/repo.git"}
+	if !slices.Equal(setURL.args, want) {
+		t.Errorf("expected first call %v, got %v", want, setURL.args)
+	}
+	if setURL.dir != repoDir {
+		t.Errorf("expected set-url in %s, got %s", repoDir, setURL.dir)
 	}
 }
 
@@ -87,7 +108,7 @@ func TestSync_ResetUsesConfiguredBranch(t *testing.T) {
 	}
 
 	// The reset call should reference origin/main
-	resetCall := runner.calls[1]
+	resetCall := runner.calls[2]
 	assertArgPresent(t, resetCall.args, "origin/main")
 }
 
