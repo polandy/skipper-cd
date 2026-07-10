@@ -79,7 +79,10 @@ in
         ProtectHome = if cfg.nixosRebuild then "read-only" else true;
         ReadWritePaths = [ cfg.stateDir ]
           ++ lib.optionals cfg.nixosRebuild [ "/nix" "/run" "/etc/NIXOS" ];
-        ReadOnlyPaths = [ "/run/secrets" ];
+        # "-" prefix: ignore when absent — /run/secrets only exists on
+        # hosts using sops-nix; a hard reference fails namespace setup
+        # (status=226/NAMESPACE) everywhere else.
+        ReadOnlyPaths = [ "-/run/secrets" ];
       };
     };
   };
