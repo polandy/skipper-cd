@@ -30,7 +30,7 @@ Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). 
 
 Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
-**Header — left:** skipper-cd ship logo (transparent PNG, embedded as base64 data URI, 32 px), `skipper-cd` wordmark (accent `-cd`), `LIVE` pill. Same logo used as favicon.
+**Header — left:** skipper-cd helm logo (inline SVG, 32 px — a ship's wheel whose handles are commit dots; the top dot is the deployed commit in `--accent`, the rest follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), `LIVE` pill. The favicon is the same helm as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
 
 **Header — right:**
 - **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
