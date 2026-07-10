@@ -47,10 +47,11 @@ var ErrRolledBack = errors.New("rolled back to previous version")
 // Optionally inject a CommitReader to enable diff logging on deploy.
 type Deployer struct {
 	runner       Runner
-	commitReader CommitReader // nil disables diff logging
-	syncer       RepoSyncer   // nil when using DeployAllStacks directly
-	repoDir      string       // used to skip diff for files outside the repo
-	stateDir     string       // directory for state.yaml persistence
+	commitReader CommitReader    // nil disables diff logging
+	syncer       RepoSyncer      // nil when using DeployAllStacks directly
+	repoDir      string          // used to skip diff for files outside the repo
+	stateDir     string          // directory for state.yaml persistence
+	shutdownCtx  context.Context // nil = rebuild waits are never abandoned
 	mu           sync.Mutex
 	eventSink    func(events.DeployEvent) // nil = no event tracking
 	nextEventID  atomic.Int64
@@ -83,6 +84,15 @@ func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, r
 
 func newDeployerWithRunner(r Runner) *Deployer {
 	return &Deployer{runner: r, stateDir: defaultStateDir}
+}
+
+// SetShutdownContext installs the process shutdown context. When it fires
+// while a nixos-rebuild is in flight, the deployer stops waiting for the
+// rebuild — the rebuild itself keeps running in its transient systemd unit —
+// so a switch that restarts the skipper service cannot deadlock against the
+// graceful shutdown (ADR-0014). Must be called before any deployments start.
+func (d *Deployer) SetShutdownContext(ctx context.Context) {
+	d.shutdownCtx = ctx
 }
 
 // SetEventSink configures an optional callback invoked on every deploy
@@ -229,8 +239,12 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	state.recordStack(nixosStateKey, currentNixHashes)
 	_ = saveDeployState(d.stateDir, state)
 
-	if err := nixos.New(d.runner).Rebuild(ctx, d.repoDir, cfg.NixOSRebuild.Flake); err != nil {
-		slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", err)
+	if err := d.runNixOSRebuild(ctx, cfg.NixOSRebuild.Flake); err != nil {
+		if d.shutdownRequested() {
+			slog.Warn("shutdown during nixos-rebuild: the rebuild keeps running in its transient unit; stack deploys abort and run on the next sync", "err", err)
+		} else {
+			slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", err)
+		}
 		metrics.DeployErrors.WithLabelValues(nixosStateKey).Inc()
 		d.emit(events.StatusFailed, nixosStateKey, time.Since(startTime), err.Error(), changed, nil)
 		return false
@@ -241,6 +255,23 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	d.emit(events.StatusSuccess, nixosStateKey, time.Since(startTime), "", changed, nil)
 	slog.Info("nixos-rebuild complete", "changed_files", changed)
 	return true
+}
+
+// runNixOSRebuild waits for the rebuild with a context that additionally
+// cancels on shutdown: the switch may be restarting this very service, and
+// blocking on the rebuild would deadlock the stop (ADR-0014).
+func (d *Deployer) runNixOSRebuild(ctx context.Context, flake string) error {
+	if d.shutdownCtx != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		defer context.AfterFunc(d.shutdownCtx, cancel)()
+	}
+	return nixos.New(d.runner).Rebuild(ctx, d.repoDir, flake)
+}
+
+func (d *Deployer) shutdownRequested() bool {
+	return d.shutdownCtx != nil && d.shutdownCtx.Err() != nil
 }
 
 func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) error {

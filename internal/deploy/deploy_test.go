@@ -751,14 +751,8 @@ func TestDeployAllStacks_AbortsStacksWhenNixOSFails(t *testing.T) {
 
 	d.DeployAllStacks(context.Background(), cfg)
 
-	// nixos-rebuild should have been attempted.
-	nixosCalled := false
-	for _, c := range runner.calls {
-		if c.name == "nixos-rebuild" {
-			nixosCalled = true
-		}
-	}
-	if !nixosCalled {
+	// nixos-rebuild should have been attempted (via its transient unit).
+	if !nixosRebuildCalled(runner.calls) {
 		t.Error("expected nixos-rebuild to be called")
 	}
 
@@ -767,6 +761,83 @@ func TestDeployAllStacks_AbortsStacksWhenNixOSFails(t *testing.T) {
 		if c.name == "docker" && slices.Contains(c.args, "compose") {
 			t.Error("expected docker compose NOT to be called after nixos-rebuild failure")
 			break
+		}
+	}
+}
+
+// nixosRebuildCalled reports whether a nixos-rebuild was dispatched
+// (wrapped in its systemd-run transient unit).
+func nixosRebuildCalled(calls []runCall) bool {
+	for _, c := range calls {
+		if c.name == "systemd-run" && slices.Contains(c.args, "nixos-rebuild") {
+			return true
+		}
+	}
+	return false
+}
+
+// shutdownAwareRunner blocks the nixos-rebuild call until its context is
+// canceled — like a real `systemd-run --wait` would while switch-to-
+// configuration waits for the skipper unit to stop.
+type shutdownAwareRunner struct {
+	calls          []runCall
+	rebuildStarted chan struct{}
+}
+
+func (r *shutdownAwareRunner) Run(ctx context.Context, dir string, _ []string, name string, args ...string) error {
+	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
+	if name == "systemd-run" {
+		close(r.rebuildStarted)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return nil
+}
+
+func TestDeployAllStacks_ShutdownDuringRebuildAbortsStackDeploys(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "flake.nix"), "{ }")
+	stackDir := filepath.Join(baseDir, "modules", "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	runner := &shutdownAwareRunner{rebuildStarted: make(chan struct{})}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
+
+	shutdownCtx, requestShutdown := context.WithCancel(context.Background())
+	defer requestShutdown()
+	d.SetShutdownContext(shutdownCtx)
+
+	enabled := true
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: filepath.Join(baseDir, "modules"),
+		Stacks:        []config.Stack{{Name: "gitea"}},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		d.DeployAllStacks(context.Background(), cfg)
+		close(done)
+	}()
+
+	<-runner.rebuildStarted
+	requestShutdown()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("deploy run did not return after shutdown — rebuild wait was not canceled")
+	}
+
+	// The rebuild counts as failed for this run: no stacks deploy; the
+	// startup sync after the restart picks them up.
+	for _, c := range runner.calls {
+		if c.name == "docker" {
+			t.Errorf("expected no docker calls after shutdown, got %v", c.args)
 		}
 	}
 }
@@ -798,17 +869,13 @@ func TestDeployAllStacks_NixOSSuccessContinuesToDockerStacks(t *testing.T) {
 	d.DeployAllStacks(context.Background(), cfg)
 
 	// Both nixos-rebuild and docker compose should have been called.
-	nixosCalled := false
 	dockerCalled := false
 	for _, c := range runner.calls {
-		if c.name == "nixos-rebuild" {
-			nixosCalled = true
-		}
 		if c.name == "docker" && slices.Contains(c.args, "compose") {
 			dockerCalled = true
 		}
 	}
-	if !nixosCalled {
+	if !nixosRebuildCalled(runner.calls) {
 		t.Error("expected nixos-rebuild to be called")
 	}
 	if !dockerCalled {

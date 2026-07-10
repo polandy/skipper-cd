@@ -19,7 +19,7 @@ On each incoming webhook (or on startup), skipper-cd:
 
 1. Checks the push payload's `ref`: only pushes to the configured `branch` trigger a deploy (payloads without a `ref`, e.g. a manual `curl`, always trigger one).
 2. Pulls the latest commits from the configured repository.
-3. **NixOS rebuild** (optional): If `nixos_rebuild` is configured, hashes all `*.nix` files and `flake.lock`. When any file has changed, runs `nixos-rebuild switch --flake <flake>`. If the rebuild fails, all subsequent Docker stack deploys are aborted.
+3. **NixOS rebuild** (optional): If `nixos_rebuild` is configured, hashes all `*.nix` files and `flake.lock`. When any file has changed, runs `nixos-rebuild switch --flake <flake>` in a transient systemd unit (`skipper-nixos-rebuild`), so a rebuild that restarts the skipper service itself keeps running. If the rebuild fails, all subsequent Docker stack deploys are aborted.
 4. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, and any `Dockerfile`s referenced by services with a `build:` section.
 5. Compares the current hashes against the hashes from the previous deployment.
 6. Skips stacks whose files have not changed.

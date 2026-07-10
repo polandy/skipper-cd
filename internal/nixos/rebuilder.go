@@ -57,9 +57,26 @@ func HashFiles(repoDir string) (map[string]string, error) {
 	return hashes, nil
 }
 
-// Rebuild runs `nixos-rebuild switch --flake <flake>` from repoDir.
+// Rebuild runs `nixos-rebuild switch --flake <flake>` from repoDir inside a
+// transient systemd unit. As a direct child the rebuild would sit in the
+// skipper service's cgroup: when the switch restarts that service, systemd
+// would kill the half-finished rebuild along with it (ADR-0014). systemd-run
+// --wait blocks until the unit finishes and propagates its exit code,
+// --pipe streams its output, and --collect cleans up a failed unit so the
+// fixed unit name stays reusable.
 func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string) error {
-	if err := r.runner.Run(ctx, repoDir, nil, "nixos-rebuild", "switch", "--flake", flake); err != nil {
+	args := []string{
+		"--unit=skipper-nixos-rebuild",
+		"--collect",
+		"--wait",
+		"--pipe",
+		"--same-dir",
+		// Transient units start with a minimal environment; nixos-rebuild
+		// needs skipper's PATH (git, nix, systemd tooling).
+		"--setenv=PATH=" + os.Getenv("PATH"),
+		"nixos-rebuild", "switch", "--flake", flake,
+	}
+	if err := r.runner.Run(ctx, repoDir, nil, "systemd-run", args...); err != nil {
 		return fmt.Errorf("nixos-rebuild switch --flake %s: %w", flake, err)
 	}
 	return nil

@@ -72,10 +72,16 @@ func main() {
 		"command_timeout", timeout,
 	)
 
+	// Cancels on SIGINT/SIGTERM. The deployer abandons a pending
+	// nixos-rebuild wait when it fires (ADR-0014).
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch, timeout, sink)
 	repoReader := git.NewRepoReader(repoSync.RepoDir(), timeout, sink)
 	stateDir := filepath.Dir(repoSync.RepoDir())
 	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir, timeout, sink)
+	deployer.SetShutdownContext(signalCtx)
 
 	var (
 		broadcaster *events.Broadcaster
@@ -103,9 +109,7 @@ func main() {
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
 	// interrupted mid-run.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	<-ctx.Done()
+	<-signalCtx.Done()
 	slog.Info("shutdown signal received")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -102,7 +103,7 @@ func TestHashFiles_SkipsGitDirectory(t *testing.T) {
 
 // --- Rebuild tests ---
 
-func TestRebuild_RunsNixosRebuildSwitch(t *testing.T) {
+func TestRebuild_RunsInDetachedTransientUnit(t *testing.T) {
 	dir := t.TempDir()
 	runner := &recordingRunner{}
 	r := New(runner)
@@ -115,14 +116,24 @@ func TestRebuild_RunsNixosRebuildSwitch(t *testing.T) {
 	}
 
 	c := runner.calls[0]
-	if c.name != "nixos-rebuild" {
-		t.Errorf("expected nixos-rebuild, got %s", c.name)
+	// systemd-run detaches the rebuild from skipper's cgroup so it survives
+	// when the switch restarts the skipper service itself (ADR-0014).
+	if c.name != "systemd-run" {
+		t.Fatalf("expected systemd-run, got %s", c.name)
 	}
-	expectedArgs := []string{"switch", "--flake", ".#nuc"}
-	for i, a := range expectedArgs {
-		if i >= len(c.args) || c.args[i] != a {
-			t.Errorf("expected arg[%d]=%q, got args=%v", i, a, c.args)
+	for _, want := range []string{"--unit=skipper-nixos-rebuild", "--collect", "--wait", "--pipe", "--same-dir"} {
+		if !slices.Contains(c.args, want) {
+			t.Errorf("expected argument %q, got args=%v", want, c.args)
 		}
+	}
+	// Transient units start with a minimal environment; nixos-rebuild needs
+	// skipper's PATH.
+	if !slices.ContainsFunc(c.args, func(a string) bool { return strings.HasPrefix(a, "--setenv=PATH=") }) {
+		t.Errorf("expected PATH to be propagated, got args=%v", c.args)
+	}
+	wantTail := []string{"nixos-rebuild", "switch", "--flake", ".#nuc"}
+	if len(c.args) < len(wantTail) || !slices.Equal(c.args[len(c.args)-len(wantTail):], wantTail) {
+		t.Errorf("expected args to end with %v, got %v", wantTail, c.args)
 	}
 	if c.dir != dir {
 		t.Errorf("expected dir %s, got %s", dir, c.dir)
