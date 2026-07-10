@@ -674,6 +674,109 @@
 
   #tbody.hide-skipped .event-row.skipped { display: none; }
 
+  /* ─── VIEW TOGGLE ─── */
+  .view-toggle {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .view-toggle button {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .view-toggle button:hover:not(.active) { color: var(--text-secondary); }
+
+  .view-toggle button.active {
+    color: var(--amber);
+    background: var(--amber-dim);
+  }
+
+  /* ─── LOG VIEW ─── */
+  /* body.view-logs switches between the deploy table and the log pane;
+     !important wins over the inline display set by showTable(). */
+  #log-view { display: none; }
+  body.view-logs #log-view { display: block; }
+  body.view-logs #deploy-table, body.view-logs #empty-state { display: none !important; }
+  body.view-logs #skip-filter, body.view-logs #time-mode { display: none; }
+  #follow-logs { display: none; }
+  body.view-logs #follow-logs { display: flex; }
+
+  .log-pane {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.7;
+    padding: 10px 0;
+    height: calc(100vh - 150px);
+    overflow-y: auto;
+  }
+
+  .log-empty {
+    padding: 90px 24px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .log-line {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    padding: 0 14px;
+  }
+
+  .log-line:hover { background: rgba(148, 163, 184, 0.03); }
+
+  .log-time {
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .log-level {
+    flex-shrink: 0;
+    width: 44px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+  }
+
+  .log-level.ERROR { color: var(--red); }
+  .log-level.WARN { color: var(--amber); }
+  .log-level.DEBUG { color: var(--slate); }
+
+  .log-cmd {
+    color: var(--slate);
+    flex-shrink: 0;
+  }
+
+  .log-msg {
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .log-attrs {
+    color: var(--text-muted);
+    word-break: break-all;
+  }
+
   /* ─── RESPONSIVE ─── */
   @media (max-width: 700px) {
     header { padding: 0 16px; height: 48px; }
@@ -709,6 +812,10 @@
     <span class="brand-tag">live</span>
   </div>
   <div class="status-area">
+    <div class="view-toggle" id="view-toggle">
+      <button data-view="deploys" class="active">deploys</button>
+      <button data-view="logs">logs</button>
+    </div>
     <div class="deploy-status" id="deploy-status">
       <div class="deploy-dot"></div>
       <span>idle</span>
@@ -720,6 +827,10 @@
     <button class="filter-toggle" id="time-mode" title="Switch to absolute time">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
       <span>abs time</span>
+    </button>
+    <button class="filter-toggle" id="follow-logs" title="Auto-scroll to newest log lines">
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <span>follow</span>
     </button>
     <div class="indicator">
       <div class="indicator-dot warn" id="conn-dot"></div>
@@ -750,6 +861,12 @@
       <span>Files</span>
     </div>
     <div class="event-list" id="tbody"></div>
+  </div>
+
+  <div id="log-view">
+    <div class="log-pane" id="log-pane">
+      <div class="log-empty" id="log-empty">Awaiting log output...</div>
+    </div>
   </div>
 </main>
 
@@ -1058,6 +1175,94 @@
   });
 
   applySkipFilter();
+
+  // ── Logs view ──
+  // The log stream connects lazily on first activation and stays open;
+  // the connection indicator remains bound to /api/events.
+  const logPane = document.getElementById('log-pane');
+  const followBtn = document.getElementById('follow-logs');
+  const viewButtons = document.querySelectorAll('#view-toggle button');
+
+  const maxLogLines = 1000;
+  let followLogs = localStorage.getItem('followLogs') !== 'false';
+  let activeView = localStorage.getItem('activeView') === 'logs' ? 'logs' : 'deploys';
+  let logSource = null;
+
+  function levelClass(level) {
+    return ['DEBUG', 'INFO', 'WARN', 'ERROR'].indexOf(level) >= 0 ? level : 'INFO';
+  }
+
+  function renderLogLine(entry) {
+    var line = document.createElement('div');
+    line.className = 'log-line';
+    var attrs = entry.attrs || {};
+    var html = '<span class="log-time">' + escapeHtml(new Date(entry.time).toLocaleTimeString()) + '</span>';
+    if (attrs.cmd && attrs.stream) {
+      // Child process output: slate [cmd] prefix instead of a level badge.
+      html += '<span class="log-cmd">[' + escapeHtml(attrs.cmd) + ']</span>';
+      html += '<span class="log-msg">' + escapeHtml(entry.msg) + '</span>';
+    } else {
+      html += '<span class="log-level ' + levelClass(entry.level) + '">' + escapeHtml(entry.level) + '</span>';
+      html += '<span class="log-msg">' + escapeHtml(entry.msg) + '</span>';
+      var pairs = Object.keys(attrs).map(function(k) {
+        return escapeHtml(k) + '=' + escapeHtml(attrs[k]);
+      });
+      if (pairs.length > 0) html += '<span class="log-attrs">' + pairs.join(' ') + '</span>';
+    }
+    line.innerHTML = html;
+    return line;
+  }
+
+  function appendLog(entry) {
+    var empty = document.getElementById('log-empty');
+    if (empty) empty.remove();
+    logPane.appendChild(renderLogLine(entry));
+    while (logPane.children.length > maxLogLines) {
+      logPane.removeChild(logPane.firstChild);
+    }
+    if (followLogs) logPane.scrollTop = logPane.scrollHeight;
+  }
+
+  function connectLogs() {
+    if (logSource) return;
+    logSource = new EventSource('/api/logs');
+    logSource.addEventListener('log', function(e) {
+      appendLog(JSON.parse(e.data));
+    });
+  }
+
+  function applyView() {
+    document.body.classList.toggle('view-logs', activeView === 'logs');
+    viewButtons.forEach(function(btn) {
+      btn.classList.toggle('active', btn.dataset.view === activeView);
+    });
+    if (activeView === 'logs') {
+      connectLogs();
+      if (followLogs) logPane.scrollTop = logPane.scrollHeight;
+    }
+  }
+
+  viewButtons.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      activeView = btn.dataset.view;
+      localStorage.setItem('activeView', activeView);
+      applyView();
+    });
+  });
+
+  function applyFollow() {
+    followBtn.classList.toggle('active', followLogs);
+    if (followLogs) logPane.scrollTop = logPane.scrollHeight;
+  }
+
+  followBtn.addEventListener('click', function() {
+    followLogs = !followLogs;
+    localStorage.setItem('followLogs', String(followLogs));
+    applyFollow();
+  });
+
+  applyFollow();
+  applyView();
 
   // Files panel — open/close as full-width sibling below the row.
   // When diffs are available, shows a diff panel; otherwise shows file list.

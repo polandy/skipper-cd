@@ -1,6 +1,6 @@
 # skipper-cd Web UI — Specification
 
-Single-page application served at `/` when `ui_enabled: true`. No external JS dependencies. Real-time deployment events via SSE (`/api/events`).
+Single-page application served at `/` when `ui_enabled: true`. No external JS dependencies. Real-time deployment events via SSE (`/api/events`); real-time log lines via SSE (`/api/logs`).
 
 ---
 
@@ -27,10 +27,12 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 **Header — left:** skipper-cd ship logo (transparent PNG, embedded as base64 data URI, 32 px), `skipper-cd` wordmark (amber `-cd`), `LIVE` pill. Same logo used as favicon.
 
 **Header — right:**
-- **Deploy indicator** — shows active stack name(s) or `idle`; amber pulsing dot when deploying.
-- **Skip filter toggle** — hides/shows skipped rows. Default: active (hidden). State persisted in `localStorage` key `hideSkipped`.
-- **Time mode toggle** — switches Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). State persisted in `localStorage` key `timeMode`. Tooltip always shows the other format.
-- **Connection indicator** — `connecting` (amber pulse) → `connected` (teal) → `reconnecting` (red).
+- **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
+- **Deploy indicator** — shows active stack name(s) or `idle`; amber pulsing dot when deploying. Visible in both views.
+- **Skip filter toggle** — hides/shows skipped rows. Default: active (hidden). State persisted in `localStorage` key `hideSkipped`. Deploys view only.
+- **Time mode toggle** — switches Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). State persisted in `localStorage` key `timeMode`. Tooltip always shows the other format. Deploys view only.
+- **Follow toggle** — auto-scrolls the log pane to the newest line on every append. Default: active. State persisted in `localStorage` key `followLogs`. Logs view only.
+- **Connection indicator** — `connecting` (amber pulse) → `connected` (teal) → `reconnecting` (red). Bound to `/api/events`; the log stream has no own indicator.
 
 ---
 
@@ -68,6 +70,28 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `success` / `failed` / `rolled_back` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
 | `success` / `failed` / `rolled_back` (no existing row) | New row created directly. |
 | `skipped` | New row created; hidden immediately if filter is active. |
+
+---
+
+## Log view
+
+Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output, newest line at the **bottom** (terminal semantics — unlike the deploy table's prepend). Each line: muted `toLocaleTimeString()` timestamp, level badge, message, then dim `key=value` attrs.
+
+Level colours: `ERROR` → red, `WARN` → amber, `DEBUG` → slate, `INFO` → secondary text. Child-process lines (attrs contain `cmd` and `stream`) render a slate `[docker]`-style command prefix instead of a level badge and the message in primary text.
+
+The rendered DOM is capped at 1000 lines; the oldest line is removed on overflow. The `EventSource` for `/api/logs` is created lazily on first activation of the view and kept open afterwards.
+
+---
+
+## Log API
+
+`GET /api/logs` — SSE stream of captured log lines, event name `log`, payload:
+
+```json
+{"id":1720012345001,"time":"2026-07-10T12:00:00Z","level":"INFO","msg":"deploying stack","attrs":{"stack":"gitea"}}
+```
+
+On connect the in-memory backlog (bounded ring, 1000 entries, no persistence across restarts) is replayed — filtered by `Last-Event-ID` on reconnect — then live entries stream in. Entry IDs are seeded from the process start time so they stay monotonic across restarts. Slow consumers have lines dropped rather than blocking the logger. Same trust level as `/api/events` (unauthenticated); child-process output (`docker compose`, `git`, `nixos-rebuild`) is included — see ADR-0013.
 
 ---
 

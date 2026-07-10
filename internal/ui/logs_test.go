@@ -103,6 +103,21 @@ func TestLogsSSEHandler_SetsSSEHeaders(t *testing.T) {
 	}
 }
 
+func TestIndexHandler_ContainsLogsViewToggle(t *testing.T) {
+	handler := IndexHandler()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{`id="view-toggle"`, `id="log-pane"`, "/api/logs", `id="follow-logs"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected index.html to contain %q", want)
+		}
+	}
+}
+
 func TestWriteLogSSE_Format(t *testing.T) {
 	rec := httptest.NewRecorder()
 	entry := logbuf.Entry{ID: 42, Level: "INFO", Msg: "hello"}
