@@ -1,10 +1,13 @@
 package git
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -100,6 +103,47 @@ func TestSync_CloneUsesConfiguredBranch(t *testing.T) {
 	cloneCall := runner.calls[0]
 	assertArgPresent(t, cloneCall.args, "--branch")
 	assertArgPresent(t, cloneCall.args, "develop")
+}
+
+func TestSync_CloneLogRedactsCredentials(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	runner := &recordingRunner{}
+	s := newRepoSyncWithRunner(runner, "https://andy:sekrit@example.com/repo.git", repoDir, "master")
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(buf.String(), "sekrit") {
+		t.Errorf("log leaks the credential: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "xxxxx") {
+		t.Errorf("expected masked password in log, got: %s", buf.String())
+	}
+	// The git command itself must still receive the real URL.
+	assertArgPresent(t, runner.calls[0].args, "https://andy:sekrit@example.com/repo.git")
+}
+
+func TestRedactedURL(t *testing.T) {
+	tests := []struct {
+		name, in, want string
+	}{
+		{"masks password", "https://andy:sekrit@example.com/repo.git", "https://andy:xxxxx@example.com/repo.git"},
+		{"keeps ssh url without password", "ssh://git@example.com:1022/user/repo.git", "ssh://git@example.com:1022/user/repo.git"},
+		{"keeps scp-like syntax", "git@example.com:user/repo.git", "git@example.com:user/repo.git"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := redactedURL(tt.in); got != tt.want {
+				t.Errorf("redactedURL(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
 }
 
 func TestNewRepoSync_UsesDefaultRepoDirWhenEmpty(t *testing.T) {
