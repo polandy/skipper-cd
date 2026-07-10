@@ -71,6 +71,70 @@ func TestShellRunner_OutputKillsCommandAfterTimeout(t *testing.T) {
 	}
 }
 
+func TestShellRunner_RunSendsChildStdoutAndStderrToSink(t *testing.T) {
+	requireCommands(t, "sh")
+
+	sink := &recordingSink{}
+	runner := NewShellRunnerWithSink(0, sink)
+
+	if err := runner.Run(context.Background(), "", nil, "sh", "-c", "echo out; echo err >&2"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var stdout, stderr []string
+	for _, l := range sink.all() {
+		if l.cmd != "sh" {
+			t.Errorf("expected cmd %q, got %q", "sh", l.cmd)
+		}
+		switch l.stream {
+		case "stdout":
+			stdout = append(stdout, l.line)
+		case "stderr":
+			stderr = append(stderr, l.line)
+		default:
+			t.Errorf("unexpected stream %q", l.stream)
+		}
+	}
+	if len(stdout) != 1 || stdout[0] != "out" {
+		t.Errorf("unexpected stdout lines: %v", stdout)
+	}
+	if len(stderr) != 1 || stderr[0] != "err" {
+		t.Errorf("unexpected stderr lines: %v", stderr)
+	}
+}
+
+func TestShellRunner_RunFlushesUnterminatedLastLine(t *testing.T) {
+	requireCommands(t, "printf")
+
+	sink := &recordingSink{}
+	if err := NewShellRunnerWithSink(0, sink).Run(context.Background(), "", nil, "printf", "no newline"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := sink.all()
+	if len(got) != 1 || got[0].line != "no newline" {
+		t.Errorf("expected the unterminated line flushed after exit, got %+v", got)
+	}
+}
+
+func TestShellRunner_OutputTeesStderrButReturnsStdoutUncaptured(t *testing.T) {
+	requireCommands(t, "sh")
+
+	sink := &recordingSink{}
+	out, err := NewShellRunnerWithSink(0, sink).Output(context.Background(), "", "sh", "-c", "echo data; echo progress >&2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if string(out) != "data\n" {
+		t.Errorf("expected stdout returned as data, got %q", string(out))
+	}
+	got := sink.all()
+	if len(got) != 1 || got[0] != (sinkLine{"sh", "stderr", "progress"}) {
+		t.Errorf("expected only the stderr line in the sink, got %+v", got)
+	}
+}
+
 func TestShellRunner_RespectsCallerContext(t *testing.T) {
 	requireCommands(t, "sleep")
 

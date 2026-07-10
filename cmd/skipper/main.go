@@ -17,10 +17,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/git"
+	"github.com/polandy/skipper-cd/internal/logbuf"
 	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -43,7 +45,22 @@ func main() {
 		slog.Error("failed to load config", "path", *configPath, "err", err)
 		os.Exit(1)
 	}
-	slog.SetDefault(newLogger(cfg.LogFormat, os.Stderr))
+	// With the UI enabled, tee all slog output (and, via sink below, child
+	// process output) into an in-memory ring served live at /api/logs.
+	var logRing *logbuf.Log
+	logHandler := newLogHandler(cfg.LogFormat, os.Stderr)
+	if cfg.UIEnabled {
+		logRing = logbuf.New(logbuf.DefaultCapacity)
+		logHandler = logbuf.NewHandler(logHandler, logRing)
+	}
+	slog.SetDefault(slog.New(logHandler))
+
+	// Assign the sink only for a non-nil ring: a typed-nil *logbuf.Log in
+	// the interface would defeat the runner's sink != nil check.
+	var sink command.LineSink
+	if logRing != nil {
+		sink = logRing
+	}
 
 	timeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 
@@ -55,10 +72,10 @@ func main() {
 		"command_timeout", timeout,
 	)
 
-	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch, timeout)
-	repoReader := git.NewRepoReader(repoSync.RepoDir(), timeout)
+	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch, timeout, sink)
+	repoReader := git.NewRepoReader(repoSync.RepoDir(), timeout, sink)
 	stateDir := filepath.Dir(repoSync.RepoDir())
-	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir, timeout)
+	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir, timeout, sink)
 
 	var (
 		broadcaster *events.Broadcaster
@@ -81,7 +98,7 @@ func main() {
 	go deployer.SyncAndDeployAll(context.Background(), cfg)
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history, logRing))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -102,13 +119,13 @@ func main() {
 	slog.Info("skipper-cd stopped")
 }
 
-// newLogger returns the process logger for the configured log_format:
+// newLogHandler returns the slog handler for the configured log_format:
 // a JSON handler for "json", a logfmt text handler otherwise.
-func newLogger(format string, w io.Writer) *slog.Logger {
+func newLogHandler(format string, w io.Writer) slog.Handler {
 	if format == config.LogFormatJSON {
-		return slog.New(slog.NewJSONHandler(w, nil))
+		return slog.NewJSONHandler(w, nil)
 	}
-	return slog.New(slog.NewTextHandler(w, nil))
+	return slog.NewTextHandler(w, nil)
 }
 
 func metricsMux() *http.ServeMux {
@@ -117,7 +134,7 @@ func metricsMux() *http.ServeMux {
 	return mux
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster, history *events.History) *http.ServeMux {
+func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster, history *events.History, logRing *logbuf.Log) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
@@ -126,6 +143,7 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *even
 		mux.Handle("GET /{$}", ui.IndexHandler())
 		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, history))
 		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
+		mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
 	}
 	return mux
 }

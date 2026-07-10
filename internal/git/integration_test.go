@@ -58,7 +58,7 @@ func TestIntegration_SyncClonesAndPulls(t *testing.T) {
 	origin := makeOriginRepo(t)
 	repoDir := filepath.Join(t.TempDir(), "repo")
 
-	s := NewRepoSync(origin, repoDir, "main", time.Minute)
+	s := NewRepoSync(origin, repoDir, "main", time.Minute, nil)
 
 	// First sync clones.
 	if err := s.Sync(context.Background()); err != nil {
@@ -85,7 +85,7 @@ func TestIntegration_SyncFollowsChangedRemoteURL(t *testing.T) {
 	originA := makeOriginRepo(t)
 	repoDir := filepath.Join(t.TempDir(), "repo")
 
-	if err := NewRepoSync(originA, repoDir, "main", time.Minute).Sync(context.Background()); err != nil {
+	if err := NewRepoSync(originA, repoDir, "main", time.Minute, nil).Sync(context.Background()); err != nil {
 		t.Fatalf("initial sync: %v", err)
 	}
 
@@ -97,7 +97,7 @@ func TestIntegration_SyncFollowsChangedRemoteURL(t *testing.T) {
 	runGit(t, originB, "add", ".")
 	runGit(t, originB, "commit", "-m", "initial on new remote")
 
-	if err := NewRepoSync(originB, repoDir, "main", time.Minute).Sync(context.Background()); err != nil {
+	if err := NewRepoSync(originB, repoDir, "main", time.Minute, nil).Sync(context.Background()); err != nil {
 		t.Fatalf("sync after remote change: %v", err)
 	}
 
@@ -114,7 +114,7 @@ func TestIntegration_RepoReaderReadsCommits(t *testing.T) {
 	origin := makeOriginRepo(t)
 	repoDir := filepath.Join(t.TempDir(), "repo")
 
-	s := NewRepoSync(origin, repoDir, "main", time.Minute)
+	s := NewRepoSync(origin, repoDir, "main", time.Minute, nil)
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestIntegration_RepoReaderReadsCommits(t *testing.T) {
 		t.Fatalf("second sync: %v", err)
 	}
 
-	r := NewRepoReader(repoDir, time.Minute)
+	r := NewRepoReader(repoDir, time.Minute, nil)
 	composePath := filepath.Join(repoDir, "docker-compose.yml")
 
 	sha, err := r.HeadCommitSHA(context.Background())

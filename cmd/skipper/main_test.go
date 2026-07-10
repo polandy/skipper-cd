@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,9 +15,9 @@ import (
 	"github.com/polandy/skipper-cd/internal/deploy"
 )
 
-func TestNewLogger_JSONFormatEmitsJSON(t *testing.T) {
+func TestNewLogHandler_JSONFormatEmitsJSON(t *testing.T) {
 	var buf bytes.Buffer
-	logger := newLogger(config.LogFormatJSON, &buf)
+	logger := slog.New(newLogHandler(config.LogFormatJSON, &buf))
 
 	logger.Info("hello", "stack", "gitea")
 
@@ -32,9 +33,9 @@ func TestNewLogger_JSONFormatEmitsJSON(t *testing.T) {
 	}
 }
 
-func TestNewLogger_TextFormatEmitsLogfmt(t *testing.T) {
+func TestNewLogHandler_TextFormatEmitsLogfmt(t *testing.T) {
 	var buf bytes.Buffer
-	logger := newLogger(config.LogFormatText, &buf)
+	logger := slog.New(newLogHandler(config.LogFormatText, &buf))
 
 	logger.Info("hello", "stack", "gitea")
 
@@ -64,7 +65,7 @@ type failingSyncer struct{}
 func (failingSyncer) Sync(context.Context) error { return errors.New("remote unreachable") }
 
 func TestHealthzHandler_ServiceUnavailableAfterFailedSync(t *testing.T) {
-	deployer := deploy.NewDeployerWithCommitReader(nil, failingSyncer{}, "", t.TempDir(), 0)
+	deployer := deploy.NewDeployerWithCommitReader(nil, failingSyncer{}, "", t.TempDir(), 0, nil)
 	deployer.SyncAndDeployAll(context.Background(), &config.Config{})
 
 	rec := httptest.NewRecorder()

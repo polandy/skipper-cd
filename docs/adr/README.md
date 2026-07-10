@@ -17,3 +17,4 @@ One file per decision, numbered sequentially (see
 | [0010](0010-no-deploy-coalescing.md) | Concurrent deploy runs serialize and wait — no coalescing (yet) |
 | [0011](0011-release-automation-via-conventional-commits.md) | Releases are automated from Conventional Commits |
 | [0012](0012-dependabot-auto-merge.md) | Dependabot patch/minor updates merge automatically |
+| [0013](0013-child-process-output-through-log-pipeline.md) | Child process output is tee'd through the log pipeline |

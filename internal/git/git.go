@@ -25,11 +25,13 @@ type RepoSync struct {
 	branch  string
 }
 
-func NewRepoSync(repoURL, repoDir, branch string, commandTimeout time.Duration) *RepoSync {
+// NewRepoSync returns a RepoSync running git with the given per-command
+// timeout. A non-nil sink additionally receives git's output line by line.
+func NewRepoSync(repoURL, repoDir, branch string, commandTimeout time.Duration, sink command.LineSink) *RepoSync {
 	if repoDir == "" {
 		repoDir = defaultRepoDir
 	}
-	return &RepoSync{runner: command.NewShellRunner(commandTimeout), repoURL: repoURL, repoDir: repoDir, branch: branch}
+	return &RepoSync{runner: command.NewShellRunnerWithSink(commandTimeout, sink), repoURL: repoURL, repoDir: repoDir, branch: branch}
 }
 
 func newRepoSyncWithRunner(r command.Runner, repoURL, repoDir, branch string) *RepoSync {
@@ -98,8 +100,10 @@ type RepoReader struct {
 	repoDir string
 }
 
-func NewRepoReader(repoDir string, commandTimeout time.Duration) *RepoReader {
-	return &RepoReader{runner: command.NewShellRunner(commandTimeout), repoDir: repoDir}
+// NewRepoReader returns a RepoReader running git with the given per-command
+// timeout. A non-nil sink additionally receives git's stderr line by line.
+func NewRepoReader(repoDir string, commandTimeout time.Duration, sink command.LineSink) *RepoReader {
+	return &RepoReader{runner: command.NewShellRunnerWithSink(commandTimeout, sink), repoDir: repoDir}
 }
 
 func newRepoReaderWithRunner(r outputRunner, repoDir string) *RepoReader {

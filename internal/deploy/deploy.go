@@ -71,11 +71,14 @@ func NewDeployer() *Deployer {
 	return &Deployer{runner: ShellRunner{}, stateDir: defaultStateDir}
 }
 
-func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, repoDir, stateDir string, commandTimeout time.Duration) *Deployer {
+// NewDeployerWithCommitReader returns a Deployer running docker (and
+// nixos-rebuild) with the given per-command timeout. A non-nil sink
+// additionally receives the child processes' output line by line.
+func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, repoDir, stateDir string, commandTimeout time.Duration, sink command.LineSink) *Deployer {
 	if stateDir == "" {
 		stateDir = defaultStateDir
 	}
-	return &Deployer{runner: command.NewShellRunner(commandTimeout), commitReader: commitReader, syncer: syncer, repoDir: repoDir, stateDir: stateDir}
+	return &Deployer{runner: command.NewShellRunnerWithSink(commandTimeout, sink), commitReader: commitReader, syncer: syncer, repoDir: repoDir, stateDir: stateDir}
 }
 
 func newDeployerWithRunner(r Runner) *Deployer {
