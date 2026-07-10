@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0](https://github.com/polandy/skipper-cd/compare/v0.3.1...v0.4.0) (2026-07-10)
+
+
+### Features
+
+* **ui:** diff pill on deploy-complete lines in the log view ([0e052e3](https://github.com/polandy/skipper-cd/commit/0e052e358bc2b26fc650c6456f27992b487107bf))
+* **ui:** make deploy lifecycle scannable in the log view ([fa0c7b8](https://github.com/polandy/skipper-cd/commit/fa0c7b83ebdd6f886f0d09f863803b6e4aa57007))
+* **ui:** replace PNG logo with theme-aware helm SVG ([e0e0eb0](https://github.com/polandy/skipper-cd/commit/e0e0eb05d570b522aacb3df5141f0446034f136a))
+* **ui:** swap helm logo for container-ship variant ([859e7e7](https://github.com/polandy/skipper-cd/commit/859e7e7addd95a9531ee5c095b1cbdba4ea63fac))
+* **ui:** switch to Catppuccin theme with Mocha default and Latte toggle ([e509065](https://github.com/polandy/skipper-cd/commit/e5090655dd1b3f0a56363d7b1409d06c7b1951f5))
+
+
+### Bug Fixes
+
+* **git:** pin origin to the configured repo_url on sync ([45ca228](https://github.com/polandy/skipper-cd/commit/45ca228cedf491da44195090502c899f23e28d6a))
+* **git:** pin origin to the configured repo_url on sync ([fb0919e](https://github.com/polandy/skipper-cd/commit/fb0919e83d249dc84a28400ecd7868b693694223))
+* **git:** redact credentials in the clone log ([ed4d9fc](https://github.com/polandy/skipper-cd/commit/ed4d9fcb281cc900c2d7919add0118ee67bb9bfd))
+* **git:** redact credentials in the clone log ([6d5c5e7](https://github.com/polandy/skipper-cd/commit/6d5c5e7f4da226e88451d9b2de7e2ea3155f35e5))
+* **nixos:** run rebuild in a transient unit to survive self-restart ([cfc99c3](https://github.com/polandy/skipper-cd/commit/cfc99c330745430302b346d5a797f2b3aad3338e))
+
 ## [0.3.1](https://github.com/polandy/skipper-cd/compare/v0.3.0...v0.3.1) (2026-07-10)
 
 
