@@ -23,7 +23,7 @@ One semantic token layer consumes the palette; all tints, borders and glows are 
 
 Background depth: `crust` (sunken — log pane, diff/files panels) → `mantle` (page) → `base` (header glass, cards) → `surface0` (raised — tags, toggle tracks). Text: `text` / `subtext0` / `overlay1` (primary / secondary / muted).
 
-Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). Background: mantle with subtle grid overlay and peach radial glow at top centre.
+Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). Both are **self-hosted and embedded** in `index.html` as `@font-face` rules with the `woff2` (latin subset, weights 400/500/600) inlined as `data:` URIs — there is no external Google Fonts request, so the page is fully self-contained, works offline, and renders deterministically for visual snapshots (see [`docs/e2e-tests.md`](../../docs/e2e-tests.md) §5). Background: mantle with subtle grid overlay and peach radial glow at top centre.
 
 ---
 
@@ -143,6 +143,48 @@ On connect the in-memory backlog (bounded ring, 1000 entries, no persistence acr
 `GET /api/events/{id}/diffs` — returns `{"diffs": {"filepath": "diff content", ...}}` or `{"diffs": null}`. Returns 404 for unknown event IDs.
 
 Diffs are stored in `deploy-history.yaml` alongside events but are **not** included in SSE payloads (only `has_diffs: true` is sent). This keeps the real-time stream lightweight. Large diffs are truncated at 10 KB per file and 50 KB total per event.
+
+---
+
+## Test hooks (`data-testid`)
+
+The E2E UI suite ([`docs/e2e-tests.md`](../../docs/e2e-tests.md)) selects **only** on
+`data-testid` — never on `id`, text, or CSS class — so refactoring markup or
+styling never breaks the tests. These attributes are a public contract of the
+UI; keep them stable when editing `index.html`. Dynamic rows also carry data
+attributes (`data-stack`, `data-status`, `data-level`, `data-state`) the tests
+assert on.
+
+| `data-testid` | Element | Notes |
+|---|---|---|
+| `view-toggle` | Deploys/Logs segmented control | |
+| `deploy-indicator` | Active-stack / idle indicator | |
+| `autosync-btn` | Header autosync control (drawer opener) | |
+| `pending-pill` | Amber pending-count pill | Hidden at zero |
+| `skip-filter`, `time-mode`, `icon-refresh`, `log-sort`, `follow-logs`, `theme-toggle` | Header toggle buttons | |
+| `conn-indicator` | Connection indicator | `data-state` = `connecting`/`connected`/`reconnecting` |
+| `empty-state` | Awaiting-events placeholder | |
+| `deploy-row` | A deploy table row | `data-stack`, `data-status` |
+| `status-badge` | Status badge inside a row | |
+| `stack-icon` | Icon chip in the stack cell | |
+| `time-cell`, `duration-cell` | Time / duration cells | Masked in snapshots (dynamic) |
+| `files-pill` | Files pill on a row | |
+| `files-panel` | Expanded plain file-list panel | |
+| `diff-panel` | Expanded diff panel | |
+| `error-panel` | Error detail panel under a failed row | |
+| `log-line` | A log line | `data-level` = level (or `cmd` for child output) |
+| `level-badge` | Log level badge | |
+| `stack-prefix` | `[stack]` prefix on a deploy log line | |
+| `cmd-prefix` | `[cmd]` prefix on child-process output | |
+| `diff-pill` | Diff pill on a `deploy complete` log line | |
+| `autosync-drawer` | The autosync drawer | |
+| `global-switch` | Global autosync switch | |
+| `stack-item` | A row in the "All stacks" list | `data-stack` |
+| `stack-switch` | Per-stack switch in "All stacks" | `data-stack`; only in the all-stacks list |
+| `queue-item` | A row in the queued list | `data-stack` |
+| `wait-cell` | Wait-time text on a queue item | Masked in snapshots (dynamic) |
+| `stack-filter` | Stack filter input | |
+| `stack-filter-clear` | Filter clear button | |
 
 ---
 
