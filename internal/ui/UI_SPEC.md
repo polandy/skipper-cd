@@ -16,7 +16,7 @@ One semantic token layer consumes the palette; all tints, borders and glows are 
 | `--success` | teal | Success, connected |
 | `--danger` | red | Failed, errors, reconnecting, diff deletions |
 | `--rollback` | maroon | Rolled back |
-| `--skip` | overlay1 | Skipped, DEBUG log level |
+| `--skip` | overlay1 | DEBUG log level |
 | `--queued` | yellow | Queued/deferred deploy, pending count, autosync paused (shares the yellow hue with `--hunk`, distinct semantic) |
 | `--diff-add` | green | Diff additions |
 | `--hunk` | yellow | Diff hunk headers, WARN log level |
@@ -37,7 +37,6 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 - **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
 - **Deploy indicator** — shows active stack name(s) or `idle`; amber pulsing dot when deploying. Visible in both views.
 - **Autosync control** — a single button showing global autosync state; when deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in both views.
-- **Skip filter toggle** — hides/shows skipped rows. Default: active (hidden). State persisted in `localStorage` key `hideSkipped`. Deploys view only.
 - **Time mode toggle** — switches Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). State persisted in `localStorage` key `timeMode`. Tooltip always shows the other format. Deploys view only.
 - **Icon refresh** — a refresh-glyph action button (not a toggle) that clears the server-side icon cache (`POST /api/icons/refresh`) and reloads every visible icon with a cache-busting query param, so renamed stacks and newly published icons appear. Also bound to the **`i`** hotkey (ignored while typing in an input). Brief spin animation on activation. Deploys view only.
 - **Sort toggle** — reverses log order. Default: inactive (newest first, newest line at the top). Active flips to oldest-first (terminal semantics, newest at the bottom). State persisted in `localStorage` key `logSort` (`desc` / `asc`). Flipping resets the visible window to one page. Logs view only.
@@ -65,7 +64,6 @@ The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain
 | `success` | `--success` (teal) | |
 | `failed` | `--danger` (red) | Error panel expanded below row |
 | `rolled_back` | `--rollback` (maroon) | Deploy failed but old containers restored; error panel shows details |
-| `skipped` | `--skip` (overlay1) | 35 % opacity row; hidden when filter active |
 | `queued` | `--queued` (yellow) | Deploy deferred — autosync paused, change waiting; tinted row with amber left bar and a `paused: <global\|stack>` tag on the stack cell. See [Autosync](#autosync). |
 
 ### Expandable panels
@@ -85,7 +83,7 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `deploying` | New row prepended, tracked in memory. |
 | `success` / `failed` / `rolled_back` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
 | `success` / `failed` / `rolled_back` (no existing row) | New row created directly. |
-| `skipped` | New row created; hidden immediately if filter is active. |
+| `skipped` | Dropped — never rendered (an unchanged stack carries no signal). |
 | `queued` | New row created with the `queued` badge and a `paused:` tag. When the stack later deploys (after sync resumes), a fresh `deploying`→`success` row supersedes it. |
 
 ---
@@ -161,7 +159,7 @@ assert on.
 | `deploy-indicator` | Active-stack / idle indicator | |
 | `autosync-btn` | Header autosync control (drawer opener) | |
 | `pending-pill` | Amber pending-count pill | Hidden at zero |
-| `skip-filter`, `time-mode`, `icon-refresh`, `log-sort`, `follow-logs`, `theme-toggle` | Header toggle buttons | |
+| `time-mode`, `icon-refresh`, `log-sort`, `follow-logs`, `theme-toggle` | Header toggle buttons | |
 | `conn-indicator` | Connection indicator | `data-state` = `connecting`/`connected`/`reconnecting` |
 | `empty-state` | Awaiting-events placeholder | |
 | `deploy-row` | A deploy table row | `data-stack`, `data-status` |

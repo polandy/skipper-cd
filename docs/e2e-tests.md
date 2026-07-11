@@ -19,7 +19,7 @@ asserting **behaviour + visual snapshots**.
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
 > Go harness drives the real binary — with **UA1** (row lifecycle), **UA2** (all
-> six status badges), **UA3** (skip-filter toggle + persistence), **UA4** (time-mode
+> five rendered status badges), **UA3** (skipped deploys never render a row), **UA4** (time-mode
 > toggle + persistence), **UA5** (stack icon + monogram fallback), **UA6** (icon
 > refresh: POST + cache-busted reload), and **UA7** (files-pill panel toggle)
 > passing and an `e2e-ui` CI job
@@ -129,7 +129,7 @@ these, never on text/CSS. Minimum set:
 - Autosync: `autosync-btn`, `pending-pill`, `autosync-drawer`, `global-switch`,
   `stack-switch` (+ `data-stack`), `queue-item` (+ `wait-cell` for masking),
   `stack-filter`.
-- Chrome: `view-toggle`, `skip-filter`, `time-mode`, `theme-toggle`,
+- Chrome: `view-toggle`, `time-mode`, `theme-toggle`,
   `conn-indicator` (+ `data-state`), `deploy-indicator`.
 
 ## 4. Test cases (Given/When/Then)
@@ -163,12 +163,13 @@ UI suite reuses.
   (`deploying` held, then released to `success`). Then a `deploy-row` for the
   stack appears newest-first, shows `deploying`, then mutates in-place to
   `success` (same row, not a duplicate). *Snapshot: table after success.*
-- **UA2 — Status badges.** Drive each status via §3 recipes. Then each
+- **UA2 — Status badges.** Drive each rendered status via §3 recipes. Then each
   `deploy-row` carries the correct `data-status` + `status-badge`
-  (`success`/`failed`/`rolled_back`/`skipped`/`queued`/`deploying`).
+  (`success`/`failed`/`rolled_back`/`queued`/`deploying`).
   *Snapshot: one row per status.*
-- **UA3 — Skip filter.** Toggle hides `skipped` rows; a reload keeps them hidden
-  (`localStorage hideSkipped`); toggling back reveals them.
+- **UA3 — Skipped deploys never render.** An unchanged stack emits a `skipped`
+  event, but no `deploy-row` is created for it (proven by ordering against a
+  later real deploy); there is no skip-filter control.
 - **UA4 — Time mode.** Toggle switches Time cells relative↔absolute and persists
   across reload (`localStorage timeMode`).
 - **UA5 — Stack icon + monogram fallback.** A resolvable icon renders in
@@ -266,8 +267,8 @@ n/a. Pipeline invariants continue to map to §4.1.
 | UI_SPEC requirement | Case |
 | --- | --- |
 | SSE row lifecycle: deploying→success in place, newest-first | **UA1** |
-| Status badges (success/failed/rolled_back/skipped/queued/deploying) | **UA2**, UC9 |
-| Skip filter toggle + persistence | **UA3** |
+| Status badges (success/failed/rolled_back/queued/deploying) | **UA2**, UC9 |
+| Skipped deploys never render a row | **UA3** |
 | Time mode toggle + persistence | **UA4** |
 | Stack icon chip + monogram fallback | **UA5** |
 | Icon refresh control + `i` hotkey | **UA6** |

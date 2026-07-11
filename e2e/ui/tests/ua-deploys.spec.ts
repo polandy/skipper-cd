@@ -47,19 +47,6 @@ test.describe('UA2: status badges', () => {
     await expect(row.locator('[data-testid="status-badge"]')).toHaveText('success');
   });
 
-  test('skipped', async ({ page, skipper }) => {
-    await page.goto(`${skipper.baseURL}/`);
-    await expect(webRow(page, 'success')).toHaveCount(1); // startup settled
-    // Skipped rows are hidden by default; reveal them, then webhook with no new
-    // commit so the unchanged stack is skipped.
-    await page.locator('[data-testid="skip-filter"]').click();
-    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
-
-    const row = webRow(page, 'skipped');
-    await expect(row).toHaveCount(1);
-    await expect(row.locator('[data-testid="status-badge"]')).toHaveText('skipped');
-  });
-
   test('deploying', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     await expect(webRow(page, 'success')).toHaveCount(1);
@@ -125,72 +112,31 @@ test.describe('UA2: status badges', () => {
   });
 });
 
-// UA3 — Skip filter. The filter hides `skipped` deploy rows and defaults to on.
-// The choice persists in localStorage('hideSkipped') so a reload restores it, and
-// the button reflects the state via its `active` class. Skipped events are
-// live-only (never replayed from history), so each phase produces a fresh skipped
-// row with a no-change webhook rather than expecting one to survive a reload.
-test.describe('UA3: skip filter', () => {
-  const skippedRow = (page: import('@playwright/test').Page) =>
-    page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="skipped"]');
-  const successRow = (page: import('@playwright/test').Page) =>
-    page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]');
-  const skipFilter = (page: import('@playwright/test').Page) =>
-    page.locator('[data-testid="skip-filter"]');
+// UA3 — Skipped deploys are never shown. An unchanged stack emits a `skipped`
+// event, but the UI drops it: no row is ever rendered, and there is no filter
+// control to reveal one. The drop is proven by ordering — after the no-op
+// webhook (the skip), a real change deploys to a second success row. SSE is
+// ordered and deploys serialize on one mutex, so once that row appears the skip
+// event was already delivered, yet no skipped row exists.
+test('UA3: skipped deploys never render a row', async ({ page, skipper }) => {
+  const webRow = (status: string) =>
+    page.locator(`[data-testid="deploy-row"][data-stack="web"][data-status="${status}"]`);
 
-  // A webhook with no new commit leaves the stack unchanged → it is skipped.
-  const produceSkip = async (skipper: { sendWebhook(ref: string): Promise<number> }) =>
-    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+  await page.goto(`${skipper.baseURL}/`);
+  await expect(webRow('success')).toHaveCount(1); // startup settled
 
-  test('hidden by default; toggling reveals then hides again', async ({ page, skipper }) => {
-    await page.goto(`${skipper.baseURL}/`);
-    await expect(successRow(page)).toHaveCount(1); // startup settled
+  // A webhook with no new commit leaves the stack unchanged → skipped.
+  expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
 
-    await produceSkip(skipper);
+  // A real change then deploys to a second success row; its arrival proves the
+  // earlier skip event was delivered and dropped rather than merely slow.
+  skipper.setStackImage('web', '1.26');
+  expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+  await expect(webRow('success')).toHaveCount(2);
 
-    // The skipped row is in the DOM but hidden by the default-on filter.
-    const row = skippedRow(page);
-    await expect(row).toHaveCount(1);
-    await expect(row).toBeHidden();
-    await expect(skipFilter(page)).toHaveClass(/\bactive\b/);
-
-    // Toggle off → skipped rows revealed.
-    await skipFilter(page).click();
-    await expect(row).toBeVisible();
-    await expect(skipFilter(page)).not.toHaveClass(/\bactive\b/);
-
-    // Toggle back on → hidden again.
-    await skipFilter(page).click();
-    await expect(row).toBeHidden();
-    await expect(skipFilter(page)).toHaveClass(/\bactive\b/);
-  });
-
-  test('the toggle choice persists across reload, both directions', async ({ page, skipper }) => {
-    await page.goto(`${skipper.baseURL}/`);
-    await expect(successRow(page)).toHaveCount(1);
-
-    // Reveal skipped rows and persist the choice (hideSkipped=false).
-    await skipFilter(page).click();
-    await expect(skipFilter(page)).not.toHaveClass(/\bactive\b/);
-
-    await page.reload();
-    // The persisted choice is applied on load, before any rows render.
-    await expect(skipFilter(page)).not.toHaveClass(/\bactive\b/);
-    // A fresh skip is visible without re-toggling.
-    await produceSkip(skipper);
-    await expect(skippedRow(page)).toHaveCount(1);
-    await expect(skippedRow(page)).toBeVisible();
-
-    // Hide again and persist (hideSkipped=true).
-    await skipFilter(page).click();
-    await expect(skipFilter(page)).toHaveClass(/\bactive\b/);
-
-    await page.reload();
-    await expect(skipFilter(page)).toHaveClass(/\bactive\b/);
-    await produceSkip(skipper);
-    await expect(skippedRow(page)).toHaveCount(1);
-    await expect(skippedRow(page)).toBeHidden();
-  });
+  // No skipped row was ever rendered, and there is no skip-filter control.
+  await expect(webRow('skipped')).toHaveCount(0);
+  await expect(page.locator('[data-testid="skip-filter"]')).toHaveCount(0);
 });
 
 // UA4 — Time mode. The toggle switches Time cells between relative ("just now" /
