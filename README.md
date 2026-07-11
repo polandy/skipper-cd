@@ -283,6 +283,8 @@ The module creates the state directory at `/var/lib/skipper`, adds `git`, `docke
 | `stateDir` | string | `/var/lib/skipper` | Directory for deploy state and the repository clone. |
 | `nixosRebuild` | bool | `false` | Set when `nixos_rebuild` is configured in `skipper.yml`. Relaxes the systemd sandboxing so `nixos-rebuild` can run. |
 | `stopTimeout` | string | `15min` | systemd `TimeoutStopSec`. On shutdown skipper-cd waits for an in-flight deploy to finish; keep this longer than a typical deploy run or systemd will kill the service mid-deploy. |
+| `autoRecover` | bool | `true` | Install a timer that restarts the service whenever it is in a `failed` state, self-healing a self-update whose stop was force-killed ([ADR-0017](docs/adr/0017-self-heal-failed-self-update.md)). An intentional `systemctl stop` (unit goes `inactive`, not `failed`) is left alone. |
+| `recoverInterval` | string | `2min` | How often the `autoRecover` timer checks for a failed service. Ignored when `autoRecover` is `false`. |
 
 ### Recommended Pattern: Self-Registering Stacks
 

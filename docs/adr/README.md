@@ -21,3 +21,4 @@ One file per decision, numbered sequentially (see
 | [0014](0014-nixos-rebuild-in-transient-systemd-unit.md) | NixOS rebuild runs in a transient systemd unit |
 | [0015](0015-revert-nix-hashes-on-surviving-rebuild-failure.md) | Revert nix hashes when a rebuild fails and skipper survives |
 | [0016](0016-autosync-and-queue-via-leave-dirty.md) | Autosync with a leave-dirty queue and non-persistent overrides |
+| [0017](0017-self-heal-failed-self-update.md) | Self-heal skipper-cd after a failed self-update |
