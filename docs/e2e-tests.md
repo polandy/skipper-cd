@@ -18,10 +18,11 @@ asserting **behaviour + visual snapshots**.
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
-> Go harness drives the real binary — with **UA1** (row lifecycle) and **UA2** (all
-> six status badges) passing and an `e2e-ui` CI job (behaviour-only). Remaining: the
-> rest of mask A (UA3–UA10), masks B–D, and the visual-snapshot baselines (§5), at
-> which point `e2e-ui` moves into Playwright's pinned container.
+> Go harness drives the real binary — with **UA1** (row lifecycle), **UA2** (all
+> six status badges), and **UA3** (skip-filter toggle + persistence) passing and an
+> `e2e-ui` CI job (behaviour-only). Remaining: the rest of mask A (UA4–UA10), masks
+> B–D, and the visual-snapshot baselines (§5), at which point `e2e-ui` moves into
+> Playwright's pinned container.
 
 ## 1. Scope & boundaries
 
