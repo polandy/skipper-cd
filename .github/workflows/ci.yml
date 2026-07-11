@@ -40,6 +40,37 @@ jobs:
       - run: go vet -tags e2e ./e2e
       - run: go test -tags e2e -v -count=1 ./e2e
 
+  # UI end-to-end tests: Playwright drives the embedded web UI in a real browser
+  # against the same skipper binary (built in globalSetup). The pinned lockfile
+  # keeps the toolchain reproducible. Behaviour-only for now; when visual
+  # snapshots land this job should move into Playwright's pinned container so
+  # pixel baselines are stable across runners (see docs/e2e-tests.md §5, §7).
+  e2e-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install UI E2E deps
+        working-directory: e2e/ui
+        run: npm ci
+      - name: Install Playwright browser
+        working-directory: e2e/ui
+        run: npx playwright install --with-deps chromium
+      - name: Run UI E2E
+        working-directory: e2e/ui
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: e2e/ui/playwright-report/
+          retention-days: 7
+
   lint:
     runs-on: ubuntu-latest
     steps:
