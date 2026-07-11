@@ -20,10 +20,11 @@ asserting **behaviour + visual snapshots**.
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
 > Go harness drives the real binary — with **UA1** (row lifecycle), **UA2** (all
 > six status badges), **UA3** (skip-filter toggle + persistence), **UA4** (time-mode
-> toggle + persistence), and **UA5** (stack icon + monogram fallback) passing and an
-> `e2e-ui` CI job (behaviour-only). Remaining: the rest of mask A (UA6–UA10), masks
-> B–D, and the visual-snapshot baselines (§5), at which point `e2e-ui` moves into
-> Playwright's pinned container.
+> toggle + persistence), **UA5** (stack icon + monogram fallback), and **UA6** (icon
+> refresh: POST + cache-busted reload) passing and an `e2e-ui` CI job
+> (behaviour-only). Remaining: the rest of mask A (UA7–UA10), masks B–D, and the
+> visual-snapshot baselines (§5), at which point `e2e-ui` moves into Playwright's
+> pinned container.
 
 ## 1. Scope & boundaries
 
