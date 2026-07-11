@@ -86,6 +86,15 @@ export interface StartOptions {
   stacks?: string[];
   /** Extra env for the stub docker (e.g. STUB_DOCKER_FAIL_NTH_UP). */
   stubEnv?: Record<string, string>;
+  /**
+   * How ready the instance must be before start() resolves:
+   *  - 'deployed' (default): healthy (/healthz 200) and every stack's startup
+   *    deploy has settled into state.yaml.
+   *  - 'listening': the HTTP server merely responds. Use when the startup deploy
+   *    is expected to fail (e.g. driving a `failed` badge), which would keep
+   *    /healthz at 503 and never write state.
+   */
+  readiness?: 'deployed' | 'listening';
 }
 
 /** Skipper is a running skipper binary under test with its origin, stub docker,
@@ -184,9 +193,13 @@ export class Skipper {
     });
 
     const s = new Skipper({ baseURL, metricsURL, origin, stateDir, dockerLog, holdFile, stacks, proc });
-    await s.waitHealthy();
-    for (const name of stacks) {
-      await s.waitFor(`startup deploy of ${name}`, () => s.stateHasStack(name));
+    if ((opts.readiness ?? 'deployed') === 'listening') {
+      await s.waitListening();
+    } else {
+      await s.waitHealthy();
+      for (const name of stacks) {
+        await s.waitFor(`startup deploy of ${name}`, () => s.stateHasStack(name));
+      }
     }
     return s;
   }
@@ -269,6 +282,19 @@ export class Skipper {
     await this.waitFor('healthz 200', async () => {
       try {
         return (await fetch(`${this.baseURL}/healthz`)).status === 200;
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  /** waitListening waits until the HTTP server responds at all (any status),
+   *  used when the startup deploy is expected to fail so /healthz stays 503. */
+  private async waitListening(): Promise<void> {
+    await this.waitFor('server listening', async () => {
+      try {
+        await fetch(`${this.baseURL}/healthz`);
+        return true;
       } catch {
         return false;
       }
