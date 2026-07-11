@@ -84,7 +84,6 @@
     --accent-glow: color-mix(in srgb, var(--accent) 30%, transparent);
     --success-dim: color-mix(in srgb, var(--success) 12%, transparent);
     --danger-dim: color-mix(in srgb, var(--danger) 10%, transparent);
-    --skip-dim: color-mix(in srgb, var(--skip) 12%, transparent);
     --rollback-dim: color-mix(in srgb, var(--rollback) 12%, transparent);
     --queued-dim: color-mix(in srgb, var(--queued) 14%, transparent);
     --font-display: 'DM Sans', sans-serif;
@@ -333,14 +332,6 @@
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
 
-  .event-row.skipped {
-    opacity: 0.35;
-  }
-
-  .event-row.skipped:hover {
-    opacity: 0.55;
-  }
-
   /* Active deploy glow */
   .event-row.deploying-row {
     background: var(--accent-dim);
@@ -527,12 +518,6 @@
     background: var(--danger-dim);
     color: var(--danger);
     border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
-  }
-
-  .badge-skipped {
-    background: var(--skip-dim);
-    color: var(--skip);
-    border: 1px solid color-mix(in srgb, var(--skip) 15%, transparent);
   }
 
   .badge-deploying {
@@ -801,8 +786,6 @@
 
   .filter-toggle.active { color: var(--accent); }
 
-  #tbody.hide-skipped .event-row.skipped { display: none; }
-
   /* ─── VIEW TOGGLE ─── */
   .view-toggle {
     display: flex;
@@ -985,7 +968,7 @@
   #log-view { display: none; }
   body.view-logs #log-view { display: block; }
   body.view-logs #deploy-table, body.view-logs #empty-state { display: none !important; }
-  body.view-logs #skip-filter, body.view-logs #time-mode, body.view-logs #icon-refresh { display: none; }
+  body.view-logs #time-mode, body.view-logs #icon-refresh { display: none; }
 
   #icon-refresh svg { width: 15px; height: 15px; }
   #icon-refresh.spinning svg { animation: icon-spin 0.6s ease; }
@@ -1120,10 +1103,6 @@
       <span>autosync</span>
       <span class="pending-count" data-testid="pending-pill"><span class="pc-dot"></span><span id="autosync-count">0</span></span>
     </div>
-    <button class="filter-toggle active" id="skip-filter" data-testid="skip-filter" title="Show/hide skipped deployments">
-      <div class="toggle-track"><div class="toggle-thumb"></div></div>
-      <span>hide skipped</span>
-    </button>
     <button class="filter-toggle" id="time-mode" data-testid="time-mode" title="Switch to absolute time">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
       <span>abs time</span>
@@ -1357,7 +1336,6 @@
 
   function rowClass(status, isHistory) {
     var cls = 'event-row';
-    if (status === 'skipped') cls += ' skipped';
     if (status === 'deploying') cls += ' deploying-row';
     if (status === 'failed') cls += ' failed-row';
     if (status === 'success') cls += ' success-row';
@@ -1456,6 +1434,10 @@
   }
 
   function handleEvent(evt, isHistory) {
+    // A skipped deploy means an unchanged stack — no signal worth showing, so
+    // it is never rendered (skipped events are live-only, never in history).
+    if (evt.status === 'skipped') return;
+
     showTable();
 
     if (evt.status === 'deploying') {
@@ -1568,28 +1550,6 @@
   });
 
   applyTimeMode();
-
-  // Skipped-filter toggle (default: hidden)
-  const skipFilter = document.getElementById('skip-filter');
-  let hideSkipped = localStorage.getItem('hideSkipped') !== 'false';
-
-  function applySkipFilter() {
-    if (hideSkipped) {
-      tbody.classList.add('hide-skipped');
-      skipFilter.classList.add('active');
-    } else {
-      tbody.classList.remove('hide-skipped');
-      skipFilter.classList.remove('active');
-    }
-  }
-
-  skipFilter.addEventListener('click', function() {
-    hideSkipped = !hideSkipped;
-    localStorage.setItem('hideSkipped', String(hideSkipped));
-    applySkipFilter();
-  });
-
-  applySkipFilter();
 
   // Icon refresh — button and the "i" hotkey both clear the server-side icon
   // cache and reload every visible icon.
