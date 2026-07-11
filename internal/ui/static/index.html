@@ -759,8 +759,8 @@
   body.view-logs #log-view { display: block; }
   body.view-logs #deploy-table, body.view-logs #empty-state { display: none !important; }
   body.view-logs #skip-filter, body.view-logs #time-mode { display: none; }
-  #follow-logs { display: none; }
-  body.view-logs #follow-logs { display: flex; }
+  #follow-logs, #log-sort { display: none; }
+  body.view-logs #follow-logs, body.view-logs #log-sort { display: flex; }
 
   .log-pane {
     background: var(--bg-sunken);
@@ -891,6 +891,10 @@
     <button class="filter-toggle" id="time-mode" title="Switch to absolute time">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
       <span>abs time</span>
+    </button>
+    <button class="filter-toggle" id="log-sort" title="Show oldest log lines first">
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <span>oldest first</span>
     </button>
     <button class="filter-toggle" id="follow-logs" title="Auto-scroll to newest log lines">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
@@ -1267,9 +1271,19 @@
   // the connection indicator remains bound to /api/events.
   const logPane = document.getElementById('log-pane');
   const followBtn = document.getElementById('follow-logs');
+  const sortBtn = document.getElementById('log-sort');
   const viewButtons = document.querySelectorAll('#view-toggle button');
 
-  const maxLogLines = 1000;
+  // The log view keeps a bounded client-side buffer (the backend replays at
+  // most its own ring on connect) and renders a sliding window of it. Default
+  // order is newest-first (descending); the sort toggle flips it. The window
+  // starts at logPageSize lines and grows by logPageSize each time the user
+  // scrolls to the older edge.
+  const logPageSize = 500;
+  const maxLogBuffer = 2000;
+  let logEntries = [];            // chronological, oldest → newest
+  let logVisible = logPageSize;   // number of newest entries currently rendered
+  let logDescending = localStorage.getItem('logSort') !== 'asc'; // default: newest first
   let followLogs = localStorage.getItem('followLogs') !== 'false';
   let activeView = localStorage.getItem('activeView') === 'logs' ? 'logs' : 'deploys';
   let logSource = null;
@@ -1351,21 +1365,110 @@
     });
   });
 
-  function appendLog(entry) {
-    var empty = document.getElementById('log-empty');
-    if (empty) empty.remove();
-    logPane.appendChild(renderLogLine(entry));
-    while (logPane.children.length > maxLogLines) {
-      logPane.removeChild(logPane.firstChild);
-    }
-    if (followLogs) logPane.scrollTop = logPane.scrollHeight;
+  // The newest line lives at the top when descending, the bottom when
+  // ascending; "follow" and fresh renders pin the view to that edge.
+  function scrollToNewest() {
+    logPane.scrollTop = logDescending ? 0 : logPane.scrollHeight;
   }
+
+  // Remove a rendered line together with any diff/files panel opened below it,
+  // so trimming the window never leaves an orphaned panel behind.
+  function removeLogLine(line) {
+    var next = line.nextElementSibling;
+    if (next && (next.classList.contains('diff-panel') || next.classList.contains('files-list'))) {
+      next.remove();
+    }
+    line.remove();
+  }
+
+  // Keep at most logVisible rendered lines, dropping from the older edge
+  // (bottom when descending, top when ascending). The dropped entries stay in
+  // the buffer, so scrolling back can reveal them again.
+  function trimLogDom() {
+    var lines = logPane.querySelectorAll('.log-line');
+    var over = lines.length - logVisible;
+    for (var i = 0; i < over; i++) {
+      removeLogLine(logDescending ? lines[lines.length - 1 - i] : lines[i]);
+    }
+  }
+
+  // Rebuild the pane from the buffer for the current order and window size.
+  // Used on view activation, sort toggle and other non-incremental changes.
+  function renderLogWindow() {
+    logPane.innerHTML = '';
+    if (logEntries.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'log-empty';
+      empty.id = 'log-empty';
+      empty.textContent = 'Awaiting log output...';
+      logPane.appendChild(empty);
+      return;
+    }
+    var count = Math.min(logVisible, logEntries.length);
+    var slice = logEntries.slice(logEntries.length - count); // oldest → newest
+    if (logDescending) slice.reverse();
+    var frag = document.createDocumentFragment();
+    slice.forEach(function(e) { frag.appendChild(renderLogLine(e)); });
+    logPane.appendChild(frag);
+    scrollToNewest();
+  }
+
+  // Reveal another page of older entries at the older edge, preserving the
+  // reading position. No-op once the whole buffer is rendered.
+  function loadMoreLogs() {
+    var have = Math.min(logVisible, logEntries.length);
+    var target = Math.min(logVisible + logPageSize, maxLogBuffer, logEntries.length);
+    if (target <= have) return;
+    logVisible = target;
+    var older = logEntries.slice(logEntries.length - target, logEntries.length - have);
+    var frag = document.createDocumentFragment();
+    if (logDescending) {
+      older.reverse(); // append newest → oldest at the bottom
+      older.forEach(function(e) { frag.appendChild(renderLogLine(e)); });
+      logPane.appendChild(frag); // grows below the fold; scrollTop unchanged
+    } else {
+      var prevHeight = logPane.scrollHeight, prevTop = logPane.scrollTop;
+      older.forEach(function(e) { frag.appendChild(renderLogLine(e)); }); // oldest → newest
+      logPane.insertBefore(frag, logPane.firstChild);
+      logPane.scrollTop = prevTop + (logPane.scrollHeight - prevHeight);
+    }
+  }
+
+  // A single fresh (newest) line arrived over the stream.
+  function appendNewestToDom(entry) {
+    var empty = logPane.querySelector('.log-empty');
+    if (empty) empty.remove();
+    var node = renderLogLine(entry);
+    if (logDescending) {
+      logPane.insertBefore(node, logPane.firstChild);
+    } else {
+      logPane.appendChild(node);
+    }
+    trimLogDom();
+    if (followLogs) scrollToNewest();
+  }
+
+  function pushLog(entry) {
+    logEntries.push(entry);
+    var overflow = logEntries.length - maxLogBuffer;
+    if (overflow > 0) logEntries.splice(0, overflow);
+    // While the logs view is hidden we only buffer; the pane is rebuilt from
+    // the buffer when the view is next activated.
+    if (activeView === 'logs') appendNewestToDom(entry);
+  }
+
+  logPane.addEventListener('scroll', function() {
+    var nearOlderEdge = logDescending
+      ? logPane.scrollTop + logPane.clientHeight >= logPane.scrollHeight - 40
+      : logPane.scrollTop <= 40;
+    if (nearOlderEdge) loadMoreLogs();
+  });
 
   function connectLogs() {
     if (logSource) return;
     logSource = new EventSource('/api/logs');
     logSource.addEventListener('log', function(e) {
-      appendLog(JSON.parse(e.data));
+      pushLog(JSON.parse(e.data));
     });
   }
 
@@ -1376,7 +1479,7 @@
     });
     if (activeView === 'logs') {
       connectLogs();
-      if (followLogs) logPane.scrollTop = logPane.scrollHeight;
+      renderLogWindow();
     }
   }
 
@@ -1390,7 +1493,7 @@
 
   function applyFollow() {
     followBtn.classList.toggle('active', followLogs);
-    if (followLogs) logPane.scrollTop = logPane.scrollHeight;
+    if (followLogs) scrollToNewest();
   }
 
   followBtn.addEventListener('click', function() {
@@ -1399,6 +1502,19 @@
     applyFollow();
   });
 
+  // Sort toggle: active = oldest-first (ascending). Flipping restarts the
+  // window at one page in the new order.
+  sortBtn.addEventListener('click', function() {
+    logDescending = !logDescending;
+    localStorage.setItem('logSort', logDescending ? 'desc' : 'asc');
+    sortBtn.classList.toggle('active', !logDescending);
+    sortBtn.title = logDescending ? 'Show oldest log lines first' : 'Show newest log lines first';
+    logVisible = logPageSize;
+    renderLogWindow();
+  });
+
+  sortBtn.classList.toggle('active', !logDescending);
+  sortBtn.title = logDescending ? 'Show oldest log lines first' : 'Show newest log lines first';
   applyFollow();
   applyView();
 

@@ -37,7 +37,8 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 - **Deploy indicator** — shows active stack name(s) or `idle`; amber pulsing dot when deploying. Visible in both views.
 - **Skip filter toggle** — hides/shows skipped rows. Default: active (hidden). State persisted in `localStorage` key `hideSkipped`. Deploys view only.
 - **Time mode toggle** — switches Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). State persisted in `localStorage` key `timeMode`. Tooltip always shows the other format. Deploys view only.
-- **Follow toggle** — auto-scrolls the log pane to the newest line on every append. Default: active. State persisted in `localStorage` key `followLogs`. Logs view only.
+- **Sort toggle** — reverses log order. Default: inactive (newest first, newest line at the top). Active flips to oldest-first (terminal semantics, newest at the bottom). State persisted in `localStorage` key `logSort` (`desc` / `asc`). Flipping resets the visible window to one page. Logs view only.
+- **Follow toggle** — auto-scrolls the log pane to the newest line (the top when newest-first, the bottom when oldest-first) on every append. Default: active. State persisted in `localStorage` key `followLogs`. Logs view only.
 - **Theme toggle** — switches between Mocha (dark, default) and Latte (light). State persisted in `localStorage` key `theme` (`latte` / `mocha`). Visible in both views.
 - **Connection indicator** — `connecting` (accent pulse) → `connected` (success) → `reconnecting` (danger). Bound to `/api/events`; the log stream has no own indicator.
 
@@ -82,7 +83,7 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 
 ## Log view
 
-Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output, newest line at the **bottom** (terminal semantics — unlike the deploy table's prepend). Each line: muted timestamp, level badge, optional stack prefix, message, then dim `key=value` attrs.
+Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output. Default order is **newest-first** (newest line at the top); the header **Sort toggle** flips to oldest-first (newest at the bottom, terminal semantics). Each line: muted timestamp, level badge, optional stack prefix, message, then dim `key=value` attrs.
 
 Timestamps show the time of day; lines from another day get a date prefix, and the full `toLocaleString()` timestamp is always in the tooltip.
 
@@ -90,7 +91,7 @@ Level colours: `ERROR` → red, `WARN` → yellow, `DEBUG` → muted, `INFO` →
 
 `deploy complete` lines carry the deploy event's ID as an `event_id` attr (logged only when an event sink is configured, i.e. `ui_enabled`). The log view renders it as a **diff pill** instead of a plain attr: clicking fetches the deploy's diff from `GET /api/events/{id}/diffs` and inserts the same collapsible diff panel used by the deploy table directly below the line (click again to close; a notice appears when no diff was recorded, e.g. the event fell out of the bounded history).
 
-The rendered DOM is capped at 1000 lines; the oldest line is removed on overflow. The `EventSource` for `/api/logs` is created lazily on first activation of the view and kept open afterwards.
+Received lines are held in a bounded client-side buffer (2000 entries, oldest dropped on overflow) and the pane renders a sliding window of it. The window starts at **500 lines** (the newest 500) and grows by **500** each time the user scrolls to the older edge (the bottom when newest-first, the top when oldest-first); a scroll that reveals older lines preserves the reading position. Live lines are added incrementally at the newest edge, and the rendered window is trimmed back to its size from the older edge — trimmed entries stay in the buffer, so scrolling back reveals them again. Toggling sort rebuilds the pane and resets the window to one page. The `EventSource` for `/api/logs` is created lazily on first activation of the view and kept open afterwards; while the view is hidden, lines are buffered and the pane is rebuilt from the buffer on re-activation.
 
 ---
 
