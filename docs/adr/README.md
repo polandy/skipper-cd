@@ -20,3 +20,4 @@ One file per decision, numbered sequentially (see
 | [0013](0013-child-process-output-through-log-pipeline.md) | Child process output is tee'd through the log pipeline |
 | [0014](0014-nixos-rebuild-in-transient-systemd-unit.md) | NixOS rebuild runs in a transient systemd unit |
 | [0015](0015-revert-nix-hashes-on-surviving-rebuild-failure.md) | Revert nix hashes when a rebuild fails and skipper survives |
+| [0016](0016-autosync-and-queue-via-leave-dirty.md) | Autosync with a leave-dirty queue and non-persistent overrides |

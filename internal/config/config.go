@@ -33,6 +33,17 @@ type Stack struct {
 	// Use this for containers managed by an on-demand scheduler:
 	// the scheduler will start them again on the next incoming request.
 	OnDemandContainers []string `yaml:"on_demand_containers,omitempty"`
+
+	// Icon optionally overrides the icon-set slug used for this stack's UI
+	// icon (e.g. "jellyfin" for a stack named "media"). When empty, the icon
+	// is auto-matched from the stack name. A repo icon.svg/icon.png in the
+	// stack directory takes precedence over both. Purely visual, never hashed.
+	Icon string `yaml:"icon,omitempty"`
+
+	// Autosync overrides the global autosync for this stack. nil means inherit
+	// the global setting. When autosync is not effective, a detected change is
+	// queued instead of deployed. See docs/autosync.md.
+	Autosync *bool `yaml:"autosync"`
 }
 
 // Config holds the full skipper-cd configuration.
@@ -69,10 +80,30 @@ type Config struct {
 	UIEnabled     bool    `yaml:"ui_enabled"`
 	Stacks        []Stack `yaml:"stacks"`
 
+	// Autosync is the global default for whether detected changes deploy
+	// automatically. nil means true (on). A per-stack Autosync overrides it.
+	// See docs/autosync.md.
+	Autosync *bool `yaml:"autosync"`
+
 	// NixOSRebuild configures automatic nixos-rebuild when nix files change.
 	// Omit the section entirely to disable. When present without an explicit
 	// "enabled" key, it defaults to enabled.
 	NixOSRebuild *NixOSRebuild `yaml:"nixos_rebuild"`
+
+	// Icons configures service-icon resolution for the web UI. The section is
+	// optional; omitting it uses the defaults applied in Load.
+	Icons IconsConfig `yaml:"icons"`
+}
+
+// IconsConfig configures how the web UI resolves and caches stack icons.
+type IconsConfig struct {
+	// CacheDir is the on-disk directory where fetched icons are cached.
+	// Defaults to /var/lib/skipper/icons.
+	CacheDir string `yaml:"cache_dir"`
+
+	// SourceURL is the icon-set base URL; icons are fetched from
+	// SourceURL/<slug>.svg. Defaults to the dashboard-icons CDN.
+	SourceURL string `yaml:"source_url"`
 }
 
 // NixOSRebuild configures automatic NixOS rebuilds when .nix files or
@@ -119,6 +150,12 @@ func Load(path string) (*Config, error) {
 	if cfg.LogFormat == "" {
 		cfg.LogFormat = LogFormatText
 	}
+	if cfg.Icons.CacheDir == "" {
+		cfg.Icons.CacheDir = defaultIconCacheDir
+	}
+	if cfg.Icons.SourceURL == "" {
+		cfg.Icons.SourceURL = defaultIconSourceURL
+	}
 
 	return cfg, validateConfig(cfg)
 }
@@ -127,6 +164,13 @@ func Load(path string) (*Config, error) {
 const (
 	LogFormatText = "text"
 	LogFormatJSON = "json"
+)
+
+// Defaults for the icons section. SourceURL is the icon-set root; icons are
+// fetched from <source_url>/<format>/<slug>.<format> (svg, then png, webp).
+const (
+	defaultIconCacheDir  = "/var/lib/skipper/icons"
+	defaultIconSourceURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons"
 )
 
 // reservedStackName is used internally as the state key for NixOS rebuild

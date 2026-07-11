@@ -249,6 +249,46 @@ nixos_rebuild: {}
 	}
 }
 
+func TestLoad_IconDefaults(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.Icons.CacheDir != "/var/lib/skipper/icons" {
+		t.Errorf("expected default icon cache dir, got %q", cfg.Icons.CacheDir)
+	}
+	if cfg.Icons.SourceURL == "" {
+		t.Error("expected a default icon source URL, got empty")
+	}
+}
+
+func TestLoad_IconOverrides(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+icons:
+  cache_dir: /custom/icons
+  source_url: https://icons.example.com/svg
+stacks:
+  - name: media
+    icon: jellyfin
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.Icons.CacheDir != "/custom/icons" {
+		t.Errorf("cache_dir = %q, want /custom/icons", cfg.Icons.CacheDir)
+	}
+	if cfg.Icons.SourceURL != "https://icons.example.com/svg" {
+		t.Errorf("source_url = %q", cfg.Icons.SourceURL)
+	}
+	if len(cfg.Stacks) != 1 || cfg.Stacks[0].Icon != "jellyfin" {
+		t.Errorf("stack icon = %q, want jellyfin", cfg.Stacks[0].Icon)
+	}
+}
+
 func loadFromString(t *testing.T, content string) *config.Config {
 	t.Helper()
 	cfg, err := loadStringToConfig(t, content)

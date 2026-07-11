@@ -1,6 +1,6 @@
 # skipper-cd Web UI — Specification
 
-Single-page application served at `/` when `ui_enabled: true`. No external JS dependencies. Real-time deployment events via SSE (`/api/events`); real-time log lines via SSE (`/api/logs`).
+Single-page application served at `/` when `ui_enabled: true`. No external JS dependencies. Real-time deployment events via SSE (`/api/events`); real-time log lines via SSE (`/api/logs`). The `/api/events` stream also carries `autosync` and `queue` events that drive the autosync controls and the queue drawer live (see [Autosync](#autosync)).
 
 ---
 
@@ -17,6 +17,7 @@ One semantic token layer consumes the palette; all tints, borders and glows are 
 | `--danger` | red | Failed, errors, reconnecting, diff deletions |
 | `--rollback` | maroon | Rolled back |
 | `--skip` | overlay1 | Skipped, DEBUG log level |
+| `--queued` | yellow | Queued/deferred deploy, pending count, autosync paused (shares the yellow hue with `--hunk`, distinct semantic) |
 | `--diff-add` | green | Diff additions |
 | `--hunk` | yellow | Diff hunk headers, WARN log level |
 
@@ -35,8 +36,10 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 **Header — right:**
 - **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
 - **Deploy indicator** — shows active stack name(s) or `idle`; amber pulsing dot when deploying. Visible in both views.
+- **Autosync control** — a single button showing global autosync state; when deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in both views.
 - **Skip filter toggle** — hides/shows skipped rows. Default: active (hidden). State persisted in `localStorage` key `hideSkipped`. Deploys view only.
 - **Time mode toggle** — switches Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). State persisted in `localStorage` key `timeMode`. Tooltip always shows the other format. Deploys view only.
+- **Icon refresh** — a refresh-glyph action button (not a toggle) that clears the server-side icon cache (`POST /api/icons/refresh`) and reloads every visible icon with a cache-busting query param, so renamed stacks and newly published icons appear. Also bound to the **`i`** hotkey (ignored while typing in an input). Brief spin animation on activation. Deploys view only.
 - **Sort toggle** — reverses log order. Default: inactive (newest first, newest line at the top). Active flips to oldest-first (terminal semantics, newest at the bottom). State persisted in `localStorage` key `logSort` (`desc` / `asc`). Flipping resets the visible window to one page. Logs view only.
 - **Follow toggle** — auto-scrolls the log pane to the newest line (the top when newest-first, the bottom when oldest-first) on every append. Default: active. State persisted in `localStorage` key `followLogs`. Logs view only.
 - **Theme toggle** — switches between Mocha (dark, default) and Latte (light). State persisted in `localStorage` key `theme` (`latte` / `mocha`). Visible in both views.
@@ -50,6 +53,10 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
 Rows are prepended (newest first) with a slide-in animation. Time cells show relative or absolute time depending on the header toggle. Relative times refresh every 30 s; tooltip always shows the other format.
 
+### Stack icons
+
+The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain`) left of the name for recognition. The image is served same-origin from `GET /api/icons/<stack>` (no CSP concern); on any load error the chip swaps to a **monogram** — the stack's first letter on an accent-tinted chip — via the `<img>` `error` handler, so a broken image never shows. Icons are resolved server-side (repo `icon.svg`/`icon.png` override → configured `icon:` slug → auto-match on the stack name → 404 → monogram) and cached on the host; see the README "Service Icons" section. Reload via the header **Icon refresh** control or the `i` hotkey.
+
 ### Status badges
 
 | Status | Colour | Notes |
@@ -59,6 +66,7 @@ Rows are prepended (newest first) with a slide-in animation. Time cells show rel
 | `failed` | `--danger` (red) | Error panel expanded below row |
 | `rolled_back` | `--rollback` (maroon) | Deploy failed but old containers restored; error panel shows details |
 | `skipped` | `--skip` (overlay1) | 35 % opacity row; hidden when filter active |
+| `queued` | `--queued` (yellow) | Deploy deferred — autosync paused, change waiting; tinted row with amber left bar and a `paused: <global\|stack>` tag on the stack cell. See [Autosync](#autosync). |
 
 ### Expandable panels
 
@@ -78,6 +86,29 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `success` / `failed` / `rolled_back` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
 | `success` / `failed` / `rolled_back` (no existing row) | New row created directly. |
 | `skipped` | New row created; hidden immediately if filter is active. |
+| `queued` | New row created with the `queued` badge and a `paused:` tag. When the stack later deploys (after sync resumes), a fresh `deploying`→`success` row supersedes it. |
+
+---
+
+## Autosync
+
+Controls whether detected changes deploy automatically, per stack and globally. Paused stacks queue their changes and deploy them when sync resumes. Behaviour, semantics and the API contract are specified in [`docs/autosync.md`](../../docs/autosync.md); this section covers only the UI surface.
+
+**Header control** — the [Autosync control](#header--right) shows global state and, when deploys are waiting, an amber **pending count** pill (hidden at zero). It is the drawer opener and the "how many are queued" indicator. It reflects server state (the `autosync`/`queue` SSE events), never `localStorage`.
+
+**Autosync drawer** — an on-demand panel anchored under the header, opened by the control. Default hidden; closes on outside-click or `Esc`. Updated in real time from the `autosync` and `queue` SSE events, and painted from `GET /api/autosync` + `GET /api/queue` when opened. Contents, top to bottom:
+
+- **Global autosync** — a switch (the header control mirrors its state). Toggling posts `POST /api/autosync {scope:"global", enabled}`.
+- **Queued (N) · drains in this order** — the pending stacks in **deploy order** (`_nixos` first, then `skipper.yml` order), each row: position number, stack name, a `reason` chip (`global` / `stack`), changed-file count, and how long it has waited. Empty/hidden when nothing is queued.
+- **All stacks** — one switch per managed stack with its current state, preceded by a **filter field** (case-insensitive substring match on stack name; a clear button appears when non-empty; `Esc` clears the field first, then closes the drawer). A "No stack matches …" state shows when the filter excludes everything. Toggling posts `POST /api/autosync {scope:"stack", stack, enabled}`.
+
+**Enable triggers a drain; disable does not.** Enabling sync (global or a stack) triggers a deploy run that drains the queue; disabling only updates state. Switches use the same track/thumb geometry as the header `.filter-toggle`.
+
+---
+
+## Autosync & queue API
+
+`GET /api/autosync`, `POST /api/autosync`, `GET /api/queue`, and the `autosync` / `queue` SSE events on `/api/events` are specified in [`docs/autosync.md`](../../docs/autosync.md). The `POST` shares the trust level of the other endpoints (unauthenticated at the process; edge auth in front).
 
 ---
 
@@ -117,6 +148,6 @@ Diffs are stored in `deploy-history.yaml` alongside events but are **not** inclu
 
 ## Responsive (≤ 700 px)
 
-Column header hidden. Rows collapse to 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden. Header toggles lose their text labels and render as bare switches (tooltips remain).
+Column header hidden. Rows collapse to 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden. Header toggles lose their text labels and render as bare switches (tooltips remain). The Autosync control keeps its icon and pending-count pill (its `Autosync` label may hide like the other toggles); the Autosync drawer spans the full width below the header.
 
 Since the Files pill is not visible on mobile, tapping anywhere on a row (that has `changed_files`) triggers the files/diff panel instead. Rows with changed files get `cursor: pointer` on mobile. The toggle behaviour (tap again to close) is identical to the desktop pill behaviour.

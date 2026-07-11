@@ -17,12 +17,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/git"
+	"github.com/polandy/skipper-cd/internal/icons"
 	"github.com/polandy/skipper-cd/internal/logbuf"
+	"github.com/polandy/skipper-cd/internal/metrics"
 	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -84,12 +87,14 @@ func main() {
 	deployer.SetShutdownContext(signalCtx)
 
 	var (
-		broadcaster *events.Broadcaster
+		broadcaster *events.Broadcaster[events.DeployEvent]
+		stateB      *events.Broadcaster[events.StateEvent]
 		history     *events.History
 	)
 	if cfg.UIEnabled {
 		history = events.NewHistory(stateDir)
 		broadcaster = events.NewBroadcaster()
+		stateB = events.NewStateBroadcaster()
 		deployer.InitEventID(history.MaxEventID())
 		deployer.SetEventSink(func(e events.DeployEvent) {
 			if e.Status != events.StatusSkipped {
@@ -100,11 +105,40 @@ func main() {
 		slog.Info("web UI enabled")
 	}
 
+	// Autosync is active regardless of the UI so config-as-code pauses apply.
+	autosyncCtrl := autosync.NewController(cfg.Autosync, stackAutosyncConfig(cfg))
+	autosyncQueue := autosync.NewQueue()
+	deployer.SetAutosync(autosyncCtrl, autosyncQueue)
+	order := func() []string { return deployOrder(cfg) }
+	publishAutosync := func() {
+		snap := autosyncCtrl.Snapshot(order())
+		metrics.AutosyncGlobal.Set(boolToFloat(autosyncCtrl.GlobalEffective()))
+		for _, s := range snap.Stacks {
+			metrics.AutosyncEnabled.WithLabelValues(s.Name).Set(boolToFloat(s.Effective))
+		}
+		metrics.AutosyncPending.Set(float64(autosyncQueue.Count()))
+		if stateB != nil {
+			stateB.Publish(events.StateEvent{Name: "autosync", Data: snap})
+			stateB.Publish(events.StateEvent{Name: "queue", Data: autosyncQueue.View(order())})
+		}
+	}
+	deployer.SetPostRunHook(publishAutosync)
+	publishAutosync() // initialize the gauges
+
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
 	go deployer.SyncAndDeployAll(context.Background(), cfg)
 
+	as := &autosyncDeps{
+		ctrl:    autosyncCtrl,
+		queue:   autosyncQueue,
+		stateB:  stateB,
+		order:   order,
+		publish: publishAutosync,
+		trigger: func() { go deployer.SyncAndDeployAll(context.Background(), cfg) },
+	}
+
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history, logRing))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history, logRing, as))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -138,18 +172,93 @@ func metricsMux() *http.ServeMux {
 	return mux
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster, history *events.History, logRing *logbuf.Log) *http.ServeMux {
+// autosyncDeps bundles the autosync wiring the UI handlers need.
+type autosyncDeps struct {
+	ctrl    *autosync.Controller
+	queue   *autosync.Queue
+	stateB  *events.Broadcaster[events.StateEvent]
+	order   func() []string
+	publish func() // publish snapshots + refresh gauges
+	trigger func() // start a deploy run (drains the queue)
+}
+
+// stackAutosyncConfig maps each configured stack to its config-as-code autosync
+// value (nil = inherit global).
+func stackAutosyncConfig(cfg *config.Config) map[string]*bool {
+	m := make(map[string]*bool, len(cfg.Stacks))
+	for _, s := range cfg.Stacks {
+		m[s.Name] = s.Autosync
+	}
+	return m
+}
+
+// deployOrder returns stack names in the order DeployAllStacks processes them:
+// _nixos first (when the rebuild is enabled), then the configured stacks.
+func deployOrder(cfg *config.Config) []string {
+	order := make([]string, 0, len(cfg.Stacks)+1)
+	if cfg.NixOSRebuild.IsEnabled() {
+		order = append(order, "_nixos")
+	}
+	for _, s := range cfg.Stacks {
+		order = append(order, s.Name)
+	}
+	return order
+}
+
+func boolToFloat(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
 
 	if broadcaster != nil {
+		initialState := func() []events.StateEvent {
+			return []events.StateEvent{
+				{Name: "autosync", Data: as.ctrl.Snapshot(as.order())},
+				{Name: "queue", Data: as.queue.View(as.order())},
+			}
+		}
+		autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)
+
 		mux.Handle("GET /{$}", ui.IndexHandler())
-		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, history))
+		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, as.stateB, history, initialState))
 		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
 		mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
+
+		iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
+		iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
+		mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg)))
+		mux.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
+
+		mux.Handle("GET /api/autosync", autosyncH)
+		mux.Handle("POST /api/autosync", autosyncH)
+		mux.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
 	}
 	return mux
+}
+
+// stackLocator maps a stack name to its icon-resolution inputs from config.
+// The icon file lives in the stack's directory in the clone
+// (stacks_base_dir/<name>), the same directory change detection reads from.
+func stackLocator(cfg *config.Config) icons.StackLocator {
+	return func(name string) (icons.Request, bool) {
+		for _, s := range cfg.Stacks {
+			if s.Name == name {
+				return icons.Request{
+					Name: s.Name,
+					Slug: s.Icon,
+					Dir:  filepath.Join(cfg.StacksBaseDir, s.Name),
+				}, true
+			}
+		}
+		return icons.Request{}, false
+	}
 }
 
 // startServer runs an HTTP server in a goroutine and returns it so the
