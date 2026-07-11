@@ -294,6 +294,8 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		slog.Info("nixos-rebuild deferred: autosync paused", "reason", reason, "changed_files", changed)
 		return true
 	}
+	// Not paused: the rebuild runs now, so drop it from the pending queue.
+	d.clearQueued(nixosStateKey)
 
 	// Persist the new hashes before the rebuild: the switch may restart this
 	// very service, and pre-saving avoids a redundant rebuild on restart
@@ -320,7 +322,6 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		return false
 	}
 
-	d.clearQueued(nixosStateKey) // rebuilt — no longer pending
 	metrics.DeploysTriggered.WithLabelValues(nixosStateKey).Inc()
 	metrics.LastDeployTimestamp.WithLabelValues(nixosStateKey).Set(float64(time.Now().Unix()))
 	d.emit(events.StatusSuccess, nixosStateKey, time.Since(startTime), "", changed, nil)
@@ -392,6 +393,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		slog.Info("deploy deferred: autosync paused", "stack", stack.Name, "reason", reason, "changed_files", changed)
 		return nil
 	}
+	// Not paused: this stack is being deployed now, so it is no longer an
+	// autosync deferral — drop it from the pending queue regardless of outcome.
+	d.clearQueued(stack.Name)
 
 	deployStart := time.Now()
 	d.emit(events.StatusDeploying, stack.Name, 0, "", changed, nil)
@@ -439,7 +443,6 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	if currentImages != nil {
 		state.recordImages(stack.Name, currentImages)
 	}
-	d.clearQueued(stack.Name) // deployed — no longer pending
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
 	eventID := d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs)
 	if eventID != 0 {

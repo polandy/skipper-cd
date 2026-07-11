@@ -98,6 +98,31 @@ func TestDeployStack_DeploysAndClearsQueueWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestDeployStack_ClearsQueueEvenWhenDeployFails(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	runner := &recordingRunner{errOnCommand: "pull"} // deploy will fail
+	d := newDeployerWithRunner(runner)
+	q := autosync.NewQueue()
+	q.Mark("gitea", []string{"docker-compose.yml"}, "stack")
+	d.SetAutosync(autosync.NewController(nil, nil), q) // autosync on
+
+	err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "gitea"}, baseDir, "", nil, newEmptyState())
+	if err == nil {
+		t.Fatal("expected the deploy to fail")
+	}
+	// Once autosync is effective the stack is no longer an autosync deferral,
+	// even if the deploy itself fails.
+	if q.Count() != 0 {
+		t.Errorf("queue should be cleared when the stack is deployed, count = %d", q.Count())
+	}
+}
+
 func TestDeployStack_UnchangedClearsQueue(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "gitea")
