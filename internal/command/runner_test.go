@@ -135,6 +135,29 @@ func TestShellRunner_OutputTeesStderrButReturnsStdoutUncaptured(t *testing.T) {
 	}
 }
 
+// TestShellRunner_ReturnsWhenGrandchildHoldsPipeOpen reproduces the self-update
+// shutdown wedge (ADR-0014): a backgrounded grandchild inherits the command's
+// stdout pipe and keeps it open after the parent exits. Because a sink routes
+// stdout through an os.Pipe, cmd.Wait blocks until the pipe reaches EOF — i.e.
+// until the grandchild exits. WaitDelay bounds that wait and force-closes the
+// pipe, so Run returns promptly instead of hanging shutdown forever.
+func TestShellRunner_ReturnsWhenGrandchildHoldsPipeOpen(t *testing.T) {
+	requireCommands(t, "sh", "sleep")
+
+	// A sink is required to trigger the pipe path (production sets one when the
+	// UI is enabled); without it stdout is the real fd and never wedges.
+	runner := ShellRunner{sink: &recordingSink{}, waitDelay: 200 * time.Millisecond}
+
+	start := time.Now()
+	// sh exits immediately; the backgrounded sleep holds stdout open for 10s.
+	_ = runner.Run(context.Background(), "", nil, "sh", "-c", "sleep 10 &")
+	elapsed := time.Since(start)
+
+	if elapsed > 3*time.Second {
+		t.Fatalf("Run blocked on a pipe held open by a grandchild (%v); WaitDelay did not force it closed", elapsed)
+	}
+}
+
 func TestShellRunner_RespectsCallerContext(t *testing.T) {
 	requireCommands(t, "sleep")
 
