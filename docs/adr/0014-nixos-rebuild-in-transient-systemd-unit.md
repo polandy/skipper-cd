@@ -50,3 +50,23 @@ survived this race by timing luck.
 - `systemd-run` must be on the service PATH; the NixOS module already adds
   `pkgs.systemd` when `nixosRebuild` is enabled. Non-systemd hosts cannot
   use `nixos_rebuild` — which they could not meaningfully anyway.
+
+## Implementation note: `WaitDelay` closes the inherited pipe
+
+"Abandoning the wait" cancels the command's context, which kills the
+`systemd-run` *client*, but that is not enough to make `runNixOSRebuild`
+return. `--pipe` gives the transient unit this process's stdout/stderr, and
+when the UI is enabled those are an `os.Pipe` (a line sink tees child output
+into the log ring, ADR-0013). Go's `cmd.Wait` blocks until the pipe reaches
+EOF — i.e. until *every* holder of the write end exits. The transient unit
+keeps running by design and keeps that write end open, so `Wait` would hang
+forever and wedge shutdown (observed in production on a 0.6.0 self-update:
+skipper stuck at "waiting for in-flight deploy to finish", the switch blocked
+on stopping `skipper-cd.service`, only freed by a manual SIGKILL).
+
+The runner therefore sets `cmd.WaitDelay` (`internal/command`): once the
+context is cancelled (or the process exits), `Wait` waits at most that long for
+the pipes to drain, then force-closes them and returns. Shutdown proceeds, the
+switch completes, and the restarted service's startup sync deploys the stacks.
+`WaitDelay` only starts counting after exit/cancellation, so a healthy
+long-running rebuild is unaffected.

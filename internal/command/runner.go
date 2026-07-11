@@ -16,26 +16,39 @@ type Runner interface {
 	Run(ctx context.Context, dir string, env []string, name string, args ...string) error
 }
 
+// defaultWaitDelay bounds how long cmd.Wait keeps blocking on a command's I/O
+// pipes after the process itself has exited or been killed. It exists for the
+// self-update shutdown case (ADR-0014): the nixos-rebuild runs under
+// `systemd-run --pipe`, so its transient unit inherits this process's stdout
+// pipe. When shutdown abandons the wait and kills the systemd-run client, that
+// transient unit keeps running and holds the pipe's write end open, so the
+// pipe never reaches EOF and cmd.Wait would block forever — wedging shutdown.
+// WaitDelay force-closes the pipes once it elapses so Run returns promptly; the
+// transient unit carries on independently. It only starts counting after exit
+// or context cancellation, so a healthy long-running command is unaffected.
+const defaultWaitDelay = 10 * time.Second
+
 // ShellRunner is the real Runner that executes commands via os/exec.
 // A non-zero timeout limits each individual command; a command exceeding
 // it is killed and its call returns an error. An optional LineSink
 // additionally receives the child's output line by line; the output still
 // reaches the process stdout/stderr either way.
 type ShellRunner struct {
-	timeout time.Duration
-	sink    LineSink
+	timeout   time.Duration
+	sink      LineSink
+	waitDelay time.Duration // bounds Wait's post-exit I/O drain; see defaultWaitDelay
 }
 
 // NewShellRunner returns a ShellRunner that kills any single command running
 // longer than timeout. A zero timeout disables the limit.
 func NewShellRunner(timeout time.Duration) ShellRunner {
-	return ShellRunner{timeout: timeout}
+	return ShellRunner{timeout: timeout, waitDelay: defaultWaitDelay}
 }
 
 // NewShellRunnerWithSink is NewShellRunner with child output additionally
 // tee'd line by line into sink. A nil sink behaves like NewShellRunner.
 func NewShellRunnerWithSink(timeout time.Duration, sink LineSink) ShellRunner {
-	return ShellRunner{timeout: timeout, sink: sink}
+	return ShellRunner{timeout: timeout, sink: sink, waitDelay: defaultWaitDelay}
 }
 
 func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
@@ -43,6 +56,7 @@ func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name str
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = r.waitDelay
 	cmd.Dir = dir
 	cmd.Env = env
 	cmd.Stdout = os.Stdout
@@ -69,6 +83,7 @@ func (r ShellRunner) Output(ctx context.Context, dir string, name string, args .
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = r.waitDelay
 	cmd.Dir = dir
 	cmd.Stderr = os.Stderr
 	if r.sink != nil {
