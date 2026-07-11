@@ -15,7 +15,9 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: test -z "$(gofmt -l cmd internal)"
-      - run: go test ./... -race
+      - run: go test ./... -race -coverprofile=coverage.out
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1
       # The nix flake builds with vendorHash = null, so vendor/ must stay
       # committed and in sync with go.mod.
       - name: check vendor is in sync
@@ -35,10 +37,32 @@ jobs:
         with:
           version: v2.12
 
-  # Verifies the image still builds. Without this, base-image bumps from
-  # Dependabot would be untested on PRs — docker.yml only builds on release.
+  # Reports known vulnerabilities in dependencies, filtered to those actually
+  # reachable from called code — low-noise, meaningful for a tool that runs
+  # deployments.
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: golang/govulncheck-action@v1.1.0
+        with:
+          go-version-file: go.mod
+
+  # Verifies the image still builds and scans it for known CVEs. Without the
+  # build check, base-image bumps from Dependabot would be untested on PRs —
+  # docker.yml only builds on release.
   docker-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: docker build .
+      - run: docker build -t skipper-cd:ci .
+      # ignore-unfixed keeps CVEs without an available patch from failing CI —
+      # they are not actionable until upstream ships a fix.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: skipper-cd:ci
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
