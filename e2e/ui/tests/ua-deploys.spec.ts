@@ -291,3 +291,50 @@ test.describe('UA5: stack icon + monogram fallback', () => {
     await expect(db.locator('img')).toHaveCount(0);
   });
 });
+
+// UA6 — Icon refresh. The header refresh button and the `i` hotkey both clear the
+// server icon cache (POST /api/icons/refresh) and reload every visible icon with a
+// cache-busting `?v=<ts>` query so renamed or newly published icons appear. The
+// test observes the network directly: the POST fires and the follow-up icon
+// request carries the `?v=` param. The button also gets a `spinning` class.
+test.describe('UA6: icon refresh', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      stackIcons: {
+        web: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#4c9"/></svg>',
+      },
+    },
+  });
+
+  const iconChip = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="stack-icon"]');
+
+  // Arms request waiters, runs `act`, and asserts it drove a refresh POST and a
+  // cache-busted icon reload. The initial icon load (iconVer 0) has no `?v=`, so
+  // the busted request is unambiguously the reload.
+  const expectRefresh = async (page: import('@playwright/test').Page, act: () => Promise<void>) => {
+    const post = page.waitForRequest(
+      (r) => r.url().endsWith('/api/icons/refresh') && r.method() === 'POST',
+    );
+    const busted = page.waitForRequest((r) => /\/api\/icons\/web\?v=\d+$/.test(r.url()));
+    await act();
+    await Promise.all([post, busted]);
+  };
+
+  test('the refresh button POSTs /api/icons/refresh and reloads icons cache-busted', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(iconChip(page).locator('img')).toHaveCount(1); // initial load settled
+
+    const btn = page.locator('[data-testid="icon-refresh"]');
+    await expectRefresh(page, () => btn.click());
+    await expect(btn).toHaveClass(/\bspinning\b/);
+  });
+
+  test('the "i" hotkey does the same', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(iconChip(page).locator('img')).toHaveCount(1);
+
+    await expectRefresh(page, () => page.keyboard.press('i'));
+  });
+});
