@@ -12,9 +12,10 @@ import (
 // absent slug is a definitive miss (found == false). A non-nil err simulates a
 // transient transport failure and takes precedence.
 type fakeFetcher struct {
-	icons map[string][]byte
-	err   error
-	calls []string
+	icons       map[string][]byte
+	contentType string // content type for hits; defaults to image/svg+xml
+	err         error
+	calls       []string
 }
 
 func (f *fakeFetcher) Fetch(_ context.Context, slug string) (data []byte, contentType string, found bool, err error) {
@@ -23,7 +24,11 @@ func (f *fakeFetcher) Fetch(_ context.Context, slug string) (data []byte, conten
 		return nil, "", false, f.err
 	}
 	if d, ok := f.icons[slug]; ok {
-		return d, "image/svg+xml", true, nil
+		ct := f.contentType
+		if ct == "" {
+			ct = "image/svg+xml"
+		}
+		return d, ct, true, nil
 	}
 	return nil, "", false, nil
 }
@@ -164,6 +169,34 @@ func TestResolve_CachesPositiveResult(t *testing.T) {
 	}
 	if len(ff.calls) != 1 {
 		t.Errorf("fetcher calls = %d, want 1 (second served from cache)", len(ff.calls))
+	}
+}
+
+func TestResolve_CachesNonSvgContentTypes(t *testing.T) {
+	cases := []struct{ ct, data string }{
+		{"image/png", "PNGDATA"},
+		{"image/webp", "WEBPDATA"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.ct, func(t *testing.T) {
+			svc, ff := newTestService(t)
+			ff.contentType = tc.ct
+			ff.icons["media"] = []byte(tc.data)
+			dir := t.TempDir()
+
+			for i := range 2 {
+				got, err := svc.Resolve(context.Background(), Request{Name: "media", Dir: dir})
+				if err != nil {
+					t.Fatalf("Resolve #%d: %v", i, err)
+				}
+				if string(got.Data) != tc.data || got.ContentType != tc.ct {
+					t.Errorf("#%d got %q / %q, want %q / %q", i, got.Data, got.ContentType, tc.data, tc.ct)
+				}
+			}
+			if len(ff.calls) != 1 {
+				t.Errorf("fetcher calls = %d, want 1 (second served from cache with correct type)", len(ff.calls))
+			}
+		})
 	}
 }
 

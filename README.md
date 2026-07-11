@@ -155,7 +155,7 @@ When the web UI is enabled, each stack shows an icon in the deploy table for at-
 
 1. **Repo override** — an `icon.svg` (preferred) or `icon.png` in the stack's directory (`<stacks_base_dir>/<name>/`). Served directly from the clone, works offline.
 2. **Configured slug** — the stack's `icon:` field, looked up in the icon set.
-3. **Auto-match** — the stack name (slugified) looked up in the icon set.
+3. **Auto-match** — the stack name (slugified) looked up in the icon set, trying SVG, then PNG, then WebP.
 4. **Fallback** — a monogram (the stack's first letter) rendered in the UI when nothing matches or the source is unreachable.
 
 Icons from the set are fetched once and cached on disk; the UI serves them same-origin from `/api/icons/<stack>`. The header **Icon refresh** control (or the `i` hotkey) clears the cache so renamed stacks and newly published icons are picked up.
@@ -163,12 +163,12 @@ Icons from the set are fetched once and cached on disk; the UI serves them same-
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `cache_dir` | string | no | `/var/lib/skipper/icons` | Directory where fetched icons are cached on disk. |
-| `source_url` | string | no | dashboard-icons CDN | Icon-set base URL; icons are fetched from `<source_url>/<slug>.svg`. |
+| `source_url` | string | no | dashboard-icons CDN | Icon-set **root** URL; icons are fetched from `<source_url>/<format>/<slug>.<format>` for `format` in `svg`, `png`, `webp` (first hit wins). |
 
 ```yaml
 icons:
   cache_dir: /var/lib/skipper/icons        # optional, this is the default
-  source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg
+  source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons
 ```
 
 > **Note:** A repo `icon.svg`/`icon.png` is **not** hash-tracked, so adding or changing an icon never triggers a redeploy. The one exception: if you list a stack's own directory under `watch_dirs`, its icon files would be hashed along with everything else — keep icons out of watched directories.

@@ -40,4 +40,4 @@ nixos_rebuild:
 # Web-UI service icons (only used when ui_enabled). Omit to use the defaults below.
 # icons:
 #   cache_dir: /var/lib/skipper/icons
-#   source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg
+#   source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons  # <root>/<fmt>/<slug>.<fmt>, tries svg,png,webp

@@ -33,11 +33,16 @@ Highest priority wins; first hit stops the search:
 ## Icon set
 
 - Source: [dashboard-icons](https://github.com/homarr-labs/dashboard-icons),
-  the de-facto homelab icon set. **SVG** preferred (small, scales crisp).
-- Base URL is configurable (`icons.source_url`, default the dashboard-icons CDN
-  path) so it can be mirrored or swapped, and to keep tests offline.
-- Lookup URL: `<source_url>/<slug>.svg`. A 404 means "no such icon" → fall
-  through to the fallback.
+  the de-facto homelab icon set.
+- Base URL (the set **root**) is configurable (`icons.source_url`, default the
+  dashboard-icons CDN) so it can be mirrored or swapped, and to keep tests
+  offline.
+- dashboard-icons stores each format in its own directory. Lookup tries
+  `<source_url>/svg/<slug>.svg`, then `png`, then `webp` (first hit wins) —
+  **SVG preferred** (small, scales crisp) but many icons exist only as PNG/WebP,
+  so those are essential fallbacks. A 404 in every format means "no such icon"
+  → fall through to the monogram. Any other status is a transient error (not
+  cached, retried).
 
 ## Local cache
 

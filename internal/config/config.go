@@ -156,10 +156,11 @@ const (
 	LogFormatJSON = "json"
 )
 
-// Defaults for the icons section.
+// Defaults for the icons section. SourceURL is the icon-set root; icons are
+// fetched from <source_url>/<format>/<slug>.<format> (svg, then png, webp).
 const (
 	defaultIconCacheDir  = "/var/lib/skipper/icons"
-	defaultIconSourceURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg"
+	defaultIconSourceURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons"
 )
 
 // reservedStackName is used internally as the state key for NixOS rebuild

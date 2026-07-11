@@ -135,7 +135,7 @@ const (
 const negativeExt = ".missing"
 
 func (s *Service) cacheLookup(slug string) (Result, cacheState) {
-	for _, ext := range []string{".svg", ".png"} {
+	for _, ext := range []string{".svg", ".png", ".webp"} {
 		data, err := os.ReadFile(filepath.Join(s.cacheDir, slug+ext))
 		if err == nil {
 			return Result{Data: data, ContentType: contentTypeForExt(ext)}, cacheHit
@@ -184,15 +184,23 @@ func slugify(s string) string {
 }
 
 func contentTypeForExt(ext string) string {
-	if ext == ".png" {
+	switch ext {
+	case ".png":
 		return "image/png"
+	case ".webp":
+		return "image/webp"
+	default:
+		return "image/svg+xml"
 	}
-	return "image/svg+xml"
 }
 
 func extForContentType(contentType string) string {
-	if contentType == "image/png" {
+	switch contentType {
+	case "image/png":
 		return ".png"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ".svg"
 	}
-	return ".svg"
 }
