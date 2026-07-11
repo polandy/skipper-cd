@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/polandy/skipper-cd/compare/v0.6.0...v0.7.0) (2026-07-11)
+
+
+### Features
+
+* **nixos:** self-heal skipper-cd after a failed self-update ([0a5514d](https://github.com/polandy/skipper-cd/commit/0a5514d3b57a29c839d5bcc822503f9c29c55af9))
+
+
+### Bug Fixes
+
+* **command:** bound cmd.Wait with WaitDelay to unwedge self-update shutdown ([fe07e8b](https://github.com/polandy/skipper-cd/commit/fe07e8b32056cb484ea9e49f38f99ace471003b8))
+
 ## [0.6.0](https://github.com/polandy/skipper-cd/compare/v0.5.0...v0.6.0) (2026-07-11)
 
 
