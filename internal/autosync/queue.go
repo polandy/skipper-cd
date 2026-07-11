@@ -61,6 +61,28 @@ func (q *Queue) Count() int {
 	return len(q.pending)
 }
 
+// QueuePending is a pending item plus its 1-based position in the drain order.
+type QueuePending struct {
+	Position int `json:"position"`
+	PendingItem
+}
+
+// QueueView is the queue served at GET /api/queue.
+type QueueView struct {
+	Count   int            `json:"count"`
+	Pending []QueuePending `json:"pending"`
+}
+
+// View returns the queue as an ordered, positioned snapshot for the API.
+func (q *Queue) View(order []string) QueueView {
+	items := q.Snapshot(order)
+	v := QueueView{Count: len(items), Pending: make([]QueuePending, len(items))}
+	for i, it := range items {
+		v.Pending[i] = QueuePending{Position: i + 1, PendingItem: it}
+	}
+	return v
+}
+
 // Snapshot returns the pending items ordered by the given deploy order. Stacks
 // listed in order come first (in that order); any pending stack not in order
 // follows, sorted by name, so nothing is silently dropped.
