@@ -31,3 +31,96 @@ test('UA1: deploy row transitions deploying → success in place', async ({ page
   await expect(rows.first()).toHaveAttribute('data-status', 'success');
   await expect(rows).toHaveCount(2);
 });
+
+// UA2 — Status badges. Each deploy status the UI renders is driven through the
+// real backend (recipes in docs/e2e-tests.md §3) and its row asserted to carry
+// the right data-status and status-badge. One focused test per status keeps the
+// backend setup for each isolated in its own instance.
+test.describe('UA2: status badges', () => {
+  const webRow = (page: import('@playwright/test').Page, status: string) =>
+    page.locator(`[data-testid="deploy-row"][data-stack="web"][data-status="${status}"]`);
+
+  test('success', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    const row = webRow(page, 'success');
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('[data-testid="status-badge"]')).toHaveText('success');
+  });
+
+  test('skipped', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(webRow(page, 'success')).toHaveCount(1); // startup settled
+    // Skipped rows are hidden by default; reveal them, then webhook with no new
+    // commit so the unchanged stack is skipped.
+    await page.locator('[data-testid="skip-filter"]').click();
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    const row = webRow(page, 'skipped');
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('[data-testid="status-badge"]')).toHaveText('skipped');
+  });
+
+  test('deploying', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(webRow(page, 'success')).toHaveCount(1);
+
+    skipper.hold();
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    const badge = webRow(page, 'deploying').locator('[data-testid="status-badge"]');
+    await expect(badge).toContainText('deploying');
+    await expect(badge.locator('.spinner')).toBeVisible();
+
+    skipper.release(); // let the deploy finish so teardown is clean
+  });
+
+  test('queued', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(webRow(page, 'success')).toHaveCount(1);
+
+    expect(await skipper.postAutosync('', false)).toBe(200); // pause globally
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    const row = webRow(page, 'queued');
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('[data-testid="status-badge"]')).toHaveText('queued');
+  });
+
+  test.describe('rolled_back', () => {
+    // Startup up#1 succeeds (sets LastDeployedCommit); the deploy's up#2 fails and
+    // the rollback up#3 succeeds → rolled_back.
+    test.use({ startOptions: { stacks: ['web'], stubEnv: { STUB_DOCKER_FAIL_NTH_UP: '2' } } });
+
+    test('rolled_back', async ({ page, skipper }) => {
+      await page.goto(`${skipper.baseURL}/`);
+      await expect(webRow(page, 'success')).toHaveCount(1);
+
+      skipper.setStackImage('web', '1.26');
+      expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+      const row = webRow(page, 'rolled_back');
+      await expect(row).toHaveCount(1);
+      await expect(row.locator('[data-testid="status-badge"]')).toHaveText('rolled back');
+    });
+  });
+
+  test.describe('failed', () => {
+    // The stack's very first (startup) deploy fails on `up` with no prior commit
+    // to roll back to → failed. /healthz stays 503, so only wait for listening.
+    test.use({
+      startOptions: { stacks: ['web'], stubEnv: { STUB_DOCKER_FAIL_ON: 'up' }, readiness: 'listening' },
+    });
+
+    test('failed', async ({ page, skipper }) => {
+      await page.goto(`${skipper.baseURL}/`);
+
+      const row = webRow(page, 'failed');
+      await expect(row).toHaveCount(1);
+      await expect(row.locator('[data-testid="status-badge"]')).toHaveText('failed');
+      // A failed deploy expands an error panel below the row.
+      await expect(page.locator('[data-testid="error-panel"]')).toBeVisible();
+    });
+  });
+});
