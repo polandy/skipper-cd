@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0](https://github.com/polandy/skipper-cd/compare/v0.4.0...v0.5.0) (2026-07-11)
+
+
+### Features
+
+* **autosync:** add autosync/queue HTTP API and live SSE ([fd0e2ec](https://github.com/polandy/skipper-cd/commit/fd0e2ec75d6a21ab7cf88a9dc7097ee6ef3aec9c))
+* **autosync:** add config toggles and resolution controller + queue ([5514f2d](https://github.com/polandy/skipper-cd/commit/5514f2d38f0a8490fd0396337a45dee52521165c))
+* **autosync:** defer and queue deploys while autosync is paused ([552a4c4](https://github.com/polandy/skipper-cd/commit/552a4c42ed30bddb82545c472ddb4575c2e99137))
+* **autosync:** pause deploys globally or per stack with a queued-changes queue ([cb3db12](https://github.com/polandy/skipper-cd/commit/cb3db1261b415937c5e7aec9a36ccad6a453c113))
+* **brand:** update README logo to the container-ship design ([34ab06f](https://github.com/polandy/skipper-cd/commit/34ab06f03c5cc1c1df630889d6ac8250acf4e8ab))
+* **icons:** add stack icon resolution and caching package ([68fbb4f](https://github.com/polandy/skipper-cd/commit/68fbb4fe0a7f3ef0a6651fc7e8ed7c73ef24b6ac))
+* **icons:** fall back to PNG then WebP when no SVG exists ([b655479](https://github.com/polandy/skipper-cd/commit/b65547990ae7d9be4065507a4260f966d4141f44))
+* per-stack service icons and ArgoCD-style autosync ([ffc3366](https://github.com/polandy/skipper-cd/commit/ffc3366ca5288d0c68a3c1fdef2cc3b0fd53556b))
+* **ui:** autosync controls, pending count, and queue drawer ([09bda61](https://github.com/polandy/skipper-cd/commit/09bda618015eb538198bd5fc7b403434d892063e))
+* **ui:** newest-first, sortable, paginated log view ([#14](https://github.com/polandy/skipper-cd/issues/14)) ([072f356](https://github.com/polandy/skipper-cd/commit/072f35675c78f86b716a405a1a8da3f109d495c2))
+* **ui:** show per-stack service icons in the deploy table ([dffaafc](https://github.com/polandy/skipper-cd/commit/dffaafc9ebb176f4159688b574ecb4c1426c514a))
+
+
+### Bug Fixes
+
+* **autosync:** drop a stack from the queue once it is no longer paused ([3a4bd67](https://github.com/polandy/skipper-cd/commit/3a4bd67c500d533e1b4633954ffb58f896173371))
+* **brand:** rename logo asset to refresh GitHub's image cache ([1720247](https://github.com/polandy/skipper-cd/commit/17202476c40e9857a646de8e4b340674448609eb))
+* **deploy:** revert nix hashes when a rebuild fails but skipper survives ([#15](https://github.com/polandy/skipper-cd/issues/15)) ([6c5d223](https://github.com/polandy/skipper-cd/commit/6c5d2234286f43b7a8530895416c1ac21fc63d63))
+
 ## [0.4.0](https://github.com/polandy/skipper-cd/compare/v0.3.1...v0.4.0) (2026-07-10)
 
 
