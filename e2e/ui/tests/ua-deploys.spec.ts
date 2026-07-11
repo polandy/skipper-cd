@@ -192,3 +192,61 @@ test.describe('UA3: skip filter', () => {
     await expect(skippedRow(page)).toBeHidden();
   });
 });
+
+// UA4 — Time mode. The toggle switches Time cells between relative ("just now" /
+// "5s ago", the app's own format) and absolute (`toLocaleString`), defaulting to
+// relative. The choice persists in localStorage('timeMode') so a reload restores
+// it, and the button reflects the state via its `active` class. The startup
+// success row already carries a time-cell, so no webhook is needed. Assertions on
+// the cell text use the locale-independent relative pattern (/ago|just now/): the
+// absolute form never matches it, whatever the browser locale.
+test.describe('UA4: time mode', () => {
+  const successRow = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]');
+  const timeCell = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="time-cell"]').first();
+  const timeMode = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="time-mode"]');
+
+  test('toggling switches Time cells relative ↔ absolute', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(successRow(page)).toHaveCount(1); // startup settled
+
+    // Default is relative.
+    await expect(timeMode(page)).not.toHaveClass(/\bactive\b/);
+    await expect(timeCell(page)).toHaveText(/ago|just now/);
+
+    // Toggle → absolute: the cell no longer reads relative, the button is active.
+    await timeMode(page).click();
+    await expect(timeMode(page)).toHaveClass(/\bactive\b/);
+    await expect(timeCell(page)).not.toHaveText(/ago|just now/);
+    await expect(timeCell(page)).toHaveText(/\d/);
+
+    // Toggle back → relative again.
+    await timeMode(page).click();
+    await expect(timeMode(page)).not.toHaveClass(/\bactive\b/);
+    await expect(timeCell(page)).toHaveText(/ago|just now/);
+  });
+
+  test('the toggle choice persists across reload, both directions', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(successRow(page)).toHaveCount(1);
+    await expect(timeMode(page)).not.toHaveClass(/\bactive\b/);
+
+    // Switch to absolute and reload: absolute survives (localStorage timeMode).
+    await timeMode(page).click();
+    await expect(timeMode(page)).toHaveClass(/\bactive\b/);
+    await page.reload();
+    await expect(successRow(page)).toHaveCount(1);
+    await expect(timeMode(page)).toHaveClass(/\bactive\b/);
+    await expect(timeCell(page)).not.toHaveText(/ago|just now/);
+
+    // Switch back to relative and reload: relative survives.
+    await timeMode(page).click();
+    await expect(timeMode(page)).not.toHaveClass(/\bactive\b/);
+    await page.reload();
+    await expect(successRow(page)).toHaveCount(1);
+    await expect(timeMode(page)).not.toHaveClass(/\bactive\b/);
+    await expect(timeCell(page)).toHaveText(/ago|just now/);
+  });
+});
