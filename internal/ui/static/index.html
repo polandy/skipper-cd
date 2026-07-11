@@ -69,6 +69,7 @@
     --danger: var(--red);
     --rollback: var(--maroon);
     --skip: var(--overlay1);
+    --queued: var(--yellow);       /* Queued/deferred deploy, autosync paused */
     --diff-add: var(--green);
     --hunk: var(--yellow);
     --accent-dim: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -77,6 +78,7 @@
     --danger-dim: color-mix(in srgb, var(--danger) 10%, transparent);
     --skip-dim: color-mix(in srgb, var(--skip) 12%, transparent);
     --rollback-dim: color-mix(in srgb, var(--rollback) 12%, transparent);
+    --queued-dim: color-mix(in srgb, var(--queued) 14%, transparent);
     --font-display: 'DM Sans', sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
     --radius: 8px;
@@ -383,6 +385,37 @@
     border-radius: 0 2px 2px 0;
   }
 
+  .event-row.queued-row {
+    background: var(--queued-dim);
+  }
+
+  .event-row.queued-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--queued);
+    border-radius: 0 2px 2px 0;
+  }
+
+  .paused-tag {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--queued);
+    background: var(--queued-dim);
+    border: 1px solid color-mix(in srgb, var(--queued) 26%, transparent);
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 8px;
+    white-space: nowrap;
+  }
+
   .event-row.success-row::before {
     content: '';
     position: absolute;
@@ -504,6 +537,12 @@
     background: var(--rollback-dim);
     color: var(--rollback);
     border: 1px solid color-mix(in srgb, var(--rollback) 22%, transparent);
+  }
+
+  .badge-queued {
+    background: var(--queued-dim);
+    color: var(--queued);
+    border: 1px solid color-mix(in srgb, var(--queued) 30%, transparent);
   }
 
   .spinner {
@@ -787,6 +826,151 @@
     background: var(--accent-dim);
   }
 
+  /* ─── AUTOSYNC HEADER CONTROL ─── */
+  .autosync-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 5px 10px;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .autosync-btn:hover { border-color: var(--border-lit); color: var(--text-primary); }
+  .autosync-btn.open { border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text-primary); }
+  .autosync-btn .as-ico { width: 13px; height: 13px; flex-shrink: 0; color: var(--success); }
+  .autosync-btn.paused .as-ico { color: var(--queued); }
+  .pending-count {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    font-weight: 600;
+    color: var(--queued);
+    background: var(--queued-dim);
+    border: 1px solid color-mix(in srgb, var(--queued) 32%, transparent);
+    border-radius: 20px;
+    padding: 1px 8px 1px 6px;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .autosync-btn.has-pending .pending-count { display: inline-flex; }
+  .pending-count .pc-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--queued); animation: breathe 2s ease-in-out infinite; }
+
+  /* ─── AUTOSYNC DRAWER ─── */
+  .drawer {
+    position: fixed;
+    z-index: 90;
+    top: 56px;
+    right: 14px;
+    width: 390px;
+    max-width: calc(100vw - 28px);
+    background: color-mix(in srgb, var(--bg-base) 97%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--border-lit);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 26px 50px -24px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: max-height 0.22s ease, opacity 0.18s ease, visibility 0.22s;
+  }
+  .drawer.open { max-height: min(72vh, 640px); opacity: 1; visibility: visible; overflow-y: auto; }
+  .drawer-inner { padding: 14px 16px 16px; }
+  .drawer-title { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.3px; color: var(--text-primary); text-transform: uppercase; }
+  .drawer-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+  .drawer-sub b { color: var(--queued); font-weight: 600; }
+
+  .global-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 12px 0 6px;
+  }
+  .global-row .gr-label { font-size: 13px; font-weight: 600; }
+  .global-row .gr-note { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
+
+  .sec-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 2px 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .sec-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .sec-label .sec-count { color: var(--queued); }
+
+  .qlist { display: flex; flex-direction: column; gap: 2px; }
+  .qempty { font-size: 12.5px; color: var(--text-muted); padding: 8px 4px 4px; font-family: var(--font-mono); }
+
+  .stack-filter-wrap { position: relative; margin: 0 2px 6px; }
+  .stack-filter-wrap .fi { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; color: var(--text-muted); pointer-events: none; }
+  .stack-filter {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 7px 26px 7px 28px;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .stack-filter::placeholder { color: var(--text-muted); }
+  .stack-filter:focus { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .stack-filter-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; display: none; border-radius: 4px; }
+  .stack-filter-clear:hover { color: var(--text-primary); }
+  .stack-filter-wrap.has-value .stack-filter-clear { display: block; }
+
+  .stack-row {
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 7px;
+    transition: background 0.15s;
+  }
+  .stack-row:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
+  .qpos { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--queued); background: var(--queued-dim); border-radius: 5px; text-align: center; line-height: 20px; height: 20px; }
+  .qpos.blank { background: none; color: var(--text-muted); }
+  .stack-meta { min-width: 0; }
+  .stack-name { font-family: var(--font-mono); font-size: 13px; font-weight: 500; letter-spacing: -0.2px; display: flex; align-items: center; gap: 7px; }
+  .stack-detail { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stack-detail .warn { color: var(--queued); }
+
+  .reason { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; }
+  .reason-global { color: var(--accent); background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent); }
+  .reason-stack { color: var(--success); background: var(--success-dim); border: 1px solid color-mix(in srgb, var(--success) 26%, transparent); }
+
+  .sw { width: 28px; height: 16px; border-radius: 8px; background: var(--bg-raised); border: 1px solid var(--border-lit); position: relative; cursor: pointer; flex-shrink: 0; transition: background 0.2s, border-color 0.2s; }
+  .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); transition: transform 0.2s, background 0.2s; }
+  .sw.on { background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .sw.on::after { transform: translateX(12px); background: var(--accent); }
+  .sw.lg { width: 34px; height: 19px; border-radius: 10px; }
+  .sw.lg::after { width: 13px; height: 13px; }
+  .sw.lg.on::after { transform: translateX(15px); }
+
   /* ─── LOG VIEW ─── */
   /* body.view-logs switches between the deploy table and the log pane;
      !important wins over the inline display set by showTable(). */
@@ -923,6 +1107,11 @@
       <div class="deploy-dot"></div>
       <span>idle</span>
     </div>
+    <div class="autosync-btn" id="autosync-btn" role="button" tabindex="0" aria-expanded="false" title="Autosync">
+      <svg class="as-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M17 3v4h-4M7 21v-4h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>autosync</span>
+      <span class="pending-count"><span class="pc-dot"></span><span id="autosync-count">0</span></span>
+    </div>
     <button class="filter-toggle active" id="skip-filter" title="Show/hide skipped deployments">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
       <span>hide skipped</span>
@@ -956,6 +1145,32 @@
     </div>
   </div>
 </header>
+
+<div class="drawer" id="autosync-drawer" role="dialog" aria-label="Autosync">
+  <div class="drawer-inner">
+    <div class="drawer-title">Autosync</div>
+    <div class="drawer-sub" id="autosync-sub">All stacks in sync.</div>
+
+    <div class="global-row">
+      <div>
+        <div class="gr-label">Global autosync</div>
+        <div class="gr-note" id="autosync-global-note">on · deploys apply automatically</div>
+      </div>
+      <div class="sw lg on" id="autosync-global-sw" role="switch" aria-checked="true" tabindex="0" title="Toggle global autosync"></div>
+    </div>
+
+    <div class="sec-label">Queued <span class="sec-count" id="autosync-qcount"></span> · drains in this order</div>
+    <div class="qlist" id="autosync-queue-list"></div>
+
+    <div class="sec-label">All stacks</div>
+    <div class="stack-filter-wrap" id="autosync-filter-wrap">
+      <svg class="fi" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input class="stack-filter" id="autosync-filter" type="text" placeholder="Filter stacks…" autocomplete="off" spellcheck="false" aria-label="Filter stacks">
+      <button class="stack-filter-clear" id="autosync-filter-clear" type="button" aria-label="Clear filter">&times;</button>
+    </div>
+    <div class="qlist" id="autosync-stack-list"></div>
+  </div>
+</div>
 
 <main>
   <div class="empty-state" id="empty-state">
@@ -1000,6 +1215,11 @@
   const deployingRows = {};
   let hasRows = false;
   let absoluteTime = localStorage.getItem('timeMode') === 'absolute';
+
+  // Autosync state, populated from the 'autosync' and 'queue' SSE events.
+  let autosyncSnap = null;                    // GET /api/autosync shape
+  let queueSnap = { count: 0, pending: [] };  // GET /api/queue shape
+  let queueByStack = {};                       // stack name -> pending item
 
   function showTable() {
     if (!hasRows) {
@@ -1132,6 +1352,7 @@
     if (status === 'failed') cls += ' failed-row';
     if (status === 'success') cls += ' success-row';
     if (status === 'rolled_back') cls += ' rolled_back-row';
+    if (status === 'queued') cls += ' queued-row';
     if (!isHistory) cls += ' new-row';
     return cls;
   }
@@ -1173,6 +1394,14 @@
     });
   }
 
+  // pausedTagHTML renders the "paused" tag on a queued deploy row, adding the
+  // reason (global/stack) when the queue snapshot for that stack is known.
+  function pausedTagHTML(stack) {
+    var item = queueByStack[stack];
+    var reason = item && item.reason;
+    return '<span class="paused-tag">' + (reason ? 'paused: ' + reason : 'paused') + '</span>';
+  }
+
   function createRow(evt, isHistory) {
     var row = document.createElement('div');
     row.className = rowClass(evt.status, isHistory);
@@ -1182,9 +1411,10 @@
 
     var absTs = fullTime(evt.timestamp);
     var relTs = formatTime(evt.timestamp);
+    var pausedTag = evt.status === 'queued' ? pausedTagHTML(evt.stack) : '';
     row.innerHTML =
       '<span class="cell-time" data-ts="' + evt.timestamp + '" title="' + (absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
-      '<span class="cell-stack"><span class="stack-icon" data-name="' + escapeHtml(evt.stack) + '"></span><span class="stack-name">' + escapeHtml(evt.stack) + '</span></span>' +
+      '<span class="cell-stack"><span class="stack-icon" data-name="' + escapeHtml(evt.stack) + '"></span><span class="stack-name">' + escapeHtml(evt.stack) + '</span>' + pausedTag + '</span>' +
       '<span class="status-cell">' + badgeHTML(evt.status) + '</span>' +
       '<span class="cell-duration">' + formatDuration(evt.duration_ms) + '</span>' +
       '<span class="col-files">' + filesHTML(evt.changed_files) + '</span>';
@@ -1275,6 +1505,18 @@
     es.addEventListener('deploy', function(e) {
       var evt = JSON.parse(e.data);
       handleEvent(evt, false);
+    });
+
+    es.addEventListener('autosync', function(e) {
+      autosyncSnap = JSON.parse(e.data);
+      renderAutosync();
+    });
+
+    es.addEventListener('queue', function(e) {
+      queueSnap = JSON.parse(e.data);
+      queueByStack = {};
+      (queueSnap.pending || []).forEach(function(it) { queueByStack[it.stack] = it; });
+      renderAutosync();
     });
 
     es.onerror = function() {
@@ -1369,6 +1611,201 @@
   });
 
   applyTheme();
+
+  // ── Autosync controls ──
+  // State comes from the 'autosync' and 'queue' SSE events (initial snapshots
+  // are sent on connect). The header control shows global state + pending count
+  // and opens the drawer; the drawer holds the global switch, the ordered queue,
+  // and a filterable per-stack switch list. Toggles POST to /api/autosync; the
+  // server pushes back an 'autosync' event so other tabs stay in sync.
+  const asBtn = document.getElementById('autosync-btn');
+  const asCountEl = document.getElementById('autosync-count');
+  const asDrawer = document.getElementById('autosync-drawer');
+  const asSub = document.getElementById('autosync-sub');
+  const asGlobalSw = document.getElementById('autosync-global-sw');
+  const asGlobalNote = document.getElementById('autosync-global-note');
+  const asQueueList = document.getElementById('autosync-queue-list');
+  const asStackList = document.getElementById('autosync-stack-list');
+  const asQCount = document.getElementById('autosync-qcount');
+  const asFilter = document.getElementById('autosync-filter');
+  const asFilterWrap = document.getElementById('autosync-filter-wrap');
+  const asFilterClear = document.getElementById('autosync-filter-clear');
+
+  function autosyncStacks() {
+    return (autosyncSnap && autosyncSnap.stacks) || [];
+  }
+
+  function stackByName(name) {
+    return autosyncStacks().filter(function(s) { return s.name === name; })[0];
+  }
+
+  function anyPaused() {
+    if (!autosyncSnap) return false;
+    if (!autosyncSnap.global) return true;
+    return autosyncStacks().some(function(s) { return !s.effective; });
+  }
+
+  function autosyncPost(scope, stack, enabled) {
+    fetch('/api/autosync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: scope, stack: stack, enabled: enabled })
+    }).then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(snap) { if (snap) { autosyncSnap = snap; renderAutosync(); } })
+      .catch(function() {});
+  }
+
+  // reasonFromSnap derives why a paused stack is paused when it is not in the
+  // queue (the queue item carries an authoritative reason of its own).
+  function reasonFromSnap(s) {
+    if (s.effective) return '';
+    if (s.overridden || s.config === false) return 'stack';
+    return 'global';
+  }
+
+  function waited(since) {
+    var diffS = Math.floor((Date.now() - new Date(since).getTime()) / 1000);
+    if (diffS < 60) return diffS + 's';
+    if (diffS < 3600) return Math.floor(diffS / 60) + 'm';
+    if (diffS < 86400) return Math.floor(diffS / 3600) + 'h';
+    return Math.floor(diffS / 86400) + 'd';
+  }
+
+  function stackDetail(s, item) {
+    if (item) {
+      var n = item.changed_files ? item.changed_files.length : 0;
+      return '<span class="warn">' + n + ' file' + (n === 1 ? '' : 's') + '</span> · waiting ' + waited(item.since);
+    }
+    if (!s.effective) return 'paused · no changes';
+    return 'synced';
+  }
+
+  function stackRowHTML(s, pos) {
+    var item = queueByStack[s.name];
+    var queued = !!item;
+    var posCell = pos !== null
+      ? '<div class="qpos">' + pos + '</div>'
+      : '<div class="qpos blank">' + (queued ? '●' : '') + '</div>';
+    var reason = item ? item.reason : reasonFromSnap(s);
+    var chip = (!s.effective && reason) ? '<span class="reason reason-' + reason + '">' + reason + '</span>' : '';
+    return '<div class="stack-row">' +
+        posCell +
+        '<div class="stack-meta">' +
+          '<div class="stack-name">' + escapeHtml(s.name) + chip + '</div>' +
+          '<div class="stack-detail">' + stackDetail(s, item) + '</div>' +
+        '</div>' +
+        '<div class="sw' + (s.effective ? ' on' : '') + '" role="switch" aria-checked="' + s.effective +
+          '" tabindex="0" data-stack="' + escapeAttr(s.name) + '" title="' + (s.effective ? 'Pause' : 'Resume') + ' autosync"></div>' +
+      '</div>';
+  }
+
+  function renderAutosyncBtn() {
+    var count = queueSnap.count || 0;
+    asBtn.classList.toggle('has-pending', count > 0);
+    asBtn.classList.toggle('paused', anyPaused());
+    asCountEl.textContent = count;
+    asBtn.title = count > 0
+      ? count + ' stack' + (count === 1 ? '' : 's') + ' queued — autosync paused'
+      : 'Autosync — all in sync';
+  }
+
+  function renderSub() {
+    var paused = autosyncStacks().filter(function(s) { return !s.effective; }).length;
+    var q = queueSnap.count || 0;
+    if (q === 0 && paused === 0) asSub.textContent = 'All stacks in sync.';
+    else if (q === 0) asSub.textContent = paused + ' stack' + (paused === 1 ? '' : 's') + ' paused · nothing waiting.';
+    else asSub.innerHTML = '<b>' + q + '</b> update' + (q === 1 ? '' : 's') + ' waiting · ' + paused + ' stack' + (paused === 1 ? '' : 's') + ' paused.';
+  }
+
+  function renderGlobal() {
+    if (!autosyncSnap) return;
+    asGlobalSw.classList.toggle('on', autosyncSnap.global);
+    asGlobalSw.setAttribute('aria-checked', String(autosyncSnap.global));
+    asGlobalNote.textContent = autosyncSnap.global
+      ? 'on · deploys apply automatically'
+      : 'off · stacks pause unless individually enabled';
+  }
+
+  function renderQueueList() {
+    var pending = queueSnap.pending || [];
+    asQCount.textContent = pending.length ? '(' + pending.length + ')' : '';
+    if (pending.length === 0) {
+      asQueueList.innerHTML = '<div class="qempty">Nothing queued — resumed deploys apply immediately.</div>';
+      return;
+    }
+    asQueueList.innerHTML = pending.map(function(it) {
+      var s = stackByName(it.stack) || { name: it.stack, effective: false, overridden: false, config: null };
+      return stackRowHTML(s, it.position);
+    }).join('');
+  }
+
+  function renderStackList() {
+    var query = (asFilter.value || '').trim().toLowerCase();
+    asFilterWrap.classList.toggle('has-value', query.length > 0);
+    var stacks = autosyncStacks();
+    var list = stacks.filter(function(s) { return s.name.toLowerCase().indexOf(query) !== -1; });
+    if (list.length === 0) {
+      asStackList.innerHTML = '<div class="qempty">' +
+        (stacks.length ? 'No stack matches “' + escapeHtml(query) + '”.' : 'No stacks.') + '</div>';
+      return;
+    }
+    asStackList.innerHTML = list.map(function(s) { return stackRowHTML(s, null); }).join('');
+  }
+
+  function renderAutosync() {
+    renderAutosyncBtn();
+    renderGlobal();
+    renderQueueList();
+    renderStackList();
+    renderSub();
+  }
+
+  function setDrawer(open) {
+    asDrawer.classList.toggle('open', open);
+    asBtn.classList.toggle('open', open);
+    asBtn.setAttribute('aria-expanded', String(open));
+  }
+
+  asBtn.addEventListener('click', function() { setDrawer(!asDrawer.classList.contains('open')); });
+  asBtn.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); asBtn.click(); }
+  });
+
+  asGlobalSw.addEventListener('click', function() {
+    if (autosyncSnap) autosyncPost('global', '', !autosyncSnap.global);
+  });
+  asGlobalSw.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); asGlobalSw.click(); }
+  });
+
+  // Per-stack switches are event-delegated so re-rendering the lists is cheap.
+  function toggleFromEvent(target) {
+    var sw = target.closest ? target.closest('.sw[data-stack]') : null;
+    if (!sw) return false;
+    autosyncPost('stack', sw.getAttribute('data-stack'), !sw.classList.contains('on'));
+    return true;
+  }
+  asDrawer.addEventListener('click', function(e) { toggleFromEvent(e.target); });
+  asDrawer.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (toggleFromEvent(e.target)) e.preventDefault();
+    }
+  });
+
+  asFilter.addEventListener('input', renderStackList);
+  asFilter.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && asFilter.value) { e.stopPropagation(); asFilter.value = ''; renderStackList(); }
+  });
+  asFilterClear.addEventListener('click', function() { asFilter.value = ''; renderStackList(); asFilter.focus(); });
+
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') setDrawer(false); });
+  document.addEventListener('click', function(e) {
+    if (!asDrawer.classList.contains('open')) return;
+    if (asDrawer.contains(e.target) || asBtn.contains(e.target)) return;
+    setDrawer(false);
+  });
+
+  renderAutosync(); // initial paint before the first SSE snapshot arrives
 
   // ── Logs view ──
   // The log stream connects lazily on first activation and stays open;
