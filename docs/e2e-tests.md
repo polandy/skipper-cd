@@ -13,12 +13,15 @@ badge, or the drawer. The UI E2E layer exercises the **real rendered UI against
 the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
-> Status: **Go layer + UI prep landed; Playwright UI suite pending.** The Go
+> Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
 > pipeline harness and P1–P9 (§4.1) exist under `e2e/` behind the `e2e` build tag,
-> with a dedicated `e2e` CI job (§7). Both product-code prerequisites for the UI
-> suite are done and recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the
-> embedded self-hosted fonts (§5). Remaining: the Playwright UI project (`e2e/ui/`,
-> masks A–D) and its `e2e-ui` CI job.
+> with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
+> recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
+> fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
+> Go harness drives the real binary — with the **UA1** row-lifecycle smoke passing
+> and an `e2e-ui` CI job (behaviour-only). Remaining: the rest of masks A–D and the
+> visual-snapshot baselines (§5), at which point `e2e-ui` moves into Playwright's
+> pinned container.
 
 ## 1. Scope & boundaries
 
