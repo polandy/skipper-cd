@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.0](https://github.com/polandy/skipper-cd/compare/v0.5.0...v0.6.0) (2026-07-11)
+
+
+### Features
+
+* **ui:** give _nixos a recognizable icon and content diffs ([2d8d3eb](https://github.com/polandy/skipper-cd/commit/2d8d3eba1b3613c7aac5b555d3d6d96bd8306402))
+* **ui:** give _nixos a recognizable icon and content diffs ([94ef58d](https://github.com/polandy/skipper-cd/commit/94ef58d79c3ac846141ca66fc20568dd8caf3158))
+* **ui:** self-host fonts and add data-testid test hooks ([62519d0](https://github.com/polandy/skipper-cd/commit/62519d0651adc2efe78a1f6ce0bc5f65a3a41288))
+
 ## [0.5.0](https://github.com/polandy/skipper-cd/compare/v0.4.0...v0.5.0) (2026-07-11)
 
 
