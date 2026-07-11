@@ -22,5 +22,8 @@ stack deploys; if it fails, all stack deploys abort.
 - If the rebuild fails, the already-persisted hashes mean it is *not*
   retried on the next unchanged push; a fixing commit (or state removal)
   triggers the retry. This trade-off is accepted to avoid rebuild loops.
+  (Refined by [ADR-0015](0015-revert-nix-hashes-on-surviving-rebuild-failure.md):
+  a rebuild that fails while skipper stays alive now reverts the pre-saved
+  hashes so the next sync retries; only the restart case keeps them.)
 - Stack deploys interrupted by the restart are caught up on startup, because
   their hashes were not yet persisted.
