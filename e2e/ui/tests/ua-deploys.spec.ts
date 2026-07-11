@@ -250,3 +250,44 @@ test.describe('UA4: time mode', () => {
     await expect(timeCell(page)).toHaveText(/ago|just now/);
   });
 });
+
+// UA5 — Stack icon + monogram fallback. A stack with a resolvable icon renders an
+// <img> in its stack-icon chip; a stack whose icon 404s falls back to a monogram
+// chip (the stack's initial on an accent chip, no broken image). Both outcomes are
+// produced deterministically in one instance: the harness commits an icon.svg
+// override for `web` (resolves offline → 200) while `db` has none and the icon
+// source_url is a dead address (auto-match → 404 → monogram).
+test.describe('UA5: stack icon + monogram fallback', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web', 'db'],
+      stackIcons: {
+        web: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#4c9"/></svg>',
+      },
+    },
+  });
+
+  const stackIcon = (page: import('@playwright/test').Page, stack: string) =>
+    page.locator(`[data-testid="deploy-row"][data-stack="${stack}"] [data-testid="stack-icon"]`);
+
+  test('a resolvable icon renders an image; a 404 falls back to the monogram', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // web: a real image chip — not a monogram — and it actually loaded, so it is
+    // not a broken image.
+    const web = stackIcon(page, 'web');
+    await expect(web).toHaveCount(1);
+    await expect(web).not.toHaveClass(/\bmono\b/);
+    const img = web.locator('img');
+    await expect(img).toHaveCount(1);
+    await expect
+      .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+
+    // db: nothing resolves → monogram chip with the stack's initial and no img.
+    const db = stackIcon(page, 'db');
+    await expect(db).toHaveClass(/\bmono\b/);
+    await expect(db).toHaveText('d');
+    await expect(db.locator('img')).toHaveCount(0);
+  });
+});

@@ -84,6 +84,13 @@ function git(dir: string, ...args: string[]): void {
 
 export interface StartOptions {
   stacks?: string[];
+  /**
+   * Repo icon override per stack: the SVG body is committed as `<stack>/icon.svg`
+   * in the origin, so `GET /api/icons/<stack>` resolves it offline (a 200 image).
+   * A stack with no entry has no override and — because `icons.source_url` points
+   * at a dead address (see start) — 404s, driving the UI's monogram fallback.
+   */
+  stackIcons?: Record<string, string>;
   /** Extra env for the stub docker (e.g. STUB_DOCKER_FAIL_NTH_UP). */
   stubEnv?: Record<string, string>;
   /**
@@ -136,6 +143,7 @@ export class Skipper {
    *  until healthy, and waits for the startup deploy of every stack to settle. */
   static async start(opts: StartOptions = {}): Promise<Skipper> {
     const stacks = opts.stacks ?? ['web'];
+    const stackIcons = opts.stackIcons ?? {};
     const base = mkdtempSync(join(tmpdir(), 'skipper-ui-e2e-'));
     const origin = join(base, 'origin');
     const repoDir = join(base, 'state', 'repo');
@@ -152,6 +160,9 @@ export class Skipper {
     for (const name of stacks) {
       mkdirSync(join(origin, name), { recursive: true });
       writeFileSync(join(origin, name, 'docker-compose.yml'), defaultCompose);
+      if (stackIcons[name] !== undefined) {
+        writeFileSync(join(origin, name, 'icon.svg'), stackIcons[name]);
+      }
     }
     git(origin, 'add', '.');
     git(origin, 'commit', '-m', 'initial');
@@ -175,7 +186,10 @@ export class Skipper {
       `metrics_port: ${metricsPort}\n` +
       `ui_enabled: true\n` +
       `command_timeout_seconds: 30\n` +
-      `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n` +
+      // source_url points at a closed local port so auto-match icon fetches fail
+      // fast and deterministically (connection refused → 404 → monogram), keeping
+      // the whole UI suite offline. Repo icon.svg overrides still resolve.
+      `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
       `stacks:\n` +
       stacks.map((n) => `  - name: ${JSON.stringify(n)}\n`).join('');
     const cfgPath = join(base, 'skipper.yml');
