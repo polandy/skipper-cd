@@ -30,6 +30,8 @@ On each incoming webhook (or on startup), skipper-cd:
 
 Concurrent webhook requests and the startup deploy are serialized by a deployment lock. If a deploy is already in progress, subsequent requests wait for it to finish before starting their own sync+deploy cycle.
 
+**Autosync** (steps 3 and 7) can be paused globally or per stack. While a stack is paused, a detected change is not deployed: it is marked `queued`, logged, and left pending (its hashes are not advanced), then deployed automatically when sync is re-enabled. Autosync is on everywhere by default, so nothing changes unless it is turned off. See [Autosync](#autosync).
+
 ## Locally Built Images
 
 Services with a `build:` section are automatically detected. skipper-cd runs `docker compose build --pull` for them and excludes them from `docker compose pull`. If a build service also has an `image:` field (tagging the built image), any other service referencing that same image name is also excluded from pull — since the image is produced locally, not available on a registry.
@@ -66,6 +68,7 @@ stacks_base_dir: /var/lib/skipper/repo/modules
 webhook_secret: "your-secret-here"
 port: 8080
 metrics_port: 9120
+autosync: true                          # optional, default: true (pause deploys globally)
 
 stacks:
   - name: traefik
@@ -73,6 +76,7 @@ stacks:
       - /run/secrets/rendered/skipper/compose.env
 
   - name: gitea
+    # autosync: false                    # optional; pause just this stack (default: inherit global)
     env_files:
       - /run/secrets/rendered/skipper/compose.env
 
@@ -102,6 +106,7 @@ nixos_rebuild:
 | `webhook_secret` | string | no | — | HMAC-SHA256 secret used to validate incoming webhook payloads (supports Gitea and GitHub/Forgejo signatures). When empty, signature validation is skipped (not recommended for production). |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. |
+| `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](#autosync). |
 | `stacks` | list | yes | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS Rebuild](#nixos-rebuild)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
@@ -118,6 +123,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `watch_dirs` | list of strings | no | — | Absolute paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). |
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
+| `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](#autosync). |
 
 ### `vars_file`
 
@@ -173,6 +179,16 @@ icons:
 
 > **Note:** A repo `icon.svg`/`icon.png` is **not** hash-tracked, so adding or changing an icon never triggers a redeploy. The one exception: if you list a stack's own directory under `watch_dirs`, its icon files would be hashed along with everything else — keep icons out of watched directories.
 
+## Autosync
+
+Autosync governs whether a detected change deploys automatically. It can be paused **globally** (top-level `autosync`) or **per stack** (`stacks[].autosync`), and a per-stack value overrides the global one in both directions. It is **on everywhere by default**, so omitting both keys reproduces the original always-deploy behaviour.
+
+While a stack is paused, a change is not deployed but **queued**: skipper-cd emits a `queued` event, logs it, and leaves the stack pending (its hashes are not advanced). Re-enabling autosync deploys every pending stack in deploy order. The NixOS rebuild (`_nixos`) participates like a stack — covered by the global toggle, independently pausable, and queued rather than rebuilt while paused (this is distinct from `nixos_rebuild.enabled: false`, a permanent off).
+
+When the web UI is enabled, autosync can additionally be toggled at runtime from the UI. **UI overrides are never persisted** — a restart (including every `nixos-rebuild`, which regenerates the config and restarts the service) drops them and the config-as-code values apply again.
+
+The full specification — resolution semantics, the queue model, the `/api/autosync` and `/api/queue` API, the `autosync`/`queue` SSE events, and metrics — is in [`docs/autosync.md`](docs/autosync.md); the UI surface is in [`internal/ui/UI_SPEC.md`](internal/ui/UI_SPEC.md).
+
 ## Prometheus Metrics
 
 skipper-cd exposes the following metrics on the `/metrics` endpoint:
@@ -186,6 +202,10 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint:
 | `skipper_deploy_rollbacks_total` | counter | Total number of successful rollbacks after failed deploys, labelled by `stack`. |
 | `skipper_last_deploy_timestamp` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |
 | `skipper_deploy_lock_waits_total` | counter | Deploy runs that had to wait for a running deploy to finish (queueing indicator, see ADR-0010). |
+| `skipper_deploys_queued_total` | counter | Deploys deferred because autosync was paused, labelled by `stack` (see [Autosync](#autosync)). |
+| `skipper_autosync_enabled` | gauge | Effective per-stack autosync (`1`/`0`), labelled by `stack` (incl. `_nixos`). |
+| `skipper_autosync_global` | gauge | Effective global autosync (`1`/`0`). |
+| `skipper_autosync_pending` | gauge | Number of stacks currently queued (queue depth). |
 
 ## Docker
 
