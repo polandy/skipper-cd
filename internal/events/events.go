@@ -16,6 +16,9 @@ const (
 	StatusFailed     Status = "failed"
 	StatusSkipped    Status = "skipped"
 	StatusRolledBack Status = "rolled_back"
+	// StatusQueued marks a deploy deferred because autosync is paused; the
+	// change waits and deploys when sync resumes. See docs/autosync.md.
+	StatusQueued Status = "queued"
 )
 
 // DeployEvent represents a single deployment status change.
@@ -39,24 +42,36 @@ func (e DeployEvent) SSEPayload() DeployEvent {
 	return e
 }
 
-// Broadcaster fans out DeployEvents to all connected subscribers.
-// Sends are non-blocking: slow subscribers have events dropped.
-type Broadcaster struct {
+// StateEvent is a non-deploy SSE message — an autosync or queue snapshot pushed
+// to UI clients over the same /api/events stream under its own event name.
+type StateEvent struct {
+	Name string // SSE event name, e.g. "autosync" or "queue"
+	Data any    // JSON-serializable payload
+}
+
+// Broadcaster fans out values of type T to all connected subscribers.
+// Sends are non-blocking: slow subscribers have values dropped.
+type Broadcaster[T any] struct {
 	mu   sync.RWMutex
-	subs map[uint64]chan DeployEvent
+	subs map[uint64]chan T
 	next uint64
 }
 
-// NewBroadcaster creates a ready-to-use Broadcaster.
-func NewBroadcaster() *Broadcaster {
-	return &Broadcaster{subs: make(map[uint64]chan DeployEvent)}
+// NewBroadcaster creates a ready-to-use deploy-event Broadcaster.
+func NewBroadcaster() *Broadcaster[DeployEvent] { return newBroadcaster[DeployEvent]() }
+
+// NewStateBroadcaster creates a ready-to-use Broadcaster for StateEvents.
+func NewStateBroadcaster() *Broadcaster[StateEvent] { return newBroadcaster[StateEvent]() }
+
+func newBroadcaster[T any]() *Broadcaster[T] {
+	return &Broadcaster[T]{subs: make(map[uint64]chan T)}
 }
 
-// Subscribe returns a channel that receives broadcast events and an
+// Subscribe returns a channel that receives broadcast values and an
 // unsubscribe function. The channel is buffered (16) so slow readers
-// miss events rather than blocking the broadcaster.
-func (b *Broadcaster) Subscribe() (<-chan DeployEvent, func()) {
-	ch := make(chan DeployEvent, 16)
+// miss values rather than blocking the broadcaster.
+func (b *Broadcaster[T]) Subscribe() (<-chan T, func()) {
+	ch := make(chan T, 16)
 	b.mu.Lock()
 	id := b.next
 	b.next++
@@ -70,9 +85,9 @@ func (b *Broadcaster) Subscribe() (<-chan DeployEvent, func()) {
 	}
 }
 
-// Publish sends an event to all subscribers. Non-blocking: if a
-// subscriber's buffer is full the event is dropped for that subscriber.
-func (b *Broadcaster) Publish(event DeployEvent) {
+// Publish sends a value to all subscribers. Non-blocking: if a
+// subscriber's buffer is full the value is dropped for that subscriber.
+func (b *Broadcaster[T]) Publish(event T) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for _, ch := range b.subs {

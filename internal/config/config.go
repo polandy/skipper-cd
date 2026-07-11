@@ -39,6 +39,11 @@ type Stack struct {
 	// is auto-matched from the stack name. A repo icon.svg/icon.png in the
 	// stack directory takes precedence over both. Purely visual, never hashed.
 	Icon string `yaml:"icon,omitempty"`
+
+	// Autosync overrides the global autosync for this stack. nil means inherit
+	// the global setting. When autosync is not effective, a detected change is
+	// queued instead of deployed. See docs/autosync.md.
+	Autosync *bool `yaml:"autosync"`
 }
 
 // Config holds the full skipper-cd configuration.
@@ -74,6 +79,11 @@ type Config struct {
 	MetricsPort   int     `yaml:"metrics_port"`
 	UIEnabled     bool    `yaml:"ui_enabled"`
 	Stacks        []Stack `yaml:"stacks"`
+
+	// Autosync is the global default for whether detected changes deploy
+	// automatically. nil means true (on). A per-stack Autosync overrides it.
+	// See docs/autosync.md.
+	Autosync *bool `yaml:"autosync"`
 
 	// NixOSRebuild configures automatic nixos-rebuild when nix files change.
 	// Omit the section entirely to disable. When present without an explicit
