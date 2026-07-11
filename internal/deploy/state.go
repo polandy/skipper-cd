@@ -44,6 +44,17 @@ func (s *persistedState) recordStack(stack string, hashes stackFileHashes) {
 	s.Stacks[stack] = hashes
 }
 
+// revertStack restores a stack's hashes to an earlier snapshot, removing the
+// entry entirely when the snapshot is nil (the stack had no recorded state).
+// It undoes a recordStack whose deploy then failed, so the stack is retried.
+func (s *persistedState) revertStack(stack string, previous stackFileHashes) {
+	if previous == nil {
+		delete(s.Stacks, stack)
+		return
+	}
+	s.Stacks[stack] = previous
+}
+
 // imagesFor returns the service→image map recorded for a stack (nil when unknown).
 func (s *persistedState) imagesFor(stack string) serviceImageByName {
 	return s.Images[stack]

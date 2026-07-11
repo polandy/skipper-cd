@@ -236,14 +236,25 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		return true
 	}
 
+	// Persist the new hashes before the rebuild: the switch may restart this
+	// very service, and pre-saving avoids a redundant rebuild on restart
+	// (ADR-0005). Keep the previous snapshot so a surviving failure can undo it.
+	previousNixHashes := state.hashesFor(nixosStateKey)
 	state.recordStack(nixosStateKey, currentNixHashes)
 	_ = saveDeployState(d.stateDir, state)
 
 	if err := d.runNixOSRebuild(ctx, cfg.NixOSRebuild.Flake); err != nil {
 		if d.shutdownRequested() {
+			// The switch is restarting skipper; keep the pre-saved hashes so the
+			// startup sync does not rebuild again (ADR-0005, ADR-0014).
 			slog.Warn("shutdown during nixos-rebuild: the rebuild keeps running in its transient unit; stack deploys abort and run on the next sync", "err", err)
 		} else {
+			// A genuine rebuild failure while skipper is still alive: revert the
+			// pre-saved hashes so the next sync retries, instead of silently
+			// recording a rebuild that never applied as done (ADR-0015).
 			slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", err)
+			state.revertStack(nixosStateKey, previousNixHashes)
+			_ = saveDeployState(d.stateDir, state)
 		}
 		metrics.DeployErrors.WithLabelValues(nixosStateKey).Inc()
 		d.emit(events.StatusFailed, nixosStateKey, time.Since(startTime), err.Error(), changed, nil)

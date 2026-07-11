@@ -882,3 +882,105 @@ func TestDeployAllStacks_NixOSSuccessContinuesToDockerStacks(t *testing.T) {
 		t.Error("expected docker compose to be called after successful nixos-rebuild")
 	}
 }
+
+// A rebuild that fails while skipper stays alive (e.g. a broken derivation or
+// a switch-to-configuration error) must not leave its nix hashes recorded as
+// deployed — otherwise the never-applied rebuild is silently marked done and
+// the next sync skips it. The hashes are reverted so the rebuild retries.
+func TestDeployAllStacks_RetriesNixOSRebuildAfterSurvivingFailure(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "flake.nix"), "{ }")
+	stackDir := filepath.Join(baseDir, "modules", "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	stateDir := t.TempDir()
+	runner := &recordingRunner{errOnCommand: "switch"}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: stateDir}
+
+	enabled := true
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: filepath.Join(baseDir, "modules"),
+		Stacks:        []config.Stack{{Name: "gitea"}},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+	}
+
+	// First run: the rebuild fails while skipper is still running.
+	d.DeployAllStacks(context.Background(), cfg)
+
+	state, err := loadPersistedDeployState(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := state.hashesFor(nixosStateKey); len(got) != 0 {
+		t.Fatalf("expected _nixos hashes to be reverted after a surviving rebuild failure, got %v", got)
+	}
+
+	// Second run with unchanged nix files must attempt the rebuild again.
+	d.DeployAllStacks(context.Background(), cfg)
+
+	attempts := 0
+	for _, c := range runner.calls {
+		if c.name == "systemd-run" && slices.Contains(c.args, "nixos-rebuild") {
+			attempts++
+		}
+	}
+	if attempts != 2 {
+		t.Fatalf("expected nixos-rebuild to be retried (2 attempts), got %d", attempts)
+	}
+}
+
+// When the rebuild's switch is restarting skipper (shutdown requested), the
+// pre-saved hashes must be kept so the startup sync does not rebuild again
+// (ADR-0005, ADR-0014). This is the counterpart to the surviving-failure case.
+func TestDeployAllStacks_KeepsNixHashesWhenRebuildAbandonedOnShutdown(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "flake.nix"), "{ }")
+	stackDir := filepath.Join(baseDir, "modules", "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	stateDir := t.TempDir()
+	runner := &shutdownAwareRunner{rebuildStarted: make(chan struct{})}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: stateDir}
+
+	shutdownCtx, requestShutdown := context.WithCancel(context.Background())
+	defer requestShutdown()
+	d.SetShutdownContext(shutdownCtx)
+
+	enabled := true
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: filepath.Join(baseDir, "modules"),
+		Stacks:        []config.Stack{{Name: "gitea"}},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		d.DeployAllStacks(context.Background(), cfg)
+		close(done)
+	}()
+
+	<-runner.rebuildStarted
+	requestShutdown()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("deploy run did not return after shutdown")
+	}
+
+	state, err := loadPersistedDeployState(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := state.hashesFor(nixosStateKey); len(got) == 0 {
+		t.Fatal("expected _nixos hashes to be kept after a shutdown-abandoned rebuild")
+	}
+}
