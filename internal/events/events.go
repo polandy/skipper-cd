@@ -16,6 +16,9 @@ const (
 	StatusFailed     Status = "failed"
 	StatusSkipped    Status = "skipped"
 	StatusRolledBack Status = "rolled_back"
+	// StatusQueued marks a deploy deferred because autosync is paused; the
+	// change waits and deploys when sync resumes. See docs/autosync.md.
+	StatusQueued Status = "queued"
 )
 
 // DeployEvent represents a single deployment status change.

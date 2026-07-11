@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
@@ -56,6 +57,9 @@ type Deployer struct {
 	eventSink    func(events.DeployEvent) // nil = no event tracking
 	nextEventID  atomic.Int64
 	lastSyncErr  atomic.Pointer[syncOutcome] // nil until the first run
+	autosync     *autosync.Controller        // nil = autosync always on
+	queue        *autosync.Queue             // nil = no pending tracking
+	postRunHook  func()                      // nil = none; runs after each deploy run
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -99,6 +103,43 @@ func (d *Deployer) SetShutdownContext(ctx context.Context) {
 // status change. Must be called before any deployments start.
 func (d *Deployer) SetEventSink(fn func(events.DeployEvent)) {
 	d.eventSink = fn
+}
+
+// SetAutosync installs the autosync controller and pending queue. When unset,
+// autosync is always on and every changed stack deploys. Must be called before
+// any deployments start.
+func (d *Deployer) SetAutosync(c *autosync.Controller, q *autosync.Queue) {
+	d.autosync = c
+	d.queue = q
+}
+
+// SetPostRunHook installs a callback invoked once at the end of every deploy
+// run (after state is saved). It is used to publish autosync/queue snapshots
+// and refresh gauges. Must be called before any deployments start.
+func (d *Deployer) SetPostRunHook(fn func()) {
+	d.postRunHook = fn
+}
+
+// isPaused reports whether autosync is currently not effective for the stack.
+// With no controller installed, autosync is always on.
+func (d *Deployer) isPaused(stack string) bool {
+	return d.autosync != nil && !d.autosync.Effective(stack)
+}
+
+// markQueued records a deferred deploy in the pending registry (when installed).
+func (d *Deployer) markQueued(stack string, changed []string) string {
+	reason := d.autosync.Reason(stack)
+	if d.queue != nil {
+		d.queue.Mark(stack, changed, reason)
+	}
+	return reason
+}
+
+// clearQueued removes any pending entry for the stack (when installed).
+func (d *Deployer) clearQueued(stack string) {
+	if d.queue != nil {
+		d.queue.Clear(stack)
+	}
 }
 
 // InitEventID sets the starting event ID counter (e.g. from persisted history).
@@ -217,6 +258,12 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	if err := saveDeployState(d.stateDir, state); err != nil {
 		slog.Error("could not save deploy state", "err", err)
 	}
+
+	// After the run, let the wiring publish autosync/queue snapshots and refresh
+	// gauges (queue depth may have changed via defer/clear this run).
+	if d.postRunHook != nil {
+		d.postRunHook()
+	}
 }
 
 // rebuildNixOSIfChanged hashes the repo's nix files and runs nixos-rebuild
@@ -231,8 +278,20 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	changed := nixos.DiffHashes(currentNixHashes, state.hashesFor(nixosStateKey))
 
 	if len(changed) == 0 {
+		d.clearQueued(nixosStateKey) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(nixosStateKey).Inc()
 		d.emit(events.StatusSkipped, nixosStateKey, 0, "", nil, nil)
+		return true
+	}
+
+	// Autosync gate: when _nixos is paused, defer the rebuild. Keep the previous
+	// nix hashes (do not pre-save) so the change stays pending, and return true
+	// so Docker stack deploys still run this pass (docs/autosync.md).
+	if d.isPaused(nixosStateKey) {
+		reason := d.markQueued(nixosStateKey, changed)
+		metrics.DeploysQueued.WithLabelValues(nixosStateKey).Inc()
+		d.emit(events.StatusQueued, nixosStateKey, 0, "", changed, nil)
+		slog.Info("nixos-rebuild deferred: autosync paused", "reason", reason, "changed_files", changed)
 		return true
 	}
 
@@ -261,6 +320,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		return false
 	}
 
+	d.clearQueued(nixosStateKey) // rebuilt — no longer pending
 	metrics.DeploysTriggered.WithLabelValues(nixosStateKey).Inc()
 	metrics.LastDeployTimestamp.WithLabelValues(nixosStateKey).Set(float64(time.Now().Unix()))
 	d.emit(events.StatusSuccess, nixosStateKey, time.Since(startTime), "", changed, nil)
@@ -316,8 +376,20 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
 	if len(changed) == 0 {
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
+		d.clearQueued(stack.Name) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
 		d.emit(events.StatusSkipped, stack.Name, 0, "", nil, nil)
+		return nil
+	}
+
+	// Autosync gate: when paused, defer instead of deploying. The hashes are
+	// deliberately not recorded, so the stack stays dirty and re-deploys once
+	// sync resumes (docs/autosync.md).
+	if d.isPaused(stack.Name) {
+		reason := d.markQueued(stack.Name, changed)
+		metrics.DeploysQueued.WithLabelValues(stack.Name).Inc()
+		d.emit(events.StatusQueued, stack.Name, 0, "", changed, nil)
+		slog.Info("deploy deferred: autosync paused", "stack", stack.Name, "reason", reason, "changed_files", changed)
 		return nil
 	}
 
@@ -367,6 +439,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	if currentImages != nil {
 		state.recordImages(stack.Name, currentImages)
 	}
+	d.clearQueued(stack.Name) // deployed — no longer pending
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
 	eventID := d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs)
 	if eventID != 0 {

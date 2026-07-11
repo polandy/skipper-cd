@@ -54,4 +54,30 @@ var (
 		Name: "skipper_deploy_lock_waits_total",
 		Help: "Total number of deploy runs that waited for a running deploy to finish.",
 	})
+
+	// DeploysQueued counts deploys deferred because autosync was paused, per
+	// stack (see docs/autosync.md).
+	DeploysQueued = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "skipper_deploys_queued_total",
+		Help: "Total number of deploys deferred because autosync was paused, per stack.",
+	}, []string{"stack"})
+
+	// AutosyncEnabled reports the effective per-stack autosync state (1 = on,
+	// 0 = paused), including the reserved stack "_nixos".
+	AutosyncEnabled = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "skipper_autosync_enabled",
+		Help: "Effective per-stack autosync state (1 = on, 0 = paused).",
+	}, []string{"stack"})
+
+	// AutosyncGlobal reports the effective global autosync state (1 = on, 0 = paused).
+	AutosyncGlobal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "skipper_autosync_global",
+		Help: "Effective global autosync state (1 = on, 0 = paused).",
+	})
+
+	// AutosyncPending reports the number of stacks currently queued (queue depth).
+	AutosyncPending = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "skipper_autosync_pending",
+		Help: "Number of stacks currently queued waiting for autosync to resume.",
+	})
 )
