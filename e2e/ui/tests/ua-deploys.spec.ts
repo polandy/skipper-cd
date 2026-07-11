@@ -338,3 +338,42 @@ test.describe('UA6: icon refresh', () => {
     await expectRefresh(page, () => page.keyboard.press('i'));
   });
 });
+
+// UA7 — Files pill. A deploy that changed files renders a `files-pill` in its row;
+// clicking it inserts a `files-panel` (the changed file paths) right below the row,
+// and clicking again removes it. The startup deploy is a stack's first deploy, so it
+// has no previous commit to diff against (no `has_diffs`) — clicking yields the plain
+// files-panel, not the diff-panel (that path is UA8). The startup success row already
+// carries changed files, so no webhook is needed.
+test.describe('UA7: files pill', () => {
+  const successRow = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]');
+  const filesPill = (page: import('@playwright/test').Page) =>
+    successRow(page).locator('[data-testid="files-pill"]');
+  const filesPanel = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="files-panel"]');
+
+  test('clicking the files pill toggles the files panel below the row', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(successRow(page)).toHaveCount(1); // startup settled
+
+    // The row carries a files pill; no panel is shown until it is clicked.
+    await expect(filesPill(page)).toHaveCount(1);
+    await expect(filesPanel(page)).toHaveCount(0);
+
+    // First click inserts the panel directly after the row.
+    await filesPill(page).click();
+    await expect(filesPanel(page)).toHaveCount(1);
+    await expect(filesPanel(page)).toBeVisible();
+    // It lists at least one changed file path and sits immediately below the row.
+    await expect(filesPanel(page).locator('.file-path').first()).toBeVisible();
+    const siblingTestid = await successRow(page).evaluate(
+      (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
+    );
+    expect(siblingTestid).toBe('files-panel');
+
+    // Second click removes it again.
+    await filesPill(page).click();
+    await expect(filesPanel(page)).toHaveCount(0);
+  });
+});
