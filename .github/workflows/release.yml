@@ -2,8 +2,11 @@
 # release PR (CHANGELOG.md + next semver). Merging that PR creates the
 # GitHub release and the v* tag.
 #
-# Tags created with the default GITHUB_TOKEN do not trigger other workflows,
-# so the Docker image build is dispatched explicitly after a release.
+# release-please runs with a fine-grained PAT (RELEASE_PLEASE_TOKEN) instead of
+# the default GITHUB_TOKEN. Refs created by the default token do not trigger
+# other workflows; using a PAT means the release PR runs the normal CI checks
+# and the release tag triggers the Docker image build (docker.yml, on: push
+# tags) automatically — so no explicit dispatch and no admin merge are needed.
 name: Release
 
 on:
@@ -14,19 +17,12 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v5
-        id: release
         with:
           release-type: go
-
-      - name: Dispatch Docker image build for the new tag
-        if: ${{ steps.release.outputs.release_created }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run docker.yml --repo ${{ github.repository }} --ref ${{ steps.release.outputs.tag_name }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
