@@ -248,6 +248,12 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *even
 // (stacks_base_dir/<name>), the same directory change detection reads from.
 func stackLocator(cfg *config.Config) icons.StackLocator {
 	return func(name string) (icons.Request, bool) {
+		// The reserved NixOS pseudo-stack has no directory in the clone and is
+		// not in cfg.Stacks; resolve its icon by auto-matching the "nixos" slug
+		// so it gets a recognizable logo instead of the "_" monogram fallback.
+		if name == deploy.NixosStateKey {
+			return icons.Request{Name: "nixos"}, true
+		}
 		for _, s := range cfg.Stacks {
 			if s.Name == name {
 				return icons.Request{

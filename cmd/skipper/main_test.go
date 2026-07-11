@@ -13,6 +13,7 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
+	"github.com/polandy/skipper-cd/internal/icons"
 )
 
 func TestNewLogHandler_JSONFormatEmitsJSON(t *testing.T) {
@@ -76,5 +77,42 @@ func TestHealthzHandler_ServiceUnavailableAfterFailedSync(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "remote unreachable") {
 		t.Errorf("expected sync error in body, got %q", rec.Body.String())
+	}
+}
+
+func TestStackLocator_ResolvesNixosPseudoStackToNixosSlug(t *testing.T) {
+	locate := stackLocator(&config.Config{})
+
+	req, ok := locate(deploy.NixosStateKey)
+	if !ok {
+		t.Fatalf("expected the reserved %q stack to resolve an icon", deploy.NixosStateKey)
+	}
+	if req.Name != "nixos" {
+		t.Errorf("expected icon request name %q, got %q", "nixos", req.Name)
+	}
+}
+
+func TestStackLocator_ResolvesConfiguredStack(t *testing.T) {
+	cfg := &config.Config{
+		StacksBaseDir: "/srv/stacks",
+		Stacks:        []config.Stack{{Name: "gitea", Icon: "forgejo"}},
+	}
+	locate := stackLocator(cfg)
+
+	req, ok := locate("gitea")
+	if !ok {
+		t.Fatal("expected configured stack to resolve")
+	}
+	want := icons.Request{Name: "gitea", Slug: "forgejo", Dir: "/srv/stacks/gitea"}
+	if req != want {
+		t.Errorf("got %+v, want %+v", req, want)
+	}
+}
+
+func TestStackLocator_UnknownStackIsNotFound(t *testing.T) {
+	locate := stackLocator(&config.Config{Stacks: []config.Stack{{Name: "gitea"}}})
+
+	if _, ok := locate("nope"); ok {
+		t.Error("expected unknown stack to be not found")
 	}
 }

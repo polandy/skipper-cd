@@ -67,10 +67,12 @@ type syncOutcome struct {
 	err error // nil on success
 }
 
-const (
-	defaultStateDir = "/var/lib/skipper"
-	nixosStateKey   = "_nixos"
-)
+const defaultStateDir = "/var/lib/skipper"
+
+// NixosStateKey is the reserved stack key used for the NixOS rebuild in the
+// persisted state, deploy events, and metrics. It is exported so the UI wiring
+// can recognize the pseudo-stack (e.g. to resolve its icon).
+const NixosStateKey = "_nixos"
 
 func NewDeployer() *Deployer {
 	return &Deployer{runner: ShellRunner{}, stateDir: defaultStateDir}
@@ -275,33 +277,38 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	startTime := time.Now()
 
 	currentNixHashes, _ := nixos.HashFiles(d.repoDir)
-	changed := nixos.DiffHashes(currentNixHashes, state.hashesFor(nixosStateKey))
+	changed := nixos.DiffHashes(currentNixHashes, state.hashesFor(NixosStateKey))
 
 	if len(changed) == 0 {
-		d.clearQueued(nixosStateKey) // nothing pending anymore
-		metrics.DeploysSkipped.WithLabelValues(nixosStateKey).Inc()
-		d.emit(events.StatusSkipped, nixosStateKey, 0, "", nil, nil)
+		d.clearQueued(NixosStateKey) // nothing pending anymore
+		metrics.DeploysSkipped.WithLabelValues(NixosStateKey).Inc()
+		d.emit(events.StatusSkipped, NixosStateKey, 0, "", nil, nil)
 		return true
 	}
+
+	// Diff the changed nix files against the last deployed commit so the UI can
+	// show *what* changed, not just which files did (LastDeployedCommit is only
+	// advanced at the end of the run, so it still points at the previous state).
+	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
 
 	// Autosync gate: when _nixos is paused, defer the rebuild. Keep the previous
 	// nix hashes (do not pre-save) so the change stays pending, and return true
 	// so Docker stack deploys still run this pass (docs/autosync.md).
-	if d.isPaused(nixosStateKey) {
-		reason := d.markQueued(nixosStateKey, changed)
-		metrics.DeploysQueued.WithLabelValues(nixosStateKey).Inc()
-		d.emit(events.StatusQueued, nixosStateKey, 0, "", changed, nil)
+	if d.isPaused(NixosStateKey) {
+		reason := d.markQueued(NixosStateKey, changed)
+		metrics.DeploysQueued.WithLabelValues(NixosStateKey).Inc()
+		d.emit(events.StatusQueued, NixosStateKey, 0, "", changed, diffs)
 		slog.Info("nixos-rebuild deferred: autosync paused", "reason", reason, "changed_files", changed)
 		return true
 	}
 	// Not paused: the rebuild runs now, so drop it from the pending queue.
-	d.clearQueued(nixosStateKey)
+	d.clearQueued(NixosStateKey)
 
 	// Persist the new hashes before the rebuild: the switch may restart this
 	// very service, and pre-saving avoids a redundant rebuild on restart
 	// (ADR-0005). Keep the previous snapshot so a surviving failure can undo it.
-	previousNixHashes := state.hashesFor(nixosStateKey)
-	state.recordStack(nixosStateKey, currentNixHashes)
+	previousNixHashes := state.hashesFor(NixosStateKey)
+	state.recordStack(NixosStateKey, currentNixHashes)
 	_ = saveDeployState(d.stateDir, state)
 
 	if err := d.runNixOSRebuild(ctx, cfg.NixOSRebuild.Flake); err != nil {
@@ -314,17 +321,17 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 			// pre-saved hashes so the next sync retries, instead of silently
 			// recording a rebuild that never applied as done (ADR-0015).
 			slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", err)
-			state.revertStack(nixosStateKey, previousNixHashes)
+			state.revertStack(NixosStateKey, previousNixHashes)
 			_ = saveDeployState(d.stateDir, state)
 		}
-		metrics.DeployErrors.WithLabelValues(nixosStateKey).Inc()
-		d.emit(events.StatusFailed, nixosStateKey, time.Since(startTime), err.Error(), changed, nil)
+		metrics.DeployErrors.WithLabelValues(NixosStateKey).Inc()
+		d.emit(events.StatusFailed, NixosStateKey, time.Since(startTime), err.Error(), changed, diffs)
 		return false
 	}
 
-	metrics.DeploysTriggered.WithLabelValues(nixosStateKey).Inc()
-	metrics.LastDeployTimestamp.WithLabelValues(nixosStateKey).Set(float64(time.Now().Unix()))
-	d.emit(events.StatusSuccess, nixosStateKey, time.Since(startTime), "", changed, nil)
+	metrics.DeploysTriggered.WithLabelValues(NixosStateKey).Inc()
+	metrics.LastDeployTimestamp.WithLabelValues(NixosStateKey).Set(float64(time.Now().Unix()))
+	d.emit(events.StatusSuccess, NixosStateKey, time.Since(startTime), "", changed, diffs)
 	slog.Info("nixos-rebuild complete", "changed_files", changed)
 	return true
 }

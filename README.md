@@ -166,6 +166,8 @@ When the web UI is enabled, each stack shows an icon in the deploy table for at-
 
 Icons from the set are fetched once and cached on disk; the UI serves them same-origin from `/api/icons/<stack>`. The header **Icon refresh** control (or the `i` hotkey) clears the cache so renamed stacks and newly published icons are picked up.
 
+The reserved NixOS pseudo-stack `_nixos` (see [NixOS Rebuild](#nixos-rebuild)) is not a configured stack, so it resolves its icon by auto-matching the `nixos` slug — giving the rebuild a recognizable logo rather than a monogram.
+
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `cache_dir` | string | no | `/var/lib/skipper/icons` | Directory where fetched icons are cached on disk. |

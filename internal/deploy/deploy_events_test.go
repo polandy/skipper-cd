@@ -337,6 +337,45 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 	}
 }
 
+func TestRebuildNixOS_SuccessEventIncludesDiffs(t *testing.T) {
+	baseDir := t.TempDir()
+	nixFile := filepath.Join(baseDir, "configuration.nix")
+	writeFile(t, nixFile, "{ services.foo.enable = true; }")
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{
+			nixFile: "+  services.foo.enable = true;\n",
+		},
+	}
+	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+
+	var successEvt *events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Stack == NixosStateKey && e.Status == events.StatusSuccess {
+			successEvt = &e
+		}
+	})
+
+	state := newEmptyState()
+	state.LastDeployedCommit = "old-sha"
+
+	enabled := true
+	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"}}
+
+	if ok := d.rebuildNixOSIfChanged(context.Background(), cfg, state); !ok {
+		t.Fatal("expected nixos-rebuild to succeed")
+	}
+	if successEvt == nil {
+		t.Fatal("expected a _nixos success event")
+	}
+	if successEvt.Diffs == nil {
+		t.Fatal("expected diffs in the _nixos success event, got nil")
+	}
+	if !strings.Contains(successEvt.Diffs[nixFile], "services.foo.enable") {
+		t.Errorf("expected nix diff content in the _nixos success event, got %q", successEvt.Diffs[nixFile])
+	}
+}
+
 func TestDeployStack_LogsEventIDForDiffLookupOnSuccess(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "gitea")

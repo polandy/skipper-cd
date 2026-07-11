@@ -915,7 +915,7 @@ func TestDeployAllStacks_RetriesNixOSRebuildAfterSurvivingFailure(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := state.hashesFor(nixosStateKey); len(got) != 0 {
+	if got := state.hashesFor(NixosStateKey); len(got) != 0 {
 		t.Fatalf("expected _nixos hashes to be reverted after a surviving rebuild failure, got %v", got)
 	}
 
@@ -980,7 +980,7 @@ func TestDeployAllStacks_KeepsNixHashesWhenRebuildAbandonedOnShutdown(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := state.hashesFor(nixosStateKey); len(got) == 0 {
+	if got := state.hashesFor(NixosStateKey); len(got) == 0 {
 		t.Fatal("expected _nixos hashes to be kept after a shutdown-abandoned rebuild")
 	}
 }
