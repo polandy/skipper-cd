@@ -410,14 +410,49 @@
   }
 
   .cell-stack {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
     font-family: var(--font-mono);
     font-size: 13px;
     font-weight: 500;
     color: var(--text-primary);
     letter-spacing: -0.3px;
+  }
+
+  .stack-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Recognizable per-stack icon; falls back to a monogram (.mono) when no
+     image resolves. Fixed box so mixed SVG/PNG sources line up. */
+  .stack-icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .stack-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .stack-icon.mono {
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
   }
 
   .cell-duration {
@@ -758,7 +793,11 @@
   #log-view { display: none; }
   body.view-logs #log-view { display: block; }
   body.view-logs #deploy-table, body.view-logs #empty-state { display: none !important; }
-  body.view-logs #skip-filter, body.view-logs #time-mode { display: none; }
+  body.view-logs #skip-filter, body.view-logs #time-mode, body.view-logs #icon-refresh { display: none; }
+
+  #icon-refresh svg { width: 15px; height: 15px; }
+  #icon-refresh.spinning svg { animation: icon-spin 0.6s ease; }
+  @keyframes icon-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
   #follow-logs, #log-sort { display: none; }
   body.view-logs #follow-logs, body.view-logs #log-sort { display: flex; }
 
@@ -891,6 +930,13 @@
     <button class="filter-toggle" id="time-mode" title="Switch to absolute time">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
       <span>abs time</span>
+    </button>
+    <button class="filter-toggle" id="icon-refresh" title="Reload service icons (press i)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+        <polyline points="21 3 21 9 15 9"/>
+      </svg>
+      <span>icons</span>
     </button>
     <button class="filter-toggle" id="log-sort" title="Show oldest log lines first">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
@@ -1090,6 +1136,43 @@
     return cls;
   }
 
+  // Bumped on refresh to bust the browser cache of icon images.
+  var iconVer = 0;
+
+  function iconURL(stack) {
+    return '/api/icons/' + encodeURIComponent(stack) + (iconVer ? '?v=' + iconVer : '');
+  }
+
+  // populateIcon fills a .stack-icon chip with the stack's image, swapping to a
+  // monogram if the request fails (unknown stack, no match, or offline).
+  function populateIcon(chip, stack) {
+    if (!chip) return;
+    chip.classList.remove('mono');
+    chip.textContent = '';
+    var img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    img.addEventListener('error', function() { iconFallback(chip, stack); });
+    img.src = iconURL(stack);
+    chip.appendChild(img);
+  }
+
+  function iconFallback(chip, stack) {
+    chip.classList.add('mono');
+    chip.textContent = (stack || '?').charAt(0);
+  }
+
+  // refreshIcons clears the server cache, then reloads every visible icon so
+  // renamed stacks and newly published icons appear.
+  function refreshIcons() {
+    fetch('/api/icons/refresh', { method: 'POST' }).finally(function() {
+      iconVer = Date.now();
+      document.querySelectorAll('.stack-icon').forEach(function(chip) {
+        populateIcon(chip, chip.dataset.name);
+      });
+    });
+  }
+
   function createRow(evt, isHistory) {
     var row = document.createElement('div');
     row.className = rowClass(evt.status, isHistory);
@@ -1101,11 +1184,12 @@
     var relTs = formatTime(evt.timestamp);
     row.innerHTML =
       '<span class="cell-time" data-ts="' + evt.timestamp + '" title="' + (absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
-      '<span class="cell-stack">' + escapeHtml(evt.stack) + '</span>' +
+      '<span class="cell-stack"><span class="stack-icon" data-name="' + escapeHtml(evt.stack) + '"></span><span class="stack-name">' + escapeHtml(evt.stack) + '</span></span>' +
       '<span class="status-cell">' + badgeHTML(evt.status) + '</span>' +
       '<span class="cell-duration">' + formatDuration(evt.duration_ms) + '</span>' +
       '<span class="col-files">' + filesHTML(evt.changed_files) + '</span>';
 
+    populateIcon(row.querySelector('.stack-icon'), evt.stack);
     return row;
   }
 
@@ -1247,6 +1331,26 @@
   });
 
   applySkipFilter();
+
+  // Icon refresh — button and the "i" hotkey both clear the server-side icon
+  // cache and reload every visible icon.
+  const iconRefreshBtn = document.getElementById('icon-refresh');
+
+  function triggerIconRefresh() {
+    iconRefreshBtn.classList.remove('spinning');
+    void iconRefreshBtn.offsetWidth; // restart the spin animation
+    iconRefreshBtn.classList.add('spinning');
+    refreshIcons();
+  }
+
+  iconRefreshBtn.addEventListener('click', triggerIconRefresh);
+
+  document.addEventListener('keydown', function(e) {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    var tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+    if (e.key === 'i') triggerIconRefresh();
+  });
 
   // Theme toggle (default: Catppuccin Mocha; Latte is the opt-in light theme)
   const themeToggle = document.getElementById('theme-toggle');

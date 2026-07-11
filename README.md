@@ -104,6 +104,7 @@ nixos_rebuild:
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. |
 | `stacks` | list | yes | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS Rebuild](#nixos-rebuild)). Omit the section entirely to disable. |
+| `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
 
 ### Stack Fields
 
@@ -116,6 +117,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `env_files` | list of strings | no | — | Absolute paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. |
 | `watch_dirs` | list of strings | no | — | Absolute paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). |
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. |
+| `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 
 ### `vars_file`
 
@@ -146,6 +148,30 @@ The optional `nixos_rebuild` section triggers `nixos-rebuild switch` when any `*
 **Important:** The skipper-cd systemd service must run as root for `nixos-rebuild` to work. The NixOS rebuild runs **before** any Docker stack deployments. If the rebuild fails, all Docker stack deploys are aborted to prevent deploying against a potentially broken system.
 
 NixOS rebuild state is tracked under the reserved key `_nixos` in the [state file](#state-file) and appears in [Prometheus metrics](#prometheus-metrics) with the label `stack="_nixos"`.
+
+### Service Icons
+
+When the web UI is enabled, each stack shows an icon in the deploy table for at-a-glance recognition. Icons are resolved per stack in priority order:
+
+1. **Repo override** — an `icon.svg` (preferred) or `icon.png` in the stack's directory (`<stacks_base_dir>/<name>/`). Served directly from the clone, works offline.
+2. **Configured slug** — the stack's `icon:` field, looked up in the icon set.
+3. **Auto-match** — the stack name (slugified) looked up in the icon set.
+4. **Fallback** — a monogram (the stack's first letter) rendered in the UI when nothing matches or the source is unreachable.
+
+Icons from the set are fetched once and cached on disk; the UI serves them same-origin from `/api/icons/<stack>`. The header **Icon refresh** control (or the `i` hotkey) clears the cache so renamed stacks and newly published icons are picked up.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `cache_dir` | string | no | `/var/lib/skipper/icons` | Directory where fetched icons are cached on disk. |
+| `source_url` | string | no | dashboard-icons CDN | Icon-set base URL; icons are fetched from `<source_url>/<slug>.svg`. |
+
+```yaml
+icons:
+  cache_dir: /var/lib/skipper/icons        # optional, this is the default
+  source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg
+```
+
+> **Note:** A repo `icon.svg`/`icon.png` is **not** hash-tracked, so adding or changing an icon never triggers a redeploy. The one exception: if you list a stack's own directory under `watch_dirs`, its icon files would be hashed along with everything else — keep icons out of watched directories.
 
 ## Prometheus Metrics
 

@@ -33,6 +33,12 @@ type Stack struct {
 	// Use this for containers managed by an on-demand scheduler:
 	// the scheduler will start them again on the next incoming request.
 	OnDemandContainers []string `yaml:"on_demand_containers,omitempty"`
+
+	// Icon optionally overrides the icon-set slug used for this stack's UI
+	// icon (e.g. "jellyfin" for a stack named "media"). When empty, the icon
+	// is auto-matched from the stack name. A repo icon.svg/icon.png in the
+	// stack directory takes precedence over both. Purely visual, never hashed.
+	Icon string `yaml:"icon,omitempty"`
 }
 
 // Config holds the full skipper-cd configuration.
@@ -73,6 +79,21 @@ type Config struct {
 	// Omit the section entirely to disable. When present without an explicit
 	// "enabled" key, it defaults to enabled.
 	NixOSRebuild *NixOSRebuild `yaml:"nixos_rebuild"`
+
+	// Icons configures service-icon resolution for the web UI. The section is
+	// optional; omitting it uses the defaults applied in Load.
+	Icons IconsConfig `yaml:"icons"`
+}
+
+// IconsConfig configures how the web UI resolves and caches stack icons.
+type IconsConfig struct {
+	// CacheDir is the on-disk directory where fetched icons are cached.
+	// Defaults to /var/lib/skipper/icons.
+	CacheDir string `yaml:"cache_dir"`
+
+	// SourceURL is the icon-set base URL; icons are fetched from
+	// SourceURL/<slug>.svg. Defaults to the dashboard-icons CDN.
+	SourceURL string `yaml:"source_url"`
 }
 
 // NixOSRebuild configures automatic NixOS rebuilds when .nix files or
@@ -119,6 +140,12 @@ func Load(path string) (*Config, error) {
 	if cfg.LogFormat == "" {
 		cfg.LogFormat = LogFormatText
 	}
+	if cfg.Icons.CacheDir == "" {
+		cfg.Icons.CacheDir = defaultIconCacheDir
+	}
+	if cfg.Icons.SourceURL == "" {
+		cfg.Icons.SourceURL = defaultIconSourceURL
+	}
 
 	return cfg, validateConfig(cfg)
 }
@@ -127,6 +154,12 @@ func Load(path string) (*Config, error) {
 const (
 	LogFormatText = "text"
 	LogFormatJSON = "json"
+)
+
+// Defaults for the icons section.
+const (
+	defaultIconCacheDir  = "/var/lib/skipper/icons"
+	defaultIconSourceURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg"
 )
 
 // reservedStackName is used internally as the state key for NixOS rebuild

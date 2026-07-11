@@ -21,6 +21,7 @@ stacks:
   - name: monitoring
     env_files:
       - /run/secrets/rendered/skipper/compose.env
+    icon: grafana    # optional web-UI icon slug; overrides the auto-match on the stack name
 
   # Set working_dir when a NixOS systemd service also manages this stack,
   # so Docker Compose uses the same project identity for both.
@@ -35,3 +36,8 @@ stacks:
 nixos_rebuild:
   flake: ".#nuc"    # required; passed as: nixos-rebuild switch --flake <flake>
   # enabled: false  # set to false to temporarily disable without removing the section
+
+# Web-UI service icons (only used when ui_enabled). Omit to use the defaults below.
+# icons:
+#   cache_dir: /var/lib/skipper/icons
+#   source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg

@@ -22,6 +22,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/git"
+	"github.com/polandy/skipper-cd/internal/icons"
 	"github.com/polandy/skipper-cd/internal/logbuf"
 	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
@@ -148,8 +149,31 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *even
 		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, history))
 		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
 		mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
+
+		iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
+		iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
+		mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg)))
+		mux.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
 	}
 	return mux
+}
+
+// stackLocator maps a stack name to its icon-resolution inputs from config.
+// The icon file lives in the stack's directory in the clone
+// (stacks_base_dir/<name>), the same directory change detection reads from.
+func stackLocator(cfg *config.Config) icons.StackLocator {
+	return func(name string) (icons.Request, bool) {
+		for _, s := range cfg.Stacks {
+			if s.Name == name {
+				return icons.Request{
+					Name: s.Name,
+					Slug: s.Icon,
+					Dir:  filepath.Join(cfg.StacksBaseDir, s.Name),
+				}, true
+			}
+		}
+		return icons.Request{}, false
+	}
 }
 
 // startServer runs an HTTP server in a goroutine and returns it so the
