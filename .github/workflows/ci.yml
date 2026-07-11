@@ -26,6 +26,20 @@ jobs:
           go mod vendor
           git diff --exit-code
 
+  # End-to-end tests: run the real skipper binary against a local git origin
+  # and a stub docker on PATH (no docker daemon needed). Guarded by the "e2e"
+  # build tag so they stay out of the fast `go test ./...` job above.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: test -z "$(gofmt -l e2e)"
+      - run: go vet -tags e2e ./e2e
+      - run: go test -tags e2e -v -count=1 ./e2e
+
   lint:
     runs-on: ubuntu-latest
     steps:

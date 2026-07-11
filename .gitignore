@@ -1,2 +1,5 @@
 /skipper
 skipper.yml
+
+# Local Claude Code worktrees (not repo content)
+/.claude/worktrees/
