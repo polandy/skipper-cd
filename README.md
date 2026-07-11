@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="skipper-cd.png" alt="skipper-cd logo" width="200">
+  <img src="skipper-cd-logo.png" alt="skipper-cd logo" width="200">
 </p>
 
 <h1 align="center">skipper-cd</h1>
