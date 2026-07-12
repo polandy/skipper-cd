@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/polandy/skipper-cd/compare/v0.8.0...v0.8.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* **nixos:** keep --same-dir so the rebuild finds the flake ([999be1f](https://github.com/polandy/skipper-cd/commit/999be1fb5c9088087f571a7d8b6c18958deeb554))
+* **nixos:** run self-update rebuild fire-and-forget to end the shutdown wedge ([0bb4e10](https://github.com/polandy/skipper-cd/commit/0bb4e10aa96b90f9a37b9e6acd82ab4d0f8ac66b))
+
 ## [0.8.0](https://github.com/polandy/skipper-cd/compare/v0.7.0...v0.8.0) (2026-07-12)
 
 
