@@ -22,11 +22,11 @@ asserting **behaviour + visual snapshots**.
 > five rendered status badges), **UA3** (skipped deploys never render a row), **UA4** (time-mode
 > toggle + persistence), **UA5** (stack icon + monogram fallback), **UA6** (icon
 > refresh: POST + cache-busted reload), **UA7** (files-pill panel toggle),
-> **UA8** (diff-panel fetch + colouring), and **UA9** (error-panel tied to the
-> failed row with its message) passing and an `e2e-ui` CI job
-> (behaviour-only). Remaining: the rest of mask A (UA10), masks B–D, and the
-> visual-snapshot baselines (§5), at which point `e2e-ui` moves into Playwright's
-> pinned container.
+> **UA8** (diff-panel fetch + colouring), **UA9** (error-panel tied to the
+> failed row with its message), and **UD5** (header version label from
+> `/api/version`) passing and an `e2e-ui` CI job (behaviour-only). Remaining: the
+> rest of mask A (UA10), the rest of masks B–D, and the visual-snapshot baselines
+> (§5), at which point `e2e-ui` moves into Playwright's pinned container.
 
 ## 1. Scope & boundaries
 
@@ -239,6 +239,11 @@ UI suite reuses.
 - **UD4 — Responsive ≤700px.** At a 390px viewport the table collapses to the
   2×2 layout, the Files column hides, and tapping a row with changed files
   expands the panel. *Snapshot: mobile layout.*
+- **UD5 — Version label.** The header `brand-version` shows the deployed version
+  as `v<semver>`. `globalSetup` injects the version via `-ldflags` from
+  `.release-please-manifest.json` (the same source as the Docker/Nix builds), so
+  the case asserts the ldflags → `GET /api/version` → header render through-line
+  against the exact shipped version (release-proof: both sides read the manifest).
 
 ## 5. Visual snapshot strategy
 
@@ -296,6 +301,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Connection indicator states | **UD2** |
 | Deploy indicator active/idle | **UD3** |
 | Responsive ≤700px collapse + tap-to-expand | **UD4** |
+| Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | Diff API 404 / truncation limits | Unit `ui`/`deploy` — **n/a** for E2E |
 | Log windowing (500 +500), buffer trim | **n/a** in v1 (fiddly; low bump-risk) |
 | Favicon `prefers-color-scheme` | **n/a** (browser chrome, not page DOM) |
