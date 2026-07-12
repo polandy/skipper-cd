@@ -34,9 +34,17 @@ import (
 //   - STUB_DOCKER_FAIL_ON=<subcmd> exit 1 when the args contain <subcmd>.
 //   - STUB_DOCKER_FAIL_NTH_UP=<n>  exit 1 only on the Nth `up` (lets a rollback
 //     `up` succeed while the initial one fails → rolled_back).
+//   - STUB_DOCKER_ECHO=<line>      print <line> to stdout on `up`, so tests can
+//     observe captured child-process output in the log ring.
 const stubDockerScript = `#!/bin/sh
 dir=$(pwd)
 printf '%s\t%s\n' "$dir" "$*" >> "$DOCKER_LOG"
+
+if [ -n "$STUB_DOCKER_ECHO" ]; then
+  case " $* " in
+    *" up "*) echo "$STUB_DOCKER_ECHO" ;;
+  esac
+fi
 
 case " $* " in
   *" up "*)

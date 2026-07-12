@@ -27,8 +27,9 @@ asserting **behaviour + visual snapshots**.
 > stack-free, event-free instance), **UD5** (header version label from
 > `/api/version`), **UB1** (deploys↔logs view toggle + persistence), **UB2**
 > (log lines + INFO/WARN/ERROR level badges), **UB3** (sort toggle
-> newest↔oldest + persistence), and **UB4** (follow toggle autoscroll +
-> persistence) passing and an `e2e-ui` CI job
+> newest↔oldest + persistence), **UB4** (follow toggle autoscroll +
+> persistence), and **UB5** (stack-prefix on deploy lines + `[docker]`
+> cmd-prefix on captured child output) passing and an `e2e-ui` CI job
 > (behaviour-only). Mask A is complete; Mask B (Logs) is underway. Remaining: the
 > rest of masks B–D, and the visual-snapshot baselines (§5), at which point
 > `e2e-ui` moves into Playwright's pinned container.
@@ -100,6 +101,8 @@ binary):
     (lets a rollback `up` succeed while the initial `up` fails → `rolled_back`);
   - `STUB_DOCKER_HOLD_UP=<path>` → block on `up` until the file appears, so the
     `deploying` state can be observed, then released.
+  - `STUB_DOCKER_ECHO=<line>` → print `<line>` to stdout on `up`, so the
+    captured child-process output reaches the log ring (drives the `cmd-prefix`).
 - **Config file** (`e2e.yml`, temp dir): `repo_url` → local origin,
   `repo_dir`/`stacks_base_dir` → temp dirs, `ui_enabled: true`, free
   `port`/`metrics_port`, known `webhook_secret`, small
@@ -212,9 +215,13 @@ UI suite reuses.
   overflows, then live lines (bad-signature webhooks) are streamed and the pane
   is asserted to snap to `scrollTop 0` only while following. Persists
   (`localStorage followLogs`).
-- **UB5 — Prefixes.** A line with a `stack` attr renders the accent
-  `stack-prefix`; a child-process line (`cmd`+`stream`) renders the muted
-  `cmd-prefix` and no level badge.
+- **UB5 — Prefixes.** A structured deploy line with a `stack` attr renders the
+  accent `stack-prefix` next to its level badge; a child-process line
+  (`cmd`+`stream`) renders the muted `cmd-prefix` and no level badge. Both come
+  from one failing startup deploy against the real backend: `STUB_DOCKER_ECHO`
+  makes the stub `docker` print a line on `up` (captured as a `[docker]` child
+  line, `data-level="cmd"`), while the same failing `up` emits the `[web]`
+  stack-tagged ERROR line — the two prefix shapes are asserted end-to-end.
 - **UB6 — Diff pill in logs.** A `deploy complete` line with `event_id` renders a
   `diff-pill`; clicking inserts the same diff panel below the line.
 
