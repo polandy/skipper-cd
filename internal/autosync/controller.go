@@ -62,6 +62,16 @@ func (c *Controller) globalEffectiveLocked() bool {
 	return true
 }
 
+// baselineLocked is what the stack would resolve to without its UI override — its
+// config value if set, otherwise the effective global. A UI override is only ever
+// an exception to this baseline (see ADR-0019); config-pinned stacks ignore global.
+func (c *Controller) baselineLocked(name string) bool {
+	if cv := c.stackConfig[name]; cv != nil {
+		return *cv
+	}
+	return c.globalEffectiveLocked()
+}
+
 // GlobalEffective reports the effective global autosync state.
 func (c *Controller) GlobalEffective() bool {
 	c.mu.RLock()
@@ -90,18 +100,29 @@ func (c *Controller) stackScopeSetLocked(name string) bool {
 	return c.stackConfig[name] != nil
 }
 
-// SetGlobal sets (v non-nil) or clears (v nil) the global UI override.
+// SetGlobal sets (v non-nil) or clears (v nil) the global UI override. Changing
+// the global state can make a per-stack override coincide with its new baseline;
+// any such override collapses back to inherit so the global switch acts as a true
+// master (ADR-0019).
 func (c *Controller) SetGlobal(v *bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.globalOverride = v
+	for name, ov := range c.stackOverride {
+		if ov != nil && *ov == c.baselineLocked(name) {
+			delete(c.stackOverride, name)
+		}
+	}
 }
 
-// SetStack sets (v non-nil) or clears (v nil) the per-stack UI override.
+// SetStack sets or clears the per-stack UI override. A UI override is held only
+// while it differs from the stack's baseline: clearing it (v nil) or setting it to
+// the value the stack would inherit anyway both collapse to inherit rather than
+// pinning a redundant override (ADR-0019).
 func (c *Controller) SetStack(name string, v *bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if v == nil {
+	if v == nil || *v == c.baselineLocked(name) {
 		delete(c.stackOverride, name)
 		return
 	}
