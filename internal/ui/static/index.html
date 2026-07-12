@@ -1070,11 +1070,21 @@
 
   /* ─── RESPONSIVE ─── */
   @media (max-width: 700px) {
-    header { padding: 0 16px; height: 48px; }
+    header { padding: 0 12px; height: 48px; }
+    .status-area { gap: 10px; }
+    /* Wordmark, tag and version are dropped — the ship logo alone carries the
+       brand on mobile so the control row fits without horizontal scroll. */
+    .brand-name { display: none; }
     .brand-tag { display: none; }
     .brand-version { display: none; }
     /* Bare switches — the labels don't fit next to the view toggle. */
     .filter-toggle span { display: none; }
+    /* Deploy-status and connection collapse to their coloured dot; the text
+       lives in the element's title/aria instead (see UI_SPEC §Responsive). */
+    .deploy-status span { display: none; }
+    .indicator span { display: none; }
+    /* Autosync keeps its icon and pending-count pill; only the label drops. */
+    .autosync-btn > span:not(.pending-count) { display: none; }
     main { margin: 16px auto; padding: 0 12px; }
 
     .event-list-header { display: none; }
@@ -1108,7 +1118,7 @@
         <path d="M14 60 q5 -5 10 0 t10 0 t10 0 t10 0" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".5"/>
       </svg>
     </div>
-    <span class="brand-name">skipper<span>-cd</span></span>
+    <span class="brand-name" data-testid="brand-name">skipper<span>-cd</span></span>
     <span class="brand-tag">live</span>
     <span class="brand-version" id="brand-version" data-testid="brand-version"></span>
   </div>
@@ -1454,6 +1464,11 @@
       deployStatus.className = 'deploy-status';
       deployStatus.querySelector('span').textContent = 'idle';
     }
+    // Mirror the text into title/aria so it survives when the span is hidden
+    // on mobile (the dot alone stays visible — see UI_SPEC §Responsive).
+    var label = active.length > 0 ? 'deploying ' + active.join(', ') : 'idle';
+    deployStatus.title = label;
+    deployStatus.setAttribute('aria-label', label);
   }
 
   function handleEvent(evt, isHistory) {
@@ -1514,6 +1529,7 @@
     connDot.className = 'indicator-dot warn';
     connText.textContent = 'connecting';
     connDot.parentElement.dataset.state = 'connecting';
+    connDot.parentElement.title = 'connecting';
 
     var es = new EventSource('/api/events');
 
@@ -1521,6 +1537,7 @@
       connDot.className = 'indicator-dot';
       connText.textContent = 'connected';
       connDot.parentElement.dataset.state = 'connected';
+      connDot.parentElement.title = 'connected';
     };
 
     es.addEventListener('deploy', function(e) {
@@ -1544,6 +1561,7 @@
       connDot.className = 'indicator-dot err';
       connText.textContent = 'reconnecting';
       connDot.parentElement.dataset.state = 'reconnecting';
+      connDot.parentElement.title = 'reconnecting';
     };
   }
 

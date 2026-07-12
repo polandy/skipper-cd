@@ -277,9 +277,13 @@ UI suite reuses.
   `connected`; killing/restarting the binary drives `reconnecting`→`connected`.
 - **UD3 — Deploy indicator.** Shows the active stack name(s) while a deploy is
   held, `idle` otherwise.
-- **UD4 — Responsive ≤700px.** At a 390px viewport the table collapses to the
-  2×2 layout, the Files column hides, and tapping a row with changed files
-  expands the panel. *Snapshot: mobile layout.*
+- **UD4 — Responsive ≤700px.** At a 390px viewport the **compact header**
+  (UI_SPEC §Responsive) does not overflow the viewport width
+  (`documentElement.scrollWidth ≤ clientWidth`) and the `brand-name` wordmark is
+  hidden; the **table** collapses to the 2×2 layout, the Files column hides, and
+  tapping a row with changed files expands the panel. The 1280px control asserts
+  the wordmark is visible with likewise no sideways scroll. *Snapshot: mobile
+  layout.*
 - **UD5 — Version label.** The header `brand-version` shows the deployed version
   as `v<semver>`. `globalSetup` injects the version via `-ldflags` from
   `.release-please-manifest.json` (the same source as the Docker/Nix builds), so
@@ -341,7 +345,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Theme toggle + persistence + no-flash | **UD1** |
 | Connection indicator states | **UD2** |
 | Deploy indicator active/idle | **UD3** |
-| Responsive ≤700px collapse + tap-to-expand | **UD4** |
+| Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | Diff API 404 / truncation limits | Unit `ui`/`deploy` — **n/a** for E2E |
 | Log windowing (500 +500), buffer trim | **n/a** in v1 (fiddly; low bump-risk) |
