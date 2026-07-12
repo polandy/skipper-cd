@@ -46,13 +46,34 @@ func ManifestHandler() http.Handler {
 	})
 }
 
+// BuildInfo carries the build identity surfaced in the UI header and used to
+// cache-bust the service worker. Version is the release semver (or "dev");
+// Branch and Commit are empty when the build path does not know them — the Nix
+// flake, for instance, knows the commit but not the branch name.
+type BuildInfo struct {
+	Version string
+	Branch  string
+	Commit  string
+}
+
+// CacheID returns the identity baked into the service worker's cache name so a
+// new build changes the served bytes. It folds in Commit because two
+// feature-branch builds share the same release semver — without the commit
+// the app-shell cache would not bust between them.
+func (b BuildInfo) CacheID() string {
+	if b.Commit == "" {
+		return b.Version
+	}
+	return b.Version + "-" + b.Commit
+}
+
 // ServiceWorkerHandler serves GET /sw.js — the PWA service worker. The build
-// version is baked into the worker's cache name (replacing the __VERSION__
-// placeholder) so a new release changes the served bytes and the browser adopts
+// cache id is baked into the worker's cache name (replacing the __VERSION__
+// placeholder) so a new build changes the served bytes and the browser adopts
 // a fresh worker. Served no-cache so worker updates always propagate.
-func ServiceWorkerHandler(version string) http.Handler {
+func ServiceWorkerHandler(b BuildInfo) http.Handler {
 	data, _ := staticFS.ReadFile("static/sw.js")
-	body := []byte(strings.ReplaceAll(string(data), "__VERSION__", version))
+	body := []byte(strings.ReplaceAll(string(data), "__VERSION__", b.CacheID()))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -203,11 +224,18 @@ func AutosyncHandler(ctrl *autosync.Controller, order func() []string, onChange,
 	})
 }
 
-// VersionHandler serves GET /api/version — the build-time skipper-cd version
-// injected via -ldflags. Returns {"version": "<semver>|dev"} for the UI header.
-func VersionHandler(version string) http.Handler {
+// VersionHandler serves GET /api/version — the build identity injected via
+// -ldflags (and, for local builds, the commit stamped into the Go build info).
+// Returns {"version","branch","commit"}; branch/commit may be empty. The header
+// shows the branch for feature-branch builds, else the version, and appends the
+// commit when present.
+func VersionHandler(b BuildInfo) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, map[string]string{"version": version})
+		writeJSON(w, map[string]string{
+			"version": b.Version,
+			"branch":  b.Branch,
+			"commit":  b.Commit,
+		})
 	})
 }
 

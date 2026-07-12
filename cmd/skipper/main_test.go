@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -15,6 +16,47 @@ import (
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/icons"
 )
+
+func TestResolveCommit(t *testing.T) {
+	buildInfo := func(rev string, modified bool) (*debug.BuildInfo, bool) {
+		info := &debug.BuildInfo{}
+		if rev != "" {
+			info.Settings = append(info.Settings, debug.BuildSetting{Key: "vcs.revision", Value: rev})
+		}
+		info.Settings = append(info.Settings, debug.BuildSetting{
+			Key:   "vcs.modified",
+			Value: map[bool]string{true: "true", false: "false"}[modified],
+		})
+		return info, true
+	}
+
+	tests := []struct {
+		name     string
+		injected string
+		info     *debug.BuildInfo
+		ok       bool
+		want     string
+	}{
+		{name: "injected wins", injected: "abcdef1", want: "abcdef1"},
+		{name: "injected is truncated", injected: "0123456789abcdef0123", want: "0123456789ab"},
+		{name: "nix dirtyShortRev keeps suffix", injected: "338c45c-dirty", want: "338c45c-dirty"},
+		{name: "falls back to build info", info: mustInfo(buildInfo("fedcba9876543210", false)), ok: true, want: "fedcba987654"},
+		{name: "dirty tree suffixed", info: mustInfo(buildInfo("fedcba9876543210", true)), ok: true, want: "fedcba987654-dirty"},
+		{name: "no build info", info: nil, ok: false, want: ""},
+		{name: "build info without revision", info: mustInfo(buildInfo("", false)), ok: true, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveCommit(tt.injected, tt.info, tt.ok); got != tt.want {
+				t.Errorf("resolveCommit(%q, …) = %q, want %q", tt.injected, got, tt.want)
+			}
+		})
+	}
+}
+
+// mustInfo adapts the (info, ok) pair from the buildInfo helper for use in a
+// struct literal.
+func mustInfo(info *debug.BuildInfo, _ bool) *debug.BuildInfo { return info }
 
 func TestNewLogHandler_JSONFormatEmitsJSON(t *testing.T) {
 	var buf bytes.Buffer

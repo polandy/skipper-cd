@@ -8,10 +8,15 @@ COPY cmd/ cmd/
 COPY internal/ internal/
 COPY .release-please-manifest.json ./
 
-# Inject the release-please-tracked version into main.version so the UI header
-# and /api/version report the deployed build.
+# Branch/commit come from CI (docker.yml passes --build-arg). The build strips
+# .git, so the commit cannot be recovered at runtime — it must be injected here.
+ARG COMMIT=""
+ARG BRANCH=""
+
+# Inject the release-please-tracked version plus the CI branch/commit into
+# main.* so the UI header and /api/version report the deployed build.
 RUN VERSION=$(sed -n 's/.*"\.":[[:space:]]*"\([^"]*\)".*/\1/p' .release-please-manifest.json) \
-    && go build -ldflags "-X main.version=${VERSION}" -o /skipper ./cmd/skipper
+    && go build -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.branch=${BRANCH}" -o /skipper ./cmd/skipper
 
 # Stage 2: Runtime
 FROM alpine:3.24
