@@ -26,8 +26,9 @@ asserting **behaviour + visual snapshots**.
 > failed row with its message), **UA10** (empty-state placeholder for a
 > stack-free, event-free instance), **UD5** (header version label from
 > `/api/version`), **UB1** (deploys↔logs view toggle + persistence), **UB2**
-> (log lines + INFO/WARN/ERROR level badges), and **UB3** (sort toggle
-> newest↔oldest + persistence) passing and an `e2e-ui` CI job
+> (log lines + INFO/WARN/ERROR level badges), **UB3** (sort toggle
+> newest↔oldest + persistence), and **UB4** (follow toggle autoscroll +
+> persistence) passing and an `e2e-ui` CI job
 > (behaviour-only). Mask A is complete; Mask B (Logs) is underway. Remaining: the
 > rest of masks B–D, and the visual-snapshot baselines (§5), at which point
 > `e2e-ui` moves into Playwright's pinned container.
@@ -205,7 +206,11 @@ UI suite reuses.
   against real replayed log output: the rendered `log-line` sequence is
   fingerprinted and the toggle must reverse it exactly, with a reload preserving
   the chosen order.
-- **UB4 — Follow toggle.** Autoscroll to the newest edge on append; persists
+- **UB4 — Follow toggle.** Following (the default) pins the pane to the newest
+  edge when a fresh line streams in; unfollowing leaves the scroll position
+  alone. Driven against the real backend: the ring is filled so the pane
+  overflows, then live lines (bad-signature webhooks) are streamed and the pane
+  is asserted to snap to `scrollTop 0` only while following. Persists
   (`localStorage followLogs`).
 - **UB5 — Prefixes.** A line with a `stack` attr renders the accent
   `stack-prefix`; a child-process line (`cmd`+`stream`) renders the muted

@@ -142,3 +142,82 @@ test.describe('UB3: sort toggle', () => {
     expect(await logSort(page)).toBe('desc');
   });
 });
+
+// UB4 — Follow toggle. Following (the default) pins the pane to the newest edge
+// whenever a fresh line streams in; unfollowing leaves the scroll position
+// alone. The choice persists in `localStorage.followLogs`. We fill the ring so
+// the pane overflows, scroll away from the newest edge (the top, in the default
+// descending order), then drive one live line via a bad-signature webhook and
+// assert the pane snaps back to `scrollTop === 0` only while following.
+test.describe('UB4: follow toggle', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      stubEnv: { STUB_DOCKER_FAIL_ON: 'up' },
+      readiness: 'listening',
+    },
+  });
+
+  const logLines = (page: Page) => page.locator('[data-testid="log-line"]');
+  const followBtn = (page: Page) => page.locator('[data-testid="follow-logs"]');
+  const followLogs = (page: Page) =>
+    page.evaluate(() => localStorage.getItem('followLogs'));
+  const scrollTop = (page: Page) =>
+    page.evaluate(() => document.getElementById('log-pane')!.scrollTop);
+  // Scroll to the oldest edge (the bottom in descending order) so the newest
+  // edge (top) is out of view — any autoscroll is then observable as scrollTop→0.
+  const scrollAwayFromNewest = (page: Page) =>
+    page.evaluate(() => {
+      const p = document.getElementById('log-pane')!;
+      p.scrollTop = p.scrollHeight;
+    });
+
+  test('autoscrolls to the newest edge only while following, and persists', async ({ page, skipper }) => {
+    // Fill the ring so the log pane overflows and becomes scrollable. Each
+    // bad-signature webhook adds one live WARN line.
+    for (let i = 0; i < 60; i++) {
+      expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
+    }
+
+    await page.goto(`${skipper.baseURL}/`);
+    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+    await expect(logLines(page).first()).toBeVisible();
+
+    // Precondition: the pane actually overflows, so scrolling is meaningful.
+    const overflows = await page.evaluate(() => {
+      const p = document.getElementById('log-pane')!;
+      return p.scrollHeight > p.clientHeight;
+    });
+    expect(overflows).toBe(true);
+
+    // Following is on by default (no explicit choice stored yet).
+    expect(await followLogs(page)).toBeNull();
+
+    // Scroll away from the newest edge, then a fresh line streams in: following
+    // snaps the pane back to the newest edge (scrollTop 0 in descending order).
+    await scrollAwayFromNewest(page);
+    expect(await scrollTop(page)).toBeGreaterThan(0);
+    let count = await logLines(page).count();
+    expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
+    await expect(logLines(page)).toHaveCount(count + 1);
+    expect(await scrollTop(page)).toBe(0);
+
+    // Turn following off; the choice is persisted.
+    await followBtn(page).click();
+    expect(await followLogs(page)).toBe('false');
+
+    // Scroll away again: now a fresh line must NOT drag the pane to the newest
+    // edge — the reading position is left where the user put it.
+    await scrollAwayFromNewest(page);
+    expect(await scrollTop(page)).toBeGreaterThan(0);
+    count = await logLines(page).count();
+    expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
+    await expect(logLines(page)).toHaveCount(count + 1);
+    expect(await scrollTop(page)).toBeGreaterThan(0);
+
+    // The unfollowed choice survives a reload.
+    await page.reload();
+    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+    expect(await followLogs(page)).toBe('false');
+  });
+});
