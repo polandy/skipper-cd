@@ -142,7 +142,13 @@ On connect the in-memory backlog (bounded ring, 1000 entries, no persistence acr
 
 ## Version API
 
-`GET /api/version` — returns `{"version": "<semver>|dev"}`, the build-time version injected via `-ldflags "-X main.version=…"` from `.release-please-manifest.json` (`dev` for local builds without ldflags). The header version label is painted from this once on load.
+`GET /api/version` — returns the build identity `{"version": "<semver>|dev", "branch": "<name>", "commit": "<short-sha>"}`. Fields are injected at build time via `-ldflags "-X main.version=… -X main.commit=… -X main.branch=…"`:
+
+- `version` — semver from `.release-please-manifest.json` (`dev` for local builds without ldflags).
+- `commit` — short git SHA. Injected by the Nix flake (`self.shortRev`) and by Docker/CI; for a local `go build` it is recovered from the Go build info (`-dirty` suffix for an uncommitted tree). May be empty.
+- `branch` — git branch name. Only CI/Docker builds know it; the Nix flake and plain local builds leave it empty.
+
+The header label is painted once on load: a **feature-branch** build (branch set and ≠ `main`) shows `branch · commit`; otherwise it shows `v<version> · commit` (or `dev · commit`). The same `version-commit` string is baked into the service worker's cache name (`/sw.js`) so two feature-branch builds that share a release semver still bust the app-shell cache.
 
 Diffs are stored in `deploy-history.yaml` alongside events but are **not** included in SSE payloads (only `has_diffs: true` is sent). This keeps the real-time stream lightweight. Large diffs are truncated at 10 KB per file and 50 KB total per event.
 
