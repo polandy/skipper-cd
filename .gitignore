@@ -1,5 +1,8 @@
 /skipper
 skipper.yml
 
+# nix build output symlink
+/result
+
 # Local Claude Code worktrees (not repo content)
 /.claude/worktrees/
