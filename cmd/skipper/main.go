@@ -232,6 +232,9 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *even
 		autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)
 
 		mux.Handle("GET /{$}", ui.IndexHandler())
+		mux.Handle("GET /manifest.webmanifest", ui.ManifestHandler())
+		mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(version))
+		mux.Handle("GET /icons/", ui.IconsHandler())
 		mux.Handle("GET /api/version", ui.VersionHandler(version))
 		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, as.stateB, history, initialState))
 		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))

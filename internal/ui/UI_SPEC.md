@@ -148,6 +148,18 @@ Diffs are stored in `deploy-history.yaml` alongside events but are **not** inclu
 
 ---
 
+## Progressive Web App (PWA)
+
+The UI is an **installable PWA** (full spec: [`docs/pwa.md`](../../docs/pwa.md); decision: [ADR-0018](../../docs/adr/0018-pwa-installable-ui.md)). It is an enhancement layer — the page behaves exactly as before in a normal browser tab.
+
+- **Manifest** — `GET /manifest.webmanifest` (`<link rel="manifest">` in `<head>`): `name` `skipper-cd`, `short_name` `skipper`, `display` `standalone`, `start_url`/`scope` `/`, `theme_color` `#1e1e2e` (Mocha base), `background_color` `#181825` (Mocha mantle) for the splash. Icons at 192 and 512 px (`purpose: any`) plus a 512 px `maskable` variant, all rendered from the ship logo and served under `/icons/`.
+- **App identity** — the ship logo becomes the app icon (including a maskable variant so Android crops it into the system shape without clipping). Served as PNG because iOS ignores SVG and manifest icons for the home screen; an `apple-touch-icon` link and `apple-mobile-web-app-*` metas cover iOS.
+- **Theme colour** — two `<meta name="theme-color" media="(prefers-color-scheme: …)">` tags (dark `#1e1e2e`, light Latte `#eff1f5`) let the OS window/status-bar colour follow the **OS** light/dark preference. Like the favicon, this cannot follow the in-page Mocha/Latte toggle (a platform limitation).
+- **Service worker** — `GET /sw.js` (registered after `load`, failure-tolerant). Caches only the **app shell** (`/`, manifest, icons) and serves it **network-first with a cache fallback**, so a reachable server always wins and a just-deployed UI is picked up promptly. **Invariant: live traffic is never cached** — the worker bypasses `/api/*` (incl. the SSE streams `/api/events`, `/api/logs`), `/metrics`, and `/webhook` without `respondWith`, so streaming is untouched. The cache name carries the build version, so a new release changes the served `sw.js` bytes, the browser adopts the new worker, and stale caches are dropped.
+- **Secure context** — installability requires HTTPS (or `localhost`); the usual TLS reverse proxy satisfies this. Over plain HTTP the UI still works but is not installable. No new configuration — the PWA is active whenever `ui_enabled: true`.
+
+---
+
 ## Test hooks (`data-testid`)
 
 The E2E UI suite ([`docs/e2e-tests.md`](../../docs/e2e-tests.md)) selects **only** on

@@ -85,6 +85,90 @@ func TestVersionHandler_ReturnsVersion(t *testing.T) {
 	}
 }
 
+func TestManifestHandler_ServesInstallableManifest(t *testing.T) {
+	handler := ManifestHandler()
+	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/manifest+json") {
+		t.Errorf("content type = %q, want application/manifest+json", ct)
+	}
+	var m struct {
+		Name    string `json:"name"`
+		Display string `json:"display"`
+		Icons   []struct {
+			Src     string `json:"src"`
+			Purpose string `json:"purpose"`
+		} `json:"icons"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("manifest is not valid JSON: %v", err)
+	}
+	if m.Display != "standalone" {
+		t.Errorf("display = %q, want standalone", m.Display)
+	}
+	if len(m.Icons) == 0 {
+		t.Error("manifest has no icons")
+	}
+	var hasMaskable bool
+	for _, ic := range m.Icons {
+		if ic.Purpose == "maskable" {
+			hasMaskable = true
+		}
+	}
+	if !hasMaskable {
+		t.Error("manifest has no maskable icon")
+	}
+}
+
+func TestServiceWorkerHandler_InjectsVersion(t *testing.T) {
+	handler := ServiceWorkerHandler("9.9.9")
+	req := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Errorf("content type = %q, want a javascript type", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("Cache-Control = %q, want no-cache", cc)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "__VERSION__") {
+		t.Error("service worker still contains the __VERSION__ placeholder")
+	}
+	if !strings.Contains(body, "9.9.9") {
+		t.Error("service worker does not contain the injected version")
+	}
+}
+
+func TestIconsHandler_ServesPNG(t *testing.T) {
+	handler := IconsHandler()
+	req := httptest.NewRequest(http.MethodGet, "/icons/icon-192.png", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "image/png") {
+		t.Errorf("content type = %q, want image/png", ct)
+	}
+	if got := rec.Body.Bytes(); len(got) < 8 || string(got[1:4]) != "PNG" {
+		t.Error("body does not start with the PNG magic bytes")
+	}
+}
+
 func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")
