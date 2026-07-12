@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/polandy/skipper-cd/compare/v0.7.0...v0.8.0) (2026-07-12)
+
+
+### Features
+
+* **ui:** always hide skipped deploys, remove skip-filter toggle ([2d91ad2](https://github.com/polandy/skipper-cd/commit/2d91ad26b6a9b9d737d27af6042dd6aa2eb33f5e))
+* **ui:** show deployed version in header ([9f00c99](https://github.com/polandy/skipper-cd/commit/9f00c99a2a04229c903b3fdd6d93c2aad072b38c))
+
 ## [0.7.0](https://github.com/polandy/skipper-cd/compare/v0.6.0...v0.7.0) (2026-07-11)
 
 
