@@ -45,6 +45,36 @@ effective(name) = stackResolved != nil ? stackResolved : globalResolved
 `??` is "first non-nil". Both config values are `*bool`: a missing global key
 means `true`; a missing per-stack key means *inherit* (fall through to global).
 
+### Override collapse
+
+A per-stack **UI override is an exception to the baseline, never a permanent
+pin**. The *baseline* is what a stack would resolve to without its UI override —
+its config value if set, otherwise the effective global:
+
+```
+baseline(name) = uiStackOverride ignored: stackConfig[name] ?? globalResolved
+```
+
+The controller holds a per-stack UI override **only while it differs from the
+baseline**; the moment it would equal the baseline, the override is dropped and
+the stack inherits again. This is enforced at the two moments they can coincide:
+
+- **Setting a stack override** to the value it would inherit anyway (or to `nil`)
+  clears it instead of storing a redundant pin. Toggling a stack back to its
+  baseline value is therefore the UI's natural "return to inherit" gesture — a
+  two-position switch needs no separate reset control.
+- **Toggling global** collapses every per-stack UI override that now equals its
+  baseline; a genuine exception (still differing) survives.
+
+Config-as-code values (`stacks[].autosync`) never collapse — they are durable
+exceptions and pin the baseline, so a global toggle does not touch config-pinned
+stacks. Only in-memory UI overrides are soft. Consequently the global switch acts
+as a true master: it moves every inheriting stack and leaves only genuine
+exceptions standing. A UI pause does **not** survive a global off→on cycle (its
+override collapses while global is off, then the stack resumes with global);
+durable, latch-style pauses belong in `skipper.yml`. See
+[ADR-0019](adr/0019-autosync-ui-overrides-collapse-to-inherit.md).
+
 ---
 
 ## Configuration (`skipper.yml`)
@@ -251,4 +281,14 @@ declared configuration.
   detected *while* it is paused. Pausing a stack with no pending changes leaves
   the queue untouched.
 - **Global off + per-stack on:** the per-stack override wins; that stack keeps
-  syncing while everything else is paused.
+  syncing while everything else is paused. Because it still differs from the
+  baseline (`on` vs global `off`), it is a genuine exception and survives global
+  toggling until it coincides with the baseline.
+- **Re-enable a stack you just paused (UI):** pausing then resuming a stack via
+  the UI leaves no override — the resume equals the baseline and
+  [collapses to inherit](#override-collapse), so the stack again follows the
+  global switch. It is not silently pinned.
+- **UI pause across a global cycle:** a stack paused only via the UI does not stay
+  paused across a global off→on cycle. Turning global off makes its baseline
+  `off`; the override (`off`) collapses; turning global on resumes it with the
+  rest. To hold a stack paused durably, declare `autosync: false` in `skipper.yml`.
