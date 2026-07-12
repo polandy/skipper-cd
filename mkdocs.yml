@@ -1,0 +1,77 @@
+site_name: skipper-cd
+site_description: Simple, fast Docker Compose CD — with first-class NixOS support
+site_url: https://polandy.github.io/skipper-cd/
+repo_url: https://github.com/polandy/skipper-cd
+repo_name: polandy/skipper-cd
+edit_uri: edit/main/docs/
+copyright: skipper-cd
+
+theme:
+  name: material
+  logo: assets/skipper-cd-logo.png
+  favicon: assets/skipper-cd-logo.png
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Configuration: configuration.md
+      - Autosync: autosync.md
+      - State File: state.md
+      - Metrics: metrics.md
+  - Deploying:
+      - On NixOS: nixos.md
+      - With Docker: docker.md
+  - Web UI:
+      - PWA: pwa.md
+      - Service Icons: service-icons-spec.md
+  - Development:
+      - E2E Tests: e2e-tests.md
+      - Architecture Decisions: adr/README.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - toc:
+      permalink: true
+  - tables
+
+plugins:
+  - search
+
+validation:
+  nav:
+    omitted_files: info
+  links:
+    not_found: warn

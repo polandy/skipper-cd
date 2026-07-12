@@ -7,7 +7,7 @@ cannot see.
 
 **Primary goal: quality-assure the Web UI requirements.** The UI is one
 embedded `internal/ui/static/index.html` whose contract is
-[`internal/ui/UI_SPEC.md`](../internal/ui/UI_SPEC.md). A dependency/version bump
+[`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md). A dependency/version bump
 or an edit to that file can silently break a control, an SSE→DOM render, a
 badge, or the drawer. The UI E2E layer exercises the **real rendered UI against
 the real backend** so those breaks fail CI. Coverage spans all four UI masks,

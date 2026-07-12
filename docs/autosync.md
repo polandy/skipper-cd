@@ -7,7 +7,7 @@ as sync resumes**. Autosync is **enabled everywhere by default** — with no
 configuration, every stack deploys automatically exactly as before.
 
 This document is the authoritative reference for the feature. UI behaviour is
-specified in [`internal/ui/UI_SPEC.md`](../internal/ui/UI_SPEC.md); the decision
+specified in [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md); the decision
 and its rationale are recorded in
 [ADR-0016](adr/0016-autosync-and-queue-via-leave-dirty.md).
 
@@ -78,10 +78,10 @@ redeploys**, and an **in-memory registry** provides the visible, ordered queue.
 
 Change detection is hash-based: a stack deploys only when its tracked files'
 SHA-256 hashes differ from the last recorded deploy (see
-[README — State File](../README.md#state-file)). When a stack has changes but
+[State File](state.md)). When a stack has changes but
 its autosync is **not** effective, skipper-cd:
 
-1. emits a `queued` [event](#events--logging) (persisted and logged),
+1. emits a `queued` [event](#events-and-logging) (persisted and logged),
 2. **does not deploy**, and
 3. **does not record the new hashes**.
 
@@ -132,7 +132,7 @@ considered); a paused `_nixos` is merely deferred and drains on resume.
 
 ---
 
-## Events & logging
+## Events and logging
 
 A deferred deploy is a first-class event with a new status:
 
