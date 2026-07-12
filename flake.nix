@@ -18,10 +18,14 @@
             pname = "skipper-cd";
             # Single source of truth, kept current by release-please.
             version = (builtins.fromJSON (builtins.readFile ./.release-please-manifest.json))."." ;
+            # The flake knows the built commit (self.shortRev) but not the branch
+            # name — so a Nix homelab build surfaces "vX.Y.Z · <sha>", identifying
+            # the exact revision without a branch label.
+            commit = self.shortRev or self.dirtyShortRev or "unknown";
             src = ./.;
             vendorHash = null;
-            # Surface the deployed version in the UI header and /api/version.
-            ldflags = [ "-X main.version=${version}" ];
+            # Surface the deployed build identity in the UI header (/api/version).
+            ldflags = [ "-X main.version=${version}" "-X main.commit=${commit}" ];
             meta = {
               description = "Lightweight Docker Compose CD triggered by Git webhooks";
               homepage = "https://github.com/polandy/skipper-cd";
