@@ -162,7 +162,7 @@ assert on.
 | `brand-version` | Header version label | `v<semver>` or `dev`; empty until `/api/version` resolves |
 | `view-toggle` | Deploys/Logs segmented control | |
 | `deploy-indicator` | Active-stack / idle indicator | |
-| `autosync-btn` | Header autosync control (drawer opener) | |
+| `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |
 | `pending-pill` | Amber pending-count pill | Hidden at zero |
 | `time-mode`, `icon-refresh`, `log-sort`, `follow-logs`, `theme-toggle` | Header toggle buttons | |
 | `conn-indicator` | Connection indicator | `data-state` = `connecting`/`connected`/`reconnecting` |

@@ -30,10 +30,12 @@ asserting **behaviour + visual snapshots**.
 > newest↔oldest + persistence), **UB4** (follow toggle autoscroll +
 > persistence), **UB5** (stack-prefix on deploy lines + `[docker]`
 > cmd-prefix on captured child output), and **UB6** (diff pill on `deploy
-> complete` lines expanding the diff panel below the line) passing and an `e2e-ui`
-> CI job (behaviour-only). Masks A and B (Logs) are complete. Remaining: masks C–D,
-> and the visual-snapshot baselines (§5), at which point `e2e-ui` moves into
-> Playwright's pinned container.
+> complete` lines expanding the diff panel below the line) passing, plus **UC1**
+> (header autosync control mirrors global state live from the `autosync` SSE
+> event) starting Mask C, and an `e2e-ui` CI job (behaviour-only). Masks A and B
+> (Logs) are complete. Remaining: the rest of mask C, mask D, and the
+> visual-snapshot baselines (§5), at which point `e2e-ui` moves into Playwright's
+> pinned container.
 
 ## 1. Scope & boundaries
 
@@ -234,8 +236,13 @@ UI suite reuses.
 
 ### 4.4 UI — Maske C: Autosync-Drawer
 
-- **UC1 — Header state.** `autosync-btn` reflects global on/off from the
-  `autosync` SSE event (not `localStorage`).
+- **UC1 — Header state.** The `autosync-btn` header control shows global autosync
+  on/off, exposed as `data-global` ("true"/"false") — the machine-readable twin of
+  its amber "paused" styling. Driven against the real backend: global sync is
+  flipped via `POST /api/autosync` from a separate client, so the browser learns of
+  it only through the server's broadcast `autosync` SSE event; the header mirrors it
+  live and again after a reload, proving it reflects server state, never
+  `localStorage`.
 - **UC2 — Pending pill.** A queued deploy makes `pending-pill` appear with the
   count; draining to zero hides it.
 - **UC3 — Drawer open/close.** Clicking the control opens `autosync-drawer`;
