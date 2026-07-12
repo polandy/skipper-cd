@@ -71,6 +71,103 @@ func TestControllerReason(t *testing.T) {
 	}
 }
 
+// overriddenOf reports whether the controller currently holds a UI override for
+// the stack (via the public snapshot, so the test does not reach into internals).
+func overriddenOf(c *Controller, name string) bool {
+	for _, s := range c.Snapshot([]string{name}).Stacks {
+		if s.Name == name {
+			return s.Overridden
+		}
+	}
+	return false
+}
+
+// A per-stack override equal to what the stack would inherit anyway must not be
+// stored: toggling a stack back to its baseline value is the "return to inherit"
+// gesture, not a sticky pin. See ADR-0019.
+func TestControllerSetStack_CollapsesRedundantOverride(t *testing.T) {
+	c := NewController(ptr(true), nil) // global on, web inherits
+
+	c.SetStack("web", ptr(false)) // forced-off (differs from baseline on)
+	if c.Effective("web") {
+		t.Fatal("forced-off override should pause the stack")
+	}
+	if !overriddenOf(c, "web") {
+		t.Fatal("an override differing from baseline must be held")
+	}
+
+	c.SetStack("web", ptr(true)) // == baseline (on) → collapse to inherit
+	if !c.Effective("web") {
+		t.Fatal("re-enabling should resume the stack")
+	}
+	if overriddenOf(c, "web") {
+		t.Fatal("a redundant override (== baseline) must collapse to inherit, not pin")
+	}
+}
+
+// Toggling global collapses every per-stack override that now equals its
+// baseline, so the global switch is a true master and a UI pause does not survive
+// a global off→on cycle. This is the chosen semantic of ADR-0019.
+func TestControllerSetGlobal_CollapsesRedundantStackOverride(t *testing.T) {
+	c := NewController(ptr(true), nil)
+
+	c.SetStack("web", ptr(false)) // forced-off while global on (a real exception)
+
+	c.SetGlobal(ptr(false)) // baseline(web) now off; override off == baseline → collapse
+	if overriddenOf(c, "web") {
+		t.Fatal("override equal to the new global baseline must collapse")
+	}
+	if c.Effective("web") {
+		t.Fatal("collapsed stack now inherits global off → paused")
+	}
+
+	c.SetGlobal(ptr(true)) // web inherits → resumes with global ("pause gone")
+	if !c.Effective("web") {
+		t.Fatal("global on must resume the collapsed stack")
+	}
+}
+
+// A per-stack override that still differs from the new global baseline is a
+// genuine exception and must survive the global toggle.
+func TestControllerSetGlobal_KeepsGenuineException(t *testing.T) {
+	c := NewController(ptr(true), nil)
+
+	c.SetStack("web", ptr(false)) // forced-off
+	c.SetGlobal(ptr(true))        // baseline stays on; off != on → kept
+
+	if c.Effective("web") {
+		t.Fatal("a genuine forced-off exception must survive a global toggle")
+	}
+	if !overriddenOf(c, "web") {
+		t.Fatal("the exception must still be an override")
+	}
+}
+
+// Config-pinned stacks pin the baseline to the config value, so global is
+// irrelevant to them and toggling a stack to its config value collapses back to
+// config (not to a UI override).
+func TestControllerSetStack_CollapsesToConfigBaseline(t *testing.T) {
+	c := NewController(ptr(true), map[string]*bool{"web": ptr(false)}) // config off
+
+	c.SetStack("web", ptr(true)) // forced-on (differs from config off)
+	if !c.Effective("web") {
+		t.Fatal("forced-on override should resume the config-off stack")
+	}
+
+	c.SetGlobal(ptr(false)) // baseline(web) = config off; on != off → kept, global irrelevant
+	if !c.Effective("web") {
+		t.Fatal("config-pinned forced-on must be unaffected by the global toggle")
+	}
+
+	c.SetStack("web", ptr(false)) // == config baseline (off) → collapse to config
+	if c.Effective("web") {
+		t.Fatal("toggling to the config value collapses to config off")
+	}
+	if overriddenOf(c, "web") {
+		t.Fatal("no UI override should remain; the stack is back on config")
+	}
+}
+
 func TestControllerSnapshot(t *testing.T) {
 	c := NewController(ptr(true), map[string]*bool{"a": ptr(false)})
 	c.SetStack("b", ptr(false)) // UI override
