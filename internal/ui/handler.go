@@ -6,15 +6,17 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-//go:embed static/index.html
+//go:embed static/index.html static/manifest.webmanifest static/sw.js static/icons
 var staticFS embed.FS
 
 // IndexHandler serves the embedded UI HTML page.
@@ -28,6 +30,45 @@ func IndexHandler() http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(data)
 	})
+}
+
+// ManifestHandler serves GET /manifest.webmanifest — the PWA web app manifest
+// that makes the UI installable. See docs/pwa.md.
+func ManifestHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, err := staticFS.ReadFile("static/manifest.webmanifest")
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
+		_, _ = w.Write(data)
+	})
+}
+
+// ServiceWorkerHandler serves GET /sw.js — the PWA service worker. The build
+// version is baked into the worker's cache name (replacing the __VERSION__
+// placeholder) so a new release changes the served bytes and the browser adopts
+// a fresh worker. Served no-cache so worker updates always propagate.
+func ServiceWorkerHandler(version string) http.Handler {
+	data, _ := staticFS.ReadFile("static/sw.js")
+	body := []byte(strings.ReplaceAll(string(data), "__VERSION__", version))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(body)
+	})
+}
+
+// IconsHandler serves the embedded PWA icons under /icons/ (used by the manifest
+// and the apple-touch-icon link). Content types follow the file extension.
+func IconsHandler() http.Handler {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		// staticFS embeds static/ at compile time, so this cannot fail.
+		panic(err)
+	}
+	return http.FileServerFS(sub)
 }
 
 // SSEHandler returns an HTTP handler that streams deploy events via

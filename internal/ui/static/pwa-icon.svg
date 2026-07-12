@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <!-- skipper-cd PWA app icon. Source for the "any"-purpose PNGs (192/512) and
+       apple-touch-icon. Fixed Catppuccin-Mocha colours (dark), solid base
+       background. Ship geometry matches the favicon in index.html. -->
+  <rect width="512" height="512" fill="#1e1e2e"/>
+  <g transform="translate(16,-36.5) scale(7.5)" stroke-linejoin="round">
+    <path d="M9 41 H55 L45 53 H19 Z" stroke="#cdd6f4" stroke-width="3.5"/>
+    <rect x="19" y="30" width="12" height="9" rx="2" fill="#fab387"/>
+    <rect x="33" y="30" width="12" height="9" rx="2" stroke="#cdd6f4" stroke-width="3"/>
+    <rect x="26" y="18" width="12" height="9" rx="2" fill="#94e2d5"/>
+    <path d="M14 60 q5 -5 10 0 t10 0 t10 0 t10 0" stroke="#cdd6f4" stroke-width="3" stroke-linecap="round" opacity=".5"/>
+  </g>
+</svg>

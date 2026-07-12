@@ -10,6 +10,16 @@
   if (localStorage.getItem('theme') === 'latte') document.documentElement.classList.add('latte');
 </script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSI+PHN0eWxlPnN2Z3tjb2xvcjojNGM0ZjY5fS5he2ZpbGw6I2ZlNjQwYn0uYntmaWxsOiMxNzkyOTl9QG1lZGlhKHByZWZlcnMtY29sb3Itc2NoZW1lOmRhcmspe3N2Z3tjb2xvcjojY2RkNmY0fS5he2ZpbGw6I2ZhYjM4N30uYntmaWxsOiM5NGUyZDV9fTwvc3R5bGU+PHBhdGggZD0iTTkgNDEgSDU1IEw0NSA1MyBIMTkgWiIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMy41IiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PHJlY3QgY2xhc3M9ImEiIHg9IjE5IiB5PSIzMCIgd2lkdGg9IjEyIiBoZWlnaHQ9IjkiIHJ4PSIyIi8+PHJlY3QgeD0iMzMiIHk9IjMwIiB3aWR0aD0iMTIiIGhlaWdodD0iOSIgcng9IjIiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2Utd2lkdGg9IjMiLz48cmVjdCBjbGFzcz0iYiIgeD0iMjYiIHk9IjE4IiB3aWR0aD0iMTIiIGhlaWdodD0iOSIgcng9IjIiLz48cGF0aCBkPSJNMTQgNjAgcTUgLTUgMTAgMCB0MTAgMCB0MTAgMCB0MTAgMCIgc3Ryb2tlPSJjdXJyZW50Q29sb3IiIHN0cm9rZS13aWR0aD0iMyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBvcGFjaXR5PSIuNSIvPjwvc3ZnPg==">
+<!-- PWA: installable app. See docs/pwa.md. theme-color follows the OS
+     light/dark preference (it cannot follow the in-page Mocha/Latte toggle),
+     matching the favicon above. Apple needs a PNG touch icon + these metas. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#1e1e2e" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eff1f5" media="(prefers-color-scheme: light)">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="skipper-cd">
 <!-- Self-hosted fonts (DM Sans + JetBrains Mono, latin subset, woff2 as data: URIs).
      Embedded so the UI is fully self-contained: no external Google Fonts request,
      works offline, and removes font load-timing nondeterminism from visual snapshots. -->
@@ -2114,6 +2124,15 @@
     .catch(function() {});
 
   connect();
+
+  // Register the service worker for installability + app-shell caching.
+  // Failure-tolerant: an insecure context (plain HTTP) simply skips it, the
+  // page keeps working as a normal site. See docs/pwa.md.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('/sw.js').catch(function() {});
+    });
+  }
 })();
 </script>
 </body>
