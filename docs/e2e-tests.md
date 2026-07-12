@@ -23,9 +23,10 @@ asserting **behaviour + visual snapshots**.
 > toggle + persistence), **UA5** (stack icon + monogram fallback), **UA6** (icon
 > refresh: POST + cache-busted reload), **UA7** (files-pill panel toggle),
 > **UA8** (diff-panel fetch + colouring), **UA9** (error-panel tied to the
-> failed row with its message), and **UD5** (header version label from
-> `/api/version`) passing and an `e2e-ui` CI job (behaviour-only). Remaining: the
-> rest of mask A (UA10), the rest of masks B–D, and the visual-snapshot baselines
+> failed row with its message), **UA10** (empty-state placeholder for a
+> stack-free, event-free instance), and **UD5** (header version label from
+> `/api/version`) passing and an `e2e-ui` CI job (behaviour-only). Mask A is
+> complete. Remaining: the rest of masks B–D, and the visual-snapshot baselines
 > (§5), at which point `e2e-ui` moves into Playwright's pinned container.
 
 ## 1. Scope & boundaries

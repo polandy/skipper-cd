@@ -416,3 +416,27 @@ test.describe('UA9: error detail', () => {
     await expect(errorPanel(page)).not.toBeEmpty();
   });
 });
+
+// UA10 — Empty state. A stack-free instance never deploys, so no event is ever
+// emitted: the UI shows the `empty-state` placeholder and keeps the deploy table
+// hidden with zero rows. showTable() would flip both on the first event, so their
+// persistence *after the SSE stream connects and replays its (empty) history*
+// proves the empty path — not a pre-connect flash.
+test.describe('UA10: empty state', () => {
+  test.use({ startOptions: { stacks: [] } });
+
+  test('a UI with no deploy events shows the empty-state placeholder and no table', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    const emptyState = page.locator('[data-testid="empty-state"]');
+    await expect(emptyState).toBeVisible();
+
+    // Wait until the SSE stream is open and its history has replayed; an event
+    // would have called showTable() by now, so the placeholder standing is proof.
+    await expect(page.locator('[data-state="connected"]')).toHaveCount(1);
+
+    await expect(emptyState).toBeVisible();
+    await expect(page.locator('[data-testid="deploy-row"]')).toHaveCount(0);
+    await expect(page.locator('#deploy-table')).toBeHidden();
+  });
+});
