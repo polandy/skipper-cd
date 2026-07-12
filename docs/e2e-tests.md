@@ -32,8 +32,9 @@ asserting **behaviour + visual snapshots**.
 > cmd-prefix on captured child output), and **UB6** (diff pill on `deploy
 > complete` lines expanding the diff panel below the line) passing, plus **UC1**
 > (header autosync control mirrors global state live from the `autosync` SSE
-> event) starting Mask C, and an `e2e-ui` CI job (behaviour-only). Masks A and B
-> (Logs) are complete. Remaining: the rest of mask C, mask D, and the
+> event) and **UC2** (pending pill shows the live queue count while paused and
+> hides on drain) into Mask C, and an `e2e-ui` CI job (behaviour-only). Masks A
+> and B (Logs) are complete. Remaining: the rest of mask C, mask D, and the
 > visual-snapshot baselines (§5), at which point `e2e-ui` moves into Playwright's
 > pinned container.
 
@@ -243,8 +244,12 @@ UI suite reuses.
   it only through the server's broadcast `autosync` SSE event; the header mirrors it
   live and again after a reload, proving it reflects server state, never
   `localStorage`.
-- **UC2 — Pending pill.** A queued deploy makes `pending-pill` appear with the
-  count; draining to zero hides it.
+- **UC2 — Pending pill.** The amber `pending-pill` is hidden when nothing is
+  queued. Pausing autosync and then pushing a change defers the paused stack, so
+  the server registers it as pending and broadcasts a `queue` event; the pill
+  appears carrying the live queue count. Resuming autosync drains the queue and
+  the pill hides again — it tracks server queue depth over SSE, not a client
+  guess.
 - **UC3 — Drawer open/close.** Clicking the control opens `autosync-drawer`;
   `Esc` and outside-click close it.
 - **UC4 — Global switch.** Toggling `global-switch` posts
