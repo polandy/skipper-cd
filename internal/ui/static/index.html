@@ -989,11 +989,8 @@
   #log-view { display: none; }
   body.view-logs #log-view { display: block; }
   body.view-logs #deploy-table, body.view-logs #empty-state { display: none !important; }
-  body.view-logs #time-mode, body.view-logs #icon-refresh { display: none; }
+  body.view-logs #time-mode { display: none; }
 
-  #icon-refresh svg { width: 15px; height: 15px; }
-  #icon-refresh.spinning svg { animation: icon-spin 0.6s ease; }
-  @keyframes icon-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
   #follow-logs, #log-sort { display: none; }
   body.view-logs #follow-logs, body.view-logs #log-sort { display: flex; }
 
@@ -1139,13 +1136,6 @@
     <button class="filter-toggle" id="time-mode" data-testid="time-mode" title="Switch to absolute time">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
       <span>abs time</span>
-    </button>
-    <button class="filter-toggle" id="icon-refresh" data-testid="icon-refresh" title="Reload service icons (press i)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
-        <polyline points="21 3 21 9 15 9"/>
-      </svg>
-      <span>icons</span>
     </button>
     <button class="filter-toggle" id="log-sort" data-testid="log-sort" title="Show oldest log lines first">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
@@ -1592,24 +1582,15 @@
 
   applyTimeMode();
 
-  // Icon refresh — button and the "i" hotkey both clear the server-side icon
-  // cache and reload every visible icon.
-  const iconRefreshBtn = document.getElementById('icon-refresh');
-
-  function triggerIconRefresh() {
-    iconRefreshBtn.classList.remove('spinning');
-    void iconRefreshBtn.offsetWidth; // restart the spin animation
-    iconRefreshBtn.classList.add('spinning');
-    refreshIcons();
-  }
-
-  iconRefreshBtn.addEventListener('click', triggerIconRefresh);
-
+  // Icon refresh — the "i" hotkey clears the server-side icon cache and reloads
+  // every visible icon. Intentionally hotkey-only (no header button): a manual
+  // refresh is rarely needed, so it stays out of the header. The endpoint is
+  // also reachable directly (POST /api/icons/refresh) for ops use.
   document.addEventListener('keydown', function(e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     var tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
-    if (e.key === 'i') triggerIconRefresh();
+    if (e.key === 'i') refreshIcons();
   });
 
   // Theme toggle (default: Catppuccin Mocha; Latte is the opt-in light theme)
