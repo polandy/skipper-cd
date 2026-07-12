@@ -1,6 +1,6 @@
 # ADR-0014: NixOS rebuild runs in a transient systemd unit
 
-Status: accepted
+Status: accepted (amended 2026-07-12 — see "Amendment")
 Date: 2026-07-10
 
 ## Context
@@ -36,6 +36,49 @@ survived this race by timing luck.
   rebuild as failed, deploys no stacks, and exits promptly. The restarted
   service's startup sync then deploys the stacks (nix hashes already match,
   so the rebuild is not repeated).
+
+## Amendment (2026-07-12): the `--wait` client kept the deadlock — fire-and-forget instead
+
+The original decision did **not** actually break the deadlock, and it recurred
+in production on the 0.7.0→0.8.0 self-update: the switch left the host on the
+old generation with skipper stopped (`skipper-nixos-rebuild.service` exited
+`status=120` the instant `skipper-cd.service` was stopped).
+
+**Why the transient unit did not help:** `systemd-run --wait` keeps a *client*
+process, and that client is a child of skipper — it lives in
+`skipper-cd.service`'s cgroup. So the very deadlock this ADR set out to fix was
+still present, just relocated into the client:
+
+1. the rebuild's `switch-to-configuration` runs `systemctl stop skipper-cd.service`;
+2. that stop cannot complete until every process in the cgroup exits —
+   including the `systemd-run --wait` client;
+3. the client will not exit until the rebuild unit finishes;
+4. the rebuild is blocked in step 1 waiting for the stop.
+
+`WaitDelay` (below) only made skipper *itself* exit; the client kill it forced
+still left the switch half-applied. The transient **unit** was correctly outside
+skipper's cgroup — but the **client that waited on it was not**.
+
+**Fix:** run the rebuild *fire-and-forget* — `systemd-run --unit=skipper-nixos-rebuild
+--setenv=PATH=… nixos-rebuild switch --flake <flake>` with **no** `--wait`, `--pipe`,
+`--collect`, or `--same-dir`. `systemd-run` returns as soon as the unit starts, so
+**no client remains in skipper's cgroup** and the stop in step 2 completes
+immediately — the deadlock cannot form. skipper then polls the unit to completion
+using `systemctl is-active`/`is-failed` **exit codes** (no output capture, so the
+`Runner` interface is unchanged); on shutdown the poll is abandoned against the
+shutdown context and the detached unit finishes the switch on its own. Dropping
+`--collect` is required so a *failed* unit lingers for `is-failed` to observe; a
+`systemctl reset-failed` before each run frees the fixed name (a successful unit
+is garbage-collected automatically). Implemented in `internal/nixos.Rebuild`
+(`waitForUnit`).
+
+Consequence for output/logging: the rebuild's live output no longer streams into
+skipper's log pipeline (ADR-0013) — it lives only in the `skipper-nixos-rebuild`
+journal unit (`journalctl -u skipper-nixos-rebuild`). This is an acceptable trade
+for a switch that cannot deadlock; during a self-restart skipper could not show
+the tail of its own restart anyway. The "Implementation note: `WaitDelay`" below
+is therefore **superseded** for the rebuild path (WaitDelay stays in the runner
+as a general safeguard for any command whose grandchild holds the output pipe).
 
 ## Consequences
 

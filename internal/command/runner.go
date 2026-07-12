@@ -17,15 +17,15 @@ type Runner interface {
 }
 
 // defaultWaitDelay bounds how long cmd.Wait keeps blocking on a command's I/O
-// pipes after the process itself has exited or been killed. It exists for the
-// self-update shutdown case (ADR-0014): the nixos-rebuild runs under
-// `systemd-run --pipe`, so its transient unit inherits this process's stdout
-// pipe. When shutdown abandons the wait and kills the systemd-run client, that
-// transient unit keeps running and holds the pipe's write end open, so the
-// pipe never reaches EOF and cmd.Wait would block forever — wedging shutdown.
-// WaitDelay force-closes the pipes once it elapses so Run returns promptly; the
-// transient unit carries on independently. It only starts counting after exit
-// or context cancellation, so a healthy long-running command is unaffected.
+// pipes after the process itself has exited or been killed. A grandchild that
+// inherits and holds the stdout pipe open (e.g. a backgrounded process a
+// command spawns) would otherwise keep the pipe from reaching EOF, so cmd.Wait
+// could block long after the command itself is gone. WaitDelay force-closes the
+// pipes once it elapses so Run returns promptly. It only starts counting after
+// exit or context cancellation, so a healthy long-running command is
+// unaffected. (The nixos-rebuild self-update no longer relies on this: it runs
+// fire-and-forget without --pipe, fully detached from this process — see
+// internal/nixos.Rebuild and ADR-0014.)
 const defaultWaitDelay = 10 * time.Second
 
 // ShellRunner is the real Runner that executes commands via os/exec.

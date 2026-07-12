@@ -2,7 +2,7 @@ package nixos
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,10 +10,18 @@ import (
 	"testing"
 )
 
-// recordingRunner captures all commands without executing them.
-type recordingRunner struct {
-	calls        []runCall
-	errOnCommand string
+// fakeUnitRunner records commands and scripts the transient-unit lifecycle that
+// Rebuild polls: systemd-run starts it, then `systemctl is-active` reports it
+// active for activePolls probes before going inactive, at which point
+// `systemctl is-failed` reflects unitFailed. onCall fires per call so a test can
+// e.g. cancel the context mid-poll.
+type fakeUnitRunner struct {
+	calls       []runCall
+	failStart   bool // make the systemd-run start fail
+	activePolls int  // how many is-active probes report "active" before inactive
+	unitFailed  bool // is-failed result once the unit is inactive
+	activeSeen  int
+	onCall      func(name string, args []string)
 }
 
 type runCall struct {
@@ -22,12 +30,38 @@ type runCall struct {
 	args []string
 }
 
-func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
+func (r *fakeUnitRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
 	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
-	if r.errOnCommand != "" && slices.Contains(args, r.errOnCommand) {
-		return fmt.Errorf("simulated error for command: %s", r.errOnCommand)
+	if r.onCall != nil {
+		r.onCall(name, args)
 	}
-	return nil
+	switch {
+	case name == "systemd-run":
+		if r.failStart {
+			return errors.New("simulated systemd-run start failure")
+		}
+		return nil
+	case name == "systemctl" && len(args) > 0 && args[0] == "is-active":
+		r.activeSeen++
+		if r.activeSeen <= r.activePolls {
+			return nil // still active
+		}
+		return errors.New("inactive")
+	case name == "systemctl" && len(args) > 0 && args[0] == "is-failed":
+		if r.unitFailed {
+			return nil // exit 0 == unit is in failed state
+		}
+		return errors.New("not failed")
+	default: // reset-failed and anything else succeed silently
+		return nil
+	}
+}
+
+// callNames returns the command names in call order, for asserting sequence.
+func (r *fakeUnitRunner) hasCall(name string, argMatch string) bool {
+	return slices.ContainsFunc(r.calls, func(c runCall) bool {
+		return c.name == name && (argMatch == "" || slices.Contains(c.args, argMatch))
+	})
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -103,31 +137,45 @@ func TestHashFiles_SkipsGitDirectory(t *testing.T) {
 
 // --- Rebuild tests ---
 
-func TestRebuild_RunsInDetachedTransientUnit(t *testing.T) {
+// findCall returns the first recorded call for a command name.
+func findCall(t *testing.T, r *fakeUnitRunner, name string) runCall {
+	t.Helper()
+	for _, c := range r.calls {
+		if c.name == name {
+			return c
+		}
+	}
+	t.Fatalf("no %s call recorded; calls=%v", name, r.calls)
+	return runCall{}
+}
+
+func TestRebuild_StartsFireAndForgetTransientUnitThenReportsSuccess(t *testing.T) {
 	dir := t.TempDir()
-	runner := &recordingRunner{}
+	runner := &fakeUnitRunner{activePolls: 2} // active for two probes, then success
 	r := New(runner)
+	r.pollInterval = 0 // no real sleeping in tests
 
 	if err := r.Rebuild(context.Background(), dir, ".#nuc"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(runner.calls) != 1 {
-		t.Fatalf("expected 1 command, got %d", len(runner.calls))
+
+	// A stale failed unit is cleared before starting so the fixed name is reusable.
+	if !runner.hasCall("systemctl", "reset-failed") {
+		t.Errorf("expected a systemctl reset-failed call, got calls=%v", runner.calls)
 	}
 
-	c := runner.calls[0]
-	// systemd-run detaches the rebuild from skipper's cgroup so it survives
-	// when the switch restarts the skipper service itself (ADR-0014).
-	if c.name != "systemd-run" {
-		t.Fatalf("expected systemd-run, got %s", c.name)
-	}
-	for _, want := range []string{"--unit=skipper-nixos-rebuild", "--collect", "--wait", "--pipe", "--same-dir"} {
-		if !slices.Contains(c.args, want) {
-			t.Errorf("expected argument %q, got args=%v", want, c.args)
+	c := findCall(t, runner, "systemd-run")
+	// Fire-and-forget: NO --wait/--pipe (they would keep a client in skipper's
+	// cgroup and deadlock the self-restart) and NO --collect (a failed unit must
+	// linger so is-failed can see it). See ADR-0014.
+	for _, forbidden := range []string{"--wait", "--pipe", "--collect", "--same-dir"} {
+		if slices.Contains(c.args, forbidden) {
+			t.Errorf("did not expect %q in fire-and-forget args, got %v", forbidden, c.args)
 		}
 	}
-	// Transient units start with a minimal environment; nixos-rebuild needs
-	// skipper's PATH.
+	if !slices.Contains(c.args, "--unit=skipper-nixos-rebuild") {
+		t.Errorf("expected --unit=skipper-nixos-rebuild, got %v", c.args)
+	}
 	if !slices.ContainsFunc(c.args, func(a string) bool { return strings.HasPrefix(a, "--setenv=PATH=") }) {
 		t.Errorf("expected PATH to be propagated, got args=%v", c.args)
 	}
@@ -138,14 +186,54 @@ func TestRebuild_RunsInDetachedTransientUnit(t *testing.T) {
 	if c.dir != dir {
 		t.Errorf("expected dir %s, got %s", dir, c.dir)
 	}
+	// It actually polled the unit before returning success.
+	if !runner.hasCall("systemctl", "is-active") {
+		t.Errorf("expected is-active polling, got calls=%v", runner.calls)
+	}
 }
 
-func TestRebuild_ReturnsErrorOnFailure(t *testing.T) {
-	runner := &recordingRunner{errOnCommand: "switch"}
+func TestRebuild_ReturnsErrorWhenUnitFails(t *testing.T) {
+	runner := &fakeUnitRunner{activePolls: 1, unitFailed: true}
 	r := New(runner)
+	r.pollInterval = 0
+
+	err := r.Rebuild(context.Background(), t.TempDir(), ".#nuc")
+	if err == nil {
+		t.Fatal("expected error when the rebuild unit ends failed")
+	}
+	if !runner.hasCall("systemctl", "is-failed") {
+		t.Errorf("expected an is-failed probe, got calls=%v", runner.calls)
+	}
+}
+
+func TestRebuild_ReturnsErrorWhenStartFails(t *testing.T) {
+	runner := &fakeUnitRunner{failStart: true}
+	r := New(runner)
+	r.pollInterval = 0
 
 	if err := r.Rebuild(context.Background(), t.TempDir(), ".#nuc"); err == nil {
-		t.Fatal("expected error when nixos-rebuild fails")
+		t.Fatal("expected error when systemd-run fails to start the unit")
+	}
+}
+
+// TestRebuild_AbandonsWaitOnContextCancel proves the self-restart path: when the
+// switch restarts skipper (shutdown cancels the context) the poll abandons and
+// returns promptly instead of blocking, letting the detached unit finish the
+// switch. The unit here stays "active" forever, so only cancellation ends it.
+func TestRebuild_AbandonsWaitOnContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	runner := &fakeUnitRunner{activePolls: 1 << 30} // never goes inactive on its own
+	runner.onCall = func(name string, args []string) {
+		if name == "systemctl" && len(args) > 0 && args[0] == "is-active" {
+			cancel() // simulate shutdown arriving during the rebuild
+		}
+	}
+	r := New(runner)
+	r.pollInterval = 0
+
+	err := r.Rebuild(ctx, t.TempDir(), ".#nuc")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled (abandoned wait), got %v", err)
 	}
 }
 
