@@ -173,6 +173,12 @@ export class Skipper {
         writeFileSync(join(origin, name, 'icon.svg'), stackIcons[name]);
       }
     }
+    // With no stacks there is nothing to stage, but the origin still needs a HEAD
+    // on `main` for skipper to clone and reset onto; a placeholder gives the
+    // stack-free instance (UA10 empty state) a valid, deploy-free repo.
+    if (stacks.length === 0) {
+      writeFileSync(join(origin, '.keep'), '');
+    }
     git(origin, 'add', '.');
     git(origin, 'commit', '-m', 'initial');
 
