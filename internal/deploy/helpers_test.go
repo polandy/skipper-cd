@@ -30,6 +30,19 @@ func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name st
 		time.Sleep(r.delay)
 	}
 	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
+	// The nixos-rebuild runs fire-and-forget and is polled via `systemctl
+	// is-active`/`is-failed` exit codes (see internal/nixos.Rebuild). Model the
+	// unit as already finished successfully so the poll returns at once: not
+	// active (exit non-zero) and not failed (exit non-zero). A rebuild *failure*
+	// is instead simulated via errOnCommand:"switch" on the systemd-run start.
+	if name == "systemctl" && len(args) > 0 {
+		switch args[0] {
+		case "is-active":
+			return fmt.Errorf("inactive")
+		case "is-failed":
+			return fmt.Errorf("not failed")
+		}
+	}
 	if r.errOnCommand != "" && slices.Contains(args, r.errOnCommand) {
 		return fmt.Errorf("simulated error for command: %s", r.errOnCommand)
 	}
