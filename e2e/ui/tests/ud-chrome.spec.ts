@@ -1,18 +1,18 @@
 import { test, expect } from '../fixtures/test';
-import { manifestVersion } from '../fixtures/harness';
+import { buildCommit, manifestVersion } from '../fixtures/harness';
 
 // Maske D: Global chrome. See docs/e2e-tests.md §4.5.
 
-// UD5 — Version label. The header shows the deployed skipper-cd version as
-// `v<semver>`. globalSetup builds the binary with the version injected via
-// -ldflags from .release-please-manifest.json (the same source the Docker/Nix
-// builds use), so this asserts the full through-line: ldflags → /api/version →
-// header render, against the exact version that ships.
-test('UD5: header shows the deployed version', async ({ page, skipper }) => {
+// UD5 — Build-identity label. The header shows the deployed build as
+// `v<semver> · <commit>`. globalSetup builds the binary with the version and
+// commit injected via -ldflags (the same source the Docker/Nix builds use, no
+// branch → the version path), so this asserts the full through-line: ldflags →
+// /api/version → header render, against the exact build that ships.
+test('UD5: header shows the deployed build identity', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
 
   const label = page.locator('[data-testid="brand-version"]');
-  await expect(label).toHaveText(`v${manifestVersion()}`);
+  await expect(label).toHaveText(`v${manifestVersion()} · ${buildCommit}`);
 });
 
 // UD4 — Responsive ≤700px (compact header + table collapse). One test covering
