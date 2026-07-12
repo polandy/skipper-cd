@@ -159,6 +159,8 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    /* Let the version label clip (ellipsis) instead of widening the header. */
+    min-width: 0;
   }
 
   .brand-icon {
@@ -1077,8 +1079,9 @@
   @media (max-width: 700px) {
     header { padding: 0 12px; height: 48px; }
     .status-area { gap: 10px; }
-    /* Wordmark, tag and version are dropped — the ship logo alone carries the
-       brand on mobile so the control row fits without horizontal scroll. */
+    /* Wordmark and tag are dropped — the ship logo alone carries the brand on
+       mobile so the control row fits without horizontal scroll. The version is
+       kept in portrait (re-shown below) but dropped in the tighter landscape. */
     .brand-name { display: none; }
     .brand-tag { display: none; }
     .brand-version { display: none; }
@@ -1107,6 +1110,20 @@
     .cell-duration { grid-column: 2; grid-row: 2; text-align: right; }
     .col-files { display: none; }
     .event-row:has(.files-pill) { cursor: pointer; }
+  }
+
+  /* Portrait phones keep the build identity next to the logo. It clips with an
+     ellipsis and can shrink (min-width:0) so the header never scrolls sideways;
+     the full string stays available via the title tooltip / long-press. */
+  @media (max-width: 700px) and (orientation: portrait) {
+    .brand-version {
+      display: block;
+      max-width: 34vw;
+      min-width: 0;
+      flex-shrink: 1;
+      font-size: 10px;
+      margin-left: 0;
+    }
   }
 </style>
 </head>
@@ -2148,7 +2165,11 @@
       if (!el) return;
       var base = d.version === 'dev' ? 'dev' : 'v' + d.version;
       var head = (d.branch && d.branch !== 'main') ? d.branch : base;
-      el.textContent = d.commit ? head + ' · ' + d.commit : head;
+      var text = d.commit ? head + ' · ' + d.commit : head;
+      el.textContent = text;
+      // The label may be clipped (ellipsis) on narrow viewports or long branch
+      // names; the title exposes the full identity on hover / long-press.
+      el.title = text;
     })
     .catch(function() {});
 
