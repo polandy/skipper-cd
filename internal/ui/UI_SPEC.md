@@ -38,7 +38,6 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 - **Deploy indicator** — shows active stack name(s) or `idle`; amber pulsing dot when deploying. Visible in both views.
 - **Autosync control** — a single button showing global autosync state; when deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in both views.
 - **Time mode toggle** — switches Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). State persisted in `localStorage` key `timeMode`. Tooltip always shows the other format. Deploys view only.
-- **Icon refresh** — a refresh-glyph action button (not a toggle) that clears the server-side icon cache (`POST /api/icons/refresh`) and reloads every visible icon with a cache-busting query param, so renamed stacks and newly published icons appear. Also bound to the **`i`** hotkey (ignored while typing in an input). Brief spin animation on activation. Deploys view only.
 - **Sort toggle** — reverses log order. Default: inactive (newest first, newest line at the top). Active flips to oldest-first (terminal semantics, newest at the bottom). State persisted in `localStorage` key `logSort` (`desc` / `asc`). Flipping resets the visible window to one page. Logs view only.
 - **Follow toggle** — auto-scrolls the log pane to the newest line (the top when newest-first, the bottom when oldest-first) on every append. Default: active. State persisted in `localStorage` key `followLogs`. Logs view only.
 - **Theme toggle** — switches between Mocha (dark, default) and Latte (light). State persisted in `localStorage` key `theme` (`latte` / `mocha`). Visible in both views.
@@ -54,7 +53,9 @@ Rows are prepended (newest first) with a slide-in animation. Time cells show rel
 
 ### Stack icons
 
-The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain`) left of the name for recognition. The image is served same-origin from `GET /api/icons/<stack>` (no CSP concern); on any load error the chip swaps to a **monogram** — the stack's first letter on an accent-tinted chip — via the `<img>` `error` handler, so a broken image never shows. Icons are resolved server-side (repo `icon.svg`/`icon.png` override → configured `icon:` slug → auto-match on the stack name → 404 → monogram) and cached on the host; see the README "Service Icons" section. Reload via the header **Icon refresh** control or the `i` hotkey.
+The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain`) left of the name for recognition. The image is served same-origin from `GET /api/icons/<stack>` (no CSP concern); on any load error the chip swaps to a **monogram** — the stack's first letter on an accent-tinted chip — via the `<img>` `error` handler, so a broken image never shows. Icons are resolved server-side (repo `icon.svg`/`icon.png` override → configured `icon:` slug → auto-match on the stack name → 404 → monogram) and cached on the host; see the README "Service Icons" section.
+
+**Refreshing icons.** A manual refresh clears the server-side icon cache (`POST /api/icons/refresh`) and reloads every visible icon with a cache-busting query param, so renamed stacks and newly published icons appear. It is deliberately **not a header control** — rarely needed, so it stays off the header — and is triggered by the **`i`** hotkey (global, ignored only while typing in an input). The endpoint is also reachable directly (e.g. `curl -X POST …/api/icons/refresh`) for ops use.
 
 ### Status badges
 
@@ -185,7 +186,7 @@ assert on.
 | `deploy-indicator` | Active-stack / idle indicator | |
 | `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |
 | `pending-pill` | Amber pending-count pill | Hidden at zero |
-| `time-mode`, `icon-refresh`, `log-sort`, `follow-logs`, `theme-toggle` | Header toggle buttons | |
+| `time-mode`, `log-sort`, `follow-logs`, `theme-toggle` | Header toggle buttons | |
 | `conn-indicator` | Connection indicator | `data-state` = `connecting`/`connected`/`reconnecting` |
 | `empty-state` | Awaiting-events placeholder | |
 | `deploy-row` | A deploy table row | `data-stack`, `data-status` |
@@ -219,7 +220,7 @@ assert on.
 - **View toggle** — unchanged (the only text control; `deploys | logs` still fits).
 - **Deploy indicator** — collapses to its coloured dot; the active-stack / `idle` text is hidden and mirrored into the element's `title`/`aria-label`.
 - **Autosync control** — keeps its icon and pending-count pill; only the `autosync` label is hidden (its static `title` remains).
-- **Time-mode / icon-refresh / sort / follow / theme** — bare switches or glyphs, labels hidden, tooltips remain.
+- **Time-mode / sort / follow / theme** — bare switches or glyphs, labels hidden, tooltips remain.
 - **Connection indicator** — collapses to its coloured dot; the `connecting` / `connected` / `reconnecting` text is hidden and mirrored into the element's `title`.
 
 The `.status-area` gap tightens to 10 px and the header padding to 12 px so the row fits a 360 px viewport without overflow.

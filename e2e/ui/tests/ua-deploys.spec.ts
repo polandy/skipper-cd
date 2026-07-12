@@ -238,11 +238,11 @@ test.describe('UA5: stack icon + monogram fallback', () => {
   });
 });
 
-// UA6 — Icon refresh. The header refresh button and the `i` hotkey both clear the
-// server icon cache (POST /api/icons/refresh) and reload every visible icon with a
-// cache-busting `?v=<ts>` query so renamed or newly published icons appear. The
-// test observes the network directly: the POST fires and the follow-up icon
-// request carries the `?v=` param. The button also gets a `spinning` class.
+// UA6 — Icon refresh. The `i` hotkey clears the server icon cache
+// (POST /api/icons/refresh) and reloads every visible icon with a cache-busting
+// `?v=<ts>` query so renamed or newly published icons appear. There is no header
+// button — the refresh is deliberately hotkey-only. The test observes the network
+// directly: the POST fires and the follow-up icon request carries the `?v=` param.
 test.describe('UA6: icon refresh', () => {
   test.use({
     startOptions: {
@@ -268,20 +268,16 @@ test.describe('UA6: icon refresh', () => {
     await Promise.all([post, busted]);
   };
 
-  test('the refresh button POSTs /api/icons/refresh and reloads icons cache-busted', async ({ page, skipper }) => {
+  test('the "i" hotkey POSTs /api/icons/refresh and reloads icons cache-busted', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     await expect(iconChip(page).locator('img')).toHaveCount(1); // initial load settled
 
-    const btn = page.locator('[data-testid="icon-refresh"]');
-    await expectRefresh(page, () => btn.click());
-    await expect(btn).toHaveClass(/\bspinning\b/);
+    await expectRefresh(page, () => page.keyboard.press('i'));
   });
 
-  test('the "i" hotkey does the same', async ({ page, skipper }) => {
+  test('there is no header icon-refresh button', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
-    await expect(iconChip(page).locator('img')).toHaveCount(1);
-
-    await expectRefresh(page, () => page.keyboard.press('i'));
+    await expect(page.locator('[data-testid="icon-refresh"]')).toHaveCount(0);
   });
 });
 

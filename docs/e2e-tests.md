@@ -188,8 +188,8 @@ UI suite reuses.
 - **UA5 — Stack icon + monogram fallback.** A resolvable icon renders in
   `stack-icon`; a stack whose icon 404s falls back to the monogram chip (no
   broken image).
-- **UA6 — Icon refresh.** The `i` hotkey / refresh button issues
-  `POST /api/icons/refresh` and reloads icons with a cache-busting param.
+- **UA6 — Icon refresh.** The `i` hotkey issues `POST /api/icons/refresh`
+  and reloads icons with a cache-busting param (there is no header button).
 - **UA7 — Files pill.** For an event with `changed_files`, clicking `files-pill`
   inserts `files-panel` below the row; clicking again removes it.
 - **UA8 — Diff panel.** For a `has_diffs` event, clicking the pill fetches
@@ -340,7 +340,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Skipped deploys never render a row | **UA3** |
 | Time mode toggle + persistence | **UA4** |
 | Stack icon chip + monogram fallback | **UA5** |
-| Icon refresh control + `i` hotkey | **UA6** |
+| Icon refresh via `i` hotkey | **UA6** |
 | Files pill expandable panel | **UA7** |
 | Diff panel fetch + colouring | **UA8** |
 | Error detail panel | **UA9** |
