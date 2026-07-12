@@ -182,20 +182,6 @@
     color: var(--accent);
   }
 
-  .brand-tag {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 500;
-    color: var(--text-muted);
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    padding: 2px 7px;
-    border-radius: 4px;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    margin-left: 4px;
-  }
-
   .brand-version {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -1072,10 +1058,9 @@
   @media (max-width: 700px) {
     header { padding: 0 12px; height: 48px; }
     .status-area { gap: 10px; }
-    /* Wordmark, tag and version are dropped — the ship logo alone carries the
+    /* Wordmark and version are dropped — the ship logo alone carries the
        brand on mobile so the control row fits without horizontal scroll. */
     .brand-name { display: none; }
-    .brand-tag { display: none; }
     .brand-version { display: none; }
     /* Bare switches — the labels don't fit next to the view toggle. */
     .filter-toggle span { display: none; }
@@ -1119,7 +1104,6 @@
       </svg>
     </div>
     <span class="brand-name" data-testid="brand-name">skipper<span>-cd</span></span>
-    <span class="brand-tag">live</span>
     <span class="brand-version" id="brand-version" data-testid="brand-version"></span>
   </div>
   <div class="status-area">

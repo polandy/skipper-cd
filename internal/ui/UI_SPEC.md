@@ -31,7 +31,7 @@ Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). 
 
 Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
-**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), `LIVE` pill, and a muted **version label** showing the deployed skipper-cd version (`v<semver>`, e.g. `v0.7.0`; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version` and left empty until it resolves. The favicon is the same ship as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
+**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), and a muted **version label** showing the deployed skipper-cd version (`v<semver>`, e.g. `v0.7.0`; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version` and left empty until it resolves. The favicon is the same ship as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
 
 **Header — right:**
 - **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
@@ -206,7 +206,7 @@ assert on.
 
 ## Responsive (≤ 700 px)
 
-**Header — compact single row.** The header collapses to one 48 px row that **must never scroll horizontally**. The brand is the ship logo *alone*: the `skipper-cd` wordmark, the `LIVE` tag and the version label are all hidden. Every control keeps its glyph but drops its text label:
+**Header — compact single row.** The header collapses to one 48 px row that **must never scroll horizontally**. The brand is the ship logo *alone*: the `skipper-cd` wordmark and the version label are both hidden. Every control keeps its glyph but drops its text label:
 
 - **View toggle** — unchanged (the only text control; `deploys | logs` still fits).
 - **Deploy indicator** — collapses to its coloured dot; the active-stack / `idle` text is hidden and mirrored into the element's `title`/`aria-label`.
