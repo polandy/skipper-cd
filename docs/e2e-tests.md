@@ -28,11 +28,12 @@ asserting **behaviour + visual snapshots**.
 > `/api/version`), **UB1** (deploys↔logs view toggle + persistence), **UB2**
 > (log lines + INFO/WARN/ERROR level badges), **UB3** (sort toggle
 > newest↔oldest + persistence), **UB4** (follow toggle autoscroll +
-> persistence), and **UB5** (stack-prefix on deploy lines + `[docker]`
-> cmd-prefix on captured child output) passing and an `e2e-ui` CI job
-> (behaviour-only). Mask A is complete; Mask B (Logs) is underway. Remaining: the
-> rest of masks B–D, and the visual-snapshot baselines (§5), at which point
-> `e2e-ui` moves into Playwright's pinned container.
+> persistence), **UB5** (stack-prefix on deploy lines + `[docker]`
+> cmd-prefix on captured child output), and **UB6** (diff pill on `deploy
+> complete` lines expanding the diff panel below the line) passing and an `e2e-ui`
+> CI job (behaviour-only). Masks A and B (Logs) are complete. Remaining: masks C–D,
+> and the visual-snapshot baselines (§5), at which point `e2e-ui` moves into
+> Playwright's pinned container.
 
 ## 1. Scope & boundaries
 
@@ -222,8 +223,14 @@ UI suite reuses.
   makes the stub `docker` print a line on `up` (captured as a `[docker]` child
   line, `data-level="cmd"`), while the same failing `up` emits the `[web]`
   stack-tagged ERROR line — the two prefix shapes are asserted end-to-end.
-- **UB6 — Diff pill in logs.** A `deploy complete` line with `event_id` renders a
-  `diff-pill`; clicking inserts the same diff panel below the line.
+- **UB6 — Diff pill in logs.** A `deploy complete` line carries the deploy event's
+  `event_id`, rendered as a `diff-pill`; clicking it fetches
+  `/api/events/{id}/diffs` and inserts the same `diff-panel` directly below the log
+  line, and clicking again collapses it — the log-view twin of UA8. Driven against
+  the real backend: a second deploy (webhook bumping the compose image) is the first
+  with a prior commit to diff against, so its `deploy complete` line — the newest,
+  hence topmost under the default descending sort — is the one whose pill expands a
+  populated panel (`nginx:1.26`), not the plain "No diff recorded" note.
 
 ### 4.4 UI — Maske C: Autosync-Drawer
 

@@ -273,3 +273,57 @@ test.describe('UB5: log-line prefixes', () => {
     await expect(stack.locator('[data-testid="cmd-prefix"]')).toHaveCount(0);
   });
 });
+
+// UB6 — Diff pill in the log view. A `deploy complete` line carries the deploy
+// event's `event_id`, rendered as a `diff-pill`. Clicking it fetches
+// `/api/events/{id}/diffs` and inserts the same `diff-panel` directly below the
+// log line (clicking again collapses it) — the log-view twin of UA8's deploy-row
+// diff. The startup deploy is the stack's first (no prior commit → empty diffs); a
+// second deploy that bumps the compose image is the first with a real diff, so its
+// `deploy complete` line — the newest, hence topmost under the default descending
+// sort — is the one whose pill expands a populated panel. We drive the real backend
+// (webhook → deploy → SSE) and select only by `data-testid`.
+test.describe('UB6: diff pill in logs', () => {
+  // Both deploy-complete lines carry a diff-pill; the newest (topmost) is the
+  // second deploy, the only one with a real diff to show.
+  const newestDiffPill = (page: Page) =>
+    page.locator('[data-testid="log-line"] [data-testid="diff-pill"]').first();
+  const diffPanel = (page: Page) => page.locator('[data-testid="diff-panel"]');
+
+  test('clicking a deploy line pill expands the diff panel below it', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+
+    // A second deploy bumps the image → its `deploy complete` line has a real diff.
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    // Both deploys logged a `deploy complete` line, each with a diff-pill; wait for
+    // both so `.first()` is deterministically the newest (the one with the diff).
+    await expect(page.locator('[data-testid="diff-pill"]')).toHaveCount(2);
+    await expect(diffPanel(page)).toHaveCount(0);
+
+    // Clicking the pill issues the diffs fetch and expands a diff-panel as the log
+    // line's own next sibling — not somewhere else in the pane.
+    const diffsReq = page.waitForRequest((r) => /\/api\/events\/[^/]+\/diffs$/.test(r.url()));
+    await newestDiffPill(page).click();
+    await diffsReq;
+
+    await expect(diffPanel(page)).toHaveCount(1);
+    await expect(diffPanel(page)).toBeVisible();
+    const siblingTestid = await newestDiffPill(page).evaluate(
+      (pill) =>
+        pill.closest('[data-testid="log-line"]')?.nextElementSibling?.getAttribute('data-testid') ??
+        null,
+    );
+    expect(siblingTestid).toBe('diff-panel');
+
+    // It is a populated diff (the image bump), proving it is the diff-panel and not
+    // the plain "No diff recorded" note.
+    await expect(diffPanel(page)).toContainText('nginx:1.26');
+
+    // Clicking again collapses it.
+    await newestDiffPill(page).click();
+    await expect(diffPanel(page)).toHaveCount(0);
+  });
+});
