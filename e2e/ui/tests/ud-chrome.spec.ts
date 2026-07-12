@@ -60,4 +60,47 @@ test.describe('UD4: responsive ≤700px', () => {
     await successRow(page).click();
     await expect(filesPanel(page)).toHaveCount(0);
   });
+
+  // The four header filter-toggles lose their label on mobile; a bare switch
+  // track is then indistinguishable (and touch shows no tooltip), so each swaps
+  // its track for a self-describing glyph. Assert the swap on both a
+  // deploys-view toggle (time-mode) and a logs-view toggle (sort/follow), and
+  // that the theme glyph reflects the current mode (moon dark → sun light).
+  test('unlabelled toggles swap their track for a per-toggle glyph on mobile', async ({ page, skipper }) => {
+    const track = (id: string) => page.locator(`[data-testid="${id}"] .toggle-track`);
+    const glyph = (id: string) => page.locator(`[data-testid="${id}"] .tg-ico`);
+
+    await page.goto(`${skipper.baseURL}/`);
+
+    // Desktop control: the labelled switch track shows, the glyph stays hidden.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(track('time-mode')).toBeVisible();
+    await expect(glyph('time-mode')).toBeHidden();
+    await expect(track('theme-toggle')).toBeVisible();
+    await expect(glyph('theme-toggle')).toBeHidden();
+
+    // Mobile: the track (and label) give way to the glyph.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(track('time-mode')).toBeHidden();
+    await expect(glyph('time-mode')).toBeVisible();
+    await expect(track('theme-toggle')).toBeHidden();
+    await expect(glyph('theme-toggle')).toBeVisible();
+
+    // The theme glyph reflects the mode: moon in dark (default), sun once
+    // toggled to light. This is the state-driven variant the others don't have.
+    const themeGlyph = glyph('theme-toggle');
+    await expect(themeGlyph.locator('.tg-moon')).toBeVisible();
+    await expect(themeGlyph.locator('.tg-sun')).toBeHidden();
+    await page.locator('[data-testid="theme-toggle"]').click();
+    await expect(themeGlyph.locator('.tg-sun')).toBeVisible();
+    await expect(themeGlyph.locator('.tg-moon')).toBeHidden();
+    await page.locator('[data-testid="theme-toggle"]').click(); // restore dark
+
+    // The logs-only toggles use the same swap — switch views and confirm both.
+    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+    await expect(track('log-sort')).toBeHidden();
+    await expect(glyph('log-sort')).toBeVisible();
+    await expect(track('follow-logs')).toBeHidden();
+    await expect(glyph('follow-logs')).toBeVisible();
+  });
 });
