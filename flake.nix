@@ -14,11 +14,14 @@
       packages = forAllSystems (system:
         let pkgs = nixpkgs.legacyPackages.${system}; in
         {
-          default = pkgs.buildGoModule {
+          default = pkgs.buildGoModule rec {
             pname = "skipper-cd";
-            version = "0.1.0";
+            # Single source of truth, kept current by release-please.
+            version = (builtins.fromJSON (builtins.readFile ./.release-please-manifest.json))."." ;
             src = ./.;
             vendorHash = null;
+            # Surface the deployed version in the UI header and /api/version.
+            ldflags = [ "-X main.version=${version}" ];
             meta = {
               description = "Lightweight Docker Compose CD triggered by Git webhooks";
               homepage = "https://github.com/polandy/skipper-cd";

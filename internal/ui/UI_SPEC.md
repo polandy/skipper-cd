@@ -31,7 +31,7 @@ Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). 
 
 Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
-**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), `LIVE` pill. The favicon is the same ship as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
+**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), `LIVE` pill, and a muted **version label** showing the deployed skipper-cd version (`v<semver>`, e.g. `v0.7.0`; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version` and left empty until it resolves. The favicon is the same ship as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
 
 **Header — right:**
 - **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
@@ -140,6 +140,10 @@ On connect the in-memory backlog (bounded ring, 1000 entries, no persistence acr
 
 `GET /api/events/{id}/diffs` — returns `{"diffs": {"filepath": "diff content", ...}}` or `{"diffs": null}`. Returns 404 for unknown event IDs.
 
+## Version API
+
+`GET /api/version` — returns `{"version": "<semver>|dev"}`, the build-time version injected via `-ldflags "-X main.version=…"` from `.release-please-manifest.json` (`dev` for local builds without ldflags). The header version label is painted from this once on load.
+
 Diffs are stored in `deploy-history.yaml` alongside events but are **not** included in SSE payloads (only `has_diffs: true` is sent). This keeps the real-time stream lightweight. Large diffs are truncated at 10 KB per file and 50 KB total per event.
 
 ---
@@ -155,6 +159,7 @@ assert on.
 
 | `data-testid` | Element | Notes |
 |---|---|---|
+| `brand-version` | Header version label | `v<semver>` or `dev`; empty until `/api/version` resolves |
 | `view-toggle` | Deploys/Logs segmented control | |
 | `deploy-indicator` | Active-stack / idle indicator | |
 | `autosync-btn` | Header autosync control (drawer opener) | |
@@ -188,6 +193,6 @@ assert on.
 
 ## Responsive (≤ 700 px)
 
-Column header hidden. Rows collapse to 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden. Header toggles lose their text labels and render as bare switches (tooltips remain). The Autosync control keeps its icon and pending-count pill (its `Autosync` label may hide like the other toggles); the Autosync drawer spans the full width below the header.
+Column header hidden. Rows collapse to 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden. The header version label is hidden like the `LIVE` pill. Header toggles lose their text labels and render as bare switches (tooltips remain). The Autosync control keeps its icon and pending-count pill (its `Autosync` label may hide like the other toggles); the Autosync drawer spans the full width below the header.
 
 Since the Files pill is not visible on mobile, tapping anywhere on a row (that has `changed_files`) triggers the files/diff panel instead. Rows with changed files get `cursor: pointer` on mobile. The toggle behaviour (tap again to close) is identical to the desktop pill behaviour.
