@@ -40,3 +40,36 @@ test.describe('UC1: header state', () => {
     await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'true');
   });
 });
+
+// UC2 — Pending pill. The amber `pending-pill` on the header control is hidden
+// when nothing is queued. Pausing autosync and then pushing a change defers the
+// paused stack: the server registers it as pending and broadcasts a `queue`
+// event, which makes the pill appear carrying the queue count. Resuming autosync
+// drains the queue, so the registry empties and the pill hides again — the pill
+// tracks live server queue depth, not a client guess.
+test.describe('UC2: pending pill', () => {
+  const pendingPill = (page: Page) => page.locator('[data-testid="pending-pill"]');
+
+  test('the pending pill shows the queued count while paused and hides on drain', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // Nothing is queued at boot, so the pill is hidden.
+    await expect(pendingPill(page)).toBeHidden();
+
+    // Pause globally, then push a change: the paused `web` stack is deferred and
+    // the pending registry (broadcast as a `queue` event) makes the pill appear
+    // with the count.
+    expect(await skipper.postAutosync('', false)).toBe(200);
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+    await expect(pendingPill(page)).toBeVisible();
+    await expect(pendingPill(page)).toHaveText('1');
+
+    // Resuming autosync drains the queue; the registry empties and the pill hides.
+    expect(await skipper.postAutosync('', true)).toBe(200);
+    await expect(pendingPill(page)).toBeHidden();
+  });
+});
