@@ -45,3 +45,42 @@ test.describe('UB1: view toggle', () => {
     await expect(logView(page)).toBeHidden();
   });
 });
+
+// UB2 — Log lines + level badges. Real backend log output is replayed over the
+// /api/logs SSE stream and rendered as `log-line`s, each carrying its slog level
+// as `data-level` plus a matching `level-badge`. A failing startup deploy emits
+// INFO ("deploying stack") and ERROR ("docker compose up failed…") lines, and a
+// webhook with a bad signature adds a WARN ("webhook rejected: invalid
+// signature") — a deterministic INFO/WARN/ERROR mix produced by the real backend.
+// DEBUG is intentionally out of scope: the default slog handler filters below
+// INFO and skipper exposes no log-level toggle, so a DEBUG line can never reach
+// the ring through the real binary.
+test.describe('UB2: log lines + level badges', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      stubEnv: { STUB_DOCKER_FAIL_ON: 'up' },
+      readiness: 'listening',
+    },
+  });
+
+  const lineAtLevel = (page: Page, level: string) =>
+    page.locator(`[data-testid="log-line"][data-level="${level}"]`);
+
+  test('renders replayed lines with the correct level badge per level', async ({ page, skipper }) => {
+    // The rejected webhook yields the WARN line; INFO + ERROR come from the
+    // failed startup deploy already captured in the ring.
+    expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
+
+    await page.goto(`${skipper.baseURL}/`);
+    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+
+    // Each level renders at least one line whose badge text equals the level —
+    // proving the level → badge mapping end-to-end against real log output.
+    for (const level of ['INFO', 'WARN', 'ERROR']) {
+      const line = lineAtLevel(page, level).first();
+      await expect(line).toBeVisible();
+      await expect(line.locator('[data-testid="level-badge"]')).toHaveText(level);
+    }
+  });
+});

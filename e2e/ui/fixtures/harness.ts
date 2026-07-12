@@ -266,6 +266,18 @@ export class Skipper {
     return resp.status;
   }
 
+  /** sendBadWebhook posts a push payload with a deliberately invalid signature.
+   *  The backend rejects it (401) and logs a WARN ("webhook rejected: invalid
+   *  signature") — a deterministic way to drive a WARN-level log line. */
+  async sendBadWebhook(ref: string): Promise<number> {
+    const resp = await fetch(`${this.baseURL}/webhook`, {
+      method: 'POST',
+      headers: { 'X-Gitea-Signature': 'not-a-valid-signature' },
+      body: JSON.stringify({ ref }),
+    });
+    return resp.status;
+  }
+
   /** postAutosync sets a global (stack === '') or per-stack autosync override. */
   async postAutosync(stack: string, enabled: boolean): Promise<number> {
     const scope = stack === '' ? 'global' : 'stack';

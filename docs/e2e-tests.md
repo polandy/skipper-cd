@@ -25,10 +25,11 @@ asserting **behaviour + visual snapshots**.
 > **UA8** (diff-panel fetch + colouring), **UA9** (error-panel tied to the
 > failed row with its message), **UA10** (empty-state placeholder for a
 > stack-free, event-free instance), **UD5** (header version label from
-> `/api/version`), and **UB1** (deploys↔logs view toggle + persistence) passing
-> and an `e2e-ui` CI job (behaviour-only). Mask A is complete; Mask B (Logs) is
-> underway. Remaining: the rest of masks B–D, and the visual-snapshot baselines
-> (§5), at which point `e2e-ui` moves into Playwright's pinned container.
+> `/api/version`), **UB1** (deploys↔logs view toggle + persistence), and **UB2**
+> (log lines + INFO/WARN/ERROR level badges) passing and an `e2e-ui` CI job
+> (behaviour-only). Mask A is complete; Mask B (Logs) is underway. Remaining: the
+> rest of masks B–D, and the visual-snapshot baselines (§5), at which point
+> `e2e-ui` moves into Playwright's pinned container.
 
 ## 1. Scope & boundaries
 
@@ -193,8 +194,11 @@ UI suite reuses.
 - **UB1 — View toggle.** `deploys`↔`logs` switches the visible view and persists
   (`localStorage activeView`).
 - **UB2 — Log lines + level badges.** Log SSE lines render as `log-line` with the
-  correct `data-level` / `level-badge` (ERROR/WARN/INFO/DEBUG). *Snapshot: log
-  pane with mixed levels.*
+  correct `data-level` / `level-badge`. Driven end-to-end against the real
+  backend: a failing startup deploy yields INFO + ERROR lines and a bad-signature
+  webhook adds a WARN. DEBUG is out of scope — the default slog handler filters
+  below INFO and skipper has no log-level toggle, so it can never reach the ring.
+  *Snapshot: log pane with mixed levels.*
 - **UB3 — Sort toggle.** Flips newest-first↔oldest-first and persists
   (`localStorage logSort`); resets the window to one page.
 - **UB4 — Follow toggle.** Autoscroll to the newest edge on append; persists
