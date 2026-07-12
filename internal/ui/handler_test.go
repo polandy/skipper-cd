@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -60,6 +61,27 @@ func TestIndexHandler_ServesHTML(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, "skipper-cd") {
 		t.Error("expected HTML to contain 'skipper-cd'")
+	}
+}
+
+func TestVersionHandler_ReturnsVersion(t *testing.T) {
+	handler := VersionHandler("1.2.3")
+	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var got struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Version != "1.2.3" {
+		t.Errorf("version = %q, want %q", got.Version, "1.2.3")
 	}
 }
 

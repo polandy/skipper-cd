@@ -6,8 +6,12 @@ COPY go.mod go.sum ./
 COPY vendor/ vendor/
 COPY cmd/ cmd/
 COPY internal/ internal/
+COPY .release-please-manifest.json ./
 
-RUN go build -o /skipper ./cmd/skipper
+# Inject the release-please-tracked version into main.version so the UI header
+# and /api/version report the deployed build.
+RUN VERSION=$(sed -n 's/.*"\.":[[:space:]]*"\([^"]*\)".*/\1/p' .release-please-manifest.json) \
+    && go build -ldflags "-X main.version=${VERSION}" -o /skipper ./cmd/skipper
 
 # Stage 2: Runtime
 FROM alpine:3.24

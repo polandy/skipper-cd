@@ -186,6 +186,17 @@
     margin-left: 4px;
   }
 
+  .brand-version {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    letter-spacing: 0.2px;
+    margin-left: 2px;
+  }
+
+  .brand-version:empty { display: none; }
+
   .status-area {
     display: flex;
     align-items: center;
@@ -1051,6 +1062,7 @@
   @media (max-width: 700px) {
     header { padding: 0 16px; height: 48px; }
     .brand-tag { display: none; }
+    .brand-version { display: none; }
     /* Bare switches — the labels don't fit next to the view toggle. */
     .filter-toggle span { display: none; }
     main { margin: 16px auto; padding: 0 12px; }
@@ -1088,6 +1100,7 @@
     </div>
     <span class="brand-name">skipper<span>-cd</span></span>
     <span class="brand-tag">live</span>
+    <span class="brand-version" id="brand-version" data-testid="brand-version"></span>
   </div>
   <div class="status-area">
     <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
@@ -2088,6 +2101,16 @@
       row.after(createFilesPanel(files));
     }
   });
+
+  // Paint the deployed skipper-cd version in the header once on load.
+  fetch('/api/version')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d || !d.version) return;
+      var el = document.getElementById('brand-version');
+      if (el) el.textContent = d.version === 'dev' ? 'dev' : 'v' + d.version;
+    })
+    .catch(function() {});
 
   connect();
 })();

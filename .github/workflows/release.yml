@@ -24,5 +24,7 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v5
         with:
-          release-type: go
+          # Manifest mode: release-please-config.json + .release-please-manifest.json
+          # drive the release. The manifest is the single source of truth for the
+          # version string that the Docker and Nix builds inject via -ldflags.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}

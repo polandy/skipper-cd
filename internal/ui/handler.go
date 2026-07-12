@@ -162,6 +162,14 @@ func AutosyncHandler(ctrl *autosync.Controller, order func() []string, onChange,
 	})
 }
 
+// VersionHandler serves GET /api/version — the build-time skipper-cd version
+// injected via -ldflags. Returns {"version": "<semver>|dev"} for the UI header.
+func VersionHandler(version string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]string{"version": version})
+	})
+}
+
 // QueueHandler serves GET /api/queue — the ordered pending list.
 func QueueHandler(q *autosync.Queue, order func() []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

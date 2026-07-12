@@ -39,6 +39,11 @@ const readHeaderTimeout = 10 * time.Second
 // streams) may delay shutdown after a termination signal.
 const shutdownTimeout = 10 * time.Second
 
+// version is the build-time skipper-cd version, injected via
+// -ldflags "-X main.version=…" from .release-please-manifest.json. It defaults
+// to "dev" for local builds and is surfaced in the UI header (GET /api/version).
+var version = "dev"
+
 func main() {
 	configPath := flag.String("config", "/etc/skipper/skipper.yml", "path to the skipper.yml config file")
 	flag.Parse()
@@ -138,7 +143,7 @@ func main() {
 	}
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history, logRing, as))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history, logRing, as, version))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -212,7 +217,7 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps) *http.ServeMux {
+func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, version string) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
@@ -227,6 +232,7 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *even
 		autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)
 
 		mux.Handle("GET /{$}", ui.IndexHandler())
+		mux.Handle("GET /api/version", ui.VersionHandler(version))
 		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, as.stateB, history, initialState))
 		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
 		mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
