@@ -59,6 +59,15 @@ export function skipperBinPath(): string {
   return process.env.SKIPPER_E2E_BIN || join(tmpdir(), 'skipper-ui-e2e-bin', 'skipper');
 }
 
+/** manifestVersion is the release-please-tracked version that globalSetup injects
+ *  into the binary via -ldflags (mirroring the Docker/Nix builds) and that the
+ *  header version label is asserted against. Reading the same file both sides
+ *  keeps the check release-proof. */
+export function manifestVersion(): string {
+  const raw = readFileSync(join(repoRoot(), '.release-please-manifest.json'), 'utf8');
+  return (JSON.parse(raw) as Record<string, string>)['.'];
+}
+
 /** Reserve n distinct free TCP ports, holding all listeners open at once so the
  *  OS cannot hand out the same port twice, then releasing them (mirrors freePorts). */
 async function freePorts(n: number): Promise<number[]> {
