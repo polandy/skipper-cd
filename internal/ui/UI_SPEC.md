@@ -171,6 +171,7 @@ assert on.
 
 | `data-testid` | Element | Notes |
 |---|---|---|
+| `brand-name` | Header `skipper-cd` wordmark | Hidden ≤ 700 px (logo alone carries the brand) |
 | `brand-version` | Header version label | `v<semver>` or `dev`; empty until `/api/version` resolves |
 | `view-toggle` | Deploys/Logs segmented control | |
 | `deploy-indicator` | Active-stack / idle indicator | |
@@ -205,6 +206,18 @@ assert on.
 
 ## Responsive (≤ 700 px)
 
-Column header hidden. Rows collapse to 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden. The header version label is hidden like the `LIVE` pill. Header toggles lose their text labels and render as bare switches (tooltips remain). The Autosync control keeps its icon and pending-count pill (its `Autosync` label may hide like the other toggles); the Autosync drawer spans the full width below the header.
+**Header — compact single row.** The header collapses to one 48 px row that **must never scroll horizontally**. The brand is the ship logo *alone*: the `skipper-cd` wordmark, the `LIVE` tag and the version label are all hidden. Every control keeps its glyph but drops its text label:
+
+- **View toggle** — unchanged (the only text control; `deploys | logs` still fits).
+- **Deploy indicator** — collapses to its coloured dot; the active-stack / `idle` text is hidden and mirrored into the element's `title`/`aria-label`.
+- **Autosync control** — keeps its icon and pending-count pill; only the `autosync` label is hidden (its static `title` remains).
+- **Time-mode / icon-refresh / sort / follow / theme** — bare switches or glyphs, labels hidden, tooltips remain.
+- **Connection indicator** — collapses to its coloured dot; the `connecting` / `connected` / `reconnecting` text is hidden and mirrored into the element's `title`.
+
+The `.status-area` gap tightens to 10 px and the header padding to 12 px so the row fits a 360 px viewport without overflow.
+
+**Deploy table.** Column header hidden. Rows collapse to a 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden.
 
 Since the Files pill is not visible on mobile, tapping anywhere on a row (that has `changed_files`) triggers the files/diff panel instead. Rows with changed files get `cursor: pointer` on mobile. The toggle behaviour (tap again to close) is identical to the desktop pill behaviour.
+
+The Autosync drawer spans the full width below the header.
