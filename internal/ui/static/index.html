@@ -1699,6 +1699,7 @@
     var count = queueSnap.count || 0;
     asBtn.classList.toggle('has-pending', count > 0);
     asBtn.classList.toggle('paused', anyPaused());
+    if (autosyncSnap) asBtn.dataset.global = String(autosyncSnap.global);
     asCountEl.textContent = count;
     asBtn.title = count > 0
       ? count + ' stack' + (count === 1 ? '' : 's') + ' queued — autosync paused'
