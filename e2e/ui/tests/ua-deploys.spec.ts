@@ -323,3 +323,60 @@ test.describe('UA7: files pill', () => {
     await expect(filesPanel(page)).toHaveCount(0);
   });
 });
+
+// UA8 — Diff panel. When a deploy has a previous commit to diff against, its event
+// carries `has_diffs` and clicking the files-pill fetches `/api/events/{id}/diffs`
+// and renders a `diff-panel` (not the plain files-panel) with per-line add/delete/
+// hunk colouring. The startup deploy is a stack's first (no prior commit, no diffs);
+// a second deploy driven by a webhook that bumps the compose image is the first with
+// a real diff, so its success row is the one carrying `has_diffs`.
+test.describe('UA8: diff panel', () => {
+  const diffRow = (page: import('@playwright/test').Page) =>
+    page.locator(
+      '[data-testid="deploy-row"][data-stack="web"][data-status="success"][data-has-diffs="1"]',
+    );
+  const filesPill = (page: import('@playwright/test').Page) =>
+    diffRow(page).locator('[data-testid="files-pill"]');
+  const diffPanel = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="diff-panel"]');
+
+  test('clicking the pill fetches diffs and renders a coloured diff panel', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    // The startup deploy settled but has no prior commit, so no diffs yet.
+    await expect(diffRow(page)).toHaveCount(0);
+
+    // A second deploy bumps the image → a real diff against the startup commit.
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    // Its success row is flagged has_diffs and carries a files pill; nothing is
+    // expanded until the pill is clicked.
+    await expect(diffRow(page)).toHaveCount(1);
+    await expect(filesPill(page)).toHaveCount(1);
+    await expect(diffPanel(page)).toHaveCount(0);
+
+    // Clicking the pill issues the diffs fetch and expands a diff-panel — not the
+    // plain files-panel — directly below the row.
+    const diffsReq = page.waitForRequest((r) => /\/api\/events\/[^/]+\/diffs$/.test(r.url()));
+    await filesPill(page).click();
+    await diffsReq;
+
+    await expect(diffPanel(page)).toHaveCount(1);
+    await expect(diffPanel(page)).toBeVisible();
+    await expect(page.locator('[data-testid="files-panel"]')).toHaveCount(0);
+    const siblingTestid = await diffRow(page).evaluate(
+      (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
+    );
+    expect(siblingTestid).toBe('diff-panel');
+
+    // The image bump renders as a deleted and an added line (colour-classified),
+    // plus a hunk header — the diff colouring the panel exists to show.
+    await expect(diffPanel(page).locator('.diff-line.diff-del')).toContainText('nginx:1.25');
+    await expect(diffPanel(page).locator('.diff-line.diff-add')).toContainText('nginx:1.26');
+    await expect(diffPanel(page).locator('.diff-line.diff-hunk').first()).toBeVisible();
+
+    // Clicking again collapses it.
+    await filesPill(page).click();
+    await expect(diffPanel(page)).toHaveCount(0);
+  });
+});

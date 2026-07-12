@@ -21,9 +21,9 @@ asserting **behaviour + visual snapshots**.
 > Go harness drives the real binary — with **UA1** (row lifecycle), **UA2** (all
 > five rendered status badges), **UA3** (skipped deploys never render a row), **UA4** (time-mode
 > toggle + persistence), **UA5** (stack icon + monogram fallback), **UA6** (icon
-> refresh: POST + cache-busted reload), and **UA7** (files-pill panel toggle)
-> passing and an `e2e-ui` CI job
-> (behaviour-only). Remaining: the rest of mask A (UA8–UA10), masks B–D, and the
+> refresh: POST + cache-busted reload), **UA7** (files-pill panel toggle), and
+> **UA8** (diff-panel fetch + colouring) passing and an `e2e-ui` CI job
+> (behaviour-only). Remaining: the rest of mask A (UA9–UA10), masks B–D, and the
 > visual-snapshot baselines (§5), at which point `e2e-ui` moves into Playwright's
 > pinned container.
 
