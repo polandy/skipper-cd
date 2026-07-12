@@ -168,13 +168,17 @@ func TestRebuild_StartsFireAndForgetTransientUnitThenReportsSuccess(t *testing.T
 	// Fire-and-forget: NO --wait/--pipe (they would keep a client in skipper's
 	// cgroup and deadlock the self-restart) and NO --collect (a failed unit must
 	// linger so is-failed can see it). See ADR-0014.
-	for _, forbidden := range []string{"--wait", "--pipe", "--collect", "--same-dir"} {
+	for _, forbidden := range []string{"--wait", "--pipe", "--collect"} {
 		if slices.Contains(c.args, forbidden) {
 			t.Errorf("did not expect %q in fire-and-forget args, got %v", forbidden, c.args)
 		}
 	}
-	if !slices.Contains(c.args, "--unit=skipper-nixos-rebuild") {
-		t.Errorf("expected --unit=skipper-nixos-rebuild, got %v", c.args)
+	// --same-dir IS required: it runs the unit in the repo dir so `--flake .#host`
+	// resolves (unrelated to the wedge). --unit names it.
+	for _, want := range []string{"--unit=skipper-nixos-rebuild", "--same-dir"} {
+		if !slices.Contains(c.args, want) {
+			t.Errorf("expected %q in args, got %v", want, c.args)
+		}
 	}
 	if !slices.ContainsFunc(c.args, func(a string) bool { return strings.HasPrefix(a, "--setenv=PATH=") }) {
 		t.Errorf("expected PATH to be propagated, got args=%v", c.args)

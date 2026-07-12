@@ -90,6 +90,11 @@ func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string) error {
 
 	args := []string{
 		"--unit=" + rebuildUnit,
+		// --same-dir runs the unit in skipper's working directory (the repo
+		// clone) so a relative `--flake .#host` resolves; without it the unit
+		// starts in / and nixos-rebuild cannot find flake.nix. This is unrelated
+		// to the wedge — it keeps no client in skipper's cgroup.
+		"--same-dir",
 		// Transient units start with a minimal environment; nixos-rebuild
 		// needs skipper's PATH (git, nix, systemd tooling).
 		"--setenv=PATH=" + os.Getenv("PATH"),
