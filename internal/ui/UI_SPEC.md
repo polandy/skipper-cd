@@ -84,7 +84,7 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `success` / `failed` / `rolled_back` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
 | `success` / `failed` / `rolled_back` (no existing row) | New row created directly. |
 | `skipped` | Dropped — never rendered (an unchanged stack carries no signal). |
-| `queued` | New row created with the `queued` badge and a `paused:` tag. When the stack later deploys (after sync resumes), a fresh `deploying`→`success` row supersedes it. |
+| `queued` | Row created with the `queued` badge and a `paused:` tag, **keyed by stack**: a further `queued` for the same stack (another push while paused) replaces it rather than stacking a duplicate. It is removed when the stack next deploys (a `deploying` event supersedes it) or when the stack leaves the pending set in a `queue` snapshot (resumed then found unchanged). Like a deploy, a `queued` event carries `has_diffs`, so the paused row expands the pending diff. |
 
 ---
 

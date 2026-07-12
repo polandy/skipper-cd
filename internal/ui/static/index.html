@@ -1233,6 +1233,9 @@
   const deployStatus = document.getElementById('deploy-status');
 
   const deployingRows = {};
+  // Queued (paused) rows, keyed by stack, so a stack's pending row is replaced
+  // rather than duplicated, and removed once it deploys or drains.
+  const queuedRows = {};
   let hasRows = false;
   let absoluteTime = localStorage.getItem('timeMode') === 'absolute';
 
@@ -1471,12 +1474,38 @@
     deployStatus.setAttribute('aria-label', label);
   }
 
+  // removeQueuedRow drops a stack's pending (queued) row and any panel opened
+  // below it. No-op when the stack has no queued row.
+  function removeQueuedRow(stack) {
+    var row = queuedRows[stack];
+    if (!row) return;
+    var sib = row.nextElementSibling;
+    if (sib && (sib.classList.contains('files-list') || sib.classList.contains('diff-panel'))) {
+      sib.remove();
+    }
+    row.remove();
+    delete queuedRows[stack];
+  }
+
   function handleEvent(evt, isHistory) {
     // A skipped deploy means an unchanged stack — no signal worth showing, so
     // it is never rendered (skipped events are live-only, never in history).
     if (evt.status === 'skipped') return;
 
     showTable();
+
+    if (evt.status === 'queued') {
+      // Replace any prior pending row for this stack — multiple pushes while
+      // paused collapse into one — and key it so it can be cleared on deploy.
+      removeQueuedRow(evt.stack);
+      var qrow = createRow(evt, isHistory);
+      tbody.insertBefore(qrow, tbody.firstChild);
+      queuedRows[evt.stack] = qrow;
+      return;
+    }
+
+    // Any real deploy progress supersedes this stack's pending row.
+    removeQueuedRow(evt.stack);
 
     if (evt.status === 'deploying') {
       var row = createRow(evt, isHistory);
@@ -1554,6 +1583,11 @@
       queueSnap = JSON.parse(e.data);
       queueByStack = {};
       (queueSnap.pending || []).forEach(function(it) { queueByStack[it.stack] = it; });
+      // A stack that left the pending set without a deploy event (e.g. resumed
+      // then found unchanged) must lose its now-stale queued row.
+      Object.keys(queuedRows).forEach(function(stack) {
+        if (!queueByStack[stack]) removeQueuedRow(stack);
+      });
       renderAutosync();
     });
 

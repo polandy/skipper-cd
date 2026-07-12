@@ -396,7 +396,10 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	if d.isPaused(stack.Name) {
 		reason := d.markQueued(stack.Name, changed)
 		metrics.DeploysQueued.WithLabelValues(stack.Name).Inc()
-		d.emit(events.StatusQueued, stack.Name, 0, "", changed, nil)
+		// Carry the diff of what is waiting so the paused row can show the
+		// effective change, not just the file paths.
+		diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
+		d.emit(events.StatusQueued, stack.Name, 0, "", changed, diffs)
 		slog.Info("deploy deferred: autosync paused", "stack", stack.Name, "reason", reason, "changed_files", changed)
 		return nil
 	}
