@@ -380,3 +380,39 @@ test.describe('UA8: diff panel', () => {
     await expect(diffPanel(page)).toHaveCount(0);
   });
 });
+
+// UA9 — Error detail. A `failed` deploy carries the backend error string, and the
+// UI renders it as an `error-panel` tied to that row: the panel is the row's direct
+// sibling, is tagged `data-error-for` with the stack, and shows the real message
+// (not an empty or placeholder box). The startup `up` fails with no prior commit to
+// roll back to, so the stack's first row is `failed`.
+test.describe('UA9: error detail', () => {
+  test.use({
+    startOptions: { stacks: ['web'], stubEnv: { STUB_DOCKER_FAIL_ON: 'up' }, readiness: 'listening' },
+  });
+
+  const failedRow = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="failed"]');
+  const errorPanel = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="error-panel"]');
+
+  test('a failed deploy renders an error panel tied to its row with the message', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    await expect(failedRow(page)).toHaveCount(1);
+    await expect(errorPanel(page)).toHaveCount(1);
+    await expect(errorPanel(page)).toBeVisible();
+
+    // The panel belongs to the failed row: it is the row's direct next sibling and
+    // is tagged with the stack it reports on.
+    const siblingTestid = await failedRow(page).evaluate(
+      (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
+    );
+    expect(siblingTestid).toBe('error-panel');
+    await expect(errorPanel(page)).toHaveAttribute('data-error-for', 'web');
+
+    // It carries the real backend error, not an empty placeholder.
+    await expect(errorPanel(page)).toContainText('docker compose up');
+    await expect(errorPanel(page)).not.toBeEmpty();
+  });
+});
