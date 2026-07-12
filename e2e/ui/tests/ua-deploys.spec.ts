@@ -440,3 +440,78 @@ test.describe('UA10: empty state', () => {
     await expect(page.locator('#deploy-table')).toBeHidden();
   });
 });
+
+// UA11 — Queued row replaced on resume. Pausing autosync then pushing a change
+// defers the stack to a `queued` (paused) row. Re-enabling autosync drains the
+// queue and the stack deploys — the stale queued row must be *replaced*, not
+// left lingering beside the new deploy row. (Regression: only deploying→terminal
+// transitions were de-duplicated, so the queued row survived the resume.)
+test('UA11: the queued row is replaced when autosync resumes', async ({ page, skipper }) => {
+  const webRow = (status: string) =>
+    page.locator(`[data-testid="deploy-row"][data-stack="web"][data-status="${status}"]`);
+  const anyWebRow = () => page.locator('[data-testid="deploy-row"][data-stack="web"]');
+
+  await page.goto(`${skipper.baseURL}/`);
+  await expect(webRow('success')).toHaveCount(1); // startup settled
+
+  // Pause globally, then push a change → the stack is deferred to a queued row.
+  expect(await skipper.postAutosync('', false)).toBe(200);
+  skipper.setStackImage('web', '1.26');
+  expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+  await expect(webRow('queued')).toHaveCount(1);
+  await expect(anyWebRow()).toHaveCount(2); // startup success + queued
+
+  // Resume: the queue drains and the stack deploys to a fresh success row. The
+  // stale queued row is gone — not left standing beside the new row.
+  expect(await skipper.postAutosync('', true)).toBe(200);
+  await expect(webRow('success')).toHaveCount(2);
+  await expect(webRow('queued')).toHaveCount(0);
+  await expect(anyWebRow()).toHaveCount(2);
+});
+
+// UA12 — Queued row shows the pending diff. A change deferred while autosync is
+// paused emits a `queued` event that must still carry the diff of what is
+// waiting: its paused row is flagged `has_diffs` and clicking the files pill
+// expands the coloured diff-panel — not the plain file-path list. (Regression:
+// queued events were emitted with nil diffs, so the pending row could only show
+// file paths, never the effective diff.)
+test.describe('UA12: queued row diff', () => {
+  const queuedRow = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="queued"]');
+  const filesPill = (page: import('@playwright/test').Page) =>
+    queuedRow(page).locator('[data-testid="files-pill"]');
+  const diffPanel = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="diff-panel"]');
+
+  test('a paused stack’s queued row expands the pending diff', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    // The startup deploy settled and set LastDeployedCommit, so a later change
+    // has a real diff to show.
+    await expect(
+      page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]'),
+    ).toHaveCount(1);
+
+    // Pause, then push an image bump → the stack is deferred to a queued row that
+    // carries the diff against the startup commit.
+    expect(await skipper.postAutosync('', false)).toBe(200);
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    await expect(queuedRow(page)).toHaveCount(1);
+    await expect(queuedRow(page)).toHaveAttribute('data-has-diffs', '1');
+    await expect(filesPill(page)).toHaveCount(1);
+    await expect(diffPanel(page)).toHaveCount(0);
+
+    // Clicking the pill fetches diffs and expands a diff-panel (not the plain
+    // files-panel) with the image change colour-classified.
+    const diffsReq = page.waitForRequest((r) => /\/api\/events\/[^/]+\/diffs$/.test(r.url()));
+    await filesPill(page).click();
+    await diffsReq;
+
+    await expect(diffPanel(page)).toHaveCount(1);
+    await expect(diffPanel(page)).toBeVisible();
+    await expect(page.locator('[data-testid="files-panel"]')).toHaveCount(0);
+    await expect(diffPanel(page).locator('.diff-line.diff-del')).toContainText('nginx:1.25');
+    await expect(diffPanel(page).locator('.diff-line.diff-add')).toContainText('nginx:1.26');
+  });
+});
