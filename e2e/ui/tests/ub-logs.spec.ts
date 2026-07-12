@@ -3,6 +3,11 @@ import type { Page } from '@playwright/test';
 
 // Maske B: Logs-View. See docs/e2e-tests.md §4.3.
 
+// Distinctive stub-docker stdout line used by UB5 to prove child-process output
+// is captured and rendered as a cmd-prefix line. No level word, no leading '[',
+// so it can't be mistaken for a structured/level line.
+const CHILD_LINE = 'container web-app-1 started';
+
 // UB1 — View toggle. The deploys↔logs toggle switches which pane is visible and
 // persists the choice in `localStorage.activeView`, so a reload restores the last
 // view. Asserting the panes' visibility (not the button's active class) proves the
@@ -219,5 +224,52 @@ test.describe('UB4: follow toggle', () => {
     await page.reload();
     await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
     expect(await followLogs(page)).toBe('false');
+  });
+});
+
+// UB5 — Log-line prefixes. A structured deploy line carries a `stack` attr,
+// rendered as a `stack-prefix` alongside its level badge. A child-process line
+// (captured docker/git stdout+stderr) carries `cmd`+`stream` attrs instead and
+// renders a muted `cmd-prefix` with NO level badge. Both kinds are produced by
+// the real backend from a single failing startup deploy: `STUB_DOCKER_ECHO`
+// makes the stub `docker` print a line on `up` (captured as a `cmd`/`stream`
+// child line, cmd="docker"), and `STUB_DOCKER_FAIL_ON=up` makes that same up
+// fail so the deploy emits its own `stack`-tagged INFO/ERROR lines. We select
+// only by `data-testid` and assert the two prefix shapes end-to-end.
+test.describe('UB5: log-line prefixes', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      stubEnv: { STUB_DOCKER_FAIL_ON: 'up', STUB_DOCKER_ECHO: CHILD_LINE },
+      readiness: 'listening',
+    },
+  });
+
+  // The docker child line renders with data-level="cmd" (not a slog level).
+  const cmdLine = (page: Page) =>
+    page.locator('[data-testid="log-line"][data-level="cmd"]').first();
+  // A deploy line for the "web" stack — the terminal ERROR is stable.
+  const stackLine = (page: Page) =>
+    page.locator('[data-testid="log-line"][data-level="ERROR"]').first();
+
+  test('renders a stack-prefix on deploy lines and a cmd-prefix (no badge) on child output', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+
+    // Child-process output: the captured docker stdout renders a muted
+    // [docker] cmd-prefix, carries the echoed message, and has NO level badge.
+    const cmd = cmdLine(page);
+    await expect(cmd).toBeVisible();
+    await expect(cmd.locator('[data-testid="cmd-prefix"]')).toHaveText('[docker]');
+    await expect(cmd).toContainText(CHILD_LINE);
+    await expect(cmd.locator('[data-testid="level-badge"]')).toHaveCount(0);
+
+    // Structured deploy line: a [web] stack-prefix next to a real level badge —
+    // the two coexist, unlike the child line which has neither a stack nor a badge.
+    const stack = stackLine(page);
+    await expect(stack).toBeVisible();
+    await expect(stack.locator('[data-testid="stack-prefix"]')).toHaveText('[web]');
+    await expect(stack.locator('[data-testid="level-badge"]')).toHaveText('ERROR');
+    await expect(stack.locator('[data-testid="cmd-prefix"]')).toHaveCount(0);
   });
 });

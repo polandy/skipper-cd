@@ -18,6 +18,12 @@ const stubDockerScript = `#!/bin/sh
 dir=$(pwd)
 printf '%s\\t%s\\n' "$dir" "$*" >> "$DOCKER_LOG"
 
+if [ -n "$STUB_DOCKER_ECHO" ]; then
+  case " $* " in
+    *" up "*) echo "$STUB_DOCKER_ECHO" ;;
+  esac
+fi
+
 case " $* " in
   *" up "*)
     if [ -n "$STUB_DOCKER_HOLD_UP" ]; then
@@ -100,7 +106,9 @@ export interface StartOptions {
    * at a dead address (see start) — 404s, driving the UI's monogram fallback.
    */
   stackIcons?: Record<string, string>;
-  /** Extra env for the stub docker (e.g. STUB_DOCKER_FAIL_NTH_UP). */
+  /** Extra env for the stub docker (e.g. STUB_DOCKER_FAIL_NTH_UP, or
+   *  STUB_DOCKER_ECHO=<line> to print a line to stdout on `up` so the captured
+   *  child-process output reaches the log ring). */
   stubEnv?: Record<string, string>;
   /**
    * How ready the instance must be before start() resolves:
