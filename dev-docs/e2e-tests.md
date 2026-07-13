@@ -43,9 +43,11 @@ asserting **behaviour + visual snapshots**.
 > (connection indicator connected→reconnecting→connected, driven by a
 > kill/relaunch of the binary on the same port), **UD3** (deploy indicator names
 > the active stack while held), **UD4** (responsive ≤700px), **UD5** (build
-> identity label) — behind an `e2e-ui` CI job (behaviour-only). All four masks'
-> behaviour is landed. Remaining: only the visual-snapshot baselines (§5), at
-> which point `e2e-ui` moves into Playwright's pinned container.
+> identity label). All four masks' behaviour is landed, **and the visual-snapshot
+> baselines (§5) too**: a lean set of six baselines (deploys table, diff panel,
+> autosync drawer, both themes, mobile layout) generated and compared in
+> Playwright's pinned container, gated by `RUN_SNAPSHOTS`. The `e2e-ui` CI job now
+> runs inside that container. The suite is complete.
 
 ## 1. Scope & boundaries
 
@@ -187,8 +189,9 @@ UI suite reuses.
   `success` (same row, not a duplicate). *Snapshot: table after success.*
 - **UA2 — Status badges.** Drive each rendered status via §3 recipes. Then each
   `deploy-row` carries the correct `data-status` + `status-badge`
-  (`success`/`failed`/`rolled_back`/`queued`/`deploying`).
-  *Snapshot: one row per status.*
+  (`success`/`failed`/`rolled_back`/`queued`/`deploying`). (No snapshot — the
+  five statuses need separate instances; the badges are behaviour-asserted here
+  and the table's dark/light rendering is snapshotted by UA1/UD1.)
 - **UA3 — Skipped deploys never render.** An unchanged stack emits a `skipped`
   event, but no `deploy-row` is created for it (proven by ordering against a
   later real deploy); there is no skip-filter control.
@@ -216,7 +219,7 @@ UI suite reuses.
   backend: a failing startup deploy yields INFO + ERROR lines and a bad-signature
   webhook adds a WARN. DEBUG is out of scope — the default slog handler filters
   below INFO and skipper has no log-level toggle, so it can never reach the ring.
-  *Snapshot: log pane with mixed levels.*
+  (No snapshot — real log output is nondeterministic; see §5.)
 - **UB3 — Sort toggle.** The `log-sort` toggle flips the rendered order
   newest-first↔oldest-first and persists it (`localStorage logSort`). Driven
   against real replayed log output: the rendered `log-line` sequence is
@@ -324,23 +327,56 @@ UI suite reuses.
 
 ## 5. Visual snapshot strategy
 
-Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to
-per-mask anchors (marked *Snapshot* above), not every case.
+Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
+lean set of high-value per-mask anchors, not every case. The landed baselines:
 
-- **Determinism controls:** disable CSS animations/transitions
-  (`animations: 'disabled'`), pin viewport, and **mask dynamic regions**
-  (`time-cell`, `duration-cell`, queue `wait-cell`, the `LIVE` pulse) via
-  Playwright's `mask` option so relative times / durations never diff.
-- **Fonts:** the fonts (DM Sans, JetBrains Mono) are **embedded** in
-  `index.html` (self-hosted `@font-face`, `woff2` as `data:` URIs), replacing the
-  external Google Fonts `<link>`s. This makes the UI fully self-contained and
-  removes font load-timing / offline nondeterminism from snapshots. Baselines are
-  still generated and compared **in the pinned CI container** (Playwright's Docker
-  image) to normalise OS-level font rasterisation; local runs compare behaviour,
-  not pixels. Embedding touches `index.html` (and its CSP, which no longer needs
-  `fonts.googleapis.com`/`fonts.gstatic.com`); record it in `UI_SPEC.md`.
-- **Baselines** live under `e2e/ui/__screenshots__/` and are reviewed like code;
-  updates are explicit (`--update-snapshots`), never automatic.
+| Baseline | Anchor case | Target | Masked |
+| --- | --- | --- | --- |
+| `deploys-table.png` | UA1 | `deploys-table` | `time-cell`, `duration-cell` |
+| `diff-panel.png` | UA8 | `diff-panel` | — (static diff) |
+| `autosync-drawer.png` | UC6 | `autosync-drawer` | `wait-cell` |
+| `theme-mocha.png` / `theme-latte.png` | UD1 | full page | `time-cell`, `duration-cell` |
+| `mobile-layout.png` | UD4 | full page (390px) | `time-cell`, `duration-cell` |
+
+The **Logs pane (UB2) is deliberately not snapshotted**: real deploy log output
+is nondeterministic (line count, tmp paths, commit SHAs), so even with the text
+masked the pane's layout diffs run-to-run. UB2's value — the level-badge mapping
+— is fully covered by its behaviour assertions.
+
+- **Determinism controls:** CSS animations/transitions are disabled globally
+  (`toHaveScreenshot: { animations: 'disabled' }` in `playwright.config.ts`),
+  viewports are pinned, and dynamic regions (`time-cell`, `duration-cell`, queue
+  `wait-cell`) are covered with Playwright's `mask` option so relative times /
+  durations never diff. (The old header `LIVE` pulse was removed, so it no longer
+  needs masking.)
+- **Opt-in via `RUN_SNAPSHOTS`.** The pixel compare only runs when
+  `RUN_SNAPSHOTS` is set — the `e2e-ui` CI job (and the baseline-generation run)
+  set it. A local host run (`PW_CHROMIUM_EXECUTABLE` pointing at a system
+  Chromium) leaves it unset, so the behaviour assertions still run but the
+  screenshot is skipped: local runs compare behaviour, CI compares pixels. The
+  gate lives in `e2e/ui/fixtures/snapshot.ts` (`visualSnapshot`).
+- **Fonts** are **embedded** in `index.html` (self-hosted `@font-face`, `woff2`
+  as `data:` URIs), so there is no font load-timing / offline nondeterminism.
+  Even so, baselines are generated and compared **in Playwright's pinned Docker
+  container** (`mcr.microsoft.com/playwright:v1.61.1-noble`, matching
+  `@playwright/test` in the lockfile) to fix OS-level font rasterisation.
+- **Baselines** live under `e2e/ui/__screenshots__/` (via `snapshotPathTemplate`)
+  and are reviewed like code; updates are explicit, never automatic.
+- **Regenerating baselines** (after an intentional UI change) — run the suite in
+  the same pinned container so pixels match CI. Build a static binary and mount
+  it in, then update snapshots:
+
+  ```sh
+  VER=$(jq -r '."."' .release-please-manifest.json)
+  CGO_ENABLED=0 go build -ldflags "-X main.version=$VER -X main.commit=e2ee2ee" -o .pw-bin/skipper ./cmd/skipper
+  docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v "$PWD":/work -w /work/e2e/ui \
+    -e SKIPPER_E2E_BIN=/work/.pw-bin/skipper -e CI=1 -e RUN_SNAPSHOTS=1 \
+    mcr.microsoft.com/playwright:v1.61.1-noble \
+    sh -c "npm ci && npx playwright test --update-snapshots"
+  ```
+
+  Then review the changed PNGs before committing. (`.pw-bin/` is gitignored.)
 
 ## 6. Traceability
 
@@ -393,6 +429,9 @@ already pins actions:
 
 - **e2e**: `go test -tags e2e ./e2e` on `ubuntu-latest` (stub docker on PATH, git
   preinstalled). Uploads the stub docker log + skipper stderr on failure.
-- **e2e-ui**: Node + Playwright (pinned lockfile) running the UI project against
-  the same binary, inside Playwright's pinned container for stable snapshots.
-  Uploads the Playwright HTML report, traces, and snapshot diffs on failure.
+- **e2e-ui**: runs the UI project inside Playwright's pinned container
+  (`mcr.microsoft.com/playwright:v1.61.1-noble`) — which ships Node + the
+  browsers — with only Go installed on top for `globalSetup`'s binary build.
+  `RUN_SNAPSHOTS=1` turns on the pixel compares against the committed baselines
+  (§5). Uploads the Playwright HTML report + `test-results/` (traces and snapshot
+  diffs) on failure.

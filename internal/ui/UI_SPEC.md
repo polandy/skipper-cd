@@ -189,6 +189,7 @@ assert on.
 | `time-mode`, `log-sort`, `follow-logs`, `theme-toggle` | Header toggle buttons | |
 | `conn-indicator` | Connection indicator | `data-state` = `connecting`/`connected`/`reconnecting` |
 | `empty-state` | Awaiting-events placeholder | |
+| `deploys-table` | The deploys view container (header + rows) | Snapshot anchor (UA1) |
 | `deploy-row` | A deploy table row | `data-stack`, `data-status` |
 | `status-badge` | Status badge inside a row | |
 | `stack-icon` | Icon chip in the stack cell | |

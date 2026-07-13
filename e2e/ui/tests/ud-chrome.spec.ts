@@ -1,5 +1,13 @@
 import { test, expect } from '../fixtures/test';
 import { buildCommit, manifestVersion } from '../fixtures/harness';
+import { visualSnapshot } from '../fixtures/snapshot';
+
+// Deploy rows carry a relative time and a duration that vary run-to-run; mask
+// them out of any full-page screenshot (docs/e2e-tests.md §5).
+const pageMasks = (page: import('@playwright/test').Page) => [
+  page.locator('[data-testid="time-cell"]'),
+  page.locator('[data-testid="duration-cell"]'),
+];
 
 // Maske D: Global chrome. See docs/e2e-tests.md §4.5.
 
@@ -46,6 +54,9 @@ test.describe('UD4: responsive ≤700px', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(wordmark(page)).toBeHidden();
     expect(await fitsViewport(page)).toBe(true);
+
+    // Snapshot: the compact mobile layout (§5 anchor), dynamic cells masked.
+    await visualSnapshot(page, 'mobile-layout.png', { mask: pageMasks(page) });
 
     // Table collapses: the Files pill is hidden, yet tapping the row still
     // toggles the files panel directly below it (open, then close).
@@ -118,14 +129,20 @@ test('UD1: theme toggle switches Mocha↔Latte, persists, and applies before pai
   const storedTheme = () => page.evaluate(() => localStorage.getItem('theme'));
 
   await page.goto(`${skipper.baseURL}/`);
+  // The startup success row is present, so both theme snapshots have real content.
+  await expect(page.locator('[data-testid="deploy-row"]')).toHaveCount(1);
 
   // Default is Mocha (dark): no `latte` class.
   expect(await hasLatte()).toBe(false);
+  // Snapshot: the dark theme (§5 anchor).
+  await visualSnapshot(page, 'theme-mocha.png', { mask: pageMasks(page) });
 
   // Toggle → Latte, and the choice is persisted.
   await themeToggle.click();
   expect(await hasLatte()).toBe(true);
   expect(await storedTheme()).toBe('latte');
+  // Snapshot: the light theme (§5 anchor).
+  await visualSnapshot(page, 'theme-latte.png', { mask: pageMasks(page) });
 
   // Reload: the head script re-applies `latte` before first paint, so the class
   // is present immediately (no flash) without any interaction.

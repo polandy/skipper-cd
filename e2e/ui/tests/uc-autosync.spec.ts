@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
+import { visualSnapshot } from '../fixtures/snapshot';
 
 // Maske C: Autosync-Drawer. See docs/e2e-tests.md §4.4.
 
@@ -218,6 +219,12 @@ test.describe('UC6: queued list', () => {
     await expect(queueItem(page, 'web').locator('.reason-global')).toHaveText('global');
     await expect(queueItem(page, 'web')).toContainText('1 file');
     await expect(queueItem(page, 'web').locator('[data-testid="wait-cell"]')).toBeVisible();
+
+    // Snapshot: the drawer with its ordered queue (§5 anchor), wait cells masked
+    // (the elapsed time is inherently variable).
+    await visualSnapshot(autosyncDrawer(page), 'autosync-drawer.png', {
+      mask: [page.locator('[data-testid="wait-cell"]')],
+    });
   });
 });
 
