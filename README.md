@@ -9,7 +9,7 @@
 <p align="center">📖 <b><a href="https://polandy.github.io/skipper-cd/">Documentation</a></b></p>
 <br>
 
-A lightweight CD tool that listens for push webhooks, maintains a local clone of a Git repository, and redeploys only the Docker Compose stacks whose files actually changed. On NixOS it can also run `nixos-rebuild switch` when your `.nix` files change — closing the GitOps loop for the whole host. Unchanged stacks are skipped automatically.
+A lightweight CD tool that listens for push webhooks, maintains a local clone of a Git repository, and redeploys only the Docker Compose stacks whose files actually changed. On NixOS it can also run `nixos-rebuild switch` when your `.nix` files change — closing the GitOps loop for the whole host. Pair it with automated dependency updates (e.g. [Renovate](https://docs.renovatebot.com/)) — which can even automerge routine minor and patch bumps — and the loop runs itself: each merge rebuilds the NixOS host and redeploys only the stacks it changed, with no manual steps. Unchanged stacks are skipped automatically.
 
 Supported webhook signatures: **Gitea** (`X-Gitea-Signature`) and **GitHub/Forgejo** (`X-Hub-Signature-256`).
 
@@ -43,6 +43,17 @@ Run it **[on NixOS](docs/nixos.md)** as a declarative systemd service, or **[wit
 - **Web UI** — a single embedded page with live deploy status, service icons, an event log, and installable as a PWA.
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
+
+## The Bigger Picture
+
+skipper-cd is the last automation link in a **self-driving, declarative NixOS homelab**. Keep your host configuration and your Docker Compose stacks in one Git repo, and let the machine maintain itself:
+
+1. **[Renovate](https://docs.renovatebot.com/)** (or Dependabot) opens PRs for image tags, flake inputs, and other dependency bumps — and **automerges** the routine minor and patch ones.
+2. The merge fires a **push webhook**.
+3. skipper-cd pulls, runs `nixos-rebuild switch` if any `.nix` file changed, then redeploys **only** the stacks whose files changed.
+4. Everything unchanged keeps running, untouched.
+
+The payoff: your homelab stays current and fully declarative with **Git as the single source of truth** — and you only step in for the changes that genuinely need a human (major bumps, breaking notes).
 
 ## How It Works
 
