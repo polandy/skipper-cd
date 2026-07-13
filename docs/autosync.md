@@ -7,9 +7,7 @@ as sync resumes**. Autosync is **enabled everywhere by default** — with no
 configuration, every stack deploys automatically exactly as before.
 
 This document is the authoritative reference for the feature. UI behaviour is
-specified in [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md); the decision
-and its rationale are recorded in
-[ADR-0016](adr/0016-autosync-and-queue-via-leave-dirty.md).
+specified in [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md).
 
 ---
 
@@ -72,8 +70,7 @@ stacks. Only in-memory UI overrides are soft. Consequently the global switch act
 as a true master: it moves every inheriting stack and leaves only genuine
 exceptions standing. A UI pause does **not** survive a global off→on cycle (its
 override collapses while global is off, then the stack resumes with global);
-durable, latch-style pauses belong in `skipper.yml`. See
-[ADR-0019](adr/0019-autosync-ui-overrides-collapse-to-inherit.md).
+durable, latch-style pauses belong in `skipper.yml`.
 
 ---
 

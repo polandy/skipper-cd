@@ -94,7 +94,7 @@ the global scope. Keeping the rule to one scope keeps the mental model small.
 - A UI pause cannot outlive a global off→on cycle; operators who need a pause to
   persist declare it in `skipper.yml` (already the only way to persist a pause at
   all, per ADR-0016).
-- Full behaviour lives in [`docs/autosync.md`](../autosync.md#override-collapse);
+- Full behaviour lives in [`docs/autosync.md`](../../docs/autosync.md#override-collapse);
   the UI surface and its E2E coverage (UC10–UC12) in
   [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md) and
-  [`docs/e2e-tests.md`](../e2e-tests.md).
+  [`dev-docs/e2e-tests.md`](../e2e-tests.md).

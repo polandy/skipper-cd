@@ -25,7 +25,7 @@ nixos_rebuild:
 
 **Important:** The skipper-cd systemd service must run as root for `nixos-rebuild` to work. The NixOS rebuild runs **before** any Docker stack deployments. If the rebuild fails, all Docker stack deploys are aborted to prevent deploying against a potentially broken system.
 
-The rebuild runs in a transient systemd unit (`skipper-nixos-rebuild`) outside skipper's own cgroup, so a rebuild that restarts the skipper service itself keeps running ([ADR-0014](adr/0014-nixos-rebuild-in-transient-systemd-unit.md)). Nix hashes are saved to state *before* the rebuild because the rebuild may restart skipper; if the rebuild fails while skipper is still alive, the pre-saved hashes are reverted so the next sync retries ([ADR-0015](adr/0015-revert-nix-hashes-on-surviving-rebuild-failure.md)).
+The rebuild runs in a transient systemd unit (`skipper-nixos-rebuild`) outside skipper's own cgroup, so a rebuild that restarts the skipper service itself keeps running. Nix hashes are saved to state *before* the rebuild because the rebuild may restart skipper; if the rebuild fails while skipper is still alive, the pre-saved hashes are reverted so the next sync retries.
 
 NixOS rebuild state is tracked under the reserved key `_nixos` in the [state file](state.md) and appears in [Prometheus metrics](metrics.md) with the label `stack="_nixos"`. It also participates in [autosync](autosync.md) like a stack (independently pausable, queued rather than rebuilt while paused).
 
@@ -80,7 +80,7 @@ The module creates the state directory at `/var/lib/skipper`, adds `git`, `docke
 | `stateDir` | string | `/var/lib/skipper` | Directory for deploy state and the repository clone. |
 | `nixosRebuild` | bool | `false` | Set when `nixos_rebuild` is configured in `skipper.yml`. Relaxes the systemd sandboxing so `nixos-rebuild` can run. |
 | `stopTimeout` | string | `15min` | systemd `TimeoutStopSec`. On shutdown skipper-cd waits for an in-flight deploy to finish; keep this longer than a typical deploy run or systemd will kill the service mid-deploy. |
-| `autoRecover` | bool | `true` | Install a timer that restarts the service whenever it is in a `failed` state, self-healing a self-update whose stop was force-killed ([ADR-0017](adr/0017-self-heal-failed-self-update.md)). An intentional `systemctl stop` (unit goes `inactive`, not `failed`) is left alone. |
+| `autoRecover` | bool | `true` | Install a timer that restarts the service whenever it is in a `failed` state, self-healing a self-update whose stop was force-killed. An intentional `systemctl stop` (unit goes `inactive`, not `failed`) is left alone. |
 | `recoverInterval` | string | `2min` | How often the `autoRecover` timer checks for a failed service. Ignored when `autoRecover` is `false`. |
 
 ### Recommended Pattern: Self-Registering Stacks
