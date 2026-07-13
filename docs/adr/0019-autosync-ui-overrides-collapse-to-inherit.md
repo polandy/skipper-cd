@@ -96,5 +96,5 @@ the global scope. Keeping the rule to one scope keeps the mental model small.
   all, per ADR-0016).
 - Full behaviour lives in [`docs/autosync.md`](../autosync.md#override-collapse);
   the UI surface and its E2E coverage (UC10–UC12) in
-  [`internal/ui/UI_SPEC.md`](../../internal/ui/UI_SPEC.md) and
+  [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md) and
   [`docs/e2e-tests.md`](../e2e-tests.md).
