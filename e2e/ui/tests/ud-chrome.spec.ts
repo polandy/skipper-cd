@@ -104,3 +104,83 @@ test.describe('UD4: responsive ≤700px', () => {
     await expect(glyph('follow-logs')).toBeVisible();
   });
 });
+
+// UD1 — Theme toggle + no-flash. `theme-toggle` switches Catppuccin Mocha↔Latte
+// and persists the choice in `localStorage theme`. After a reload the inline
+// head script applies the `latte` class before first paint, so the light theme
+// is present immediately with no flash of the dark default.
+test('UD1: theme toggle switches Mocha↔Latte, persists, and applies before paint', async ({
+  page,
+  skipper,
+}) => {
+  const themeToggle = page.locator('[data-testid="theme-toggle"]');
+  const hasLatte = () => page.evaluate(() => document.documentElement.classList.contains('latte'));
+  const storedTheme = () => page.evaluate(() => localStorage.getItem('theme'));
+
+  await page.goto(`${skipper.baseURL}/`);
+
+  // Default is Mocha (dark): no `latte` class.
+  expect(await hasLatte()).toBe(false);
+
+  // Toggle → Latte, and the choice is persisted.
+  await themeToggle.click();
+  expect(await hasLatte()).toBe(true);
+  expect(await storedTheme()).toBe('latte');
+
+  // Reload: the head script re-applies `latte` before first paint, so the class
+  // is present immediately (no flash) without any interaction.
+  await page.reload();
+  expect(await hasLatte()).toBe(true);
+
+  // Toggle back → Mocha, persisted.
+  await themeToggle.click();
+  expect(await hasLatte()).toBe(false);
+  expect(await storedTheme()).toBe('mocha');
+});
+
+// UD2 — Connection indicator. `conn-indicator` exposes its state as `data-state`.
+// It reaches `connected` once the SSE stream opens; killing the backend drops the
+// stream so it flips to `reconnecting`; bringing the binary back on the same port
+// lets EventSource auto-reconnect and it returns to `connected`.
+test('UD2: connection indicator tracks connected→reconnecting→connected', async ({
+  page,
+  skipper,
+}) => {
+  const conn = page.locator('[data-testid="conn-indicator"]');
+
+  await page.goto(`${skipper.baseURL}/`);
+  await expect(conn).toHaveAttribute('data-state', 'connected');
+
+  // Kill the backend: the SSE stream errors and the indicator flips.
+  await skipper.stop();
+  await expect(conn).toHaveAttribute('data-state', 'reconnecting');
+
+  // Bring it back on the same port → EventSource auto-reconnects.
+  await skipper.relaunch();
+  await expect(conn).toHaveAttribute('data-state', 'connected', { timeout: 15000 });
+});
+
+// UD3 — Deploy indicator. `deploy-indicator` names the actively deploying
+// stack(s) while a deploy is in flight and reads `idle` otherwise. The state is
+// mirrored into `aria-label` (so it survives the span being hidden on mobile),
+// which is what we assert across a held→released deploy.
+test('UD3: deploy indicator names the active stack while held, idle otherwise', async ({
+  page,
+  skipper,
+}) => {
+  const indicator = page.locator('[data-testid="deploy-indicator"]');
+
+  await page.goto(`${skipper.baseURL}/`);
+  await expect(indicator).toContainText('idle'); // nothing deploying at rest
+
+  // Hold the next `up` and push a change → the stack stays deploying and the
+  // indicator names it.
+  skipper.hold();
+  skipper.setStackImage('web', '1.26');
+  expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+  await expect(indicator).toHaveAttribute('aria-label', 'deploying web');
+
+  // Release → the deploy completes and the indicator returns to idle.
+  skipper.release();
+  await expect(indicator).toHaveAttribute('aria-label', 'idle');
+});
