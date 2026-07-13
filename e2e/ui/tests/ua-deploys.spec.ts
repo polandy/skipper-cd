@@ -1,6 +1,14 @@
 import { test, expect } from '../fixtures/test';
+import { visualSnapshot } from '../fixtures/snapshot';
 
 // Maske A: Deploys-View. See docs/e2e-tests.md §4.2.
+
+// Dynamic cells that must be masked out of deploy-table screenshots so relative
+// times and durations never diff (docs/e2e-tests.md §5).
+const deployMasks = (page: import('@playwright/test').Page) => [
+  page.locator('[data-testid="time-cell"]'),
+  page.locator('[data-testid="duration-cell"]'),
+];
 
 // UA1 — Row lifecycle. A stack that deploys (held in `deploying`, then released
 // to `success`) appears as one newest-first row that mutates in place — not a
@@ -30,6 +38,11 @@ test('UA1: deploy row transitions deploying → success in place', async ({ page
   skipper.release();
   await expect(rows.first()).toHaveAttribute('data-status', 'success');
   await expect(rows).toHaveCount(2);
+
+  // Snapshot: the settled deploys table (§5 anchor), dynamic cells masked.
+  await visualSnapshot(page.locator('[data-testid="deploys-table"]'), 'deploys-table.png', {
+    mask: deployMasks(page),
+  });
 });
 
 // UA2 — Status badges. Each deploy status the UI renders is driven through the
@@ -370,6 +383,10 @@ test.describe('UA8: diff panel', () => {
     await expect(diffPanel(page).locator('.diff-line.diff-del')).toContainText('nginx:1.25');
     await expect(diffPanel(page).locator('.diff-line.diff-add')).toContainText('nginx:1.26');
     await expect(diffPanel(page).locator('.diff-line.diff-hunk').first()).toBeVisible();
+
+    // Snapshot: the coloured diff panel (§5 anchor). Its content is the static
+    // nginx image bump, so nothing needs masking.
+    await visualSnapshot(diffPanel(page), 'diff-panel.png');
 
     // Clicking again collapses it.
     await filesPill(page).click();

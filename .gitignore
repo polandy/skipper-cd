@@ -12,3 +12,7 @@ skipper.yml
 
 # Local Claude Code worktrees (not repo content)
 /.claude/worktrees/
+
+# Local scratch binary for generating UI snapshot baselines in the pinned
+# Playwright container (see docs/e2e-tests.md §5). Built ad hoc, never committed.
+/.pw-bin/
