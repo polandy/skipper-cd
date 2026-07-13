@@ -81,6 +81,38 @@ const stackSwitch = (page: Page, name: string) =>
   page.locator(`[data-testid="stack-switch"][data-stack="${name}"]`);
 const stackItem = (page: Page, name: string) =>
   page.locator(`[data-testid="stack-item"][data-stack="${name}"]`);
+const autosyncDrawer = (page: Page) => page.locator('[data-testid="autosync-drawer"]');
+
+// UC3 — Drawer open/close. Clicking the `autosync-btn` header control opens the
+// `autosync-drawer`; both `Esc` and an outside click close it again. The drawer
+// starts hidden (`visibility: hidden`), so `toBeVisible`/`toBeHidden` track the
+// `.open` class directly, and the button mirrors the state via `aria-expanded`.
+test.describe('UC3: drawer open/close', () => {
+  test('clicking opens the drawer; Esc and an outside click close it', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // Closed at boot.
+    await expect(autosyncDrawer(page)).toBeHidden();
+    await expect(autosyncBtn(page)).toHaveAttribute('aria-expanded', 'false');
+
+    // Click the control → the drawer opens and the button reports it.
+    await autosyncBtn(page).click();
+    await expect(autosyncDrawer(page)).toBeVisible();
+    await expect(autosyncBtn(page)).toHaveAttribute('aria-expanded', 'true');
+
+    // Esc closes it (the handler is bound document-wide).
+    await page.keyboard.press('Escape');
+    await expect(autosyncDrawer(page)).toBeHidden();
+    await expect(autosyncBtn(page)).toHaveAttribute('aria-expanded', 'false');
+
+    // Reopen, then click well outside the drawer and button → it closes again.
+    await autosyncBtn(page).click();
+    await expect(autosyncDrawer(page)).toBeVisible();
+    await page.mouse.click(10, 400); // far from the top-right drawer/button
+    await expect(autosyncDrawer(page)).toBeHidden();
+    await expect(autosyncBtn(page)).toHaveAttribute('aria-expanded', 'false');
+  });
+});
 
 // UC10 — Re-enable does not pin (override collapse). A per-stack UI override is an
 // exception to the baseline, not a permanent pin (ADR-0019). Global is on; pausing

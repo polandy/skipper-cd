@@ -33,7 +33,10 @@ asserting **behaviour + visual snapshots**.
 > complete` lines expanding the diff panel below the line) passing, plus **UC1**
 > (header autosync control mirrors global state live from the `autosync` SSE
 > event) and **UC2** (pending pill shows the live queue count while paused and
-> hides on drain) into Mask C, and an `e2e-ui` CI job (behaviour-only). Masks A
+> hides on drain) into Mask C — plus **UC3** (drawer open/close: the header control opens
+> `autosync-drawer`, and both `Esc` and an outside click close it) and the merged
+> override-collapse cases **UC10**/**UC11**/**UC12** — and an `e2e-ui` CI job
+> (behaviour-only). Masks A
 > and B (Logs) are complete. Remaining: the rest of mask C, mask D, and the
 > visual-snapshot baselines (§5), at which point `e2e-ui` moves into Playwright's
 > pinned container.
