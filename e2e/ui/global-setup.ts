@@ -17,7 +17,11 @@ export default function globalSetup() {
   const bin = skipperBinPath();
   mkdirSync(dirname(bin), { recursive: true });
   const ldflags = `-X main.version=${manifestVersion()} -X main.commit=${buildCommit}`;
-  execFileSync('go', ['build', '-ldflags', ldflags, '-o', bin, './cmd/skipper'], {
+  // -buildvcs=false: version/commit come from ldflags, so the build needs no git
+  // VCS stamping — and stamping fails inside the pinned CI container, where the
+  // checked-out repo has "dubious ownership" (built as root, files owned by
+  // another uid) and `go build`'s git call exits 128.
+  execFileSync('go', ['build', '-buildvcs=false', '-ldflags', ldflags, '-o', bin, './cmd/skipper'], {
     cwd: repoRoot(),
     stdio: 'inherit',
   });
