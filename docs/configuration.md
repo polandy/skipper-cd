@@ -61,6 +61,7 @@ nixos_rebuild:
 | `stacks` | list | yes | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
+| `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
 
 ## Stack Fields
 
@@ -118,3 +119,52 @@ icons:
 ```
 
 > **Note:** A repo `icon.svg`/`icon.png` is **not** hash-tracked, so adding or changing an icon never triggers a redeploy. The one exception: if you list a stack's own directory under `watch_dirs`, its icon files would be hashed along with everything else — keep icons out of watched directories.
+
+## Notifications
+
+skipper-cd can POST a message to one or more targets whenever a deploy reaches a **terminal** outcome. This works independently of the web UI — notifications need neither `ui_enabled` nor an open browser.
+
+Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back` (the transient `deploying`, `skipped` and `queued` are never sent). Each target chooses which of the three it wants via `on:`; when omitted, all three are delivered.
+
+Delivery is **fire-and-forget**: sending runs in the background with its own 10-second per-request timeout, never blocking or delaying a deploy. A failed or slow target is logged and dropped — there is no retry queue, so a notification can be lost if the target is down. For guaranteed history, read the persisted events or scrape metrics instead.
+
+```yaml
+notifications:
+  # Signal via the signal-cli-rest-api stack.
+  - format: signal
+    url: http://localhost:8020        # service base; /v2/send is appended
+    number: "+491234567890"           # sender (required for signal)
+    recipients: ["+491234567890"]     # recipients (required for signal)
+    # on:  defaults to [failed, success, rolled_back]
+
+  # A second, independent target for failures only.
+  - format: generic
+    url: https://ntfy.example.com/skipper
+    headers:
+      Authorization: "Bearer <token>"
+    on: [failed, rolled_back]
+```
+
+### Target Fields
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `format` | string | no | `generic` | Provider shape of the request: `signal` or `generic`. |
+| `url` | string | yes | — | Endpoint the notification is POSTed to. For `signal` this is the `signal-cli-rest-api` **base** (e.g. `http://localhost:8020`); `/v2/send` is appended automatically. |
+| `on` | list | no | all three | Subset of `failed`, `success`, `rolled_back` that triggers this target. |
+| `headers` | map | no | — | Static HTTP headers added to the request. Only meaningful for `generic` (e.g. an auth token). |
+| `number` | string | for `signal` | — | Signal sender number. Required for `format: signal`, rejected on any other format. |
+| `recipients` | list | for `signal` | — | Signal recipient numbers (non-empty). Required for `format: signal`, rejected on any other format. |
+
+### Formats
+
+| Format | Body sent | Use for |
+|---|---|---|
+| `signal` | `{"message": …, "number": …, "recipients": […]}` to `<url>/v2/send` | The `bbernhard/signal-cli-rest-api` service. |
+| `generic` | The full deploy event as JSON (diffs stripped), plus any `headers` | ntfy, Gotify, or your own endpoint. |
+
+> **Reachability (`signal`).** When skipper-cd runs on the host and `signal-api` is a container, target the host-mapped port directly (e.g. `http://localhost:8020`) — this reaches the container without going through a reverse proxy or its auth.
+
+> **No email.** Native SMTP is deliberately unsupported (see [ADR-0020](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0020-outbound-deploy-notifications.md)). Point a `generic` target at an email-capable relay (ntfy, Apprise, Shoutrrr) if you need email.
+
+> **Self-notify caveat.** If Signal is delivered through a `signal-api` stack that skipper itself deploys, a failed `signal-api` deploy cannot notify you about itself. Configure a second, independent target (e.g. `generic` → ntfy) so at least one path never depends on the stack being reported on.

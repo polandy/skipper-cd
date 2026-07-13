@@ -28,6 +28,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/icons"
 	"github.com/polandy/skipper-cd/internal/logbuf"
 	"github.com/polandy/skipper-cd/internal/metrics"
+	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -156,18 +157,43 @@ func main() {
 		stateB      *events.Broadcaster[events.StateEvent]
 		history     *events.History
 	)
+	// The deploy event sink is composed from whatever consumers are configured;
+	// each is independent, so notifications work with the UI off (ADR-0020).
+	var eventSinks []func(events.DeployEvent)
 	if cfg.UIEnabled {
 		history = events.NewHistory(stateDir)
 		broadcaster = events.NewBroadcaster()
 		stateB = events.NewStateBroadcaster()
 		deployer.InitEventID(history.MaxEventID())
-		deployer.SetEventSink(func(e events.DeployEvent) {
+		eventSinks = append(eventSinks, func(e events.DeployEvent) {
 			if e.Status != events.StatusSkipped {
 				history.Add(e)
 			}
 			broadcaster.Publish(e)
 		})
 		slog.Info("web UI enabled")
+	}
+
+	// Outbound notifications. Config is already validated in Load; New only
+	// re-derives formatters, so an error here is a programming bug, not user
+	// input. Timeout 0 uses notify's built-in per-request default.
+	notifier, err := notify.New(cfg.Notifications, nil, 0)
+	if err != nil {
+		slog.Error("failed to build notifier", "err", err)
+		os.Exit(1)
+	}
+	if notifier.Enabled() {
+		go notifier.Run(signalCtx)
+		eventSinks = append(eventSinks, notifier.Notify)
+		slog.Info("notifications enabled", "targets", len(cfg.Notifications))
+	}
+
+	if len(eventSinks) > 0 {
+		deployer.SetEventSink(func(e events.DeployEvent) {
+			for _, s := range eventSinks {
+				s(e)
+			}
+		})
 	}
 
 	// Autosync is active regardless of the UI so config-as-code pauses apply.

@@ -15,6 +15,8 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 | `skipper_autosync_enabled` | gauge | Effective per-stack autosync (`1`/`0`), labelled by `stack` (incl. `_nixos`). |
 | `skipper_autosync_global` | gauge | Effective global autosync (`1`/`0`). |
 | `skipper_autosync_pending` | gauge | Number of stacks currently queued (queue depth). |
+| `skipper_notifications_sent_total` | counter | Outbound notification deliveries, labelled by `format` and `outcome` (`ok`/`error`) (see [Notifications](configuration.md#notifications)). |
+| `skipper_notifications_dropped_total` | counter | Notification events dropped because the delivery buffer was full. |
 
 ## Recommended Alerts
 

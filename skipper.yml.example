@@ -41,3 +41,17 @@ nixos_rebuild:
 # icons:
 #   cache_dir: /var/lib/skipper/icons
 #   source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons  # <root>/<fmt>/<slug>.<fmt>, tries svg,png,webp
+
+# Outbound notifications on terminal deploy outcomes (works with the UI off).
+# Omit the section entirely to disable. See docs/configuration.md#notifications.
+# notifications:
+#   - format: signal                       # signal | generic (default: generic)
+#     url: http://localhost:8020           # signal-api base; /v2/send is appended
+#     number: "+491234567890"              # sender (required for signal)
+#     recipients: ["+491234567890"]        # recipients (required for signal)
+#     # on: [failed, success, rolled_back] # default; subset of these three
+#   - format: generic                      # a second, independent target for failures
+#     url: https://ntfy.example.com/skipper
+#     headers:
+#       Authorization: "Bearer your-token"
+#     on: [failed, rolled_back]
