@@ -80,4 +80,20 @@ var (
 		Name: "skipper_autosync_pending",
 		Help: "Number of stacks currently queued waiting for autosync to resume.",
 	})
+
+	// NotificationsSent counts outbound notification deliveries by target format
+	// and outcome ("ok" for a 2xx response, "error" for a transport error or a
+	// non-2xx status). See ADR-0020.
+	NotificationsSent = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "skipper_notifications_sent_total",
+		Help: "Total outbound notification deliveries by format and outcome (ok|error).",
+	}, []string{"format", "outcome"})
+
+	// NotificationsDropped counts notification events dropped because the shared
+	// delivery buffer was full (a wedged or very slow target). Unlabeled: the
+	// buffer is global, so a drop is not attributable to a single format.
+	NotificationsDropped = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "skipper_notifications_dropped_total",
+		Help: "Total notification events dropped because the delivery buffer was full.",
+	})
 )

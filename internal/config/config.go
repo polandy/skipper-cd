@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -93,7 +94,56 @@ type Config struct {
 	// Icons configures service-icon resolution for the web UI. The section is
 	// optional; omitting it uses the defaults applied in Load.
 	Icons IconsConfig `yaml:"icons"`
+
+	// Notifications lists outbound notification targets that receive a message
+	// on every terminal deploy outcome they subscribe to. An empty section
+	// disables notifications entirely. See ADR-0020.
+	Notifications []NotificationTarget `yaml:"notifications"`
 }
+
+// NotificationTarget configures a single outbound notification sink: where to
+// POST, in which provider shape, and which deploy outcomes to report. See
+// ADR-0020.
+type NotificationTarget struct {
+	// Format selects the provider shape of the request body. One of
+	// "signal", "generic". Defaults to "generic".
+	Format string `yaml:"format"`
+
+	// URL is the endpoint the notification is POSTed to. For "signal" it is the
+	// signal-cli-rest-api base (e.g. http://localhost:8020); "/v2/send" is
+	// appended by the formatter.
+	URL string `yaml:"url"`
+
+	// On lists the terminal deploy statuses that trigger this target. Any
+	// subset of "failed", "success", "rolled_back". Empty means all three.
+	On []string `yaml:"on"`
+
+	// Headers are static HTTP headers added to the request. Only meaningful for
+	// the "generic" format (e.g. an Authorization bearer token).
+	Headers map[string]string `yaml:"headers"`
+
+	// Number is the Signal sender number ("signal" format only, required).
+	Number string `yaml:"number"`
+
+	// Recipients are the Signal recipient numbers ("signal" format only,
+	// non-empty).
+	Recipients []string `yaml:"recipients"`
+}
+
+// Notification format values for NotificationTarget.Format.
+const (
+	NotifyFormatSignal  = "signal"
+	NotifyFormatGeneric = "generic"
+)
+
+// Terminal deploy statuses accepted in NotificationTarget.On. They mirror the
+// terminal events.Status values without importing that package (config is the
+// lowest layer).
+const (
+	NotifyOnFailed     = "failed"
+	NotifyOnSuccess    = "success"
+	NotifyOnRolledBack = "rolled_back"
+)
 
 // IconsConfig configures how the web UI resolves and caches stack icons.
 type IconsConfig struct {
@@ -156,6 +206,15 @@ func Load(path string) (*Config, error) {
 	if cfg.Icons.SourceURL == "" {
 		cfg.Icons.SourceURL = defaultIconSourceURL
 	}
+	for i := range cfg.Notifications {
+		t := &cfg.Notifications[i]
+		if t.Format == "" {
+			t.Format = NotifyFormatGeneric
+		}
+		if len(t.On) == 0 {
+			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack}
+		}
+	}
 
 	return cfg, validateConfig(cfg)
 }
@@ -206,6 +265,51 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {
 		return fmt.Errorf("log_format must be %q or %q, got %q", LogFormatText, LogFormatJSON, cfg.LogFormat)
+	}
+
+	for i, t := range cfg.Notifications {
+		if err := validateNotificationTarget(t); err != nil {
+			return fmt.Errorf("notifications[%d]: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+// validateNotificationTarget checks a single notification target. Format and On
+// have already been defaulted in Load.
+func validateNotificationTarget(t NotificationTarget) error {
+	switch t.Format {
+	case NotifyFormatSignal, NotifyFormatGeneric:
+	default:
+		return fmt.Errorf("unknown format %q", t.Format)
+	}
+
+	if t.URL == "" {
+		return fmt.Errorf("url is required")
+	}
+	if u, err := url.ParseRequestURI(t.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("url %q must be a valid http(s) URL", t.URL)
+	}
+
+	for _, s := range t.On {
+		switch s {
+		case NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack:
+		default:
+			return fmt.Errorf("unknown on value %q", s)
+		}
+	}
+
+	// Signal identity fields are required for and exclusive to the signal format.
+	if t.Format == NotifyFormatSignal {
+		if t.Number == "" {
+			return fmt.Errorf("signal format requires number")
+		}
+		if len(t.Recipients) == 0 {
+			return fmt.Errorf("signal format requires at least one recipient")
+		}
+	} else if t.Number != "" || len(t.Recipients) > 0 {
+		return fmt.Errorf("number/recipients are only valid for the signal format")
 	}
 
 	return nil

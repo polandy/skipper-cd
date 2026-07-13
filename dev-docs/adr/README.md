@@ -23,3 +23,5 @@ One file per decision, numbered sequentially (see
 | [0016](0016-autosync-and-queue-via-leave-dirty.md) | Autosync with a leave-dirty queue and non-persistent overrides |
 | [0017](0017-self-heal-failed-self-update.md) | Self-heal skipper-cd after a failed self-update |
 | [0018](0018-pwa-installable-ui.md) | Installable PWA web UI with app-shell caching |
+| [0019](0019-autosync-ui-overrides-collapse-to-inherit.md) | Autosync UI overrides collapse to inherit when they match the baseline |
+| [0020](0020-outbound-deploy-notifications.md) | Outbound deploy notifications via a generic HTTP sink |
