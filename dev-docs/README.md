@@ -6,6 +6,8 @@ These files deliberately live outside `docs/` so they are **not** published to t
 
 - [`adr/`](adr/) — Architecture Decision Records: the design decisions and their
   rationale, one file per decision.
+- [`local-ci.md`](local-ci.md) — run the whole CI pipeline locally via the nix
+  dev shell + `make ci`.
 - [`e2e-tests.md`](e2e-tests.md) — authoritative spec for the end-to-end tests.
 - [`service-icons-spec.md`](service-icons-spec.md) — feature spec for service icons.
 
