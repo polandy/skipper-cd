@@ -1,6 +1,10 @@
 # Builds the MkDocs Material site from docs/ and deploys it to GitHub Pages.
 # Runs only when the docs, the MkDocs config, or this workflow change.
 #
+# On pull requests the build job runs `mkdocs build --strict` as a gate so a
+# broken link or bad nav fails the PR instead of surfacing only after merge;
+# the deploy job is push-to-main only.
+#
 # One-time setup: repo Settings -> Pages -> Build and deployment -> Source:
 # "GitHub Actions".
 name: Docs
@@ -8,6 +12,11 @@ name: Docs
 on:
   push:
     branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  pull_request:
     paths:
       - "docs/**"
       - "mkdocs.yml"
@@ -35,12 +44,16 @@ jobs:
           cache: pip
       - run: pip install -r docs/requirements.txt
       - run: mkdocs build --strict
+      # Only the main-branch push needs to publish; PR runs stop at the strict
+      # build above as a validation gate.
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name == 'push'
         with:
           path: site
 
   deploy:
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
