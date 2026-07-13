@@ -1,11 +1,9 @@
-# skipper-cd as a Progressive Web App — Specification
+# Install skipper-cd as an App (PWA)
 
 The skipper-cd web UI is an **installable Progressive Web App (PWA)**. This
 document describes **what** the PWA behaviour is for users and operators — not
 how it is implemented. UI details live in
-[`internal/ui/UI_SPEC.md`](../internal/ui/UI_SPEC.md); the decision and its
-rationale are recorded in
-[ADR-0018](adr/0018-pwa-installable-ui.md).
+[`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md).
 
 The PWA is an **enhancement layer**. The site continues to work exactly as before
 in a normal browser tab for anyone who does not install it.

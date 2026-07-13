@@ -31,7 +31,7 @@ Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). 
 
 Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
-**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), `LIVE` pill, and a muted **version label** showing the deployed skipper-cd version (`v<semver>`, e.g. `v0.7.0`; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version` and left empty until it resolves. The favicon is the same ship as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
+**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), and a muted **version label** showing the deployed build identity (`v<semver> · <commit>`, or the branch name for feature builds; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version`, left empty until it resolves, and carries a `title` tooltip with the full string (it clips with an ellipsis when narrow). The favicon is the same ship as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
 
 **Header — right:**
 - **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
@@ -85,7 +85,7 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `success` / `failed` / `rolled_back` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
 | `success` / `failed` / `rolled_back` (no existing row) | New row created directly. |
 | `skipped` | Dropped — never rendered (an unchanged stack carries no signal). |
-| `queued` | New row created with the `queued` badge and a `paused:` tag. When the stack later deploys (after sync resumes), a fresh `deploying`→`success` row supersedes it. |
+| `queued` | Row created with the `queued` badge and a `paused:` tag, **keyed by stack**: a further `queued` for the same stack (another push while paused) replaces it rather than stacking a duplicate. It is removed when the stack next deploys (a `deploying` event supersedes it) or when the stack leaves the pending set in a `queue` snapshot (resumed then found unchanged). Like a deploy, a `queued` event carries `has_diffs`, so the paused row expands the pending diff. |
 
 ---
 
@@ -99,7 +99,9 @@ Controls whether detected changes deploy automatically, per stack and globally. 
 
 - **Global autosync** — a switch (the header control mirrors its state). Toggling posts `POST /api/autosync {scope:"global", enabled}`.
 - **Queued (N) · drains in this order** — the pending stacks in **deploy order** (`_nixos` first, then `skipper.yml` order), each row: position number, stack name, a `reason` chip (`global` / `stack`), changed-file count, and how long it has waited. Empty/hidden when nothing is queued.
-- **All stacks** — one switch per managed stack with its current state, preceded by a **filter field** (case-insensitive substring match on stack name; a clear button appears when non-empty; `Esc` clears the field first, then closes the drawer). A "No stack matches …" state shows when the filter excludes everything. Toggling posts `POST /api/autosync {scope:"stack", stack, enabled}`.
+- **All stacks** — one switch per managed stack with its current state, preceded by a **filter field** (case-insensitive substring match on stack name; a clear button appears when non-empty; `Esc` clears the field first, then closes the drawer). A "No stack matches …" state shows when the filter excludes everything. Toggling posts `POST /api/autosync {scope:"stack", stack, enabled}`. The switch reflects `effective`, so it stays correct across a toggle **while a filter is applied** (the toggle re-renders the list but preserves the query and the matched subset).
+
+**Per-stack switch is an exception, not a pin.** A per-stack UI override is held only while it differs from what the stack would inherit; toggling a stack back to its inherited value clears the override (the "return to global" gesture) and toggling the global switch collapses any per-stack override that now matches the baseline. So the global switch behaves as a true master and a UI pause does not survive a global off→on cycle. Full semantics: [`docs/autosync.md`](../../docs/autosync.md#override-collapse) / [ADR-0019](../../docs/adr/0019-autosync-ui-overrides-collapse-to-inherit.md).
 
 **Enable triggers a drain; disable does not.** Enabling sync (global or a stack) triggers a deploy run that drains the queue; disabling only updates state. Switches use the same track/thumb geometry as the header `.filter-toggle`.
 
@@ -143,7 +145,13 @@ On connect the in-memory backlog (bounded ring, 1000 entries, no persistence acr
 
 ## Version API
 
-`GET /api/version` — returns `{"version": "<semver>|dev"}`, the build-time version injected via `-ldflags "-X main.version=…"` from `.release-please-manifest.json` (`dev` for local builds without ldflags). The header version label is painted from this once on load.
+`GET /api/version` — returns the build identity `{"version": "<semver>|dev", "branch": "<name>", "commit": "<short-sha>"}`. Fields are injected at build time via `-ldflags "-X main.version=… -X main.commit=… -X main.branch=…"`:
+
+- `version` — semver from `.release-please-manifest.json` (`dev` for local builds without ldflags).
+- `commit` — short git SHA. Injected by the Nix flake (`self.shortRev`) and by Docker/CI; for a local `go build` it is recovered from the Go build info (`-dirty` suffix for an uncommitted tree). May be empty.
+- `branch` — git branch name. Only CI/Docker builds know it; the Nix flake and plain local builds leave it empty.
+
+The header label is painted once on load: a **feature-branch** build (branch set and ≠ `main`) shows `branch · commit`; otherwise it shows `v<version> · commit` (or `dev · commit`). The same `version-commit` string is baked into the service worker's cache name (`/sw.js`) so two feature-branch builds that share a release semver still bust the app-shell cache.
 
 Diffs are stored in `deploy-history.yaml` alongside events but are **not** included in SSE payloads (only `has_diffs: true` is sent). This keeps the real-time stream lightweight. Large diffs are truncated at 10 KB per file and 50 KB total per event.
 
@@ -173,7 +181,7 @@ assert on.
 | `data-testid` | Element | Notes |
 |---|---|---|
 | `brand-name` | Header `skipper-cd` wordmark | Hidden ≤ 700 px (logo alone carries the brand) |
-| `brand-version` | Header version label | `v<semver>` or `dev`; empty until `/api/version` resolves |
+| `brand-version` | Header version label | `v<semver> · <commit>` / branch; `dev` local; empty until `/api/version` resolves; full string in `title`; shown in portrait ≤ 700 px |
 | `view-toggle` | Deploys/Logs segmented control | |
 | `deploy-indicator` | Active-stack / idle indicator | |
 | `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |
@@ -207,7 +215,7 @@ assert on.
 
 ## Responsive (≤ 700 px)
 
-**Header — compact single row.** The header collapses to one 48 px row that **must never scroll horizontally**. The brand is the ship logo *alone*: the `skipper-cd` wordmark, the `LIVE` tag and the version label are all hidden. Every control keeps its glyph but drops its text label:
+**Header — compact single row.** The header collapses to one 48 px row that **must never scroll horizontally**. The brand is the ship logo plus, **in portrait**, the version label (it clips with an ellipsis and can shrink so the row still never scrolls; the full string stays in its `title` tooltip). The `skipper-cd` wordmark is hidden; the version label is also dropped in the tighter landscape orientation. Every control keeps its glyph but drops its text label:
 
 - **View toggle** — unchanged (the only text control; `deploys | logs` still fits).
 - **Deploy indicator** — collapses to its coloured dot; the active-stack / `idle` text is hidden and mirrored into the element's `title`/`aria-label`.

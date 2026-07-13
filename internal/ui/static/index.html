@@ -159,6 +159,8 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    /* Let the version label clip (ellipsis) instead of widening the header. */
+    min-width: 0;
   }
 
   .brand-icon {
@@ -182,20 +184,6 @@
     color: var(--accent);
   }
 
-  .brand-tag {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 500;
-    color: var(--text-muted);
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    padding: 2px 7px;
-    border-radius: 4px;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    margin-left: 4px;
-  }
-
   .brand-version {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -203,6 +191,11 @@
     color: var(--text-muted);
     letter-spacing: 0.2px;
     margin-left: 2px;
+    /* Long feature-branch names must not stretch the header — clip them. */
+    max-width: 22ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .brand-version:empty { display: none; }
@@ -1082,10 +1075,10 @@
   @media (max-width: 700px) {
     header { padding: 0 12px; height: 48px; }
     .status-area { gap: 10px; }
-    /* Wordmark, tag and version are dropped — the ship logo alone carries the
-       brand on mobile so the control row fits without horizontal scroll. */
+    /* Wordmark is dropped — the ship logo alone carries the brand on mobile so
+       the control row fits without horizontal scroll. The version is kept in
+       portrait (re-shown below) but dropped in the tighter landscape. */
     .brand-name { display: none; }
-    .brand-tag { display: none; }
     .brand-version { display: none; }
     /* The label and switch track don't fit next to the view toggle, and
        unlabelled the bare tracks all look alike — swap each for a
@@ -1117,6 +1110,20 @@
     .col-files { display: none; }
     .event-row:has(.files-pill) { cursor: pointer; }
   }
+
+  /* Portrait phones keep the build identity next to the logo. It clips with an
+     ellipsis and can shrink (min-width:0) so the header never scrolls sideways;
+     the full string stays available via the title tooltip / long-press. */
+  @media (max-width: 700px) and (orientation: portrait) {
+    .brand-version {
+      display: block;
+      max-width: 34vw;
+      min-width: 0;
+      flex-shrink: 1;
+      font-size: 10px;
+      margin-left: 0;
+    }
+  }
 </style>
 </head>
 <body>
@@ -1133,7 +1140,6 @@
       </svg>
     </div>
     <span class="brand-name" data-testid="brand-name">skipper<span>-cd</span></span>
-    <span class="brand-tag">live</span>
     <span class="brand-version" id="brand-version" data-testid="brand-version"></span>
   </div>
   <div class="status-area">
@@ -1244,6 +1250,9 @@
   const deployStatus = document.getElementById('deploy-status');
 
   const deployingRows = {};
+  // Queued (paused) rows, keyed by stack, so a stack's pending row is replaced
+  // rather than duplicated, and removed once it deploys or drains.
+  const queuedRows = {};
   let hasRows = false;
   let absoluteTime = localStorage.getItem('timeMode') === 'absolute';
 
@@ -1482,12 +1491,38 @@
     deployStatus.setAttribute('aria-label', label);
   }
 
+  // removeQueuedRow drops a stack's pending (queued) row and any panel opened
+  // below it. No-op when the stack has no queued row.
+  function removeQueuedRow(stack) {
+    var row = queuedRows[stack];
+    if (!row) return;
+    var sib = row.nextElementSibling;
+    if (sib && (sib.classList.contains('files-list') || sib.classList.contains('diff-panel'))) {
+      sib.remove();
+    }
+    row.remove();
+    delete queuedRows[stack];
+  }
+
   function handleEvent(evt, isHistory) {
     // A skipped deploy means an unchanged stack — no signal worth showing, so
     // it is never rendered (skipped events are live-only, never in history).
     if (evt.status === 'skipped') return;
 
     showTable();
+
+    if (evt.status === 'queued') {
+      // Replace any prior pending row for this stack — multiple pushes while
+      // paused collapse into one — and key it so it can be cleared on deploy.
+      removeQueuedRow(evt.stack);
+      var qrow = createRow(evt, isHistory);
+      tbody.insertBefore(qrow, tbody.firstChild);
+      queuedRows[evt.stack] = qrow;
+      return;
+    }
+
+    // Any real deploy progress supersedes this stack's pending row.
+    removeQueuedRow(evt.stack);
 
     if (evt.status === 'deploying') {
       var row = createRow(evt, isHistory);
@@ -1565,6 +1600,11 @@
       queueSnap = JSON.parse(e.data);
       queueByStack = {};
       (queueSnap.pending || []).forEach(function(it) { queueByStack[it.stack] = it; });
+      // A stack that left the pending set without a deploy event (e.g. resumed
+      // then found unchanged) must lose its now-stale queued row.
+      Object.keys(queuedRows).forEach(function(stack) {
+        if (!queueByStack[stack]) removeQueuedRow(stack);
+      });
       renderAutosync();
     });
 
@@ -2133,13 +2173,23 @@
     }
   });
 
-  // Paint the deployed skipper-cd version in the header once on load.
+  // Paint the deployed skipper-cd build identity in the header once on load.
+  // Feature-branch builds show the branch (which release semver alone cannot
+  // distinguish); release/Nix/dev builds show the version. The short commit is
+  // appended whenever the build path knows it.
   fetch('/api/version')
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (!d || !d.version) return;
       var el = document.getElementById('brand-version');
-      if (el) el.textContent = d.version === 'dev' ? 'dev' : 'v' + d.version;
+      if (!el) return;
+      var base = d.version === 'dev' ? 'dev' : 'v' + d.version;
+      var head = (d.branch && d.branch !== 'main') ? d.branch : base;
+      var text = d.commit ? head + ' · ' + d.commit : head;
+      el.textContent = text;
+      // The label may be clipped (ellipsis) on narrow viewports or long branch
+      // names; the title exposes the full identity on hover / long-press.
+      el.title = text;
     })
     .catch(function() {});
 

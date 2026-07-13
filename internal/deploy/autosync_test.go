@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/polandy/skipper-cd/internal/autosync"
@@ -66,6 +67,56 @@ func TestDeployStack_DefersWhenAutosyncPaused(t *testing.T) {
 	if items[0].Stack != "gitea" || items[0].Reason != "global" {
 		t.Errorf("unexpected queue item %+v", items[0])
 	}
+}
+
+// A deferred deploy must still carry the diff of what is waiting, so the paused
+// row in the UI can show the effective change rather than only the file paths.
+func TestDeployStack_QueuedEventIncludesDiffs(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{
+			filepath.Join(stackDir, "docker-compose.yml"): "+image: nginx:1.25\n",
+		},
+	}
+	runner := &recordingRunner{}
+	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+	d.SetAutosync(autosync.NewController(off(), nil), autosync.NewQueue()) // paused globally
+
+	var queuedEvt *events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Status == events.StatusQueued {
+			queuedEvt = &e
+		}
+	})
+
+	stack := config.Stack{Name: "gitea"}
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if queuedEvt == nil {
+		t.Fatal("expected a queued event")
+	}
+	if queuedEvt.Diffs == nil {
+		t.Fatal("expected diffs in the queued event, got nil")
+	}
+	if !strings.Contains(queuedEvt.Diffs[filepath.Join(stackDir, "docker-compose.yml")], "nginx:1.25") {
+		t.Errorf("expected diff content in the queued event, got %+v", queuedEvt.Diffs)
+	}
+	// It was deferred, not deployed.
+	assertCommandNotCalled(t, runner.calls, "up")
 }
 
 func TestDeployStack_DeploysAndClearsQueueWhenEnabled(t *testing.T) {

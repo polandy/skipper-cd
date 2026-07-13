@@ -64,24 +64,64 @@ func TestIndexHandler_ServesHTML(t *testing.T) {
 	}
 }
 
-func TestVersionHandler_ReturnsVersion(t *testing.T) {
-	handler := VersionHandler("1.2.3")
-	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
-	rec := httptest.NewRecorder()
+func TestVersionHandler_ReturnsBuildInfo(t *testing.T) {
+	tests := []struct {
+		name string
+		in   BuildInfo
+	}{
+		{"release", BuildInfo{Version: "1.2.3"}},
+		{"feature branch", BuildInfo{Version: "1.2.3", Branch: "fix/mobile-header", Commit: "a1b2c3d"}},
+		{"nix (commit only)", BuildInfo{Version: "1.2.3", Commit: "a1b2c3d"}},
+		{"dev", BuildInfo{Version: "dev", Commit: "a1b2c3d"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := VersionHandler(tt.in)
+			req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
+			rec := httptest.NewRecorder()
 
-	handler.ServeHTTP(rec, req)
+			handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rec.Code)
+			}
+			var got struct {
+				Version string `json:"version"`
+				Branch  string `json:"branch"`
+				Commit  string `json:"commit"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if got.Version != tt.in.Version {
+				t.Errorf("version = %q, want %q", got.Version, tt.in.Version)
+			}
+			if got.Branch != tt.in.Branch {
+				t.Errorf("branch = %q, want %q", got.Branch, tt.in.Branch)
+			}
+			if got.Commit != tt.in.Commit {
+				t.Errorf("commit = %q, want %q", got.Commit, tt.in.Commit)
+			}
+		})
 	}
-	var got struct {
-		Version string `json:"version"`
+}
+
+func TestBuildInfo_CacheID(t *testing.T) {
+	tests := []struct {
+		name string
+		in   BuildInfo
+		want string
+	}{
+		{"version only", BuildInfo{Version: "1.2.3"}, "1.2.3"},
+		{"version and commit", BuildInfo{Version: "1.2.3", Commit: "a1b2c3d"}, "1.2.3-a1b2c3d"},
+		{"branch build shares semver", BuildInfo{Version: "1.2.3", Branch: "feat/x", Commit: "deadbee"}, "1.2.3-deadbee"},
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if got.Version != "1.2.3" {
-		t.Errorf("version = %q, want %q", got.Version, "1.2.3")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.in.CacheID(); got != tt.want {
+				t.Errorf("CacheID() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -126,8 +166,8 @@ func TestManifestHandler_ServesInstallableManifest(t *testing.T) {
 	}
 }
 
-func TestServiceWorkerHandler_InjectsVersion(t *testing.T) {
-	handler := ServiceWorkerHandler("9.9.9")
+func TestServiceWorkerHandler_InjectsCacheID(t *testing.T) {
+	handler := ServiceWorkerHandler(BuildInfo{Version: "9.9.9", Commit: "cafef00d"})
 	req := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
 	rec := httptest.NewRecorder()
 
@@ -146,8 +186,10 @@ func TestServiceWorkerHandler_InjectsVersion(t *testing.T) {
 	if strings.Contains(body, "__VERSION__") {
 		t.Error("service worker still contains the __VERSION__ placeholder")
 	}
-	if !strings.Contains(body, "9.9.9") {
-		t.Error("service worker does not contain the injected version")
+	// The commit must be part of the cache id so two feature-branch builds that
+	// share a release semver still bust the app-shell cache.
+	if !strings.Contains(body, "9.9.9-cafef00d") {
+		t.Error("service worker does not contain the version-commit cache id")
 	}
 }
 

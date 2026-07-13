@@ -7,7 +7,7 @@ cannot see.
 
 **Primary goal: quality-assure the Web UI requirements.** The UI is one
 embedded `internal/ui/static/index.html` whose contract is
-[`internal/ui/UI_SPEC.md`](../internal/ui/UI_SPEC.md). A dependency/version bump
+[`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md). A dependency/version bump
 or an edit to that file can silently break a control, an SSE→DOM render, a
 badge, or the drawer. The UI E2E layer exercises the **real rendered UI against
 the real backend** so those breaks fail CI. Coverage spans all four UI masks,
@@ -267,6 +267,24 @@ UI suite reuses.
   updates state (no `up`).
 - **UC9 — Queued row + tag.** A `queued` event yields a `deploy-row` with the
   `queued` badge and a `paused:` tag; a later real deploy supersedes it.
+- **UC10 — Re-enable does not pin (override collapse).** Global on. Pausing a
+  stack via its `stack-switch` and then resuming it must leave **no** sticky
+  override: a subsequent global-off pauses that stack along with the rest,
+  proving the resume collapsed the override back to inherit rather than pinning
+  an explicit `true`. Driven entirely through the rendered switches.
+- **UC11 — UI pause does not survive a global off→on cycle.** A stack paused only
+  via the UI (`stack-switch`) resumes after the global switch is turned off and
+  back on: turning global off makes its baseline `off`, the override collapses,
+  and global-on resumes it. The chosen master-switch semantic
+  ([ADR-0019](adr/0019-autosync-ui-overrides-collapse-to-inherit.md)) — a UI
+  pause is an exception to the current global baseline, not an independent latch.
+- **UC12 — Collapse through the stack filter.** With several stacks and a
+  `stack-filter` query narrowing the list, toggling a *filtered* stack targets
+  the right stack and preserves the query and the matched subset (the other
+  stacks stay hidden). Flipping global from a separate client re-renders the
+  filtered list live over SSE without dropping the filter, and the collapse holds
+  through the filtered/live view: a stack paused while filtered resumes after a
+  global off→on cycle once the filter is cleared.
 
 ### 4.5 UI — Maske D: Global chrome
 
@@ -345,6 +363,9 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Per-stack switches → POST | **UC5** |
 | Queued list in deploy order (reason/count/wait) | **UC6** |
 | Stack filter (substring/clear/Esc) | **UC7** |
+| Per-stack switch is an exception, not a pin (override collapse) | **UC10**, UC11 |
+| Global switch is a true master (collapse on global toggle) | **UC11** |
+| Override collapse through the stack filter | **UC12** |
 | Enable drains, disable does not | **UC8** |
 | Queued row + `paused:` tag | **UC9** |
 | Theme toggle + persistence + no-flash | **UD1** |

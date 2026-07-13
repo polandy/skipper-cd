@@ -1,19 +1,13 @@
-<p align="center">
-  <img src="skipper-cd-logo.png" alt="skipper-cd logo" width="200">
-</p>
+# skipper-cd
 
-<h1 align="center">skipper-cd</h1>
+*Simple, fast Docker Compose CD — with first-class NixOS support*
 
-<p align="center"><i>Simple, fast Docker Compose CD — with first-class NixOS support</i></p>
-
-<p align="center">📖 <b><a href="https://polandy.github.io/skipper-cd/">Documentation</a></b></p>
-<br>
-
-A lightweight CD tool that listens for push webhooks, maintains a local clone of a Git repository, and redeploys only the Docker Compose stacks whose files actually changed. On NixOS it can also run `nixos-rebuild switch` when your `.nix` files change — closing the GitOps loop for the whole host. Pair it with automated dependency updates (e.g. [Renovate](https://docs.renovatebot.com/)) — which can even automerge routine minor and patch bumps — and the loop runs itself: each merge rebuilds the NixOS host and redeploys only the stacks it changed, with no manual steps. Unchanged stacks are skipped automatically.
+skipper-cd is a lightweight CD tool that listens for push webhooks, maintains a local clone of a Git repository, and redeploys only the Docker Compose stacks whose files actually changed. On NixOS it can also run `nixos-rebuild switch` when your `.nix` files change — closing the GitOps loop for the whole host. Pair it with automated dependency updates (e.g. [Renovate](https://docs.renovatebot.com/)) — which can even automerge routine minor and patch bumps — and the loop runs itself: each merge rebuilds the NixOS host and redeploys only the stacks it changed, with no manual steps. Unchanged stacks are skipped automatically.
 
 Supported webhook signatures: **Gitea** (`X-Gitea-Signature`) and **GitHub/Forgejo** (`X-Hub-Signature-256`).
 
-> **Note:** Only Gitea webhooks have been tested so far. GitHub and Forgejo support should work but is untested — feedback welcome via [GitHub Issues](https://github.com/polandy/skipper-cd/issues).
+!!! note
+    Only Gitea webhooks have been tested so far. GitHub and Forgejo support should work but is untested — feedback welcome via [GitHub Issues](https://github.com/polandy/skipper-cd/issues).
 
 ## Quickstart
 
@@ -32,14 +26,14 @@ stacks:
 
 Each stack's compose file lives at `<stacks_base_dir>/<name>/docker-compose.yml`. Push to the repo, your Git host fires a webhook, and skipper-cd pulls, diffs, and redeploys only what changed.
 
-Run it **[on NixOS](docs/nixos.md)** as a declarative systemd service, or **[with Docker](docs/docker.md)** as a container. The full configuration reference is in **[docs/configuration.md](docs/configuration.md)**.
+Run it **[on NixOS](nixos.md)** as a declarative systemd service, or **[with Docker](docker.md)** as a container. The full configuration reference is in **[Configuration](configuration.md)**.
 
 ## Features
 
 - **Deploys only what changed** — SHA-256 hashes of each stack's compose file, env files, watched dirs, and `build:` Dockerfiles are persisted; unchanged stacks are skipped.
 - **Automatic rollback** — if `docker compose up` fails, skipper-cd restores the previous compose file from the last deployed Git commit.
 - **NixOS rebuilds** — optionally run `nixos-rebuild switch` before stack deploys when `.nix` files change, so one webhook updates both the host and its containers.
-- **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([docs](docs/autosync.md)).
+- **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([details](autosync.md)).
 - **Web UI** — a single embedded page with live deploy status, service icons, an event log, and installable as a PWA.
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
@@ -61,7 +55,7 @@ On each incoming webhook (or on startup), skipper-cd:
 
 1. Checks the push payload's `ref`: only pushes to the configured `branch` trigger a deploy (payloads without a `ref`, e.g. a manual `curl`, always trigger one).
 2. Pulls the latest commits from the configured repository.
-3. **NixOS rebuild** (optional): hashes all `*.nix` files and `flake.lock`; if any changed, runs `nixos-rebuild switch` in a transient systemd unit. If the rebuild fails, all stack deploys are aborted. See [NixOS](docs/nixos.md#nixos-rebuild).
+3. **NixOS rebuild** (optional): hashes all `*.nix` files and `flake.lock`; if any changed, runs `nixos-rebuild switch` in a transient systemd unit. If the rebuild fails, all stack deploys are aborted. See [NixOS](nixos.md#nixos-rebuild).
 4. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, watched directories, and any `Dockerfile`s of `build:` services — then compares them against the previous deployment and **skips unchanged stacks**.
 5. For changed stacks, runs `docker compose pull` for remote images only, `docker compose build --pull` when `build:` services are present, then `docker compose up -d --remove-orphans`.
 6. **Automatic rollback:** if `docker compose up` fails, retrieves the previous `docker-compose.yml` from the last deployed commit and brings containers back up with it (marked `rolled_back`), otherwise `failed`.
@@ -69,21 +63,4 @@ On each incoming webhook (or on startup), skipper-cd:
 
 Concurrent webhook requests and the startup deploy are serialized by a deployment lock; if a deploy is already running, later requests wait for it to finish.
 
-**Autosync** (steps 3 and 5) can be paused globally or per stack. While a stack is paused, a detected change is not deployed: it is marked `queued`, logged, and left pending, then deployed automatically when sync is re-enabled. Autosync is on everywhere by default. See [Autosync](docs/autosync.md).
-
-## Documentation
-
-| Topic | Description |
-|---|---|
-| **[Configuration](docs/configuration.md)** | Full config reference — top-level & stack fields, `vars_file`, service icons. |
-| **[NixOS](docs/nixos.md)** | Running skipper-cd on NixOS: the `nixos_rebuild` feature, the NixOS module, and the self-registering-stacks pattern. |
-| **[Docker](docs/docker.md)** | Running skipper-cd as a container, and how locally-built images are handled. |
-| **[Autosync](docs/autosync.md)** | Pausing and queueing deploys, globally and per stack. |
-| **[Metrics](docs/metrics.md)** | Prometheus metrics exposed on `/metrics`. |
-| **[State File](docs/state.md)** | Format and semantics of `state.yaml`. |
-| **[Install as App (PWA)](docs/pwa.md)** | Installing the web UI as a Progressive Web App. |
-| **[Contributor docs](dev-docs/)** | ADRs, the E2E test spec, and feature specs — internal design records, not part of the user manual. |
-
-## Releases
-
-Releases are automated with [release-please](https://github.com/googleapis/release-please) based on the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) history (see [ADR-0011](dev-docs/adr/0011-release-automation-via-conventional-commits.md)). Every push to `main` updates a release PR that collects the pending changes; merging it creates the GitHub release, the `v*` tag, the CHANGELOG entry, and triggers the Docker image build.
+**Autosync** (steps 3 and 5) can be paused globally or per stack. While a stack is paused, a detected change is not deployed: it is marked `queued`, logged, and left pending, then deployed automatically when sync is re-enabled. Autosync is on everywhere by default. See [Autosync](autosync.md).
