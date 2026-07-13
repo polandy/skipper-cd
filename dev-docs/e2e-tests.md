@@ -301,7 +301,12 @@ UI suite reuses.
   hidden; the **table** collapses to the 2×2 layout, the Files column hides, and
   tapping a row with changed files expands the panel. The 1280px control asserts
   the wordmark is visible with likewise no sideways scroll. *Snapshot: mobile
-  layout.*
+  layout.* A companion case covers the **toggle glyphs**: the four header
+  filter-toggles hide their label *and* switch track at ≤700px and swap in a
+  per-toggle glyph (unlabelled bare tracks are indistinguishable and touch shows
+  no tooltip), asserted on a deploys-view toggle (`time-mode`) and both
+  logs-view toggles (`log-sort`, `follow-logs`); the `theme-toggle` glyph is
+  additionally asserted to reflect the mode (moon in dark → sun in light).
 - **UD5 — Version label.** The header `brand-version` shows the deployed version
   as `v<semver>`. `globalSetup` injects the version via `-ldflags` from
   `.release-please-manifest.json` (the same source as the Docker/Nix builds), so

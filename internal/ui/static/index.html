@@ -800,6 +800,19 @@
 
   .filter-toggle.active { color: var(--accent); }
 
+  /* Per-toggle glyph — hidden on desktop (the track + label identify the
+     control there); swapped in for the bare track on mobile so each unlabelled
+     switch stays recognisable. Colour follows the toggle (muted → accent when
+     active) via currentColor. */
+  .tg-ico { display: none; width: 18px; height: 18px; flex-shrink: 0; }
+  /* Theme glyph reflects the current mode: moon in dark (default), sun in light
+     (active). Sort glyph flips vertically when active (oldest-first) to signal
+     the reversed order. */
+  #theme-toggle .tg-sun { display: none; }
+  #theme-toggle.active .tg-moon { display: none; }
+  #theme-toggle.active .tg-sun { display: block; }
+  #log-sort.active .tg-ico { transform: scaleY(-1); }
+
   /* ─── VIEW TOGGLE ─── */
   .view-toggle {
     display: flex;
@@ -1067,8 +1080,12 @@
        portrait (re-shown below) but dropped in the tighter landscape. */
     .brand-name { display: none; }
     .brand-version { display: none; }
-    /* Bare switches — the labels don't fit next to the view toggle. */
+    /* The label and switch track don't fit next to the view toggle, and
+       unlabelled the bare tracks all look alike — swap each for a
+       self-describing glyph (icon = identity, accent tint = active state). */
     .filter-toggle span { display: none; }
+    .filter-toggle .toggle-track { display: none; }
+    .filter-toggle .tg-ico { display: block; }
     /* Deploy-status and connection collapse to their coloured dot; the text
        lives in the element's title/aria instead (see UI_SPEC §Responsive). */
     .deploy-status span { display: none; }
@@ -1141,18 +1158,22 @@
     </div>
     <button class="filter-toggle" id="time-mode" data-testid="time-mode" title="Switch to absolute time">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>abs time</span>
     </button>
     <button class="filter-toggle" id="log-sort" data-testid="log-sort" title="Show oldest log lines first">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 5v14M3 16l3 3 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 6h9M12 11h6M12 16h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <span>oldest first</span>
     </button>
     <button class="filter-toggle" id="follow-logs" data-testid="follow-logs" title="Auto-scroll to newest log lines">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <span>follow</span>
     </button>
     <button class="filter-toggle" id="theme-toggle" data-testid="theme-toggle" title="Switch to light theme">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="tg-moon" d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><g class="tg-sun"><circle cx="12" cy="12" r="4.3" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.4 19.6l1.6-1.6M18 6l1.6-1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g></svg>
       <span>light</span>
     </button>
     <div class="indicator" data-testid="conn-indicator" data-state="connecting">

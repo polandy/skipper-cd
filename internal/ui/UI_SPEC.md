@@ -220,7 +220,7 @@ assert on.
 - **View toggle** — unchanged (the only text control; `deploys | logs` still fits).
 - **Deploy indicator** — collapses to its coloured dot; the active-stack / `idle` text is hidden and mirrored into the element's `title`/`aria-label`.
 - **Autosync control** — keeps its icon and pending-count pill; only the `autosync` label is hidden (its static `title` remains).
-- **Time-mode / sort / follow / theme** — bare switches or glyphs, labels hidden, tooltips remain.
+- **Time-mode / sort / follow / theme** — the label *and* the switch track are hidden and each is replaced by a self-describing **glyph** (clock / sort-bars / arrow-to-baseline / sun–moon), since unlabelled bare tracks are indistinguishable and touch shows no tooltips. The glyph follows the toggle colour (muted → accent when active) so identity and state are both legible; the theme glyph shows a moon in dark and a sun in light, and the sort glyph flips vertically when active (oldest-first). Static tooltips remain for pointer users.
 - **Connection indicator** — collapses to its coloured dot; the `connecting` / `connected` / `reconnecting` text is hidden and mirrored into the element's `title`.
 
 The `.status-area` gap tightens to 10 px and the header padding to 12 px so the row fits a 360 px viewport without overflow.
