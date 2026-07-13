@@ -11,16 +11,18 @@ const pageMasks = (page: import('@playwright/test').Page) => [
 
 // Maske D: Global chrome. See docs/e2e-tests.md §4.5.
 
-// UD5 — Build-identity label. The header shows the deployed build as
-// `v<semver> · <commit>`. globalSetup builds the binary with the version and
-// commit injected via -ldflags (the same source the Docker/Nix builds use, no
-// branch → the version path), so this asserts the full through-line: ldflags →
-// /api/version → header render, against the exact build that ships.
-test('UD5: header shows the deployed build identity', async ({ page, skipper }) => {
+// UD5 — Build-identity label. globalSetup builds the binary with the version and
+// commit injected via -ldflags but no branch — the official-release path. A
+// release is named uniquely by its semver, so the header shows `v<semver>` and
+// deliberately omits the commit (the hash is only appended for non-release
+// builds: feature branches and local dev). This asserts the full through-line
+// (ldflags → /api/version → header render) and that the commit is suppressed.
+test('UD5: header shows the release build identity without the commit', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
 
   const label = page.locator('[data-testid="brand-version"]');
-  await expect(label).toHaveText(`v${manifestVersion()} · ${buildCommit}`);
+  await expect(label).toHaveText(`v${manifestVersion()}`);
+  await expect(label).not.toContainText(buildCommit);
 });
 
 // UD4 — Responsive ≤700px (compact header + table collapse). One test covering

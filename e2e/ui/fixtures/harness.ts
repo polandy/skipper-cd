@@ -77,8 +77,9 @@ export function manifestVersion(): string {
 /** buildCommit is the short commit globalSetup injects via -ldflags (mirroring
  *  the Docker/Nix builds). A fixed value keeps the header assertion (UD5)
  *  deterministic — the real commit that Go stamps into the build info would vary
- *  per checkout. No branch is injected, so the header renders the version path
- *  `v<semver> · <commit>` rather than the feature-branch path. */
+ *  per checkout. No branch is injected, so the build is the official-release
+ *  path: the header renders `v<semver>` and omits the commit (UD5 asserts the
+ *  commit is absent). */
 export const buildCommit = 'e2ee2ee';
 
 /** Reserve n distinct free TCP ports, holding all listeners open at once so the

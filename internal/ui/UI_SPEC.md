@@ -31,7 +31,7 @@ Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). 
 
 Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
-**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), and a muted **version label** showing the deployed build identity (`v<semver> · <commit>`, or the branch name for feature builds; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version`, left empty until it resolves, and carries a `title` tooltip with the full string (it clips with an ellipsis when narrow). The favicon is the same ship as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
+**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), and a muted **version label** showing the deployed build identity: an official release shows just `v<semver>`; a feature-branch build shows `<branch> · <commit>`; a local build shows `dev · <commit>` (or `dev` without ldflags). The label is fetched once on load from `GET /api/version`, left empty until it resolves, and carries a `title` tooltip with the full string (it clips with an ellipsis when narrow). The favicon is the same ship as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
 
 **Header — right:**
 - **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
@@ -151,7 +151,7 @@ On connect the in-memory backlog (bounded ring, 1000 entries, no persistence acr
 - `commit` — short git SHA. Injected by the Nix flake (`self.shortRev`) and by Docker/CI; for a local `go build` it is recovered from the Go build info (`-dirty` suffix for an uncommitted tree). May be empty.
 - `branch` — git branch name. Only CI/Docker builds know it; the Nix flake and plain local builds leave it empty.
 
-The header label is painted once on load: a **feature-branch** build (branch set and ≠ `main`) shows `branch · commit`; otherwise it shows `v<version> · commit` (or `dev · commit`). The same `version-commit` string is baked into the service worker's cache name (`/sw.js`) so two feature-branch builds that share a release semver still bust the app-shell cache.
+The header label is painted once on load. The commit is appended only for **non-release** builds, where it pins down the exact build: a **feature-branch** build (branch set and ≠ `main`) shows `branch · commit`, and a local **dev** build shows `dev · commit`. An **official release** (real semver, no feature branch) shows just `v<version>` — the semver already names the build, so the commit is omitted. The same `version-commit` string is still baked into the service worker's cache name (`/sw.js`, server-side and independent of the header) so two feature-branch builds that share a release semver still bust the app-shell cache.
 
 Diffs are stored in `deploy-history.yaml` alongside events but are **not** included in SSE payloads (only `has_diffs: true` is sent). This keeps the real-time stream lightweight. Large diffs are truncated at 10 KB per file and 50 KB total per event.
 
@@ -181,7 +181,7 @@ assert on.
 | `data-testid` | Element | Notes |
 |---|---|---|
 | `brand-name` | Header `skipper-cd` wordmark | Hidden ≤ 700 px (logo alone carries the brand) |
-| `brand-version` | Header version label | `v<semver> · <commit>` / branch; `dev` local; empty until `/api/version` resolves; full string in `title`; shown in portrait ≤ 700 px |
+| `brand-version` | Header version label | `v<semver>` (release, no commit) / `branch · commit` / `dev · commit`; empty until `/api/version` resolves; full string in `title`; shown in portrait ≤ 700 px |
 | `view-toggle` | Deploys/Logs segmented control | |
 | `deploy-indicator` | Active-stack / idle indicator | |
 | `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |

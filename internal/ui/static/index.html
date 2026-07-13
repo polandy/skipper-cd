@@ -2176,16 +2176,20 @@
   // Paint the deployed skipper-cd build identity in the header once on load.
   // Feature-branch builds show the branch (which release semver alone cannot
   // distinguish); release/Nix/dev builds show the version. The short commit is
-  // appended whenever the build path knows it.
+  // appended only for non-release builds (feature-branch or local dev), where it
+  // pins down which exact build is running; an official release is already named
+  // uniquely by its semver, so the hash would just be noise.
   fetch('/api/version')
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (!d || !d.version) return;
       var el = document.getElementById('brand-version');
       if (!el) return;
+      var isFeatureBranch = d.branch && d.branch !== 'main';
       var base = d.version === 'dev' ? 'dev' : 'v' + d.version;
-      var head = (d.branch && d.branch !== 'main') ? d.branch : base;
-      var text = d.commit ? head + ' · ' + d.commit : head;
+      var head = isFeatureBranch ? d.branch : base;
+      var isRelease = !isFeatureBranch && d.version !== 'dev';
+      var text = (d.commit && !isRelease) ? head + ' · ' + d.commit : head;
       el.textContent = text;
       // The label may be clipped (ellipsis) on narrow viewports or long branch
       // names; the title exposes the full identity on hover / long-press.
