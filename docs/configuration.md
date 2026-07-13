@@ -40,7 +40,7 @@ stacks:
 
 # Optional: trigger nixos-rebuild when .nix files or flake.lock change.
 nixos_rebuild:
-  flake: ".#nuc"
+  flake: ".#myhost"
 ```
 
 ## Top-level Fields

@@ -15,13 +15,13 @@ The optional `nixos_rebuild` section triggers `nixos-rebuild switch` when any `*
 
 ```yaml
 nixos_rebuild:
-  flake: ".#nuc"
+  flake: ".#myhost"
 ```
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `enabled` | bool | no | `true` | Set to `false` to temporarily disable without removing the section. When the section is present and `enabled` is omitted, it defaults to `true`. Omitting the entire `nixos_rebuild` section disables the feature. |
-| `flake` | string | yes | — | Flake reference passed to `nixos-rebuild switch --flake <flake>` (e.g. `.#nuc`). |
+| `flake` | string | yes | — | Flake reference passed to `nixos-rebuild switch --flake <flake>` (e.g. `.#myhost`). |
 
 **Important:** The skipper-cd systemd service must run as root for `nixos-rebuild` to work. The NixOS rebuild runs **before** any Docker stack deployments. If the rebuild fails, all Docker stack deploys are aborted to prevent deploying against a potentially broken system.
 

@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,10 +41,68 @@ const readHeaderTimeout = 10 * time.Second
 // streams) may delay shutdown after a termination signal.
 const shutdownTimeout = 10 * time.Second
 
-// version is the build-time skipper-cd version, injected via
-// -ldflags "-X main.version=…" from .release-please-manifest.json. It defaults
-// to "dev" for local builds and is surfaced in the UI header (GET /api/version).
-var version = "dev"
+// Build identity surfaced in the UI header (GET /api/version), injected via
+// -ldflags at build time:
+//   - version: semver from .release-please-manifest.json ("dev" for local builds).
+//   - commit:  short git SHA. The Nix flake and Docker inject it; a local
+//     `go build` leaves it empty and it is recovered from the Go build info.
+//   - branch:  git branch name. Only CI/Docker builds know it — the Nix flake
+//     and plain local builds leave it empty.
+var (
+	version = "dev"
+	commit  = ""
+	branch  = ""
+)
+
+// commitLen bounds the short commit rendered in the header.
+const commitLen = 12
+
+// resolveCommit returns the short commit identity for the running build. A
+// commit injected via -ldflags (Nix/Docker) always wins; otherwise it falls
+// back to the VCS revision Go stamps into the build info for a local `go build`
+// in a git tree, suffixed "-dirty" for an uncommitted tree. Returns "" when
+// neither source is available.
+func resolveCommit(injected string, info *debug.BuildInfo, ok bool) string {
+	if injected != "" {
+		return short(injected)
+	}
+	if !ok || info == nil {
+		return ""
+	}
+	var rev string
+	var dirty bool
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	if rev == "" {
+		return ""
+	}
+	rev = short(rev)
+	if dirty {
+		rev += "-dirty"
+	}
+	return rev
+}
+
+// short truncates the hex part of a commit SHA to commitLen characters while
+// preserving a trailing marker such as "-dirty" (as produced by the Nix flake's
+// dirtyShortRev). A full 40-char SHA from Docker/CI is shortened; an already
+// short revision is left intact.
+func short(sha string) string {
+	hexPart, rest, hasRest := strings.Cut(sha, "-")
+	if len(hexPart) > commitLen {
+		hexPart = hexPart[:commitLen]
+	}
+	if hasRest {
+		return hexPart + "-" + rest
+	}
+	return hexPart
+}
 
 func main() {
 	configPath := flag.String("config", "/etc/skipper/skipper.yml", "path to the skipper.yml config file")
@@ -142,8 +202,15 @@ func main() {
 		trigger: func() { go deployer.SyncAndDeployAll(context.Background(), cfg) },
 	}
 
+	bi, ok := debug.ReadBuildInfo()
+	build := ui.BuildInfo{
+		Version: version,
+		Branch:  branch,
+		Commit:  resolveCommit(commit, bi, ok),
+	}
+
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history, logRing, as, version))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history, logRing, as, build))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -217,7 +284,7 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, version string) *http.ServeMux {
+func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
@@ -233,9 +300,9 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *even
 
 		mux.Handle("GET /{$}", ui.IndexHandler())
 		mux.Handle("GET /manifest.webmanifest", ui.ManifestHandler())
-		mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(version))
+		mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(build))
 		mux.Handle("GET /icons/", ui.IconsHandler())
-		mux.Handle("GET /api/version", ui.VersionHandler(version))
+		mux.Handle("GET /api/version", ui.VersionHandler(build))
 		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, as.stateB, history, initialState))
 		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
 		mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
