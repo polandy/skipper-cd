@@ -86,4 +86,4 @@ which remains a hard off.
   nothing (hashes match again) — correct "back in sync" behaviour.
 - Full behaviour and the API contract live in
   [`docs/autosync.md`](../autosync.md); the UI surface in
-  [`internal/ui/UI_SPEC.md`](../../internal/ui/UI_SPEC.md).
+  [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md).

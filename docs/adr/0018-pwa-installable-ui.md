@@ -14,7 +14,7 @@ We want it to be an **installable Progressive Web App**: operators install it on
 a home screen / app launcher, it opens in its own standalone window with the ship
 icon, and it starts quickly from a local cache. The full feature is specified in
 [`docs/pwa.md`](../pwa.md); the UI surface in
-[`internal/ui/UI_SPEC.md`](../../internal/ui/UI_SPEC.md).
+[`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md).
 
 Three questions dominated: how much to cache (offline ambition), what the service
 worker must never touch, and how a cached shell stays fresh across skipper's own
