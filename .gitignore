@@ -4,5 +4,8 @@ skipper.yml
 # nix build output symlink
 /result
 
+# MkDocs build output (published by CI, never committed)
+/site/
+
 # Local Claude Code worktrees (not repo content)
 /.claude/worktrees/

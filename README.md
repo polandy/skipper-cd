@@ -70,9 +70,9 @@ Concurrent webhook requests and the startup deploy are serialized by a deploymen
 | **[Autosync](docs/autosync.md)** | Pausing and queueing deploys, globally and per stack. |
 | **[Metrics](docs/metrics.md)** | Prometheus metrics exposed on `/metrics`. |
 | **[State File](docs/state.md)** | Format and semantics of `state.yaml`. |
-| **[PWA](docs/pwa.md)** · **[Service Icons](docs/service-icons-spec.md)** · **[E2E Tests](docs/e2e-tests.md)** | Web-UI and testing specs. |
-| **[Architecture Decisions](docs/adr/)** | ADRs recording the design decisions and their rationale. |
+| **[Install as App (PWA)](docs/pwa.md)** | Installing the web UI as a Progressive Web App. |
+| **[Contributor docs](dev-docs/)** | ADRs, the E2E test spec, and feature specs — internal design records, not part of the user manual. |
 
 ## Releases
 
-Releases are automated with [release-please](https://github.com/googleapis/release-please) based on the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) history (see [ADR-0011](docs/adr/0011-release-automation-via-conventional-commits.md)). Every push to `main` updates a release PR that collects the pending changes; merging it creates the GitHub release, the `v*` tag, the CHANGELOG entry, and triggers the Docker image build.
+Releases are automated with [release-please](https://github.com/googleapis/release-please) based on the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) history (see [ADR-0011](dev-docs/adr/0011-release-automation-via-conventional-commits.md)). Every push to `main` updates a release PR that collects the pending changes; merging it creates the GitHub release, the `v*` tag, the CHANGELOG entry, and triggers the Docker image build.

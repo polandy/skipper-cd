@@ -43,17 +43,12 @@ nav:
   - Getting Started:
       - Configuration: configuration.md
       - Autosync: autosync.md
+      - Install as App (PWA): pwa.md
       - State File: state.md
       - Metrics: metrics.md
   - Deploying:
       - On NixOS: nixos.md
       - With Docker: docker.md
-  - Web UI:
-      - PWA: pwa.md
-      - Service Icons: service-icons-spec.md
-  - Development:
-      - E2E Tests: e2e-tests.md
-      - Architecture Decisions: adr/README.md
 
 markdown_extensions:
   - admonition
