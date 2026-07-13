@@ -138,7 +138,9 @@ export class Skipper {
   private readonly dockerLog: string;
   private readonly holdFile: string;
   private readonly stacks: string[];
-  private readonly proc: ChildProcess;
+  private readonly cfgPath: string;
+  private readonly spawnEnv: NodeJS.ProcessEnv;
+  private proc: ChildProcess;
   private out = '';
 
   private constructor(init: {
@@ -149,6 +151,8 @@ export class Skipper {
     dockerLog: string;
     holdFile: string;
     stacks: string[];
+    cfgPath: string;
+    spawnEnv: NodeJS.ProcessEnv;
     proc: ChildProcess;
   }) {
     this.baseURL = init.baseURL;
@@ -158,7 +162,14 @@ export class Skipper {
     this.dockerLog = init.dockerLog;
     this.holdFile = init.holdFile;
     this.stacks = init.stacks;
-    this.proc = init.proc;
+    this.cfgPath = init.cfgPath;
+    this.spawnEnv = init.spawnEnv;
+    this.attach(init.proc);
+  }
+
+  /** attach binds a freshly spawned process and pipes its output into the buffer. */
+  private attach(proc: ChildProcess): void {
+    this.proc = proc;
     this.proc.stdout?.on('data', (b) => (this.out += b));
     this.proc.stderr?.on('data', (b) => (this.out += b));
   }
@@ -225,18 +236,30 @@ export class Skipper {
     const cfgPath = join(base, 'skipper.yml');
     writeFileSync(cfgPath, cfg);
 
+    const spawnEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: `${stubDir}:${process.env.PATH}`,
+      DOCKER_LOG: dockerLog,
+      STUB_DOCKER_HOLD_UP: holdFile,
+      ...opts.stubEnv,
+    };
     const proc = spawn(skipperBinPath(), ['-config', cfgPath], {
-      env: {
-        ...process.env,
-        PATH: `${stubDir}:${process.env.PATH}`,
-        DOCKER_LOG: dockerLog,
-        STUB_DOCKER_HOLD_UP: holdFile,
-        ...opts.stubEnv,
-      },
+      env: spawnEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    const s = new Skipper({ baseURL, metricsURL, origin, stateDir, dockerLog, holdFile, stacks, proc });
+    const s = new Skipper({
+      baseURL,
+      metricsURL,
+      origin,
+      stateDir,
+      dockerLog,
+      holdFile,
+      stacks,
+      cfgPath,
+      spawnEnv,
+      proc,
+    });
     if ((opts.readiness ?? 'deployed') === 'listening') {
       await s.waitListening();
     } else {
@@ -378,5 +401,18 @@ export class Skipper {
     this.proc.kill('SIGINT');
     const timer = sleep(10_000).then(() => this.proc.kill('SIGKILL'));
     await Promise.race([exited, timer]);
+  }
+
+  /** relaunch respawns the binary on the same config and ports (after stop()), so
+   *  the UI's SSE stream drops and then re-establishes against the returning
+   *  server — used to drive the connection indicator reconnecting→connected (UD2). */
+  async relaunch(): Promise<void> {
+    this.attach(
+      spawn(skipperBinPath(), ['-config', this.cfgPath], {
+        env: this.spawnEnv,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }),
+    );
+    await this.waitHealthy();
   }
 }

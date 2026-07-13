@@ -114,6 +114,219 @@ test.describe('UC3: drawer open/close', () => {
   });
 });
 
+const queueItem = (page: Page, name: string) =>
+  page.locator(`[data-testid="queue-item"][data-stack="${name}"]`);
+const stackFilter = (page: Page) => page.locator('[data-testid="stack-filter"]');
+const stackFilterClear = (page: Page) => page.locator('[data-testid="stack-filter-clear"]');
+const webDeployRow = (page: Page, status: string) =>
+  page.locator(`[data-testid="deploy-row"][data-stack="web"][data-status="${status}"]`);
+
+// UC4 — Global switch. Toggling the drawer's `global-switch` posts
+// `POST /api/autosync {scope:"global"}` and the header autosync control mirrors
+// the new state live. Driven entirely through the rendered switch: the click →
+// POST → SSE → DOM chain flips both the switch (`aria-checked`) and the header
+// (`data-global`), and a reload restores it from the server (proving the POST
+// landed, not just a local class toggle).
+test.describe('UC4: global switch', () => {
+  test('toggling posts global scope and the header mirrors it, across reload', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await autosyncBtn(page).click();
+
+    // On by default: switch and header agree.
+    await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'true');
+    await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'true');
+
+    // Click off → the header flips live with the switch.
+    await globalSwitch(page).click();
+    await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'false');
+    await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'false');
+
+    // The POST reached the server: a reload restores `off` from its snapshot.
+    await page.reload();
+    await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'false');
+
+    // Click on again → back to on, live.
+    await autosyncBtn(page).click();
+    await globalSwitch(page).click();
+    await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'true');
+  });
+});
+
+// UC5 — Per-stack switch. Toggling a `stack-switch` posts
+// `POST /api/autosync {scope:"stack",stack}`; the paused state survives closing
+// and reopening the drawer because it is re-read from the server snapshot on
+// reopen, not held in the DOM.
+test.describe('UC5: per-stack switch', () => {
+  test('toggling posts stack scope and the state survives a drawer reopen', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await autosyncBtn(page).click();
+
+    const web = stackSwitch(page, 'web');
+    await expect(web).toHaveAttribute('aria-checked', 'true');
+
+    // Pause the stack via its switch.
+    await web.click();
+    await expect(web).toHaveAttribute('aria-checked', 'false');
+
+    // Close and reopen: the paused state is reflected from the server, not lost.
+    await page.keyboard.press('Escape');
+    await expect(autosyncDrawer(page)).toBeHidden();
+    await autosyncBtn(page).click();
+    await expect(stackSwitch(page, 'web')).toHaveAttribute('aria-checked', 'false');
+  });
+});
+
+// UC6 — Queued list. Pausing globally and pushing changes to two stacks defers
+// both; the drawer's queue list renders a `queue-item` per pending stack in
+// deploy order, each carrying its position (`qpos`), a reason chip (`global`
+// here), the changed-file count, and a wait time. Asserted through the rendered
+// list against the real backend.
+test.describe('UC6: queued list', () => {
+  test.use({ startOptions: { stacks: ['web', 'api'] } });
+
+  test('queued stacks render in order with position, reason, file count, and wait', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // Pause globally, then push a change to both stacks → both are deferred.
+    expect(await skipper.postAutosync('', false)).toBe(200);
+    skipper.setStackImage('web', '1.26');
+    skipper.setStackImage('api', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    await autosyncBtn(page).click();
+    await expect(queueItem(page, 'web')).toBeVisible();
+    await expect(queueItem(page, 'api')).toBeVisible();
+
+    // Positions are 1 and 2 in DOM (deploy) order — read them off the rendered
+    // list without coupling to which stack sorts first.
+    const positions = await page
+      .locator('[data-testid="queue-item"] .qpos')
+      .evaluateAll((els) => els.map((e) => e.textContent?.trim()));
+    expect(positions).toEqual(['1', '2']);
+
+    // Each queued row carries a global reason chip, a one-file count, and a wait
+    // cell (the value itself is time-dependent, so only its presence is asserted).
+    await expect(queueItem(page, 'web').locator('.reason-global')).toHaveText('global');
+    await expect(queueItem(page, 'web')).toContainText('1 file');
+    await expect(queueItem(page, 'web').locator('[data-testid="wait-cell"]')).toBeVisible();
+  });
+});
+
+// UC7 — Stack filter. Typing narrows the stack list by case-insensitive substring
+// and reveals a clear button; a no-match query empties the list; the clear button
+// restores it; and `Esc` clears a non-empty field first (leaving the drawer open),
+// then closes the drawer on a second press.
+test.describe('UC7: stack filter', () => {
+  test.use({ startOptions: { stacks: ['web', 'api', 'db'] } });
+
+  test('filters by substring, clears, and Esc clears before closing', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await autosyncBtn(page).click();
+
+    // All three listed; clear button hidden until there is a query.
+    await expect(stackItem(page, 'web')).toBeVisible();
+    await expect(stackItem(page, 'api')).toBeVisible();
+    await expect(stackItem(page, 'db')).toBeVisible();
+    await expect(stackFilterClear(page)).toBeHidden();
+
+    // Case-insensitive substring: "AP" matches only `api`.
+    await stackFilter(page).fill('AP');
+    await expect(stackItem(page, 'api')).toBeVisible();
+    await expect(stackItem(page, 'web')).toHaveCount(0);
+    await expect(stackItem(page, 'db')).toHaveCount(0);
+    await expect(stackFilterClear(page)).toBeVisible();
+
+    // A query matching nothing empties the list.
+    await stackFilter(page).fill('zzz');
+    await expect(stackItem(page, 'web')).toHaveCount(0);
+    await expect(stackItem(page, 'api')).toHaveCount(0);
+    await expect(stackItem(page, 'db')).toHaveCount(0);
+
+    // The clear button restores the full list and hides itself.
+    await stackFilterClear(page).click();
+    await expect(stackItem(page, 'web')).toBeVisible();
+    await expect(stackItem(page, 'db')).toBeVisible();
+    await expect(stackFilterClear(page)).toBeHidden();
+
+    // Esc on a non-empty field clears it but keeps the drawer open…
+    await stackFilter(page).fill('web');
+    await stackFilter(page).press('Escape');
+    await expect(stackFilter(page)).toHaveValue('');
+    await expect(autosyncDrawer(page)).toBeVisible();
+    // …and a second Esc (empty field now) closes the drawer.
+    await stackFilter(page).press('Escape');
+    await expect(autosyncDrawer(page)).toBeHidden();
+  });
+});
+
+// UC8 — Enable drains, disable does not. Disabling autosync only updates state —
+// it never runs a deploy. Enabling triggers a deploy run that drains the queue:
+// the pending stack's `up` runs and the pending pill empties. Proven by the
+// stub-docker `up` count and the pending pill against the real backend.
+test.describe('UC8: enable drains, disable does not', () => {
+  const pendingPill = (page: Page) => page.locator('[data-testid="pending-pill"]');
+
+  test('enabling runs the queued deploy; disabling runs none', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // The startup deploy already ran one `up`; pausing runs no further deploy.
+    expect(skipper.dockerUps('web')).toBe(1);
+    expect(await skipper.postAutosync('', false)).toBe(200);
+    expect(skipper.dockerUps('web')).toBe(1);
+
+    // Push a change while paused → queued, still no `up`, pill shows.
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+    await expect(pendingPill(page)).toBeVisible();
+    expect(skipper.dockerUps('web')).toBe(1);
+
+    // Enabling drains the queue: the deferred deploy runs (a second `up`) and the
+    // pill hides.
+    expect(await skipper.postAutosync('', true)).toBe(200);
+    await expect.poll(() => skipper.dockerUps('web')).toBe(2);
+    await expect(pendingPill(page)).toBeHidden();
+  });
+});
+
+// UC9 — Queued row + tag. A `queued` event renders a `deploy-row` with the
+// `queued` status badge and a `paused:` reason tag; resuming autosync deploys the
+// stack and the queued row is superseded by a fresh success row (the Mask C twin
+// of UA11, here asserting the badge + tag).
+test.describe('UC9: queued row + tag', () => {
+  test('a paused change renders a queued badge + paused tag, superseded on resume', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(webDeployRow(page, 'success')).toHaveCount(1); // startup settled
+
+    // Pause, then push a change → a queued row with the badge and the tag.
+    expect(await skipper.postAutosync('', false)).toBe(200);
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    await expect(webDeployRow(page, 'queued')).toHaveCount(1);
+    await expect(webDeployRow(page, 'queued').locator('[data-testid="status-badge"]')).toHaveText(
+      'queued',
+    );
+    await expect(webDeployRow(page, 'queued')).toContainText('paused: global');
+
+    // Resume → the stack deploys and the queued row is superseded by success.
+    expect(await skipper.postAutosync('', true)).toBe(200);
+    await expect(webDeployRow(page, 'success')).toHaveCount(2);
+    await expect(webDeployRow(page, 'queued')).toHaveCount(0);
+  });
+});
+
 // UC10 — Re-enable does not pin (override collapse). A per-stack UI override is an
 // exception to the baseline, not a permanent pin (ADR-0019). Global is on; pausing
 // a stack via its switch and then resuming it must leave *no* sticky override — a
