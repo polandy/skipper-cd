@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/polandy/skipper-cd/compare/v0.8.1...v0.9.0) (2026-07-13)
+
+
+### Features
+
+* **ui:** installable PWA with app-shell caching ([90ba588](https://github.com/polandy/skipper-cd/commit/90ba588f2103c4b03228cd77a8499002d1a88e37))
+* **ui:** show branch and commit in the header build identity ([1c7a384](https://github.com/polandy/skipper-cd/commit/1c7a384ca569240c74ed3b5ee96b9597091e08c1))
+* **ui:** version tooltip and portrait header display ([310c9c3](https://github.com/polandy/skipper-cd/commit/310c9c3e447ee20d0224979103b57e26ed48958a))
+
+
+### Bug Fixes
+
+* **autosync:** collapse UI overrides to inherit at the baseline ([ca7184c](https://github.com/polandy/skipper-cd/commit/ca7184c8e0be7cfd3a36f3846d8f6735943a6e0e))
+* **ui:** compact mobile header without horizontal overflow ([bd5e783](https://github.com/polandy/skipper-cd/commit/bd5e7836db2ead0199cb6881b0aa9ceda0da993b))
+* **ui:** optically center the header ship logo ([7f2e494](https://github.com/polandy/skipper-cd/commit/7f2e49486d2a0c15c9f85762bc3e6c14b940b353))
+* **ui:** replace queued row on resume and carry its diff ([3b670c9](https://github.com/polandy/skipper-cd/commit/3b670c9c5f2c01c8c397b3e8e1edc82fdfd60fd2))
+
 ## [0.8.1](https://github.com/polandy/skipper-cd/compare/v0.8.0...v0.8.1) (2026-07-12)
 
 
