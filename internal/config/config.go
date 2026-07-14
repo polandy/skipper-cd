@@ -109,6 +109,13 @@ type Config struct {
 	// palette that toggle switches within. Distinguishes multiple skipper-cd
 	// instances (e.g. one per host) at a glance. See docs/configuration.md.
 	UITheme string `yaml:"ui_theme"`
+
+	// UIThemeSwitcher enables the in-UI theme picker: a per-browser override
+	// for trying palettes out, applied without a reload. Optional; defaults to
+	// false, so the deployed UITheme is fixed and cannot be switched from the
+	// browser (keeping the per-instance colour a reliable at-a-glance marker).
+	// See docs/configuration.md.
+	UIThemeSwitcher bool `yaml:"ui_theme_switcher"`
 }
 
 // NotificationTarget configures a single outbound notification sink: where to

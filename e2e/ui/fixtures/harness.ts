@@ -128,6 +128,10 @@ export interface StartOptions {
    *    /healthz at 503 and never write state.
    */
   readiness?: 'deployed' | 'listening';
+  /** Set `ui_theme_switcher: true` so the in-UI theme picker is present.
+   *  Defaults to false, matching the server default (picker hidden, the
+   *  configured theme fixed). */
+  themeSwitcher?: boolean;
 }
 
 /** Skipper is a running skipper binary under test with its origin, stub docker,
@@ -228,6 +232,7 @@ export class Skipper {
       `port: ${port}\n` +
       `metrics_port: ${metricsPort}\n` +
       `ui_enabled: true\n` +
+      (opts.themeSwitcher ? `ui_theme_switcher: true\n` : '') +
       `command_timeout_seconds: 30\n` +
       // source_url points at a closed local port so auto-match icon fetches fail
       // fast and deterministically (connection refused → 404 → monogram), keeping

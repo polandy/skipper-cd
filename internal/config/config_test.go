@@ -234,6 +234,33 @@ stacks: []
 	}
 }
 
+func TestLoad_UIThemeSwitcherDefaultsToFalse(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.UIThemeSwitcher {
+		t.Error("expected ui_theme_switcher to default to false")
+	}
+}
+
+func TestLoad_UIThemeSwitcherEnabled(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+ui_theme_switcher: true
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if !cfg.UIThemeSwitcher {
+		t.Error("expected ui_theme_switcher to be true when set")
+	}
+}
+
 func TestLoad_NixOSRebuild_OmittedSectionIsDisabled(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git

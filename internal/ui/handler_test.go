@@ -45,7 +45,7 @@ func serveSSE(t *testing.T, handler http.Handler, req *http.Request, during func
 }
 
 func TestIndexHandler_ServesHTML(t *testing.T) {
-	handler := IndexHandler(ThemeCatppuccin)
+	handler := IndexHandler(ThemeCatppuccin, false)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
@@ -128,7 +128,7 @@ func TestBuildInfo_CacheID(t *testing.T) {
 func TestIndexHandler_BakesInConfiguredTheme(t *testing.T) {
 	for _, theme := range ValidThemes {
 		t.Run(theme, func(t *testing.T) {
-			handler := IndexHandler(theme)
+			handler := IndexHandler(theme, false)
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 
@@ -141,13 +141,38 @@ func TestIndexHandler_BakesInConfiguredTheme(t *testing.T) {
 			if !strings.Contains(body, `data-server-theme="`+theme+`"`) {
 				t.Errorf("expected data-server-theme=%q in served HTML", theme)
 			}
-			for _, placeholder := range []string{"__UI_THEME__", "__FAVICON_URI__", "__THEME_COLOR_DARK__", "__THEME_COLOR_LIGHT__"} {
+			for _, placeholder := range []string{"__UI_THEME__", "__THEME_SWITCHER__", "__FAVICON_URI__", "__THEME_COLOR_DARK__", "__THEME_COLOR_LIGHT__"} {
 				if strings.Contains(body, placeholder) {
 					t.Errorf("served HTML still contains the %s placeholder", placeholder)
 				}
 			}
 			if !strings.Contains(body, "data:image/svg+xml;base64,") {
 				t.Error("expected an inlined favicon data URI")
+			}
+		})
+	}
+}
+
+func TestIndexHandler_BakesInThemeSwitcherFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		enabled bool
+		want    string
+	}{
+		{"disabled", false, `data-theme-switcher="off"`},
+		{"enabled", true, `data-theme-switcher="on"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := IndexHandler(ThemeCatppuccin, tc.enabled)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+			body := rec.Body.String()
+			if !strings.Contains(body, tc.want) {
+				t.Errorf("expected %q in served HTML for enabled=%v", tc.want, tc.enabled)
+			}
+			if strings.Contains(body, "__THEME_SWITCHER__") {
+				t.Error("served HTML still contains the __THEME_SWITCHER__ placeholder")
 			}
 		})
 	}

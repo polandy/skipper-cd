@@ -55,12 +55,23 @@ as the page CSS. This was in scope because it directly serves the goal:
 distinguishing instances by browser tab and installed-app icon, not just
 inside the page.
 
-### A per-browser override, on top of the config
+### A per-browser override, on top of the config — opt-in
 
-Beyond picking a theme in `skipper.yml`, the header gained a **theme picker**
-(`<select>`) that lets a single browser view a different palette than the one
-configured — instantly, no reload, since every theme's CSS is always present
-and switching is just changing the `data-theme` attribute. This never touches
+Beyond picking a theme in `skipper.yml`, an **opt-in** header **theme picker**
+(`<select>`, enabled by `ui_theme_switcher: true`) lets a single browser view a
+different palette than the one configured — instantly, no reload, since every
+theme's CSS is always present and switching is just changing the `data-theme`
+attribute.
+
+The switcher defaults to **off**. The whole point of a per-instance palette is
+to be a reliable at-a-glance marker (which host am I looking at?), and a picker
+that any visitor can flip — persisted per browser — would quietly undermine
+that. So the default keeps the deployed theme fixed, and the picker exists
+mainly to *try palettes out* before committing one to the config. The flag is
+baked into `<html data-theme-switcher="on|off">` at serve time; with it off the
+CSS hides the `<select>` and the pre-paint/picker JS ignores any saved
+`themeOverride`, so a stale override simply lies dormant until it is re-enabled
+(never silently overriding a locked-down deployment). This never touches
 the server: `<html>` carries a second, immutable `data-server-theme` attribute
 (the actual configured value, set once and never mutated by JS) purely as the
 comparison reference.
