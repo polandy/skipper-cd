@@ -77,7 +77,7 @@ The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain
 | `success` | `--success` (teal) | |
 | `failed` | `--danger` (red) | Error panel expanded below row |
 | `rolled_back` | `--rollback` (maroon) | Deploy failed but old containers restored and verified healthy; error panel shows details |
-| `rolled_back_unhealthy` | `--danger` (red) | Rollback ran but the restored version also failed the health gate — badge label "rollback unhealthy"; error panel shows details |
+| `rolled_back_unhealthy` | `--danger` (red) | Rollback ran but the restored version also failed the health gate — badge label stacks "rolled back" / "unhealthy" on two lines at a reduced font size (one line would overflow the status column); error panel shows details |
 | `queued` | `--queued` (yellow) | Deploy deferred — autosync paused, change waiting; tinted row with amber left bar and a `paused: <global\|stack>` tag on the stack cell. See [Autosync](#autosync). |
 
 ### Expandable panels
