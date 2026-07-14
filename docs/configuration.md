@@ -78,6 +78,33 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
+| `health_check` | section | no | — | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. See [Health-check-gated rollback](#health-check-gated-rollback). |
+
+## Health-check-gated rollback
+
+Without a `health_check`, a rollback only happens when `docker compose up` itself fails. A deploy whose containers *start* but stay broken (crash-loop, 500s) would be marked successful. Adding a `health_check` section closes that gap:
+
+```yaml
+stacks:
+  - name: whoami
+    health_check:
+      timeout_seconds: 60                # optional, default: 60
+      url: http://localhost:8080/health  # optional HTTP probe
+```
+
+The gate has two stages:
+
+1. **Compose health** — always on when the section is present: `docker compose up` runs with `--wait --wait-timeout <timeout_seconds>`, so it fails unless every service reaches `running` (services without a compose healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
+2. **HTTP probe** — only when `url` is set: after a successful `up`, skipper-cd GETs the URL every 2 seconds until it answers with a 2xx status. Anything else for `timeout_seconds` fails the deploy. The probe runs from the skipper-cd host, so the URL must be reachable from there (e.g. a published port on localhost).
+
+A failure in either stage triggers the regular rollback: the previous compose file is restored from the last deployed Git commit, the deploy is marked `rolled_back` (events, metrics and [notifications](#notifications) all see that status), and the change stays pending so the next push retries.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
+| `url` | string | no | — | HTTP(S) URL probed after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on compose healthchecks alone. |
+
+> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Don't enable `health_check` on stacks with deliberate one-shot containers, or model those as [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependencies.
 
 ## `vars_file`
 
