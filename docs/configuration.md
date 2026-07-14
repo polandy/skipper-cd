@@ -163,7 +163,7 @@ notifications:
 | `signal` | `{"message": …, "number": …, "recipients": […]}` to `<url>/v2/send` | The `bbernhard/signal-cli-rest-api` service. |
 | `generic` | The full deploy event as JSON (diffs stripped), plus any `headers` | ntfy, Gotify, or your own endpoint. |
 
-> **Reachability (`signal`).** When skipper-cd runs on the host and `signal-api` is a container, target the host-mapped port directly (e.g. `http://localhost:8020`) — this reaches the container without going through a reverse proxy or its auth.
+> **Reachability.** `url` must be reachable from wherever skipper-cd runs. As a **host service** (e.g. the [NixOS module](nixos.md)), a container's host-published port is `http://localhost:8020` — reaching it directly, bypassing any reverse proxy/auth. When skipper-cd itself runs **in a container**, `localhost` is the container, not the host (see [Docker](docker.md)).
 
 > **No email.** Native SMTP is deliberately unsupported (see [ADR-0020](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0020-outbound-deploy-notifications.md)). Point a `generic` target at an email-capable relay (ntfy, Apprise, Shoutrrr) if you need email.
 

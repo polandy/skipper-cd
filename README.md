@@ -41,6 +41,7 @@ Run it **[on NixOS](docs/nixos.md)** as a declarative systemd service, or **[wit
 - **NixOS rebuilds** — optionally run `nixos-rebuild switch` before stack deploys when `.nix` files change, so one webhook updates both the host and its containers.
 - **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([docs](docs/autosync.md)).
 - **Web UI** — a single embedded page with live deploy status, service icons, an event log, and installable as a PWA.
+- **Deploy notifications** — POST a message to Signal (via `signal-cli-rest-api`) or any HTTP endpoint (ntfy, Gotify, custom) on terminal deploy outcomes ([docs](docs/configuration.md#notifications)).
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
 
@@ -75,7 +76,7 @@ Concurrent webhook requests and the startup deploy are serialized by a deploymen
 
 | Topic | Description |
 |---|---|
-| **[Configuration](docs/configuration.md)** | Full config reference — top-level & stack fields, `vars_file`, service icons. |
+| **[Configuration](docs/configuration.md)** | Full config reference — top-level & stack fields, `vars_file`, service icons, notifications. |
 | **[NixOS](docs/nixos.md)** | Running skipper-cd on NixOS: the `nixos_rebuild` feature, the NixOS module, and the self-registering-stacks pattern. |
 | **[Docker](docs/docker.md)** | Running skipper-cd as a container, and how locally-built images are handled. |
 | **[Autosync](docs/autosync.md)** | Pausing and queueing deploys, globally and per stack. |
