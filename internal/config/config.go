@@ -153,7 +153,8 @@ type NotificationTarget struct {
 	URL string `yaml:"url"`
 
 	// On lists the terminal deploy statuses that trigger this target. Any
-	// subset of "failed", "success", "rolled_back". Empty means all three.
+	// subset of "failed", "success", "rolled_back", "rolled_back_unhealthy".
+	// Empty means all four.
 	On []string `yaml:"on"`
 
 	// Headers are static HTTP headers added to the request. Only meaningful for
@@ -178,9 +179,10 @@ const (
 // terminal events.Status values without importing that package (config is the
 // lowest layer).
 const (
-	NotifyOnFailed     = "failed"
-	NotifyOnSuccess    = "success"
-	NotifyOnRolledBack = "rolled_back"
+	NotifyOnFailed              = "failed"
+	NotifyOnSuccess             = "success"
+	NotifyOnRolledBack          = "rolled_back"
+	NotifyOnRolledBackUnhealthy = "rolled_back_unhealthy"
 )
 
 // IconsConfig configures how the web UI resolves and caches stack icons.
@@ -250,7 +252,7 @@ func Load(path string) (*Config, error) {
 			t.Format = NotifyFormatGeneric
 		}
 		if len(t.On) == 0 {
-			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack}
+			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy}
 		}
 	}
 	if cfg.UITheme == "" {
@@ -369,7 +371,7 @@ func validateNotificationTarget(t NotificationTarget) error {
 
 	for _, s := range t.On {
 		switch s {
-		case NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack:
+		case NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy:
 		default:
 			return fmt.Errorf("unknown on value %q", s)
 		}

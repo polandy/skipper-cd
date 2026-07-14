@@ -61,6 +61,24 @@ func TestSignalFormatter_V2SendBody(t *testing.T) {
 	}
 }
 
+func TestSignalFormatter_RolledBackUnhealthyMessage(t *testing.T) {
+	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}}
+	ev := events.DeployEvent{Stack: "api", Status: events.StatusRolledBackUnhealthy, DurationMs: 2000, Error: "probe timed out"}
+	req := mustFormat(t, f, ev)
+
+	body := bodyOf(t, req)
+	msg, _ := body["message"].(string)
+	if !strings.Contains(msg, "api") || !strings.Contains(msg, "still unhealthy") || !strings.Contains(msg, "probe timed out") {
+		t.Errorf("rolled_back_unhealthy message missing fields: %q", msg)
+	}
+}
+
+func TestIsTerminal_IncludesRolledBackUnhealthy(t *testing.T) {
+	if !isTerminal(events.StatusRolledBackUnhealthy) {
+		t.Error("rolled_back_unhealthy must be a terminal status so it can be delivered")
+	}
+}
+
 func TestGenericFormatter_EventBodyAndHeaders(t *testing.T) {
 	f := genericFormatter{url: "https://ntfy.example/skipper", headers: map[string]string{"Authorization": "Bearer tok"}}
 	ev := events.DeployEvent{Stack: "web", Status: events.StatusFailed, DurationMs: 1200, Error: "x"}

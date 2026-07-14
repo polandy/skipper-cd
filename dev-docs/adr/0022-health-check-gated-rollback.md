@@ -36,6 +36,19 @@ wraps `ErrRolledBack`, and the run emits `rolled_back` — so events, metrics
 (`skipper_deploy_rollbacks_total`) and notifications (ADR-0020) all work
 unchanged.
 
+**The rollback is verified through the same gate.** When `health_check` is
+configured, the rollback `up` also runs with `--wait --wait-timeout`, and the
+HTTP probe (if any) must pass again. `rolled_back` therefore guarantees the
+old version is actually healthy again. If the restored version *also* fails
+the gate — typically an environment problem (dead database, broken secret)
+that no compose version fixes — the error wraps `ErrRollbackUnhealthy` and
+the run emits **`rolled_back_unhealthy`**: the stack sits on the old compose
+file but is not verified healthy, so it needs attention now. A rollback that
+cannot even run (no previous commit, compose file not retrievable) stays a
+plain `failed` with "rollback also failed" — nothing was restored. Without
+`health_check`, the rollback `up` remains a plain `up -d`; the previous
+behavior is unchanged.
+
 ## Consequences
 
 - A deploy that starts but does not become healthy self-heals to the
@@ -43,8 +56,13 @@ unchanged.
 - `--wait` treats a service that exits as a failure; stacks with deliberate
   one-shot containers should not enable `health_check` (or model them with
   `service_completed_successfully` dependencies).
-- The rollback itself runs plain `up -d` without `--wait`: the old version
-  is assumed good, and a second wait could double the worst-case deploy time.
+- With `health_check` configured, a failed deploy can wait twice (deploy gate
+  plus rollback gate), doubling the worst-case deploy time. Accepted: an
+  honest `rolled_back` vs `rolled_back_unhealthy` distinction is worth more
+  than a faster but unverified "assumed good" rollback.
+- `rolled_back_unhealthy` usually means the environment is broken, not the
+  compose change — the next push retries the new version regardless, because
+  state hashes were not recorded.
 - `--wait-timeout` requires Docker Compose v2.17+.
 - The HTTP probe runs from the skipper-cd host; the URL must be reachable
   from there (e.g. a published port on localhost). For containers whose

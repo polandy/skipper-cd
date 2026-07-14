@@ -202,6 +202,26 @@ func TestDeployStack_NoProbeWithoutURL(t *testing.T) {
 	}
 }
 
+// rollbackHealsRunner flips the fake doer to healthy when the rollback up
+// (the second up call) runs, simulating an old version that comes back
+// healthy after the rollback.
+type rollbackHealsRunner struct {
+	calls []runCall
+	doer  *fakeDoer
+	ups   int
+}
+
+func (r *rollbackHealsRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
+	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
+	if slices.Contains(args, "up") {
+		r.ups++
+		if r.ups == 2 {
+			r.doer.statuses = []int{200}
+		}
+	}
+	return nil
+}
+
 func TestDeployStack_HealthProbeFailureRollsBack(t *testing.T) {
 	t.Parallel() // the probe burns its real 1s timeout budget
 
@@ -213,8 +233,9 @@ func TestDeployStack_HealthProbeFailureRollsBack(t *testing.T) {
 			"old-sha:" + composePath: []byte(composeWithImage("nginx:1.25")),
 		},
 	}
-	runner := &recordingRunner{}
+	// The new version never answers healthy; the restored old version does.
 	doer := &fakeDoer{statuses: []int{500}}
+	runner := &rollbackHealsRunner{doer: doer}
 	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
 	d.prober = &httpHealthProber{doer: doer, interval: 50 * time.Millisecond}
 
@@ -234,16 +255,103 @@ func TestDeployStack_HealthProbeFailureRollsBack(t *testing.T) {
 	if !errors.Is(err, ErrRolledBack) {
 		t.Errorf("expected error wrapping ErrRolledBack, got: %v", err)
 	}
+	if errors.Is(err, ErrRollbackUnhealthy) {
+		t.Errorf("expected error NOT wrapping ErrRollbackUnhealthy when the rollback turns healthy, got: %v", err)
+	}
 	if !strings.Contains(err.Error(), "health check") {
 		t.Errorf("expected 'health check' in error, got: %v", err)
 	}
 
-	// The failed deploy up plus the rollback up.
-	if got := len(upCalls(runner.calls)); got != 2 {
-		t.Errorf("expected 2 up calls (deploy + rollback), got %d", got)
+	// The failed deploy up plus the rollback up; the rollback up runs through
+	// the same health gate.
+	ups := upCalls(runner.calls)
+	if len(ups) != 2 {
+		t.Fatalf("expected 2 up calls (deploy + rollback), got %d", len(ups))
+	}
+	for _, want := range []string{"--wait", "--wait-timeout", "1"} {
+		if !slices.Contains(ups[1].args, want) {
+			t.Errorf("expected rollback up args to contain %q, got %v", want, ups[1].args)
+		}
 	}
 	if state.Stacks["mystack"]["old"] != "oldhash" {
 		t.Error("state must not be updated after a rolled-back deploy")
+	}
+}
+
+func TestDeployStack_RollbackUpStillUnhealthyWrapsErrRollbackUnhealthy(t *testing.T) {
+	baseDir := makeBaseWithStack(t)
+	composePath := filepath.Join(baseDir, "mystack", "docker-compose.yml")
+
+	cr := &fakeCommitReader{
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(composeWithImage("nginx:1.25")),
+		},
+	}
+	// Every up fails: the deploy up --wait and the rollback up --wait alike.
+	runner := &recordingRunner{errOnCommand: "up"}
+	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+
+	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
+	if err == nil {
+		t.Fatal("expected error from failed deploy")
+	}
+	if !errors.Is(err, ErrRollbackUnhealthy) {
+		t.Errorf("expected error wrapping ErrRollbackUnhealthy, got: %v", err)
+	}
+	if errors.Is(err, ErrRolledBack) {
+		t.Errorf("expected error NOT wrapping ErrRolledBack when the rollback stays unhealthy, got: %v", err)
+	}
+	if state.Stacks["mystack"]["old"] != "oldhash" {
+		t.Error("state must not be updated after an unhealthy rollback")
+	}
+}
+
+func TestDeployStack_RollbackProbeFailureWrapsErrRollbackUnhealthy(t *testing.T) {
+	t.Parallel() // both probes burn their real 1s timeout budget
+
+	baseDir := makeBaseWithStack(t)
+	composePath := filepath.Join(baseDir, "mystack", "docker-compose.yml")
+
+	cr := &fakeCommitReader{
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(composeWithImage("nginx:1.25")),
+		},
+	}
+	// Neither the new version nor the restored old one ever answers healthy.
+	runner := &recordingRunner{}
+	doer := &fakeDoer{statuses: []int{500}}
+	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+	d.prober = &httpHealthProber{doer: doer, interval: 50 * time.Millisecond}
+
+	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{
+		TimeoutSeconds: 1, URL: "http://localhost:8080/health",
+	}}
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
+	if err == nil {
+		t.Fatal("expected error from failed health check")
+	}
+	if !errors.Is(err, ErrRollbackUnhealthy) {
+		t.Errorf("expected error wrapping ErrRollbackUnhealthy, got: %v", err)
+	}
+	if errors.Is(err, ErrRolledBack) {
+		t.Errorf("expected error NOT wrapping ErrRolledBack when the rollback stays unhealthy, got: %v", err)
+	}
+	// The failed deploy up plus the rollback up (which itself succeeded).
+	if got := len(upCalls(runner.calls)); got != 2 {
+		t.Errorf("expected 2 up calls (deploy + rollback), got %d", got)
 	}
 }
 
@@ -269,6 +377,10 @@ func TestDeployStack_HealthProbeFailureRollbackAlsoFails(t *testing.T) {
 	}
 	if errors.Is(err, ErrRolledBack) {
 		t.Error("expected error NOT wrapping ErrRolledBack when rollback fails")
+	}
+	// Nothing was restored, so this is a plain failure — not an unhealthy rollback.
+	if errors.Is(err, ErrRollbackUnhealthy) {
+		t.Error("expected error NOT wrapping ErrRollbackUnhealthy when the rollback never ran")
 	}
 	if !strings.Contains(err.Error(), "rollback also failed") {
 		t.Errorf("expected 'rollback also failed' in error, got: %v", err)

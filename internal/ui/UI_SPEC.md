@@ -76,7 +76,8 @@ The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain
 | `deploying` | `--accent` (peach) | Animated spinner dot |
 | `success` | `--success` (teal) | |
 | `failed` | `--danger` (red) | Error panel expanded below row |
-| `rolled_back` | `--rollback` (maroon) | Deploy failed but old containers restored; error panel shows details |
+| `rolled_back` | `--rollback` (maroon) | Deploy failed but old containers restored and verified healthy; error panel shows details |
+| `rolled_back_unhealthy` | `--danger` (red) | Rollback ran but the restored version also failed the health gate — badge label "rollback unhealthy"; error panel shows details |
 | `queued` | `--queued` (yellow) | Deploy deferred — autosync paused, change waiting; tinted row with amber left bar and a `paused: <global\|stack>` tag on the stack cell. See [Autosync](#autosync). |
 
 ### Expandable panels
@@ -94,8 +95,8 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | Transition | Behaviour |
 |---|---|
 | `deploying` | New row prepended, tracked in memory. |
-| `success` / `failed` / `rolled_back` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
-| `success` / `failed` / `rolled_back` (no existing row) | New row created directly. |
+| `success` / `failed` / `rolled_back` / `rolled_back_unhealthy` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
+| `success` / `failed` / `rolled_back` / `rolled_back_unhealthy` (no existing row) | New row created directly. |
 | `skipped` | Dropped — never rendered (an unchanged stack carries no signal). |
 | `queued` | Row created with the `queued` badge and a `paused:` tag, **keyed by stack**: a further `queued` for the same stack (another push while paused) replaces it rather than stacking a duplicate. It is removed when the stack next deploys (a `deploying` event supersedes it) or when the stack leaves the pending set in a `queue` snapshot (resumed then found unchanged). Like a deploy, a `queued` event carries `has_diffs`, so the paused row expands the pending diff. |
 
