@@ -27,3 +27,4 @@ One file per decision, numbered sequentially (see
 | [0020](0020-outbound-deploy-notifications.md) | Outbound deploy notifications via a generic HTTP sink |
 | [0021](0021-configurable-ui-themes.md) | Configurable UI themes, with a per-browser override |
 | [0022](0022-health-check-gated-rollback.md) | Health-check-gated rollback |
+| [0023](0023-pwa-update-prompt.md) | Prompt to reload when a new PWA version is waiting |

@@ -49,7 +49,10 @@ asserting **behaviour + visual snapshots**.
 > baselines (§5) too**: a lean set of six baselines (deploys table, diff panel,
 > autosync drawer, both themes, mobile layout) generated and compared in
 > Playwright's pinned container, gated by `RUN_SNAPSHOTS`. The `e2e-ui` CI job now
-> runs inside that container. The suite is complete.
+> runs inside that container. A later **Mask E** (§4.6) adds the PWA update-banner
+> journey — **UE1** (accept → reload onto the new build) and **UE2** (dismiss
+> keeps the current version) — driven by relaunching onto a second binary whose
+> service worker carries a new version.
 
 ## 1. Scope & boundaries
 
@@ -352,6 +355,31 @@ UI suite reuses.
   the case asserts the ldflags → `GET /api/version` → header render through-line
   against the exact shipped version (release-proof: both sides read the manifest).
 
+### 4.6 UI — Maske E: PWA update banner
+
+The installable PWA prompts to reload when a newer version has been deployed
+(ADR-0023). Driving this end-to-end needs a *second* build: the banner fires only
+when the browser installs a service worker whose bytes differ, and the build
+identity is baked into the `sw.js` cache name. So `beforeAll` builds an updated
+binary (`-ldflags` version/commit differing from `globalSetup`'s) with `go`, and
+the cases relaunch onto it on the same origin/ports. When `go` is unavailable
+(the snapshot-regeneration container mounts a prebuilt `SKIPPER_E2E_BIN`), the
+cases `test.skip` — they carry no snapshots, so nothing is lost there. Both start
+stack-free (`stacks: []`): the PWA surface needs no deploys.
+
+- **UE1 — Accept + reload.** Open the app on the shipped build: a service worker
+  takes control, no `update-banner` shows, and `brand-version` reads the shipped
+  `v<ver> · <commit>`. Relaunch onto the updated build and call
+  `registration.update()` (the same check the app polls on load / visibility
+  regain). Then the `update-banner` appears with its "A new version…" text;
+  clicking `update-banner-reload` posts `SKIP_WAITING`, and the resulting
+  `controllerchange` reloads the page **once** onto the new build — asserted by
+  `brand-version` flipping to the updated identity and the banner clearing.
+- **UE2 — Dismiss.** Same journey to the visible banner; clicking
+  `update-banner-close` hides it and, crucially, leaves `brand-version` on the
+  **old** identity — no `SKIP_WAITING`, so the worker stays waiting and the page
+  never reloads.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -448,6 +476,8 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Deploy indicator active/idle | **UD3** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
+| PWA update banner: prompt on a new version, reload onto it | **UE1** |
+| PWA update banner: dismiss keeps the current version | **UE2** |
 | Diff API 404 / truncation limits | Unit `ui`/`deploy` — **n/a** for E2E |
 | Log windowing (500 +500), buffer trim | **n/a** in v1 (fiddly; low bump-risk) |
 | Favicon `prefers-color-scheme` | **n/a** (browser chrome, not page DOM) |

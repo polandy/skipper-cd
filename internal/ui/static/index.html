@@ -1050,6 +1050,67 @@
     .theme-notice { animation: none; }
   }
 
+  /* PWA update banner — appears when a newer skipper-cd version is deployed and
+     a new service worker is waiting. Bottom-centred so it never collides with
+     the header (z 100) or the top-right theme notice; sits above the drawer
+     (z 90). The action is a real button (tap, not hover) so it works on touch —
+     see docs/pwa.md and UI_SPEC. */
+  .update-banner {
+    position: fixed;
+    z-index: 96;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: min(420px, calc(100vw - 28px));
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px 10px 14px;
+    background: color-mix(in srgb, var(--bg-base) 97%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--border-lit);
+    border-radius: 10px;
+    box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.5);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    animation: update-banner-in 0.18s ease;
+  }
+  .update-banner[hidden] { display: none; }
+  .update-banner-text { flex: 1; }
+  .update-banner-reload {
+    flex-shrink: 0;
+    background: var(--accent);
+    color: var(--bg-base);
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 7px;
+  }
+  .update-banner-reload:hover { filter: brightness(1.08); }
+  .update-banner-reload:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .update-banner-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .update-banner-close:hover { color: var(--text-primary); background: var(--bg-raised); }
+  @keyframes update-banner-in {
+    from { opacity: 0; transform: translate(-50%, 8px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .update-banner { animation: none; }
+  }
+
   .filter-toggle.active .toggle-thumb {
     transform: translateX(12px);
     background: var(--accent);
@@ -1523,6 +1584,12 @@
 <div class="theme-notice" id="theme-notice" data-testid="theme-notice" role="status" hidden>
   <span id="theme-notice-text"></span>
   <button class="theme-notice-close" id="theme-notice-close" data-testid="theme-notice-close" aria-label="Dismiss">&times;</button>
+</div>
+
+<div class="update-banner" id="update-banner" data-testid="update-banner" role="status" hidden>
+  <span class="update-banner-text">A new version of skipper-cd is available.</span>
+  <button class="update-banner-reload" id="update-banner-reload" data-testid="update-banner-reload">Reload</button>
+  <button class="update-banner-close" id="update-banner-close" data-testid="update-banner-close" aria-label="Dismiss">&times;</button>
 </div>
 
 <div class="drawer" id="autosync-drawer" data-testid="autosync-drawer" role="dialog" aria-label="Autosync">
@@ -2663,13 +2730,80 @@
 
   connect();
 
-  // Register the service worker for installability + app-shell caching.
-  // Failure-tolerant: an insecure context (plain HTTP) simply skips it, the
-  // page keeps working as a normal site. See docs/pwa.md.
+  // Register the service worker for installability + app-shell caching, and
+  // prompt to reload when a newer version has been deployed. Failure-tolerant:
+  // an insecure context (plain HTTP) simply skips it, the page keeps working as
+  // a normal site. See docs/pwa.md.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-      navigator.serviceWorker.register('/sw.js').catch(function() {});
+      registerServiceWorker();
     });
+  }
+
+  // The update banner: shown once a new service worker has installed and is
+  // waiting. Tapping Reload asks that worker to activate; the resulting
+  // controllerchange reloads the page onto the fresh shell.
+  // Deduped by worker identity: the same waiting worker never re-prompts (its
+  // statechange and the on-load reg.waiting check can both reach here), but a
+  // later deploy's new worker can prompt again even after a dismissal.
+  var promptedWorker = null;
+  // Set when the user accepts the prompt. Together with a worker already
+  // controlling the page at load, it tells a real version handover (reload onto
+  // it) apart from the first-install clients.claim() (must not bounce a fresh
+  // visit) — see the controllerchange listener.
+  var updateAccepted = false;
+  function showUpdateBanner(worker) {
+    if (promptedWorker === worker) return;
+    promptedWorker = worker;
+    var banner = document.getElementById('update-banner');
+    var reload = document.getElementById('update-banner-reload');
+    var close = document.getElementById('update-banner-close');
+    reload.onclick = function() {
+      updateAccepted = true;
+      reload.disabled = true;
+      worker.postMessage({ type: 'SKIP_WAITING' });
+    };
+    close.onclick = function() { banner.hidden = true; };
+    banner.hidden = false;
+  }
+
+  function registerServiceWorker() {
+    // Reload once when a waiting worker takes over: either the user accepted the
+    // prompt (here or, via hadController, in another tab). A controllerchange
+    // with neither — no controller at load and no acceptance — is just the
+    // first-install clients.claim(), which must not bounce a fresh visit.
+    var hadController = !!navigator.serviceWorker.controller;
+    var reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+      if (reloading || (!updateAccepted && !hadController)) return;
+      reloading = true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker.register('/sw.js').then(function(reg) {
+      // A worker that finished installing while the page was closed is already
+      // waiting on load — updatefound won't fire for it, so check explicitly.
+      if (reg.waiting && navigator.serviceWorker.controller) {
+        showUpdateBanner(reg.waiting);
+      }
+      reg.addEventListener('updatefound', function() {
+        var sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', function() {
+          // installed + an existing controller ⇒ an update is ready; without a
+          // controller this is the first install, which needs no prompt.
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateBanner(sw);
+          }
+        });
+      });
+      // Check for a new worker now and whenever the tab regains focus, so a
+      // long-lived standalone PWA notices a deploy without a manual reload.
+      reg.update().catch(function() {});
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') reg.update().catch(function() {});
+      });
+    }).catch(function() {});
   }
 })();
 </script>

@@ -424,12 +424,15 @@ export class Skipper {
     await Promise.race([exited, timer]);
   }
 
-  /** relaunch respawns the binary on the same config and ports (after stop()), so
+  /** relaunch respawns skipper on the same config and ports (after stop()), so
    *  the UI's SSE stream drops and then re-establishes against the returning
-   *  server — used to drive the connection indicator reconnecting→connected (UD2). */
-  async relaunch(): Promise<void> {
+   *  server — used to drive the connection indicator reconnecting→connected (UD2).
+   *  Pass `bin` to return a *different* build on the same origin/ports, e.g. one
+   *  whose service worker carries a new version so the browser sees a PWA update
+   *  (UE1/UE2). */
+  async relaunch(bin: string = skipperBinPath()): Promise<void> {
     this.attach(
-      spawn(skipperBinPath(), ['-config', this.cfgPath], {
+      spawn(bin, ['-config', this.cfgPath], {
         env: this.spawnEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
       }),
