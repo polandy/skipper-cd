@@ -52,7 +52,9 @@ asserting **behaviour + visual snapshots**.
 > runs inside that container. A later **Mask E** (§4.6) adds the PWA update-banner
 > journey — **UE1** (accept → reload onto the new build) and **UE2** (dismiss
 > keeps the current version) — driven by relaunching onto a second binary whose
-> service worker carries a new version.
+> service worker carries a new version. A later **Mask F** (§4.7) covers the
+> upcoming-deploys look-ahead — **UF1** (trail), **UF2** (run panel), **UF3**
+> (mobile `+N` chip) — driven by a multi-stack run held on its first stack.
 
 ## 1. Scope & boundaries
 
@@ -380,6 +382,28 @@ stack-free (`stacks: []`): the PWA surface needs no deploys.
   **old** identity — no `SKIP_WAITING`, so the worker stays waiting and the page
   never reloads.
 
+### 4.7 UI — Maske F: Upcoming-deploys look-ahead
+
+The header surfaces the stacks that will deploy *next in the current run*
+(ADR-0024): a look-ahead trail beside the active stack, and a read-only run
+panel. Driving this needs a **multi-stack run held mid-flight**: the three stacks
+(`web`, `api`, `db`) are all changed and pushed together, then the stub docker's
+`up` is held (`hold()`), so the run blocks on the first stack (`web`) with the
+rest still to come. The `upcoming` snapshot is emitted by the real backend, so
+nothing is faked. Behaviour-only (no snapshot), like Maske E.
+
+- **UF1 — Look-ahead trail.** While the run is held, the indicator's `aria-label`
+  reads `deploying web · next api, db` and the visible `deploy-next` trail names
+  the upcoming stacks. Releasing the `up` drains the run: the trail empties and
+  the indicator returns to `idle`.
+- **UF2 — Run panel.** Clicking the indicator while idle does nothing (the panel
+  has nothing to show). During the held run, clicking it opens `run-drawer`
+  listing the run in deploy order — the active `web` row carries `.active` and
+  "deploying now", `api`/`db` follow. Ending the run (release) closes the panel.
+- **UF3 — Mobile fallback.** At 390px the verbose trail is hidden and the
+  upcoming stacks collapse to the `deploy-count` `+N` chip (`+2`); the names stay
+  in `aria-label`.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -474,6 +498,9 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Theme switcher off (default): picker hidden, override ignored | **UD7** |
 | Connection indicator states | **UD2** |
 | Deploy indicator active/idle | **UD3** |
+| Upcoming look-ahead trail (active + next) | **UF1** |
+| Run panel (open on click, ordered run, close on end) | **UF2** |
+| Upcoming mobile `+N` count chip | **UF3** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |
