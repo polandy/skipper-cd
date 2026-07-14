@@ -45,7 +45,7 @@ func serveSSE(t *testing.T, handler http.Handler, req *http.Request, during func
 }
 
 func TestIndexHandler_ServesHTML(t *testing.T) {
-	handler := IndexHandler()
+	handler := IndexHandler(ThemeCatppuccin)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
@@ -125,8 +125,36 @@ func TestBuildInfo_CacheID(t *testing.T) {
 	}
 }
 
+func TestIndexHandler_BakesInConfiguredTheme(t *testing.T) {
+	for _, theme := range ValidThemes {
+		t.Run(theme, func(t *testing.T) {
+			handler := IndexHandler(theme)
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			body := rec.Body.String()
+			if !strings.Contains(body, `data-theme="`+theme+`"`) {
+				t.Errorf("expected data-theme=%q in served HTML", theme)
+			}
+			if !strings.Contains(body, `data-server-theme="`+theme+`"`) {
+				t.Errorf("expected data-server-theme=%q in served HTML", theme)
+			}
+			for _, placeholder := range []string{"__UI_THEME__", "__FAVICON_URI__", "__THEME_COLOR_DARK__", "__THEME_COLOR_LIGHT__"} {
+				if strings.Contains(body, placeholder) {
+					t.Errorf("served HTML still contains the %s placeholder", placeholder)
+				}
+			}
+			if !strings.Contains(body, "data:image/svg+xml;base64,") {
+				t.Error("expected an inlined favicon data URI")
+			}
+		})
+	}
+}
+
 func TestManifestHandler_ServesInstallableManifest(t *testing.T) {
-	handler := ManifestHandler()
+	handler := ManifestHandler(ThemeCatppuccin)
 	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
 	rec := httptest.NewRecorder()
 
@@ -163,6 +191,29 @@ func TestManifestHandler_ServesInstallableManifest(t *testing.T) {
 	}
 	if !hasMaskable {
 		t.Error("manifest has no maskable icon")
+	}
+}
+
+func TestManifestHandler_ThemeColorsFollowConfiguredTheme(t *testing.T) {
+	handler := ManifestHandler(ThemeNord)
+	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	var m struct {
+		ThemeColor      string `json:"theme_color"`
+		BackgroundColor string `json:"background_color"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("manifest is not valid JSON: %v", err)
+	}
+	nord := themeIdentities[ThemeNord]
+	if m.ThemeColor != nord.darkBase {
+		t.Errorf("theme_color = %q, want %q (Nord dark base)", m.ThemeColor, nord.darkBase)
+	}
+	if m.BackgroundColor != nord.darkMantle {
+		t.Errorf("background_color = %q, want %q (Nord dark mantle)", m.BackgroundColor, nord.darkMantle)
 	}
 }
 

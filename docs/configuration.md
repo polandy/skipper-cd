@@ -62,6 +62,7 @@ nixos_rebuild:
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
 | `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
+| `ui_theme` | string | no | `catppuccin` | Web UI colour palette: one of `catppuccin`, `nord`, `solarized`, `gruvbox`, `rose-pine` (see [Web UI Theme](#web-ui-theme)). |
 
 ## Stack Fields
 
@@ -168,3 +169,21 @@ notifications:
 > **No email.** Native SMTP is deliberately unsupported (see [ADR-0020](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0020-outbound-deploy-notifications.md)). Point a `generic` target at an email-capable relay (ntfy, Apprise, Shoutrrr) if you need email.
 
 > **Self-notify caveat.** If Signal is delivered through a `signal-api` stack that skipper itself deploys, a failed `signal-api` deploy cannot notify you about itself. Configure a second, independent target (e.g. `generic` → ntfy) so at least one path never depends on the stack being reported on.
+
+## Web UI Theme
+
+`ui_theme` picks the web UI's colour palette. This is a per-instance, config-time choice — handy for telling several skipper-cd instances apart at a glance (e.g. one per host) — and is independent of the header's dark/light toggle, which stays a per-browser preference within whichever palette is configured.
+
+```yaml
+ui_theme: nord   # optional, default: catppuccin
+```
+
+| Value | Look |
+|---|---|
+| `catppuccin` (default) | Soft pastels on a muted indigo base (Mocha dark / Latte light). |
+| `nord` | Arctic blue-greys, a single frost-blue accent. |
+| `solarized` | The low-contrast terminal classic. |
+| `gruvbox` | Warm retro-groove browns, orange accent. |
+| `rose-pine` | Muted rose and iris-purple on a plum-black base. |
+
+Every palette drives the whole UI, including the PWA install identity (favicon, browser theme colour, app splash screen) — see [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#design) for the full token design and [PWA](pwa.md#33-theme) for the installed-app behaviour.

@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/polandy/skipper-cd/internal/ui"
 )
 
 // Stack represents a single Docker Compose project to be deployed.
@@ -99,6 +102,13 @@ type Config struct {
 	// on every terminal deploy outcome they subscribe to. An empty section
 	// disables notifications entirely. See ADR-0020.
 	Notifications []NotificationTarget `yaml:"notifications"`
+
+	// UITheme selects the web UI's colour palette (see ui.ValidThemes).
+	// Optional; defaults to "catppuccin". Each theme has its own dark/light
+	// variant, toggled independently in the browser — this only picks which
+	// palette that toggle switches within. Distinguishes multiple skipper-cd
+	// instances (e.g. one per host) at a glance. See docs/configuration.md.
+	UITheme string `yaml:"ui_theme"`
 }
 
 // NotificationTarget configures a single outbound notification sink: where to
@@ -215,6 +225,9 @@ func Load(path string) (*Config, error) {
 			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack}
 		}
 	}
+	if cfg.UITheme == "" {
+		cfg.UITheme = ui.ThemeCatppuccin
+	}
 
 	return cfg, validateConfig(cfg)
 }
@@ -261,6 +274,10 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.NixOSRebuild.IsEnabled() && cfg.NixOSRebuild.Flake == "" {
 		return fmt.Errorf("nixos_rebuild.flake is required when nixos_rebuild is enabled")
+	}
+
+	if !ui.IsValidTheme(cfg.UITheme) {
+		return fmt.Errorf("ui_theme must be one of %s, got %q", strings.Join(ui.ValidThemes, ", "), cfg.UITheme)
 	}
 
 	if cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {

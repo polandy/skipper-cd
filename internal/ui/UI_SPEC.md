@@ -6,22 +6,22 @@ Single-page application served at `/` when `ui_enabled: true`. No external JS de
 
 ## Design
 
-Nautical-industrial theme on the **Catppuccin** palette: **Mocha** is the dark default, **Latte** the opt-in light theme (header toggle, `localStorage` key `theme` = `latte`; a pre-paint inline script in `<head>` applies the `latte` root class before first render — dark is the stylesheet default, so a missing preference can never flash). `color-scheme` follows the palette.
+Nautical-industrial theme, built on a **configurable palette** (`ui_theme` in `skipper.yml`, see [`docs/configuration.md`](../../docs/configuration.md#web-ui-theme)): **Catppuccin** (Mocha dark / Latte light) is the default, plus four built-ins — **Nord**, **Solarized**, **Gruvbox**, **Rosé Pine** — each with its own dark and light variant. The theme is a per-deployment choice, baked server-side into `<html data-theme="…">` at serve time (`ui.IndexHandler`); it never flashes because it is present in the initial HTML, not applied by JS. The header **theme picker** additionally lets a single browser override it locally without touching the deployment (see [Theme override](#theme-override)). Dark/light is a separate, per-browser axis: the header toggle only flips a `.light` class on top of whichever theme is active (`localStorage` key `colorScheme` = `light`/`dark`; a pre-paint inline script in `<head>` applies the class before first render — dark is the stylesheet default per theme, so a missing preference can never flash). `color-scheme` follows the active variant.
 
 One semantic token layer consumes the palette; all tints, borders and glows are derived from it via `color-mix()`, so no component rule names a raw colour:
 
-| Token | Palette colour | Meaning |
-|---|---|---|
-| `--accent` | peach | Active deploy, brand accent, active toggles, connecting |
-| `--success` | teal | Success, connected |
-| `--danger` | red | Failed, errors, reconnecting, diff deletions |
-| `--rollback` | maroon | Rolled back |
-| `--skip` | overlay1 | DEBUG log level |
-| `--queued` | yellow | Queued/deferred deploy, pending count, autosync paused (shares the yellow hue with `--hunk`, distinct semantic) |
-| `--diff-add` | green | Diff additions |
-| `--hunk` | yellow | Diff hunk headers, WARN log level |
+| Token | Meaning |
+|---|---|
+| `--accent` | Active deploy, brand accent, active toggles, connecting |
+| `--success` | Success, connected |
+| `--danger` | Failed, errors, reconnecting, diff deletions |
+| `--rollback` | Rolled back |
+| `--skip` | DEBUG log level (aliases the muted text tier) |
+| `--queued` | Queued/deferred deploy, pending count, autosync paused (shares its colour with `--hunk`, distinct semantic) |
+| `--diff-add` | Diff additions |
+| `--hunk` | Diff hunk headers, WARN log level |
 
-Background depth: `crust` (sunken — log pane, diff/files panels) → `mantle` (page) → `base` (header glass, cards) → `surface0` (raised — tags, toggle tracks). Text: `text` / `subtext0` / `overlay1` (primary / secondary / muted).
+Each theme maps these tokens to its own raw colours (`--raw-accent`, `--raw-success`, …) under `:root[data-theme="<name>"]` / `:root[data-theme="<name>"].light`; adding a theme is a self-contained CSS block, nothing else in the page references a theme name. Background depth: `crust` (sunken — log pane, diff/files panels) → `mantle` (page) → `base` (header glass, cards) → `surface0` (raised — tags, toggle tracks). Text: `text` / `subtext0` / `overlay1` (primary / secondary / muted).
 
 Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). Both are **self-hosted and embedded** in `index.html` as `@font-face` rules with the `woff2` (latin subset, weights 400/500/600) inlined as `data:` URIs — there is no external Google Fonts request, so the page is fully self-contained, works offline, and renders deterministically for visual snapshots (see [`docs/e2e-tests.md`](../../docs/e2e-tests.md) §5). Background: mantle with subtle grid overlay and peach radial glow at top centre.
 
@@ -31,7 +31,7 @@ Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). 
 
 Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
-**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), and a muted **version label** showing the deployed build identity (`v<semver> · <commit>`, or the branch name for feature builds; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version`, left empty until it resolves, and carries a `title` tooltip with the full string (it clips with an ellipsis when narrow). The favicon is the same ship as an SVG data URI with a `prefers-color-scheme` media query (Latte colours by default, Mocha when the OS is dark — favicons cannot follow the in-page toggle).
+**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), and a muted **version label** showing the deployed build identity (`v<semver> · <commit>`, or the branch name for feature builds; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version`, left empty until it resolves, and carries a `title` tooltip with the full string (it clips with an ellipsis when narrow). The favicon is the same ship as an SVG data URI, its colours drawn from the configured theme, with a `prefers-color-scheme` media query switching between its light and dark variant (favicons cannot follow the in-page toggle).
 
 **Header — right:**
 - **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
@@ -40,8 +40,18 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 - **Time mode toggle** — switches Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). State persisted in `localStorage` key `timeMode`. Tooltip always shows the other format. Deploys view only.
 - **Sort toggle** — reverses log order. Default: inactive (newest first, newest line at the top). Active flips to oldest-first (terminal semantics, newest at the bottom). State persisted in `localStorage` key `logSort` (`desc` / `asc`). Flipping resets the visible window to one page. Logs view only.
 - **Follow toggle** — auto-scrolls the log pane to the newest line (the top when newest-first, the bottom when oldest-first) on every append. Default: active. State persisted in `localStorage` key `followLogs`. Logs view only.
-- **Theme toggle** — switches between Mocha (dark, default) and Latte (light). State persisted in `localStorage` key `theme` (`latte` / `mocha`). Visible in both views.
+- **Theme picker** — a `<select>` of the five built-in palettes (see [Theme override](#theme-override)). Desktop only (hidden ≤ 700 px — rarely needed on a phone, and the configured theme still applies as-is). Visible in both views.
+- **Theme toggle** — switches between the configured theme's dark (default) and light variant. State persisted in `localStorage` key `colorScheme` (`dark` / `light`). Visible in both views.
 - **Connection indicator** — `connecting` (accent pulse) → `connected` (success) → `reconnecting` (danger). Bound to `/api/events`; the log stream has no own indicator.
+
+### Theme override
+
+The theme picker lets a **browser** show a different palette than the one `ui_theme` configures for the environment, without touching the deployment. This is purely a local, client-side preference:
+
+- **Applying** — selecting a theme sets `document.documentElement`'s `data-theme` attribute immediately (every theme's CSS is always present in the stylesheet, so there is no reload and no flash). `<html>` carries a second, immutable attribute, `data-server-theme`, holding the value the environment is actually configured with — set once at serve time by `ui.IndexHandler` and never touched by JS. It is the reference the mismatch notice compares against.
+- **Persisting** — a non-default choice is saved to `localStorage` key `themeOverride`. Picking the theme that matches `data-server-theme` again removes the override, so the page goes back to following whatever the environment is configured for (including across a `ui_theme` change on a later deploy). A pre-paint inline script in `<head>` re-applies a saved override before first render, the same no-flash approach the colour-scheme toggle uses.
+- **Mismatch notice** — whenever `themeOverride` is set and differs from `data-server-theme` (which, by the rule above, is whenever an override exists at all), a dismissible notice appears under the header: *"Showing `<override theme>` in this browser — this environment is configured for `<server theme>`."* It auto-hides after 6 seconds, or immediately on clicking its close button; the check re-runs (and the notice reappears if still applicable) on every page load and every theme-picker change, but never nags mid-session beyond that.
+- **Scope** — the override never reaches the server: there is no endpoint to change `ui_theme` from the UI. It only ever affects the browser that set it.
 
 ---
 
@@ -187,6 +197,9 @@ assert on.
 | `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |
 | `pending-pill` | Amber pending-count pill | Hidden at zero |
 | `time-mode`, `log-sort`, `follow-logs`, `theme-toggle` | Header toggle buttons | |
+| `theme-select` | Header theme picker (`<select>`) | See [Theme override](#theme-override) |
+| `theme-notice` | Theme mismatch notice | Shown when `themeOverride` differs from `data-server-theme` |
+| `theme-notice-close` | Theme mismatch notice's dismiss button | |
 | `conn-indicator` | Connection indicator | `data-state` = `connecting`/`connected`/`reconnecting` |
 | `empty-state` | Awaiting-events placeholder | |
 | `deploys-table` | The deploys view container (header + rows) | Snapshot anchor (UA1) |
@@ -222,6 +235,7 @@ assert on.
 - **Deploy indicator** — collapses to its coloured dot; the active-stack / `idle` text is hidden and mirrored into the element's `title`/`aria-label`.
 - **Autosync control** — keeps its icon and pending-count pill; only the `autosync` label is hidden (its static `title` remains).
 - **Time-mode / sort / follow / theme** — the label *and* the switch track are hidden and each is replaced by a self-describing **glyph** (clock / sort-bars / arrow-to-baseline / sun–moon), since unlabelled bare tracks are indistinguishable and touch shows no tooltips. The glyph follows the toggle colour (muted → accent when active) so identity and state are both legible; the theme glyph shows a moon in dark and a sun in light, and the sort glyph flips vertically when active (oldest-first). Static tooltips remain for pointer users.
+- **Theme picker** — hidden entirely rather than collapsed; it doesn't fit the compact row and overriding the palette is rarely needed on a phone. The configured theme (and any override already saved from a previous desktop visit) still applies.
 - **Connection indicator** — collapses to its coloured dot; the `connecting` / `connected` / `reconnecting` text is hidden and mirrored into the element's `title`.
 
 The `.status-area` gap tightens to 10 px and the header padding to 12 px so the row fits a 360 px viewport without overflow.

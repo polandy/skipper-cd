@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/ui"
 )
 
 func TestLoad_ValidConfig(t *testing.T) {
@@ -186,6 +187,50 @@ stacks: []
 	_, err := loadStringToConfig(t, content)
 	if err == nil {
 		t.Error("expected error for unknown log_format, got nil")
+	}
+}
+
+func TestLoad_UIThemeDefaultsToCatppuccin(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.UITheme != ui.ThemeCatppuccin {
+		t.Errorf("expected default ui_theme %q, got %q", ui.ThemeCatppuccin, cfg.UITheme)
+	}
+}
+
+func TestLoad_UIThemeAcceptsEveryBuiltInTheme(t *testing.T) {
+	for _, theme := range ui.ValidThemes {
+		t.Run(theme, func(t *testing.T) {
+			content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+ui_theme: ` + theme + `
+stacks: []
+`
+			cfg := loadFromString(t, content)
+
+			if cfg.UITheme != theme {
+				t.Errorf("expected ui_theme %q, got %q", theme, cfg.UITheme)
+			}
+		})
+	}
+}
+
+func TestLoad_RejectsUnknownUITheme(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+ui_theme: monokai
+stacks: []
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil {
+		t.Error("expected error for unknown ui_theme, got nil")
 	}
 }
 

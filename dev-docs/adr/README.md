@@ -25,3 +25,4 @@ One file per decision, numbered sequentially (see
 | [0018](0018-pwa-installable-ui.md) | Installable PWA web UI with app-shell caching |
 | [0019](0019-autosync-ui-overrides-collapse-to-inherit.md) | Autosync UI overrides collapse to inherit when they match the baseline |
 | [0020](0020-outbound-deploy-notifications.md) | Outbound deploy notifications via a generic HTTP sink |
+| [0021](0021-configurable-ui-themes.md) | Configurable UI themes, with a per-browser override |

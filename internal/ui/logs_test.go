@@ -104,7 +104,7 @@ func TestLogsSSEHandler_SetsSSEHeaders(t *testing.T) {
 }
 
 func TestIndexHandler_ContainsLogsViewToggle(t *testing.T) {
-	handler := IndexHandler()
+	handler := IndexHandler(ThemeCatppuccin)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
