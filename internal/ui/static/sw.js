@@ -8,8 +8,9 @@
 //      server always wins and a just-deployed UI is picked up promptly.
 //
 // __VERSION__ is replaced at serve time with the build version, so a new release
-// changes this file's bytes, the browser adopts a new worker, and it drops the
-// caches under the old name.
+// changes this file's bytes and the browser installs a new worker. On an update
+// that worker waits (see the install handler) until the page prompts the user to
+// reload; once activated it drops the caches under the old name.
 
 const CACHE = 'skipper-shell-__VERSION__';
 
@@ -26,7 +27,20 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(SHELL))
   );
-  self.skipWaiting();
+  // Intentionally no skipWaiting() here: on an update (an existing worker still
+  // controls the page) the new worker stays in "waiting" so the page can prompt
+  // the user to reload. It activates only when the page posts SKIP_WAITING
+  // below. On a first install there is no controller, so the browser activates
+  // this worker immediately regardless.
+});
+
+// The page posts this when the user accepts the "new version available" prompt;
+// activating the waiting worker fires controllerchange, which reloads the page
+// onto the fresh shell. See docs/pwa.md.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {

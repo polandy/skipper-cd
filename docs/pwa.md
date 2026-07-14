@@ -82,8 +82,15 @@ operators:
 
 - Because skipper-cd deploys itself, the app must never get "stuck" on an old
   cached UI. When a **new version** is running on the server, the installed app
-  detects it and refreshes its cached shell **automatically**, without the user
-  clearing anything.
+  detects it and offers to refresh, without the user clearing anything.
+- **In a normal tab**, a plain reload already fetches the fresh UI (the shell is
+  served network-first), so there is nothing extra to do.
+- **In a long-lived standalone window** that never reloads on its own, the app
+  shows a small **"A new version of skipper-cd is available."** banner with a
+  **Reload** button. Tapping it swaps in the new version and reloads once; the
+  banner can also be dismissed to keep working on the current version. The check
+  runs on launch and again whenever the window regains focus, so a backgrounded
+  app notices a deploy without a manual reload.
 
 ## 4. Operator / deployment notes
 
@@ -110,4 +117,7 @@ operators:
    never intercepted or served from cache).
 6. After a **version bump** on the server, a reload of the installed app picks up
    the new UI (no manual cache clearing needed).
-7. In a **plain browser tab**, everything behaves exactly as it does today.
+7. After a **version bump**, a standalone window that stays open shows the
+   **update banner**; tapping **Reload** brings it to the new version, and
+   dismissing it leaves the current version running.
+8. In a **plain browser tab**, everything behaves exactly as it does today.
