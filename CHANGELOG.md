@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/polandy/skipper-cd/compare/v0.10.0...v0.11.0) (2026-07-14)
+
+
+### Features
+
+* **ui:** configurable UI themes with an opt-in per-browser switcher ([59d01ce](https://github.com/polandy/skipper-cd/commit/59d01ce5c953dfad51c295f65b321fb98f373041))
+
 ## [0.10.0](https://github.com/polandy/skipper-cd/compare/v0.9.0...v0.10.0) (2026-07-14)
 
 
