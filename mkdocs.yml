@@ -62,6 +62,9 @@ markdown_extensions:
       permalink: true
   - tables
 
+extra_css:
+  - stylesheets/theme-previews.css
+
 plugins:
   - search
 

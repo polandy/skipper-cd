@@ -1,0 +1,153 @@
+/* Mini UI mockups for the `ui_theme` previews in configuration.md.
+   Each `.tp` figure renders a tiny facsimile of the skipper-cd header +
+   two stack cards, coloured from the same palette the real UI ships.
+
+   The hex values below are copied from the theme blocks in
+   internal/ui/static/index.html — that file is the source of truth. Keep
+   these in sync when a palette changes or a new theme is added. */
+
+.theme-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.4rem 0 1.4rem;
+}
+
+.tp {
+  width: 190px;
+  margin: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--tp-mantle);
+  border: 1px solid rgba(128, 128, 128, 0.28);
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1;
+}
+
+.tp-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  background: var(--tp-base);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.18);
+}
+
+.tp-logo {
+  margin-right: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tp-text);
+}
+
+.tp-logo i {
+  color: var(--tp-accent);
+  font-style: normal;
+}
+
+.tp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.tp-a { background: var(--tp-accent); }
+.tp-s { background: var(--tp-success); }
+.tp-d { background: var(--tp-danger); }
+
+.tp-body {
+  padding: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tp-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  border-radius: 5px;
+  background: var(--tp-base);
+  border: 1px solid rgba(128, 128, 128, 0.14);
+}
+
+.tp-line {
+  height: 6px;
+  width: 56px;
+  border-radius: 3px;
+  background: var(--tp-text);
+  opacity: 0.8;
+}
+
+.tp-line.short {
+  width: 38px;
+  opacity: 0.6;
+  background: var(--tp-sub);
+}
+
+.tp-badge {
+  margin-left: auto;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.tp-badge.tp-s { color: var(--tp-success); }
+.tp-badge.tp-d { color: var(--tp-danger); }
+
+.tp figcaption {
+  padding: 6px 9px 8px;
+  font-size: 10px;
+  color: var(--tp-sub);
+  background: var(--tp-mantle);
+  text-align: center;
+}
+
+/* --- Palettes (copied from internal/ui/static/index.html) --- */
+
+.tp[data-theme="catppuccin"] {
+  --tp-mantle: #181825; --tp-base: #1e1e2e; --tp-text: #cdd6f4; --tp-sub: #a6adc8;
+  --tp-accent: #fab387; --tp-success: #94e2d5; --tp-danger: #f38ba8;
+}
+.tp[data-theme="catppuccin"].light {
+  --tp-mantle: #e6e9ef; --tp-base: #eff1f5; --tp-text: #4c4f69; --tp-sub: #6c6f85;
+  --tp-accent: #fe640b; --tp-success: #179299; --tp-danger: #d20f39;
+}
+
+.tp[data-theme="nord"] {
+  --tp-mantle: #2e3440; --tp-base: #3b4252; --tp-text: #eceff4; --tp-sub: #d8dee9;
+  --tp-accent: #88c0d0; --tp-success: #a3be8c; --tp-danger: #bf616a;
+}
+.tp[data-theme="nord"].light {
+  --tp-mantle: #e5e9f0; --tp-base: #eceff4; --tp-text: #2e3440; --tp-sub: #4c566a;
+  --tp-accent: #4c6f96; --tp-success: #4c8f6b; --tp-danger: #b3434f;
+}
+
+.tp[data-theme="solarized"] {
+  --tp-mantle: #002b36; --tp-base: #073642; --tp-text: #93a1a1; --tp-sub: #839496;
+  --tp-accent: #268bd2; --tp-success: #2aa198; --tp-danger: #dc322f;
+}
+.tp[data-theme="solarized"].light {
+  --tp-mantle: #f8f1dd; --tp-base: #fdf6e3; --tp-text: #586e75; --tp-sub: #657b83;
+  --tp-accent: #268bd2; --tp-success: #2aa198; --tp-danger: #dc322f;
+}
+
+.tp[data-theme="gruvbox"] {
+  --tp-mantle: #282828; --tp-base: #32302f; --tp-text: #ebdbb2; --tp-sub: #bdae93;
+  --tp-accent: #fe8019; --tp-success: #8ec07c; --tp-danger: #fb4934;
+}
+.tp[data-theme="gruvbox"].light {
+  --tp-mantle: #f9f5d7; --tp-base: #fbf1c7; --tp-text: #3c3836; --tp-sub: #504945;
+  --tp-accent: #af3a03; --tp-success: #427b58; --tp-danger: #9d0006;
+}
+
+.tp[data-theme="rose-pine"] {
+  --tp-mantle: #191724; --tp-base: #1f1d2e; --tp-text: #e0def4; --tp-sub: #908caa;
+  --tp-accent: #c4a7e7; --tp-success: #9ccfd8; --tp-danger: #eb6f92;
+}
+.tp[data-theme="rose-pine"].light {
+  --tp-mantle: #faf4ed; --tp-base: #fffaf3; --tp-text: #575279; --tp-sub: #797593;
+  --tp-accent: #907aa9; --tp-success: #56949f; --tp-danger: #b4637a;
+}
