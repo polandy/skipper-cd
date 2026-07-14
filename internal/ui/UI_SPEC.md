@@ -228,6 +228,9 @@ assert on.
 | `wait-cell` | Wait-time text on a queue item | Masked in snapshots (dynamic) |
 | `stack-filter` | Stack filter input | |
 | `stack-filter-clear` | Filter clear button | |
+| `update-banner` | PWA "new version available" banner | Hidden until a newer service worker is waiting (UE1/UE2) |
+| `update-banner-reload` | Banner's Reload action | Activates the waiting worker → one reload |
+| `update-banner-close` | Banner's dismiss button | |
 
 ---
 
