@@ -11,6 +11,17 @@ const pageMasks = (page: import('@playwright/test').Page) => [
   page.locator('[data-testid="duration-cell"]'),
 ];
 
+// Human-readable theme labels, mirroring THEME_LABELS in the UI. The mismatch
+// notice names themes by these labels, not their raw config values, so UD6
+// asserts against the label of the configured theme.
+const THEME_LABELS: Record<string, string> = {
+  catppuccin: 'Catppuccin',
+  nord: 'Nord',
+  solarized: 'Solarized',
+  gruvbox: 'Gruvbox',
+  'rose-pine': 'Rosé Pine',
+};
+
 // Maske D: Global chrome. See docs/e2e-tests.md §4.5.
 
 // UD5 — Build-identity label. The header shows the deployed build as
@@ -192,7 +203,7 @@ test('UD6: theme picker switches live, persists a local override, and surfaces a
   expect(await effectiveTheme()).toBe(other);
   expect(await storedOverride()).toBe(other);
   await expect(notice).toBeVisible();
-  await expect(notice).toContainText(configured);
+  await expect(notice).toContainText(THEME_LABELS[configured as string]);
 
   // The override survives a reload (pre-paint script), independently of the
   // dark/light toggle's own localStorage key.
