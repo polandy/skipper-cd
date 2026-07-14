@@ -415,13 +415,22 @@ export class Skipper {
     return this.out;
   }
 
-  /** stop terminates the process gracefully (SIGINT, then SIGKILL after 10s). */
+  /** stop terminates the process and waits for it to exit.
+   *
+   *  It sends SIGKILL, not SIGINT: at teardown (and before every relaunch) the
+   *  test's browser page is still open, so its long-lived SSE /api/events
+   *  connection is still draining. A graceful SIGINT makes skipper's
+   *  http.Server.Shutdown block on that connection for the full production
+   *  `shutdownTimeout` (10s, cmd/skipper/main.go) — 10s of dead time on *every*
+   *  test. Graceful shutdown is a backend concern covered by the Go pipeline
+   *  tests; here we only need the process gone and its ports freed, fast. An
+   *  abrupt drop is also the more faithful signal for the reconnect cases
+   *  (UD2/UE): the SSE stream is cut immediately instead of lingering. */
   async stop(): Promise<void> {
     if (this.proc.exitCode !== null || this.proc.signalCode !== null) return;
     const exited = new Promise<void>((res) => this.proc.once('exit', () => res()));
-    this.proc.kill('SIGINT');
-    const timer = sleep(10_000).then(() => this.proc.kill('SIGKILL'));
-    await Promise.race([exited, timer]);
+    this.proc.kill('SIGKILL');
+    await exited;
   }
 
   /** relaunch respawns skipper on the same config and ports (after stop()), so
