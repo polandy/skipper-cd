@@ -23,6 +23,13 @@ stacks:
   - name: gitea
     env_files:
       - /run/secrets/rendered/skipper/compose.env
+    # Optional post-deploy health gate → rollback on failure. `up` runs with
+    # --wait, so it waits for the service's compose `healthcheck:` (which runs
+    # INSIDE the container — no published port needed). `url` adds an extra HTTP
+    # probe FROM THE HOST, only for endpoints reachable there. See docs/configuration.md.
+    # health_check:
+    #   timeout_seconds: 60                # optional, default: 60
+    #   # url: http://localhost:3000/healthz # optional; host-reachable endpoints only
 
   - name: monitoring
     env_files:
@@ -55,9 +62,9 @@ nixos_rebuild:
 #     url: http://localhost:8020           # signal-api base; /v2/send is appended
 #     number: "+491234567890"              # sender (required for signal)
 #     recipients: ["+491234567890"]        # recipients (required for signal)
-#     # on: [failed, success, rolled_back] # default; subset of these three
+#     # on: [failed, success, rolled_back, rolled_back_unhealthy] # default; subset of these four
 #   - format: generic                      # a second, independent target for failures
 #     url: https://ntfy.example.com/skipper
 #     headers:
 #       Authorization: "Bearer your-token"
-#     on: [failed, rolled_back]
+#     on: [failed, rolled_back, rolled_back_unhealthy]

@@ -162,5 +162,6 @@ func statusSet(on []string) map[events.Status]bool {
 }
 
 func isTerminal(s events.Status) bool {
-	return s == events.StatusSuccess || s == events.StatusFailed || s == events.StatusRolledBack
+	return s == events.StatusSuccess || s == events.StatusFailed ||
+		s == events.StatusRolledBack || s == events.StatusRolledBackUnhealthy
 }

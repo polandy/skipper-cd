@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,6 +44,13 @@ type RepoSyncer interface {
 // errors.Is to emit a rolled_back (instead of failed) event.
 var ErrRolledBack = errors.New("rolled back to previous version")
 
+// ErrRollbackUnhealthy marks a failed deploy whose rollback ran, but whose
+// restored version also failed the health gate: the stack is back on the old
+// compose file yet not verified healthy. Only possible with a health_check
+// configured (the rollback then reruns the same gate). DeployAllStacks checks
+// it with errors.Is to emit a rolled_back_unhealthy event.
+var ErrRollbackUnhealthy = errors.New("rolled back but still unhealthy")
+
 // Deployer orchestrates deployments for all configured stacks.
 // Inject a custom Runner to replace real docker/git calls in tests.
 // Optionally inject a CommitReader to enable diff logging on deploy.
@@ -60,6 +68,7 @@ type Deployer struct {
 	autosync     *autosync.Controller        // nil = autosync always on
 	queue        *autosync.Queue             // nil = no pending tracking
 	postRunHook  func()                      // nil = none; runs after each deploy run
+	prober       *httpHealthProber           // nil = lazily built real prober
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -238,10 +247,14 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state); err != nil {
 			duration := time.Since(startTime)
 			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
-			if errors.Is(err, ErrRolledBack) {
+			switch {
+			case errors.Is(err, ErrRollbackUnhealthy):
+				slog.Error("deploy failed, rollback ran but stack is still unhealthy", "stack", stack.Name, "err", err)
+				d.emit(events.StatusRolledBackUnhealthy, stack.Name, duration, err.Error(), nil, nil)
+			case errors.Is(err, ErrRolledBack):
 				slog.Warn("deploy failed but rolled back", "stack", stack.Name, "err", err)
 				d.emit(events.StatusRolledBack, stack.Name, duration, err.Error(), nil, nil)
-			} else {
+			default:
 				slog.Error("deploy failed", "stack", stack.Name, "err", err)
 				d.emit(events.StatusFailed, stack.Name, duration, err.Error(), nil, nil)
 			}
@@ -430,16 +443,23 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}
 
 	// --remove-orphans removes containers for services deleted from docker-compose.yml.
-	if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
-		slog.Error("docker compose up failed, attempting rollback", "stack", stack.Name, "err", err)
+	upArgs := []string{"up", "-d", "--remove-orphans"}
+	if hc := stack.HealthCheck; hc != nil {
+		// First health gate: --wait makes the up itself fail when the services'
+		// compose healthchecks do not turn healthy in time (ADR-0022).
+		upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
+	}
+	if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, upArgs...); err != nil {
+		return d.rollBackFailedDeploy(ctx, composePath, projectDir, baseEnv, stack, state, "docker compose up", err)
+	}
 
-		if rbErr := d.rollbackStack(ctx, composePath, projectDir, baseEnv, stack, state); rbErr != nil {
-			slog.Error("rollback failed", "stack", stack.Name, "err", rbErr)
-			return fmt.Errorf("docker compose up: %w (rollback also failed: %v)", err, rbErr)
+	// Second health gate: the optional HTTP probe verifies the stack from the
+	// outside after a successful up (ADR-0022).
+	if hc := stack.HealthCheck; hc != nil && hc.URL != "" {
+		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
+		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
+			return d.rollBackFailedDeploy(ctx, composePath, projectDir, baseEnv, stack, state, "health check", err)
 		}
-		slog.Info("rollback successful, old containers restored", "stack", stack.Name)
-		metrics.DeployRollbacks.WithLabelValues(stack.Name).Inc()
-		return fmt.Errorf("docker compose up: %w (%w)", err, ErrRolledBack)
 	}
 
 	if len(stack.OnDemandContainers) > 0 {
@@ -563,9 +583,33 @@ func (d *Deployer) runDockerCompose(ctx context.Context, composePath, projectDir
 	return d.runner.Run(ctx, runDir, env, "docker", composeArgs...)
 }
 
+// rollBackFailedDeploy handles a deploy that failed at the given stage ("docker
+// compose up" or "health check"): it attempts a rollback and wraps the outcome
+// so DeployAllStacks emits rolled_back on success, rolled_back_unhealthy when
+// the restored version also fails the health gate, and failed otherwise
+// (errors.Is on ErrRolledBack / ErrRollbackUnhealthy).
+func (d *Deployer) rollBackFailedDeploy(ctx context.Context, composePath, projectDir string, baseEnv []string, stack config.Stack, state *persistedState, stage string, cause error) error {
+	slog.Error(stage+" failed, attempting rollback", "stack", stack.Name, "err", cause)
+
+	if rbErr := d.rollbackStack(ctx, composePath, projectDir, baseEnv, stack, state); rbErr != nil {
+		if errors.Is(rbErr, ErrRollbackUnhealthy) {
+			slog.Error("rollback ran but the restored version is still unhealthy", "stack", stack.Name, "err", rbErr)
+			return fmt.Errorf("%s: %w (%w)", stage, cause, rbErr)
+		}
+		slog.Error("rollback failed", "stack", stack.Name, "err", rbErr)
+		return fmt.Errorf("%s: %w (rollback also failed: %v)", stage, cause, rbErr)
+	}
+	slog.Info("rollback successful, old containers restored", "stack", stack.Name)
+	metrics.DeployRollbacks.WithLabelValues(stack.Name).Inc()
+	return fmt.Errorf("%s: %w (%w)", stage, cause, ErrRolledBack)
+}
+
 // rollbackStack restores containers to the previous compose file version after
 // a failed docker compose up. It retrieves the old compose file from git and
-// runs docker compose up with it.
+// runs docker compose up with it. With a health_check configured the rollback
+// reruns the same gate (--wait plus the optional HTTP probe) so a restored
+// version that stays unhealthy is reported, not assumed good; those failures
+// wrap ErrRollbackUnhealthy.
 func (d *Deployer) rollbackStack(ctx context.Context, composePath, projectDir string, baseEnv []string, stack config.Stack, state *persistedState) error {
 	if d.commitReader == nil || state.LastDeployedCommit == "" {
 		return fmt.Errorf("no previous commit available for rollback")
@@ -597,5 +641,21 @@ func (d *Deployer) rollbackStack(ctx context.Context, composePath, projectDir st
 	}
 
 	slog.Info("rolling back with previous compose file", "stack", stack.Name, "commit", state.LastDeployedCommit)
-	return d.runDockerCompose(ctx, tmpFile.Name(), rbProjectDir, baseEnv, stack.EnvFiles, "up", "-d")
+	upArgs := []string{"up", "-d"}
+	if hc := stack.HealthCheck; hc != nil {
+		upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
+	}
+	if err := d.runDockerCompose(ctx, tmpFile.Name(), rbProjectDir, baseEnv, stack.EnvFiles, upArgs...); err != nil {
+		if stack.HealthCheck != nil {
+			return fmt.Errorf("restored version did not come up healthy: %v (%w)", err, ErrRollbackUnhealthy)
+		}
+		return err
+	}
+	if hc := stack.HealthCheck; hc != nil && hc.URL != "" {
+		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
+		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
+			return fmt.Errorf("restored version failed the health probe: %v (%w)", err, ErrRollbackUnhealthy)
+		}
+	}
+	return nil
 }

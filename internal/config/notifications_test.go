@@ -24,9 +24,26 @@ notifications:
 	if got.Format != config.NotifyFormatGeneric {
 		t.Errorf("expected default format %q, got %q", config.NotifyFormatGeneric, got.Format)
 	}
-	want := []string{config.NotifyOnFailed, config.NotifyOnSuccess, config.NotifyOnRolledBack}
+	want := []string{config.NotifyOnFailed, config.NotifyOnSuccess, config.NotifyOnRolledBack, config.NotifyOnRolledBackUnhealthy}
 	if strings.Join(got.On, ",") != strings.Join(want, ",") {
 		t.Errorf("expected default on %v, got %v", want, got.On)
+	}
+}
+
+func TestLoad_NotificationOnRolledBackUnhealthy(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+notifications:
+  - url: https://ntfy.example.com/skipper
+    on: [rolled_back_unhealthy]
+`
+	cfg := loadFromString(t, content)
+
+	got := cfg.Notifications[0]
+	if len(got.On) != 1 || got.On[0] != config.NotifyOnRolledBackUnhealthy {
+		t.Errorf("expected on [rolled_back_unhealthy], got %v", got.On)
 	}
 }
 

@@ -32,8 +32,9 @@ import (
 //   - STUB_DOCKER_HOLD_UP=<file>   block on `up` until <file> exists (observe
 //     the "deploying" state), then continue.
 //   - STUB_DOCKER_FAIL_ON=<subcmd> exit 1 when the args contain <subcmd>.
-//   - STUB_DOCKER_FAIL_NTH_UP=<n>  exit 1 only on the Nth `up` (lets a rollback
-//     `up` succeed while the initial one fails → rolled_back).
+//   - STUB_DOCKER_FAIL_NTH_UP=<n>[,<n>…]  exit 1 on the listed `up` invocations
+//     (2 lets a rollback `up` succeed while the deploy `up` fails → rolled_back;
+//     2,3 also fails a health-gated rollback `up` → rolled_back_unhealthy).
 //   - STUB_DOCKER_ECHO=<line>      print <line> to stdout on `up`, so tests can
 //     observe captured child-process output in the log ring.
 const stubDockerScript = `#!/bin/sh
@@ -66,7 +67,9 @@ if [ -n "$STUB_DOCKER_FAIL_NTH_UP" ]; then
       c=$(cat "$DOCKER_LOG.upcount" 2>/dev/null || echo 0)
       c=$((c + 1))
       echo "$c" > "$DOCKER_LOG.upcount"
-      [ "$c" = "$STUB_DOCKER_FAIL_NTH_UP" ] && exit 1
+      case ",$STUB_DOCKER_FAIL_NTH_UP," in
+        *",$c,"*) exit 1 ;;
+      esac
       ;;
   esac
 fi

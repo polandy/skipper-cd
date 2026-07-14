@@ -48,6 +48,27 @@ type Stack struct {
 	// the global setting. When autosync is not effective, a detected change is
 	// queued instead of deployed. See docs/autosync.md.
 	Autosync *bool `yaml:"autosync"`
+
+	// HealthCheck optionally gates a deploy of this stack on a post-deploy
+	// health check; on failure the deploy is rolled back. nil disables the
+	// gate. See ADR-0022.
+	HealthCheck *HealthCheck `yaml:"health_check,omitempty"`
+}
+
+// HealthCheck configures the optional post-deploy health gate of a stack.
+// When present, `docker compose up` runs with --wait so it fails when the
+// services' compose healthchecks do not turn healthy in time, and an optional
+// HTTP probe additionally verifies the stack from the outside. Either failure
+// triggers the regular rollback path (ADR-0004, ADR-0022).
+type HealthCheck struct {
+	// TimeoutSeconds bounds the wait: it is passed as --wait-timeout to
+	// docker compose up and is also the deadline of the HTTP probe.
+	// Defaults to 60.
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+
+	// URL, when set, is HTTP-GET-probed after a successful up until it
+	// answers 2xx; anything else within TimeoutSeconds rolls the deploy back.
+	URL string `yaml:"url"`
 }
 
 // Config holds the full skipper-cd configuration.
@@ -132,7 +153,8 @@ type NotificationTarget struct {
 	URL string `yaml:"url"`
 
 	// On lists the terminal deploy statuses that trigger this target. Any
-	// subset of "failed", "success", "rolled_back". Empty means all three.
+	// subset of "failed", "success", "rolled_back", "rolled_back_unhealthy".
+	// Empty means all four.
 	On []string `yaml:"on"`
 
 	// Headers are static HTTP headers added to the request. Only meaningful for
@@ -157,9 +179,10 @@ const (
 // terminal events.Status values without importing that package (config is the
 // lowest layer).
 const (
-	NotifyOnFailed     = "failed"
-	NotifyOnSuccess    = "success"
-	NotifyOnRolledBack = "rolled_back"
+	NotifyOnFailed              = "failed"
+	NotifyOnSuccess             = "success"
+	NotifyOnRolledBack          = "rolled_back"
+	NotifyOnRolledBackUnhealthy = "rolled_back_unhealthy"
 )
 
 // IconsConfig configures how the web UI resolves and caches stack icons.
@@ -229,11 +252,16 @@ func Load(path string) (*Config, error) {
 			t.Format = NotifyFormatGeneric
 		}
 		if len(t.On) == 0 {
-			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack}
+			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy}
 		}
 	}
 	if cfg.UITheme == "" {
 		cfg.UITheme = ui.ThemeCatppuccin
+	}
+	for i := range cfg.Stacks {
+		if hc := cfg.Stacks[i].HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
+			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
+		}
 	}
 
 	return cfg, validateConfig(cfg)
@@ -256,6 +284,10 @@ const (
 // hashes and must not collide with a configured stack.
 const reservedStackName = "_nixos"
 
+// defaultHealthCheckTimeoutSeconds is applied when a health_check section is
+// present without an explicit timeout_seconds.
+const defaultHealthCheckTimeoutSeconds = 60
+
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
 		return fmt.Errorf("repo_url is required")
@@ -276,6 +308,10 @@ func validateConfig(cfg *Config) error {
 
 		if s.WorkingDir == "" && cfg.StacksBaseDir == "" {
 			return fmt.Errorf("stack %q: working_dir is required when stacks_base_dir is not set", s.Name)
+		}
+
+		if err := validateHealthCheck(s.HealthCheck); err != nil {
+			return fmt.Errorf("stack %q: health_check: %w", s.Name, err)
 		}
 	}
 
@@ -300,6 +336,23 @@ func validateConfig(cfg *Config) error {
 	return nil
 }
 
+// validateHealthCheck checks a stack's optional health_check section.
+// TimeoutSeconds has already been defaulted in Load.
+func validateHealthCheck(hc *HealthCheck) error {
+	if hc == nil {
+		return nil
+	}
+	if hc.TimeoutSeconds < 0 {
+		return fmt.Errorf("timeout_seconds must not be negative, got %d", hc.TimeoutSeconds)
+	}
+	if hc.URL != "" {
+		if u, err := url.ParseRequestURI(hc.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("url %q must be a valid http(s) URL", hc.URL)
+		}
+	}
+	return nil
+}
+
 // validateNotificationTarget checks a single notification target. Format and On
 // have already been defaulted in Load.
 func validateNotificationTarget(t NotificationTarget) error {
@@ -318,7 +371,7 @@ func validateNotificationTarget(t NotificationTarget) error {
 
 	for _, s := range t.On {
 		switch s {
-		case NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack:
+		case NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy:
 		default:
 			return fmt.Errorf("unknown on value %q", s)
 		}

@@ -31,7 +31,7 @@ Run it **[on NixOS](nixos.md)** as a declarative systemd service, or **[with Doc
 ## Features
 
 - **Deploys only what changed** — SHA-256 hashes of each stack's compose file, env files, watched dirs, and `build:` Dockerfiles are persisted; unchanged stacks are skipped.
-- **Automatic rollback** — if `docker compose up` fails, skipper-cd restores the previous compose file from the last deployed Git commit.
+- **Automatic rollback** — if `docker compose up` fails, or an optional post-deploy health check (compose `--wait` and/or an HTTP probe) doesn't pass, skipper-cd restores the previous compose file from the last deployed Git commit ([details](configuration.md#health-check-gated-rollback)).
 - **NixOS rebuilds** — optionally run `nixos-rebuild switch` before stack deploys when `.nix` files change, so one webhook updates both the host and its containers.
 - **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([details](autosync.md)).
 - **Web UI** — a single embedded page with live deploy status, service icons, an event log, and installable as a PWA.
@@ -58,7 +58,7 @@ On each incoming webhook (or on startup), skipper-cd:
 3. **NixOS rebuild** (optional): hashes all `*.nix` files and `flake.lock`; if any changed, runs `nixos-rebuild switch` in a transient systemd unit. If the rebuild fails, all stack deploys are aborted. See [NixOS](nixos.md#nixos-rebuild).
 4. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, watched directories, and any `Dockerfile`s of `build:` services — then compares them against the previous deployment and **skips unchanged stacks**.
 5. For changed stacks, runs `docker compose pull` for remote images only, `docker compose build --pull` when `build:` services are present, then `docker compose up -d --remove-orphans`.
-6. **Automatic rollback:** if `docker compose up` fails, retrieves the previous `docker-compose.yml` from the last deployed commit and brings containers back up with it (marked `rolled_back`), otherwise `failed`.
+6. **Automatic rollback:** if `docker compose up` fails — or a configured [health check](configuration.md#health-check-gated-rollback) does not pass afterwards — retrieves the previous `docker-compose.yml` from the last deployed commit and brings containers back up with it (marked `rolled_back`; `rolled_back_unhealthy` when even the restored version fails the health gate), otherwise `failed`.
 7. Stops any `on_demand_containers` so an on-demand scheduler can take over their lifecycle, and logs the git diff of each changed file.
 
 Concurrent webhook requests and the startup deploy are serialized by a deployment lock; if a deploy is already running, later requests wait for it to finish.

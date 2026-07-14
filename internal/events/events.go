@@ -16,6 +16,10 @@ const (
 	StatusFailed     Status = "failed"
 	StatusSkipped    Status = "skipped"
 	StatusRolledBack Status = "rolled_back"
+	// StatusRolledBackUnhealthy marks a failed deploy whose rollback ran, but
+	// whose restored version also failed the health gate (ADR-0022): the stack
+	// is back on the old compose file yet not verified healthy.
+	StatusRolledBackUnhealthy Status = "rolled_back_unhealthy"
 	// StatusQueued marks a deploy deferred because autosync is paused; the
 	// change waits and deploys when sync resumes. See docs/autosync.md.
 	StatusQueued Status = "queued"

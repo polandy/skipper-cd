@@ -463,6 +463,24 @@
     background: var(--rollback-dim);
   }
 
+  /* Rollback ran but the restored version is also unhealthy — the worst
+     terminal state, so it borrows the failed (danger) colours. */
+  .event-row.rolled_back_unhealthy-row {
+    background: var(--danger-dim);
+  }
+
+  .event-row.rolled_back_unhealthy-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--danger);
+    border-radius: 0 2px 2px 0;
+  }
+
   .event-row.rolled_back-row::before {
     content: '';
     position: absolute;
@@ -621,6 +639,21 @@
     background: var(--rollback-dim);
     color: var(--rollback);
     border: 1px solid color-mix(in srgb, var(--rollback) 22%, transparent);
+  }
+
+  /* Rollback ran but the restored version is also unhealthy — the worst
+     terminal state, so it borrows the failed (danger) colours. The full
+     wording overflows the status column on one line, so the label stacks
+     two lines at a reduced size (see badgeHTML). */
+  .badge-rolled_back_unhealthy {
+    background: var(--danger-dim);
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
+    flex-direction: column;
+    gap: 0;
+    font-size: 9px;
+    line-height: 1.3;
+    padding: 2px 8px;
   }
 
   .badge-queued {
@@ -1446,6 +1479,12 @@
   function badgeHTML(status) {
     var cls = 'badge badge-' + status;
     if (status === 'deploying') return '<span class="' + cls + '" data-testid="status-badge"><span class="spinner"></span>deploying</span>';
+    if (status === 'rolled_back_unhealthy') {
+      // Two stacked lines at a reduced size: the full wording must stay
+      // recognizable but overflows the status column on one line. Spans
+      // instead of <br> because the badge is a flex container (column).
+      return '<span class="' + cls + '" data-testid="status-badge"><span>rolled back</span><span>unhealthy</span></span>';
+    }
     var label = status === 'rolled_back' ? 'rolled back' : status;
     return '<span class="' + cls + '" data-testid="status-badge">' + label + '</span>';
   }
@@ -1543,6 +1582,7 @@
     if (status === 'failed') cls += ' failed-row';
     if (status === 'success') cls += ' success-row';
     if (status === 'rolled_back') cls += ' rolled_back-row';
+    if (status === 'rolled_back_unhealthy') cls += ' rolled_back_unhealthy-row';
     if (status === 'queued') cls += ' queued-row';
     if (!isHistory) cls += ' new-row';
     return cls;
@@ -1682,7 +1722,7 @@
       return;
     }
 
-    if ((evt.status === 'success' || evt.status === 'failed' || evt.status === 'rolled_back') && deployingRows[evt.stack]) {
+    if ((evt.status === 'success' || evt.status === 'failed' || evt.status === 'rolled_back' || evt.status === 'rolled_back_unhealthy') && deployingRows[evt.stack]) {
       var existing = deployingRows[evt.stack];
       existing.className = rowClass(evt.status, isHistory);
       existing.dataset.status = evt.status;

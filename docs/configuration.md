@@ -78,6 +78,55 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
+| `health_check` | section | no | — | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. See [Health-check-gated rollback](#health-check-gated-rollback). |
+
+## Health-check-gated rollback
+
+Without a `health_check`, a rollback only happens when `docker compose up` itself fails. A deploy whose containers *start* but stay broken (crash-loop, 500s) would be marked successful. Adding a `health_check` section closes that gap:
+
+```yaml
+stacks:
+  - name: whoami
+    health_check:
+      timeout_seconds: 60                # optional, default: 60
+      url: http://localhost:8080/health  # optional HTTP probe
+```
+
+The gate has two stages.
+
+### Stage 1 — the compose healthcheck (recommended)
+
+When the section is present, `docker compose up` runs with `--wait --wait-timeout <timeout_seconds>`, so the `up` fails unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
+
+The `healthy` state comes from a [`healthcheck:`](https://docs.docker.com/reference/compose-file/services/#healthcheck) defined on the service in your compose file. **This is the exposure-free path: the healthcheck command runs *inside* the container, so nothing needs a published port.** For a container whose endpoint is not reachable from the host, this is the mechanism to use:
+
+```yaml
+# docker-compose.yml
+services:
+  web:
+    image: myapp:latest
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]  # localhost = inside the container
+      interval: 5s
+      retries: 5
+```
+
+With that in place, a stack-level `health_check: {}` (no `url`) is enough — `--wait` gates the deploy on the internal healthcheck and rolls back if it never turns `healthy`.
+
+### Stage 2 — the HTTP probe (optional)
+
+Only when `url` is set: after a successful `up`, skipper-cd GETs the URL every 2 seconds until it answers with a 2xx status; anything else for `timeout_seconds` fails the deploy. The probe runs **from the skipper-cd host**, so the URL must be reachable from there (a published port on `localhost`, or a routable address via a reverse proxy). Use it when the stack has no internal `healthcheck:` but does expose a reachable endpoint, or as an extra end-to-end check on top of stage 1.
+
+A failure in either stage triggers the regular rollback: the previous compose file is restored from the last deployed Git commit, the deploy is marked `rolled_back` (events, metrics and [notifications](#notifications) all see that status), and the change stays pending so the next push retries.
+
+The rollback itself is verified through the same gate: its `up` also runs with `--wait`, and the HTTP probe (if configured) must pass again. So `rolled_back` guarantees the old version is actually healthy again. If the restored version *also* fails the gate — typically an environment problem such as a dead database or a broken secret — the deploy is marked **`rolled_back_unhealthy`** instead: the stack sits on the old compose file but needs attention *now*, because no version of it is verified healthy.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
+| `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
+
+> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Don't enable `health_check` on stacks with deliberate one-shot containers, or model those as [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependencies.
 
 ## `vars_file`
 
@@ -126,7 +175,7 @@ icons:
 
 skipper-cd can POST a message to one or more targets whenever a deploy reaches a **terminal** outcome. This works independently of the web UI — notifications need neither `ui_enabled` nor an open browser.
 
-Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back` (the transient `deploying`, `skipped` and `queued` are never sent). Each target chooses which of the three it wants via `on:`; when omitted, all three are delivered.
+Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back`, `rolled_back_unhealthy` (the transient `deploying`, `skipped` and `queued` are never sent). Each target chooses which of the four it wants via `on:`; when omitted, all four are delivered.
 
 Delivery is **fire-and-forget**: sending runs in the background with its own 10-second per-request timeout, never blocking or delaying a deploy. A failed or slow target is logged and dropped — there is no retry queue, so a notification can be lost if the target is down. For guaranteed history, read the persisted events or scrape metrics instead.
 
@@ -137,14 +186,14 @@ notifications:
     url: http://localhost:8020        # service base; /v2/send is appended
     number: "+491234567890"           # sender (required for signal)
     recipients: ["+491234567890"]     # recipients (required for signal)
-    # on:  defaults to [failed, success, rolled_back]
+    # on:  defaults to [failed, success, rolled_back, rolled_back_unhealthy]
 
   # A second, independent target for failures only.
   - format: generic
     url: https://ntfy.example.com/skipper
     headers:
       Authorization: "Bearer <token>"
-    on: [failed, rolled_back]
+    on: [failed, rolled_back, rolled_back_unhealthy]
 ```
 
 ### Target Fields
@@ -153,7 +202,7 @@ notifications:
 |---|---|---|---|---|
 | `format` | string | no | `generic` | Provider shape of the request: `signal` or `generic`. |
 | `url` | string | yes | — | Endpoint the notification is POSTed to. For `signal` this is the `signal-cli-rest-api` **base** (e.g. `http://localhost:8020`); `/v2/send` is appended automatically. |
-| `on` | list | no | all three | Subset of `failed`, `success`, `rolled_back` that triggers this target. |
+| `on` | list | no | all four | Subset of `failed`, `success`, `rolled_back`, `rolled_back_unhealthy` that triggers this target. |
 | `headers` | map | no | — | Static HTTP headers added to the request. Only meaningful for `generic` (e.g. an auth token). |
 | `number` | string | for `signal` | — | Signal sender number. Required for `format: signal`, rejected on any other format. |
 | `recipients` | list | for `signal` | — | Signal recipient numbers (non-empty). Required for `format: signal`, rejected on any other format. |

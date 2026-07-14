@@ -78,6 +78,8 @@ func renderMessage(ev events.DeployEvent) string {
 		return fmt.Sprintf("❌ deploy failed: %s (%s) — %s", ev.Stack, dur, ev.Error)
 	case events.StatusRolledBack:
 		return fmt.Sprintf("↩️ deploy rolled back: %s (%s) — %s", ev.Stack, dur, ev.Error)
+	case events.StatusRolledBackUnhealthy:
+		return fmt.Sprintf("🚨 deploy rolled back but still unhealthy: %s (%s) — %s", ev.Stack, dur, ev.Error)
 	default:
 		return fmt.Sprintf("deploy %s: %s", ev.Status, ev.Stack)
 	}
