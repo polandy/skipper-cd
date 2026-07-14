@@ -35,7 +35,7 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
 **Header — right.** The controls are **icon/glyph-only** on every viewport (no text labels or switch tracks in the header row). Each glyph follows the theme via `currentColor`, is muted by default, and only takes on colour to signal a real state. Pointer users get the native `title` tooltip on hover; since touch never shows `title` tooltips, a tap on any header control flashes its label in a small **tap-reveal bubble** (the control's action still fires). In order:
 
-- **Deploy indicator** — an **anchor** glyph (muted) at rest, swapping to a **ship** (accent, pulsing) with the active stack name(s) beside it while deploying. The names sit to the *left* of the glyph so the icon (and everything right of it) stays put as text appears/disappears. `idle` / `deploying <stacks>` is mirrored into `title` + `aria-label`. Visible in both views.
+- **Deploy indicator** — an **anchor** glyph (muted) at rest, swapping to a **ship** (accent, pulsing) while deploying. The glyph leads; to its right comes the active stack name(s) and then a dimmed **look-ahead trail** — `→ a · b · +N` — naming the stacks that will deploy *next in the same run*, capped at three names plus a `+N` overflow. The trail's source is the [`upcoming`](#event-lifecycle-sse) SSE event (distinct from the autosync pending queue: this is the *active run's* remaining work). `idle` / `deploying <stacks> · next <stacks>` is mirrored into `title` + `aria-label`. While a run is active the indicator is a **button** (`role="button"`, `Enter`/`Space`): it toggles the [Run panel](#run-panel). Visible in both views.
 - **View toggle** — segmented control of two icons: a rows/table glyph (`deploys`) and a terminal glyph (`logs`). Default: `deploys`. State persisted in `localStorage` key `activeView`. The **active** button carries a small `▾` and opens the [View-options popover](#view-options-popover); the other button switches views.
 - **Autosync control** — a single sync-arrows glyph showing global autosync state; **muted by default**, turning `--queued` (amber) when paused and `--accent` while its drawer is open. When deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in both views.
 - **Theme picker** — a palette glyph over a transparent native `<select>` of the five built-in palettes (see [Theme override](#theme-override)); clicking opens the native option list. **Opt-in**: present only when `ui_theme_switcher: true` (see [`docs/configuration.md`](../../docs/configuration.md#web-ui-theme)); off by default, so the deployed theme is fixed. Desktop only (hidden ≤ 700 px). Visible in both views.
@@ -105,6 +105,10 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `skipped` | Dropped — never rendered (an unchanged stack carries no signal). |
 | `queued` | Row created with the `queued` badge and a `paused:` tag, **keyed by stack**: a further `queued` for the same stack (another push while paused) replaces it rather than stacking a duplicate. It is removed when the stack next deploys (a `deploying` event supersedes it) or when the stack leaves the pending set in a `queue` snapshot (resumed then found unchanged). Like a deploy, a `queued` event carries `has_diffs`, so the paused row expands the pending diff. |
 
+Besides `deploy` events, the stream carries named **state snapshots** — `autosync`, `queue`, and `upcoming` — each replacing the prior snapshot of that name (also sent once on connect as initial state).
+
+- **`upcoming`** `{ "upcoming": ["grafana", "loki"] }` — the stacks that will deploy *after* the one currently deploying, in deploy order. The backend hashes every stack once upfront (after the git sync) to know which will actually deploy this run, then publishes the shrinking list as each stack starts; an empty list is published when the run ends. Drives the [Deploy indicator](#header--right) look-ahead trail and the [Run panel](#run-panel). Distinct from the autosync pending `queue` (deferred, paused stacks). `_nixos` is excluded — the rebuild has no per-stack deploying state.
+
 ---
 
 ## Autosync
@@ -122,6 +126,15 @@ Controls whether detected changes deploy automatically, per stack and globally. 
 **Per-stack switch is an exception, not a pin.** A per-stack UI override is held only while it differs from what the stack would inherit; toggling a stack back to its inherited value clears the override (the "return to global" gesture) and toggling the global switch collapses any per-stack override that now matches the baseline. So the global switch behaves as a true master and a UI pause does not survive a global off→on cycle. Full semantics: [`docs/autosync.md`](../../docs/autosync.md#override-collapse) / [ADR-0019](../../docs/adr/0019-autosync-ui-overrides-collapse-to-inherit.md).
 
 **Enable triggers a drain; disable does not.** Enabling sync (global or a stack) triggers a deploy run that drains the queue; disabling only updates state. Switches use the same track/thumb geometry as the header `.filter-toggle`.
+
+---
+
+## Run panel
+
+A read-only panel listing the **current deploy run** in deploy order, opened by clicking the [Deploy indicator](#header--right) while a run is active (closed at rest, since there is nothing to show). Styled like the [Autosync drawer](#autosync) — same glass shell, anchored under the header, closes on outside-click or `Esc`, and mutually exclusive with the Autosync drawer and the view-options popover. Painted from the in-memory deploying rows plus the `upcoming` snapshot; no dedicated endpoint.
+
+- **Header** — title `This deploy run`; sub-line `<b>stack</b> deploying · N more this run` (or `· last in this run`, or `Nothing deploying.`).
+- **Rows** — the active deploy first, a pulsing **ship badge** and `deploying now` (accent-tinted row); then the upcoming stacks, each a **position number** badge and `next` / `then`. Accent-tinted (active run) rather than the queue's amber. No switches — unlike the autosync drawer, this panel does not act on anything.
 
 ---
 
@@ -202,7 +215,10 @@ assert on.
 | `brand-name` | Header `skipper-cd` wordmark | Stacked over the version label; hidden ≤ 700 px (logo alone carries the brand) |
 | `brand-version` | Header version label | `v<semver> · <commit>` / branch; `dev` local; empty until `/api/version` resolves; full string in `title`; shown in portrait ≤ 700 px |
 | `view-toggle` | Deploys/Logs segmented icon control | Active button (`.active`) opens the view-options popover |
-| `deploy-indicator` | Deploy indicator (anchor/ship glyph) | `idle`/`deploying <stacks>` in `title` + `aria-label` |
+| `deploy-indicator` | Deploy indicator (anchor/ship glyph) | `idle`/`deploying <stacks> · next <stacks>` in `title` + `aria-label`; `role="button"`, opens the run panel while active |
+| `deploy-next` | Look-ahead trail beside the active stack | Empty when nothing follows; hidden ≤ 700 px |
+| `deploy-count` | Mobile `+N` count chip (upcoming) | Shown only ≤ 700 px; empty when nothing follows |
+| `run-drawer` | The run panel (this run's stacks) | `.open` when shown |
 | `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |
 | `pending-pill` | Amber pending-count pill | Hidden at zero |
 | `view-options` | View-options popover (opened from the active view button) | `.open` when shown; holds `time-mode` / `log-sort` / `follow-logs` |
@@ -245,7 +261,7 @@ assert on.
 
 **Header — compact single row.** The header is already glyph-only on every viewport (see [Header — right](#layout)), so little changes ≤ 700 px beyond tightening the row to 48 px, which **must never scroll horizontally**. The brand is the ship logo plus, **in portrait**, the version label (it clips with an ellipsis and can shrink so the row still never scrolls; the full string stays in its `title` tooltip). The `skipper-cd` wordmark is hidden; the version label is also dropped in the tighter landscape orientation. Control-specific changes:
 
-- **Deploy indicator** — the deploying stack names are dropped (kept in `title`/`aria-label`); only the anchor/ship glyph shows.
+- **Deploy indicator** — the deploying stack name and the look-ahead trail are dropped (both kept in `title`/`aria-label`); the anchor/ship glyph shows, and the trail collapses to a compact peach **`+N` count chip** (`deploy-count`) when stacks are still to come this run. Tapping the glyph still opens the run panel (which lists the names).
 - **Autosync control** — unchanged (already icon-only); keeps its glyph and pending-count pill.
 - **View toggle / theme toggle / connection** — unchanged; already glyph-only.
 - **View-options popover** — unchanged; still opened from the active view button.

@@ -374,10 +374,35 @@
   .deploy-status .ds-ship { display: none; }
   .deploy-status.active .ds-anchor { display: none; }
   .deploy-status.active .ds-ship { display: block; }
-  /* No text when idle (the anchor + its title tooltip say enough); the only
-     header labels that remain are the names of the stacks being deployed. */
-  .deploy-status span { display: none; }
-  .deploy-status.active span { display: inline; }
+  /* No text when idle (the anchor + its title tooltip say enough). When a run is
+     active the labels appear: the deploying stack (ds-active) and the look-ahead
+     trail of what deploys next (ds-next). The +N count chip (ds-count) is the
+     mobile-only fallback for the trail (see Responsive). Clicking the indicator
+     opens the run panel, so it reads as a button while active. */
+  .deploy-status .ds-active,
+  .deploy-status .ds-next,
+  .deploy-status .ds-count { display: none; }
+  .deploy-status.active { cursor: pointer; }
+  .deploy-status.active .ds-active { display: inline; }
+  .deploy-status.active .ds-next { display: inline-flex; align-items: center; gap: 6px; }
+  .deploy-status .ds-next:empty { display: none; }
+  .deploy-status:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+  /* Look-ahead trail: "→ grafana · loki", dimmed so the active stack leads. */
+  .ds-next .arrow { color: var(--text-muted); opacity: 0.7; }
+  .ds-next .up { color: var(--text-secondary); }
+  .ds-next .up.more { color: var(--text-muted); }
+  .ds-next .sep { color: var(--text-muted); opacity: 0.55; }
+
+  /* Mobile fallback: a compact peach count chip (accent-tied to the active run,
+     distinct from the yellow autosync pending pill). */
+  .ds-count {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600; line-height: 1;
+    color: var(--accent); background: var(--accent-dim);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    padding: 3px 7px; border-radius: 999px;
+  }
+  .deploy-status .ds-count:empty { display: none; }
 
   /* ─── MAIN ─── */
   main {
@@ -1358,6 +1383,32 @@
   .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); transition: transform 0.2s, background 0.2s; }
   .sw.on { background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
   .sw.on::after { transform: translateX(12px); background: var(--accent); }
+
+  /* ─── RUN PANEL (upcoming deploys) ─── */
+  /* Shares the .drawer shell + .sec-label/.qlist with the autosync drawer, but
+     its rows are read-only (no switches) and accent-tinted (active run) rather
+     than queued-yellow (deferred). */
+  #run-count { color: var(--accent); }
+  .run-row {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 7px;
+  }
+  .run-row.active { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  .run-badge {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    color: var(--accent); background: var(--accent-dim);
+    border-radius: 5px; text-align: center; height: 20px;
+    display: grid; place-items: center;
+  }
+  .run-badge.ship { animation: breathe 2s ease-in-out infinite; }
+  .run-badge .ds-ico { width: 13px; height: 13px; }
+  .run-name { font-family: var(--font-mono); font-size: 13px; font-weight: 500; letter-spacing: -0.2px; color: var(--text-primary); }
+  .run-detail { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
+  .run-row.active .run-detail { color: var(--accent); }
   .sw.lg { width: 34px; height: 19px; border-radius: 10px; }
   .sw.lg::after { width: 13px; height: 13px; }
   .sw.lg.on::after { transform: translateX(15px); }
@@ -1453,9 +1504,12 @@
     .brand-version { display: none; }
     /* Filter toggles are glyph-only on every viewport now (see base rules).
        Deploy-status and connection are already glyph-only via base rules; here
-       we also drop the deploying stack names so the row stays glyph-only (the
-       names remain in the element's title/aria — see UI_SPEC §Responsive). */
-    .deploy-status.active span { display: none; }
+       we drop the deploying stack name and the look-ahead trail (both remain in
+       the element's title/aria — see UI_SPEC §Responsive) and collapse the trail
+       to the compact +N count chip. */
+    .deploy-status.active .ds-active,
+    .deploy-status.active .ds-next { display: none; }
+    .deploy-status.active .ds-count:not(:empty) { display: inline-flex; align-items: center; }
     /* Autosync is already icon-only on every viewport (see base rules). */
     /* The theme picker doesn't fit the compact row and switching palettes is
        rarely needed on a phone; the configured theme still applies as-is. */
@@ -1513,12 +1567,14 @@
     </div>
   </div>
   <div class="status-area">
-    <div class="deploy-status" id="deploy-status" data-testid="deploy-indicator" title="idle" aria-label="idle">
-      <span>idle</span>
+    <div class="deploy-status" id="deploy-status" data-testid="deploy-indicator" title="idle" aria-label="idle" role="button" tabindex="0" aria-expanded="false">
       <div class="deploy-dot">
         <svg class="ds-ico ds-anchor" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="2"/><path d="M12 7v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8.5 10h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 12.5a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 12.5 3 11m2 1.5 2-1.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 12.5 21 11m-2 1.5-2-1.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <svg class="ds-ico ds-ship" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h16l-2 4H6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="7.5" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><path d="M3 20q2-1.6 4 0t4 0 4 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </div>
+      <span class="ds-active">idle</span>
+      <span class="ds-next" id="deploy-next" data-testid="deploy-next"></span>
+      <span class="ds-count" id="deploy-count" data-testid="deploy-count"></span>
     </div>
     <div class="view-switch" id="view-switch">
       <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
@@ -1618,6 +1674,15 @@
   </div>
 </div>
 
+<div class="drawer" id="run-drawer" data-testid="run-drawer" role="dialog" aria-label="This deploy run">
+  <div class="drawer-inner">
+    <div class="drawer-title">This deploy run</div>
+    <div class="drawer-sub" id="run-sub">Nothing deploying.</div>
+    <div class="sec-label">In deploy order <span class="sec-count" id="run-count"></span></div>
+    <div class="qlist" id="run-list"></div>
+  </div>
+</div>
+
 <main>
   <div class="empty-state" id="empty-state" data-testid="empty-state">
     <svg class="empty-icon" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1657,6 +1722,15 @@
   const connDot = document.getElementById('conn-dot');
   const connText = document.getElementById('conn-text');
   const deployStatus = document.getElementById('deploy-status');
+  const dsActive = deployStatus.querySelector('.ds-active');
+  const dsNext = document.getElementById('deploy-next');
+  const dsCount = document.getElementById('deploy-count');
+  const runDrawer = document.getElementById('run-drawer');
+  const runSub = document.getElementById('run-sub');
+  const runCount = document.getElementById('run-count');
+  const runList = document.getElementById('run-list');
+  // Ship glyph for the active row's badge in the run panel.
+  const SHIP_SVG = '<svg class="ds-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h16l-2 4H6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="7.5" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><path d="M3 20q2-1.6 4 0t4 0 4 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
   const deployingRows = {};
   // Queued (paused) rows, keyed by stack, so a stack's pending row is replaced
@@ -1669,6 +1743,10 @@
   let autosyncSnap = null;                    // GET /api/autosync shape
   let queueSnap = { count: 0, pending: [] };  // GET /api/queue shape
   let queueByStack = {};                       // stack name -> pending item
+
+  // Run look-ahead, from the 'upcoming' SSE event: stacks that will deploy after
+  // the one currently deploying, in deploy order.
+  let upcomingSnap = [];
 
   function showTable() {
     if (!hasRows) {
@@ -1893,19 +1971,96 @@
 
   function updateDeployingIndicator() {
     var active = Object.keys(deployingRows);
+    var up = upcomingSnap;
     if (active.length > 0) {
       deployStatus.className = 'deploy-status active';
-      deployStatus.querySelector('span').textContent = active.join(', ');
+      dsActive.textContent = active.join(', ');
+      dsNext.innerHTML = up.length ? nextTrailHTML(up) : '';
+      dsCount.textContent = up.length ? '+' + up.length : '';
     } else {
       deployStatus.className = 'deploy-status';
-      deployStatus.querySelector('span').textContent = 'idle';
+      dsActive.textContent = 'idle';
+      dsNext.innerHTML = '';
+      dsCount.textContent = '';
+      setRunDrawer(false); // nothing running; close the panel if open
     }
-    // Mirror the text into title/aria so it survives when the span is hidden
-    // on mobile (the dot alone stays visible — see UI_SPEC §Responsive).
-    var label = active.length > 0 ? 'deploying ' + active.join(', ') : 'idle';
+    // Mirror everything into title/aria so it survives when the labels are
+    // hidden on mobile (the dot + count chip stay — see UI_SPEC §Responsive).
+    var label = active.length > 0
+      ? 'deploying ' + active.join(', ') + (up.length ? ' · next ' + up.join(', ') : '')
+      : 'idle';
     deployStatus.title = label;
     deployStatus.setAttribute('aria-label', label);
+    renderRunPanel();
   }
+
+  // nextTrailHTML renders the look-ahead trail "→ a · b · +N", capping the names
+  // shown so a long run does not widen the header without bound.
+  function nextTrailHTML(up) {
+    var MAX = 3;
+    var shown = up.slice(0, MAX);
+    var html = '<span class="arrow">→</span>' + shown.map(function(n, i) {
+      return '<span class="up' + (i > 0 ? ' more' : '') + '">' + escapeHtml(n) + '</span>';
+    }).join('<span class="sep">·</span>');
+    var extra = up.length - shown.length;
+    if (extra > 0) {
+      html += '<span class="sep">·</span><span class="up more">+' + extra + '</span>';
+    }
+    return html;
+  }
+
+  // renderRunPanel fills the run drawer from the active deploy(s) plus the
+  // upcoming snapshot: the active stack leads (ship badge), the rest follow in
+  // deploy order. Read-only — no switches.
+  function renderRunPanel() {
+    var active = Object.keys(deployingRows);
+    var up = upcomingSnap;
+    if (active.length === 0 && up.length === 0) {
+      runSub.textContent = 'Nothing deploying.';
+    } else if (active.length > 0) {
+      runSub.innerHTML = '<b>' + escapeHtml(active.join(', ')) + '</b> deploying' +
+        (up.length ? ' · ' + up.length + ' more this run' : ' · last in this run');
+    } else {
+      runSub.textContent = up.length + ' stack' + (up.length === 1 ? '' : 's') + ' upcoming';
+    }
+    var total = active.length + up.length;
+    runCount.textContent = total ? total : '';
+    var rows = active.map(function(n) { return runRowHTML(n, SHIP_SVG, 'deploying now', true); });
+    rows = rows.concat(up.map(function(n, i) {
+      return runRowHTML(n, String(i + 1), i === 0 ? 'next' : 'then', false);
+    }));
+    runList.innerHTML = rows.length ? rows.join('') : '<div class="qempty">Nothing deploying right now.</div>';
+  }
+
+  function runRowHTML(name, badge, detail, isActive) {
+    return '<div class="run-row' + (isActive ? ' active' : '') + '" data-stack="' + escapeAttr(name) + '">' +
+        '<span class="run-badge' + (isActive ? ' ship' : '') + '">' + badge + '</span>' +
+        '<div><div class="run-name">' + escapeHtml(name) + '</div>' +
+          '<div class="run-detail">' + detail + '</div></div>' +
+      '</div>';
+  }
+
+  // setRunDrawer opens/closes the run panel. It is mutually exclusive with the
+  // autosync drawer and the view-options popover.
+  function setRunDrawer(open) {
+    if (open) { setViewOptions(false); setDrawer(false); }
+    runDrawer.classList.toggle('open', open);
+    deployStatus.setAttribute('aria-expanded', String(open));
+  }
+
+  deployStatus.addEventListener('click', function() {
+    if (!deployStatus.classList.contains('active')) return; // only openable during a run
+    setRunDrawer(!runDrawer.classList.contains('open'));
+  });
+  deployStatus.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); deployStatus.click(); }
+  });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') setRunDrawer(false); });
+  document.addEventListener('click', function(e) {
+    if (!runDrawer.classList.contains('open')) return;
+    if (runDrawer.contains(e.target) || deployStatus.contains(e.target)) return;
+    setRunDrawer(false);
+  });
 
   // removeQueuedRow drops a stack's pending (queued) row and any panel opened
   // below it. No-op when the stack has no queued row.
@@ -2022,6 +2177,12 @@
         if (!queueByStack[stack]) removeQueuedRow(stack);
       });
       renderAutosync();
+    });
+
+    es.addEventListener('upcoming', function(e) {
+      var d = JSON.parse(e.data);
+      upcomingSnap = (d && d.upcoming) || [];
+      updateDeployingIndicator();
     });
 
     es.onerror = function() {
@@ -2298,7 +2459,7 @@
   }
 
   function setDrawer(open) {
-    if (open) setViewOptions(false); // the two popovers are mutually exclusive
+    if (open) { setViewOptions(false); setRunDrawer(false); } // surfaces are mutually exclusive
     asDrawer.classList.toggle('open', open);
     asBtn.classList.toggle('open', open);
     asBtn.setAttribute('aria-expanded', String(open));
@@ -2573,7 +2734,7 @@
   const viewOptions = document.getElementById('view-options');
 
   function setViewOptions(open) {
-    if (open) setDrawer(false); // mutually exclusive with the autosync drawer
+    if (open) { setDrawer(false); setRunDrawer(false); } // surfaces are mutually exclusive
     viewOptions.classList.toggle('open', open);
     viewButtons.forEach(function(btn) {
       if (btn.dataset.view === activeView) btn.setAttribute('aria-expanded', String(open));
