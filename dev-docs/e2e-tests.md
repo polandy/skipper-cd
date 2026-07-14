@@ -19,7 +19,7 @@ asserting **behaviour + visual snapshots**.
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
 > Go harness drives the real binary — with **UA1** (row lifecycle), **UA2** (all
-> five rendered status badges), **UA3** (skipped deploys never render a row), **UA4** (time-mode
+> six rendered status badges), **UA3** (skipped deploys never render a row), **UA4** (time-mode
 > toggle + persistence), **UA5** (stack icon + monogram fallback), **UA6** (icon
 > refresh: POST + cache-busted reload), **UA7** (files-pill panel toggle),
 > **UA8** (diff-panel fetch + colouring), **UA9** (error-panel tied to the
@@ -114,8 +114,10 @@ binary):
   - always appends `"$@"` to `$DOCKER_LOG` (one line per invocation);
   - `STUB_DOCKER_FAIL_ON=<subcmd>` → exit non-zero when args contain that
     subcommand (e.g. `up`);
-  - `STUB_DOCKER_FAIL_NTH_UP=<n>` → fail only on the Nth `compose … up`
-    (lets a rollback `up` succeed while the initial `up` fails → `rolled_back`);
+  - `STUB_DOCKER_FAIL_NTH_UP=<n>[,<n>…]` → fail on the listed `compose … up`
+    invocations (one value lets a rollback `up` succeed while the deploy `up`
+    fails → `rolled_back`; a list also fails a health-gated rollback `up` →
+    `rolled_back_unhealthy`);
   - `STUB_DOCKER_HOLD_UP=<path>` → block on `up` until the file appears, so the
     `deploying` state can be observed, then released.
   - `STUB_DOCKER_ECHO=<line>` → print `<line>` to stdout on `up`, so the
@@ -140,6 +142,7 @@ real backend):
 | `deploying` | `STUB_DOCKER_HOLD_UP` set → row stays `deploying` until released |
 | `failed` | first deploy of a stack, `STUB_DOCKER_FAIL_ON=up` (no prior commit → rollback unavailable → `failed`) |
 | `rolled_back` | one successful deploy first (sets `LastDeployedCommit`), then a change with `STUB_DOCKER_FAIL_NTH_UP=1` (initial `up` fails, rollback `up` succeeds) |
+| `rolled_back_unhealthy` | like `rolled_back`, but the stack has a `health_check:` section and `STUB_DOCKER_FAIL_NTH_UP` lists the deploy **and** rollback `up` (e.g. `2,3` counting the startup deploy) — the health-gated rollback `up` fails too |
 | `queued` | pause autosync (config-as-code or `POST /api/autosync`), then commit + webhook |
 
 **Selector prerequisite (`data-testid`).** The UI has stable `id`s but no
@@ -191,9 +194,10 @@ UI suite reuses.
   `success` (same row, not a duplicate). *Snapshot: table after success.*
 - **UA2 — Status badges.** Drive each rendered status via §3 recipes. Then each
   `deploy-row` carries the correct `data-status` + `status-badge`
-  (`success`/`failed`/`rolled_back`/`queued`/`deploying`). (No snapshot — the
-  five statuses need separate instances; the badges are behaviour-asserted here
-  and the table's dark/light rendering is snapshotted by UA1/UD1.)
+  (`success`/`failed`/`rolled_back`/`rolled_back_unhealthy`/`queued`/`deploying`).
+  (No snapshot — the six statuses need separate instances; the badges are
+  behaviour-asserted here and the table's dark/light rendering is snapshotted by
+  UA1/UD1.)
 - **UA3 — Skipped deploys never render.** An unchanged stack emits a `skipped`
   event, but no `deploy-row` is created for it (proven by ordering against a
   later real deploy); there is no skip-filter control.

@@ -106,6 +106,34 @@ test.describe('UA2: status badges', () => {
     });
   });
 
+  test.describe('rolled_back_unhealthy', () => {
+    // Startup up#1 succeeds (sets LastDeployedCommit); the health-gated deploy
+    // up#2 fails and the rollback up#3 — rerunning the same gate — fails too
+    // → rolled_back_unhealthy. The badge stacks its label on two lines
+    // ("rolled back" + "unhealthy" spans), hence the regex.
+    test.use({
+      startOptions: {
+        stacks: ['web'],
+        healthCheck: ['web'],
+        stubEnv: { STUB_DOCKER_FAIL_NTH_UP: '2,3' },
+      },
+    });
+
+    test('rolled_back_unhealthy', async ({ page, skipper }) => {
+      await page.goto(`${skipper.baseURL}/`);
+      await expect(webRow(page, 'success')).toHaveCount(1);
+
+      skipper.setStackImage('web', '1.26');
+      expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+      const row = webRow(page, 'rolled_back_unhealthy');
+      await expect(row).toHaveCount(1);
+      await expect(row.locator('[data-testid="status-badge"]')).toHaveText(
+        /rolled back\s*unhealthy/,
+      );
+    });
+  });
+
   test.describe('failed', () => {
     // The stack's very first (startup) deploy fails on `up` with no prior commit
     // to roll back to → failed. /healthz stays 503, so only wait for listening.

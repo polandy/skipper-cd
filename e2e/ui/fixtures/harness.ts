@@ -44,7 +44,9 @@ if [ -n "$STUB_DOCKER_FAIL_NTH_UP" ]; then
       c=$(cat "$DOCKER_LOG.upcount" 2>/dev/null || echo 0)
       c=$((c + 1))
       echo "$c" > "$DOCKER_LOG.upcount"
-      [ "$c" = "$STUB_DOCKER_FAIL_NTH_UP" ] && exit 1
+      case ",$STUB_DOCKER_FAIL_NTH_UP," in
+        *",$c,"*) exit 1 ;;
+      esac
       ;;
   esac
 fi
@@ -119,6 +121,10 @@ export interface StartOptions {
    *  STUB_DOCKER_ECHO=<line> to print a line to stdout on `up` so the captured
    *  child-process output reaches the log ring). */
   stubEnv?: Record<string, string>;
+  /** Stacks that get a `health_check:` section (timeout_seconds: 1, no url):
+   *  their `up`s run with --wait and a failing rollback `up` drives
+   *  `rolled_back_unhealthy`. The stub ignores the flags, so no real waiting. */
+  healthCheck?: string[];
   /**
    * How ready the instance must be before start() resolves:
    *  - 'deployed' (default): healthy (/healthz 200) and every stack's startup
@@ -239,7 +245,15 @@ export class Skipper {
       // the whole UI suite offline. Repo icon.svg overrides still resolve.
       `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
       `stacks:\n` +
-      stacks.map((n) => `  - name: ${JSON.stringify(n)}\n`).join('');
+      stacks
+        .map(
+          (n) =>
+            `  - name: ${JSON.stringify(n)}\n` +
+            ((opts.healthCheck ?? []).includes(n)
+              ? `    health_check:\n      timeout_seconds: 1\n`
+              : ''),
+        )
+        .join('');
     const cfgPath = join(base, 'skipper.yml');
     writeFileSync(cfgPath, cfg);
 
