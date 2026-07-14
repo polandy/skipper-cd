@@ -65,14 +65,16 @@ export function skipperBinPath(): string {
   return process.env.SKIPPER_E2E_BIN || join(tmpdir(), 'skipper-ui-e2e-bin', 'skipper');
 }
 
-/** manifestVersion is the release-please-tracked version that globalSetup injects
- *  into the binary via -ldflags (mirroring the Docker/Nix builds) and that the
- *  header version label is asserted against. Reading the same file both sides
- *  keeps the check release-proof. */
-export function manifestVersion(): string {
-  const raw = readFileSync(join(repoRoot(), '.release-please-manifest.json'), 'utf8');
-  return (JSON.parse(raw) as Record<string, string>)['.'];
-}
+/** buildVersion is the semver globalSetup injects via -ldflags, mirroring
+ *  buildCommit. It is pinned to a fixed value rather than read from the real
+ *  release-please manifest so the header version label — and the visual
+ *  snapshots that include it — do not churn on every release bump (a longer
+ *  string, e.g. 0.9.0 → 0.10.0, shifts the header layout). Deliberately
+ *  double-digit so the snapshot exercises a wide, representative label; the
+ *  real version is decoupled, so any release renders this same header in e2e.
+ *  UD5 asserts the header against this same value, so the ldflags →
+ *  /api/version → header through-line is still covered. */
+export const buildVersion = '10.10.10';
 
 /** buildCommit is the short commit globalSetup injects via -ldflags (mirroring
  *  the Docker/Nix builds). A fixed value keeps the header assertion (UD5)

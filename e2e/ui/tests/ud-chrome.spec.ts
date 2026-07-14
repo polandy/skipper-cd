@@ -1,16 +1,14 @@
 import { test, expect } from '../fixtures/test';
-import { buildCommit, manifestVersion } from '../fixtures/harness';
+import { buildCommit, buildVersion } from '../fixtures/harness';
 import { visualSnapshot } from '../fixtures/snapshot';
 
-// Deploy rows carry a relative time and a duration that vary run-to-run, and the
-// header version label (`v<semver> · <commit>`) changes on every release; mask
-// all three out of any full-page screenshot so the baselines stay stable across
-// releases. The version label's content is asserted functionally in UD5
-// (docs/e2e-tests.md §5).
+// Deploy rows carry a relative time and a duration that vary run-to-run; mask
+// them out of any full-page screenshot (docs/e2e-tests.md §5). The header
+// version label is stable — globalSetup injects a fixed buildVersion/buildCommit
+// — so it needs no mask.
 const pageMasks = (page: import('@playwright/test').Page) => [
   page.locator('[data-testid="time-cell"]'),
   page.locator('[data-testid="duration-cell"]'),
-  page.locator('[data-testid="brand-version"]'),
 ];
 
 // Maske D: Global chrome. See docs/e2e-tests.md §4.5.
@@ -24,7 +22,7 @@ test('UD5: header shows the deployed build identity', async ({ page, skipper }) 
   await page.goto(`${skipper.baseURL}/`);
 
   const label = page.locator('[data-testid="brand-version"]');
-  await expect(label).toHaveText(`v${manifestVersion()} · ${buildCommit}`);
+  await expect(label).toHaveText(`v${buildVersion} · ${buildCommit}`);
 });
 
 // UD4 — Responsive ≤700px (compact header + table collapse). One test covering
