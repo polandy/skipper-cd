@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/polandy/skipper-cd/compare/v0.9.0...v0.10.0) (2026-07-14)
+
+
+### Features
+
+* **notify:** outbound deploy notifications ([3e3bbc9](https://github.com/polandy/skipper-cd/commit/3e3bbc91f76dfae4f7473ed70e2d34cb3972e72c))
+
 ## [0.9.0](https://github.com/polandy/skipper-cd/compare/v0.8.1...v0.9.0) (2026-07-13)
 
 
