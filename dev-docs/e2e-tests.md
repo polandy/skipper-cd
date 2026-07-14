@@ -39,11 +39,13 @@ asserting **behaviour + visual snapshots**.
 > substring/clear/Esc), **UC8** (enable drains the queue, disable runs no deploy),
 > **UC9** (queued row + `paused:` tag, superseded on resume), and the
 > override-collapse cases **UC10**/**UC11**/**UC12**. Mask D (global chrome) is
-> likewise complete — **UD1** (theme toggle + persistence + no-flash), **UD2**
-> (connection indicator connected→reconnecting→connected, driven by a
-> kill/relaunch of the binary on the same port), **UD3** (deploy indicator names
-> the active stack while held), **UD4** (responsive ≤700px), **UD5** (build
-> identity label). All four masks' behaviour is landed, **and the visual-snapshot
+> likewise complete — **UD1** (theme toggle + persistence + no-flash), the
+> theme-picker cases **UD6**/**UD6b** (per-browser override + auto-hiding
+> mismatch notice, switcher on) and **UD7** (switcher off by default: picker
+> hidden, saved override ignored), **UD2** (connection indicator
+> connected→reconnecting→connected, driven by a kill/relaunch of the binary on
+> the same port), **UD3** (deploy indicator names the active stack while held),
+> **UD4** (responsive ≤700px), **UD5** (build identity label). All four masks' behaviour is landed, **and the visual-snapshot
 > baselines (§5) too**: a lean set of six baselines (deploys table, diff panel,
 > autosync drawer, both themes, mobile layout) generated and compared in
 > Playwright's pinned container, gated by `RUN_SNAPSHOTS`. The `e2e-ui` CI job now
@@ -300,9 +302,25 @@ UI suite reuses.
 
 ### 4.5 UI — Maske D: Global chrome
 
-- **UD1 — Theme toggle + no-flash.** `theme-toggle` switches Mocha↔Latte and
-  persists (`localStorage theme`); after reload the root `latte` class is applied
-  before first paint (no flash). *Snapshots: both themes.*
+- **UD1 — Theme toggle + no-flash.** `theme-toggle` switches the configured
+  palette's dark↔light variant and persists (`localStorage colorScheme`); after
+  reload the root `light` class is applied before first paint (no flash). Runs
+  with the default config (theme switcher off), so the snapshots capture the
+  fixed-theme header. *Snapshots: dark + light.*
+- **UD6 — Theme picker + per-browser override.** With `ui_theme_switcher`
+  enabled, `theme-select` switches the active palette instantly (a plain
+  `data-theme` attribute change, no reload) and persists a non-default choice as
+  a local `themeOverride`; the choice survives a reload, `data-server-theme`
+  (the configured value) is never touched, and picking the configured theme
+  again clears the override. While an override is active a dismissible
+  `theme-notice` names the mismatch. Started with `themeSwitcher: true`.
+- **UD6b — Mismatch notice auto-hide.** Playwright's virtual clock
+  (`page.clock`) fast-forwards past the notice's 6s timer to assert it hides
+  itself, deterministically and without a real wait. Switcher enabled.
+- **UD7 — Theme switcher off (default).** With `ui_theme_switcher` unset the
+  `theme-select` is absent and a `themeOverride` seeded in `localStorage` stays
+  dormant: after a reload `data-theme` remains on the configured theme and no
+  notice appears, so a locked-down deployment keeps its at-a-glance colour.
 - **UD2 — Connection indicator.** `conn-indicator` shows `connecting`→
   `connected`; killing/restarting the binary drives `reconnecting`→`connected`.
 - **UD3 — Deploy indicator.** Shows the active stack name(s) while a deploy is
@@ -335,7 +353,7 @@ lean set of high-value per-mask anchors, not every case. The landed baselines:
 | `deploys-table.png` | UA1 | `deploys-table` | `time-cell`, `duration-cell` |
 | `diff-panel.png` | UA8 | `diff-panel` | — (static diff) |
 | `autosync-drawer.png` | UC6 | `autosync-drawer` | `wait-cell` |
-| `theme-mocha.png` / `theme-latte.png` | UD1 | full page | `time-cell`, `duration-cell` |
+| `theme-dark.png` / `theme-light.png` | UD1 | full page | `time-cell`, `duration-cell` |
 | `mobile-layout.png` | UD4 | full page (390px) | `time-cell`, `duration-cell` |
 
 The **Logs pane (UB2) is deliberately not snapshotted**: real deploy log output
@@ -414,6 +432,9 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Enable drains, disable does not | **UC8** |
 | Queued row + `paused:` tag | **UC9** |
 | Theme toggle + persistence + no-flash | **UD1** |
+| Theme picker override (switch/persist/notice/clear), switcher on | **UD6** |
+| Mismatch notice auto-hide (virtual clock) | **UD6b** |
+| Theme switcher off (default): picker hidden, override ignored | **UD7** |
 | Connection indicator states | **UD2** |
 | Deploy indicator active/idle | **UD3** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |

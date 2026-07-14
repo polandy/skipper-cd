@@ -8,6 +8,12 @@ webhook_secret: "your-secret-here"
 port: 8080
 metrics_port: 9120
 ui_enabled: false                      # enable the real-time web UI on the webhook port
+# ui_theme: catppuccin                 # optional, default: catppuccin. One of: catppuccin,
+                                        # nord, solarized, gruvbox, rose-pine. Useful to tell
+                                        # multiple skipper-cd instances apart at a glance.
+# ui_theme_switcher: false             # optional, default: false. When true, shows an in-UI
+                                        # palette picker (a per-browser override) — handy for
+                                        # trying themes out; off keeps the deployed theme fixed.
 
 stacks:
   - name: traefik

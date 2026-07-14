@@ -11,6 +11,17 @@ const pageMasks = (page: import('@playwright/test').Page) => [
   page.locator('[data-testid="duration-cell"]'),
 ];
 
+// Human-readable theme labels, mirroring THEME_LABELS in the UI. The mismatch
+// notice names themes by these labels, not their raw config values, so UD6
+// asserts against the label of the configured theme.
+const THEME_LABELS: Record<string, string> = {
+  catppuccin: 'Catppuccin',
+  nord: 'Nord',
+  solarized: 'Solarized',
+  gruvbox: 'Gruvbox',
+  'rose-pine': 'Rosé Pine',
+};
+
 // Maske D: Global chrome. See docs/e2e-tests.md §4.5.
 
 // UD5 — Build-identity label. The header shows the deployed build as
@@ -118,43 +129,163 @@ test.describe('UD4: responsive ≤700px', () => {
   });
 });
 
-// UD1 — Theme toggle + no-flash. `theme-toggle` switches Catppuccin Mocha↔Latte
-// and persists the choice in `localStorage theme`. After a reload the inline
-// head script applies the `latte` class before first paint, so the light theme
-// is present immediately with no flash of the dark default.
-test('UD1: theme toggle switches Mocha↔Latte, persists, and applies before paint', async ({
+// UD1 — Theme toggle + no-flash. `theme-toggle` switches the configured
+// theme's dark↔light variant and persists the choice in `localStorage
+// colorScheme`. After a reload the inline head script applies the `light`
+// class before first paint, so the light variant is present immediately with
+// no flash of the dark default.
+test('UD1: theme toggle switches dark<->light, persists, and applies before paint', async ({
   page,
   skipper,
 }) => {
   const themeToggle = page.locator('[data-testid="theme-toggle"]');
-  const hasLatte = () => page.evaluate(() => document.documentElement.classList.contains('latte'));
-  const storedTheme = () => page.evaluate(() => localStorage.getItem('theme'));
+  const isLight = () => page.evaluate(() => document.documentElement.classList.contains('light'));
+  const storedColorScheme = () => page.evaluate(() => localStorage.getItem('colorScheme'));
 
   await page.goto(`${skipper.baseURL}/`);
   // The startup success row is present, so both theme snapshots have real content.
   await expect(page.locator('[data-testid="deploy-row"]')).toHaveCount(1);
 
-  // Default is Mocha (dark): no `latte` class.
-  expect(await hasLatte()).toBe(false);
+  // Default is dark: no `light` class.
+  expect(await isLight()).toBe(false);
   // Snapshot: the dark theme (§5 anchor).
-  await visualSnapshot(page, 'theme-mocha.png', { mask: pageMasks(page) });
+  await visualSnapshot(page, 'theme-dark.png', { mask: pageMasks(page) });
 
-  // Toggle → Latte, and the choice is persisted.
+  // Toggle → light, and the choice is persisted.
   await themeToggle.click();
-  expect(await hasLatte()).toBe(true);
-  expect(await storedTheme()).toBe('latte');
+  expect(await isLight()).toBe(true);
+  expect(await storedColorScheme()).toBe('light');
   // Snapshot: the light theme (§5 anchor).
-  await visualSnapshot(page, 'theme-latte.png', { mask: pageMasks(page) });
+  await visualSnapshot(page, 'theme-light.png', { mask: pageMasks(page) });
 
-  // Reload: the head script re-applies `latte` before first paint, so the class
+  // Reload: the head script re-applies `light` before first paint, so the class
   // is present immediately (no flash) without any interaction.
   await page.reload();
-  expect(await hasLatte()).toBe(true);
+  expect(await isLight()).toBe(true);
 
-  // Toggle back → Mocha, persisted.
+  // Toggle back → dark, persisted.
   await themeToggle.click();
-  expect(await hasLatte()).toBe(false);
-  expect(await storedTheme()).toBe('mocha');
+  expect(await isLight()).toBe(false);
+  expect(await storedColorScheme()).toBe('dark');
+});
+
+// UD6 / UD6b exercise the opt-in theme picker, so the instance is started with
+// `ui_theme_switcher` enabled. The default (switcher off) is covered by UD7.
+test.describe('theme switcher enabled', () => {
+  test.use({ startOptions: { stacks: ['web'], themeSwitcher: true } });
+
+  // UD6 — Theme picker + per-browser override. `theme-select` switches the
+  // active palette instantly (every theme's CSS is always present, so this is a
+  // plain attribute change — no navigation, no flash). A non-default choice is
+  // a local-only override: it persists across reload, survives independently of
+  // the dark/light toggle, and never touches `data-server-theme` (the
+  // environment's actual configured theme). Choosing the server's own theme
+  // again clears the override. Whenever an override is active, a dismissible
+  // notice explains the mismatch and auto-hides itself.
+  test('UD6: theme picker switches live, persists a local override, and surfaces a mismatch notice', async ({
+    page,
+    skipper,
+  }) => {
+    const themeSelect = page.locator('[data-testid="theme-select"]');
+    const notice = page.locator('[data-testid="theme-notice"]');
+    const noticeClose = page.locator('[data-testid="theme-notice-close"]');
+    const effectiveTheme = () => page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+    const serverTheme = () => page.evaluate(() => document.documentElement.getAttribute('data-server-theme'));
+    const storedOverride = () => page.evaluate(() => localStorage.getItem('themeOverride'));
+
+    await page.goto(`${skipper.baseURL}/`);
+    const configured = await serverTheme();
+
+    // No override yet: picker mirrors the server-configured theme, no notice.
+    expect(await effectiveTheme()).toBe(configured);
+    expect(await themeSelect.inputValue()).toBe(configured);
+    await expect(notice).toBeHidden();
+
+    // Pick a different theme: applies immediately (no reload), persists a local
+    // override, and the mismatch notice appears without needing a page reload.
+    const other = configured === 'nord' ? 'gruvbox' : 'nord';
+    await themeSelect.selectOption(other);
+    expect(await effectiveTheme()).toBe(other);
+    expect(await storedOverride()).toBe(other);
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(THEME_LABELS[configured as string]);
+
+    // The override survives a reload (pre-paint script), independently of the
+    // dark/light toggle's own localStorage key.
+    await page.reload();
+    expect(await effectiveTheme()).toBe(other);
+    expect(await themeSelect.inputValue()).toBe(other);
+    await expect(notice).toBeVisible();
+
+    // Manually dismissing hides the notice without clearing the override.
+    await noticeClose.click();
+    await expect(notice).toBeHidden();
+    expect(await storedOverride()).toBe(other);
+
+    // Picking the configured theme again clears the override — the page goes
+    // back to following whatever the environment is configured for.
+    await themeSelect.selectOption(configured);
+    expect(await effectiveTheme()).toBe(configured);
+    expect(await storedOverride()).toBe(null);
+    await expect(notice).toBeHidden();
+  });
+
+  // UD6b — the mismatch notice auto-hides itself. The clock is faked *before*
+  // navigation so the page's own `setTimeout(…, 6000)` is captured by
+  // Playwright's virtual clock instead of a real one, letting the wait be
+  // instant and deterministic rather than a real 7s sleep.
+  test('UD6b: theme mismatch notice auto-hides a few seconds after it appears', async ({
+    page,
+    skipper,
+  }) => {
+    await page.clock.install();
+
+    const themeSelect = page.locator('[data-testid="theme-select"]');
+    const notice = page.locator('[data-testid="theme-notice"]');
+
+    await page.goto(`${skipper.baseURL}/`);
+    const configured = await page.evaluate(() => document.documentElement.getAttribute('data-server-theme'));
+    const other = configured === 'nord' ? 'gruvbox' : 'nord';
+
+    await themeSelect.selectOption(other);
+    await expect(notice).toBeVisible();
+
+    await page.clock.fastForward('00:07'); // past the 6s auto-hide timeout
+    await expect(notice).toBeHidden();
+  });
+});
+
+// UD7 — Theme switcher off (the default). With `ui_theme_switcher` unset the
+// picker must be absent from the UI and a saved override must stay dormant: the
+// pre-paint script leaves `data-theme` on the configured theme and no mismatch
+// notice appears, so a locked-down deployment keeps its at-a-glance colour.
+test('UD7: with the switcher off, the picker is hidden and a saved override is ignored', async ({
+  page,
+  skipper,
+}) => {
+  const themeSelect = page.locator('[data-testid="theme-select"]');
+  const notice = page.locator('[data-testid="theme-notice"]');
+  const effectiveTheme = () => page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+
+  await page.goto(`${skipper.baseURL}/`);
+  const configured = await page.evaluate(() => document.documentElement.getAttribute('data-server-theme'));
+
+  // The picker is not shown, and the page is on the configured theme.
+  await expect(themeSelect).toBeHidden();
+  expect(await effectiveTheme()).toBe(configured);
+  await expect(notice).toBeHidden();
+
+  // Seed an override that differs from the configured theme, as if this browser
+  // had one saved from a time the switcher was enabled. With the switcher off
+  // the pre-paint script must ignore it: after a reload the page stays on the
+  // configured theme and the notice never appears.
+  const other = configured === 'nord' ? 'gruvbox' : 'nord';
+  await page.evaluate((t) => localStorage.setItem('themeOverride', t), other);
+  await page.reload();
+
+  expect(await effectiveTheme()).toBe(configured);
+  await expect(themeSelect).toBeHidden();
+  await expect(notice).toBeHidden();
 });
 
 // UD2 — Connection indicator. `conn-indicator` exposes its state as `data-state`.

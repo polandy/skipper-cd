@@ -19,30 +19,54 @@ import (
 //go:embed static/index.html static/manifest.webmanifest static/sw.js static/icons
 var staticFS embed.FS
 
-// IndexHandler serves the embedded UI HTML page.
-func IndexHandler() http.Handler {
+// IndexHandler serves the embedded UI HTML page, with the configured theme
+// (see internal/ui/theme.go) baked into the data-theme attribute, favicon and
+// PWA meta colours once at construction time — the same __PLACEHOLDER__
+// substitution ServiceWorkerHandler uses for __VERSION__. themeSwitcher gates
+// the in-UI theme picker: it is baked into data-theme-switcher, which the CSS
+// and pre-paint/picker JS read to show (or hide) the picker and honour (or
+// ignore) a saved per-browser override.
+func IndexHandler(theme string, themeSwitcher bool) http.Handler {
+	data, err := staticFS.ReadFile("static/index.html")
+	if err != nil {
+		panic(err) // staticFS embeds static/index.html at compile time, so this cannot fail.
+	}
+	id := themeIdentityFor(theme)
+	switcher := "off"
+	if themeSwitcher {
+		switcher = "on"
+	}
+	body := string(data)
+	body = strings.ReplaceAll(body, "__UI_THEME__", theme)
+	body = strings.ReplaceAll(body, "__THEME_SWITCHER__", switcher)
+	body = strings.ReplaceAll(body, "__FAVICON_URI__", faviconDataURI(theme))
+	body = strings.ReplaceAll(body, "__THEME_COLOR_DARK__", id.darkBase)
+	body = strings.ReplaceAll(body, "__THEME_COLOR_LIGHT__", id.lightBase)
+	out := []byte(body)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		data, err := staticFS.ReadFile("static/index.html")
-		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(data)
+		_, _ = w.Write(out)
 	})
 }
 
 // ManifestHandler serves GET /manifest.webmanifest — the PWA web app manifest
-// that makes the UI installable. See docs/pwa.md.
-func ManifestHandler() http.Handler {
+// that makes the UI installable. theme_color/background_color follow the
+// configured theme's dark palette (a manifest cannot respond to a
+// prefers-color-scheme media query, so it always reflects the dark variant,
+// same as before this was made theme-aware). See docs/pwa.md.
+func ManifestHandler(theme string) http.Handler {
+	data, err := staticFS.ReadFile("static/manifest.webmanifest")
+	if err != nil {
+		panic(err) // staticFS embeds static/manifest.webmanifest at compile time, so this cannot fail.
+	}
+	id := themeIdentityFor(theme)
+	body := string(data)
+	body = strings.ReplaceAll(body, "__THEME_COLOR__", id.darkBase)
+	body = strings.ReplaceAll(body, "__BACKGROUND_COLOR__", id.darkMantle)
+	out := []byte(body)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		data, err := staticFS.ReadFile("static/manifest.webmanifest")
-		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
 		w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
-		_, _ = w.Write(data)
+		_, _ = w.Write(out)
 	})
 }
 
