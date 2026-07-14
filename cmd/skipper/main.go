@@ -171,6 +171,11 @@ func main() {
 			}
 			broadcaster.Publish(e)
 		})
+		// Look-ahead: publish the run plan (what deploys next) over the same SSE
+		// stream. Installing the sink is what enables the upfront planning pass.
+		deployer.SetRunPlanSink(func(p deploy.RunPlan) {
+			stateB.Publish(events.StateEvent{Name: "upcoming", Data: p})
+		})
 		slog.Info("web UI enabled")
 	}
 
@@ -320,6 +325,7 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *even
 			return []events.StateEvent{
 				{Name: "autosync", Data: as.ctrl.Snapshot(as.order())},
 				{Name: "queue", Data: as.queue.View(as.order())},
+				{Name: "upcoming", Data: deployer.CurrentRunPlan()},
 			}
 		}
 		autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)

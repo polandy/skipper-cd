@@ -69,6 +69,10 @@ type Deployer struct {
 	queue        *autosync.Queue             // nil = no pending tracking
 	postRunHook  func()                      // nil = none; runs after each deploy run
 	prober       *httpHealthProber           // nil = lazily built real prober
+
+	runPlanSink    func(RunPlan)           // nil = no run-plan tracking (UI off)
+	currentRunPlan atomic.Pointer[RunPlan] // latest published plan, for late joiners
+	plan           []string                // stacks planned to deploy this run, in order
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -242,6 +246,16 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		return
 	}
 
+	// Look-ahead for the UI: hash every stack upfront to learn which will deploy
+	// this run, so the header can show what is coming next. Skipped when the UI
+	// is off (no sink). The loop below re-evaluates each stack independently and
+	// remains the source of truth for what actually deploys.
+	if d.runPlanSink != nil {
+		d.plan = d.computeRunPlan(cfg, state)
+	} else {
+		d.plan = nil
+	}
+
 	for _, stack := range cfg.Stacks {
 		startTime := time.Now()
 		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state); err != nil {
@@ -260,6 +274,9 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 			}
 		}
 	}
+
+	// Run finished: clear the look-ahead so the header returns to idle.
+	d.publishRunPlan(nil)
 
 	// Record the current HEAD commit so future deploys can diff against it.
 	if d.commitReader != nil {
@@ -422,6 +439,8 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	deployStart := time.Now()
 	d.emit(events.StatusDeploying, stack.Name, 0, "", changed, nil)
+	// This stack is now the active deploy: surface the ones still to come.
+	d.publishUpcomingAfter(stack.Name)
 	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", projectDir, "changed_files", changed)
 	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
