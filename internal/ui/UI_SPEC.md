@@ -31,18 +31,23 @@ Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). 
 
 Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
-**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle), `skipper-cd` wordmark (accent `-cd`), and a muted **version label** showing the deployed build identity (`v<semver> · <commit>`, or the branch name for feature builds; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version`, left empty until it resolves, and carries a `title` tooltip with the full string (it clips with an ellipsis when narrow). The favicon is the same ship as an SVG data URI, its colours drawn from the configured theme, with a `prefers-color-scheme` media query switching between its light and dark variant (favicons cannot follow the in-page toggle).
+**Header — left:** skipper-cd container-ship logo (inline SVG, 32 px — a hull with wave carrying three container boxes: one in `--accent`, one in `--success`, one outlined; hull, outline and wave follow `--text-primary` via `currentColor`, so the logo tracks the theme toggle) and, stacked beside it, a text column: the `skipper-cd` wordmark (accent `-cd`) over a small muted **version label** showing the deployed build identity (`v<semver> · <commit>`, or the branch name for feature builds; local builds without ldflags show `dev`). The label is fetched once on load from `GET /api/version`, left empty until it resolves, and carries a `title` tooltip with the full string. It is a shrinkable flex item (`min-width: 0`) that shows in full whenever the header has room and only clips with an ellipsis when space genuinely runs out — no fixed character cap. The favicon is the same ship as an SVG data URI, its colours drawn from the configured theme, with a `prefers-color-scheme` media query switching between its light and dark variant (favicons cannot follow the in-page toggle).
 
-**Header — right:**
-- **View toggle** — segmented `deploys | logs` control switching between the deploy table and the log view. Default: `deploys`. State persisted in `localStorage` key `activeView`.
-- **Deploy indicator** — shows active stack name(s) or `idle`; amber pulsing dot when deploying. Visible in both views.
-- **Autosync control** — a single button showing global autosync state; when deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in both views.
-- **Time mode toggle** — switches Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). State persisted in `localStorage` key `timeMode`. Tooltip always shows the other format. Deploys view only.
-- **Sort toggle** — reverses log order. Default: inactive (newest first, newest line at the top). Active flips to oldest-first (terminal semantics, newest at the bottom). State persisted in `localStorage` key `logSort` (`desc` / `asc`). Flipping resets the visible window to one page. Logs view only.
-- **Follow toggle** — auto-scrolls the log pane to the newest line (the top when newest-first, the bottom when oldest-first) on every append. Default: active. State persisted in `localStorage` key `followLogs`. Logs view only.
-- **Theme picker** — a `<select>` of the five built-in palettes (see [Theme override](#theme-override)). **Opt-in**: present only when `ui_theme_switcher: true` (see [`docs/configuration.md`](../../docs/configuration.md#web-ui-theme)); off by default, so the deployed theme is fixed. It exists mainly to try palettes out. Desktop only (hidden ≤ 700 px — rarely needed on a phone, and the configured theme still applies as-is). Visible in both views.
-- **Theme toggle** — switches between the configured theme's dark (default) and light variant. State persisted in `localStorage` key `colorScheme` (`dark` / `light`). Visible in both views.
-- **Connection indicator** — `connecting` (accent pulse) → `connected` (success) → `reconnecting` (danger). Bound to `/api/events`; the log stream has no own indicator.
+**Header — right.** The controls are **icon/glyph-only** on every viewport (no text labels or switch tracks in the header row). Each glyph follows the theme via `currentColor`, is muted by default, and only takes on colour to signal a real state. Pointer users get the native `title` tooltip on hover; since touch never shows `title` tooltips, a tap on any header control flashes its label in a small **tap-reveal bubble** (the control's action still fires). In order:
+
+- **Deploy indicator** — an **anchor** glyph (muted) at rest, swapping to a **ship** (accent, pulsing) with the active stack name(s) beside it while deploying. The names sit to the *left* of the glyph so the icon (and everything right of it) stays put as text appears/disappears. `idle` / `deploying <stacks>` is mirrored into `title` + `aria-label`. Visible in both views.
+- **View toggle** — segmented control of two icons: a rows/table glyph (`deploys`) and a terminal glyph (`logs`). Default: `deploys`. State persisted in `localStorage` key `activeView`. The **active** button carries a small `▾` and opens the [View-options popover](#view-options-popover); the other button switches views.
+- **Autosync control** — a single sync-arrows glyph showing global autosync state; **muted by default**, turning `--queued` (amber) when paused and `--accent` while its drawer is open. When deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in both views.
+- **Theme picker** — a palette glyph over a transparent native `<select>` of the five built-in palettes (see [Theme override](#theme-override)); clicking opens the native option list. **Opt-in**: present only when `ui_theme_switcher: true` (see [`docs/configuration.md`](../../docs/configuration.md#web-ui-theme)); off by default, so the deployed theme is fixed. Desktop only (hidden ≤ 700 px). Visible in both views.
+- **Theme toggle** — a moon (dark, default) / sun (light) glyph switching between the configured theme's dark and light variant. State persisted in `localStorage` key `colorScheme` (`dark` / `light`). Visible in both views.
+- **Connection indicator** — a **chain-link** glyph: a closed link in `--success` when `connected`, a closed link pulsing `--accent` while `connecting`, and a **broken link** pulsing `--danger` while `reconnecting`. State is on `data-state`. Bound to `/api/events`; the log stream has no own indicator.
+
+### View-options popover
+
+The view-specific toggles live in a small popover anchored under the view toggle (styled like the [Autosync drawer](#autosync)), **not** in the header row — so switching views never makes a header control appear or disappear. It is opened by clicking the already-active view button (the `▾` hint), and dismisses on outside-click or `Esc`; it and the Autosync drawer are mutually exclusive. Inside, each option is a full row (glyph + label + switch track). Contents by active view:
+
+- **Deploys** → **Time mode** — switches the Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). `localStorage` key `timeMode`.
+- **Logs** → **Sort** — reverses log order; default inactive (newest first), active flips to oldest-first (terminal semantics). `localStorage` key `logSort` (`desc` / `asc`); flipping resets the visible window to one page. And **Auto-scroll (Follow)** — auto-scrolls the log pane to the newest line on every append; default active. `localStorage` key `followLogs`.
 
 ### Theme override
 
@@ -192,17 +197,19 @@ assert on.
 
 | `data-testid` | Element | Notes |
 |---|---|---|
-| `brand-name` | Header `skipper-cd` wordmark | Hidden ≤ 700 px (logo alone carries the brand) |
+| `brand-name` | Header `skipper-cd` wordmark | Stacked over the version label; hidden ≤ 700 px (logo alone carries the brand) |
 | `brand-version` | Header version label | `v<semver> · <commit>` / branch; `dev` local; empty until `/api/version` resolves; full string in `title`; shown in portrait ≤ 700 px |
-| `view-toggle` | Deploys/Logs segmented control | |
-| `deploy-indicator` | Active-stack / idle indicator | |
+| `view-toggle` | Deploys/Logs segmented icon control | Active button (`.active`) opens the view-options popover |
+| `deploy-indicator` | Deploy indicator (anchor/ship glyph) | `idle`/`deploying <stacks>` in `title` + `aria-label` |
 | `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |
 | `pending-pill` | Amber pending-count pill | Hidden at zero |
-| `time-mode`, `log-sort`, `follow-logs`, `theme-toggle` | Header toggle buttons | |
-| `theme-select` | Header theme picker (`<select>`) | Present only when `ui_theme_switcher` is enabled. See [Theme override](#theme-override) |
+| `view-options` | View-options popover (opened from the active view button) | `.open` when shown; holds `time-mode` / `log-sort` / `follow-logs` |
+| `time-mode`, `log-sort`, `follow-logs` | View-specific toggle buttons | Inside `view-options`; hidden until the popover opens |
+| `theme-toggle` | Header theme (dark/light) toggle | Glyph-only; moon in dark, sun in light |
+| `theme-select` | Header theme picker (`<select>`) | Present only when `ui_theme_switcher` is enabled; transparent over a palette glyph. See [Theme override](#theme-override) |
 | `theme-notice` | Theme mismatch notice | Shown when `themeOverride` differs from `data-server-theme` |
 | `theme-notice-close` | Theme mismatch notice's dismiss button | |
-| `conn-indicator` | Connection indicator | `data-state` = `connecting`/`connected`/`reconnecting` |
+| `conn-indicator` | Connection indicator (chain-link glyph) | `data-state` = `connecting`/`connected`/`reconnecting` |
 | `empty-state` | Awaiting-events placeholder | |
 | `deploys-table` | The deploys view container (header + rows) | Snapshot anchor (UA1) |
 | `deploy-row` | A deploy table row | `data-stack`, `data-status` |
@@ -231,16 +238,15 @@ assert on.
 
 ## Responsive (≤ 700 px)
 
-**Header — compact single row.** The header collapses to one 48 px row that **must never scroll horizontally**. The brand is the ship logo plus, **in portrait**, the version label (it clips with an ellipsis and can shrink so the row still never scrolls; the full string stays in its `title` tooltip). The `skipper-cd` wordmark is hidden; the version label is also dropped in the tighter landscape orientation. Every control keeps its glyph but drops its text label:
+**Header — compact single row.** The header is already glyph-only on every viewport (see [Header — right](#layout)), so little changes ≤ 700 px beyond tightening the row to 48 px, which **must never scroll horizontally**. The brand is the ship logo plus, **in portrait**, the version label (it clips with an ellipsis and can shrink so the row still never scrolls; the full string stays in its `title` tooltip). The `skipper-cd` wordmark is hidden; the version label is also dropped in the tighter landscape orientation. Control-specific changes:
 
-- **View toggle** — unchanged (the only text control; `deploys | logs` still fits).
-- **Deploy indicator** — collapses to its coloured dot; the active-stack / `idle` text is hidden and mirrored into the element's `title`/`aria-label`.
-- **Autosync control** — keeps its icon and pending-count pill; only the `autosync` label is hidden (its static `title` remains).
-- **Time-mode / sort / follow / theme** — the label *and* the switch track are hidden and each is replaced by a self-describing **glyph** (clock / sort-bars / arrow-to-baseline / sun–moon), since unlabelled bare tracks are indistinguishable and touch shows no tooltips. The glyph follows the toggle colour (muted → accent when active) so identity and state are both legible; the theme glyph shows a moon in dark and a sun in light, and the sort glyph flips vertically when active (oldest-first). Static tooltips remain for pointer users.
-- **Theme picker** — hidden entirely rather than collapsed; it doesn't fit the compact row and overriding the palette is rarely needed on a phone. The configured theme (and any override already saved from a previous desktop visit) still applies.
-- **Connection indicator** — collapses to its coloured dot; the `connecting` / `connected` / `reconnecting` text is hidden and mirrored into the element's `title`.
+- **Deploy indicator** — the deploying stack names are dropped (kept in `title`/`aria-label`); only the anchor/ship glyph shows.
+- **Autosync control** — unchanged (already icon-only); keeps its glyph and pending-count pill.
+- **View toggle / theme toggle / connection** — unchanged; already glyph-only.
+- **View-options popover** — unchanged; still opened from the active view button.
+- **Theme picker** — hidden entirely; overriding the palette is rarely needed on a phone. The configured theme (and any override already saved from a previous desktop visit) still applies.
 
-The `.status-area` gap tightens to 10 px and the header padding to 12 px so the row fits a 360 px viewport without overflow.
+On touch there are no hover tooltips, so each control's label is reachable via the **tap-reveal bubble** (a tap flashes the `title`; the action still fires). The `.status-area` gap tightens to 10 px and the header padding to 12 px so the row fits a 360 px viewport without overflow.
 
 **Deploy table.** Column header hidden. Rows collapse to a 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden.
 

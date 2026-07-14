@@ -8,6 +8,21 @@ import type { Page } from '@playwright/test';
 // so it can't be mistaken for a structured/level line.
 const CHILD_LINE = 'container web-app-1 started';
 
+// The log sort/follow toggles now live in the logs view-options popover (opened
+// from the active logs view button), not the header row. This switches to the
+// logs view if needed and opens its options popover so those toggles are
+// actionable. Robust to the current view/popover state (e.g. after a reload).
+async function openLogsOptions(page: Page): Promise<void> {
+  const logsBtn = page.locator('[data-testid="view-toggle"] button[data-view="logs"]');
+  const opts = page.locator('[data-testid="view-options"]');
+  if (!(await logsBtn.evaluate((b) => b.classList.contains('active')))) {
+    await logsBtn.click(); // switch deploys → logs
+  }
+  if (!(await opts.evaluate((el) => el.classList.contains('open')))) {
+    await logsBtn.click(); // clicking the already-active button opens the popover
+  }
+}
+
 // UB1 — View toggle. The deploys↔logs toggle switches which pane is visible and
 // persists the choice in `localStorage.activeView`, so a reload restores the last
 // view. Asserting the panes' visibility (not the button's active class) proves the
@@ -114,7 +129,7 @@ test.describe('UB3: sort toggle', () => {
 
   test('flips newest↔oldest order and persists across reload', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
-    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+    await openLogsOptions(page);
 
     // Wait for the replayed backlog to settle (the terminal ERROR line is last).
     await expect(page.locator('[data-testid="log-line"][data-level="ERROR"]').first()).toBeVisible();
@@ -135,7 +150,7 @@ test.describe('UB3: sort toggle', () => {
 
     // A reload restores the ascending order from localStorage.
     await page.reload();
-    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+    await openLogsOptions(page);
     await expect(logLines(page)).toHaveCount(lineCount);
     expect(await lineOrder(page)).toEqual(ascOrder);
     expect(await logSort(page)).toBe('asc');
@@ -185,7 +200,7 @@ test.describe('UB4: follow toggle', () => {
     }
 
     await page.goto(`${skipper.baseURL}/`);
-    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+    await openLogsOptions(page);
     await expect(logLines(page).first()).toBeVisible();
 
     // Precondition: the pane actually overflows, so scrolling is meaningful.
@@ -222,7 +237,7 @@ test.describe('UB4: follow toggle', () => {
 
     // The unfollowed choice survives a reload.
     await page.reload();
-    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+    await openLogsOptions(page);
     expect(await followLogs(page)).toBe('false');
   });
 });

@@ -249,6 +249,15 @@
 
   .brand-icon svg { display: block; width: 32px; height: 32px; }
 
+  /* Wordmark over version, stacked beside the logo. */
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    line-height: 1.1;
+  }
+
   .brand-name {
     font-family: var(--font-mono);
     font-size: 15px;
@@ -267,9 +276,9 @@
     font-weight: 500;
     color: var(--text-muted);
     letter-spacing: 0.2px;
-    margin-left: 2px;
-    /* Long feature-branch names must not stretch the header — clip them. */
-    max-width: 22ch;
+    /* Sits under the wordmark; shows in full and only clips (ellipsis) when the
+       column actually runs out of width — no fixed character cap. */
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -292,30 +301,45 @@
     color: var(--text-secondary);
     font-family: var(--font-mono);
   }
+  /* State text lives in the element's title tooltip; only the link glyph shows. */
+  .indicator span { display: none; }
 
+  /* Connection state as a chain-link glyph: closed link when up, broken link
+     when reconnecting. Colour carries the state (success/accent/danger); the
+     transient states (connecting/reconnecting) animate so they don't read as a
+     static error. */
   .indicator-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--success);
-    box-shadow: 0 0 8px color-mix(in srgb, var(--success) 40%, transparent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--success);
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--success) 45%, transparent));
     flex-shrink: 0;
   }
+  .ci-ico { display: block; width: 18px; height: 18px; }
+  .indicator-dot .ci-broken { display: none; }
 
   .indicator-dot.warn {
-    background: var(--accent);
-    box-shadow: 0 0 8px var(--accent-glow);
+    color: var(--accent);
+    filter: drop-shadow(0 0 5px var(--accent-glow));
     animation: breathe 2s ease-in-out infinite;
   }
 
   .indicator-dot.err {
-    background: var(--danger);
-    box-shadow: 0 0 8px color-mix(in srgb, var(--danger) 40%, transparent);
+    color: var(--danger);
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--danger) 45%, transparent));
+    animation: reconnect-pulse 1s ease-in-out infinite;
   }
+  .indicator-dot.err .ci-link { display: none; }
+  .indicator-dot.err .ci-broken { display: block; }
 
   @keyframes breathe {
-    0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--accent-glow); }
-    50% { opacity: 0.4; box-shadow: 0 0 4px var(--accent-glow); }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  @keyframes reconnect-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
   }
 
   .deploy-status {
@@ -331,19 +355,29 @@
 
   .deploy-status.active { color: var(--accent); }
   .deploy-status.active .deploy-dot {
-    background: var(--accent);
-    box-shadow: 0 0 8px var(--accent-glow);
+    color: var(--accent);
+    filter: drop-shadow(0 0 5px var(--accent-glow));
     animation: breathe 2s ease-in-out infinite;
   }
 
+  /* Anchor at rest (idle, muted), ship under way when deploying (accent,
+     pulsing). The glyph colour follows the indicator via currentColor. */
   .deploy-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: color 0.3s;
     flex-shrink: 0;
   }
+  .ds-ico { display: block; width: 18px; height: 18px; }
+  .deploy-status .ds-ship { display: none; }
+  .deploy-status.active .ds-anchor { display: none; }
+  .deploy-status.active .ds-ship { display: block; }
+  /* No text when idle (the anchor + its title tooltip say enough); the only
+     header labels that remain are the names of the stacks being deployed. */
+  .deploy-status span { display: none; }
+  .deploy-status.active span { display: inline; }
 
   /* ─── MAIN ─── */
   main {
@@ -843,6 +877,13 @@
 
   .filter-toggle:hover { color: var(--text-secondary); }
 
+  /* Glyph-only controls on every viewport: the switch track and text label are
+     dropped in favour of a single self-describing glyph (icon = identity,
+     accent tint = active state), the same treatment the compact mobile row
+     already used. */
+  .filter-toggle span { display: none; }
+  .filter-toggle .toggle-track { display: none; }
+
   .toggle-track {
     width: 28px;
     height: 16px;
@@ -870,22 +911,70 @@
     border-color: color-mix(in srgb, var(--accent) 35%, transparent);
   }
 
-  .theme-select {
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    color: var(--text-primary);
-    font-family: var(--font-display);
-    font-size: 12px;
-    padding: 5px 8px;
-    cursor: pointer;
+  /* Palette-glyph picker: the native <select> keeps all its behaviour and
+     accessibility but is laid transparently over an 18px palette icon, so it
+     reads as one more icon control while still opening the native option list
+     on click. */
+  .theme-picker {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
     flex-shrink: 0;
+    color: var(--text-muted);
+    transition: color 0.2s;
   }
+  .theme-picker:hover { color: var(--text-secondary); }
+  .tp-ico { display: block; width: 18px; height: 18px; pointer-events: none; }
+  .theme-select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    opacity: 0;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .theme-picker:focus-within { color: var(--text-primary); }
+  .theme-select:focus-visible { outline: none; }
+  .theme-picker:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
   /* The theme picker is opt-in (ui_theme_switcher). With it off the deployed
      theme is fixed, so the picker is hidden entirely. */
-  html[data-theme-switcher="off"] .theme-select { display: none; }
-  .theme-select:hover { border-color: var(--border-lit); }
-  .theme-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  html[data-theme-switcher="off"] .theme-picker { display: none; }
+
+  /* Tap-reveal label: on touch there are no hover tooltips, so a tap on any
+     header control briefly shows its title in this bubble (the control's action
+     still fires). Pointer/mouse users keep the native title tooltip. */
+  .tap-tip {
+    position: fixed;
+    z-index: 200;
+    pointer-events: none;
+    max-width: 240px;
+    padding: 5px 9px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+    text-align: center;
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--bg-base) 96%, transparent);
+    backdrop-filter: blur(12px) saturate(1.2);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+    border: 1px solid var(--border-lit);
+    border-radius: 8px;
+    box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+  .tap-tip.show { opacity: 1; transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    .tap-tip { transition: opacity 0.12s ease; transform: none; }
+    .tap-tip.show { transform: none; }
+  }
 
   .theme-notice {
     position: fixed;
@@ -935,11 +1024,9 @@
 
   .filter-toggle.active { color: var(--accent); }
 
-  /* Per-toggle glyph — hidden on desktop (the track + label identify the
-     control there); swapped in for the bare track on mobile so each unlabelled
-     switch stays recognisable. Colour follows the toggle (muted → accent when
-     active) via currentColor. */
-  .tg-ico { display: none; width: 18px; height: 18px; flex-shrink: 0; }
+  /* Per-toggle glyph — the sole visible part of each control on every viewport.
+     Colour follows the toggle (muted → accent when active) via currentColor. */
+  .tg-ico { display: block; width: 18px; height: 18px; flex-shrink: 0; }
   /* Theme glyph reflects the current mode: moon in dark (default), sun in light
      (active). Sort glyph flips vertically when active (oldest-first) to signal
      the reversed order. */
@@ -959,18 +1046,17 @@
   }
 
   .view-toggle button {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
     color: var(--text-muted);
     background: none;
     border: none;
     border-radius: 4px;
-    padding: 3px 10px;
+    padding: 4px 8px;
     cursor: pointer;
     transition: color 0.15s, background 0.15s;
   }
+  .vt-ico { display: block; width: 17px; height: 17px; }
 
   .view-toggle button:hover:not(.active) { color: var(--text-secondary); }
 
@@ -978,28 +1064,86 @@
     color: var(--accent);
     background: var(--accent-dim);
   }
+  /* The active view's button opens a small options popover (below); a subtle
+     caret hints at it. Absolutely positioned so toggling it never shifts the
+     button's width — nothing in the header hops. */
+  .view-toggle button { position: relative; }
+  .view-toggle button.active::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 1px;
+    transform: translateX(-50%);
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-top: 3px solid currentColor;
+    opacity: 0.55;
+  }
+
+  /* ─── VIEW OPTIONS POPOVER ─── */
+  /* View-specific toggles (deploys: time mode; logs: sort + auto-scroll) live
+     here instead of the header row, so switching views never makes controls
+     appear/disappear. Opened by clicking the already-active view button;
+     dismisses on outside-click / Esc, like the autosync drawer. */
+  .view-switch { position: relative; display: flex; }
+  .view-options {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 97;
+    min-width: 190px;
+    padding: 5px;
+    background: color-mix(in srgb, var(--bg-base) 97%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--border-lit);
+    border-radius: 10px;
+    box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.5);
+    display: none;
+  }
+  .view-options.open { display: block; animation: theme-notice-in 0.16s ease; }
+  .vo-group { display: none; }
+  body:not(.view-logs) .view-options .vo-group[data-view="deploys"] { display: block; }
+  body.view-logs .view-options .vo-group[data-view="logs"] { display: block; }
+
+  /* Filter toggles are glyph-only in the header, but inside the popover there is
+     room for the full label + switch track (like the autosync drawer rows). */
+  .view-options .filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 7px;
+    font-size: 12px;
+  }
+  .view-options .filter-toggle:hover { background: var(--bg-raised); }
+  .view-options .filter-toggle .tg-ico { display: block; width: 16px; height: 16px; order: 0; }
+  .view-options .filter-toggle span { display: inline; margin-right: auto; order: 1; white-space: nowrap; }
+  .view-options .filter-toggle .toggle-track { display: block; order: 2; }
 
   /* ─── AUTOSYNC HEADER CONTROL ─── */
+  /* Icon-only, like the filter toggles: no box or label. Muted by default
+     (nothing special happening); the glyph's colour only changes for a real
+     signal — queued = paused, accent = drawer open — and the pending pill rides
+     alongside it. */
   .autosync-btn {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     cursor: pointer;
     user-select: none;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    font-weight: 500;
     color: var(--text-secondary);
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    padding: 5px 10px;
-    transition: border-color 0.15s, color 0.15s;
+    background: none;
+    border: none;
+    padding: 0;
   }
-  .autosync-btn:hover { border-color: var(--border-lit); color: var(--text-primary); }
-  .autosync-btn.open { border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text-primary); }
-  .autosync-btn .as-ico { width: 13px; height: 13px; flex-shrink: 0; color: var(--success); }
+  .autosync-btn > span:not(.pending-count) { display: none; }
+  .autosync-btn .as-ico { width: 18px; height: 18px; flex-shrink: 0; color: var(--text-muted); transition: color 0.15s; }
+  .autosync-btn:hover .as-ico { color: var(--text-secondary); }
   .autosync-btn.paused .as-ico { color: var(--queued); }
+  .autosync-btn.paused:hover .as-ico { color: var(--queued); }
+  .autosync-btn.open .as-ico { color: var(--accent); }
   .pending-count {
     display: none;
     align-items: center;
@@ -1130,10 +1274,8 @@
   #log-view { display: none; }
   body.view-logs #log-view { display: block; }
   body.view-logs #deploy-table, body.view-logs #empty-state { display: none !important; }
-  body.view-logs #time-mode { display: none; }
-
-  #follow-logs, #log-sort { display: none; }
-  body.view-logs #follow-logs, body.view-logs #log-sort { display: flex; }
+  /* time-mode / log-sort / follow-logs now live in the view-options popover,
+     shown per active view via .vo-group (see VIEW OPTIONS POPOVER). */
 
   .log-pane {
     background: var(--bg-sunken);
@@ -1215,21 +1357,15 @@
        portrait (re-shown below) but dropped in the tighter landscape. */
     .brand-name { display: none; }
     .brand-version { display: none; }
-    /* The label and switch track don't fit next to the view toggle, and
-       unlabelled the bare tracks all look alike — swap each for a
-       self-describing glyph (icon = identity, accent tint = active state). */
-    .filter-toggle span { display: none; }
-    .filter-toggle .toggle-track { display: none; }
-    .filter-toggle .tg-ico { display: block; }
-    /* Deploy-status and connection collapse to their coloured dot; the text
-       lives in the element's title/aria instead (see UI_SPEC §Responsive). */
-    .deploy-status span { display: none; }
-    .indicator span { display: none; }
-    /* Autosync keeps its icon and pending-count pill; only the label drops. */
-    .autosync-btn > span:not(.pending-count) { display: none; }
+    /* Filter toggles are glyph-only on every viewport now (see base rules).
+       Deploy-status and connection are already glyph-only via base rules; here
+       we also drop the deploying stack names so the row stays glyph-only (the
+       names remain in the element's title/aria — see UI_SPEC §Responsive). */
+    .deploy-status.active span { display: none; }
+    /* Autosync is already icon-only on every viewport (see base rules). */
     /* The theme picker doesn't fit the compact row and switching palettes is
        rarely needed on a phone; the configured theme still applies as-is. */
-    .theme-select { display: none; }
+    .theme-picker { display: none; }
     main { margin: 16px auto; padding: 0 12px; }
 
     .event-list-header { display: none; }
@@ -1277,52 +1413,75 @@
         <path d="M14 60 q5 -5 10 0 t10 0 t10 0 t10 0" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".5"/>
       </svg>
     </div>
-    <span class="brand-name" data-testid="brand-name">skipper<span>-cd</span></span>
-    <span class="brand-version" id="brand-version" data-testid="brand-version"></span>
+    <div class="brand-text">
+      <span class="brand-name" data-testid="brand-name">skipper<span>-cd</span></span>
+      <span class="brand-version" id="brand-version" data-testid="brand-version"></span>
+    </div>
   </div>
   <div class="status-area">
-    <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
-      <button data-view="deploys" class="active">deploys</button>
-      <button data-view="logs">logs</button>
-    </div>
-    <div class="deploy-status" id="deploy-status" data-testid="deploy-indicator">
-      <div class="deploy-dot"></div>
+    <div class="deploy-status" id="deploy-status" data-testid="deploy-indicator" title="idle" aria-label="idle">
       <span>idle</span>
+      <div class="deploy-dot">
+        <svg class="ds-ico ds-anchor" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="2"/><path d="M12 7v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8.5 10h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 12.5a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 12.5 3 11m2 1.5 2-1.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 12.5 21 11m-2 1.5-2-1.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="ds-ico ds-ship" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h16l-2 4H6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="7.5" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><path d="M3 20q2-1.6 4 0t4 0 4 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+    <div class="view-switch" id="view-switch">
+      <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
+        <button data-view="deploys" class="active" title="Deploys" aria-label="Deploys" aria-haspopup="true" aria-expanded="false">
+          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3.5 9.5h17M9 9.5V19" stroke="currentColor" stroke-width="2"/></svg>
+        </button>
+        <button data-view="logs" title="Logs" aria-label="Logs" aria-haspopup="true" aria-expanded="false">
+          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="2"/><path d="M7 9.5l3 2.5-3 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 15H17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="view-options" id="view-options" data-testid="view-options" role="menu" aria-label="View options">
+        <div class="vo-group" data-view="deploys">
+          <button class="filter-toggle" id="time-mode" data-testid="time-mode" title="Switch to absolute time">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Absolute time</span>
+          </button>
+        </div>
+        <div class="vo-group" data-view="logs">
+          <button class="filter-toggle" id="log-sort" data-testid="log-sort" title="Show oldest log lines first">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 5v14M3 16l3 3 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 6h9M12 11h6M12 16h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Oldest first</span>
+          </button>
+          <button class="filter-toggle" id="follow-logs" data-testid="follow-logs" title="Auto-scroll to newest log lines">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Auto-scroll</span>
+          </button>
+        </div>
+      </div>
     </div>
     <div class="autosync-btn" id="autosync-btn" data-testid="autosync-btn" role="button" tabindex="0" aria-expanded="false" title="Autosync">
       <svg class="as-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M17 3v4h-4M7 21v-4h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>autosync</span>
       <span class="pending-count" data-testid="pending-pill"><span class="pc-dot"></span><span id="autosync-count">0</span></span>
     </div>
-    <button class="filter-toggle" id="time-mode" data-testid="time-mode" title="Switch to absolute time">
-      <div class="toggle-track"><div class="toggle-thumb"></div></div>
-      <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>abs time</span>
-    </button>
-    <button class="filter-toggle" id="log-sort" data-testid="log-sort" title="Show oldest log lines first">
-      <div class="toggle-track"><div class="toggle-thumb"></div></div>
-      <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 5v14M3 16l3 3 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 6h9M12 11h6M12 16h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      <span>oldest first</span>
-    </button>
-    <button class="filter-toggle" id="follow-logs" data-testid="follow-logs" title="Auto-scroll to newest log lines">
-      <div class="toggle-track"><div class="toggle-thumb"></div></div>
-      <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      <span>follow</span>
-    </button>
-    <select class="theme-select" id="theme-select" data-testid="theme-select" title="UI theme (this browser only — does not change the deployed environment's theme)">
-      <option value="catppuccin">Catppuccin</option>
-      <option value="nord">Nord</option>
-      <option value="solarized">Solarized</option>
-      <option value="gruvbox">Gruvbox</option>
-      <option value="rose-pine">Rosé Pine</option>
-    </select>
+    <div class="theme-picker" title="UI theme (this browser only — does not change the deployed environment's theme)">
+      <svg class="tp-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-3.9-4-6.6-9-6.6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="7.5" cy="12" r="1.1" fill="currentColor"/><circle cx="9.5" cy="7.8" r="1.1" fill="currentColor"/><circle cx="14" cy="7.3" r="1.1" fill="currentColor"/><circle cx="17" cy="10.5" r="1.1" fill="currentColor"/></svg>
+      <select class="theme-select" id="theme-select" data-testid="theme-select" title="UI theme (this browser only — does not change the deployed environment's theme)">
+        <option value="catppuccin">Catppuccin</option>
+        <option value="nord">Nord</option>
+        <option value="solarized">Solarized</option>
+        <option value="gruvbox">Gruvbox</option>
+        <option value="rose-pine">Rosé Pine</option>
+      </select>
+    </div>
     <button class="filter-toggle" id="theme-toggle" data-testid="theme-toggle" title="Switch to light theme">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
       <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="tg-moon" d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><g class="tg-sun"><circle cx="12" cy="12" r="4.3" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.4 19.6l1.6-1.6M18 6l1.6-1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g></svg>
       <span>light</span>
     </button>
     <div class="indicator" data-testid="conn-indicator" data-state="connecting">
-      <div class="indicator-dot warn" id="conn-dot"></div>
+      <div class="indicator-dot warn" id="conn-dot">
+        <svg class="ci-ico ci-link" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="ci-ico ci-broken" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.17 11.75l-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 2v2M2 8h2M16 20v2M20 16h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
       <span id="conn-text">connecting</span>
     </div>
   </div>
@@ -2032,6 +2191,7 @@
   }
 
   function setDrawer(open) {
+    if (open) setViewOptions(false); // the two popovers are mutually exclusive
     asDrawer.classList.toggle('open', open);
     asBtn.classList.toggle('open', open);
     asBtn.setAttribute('aria-expanded', String(open));
@@ -2298,12 +2458,39 @@
     }
   }
 
+  // View-specific options (time mode / sort / follow) live in a popover behind
+  // the view buttons so the header never gains or loses controls on a view
+  // switch. Clicking the already-active view button toggles that popover;
+  // clicking the other button switches views (and closes the popover).
+  const viewSwitch = document.getElementById('view-switch');
+  const viewOptions = document.getElementById('view-options');
+
+  function setViewOptions(open) {
+    if (open) setDrawer(false); // mutually exclusive with the autosync drawer
+    viewOptions.classList.toggle('open', open);
+    viewButtons.forEach(function(btn) {
+      if (btn.dataset.view === activeView) btn.setAttribute('aria-expanded', String(open));
+    });
+  }
+
   viewButtons.forEach(function(btn) {
     btn.addEventListener('click', function() {
+      if (btn.dataset.view === activeView) {
+        setViewOptions(!viewOptions.classList.contains('open'));
+        return;
+      }
       activeView = btn.dataset.view;
       localStorage.setItem('activeView', activeView);
+      setViewOptions(false);
       applyView();
     });
+  });
+
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') setViewOptions(false); });
+  document.addEventListener('click', function(e) {
+    if (!viewOptions.classList.contains('open')) return;
+    if (viewSwitch.contains(e.target)) return; // clicks on the buttons/options manage themselves
+    setViewOptions(false);
   });
 
   function applyFollow() {
@@ -2396,6 +2583,43 @@
       el.title = text;
     })
     .catch(function() {});
+
+  // Tap-reveal tooltips for touch: title attributes never show on touch, so a
+  // tap on any header control flashes its title in a bubble. Mouse/pen keep the
+  // native tooltip (we only handle touch pointers), avoiding a double tooltip.
+  (function setupTapTips() {
+    var header = document.querySelector('header');
+    if (!header) return;
+    var tip = document.createElement('div');
+    tip.className = 'tap-tip';
+    tip.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(tip);
+    var hideTimer = null;
+    function hide() { tip.classList.remove('show'); }
+    header.addEventListener('pointerdown', function(e) {
+      if (e.pointerType && e.pointerType !== 'touch') return; // mouse/pen: native tooltip
+      var el = e.target.closest && e.target.closest('[title]');
+      if (!el || !header.contains(el)) return;
+      if (el.closest('.view-options')) return; // popover rows already show labels
+      var text = el.getAttribute('title');
+      if (!text) return;
+      tip.textContent = text;
+      // Render off-screen first to measure, then centre under the control and
+      // clamp to the viewport so it never overflows the edges.
+      tip.style.left = '-9999px';
+      tip.style.top = '0px';
+      tip.classList.add('show');
+      var r = el.getBoundingClientRect();
+      var margin = 6;
+      var left = r.left + r.width / 2 - tip.offsetWidth / 2;
+      left = Math.max(margin, Math.min(left, window.innerWidth - tip.offsetWidth - margin));
+      tip.style.left = left + 'px';
+      tip.style.top = (r.bottom + 6) + 'px';
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(hide, 1600);
+    }, { passive: true });
+    window.addEventListener('scroll', hide, { passive: true });
+  })();
 
   connect();
 

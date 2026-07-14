@@ -85,48 +85,82 @@ test.describe('UD4: responsive ≤700px', () => {
     await expect(filesPanel(page)).toHaveCount(0);
   });
 
-  // The four header filter-toggles lose their label on mobile; a bare switch
-  // track is then indistinguishable (and touch shows no tooltip), so each swaps
-  // its track for a self-describing glyph. Assert the swap on both a
-  // deploys-view toggle (time-mode) and a logs-view toggle (sort/follow), and
-  // that the theme glyph reflects the current mode (moon dark → sun light).
-  test('unlabelled toggles swap their track for a per-toggle glyph on mobile', async ({ page, skipper }) => {
-    const track = (id: string) => page.locator(`[data-testid="${id}"] .toggle-track`);
-    const glyph = (id: string) => page.locator(`[data-testid="${id}"] .tg-ico`);
+});
 
-    await page.goto(`${skipper.baseURL}/`);
+// UD8 — View-options popover. The view-specific toggles (deploys: time mode;
+// logs: sort + auto-scroll) live in a popover opened from the *active* view
+// button, not the header row, so switching views never makes a header control
+// appear or disappear. They stay hidden until the popover opens, which surfaces
+// only the active view's group; Esc / outside-click dismiss it.
+test('UD8: view-specific options live in a popover opened from the active view button', async ({
+  page,
+  skipper,
+}) => {
+  const options = page.locator('[data-testid="view-options"]');
+  const timeMode = page.locator('[data-testid="time-mode"]');
+  const logSort = page.locator('[data-testid="log-sort"]');
+  const followLogs = page.locator('[data-testid="follow-logs"]');
+  const deploysBtn = page.locator('[data-testid="view-toggle"] button[data-view="deploys"]');
+  const logsBtn = page.locator('[data-testid="view-toggle"] button[data-view="logs"]');
 
-    // Desktop control: the labelled switch track shows, the glyph stays hidden.
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(track('time-mode')).toBeVisible();
-    await expect(glyph('time-mode')).toBeHidden();
-    await expect(track('theme-toggle')).toBeVisible();
-    await expect(glyph('theme-toggle')).toBeHidden();
+  await page.goto(`${skipper.baseURL}/`);
 
-    // Mobile: the track (and label) give way to the glyph.
-    await page.setViewportSize({ width: 390, height: 844 });
-    await expect(track('time-mode')).toBeHidden();
-    await expect(glyph('time-mode')).toBeVisible();
-    await expect(track('theme-toggle')).toBeHidden();
-    await expect(glyph('theme-toggle')).toBeVisible();
+  // Closed by default: none of the view-specific toggles sit in the header.
+  await expect(options).toBeHidden();
+  await expect(timeMode).toBeHidden();
+  await expect(logSort).toBeHidden();
+  await expect(followLogs).toBeHidden();
 
-    // The theme glyph reflects the mode: moon in dark (default), sun once
-    // toggled to light. This is the state-driven variant the others don't have.
-    const themeGlyph = glyph('theme-toggle');
-    await expect(themeGlyph.locator('.tg-moon')).toBeVisible();
-    await expect(themeGlyph.locator('.tg-sun')).toBeHidden();
-    await page.locator('[data-testid="theme-toggle"]').click();
-    await expect(themeGlyph.locator('.tg-sun')).toBeVisible();
-    await expect(themeGlyph.locator('.tg-moon')).toBeHidden();
-    await page.locator('[data-testid="theme-toggle"]').click(); // restore dark
+  // Deploys is active: clicking its button opens the popover showing only the
+  // deploys group (time mode); the logs group stays hidden.
+  await deploysBtn.click();
+  await expect(options).toBeVisible();
+  await expect(timeMode).toBeVisible();
+  await expect(logSort).toBeHidden();
+  await expect(followLogs).toBeHidden();
 
-    // The logs-only toggles use the same swap — switch views and confirm both.
-    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
-    await expect(track('log-sort')).toBeHidden();
-    await expect(glyph('log-sort')).toBeVisible();
-    await expect(track('follow-logs')).toBeHidden();
-    await expect(glyph('follow-logs')).toBeVisible();
-  });
+  // The toggle works from inside the popover, and Esc closes it.
+  await expect(timeMode).not.toHaveClass(/\bactive\b/);
+  await timeMode.click();
+  await expect(timeMode).toHaveClass(/\bactive\b/);
+  await page.keyboard.press('Escape');
+  await expect(options).toBeHidden();
+
+  // Switching to logs surfaces no header control; the options move to the logs
+  // group, reached the same way — click the now-active logs button.
+  await logsBtn.click(); // deploys → logs (popover stays closed)
+  await expect(options).toBeHidden();
+  await expect(timeMode).toBeHidden();
+  await expect(logSort).toBeHidden();
+  await logsBtn.click(); // open the popover for the logs view
+  await expect(options).toBeVisible();
+  await expect(logSort).toBeVisible();
+  await expect(followLogs).toBeVisible();
+  await expect(timeMode).toBeHidden();
+
+  // Clicking outside (the brand) closes it.
+  await page.locator('header .brand').click();
+  await expect(options).toBeHidden();
+});
+
+// UD9 — Theme glyph. The header theme toggle is glyph-only on every viewport;
+// its glyph reflects the mode — a moon in dark (default), a sun in light — and
+// flips when toggled.
+test('UD9: the theme toggle glyph shows a moon in dark and a sun in light', async ({
+  page,
+  skipper,
+}) => {
+  const glyph = page.locator('[data-testid="theme-toggle"] .tg-ico');
+
+  await page.goto(`${skipper.baseURL}/`);
+  await expect(glyph.locator('.tg-moon')).toBeVisible();
+  await expect(glyph.locator('.tg-sun')).toBeHidden();
+
+  await page.locator('[data-testid="theme-toggle"]').click();
+  await expect(glyph.locator('.tg-sun')).toBeVisible();
+  await expect(glyph.locator('.tg-moon')).toBeHidden();
+
+  await page.locator('[data-testid="theme-toggle"]').click(); // restore dark
 });
 
 // UD1 — Theme toggle + no-flash. `theme-toggle` switches the configured
@@ -321,7 +355,9 @@ test('UD3: deploy indicator names the active stack while held, idle otherwise', 
   const indicator = page.locator('[data-testid="deploy-indicator"]');
 
   await page.goto(`${skipper.baseURL}/`);
-  await expect(indicator).toContainText('idle'); // nothing deploying at rest
+  // The idle text is hidden (only the anchor glyph shows); the state lives in
+  // aria-label, present from initial render.
+  await expect(indicator).toHaveAttribute('aria-label', 'idle');
 
   // Hold the next `up` and push a change → the stack stays deploying and the
   // indicator names it.

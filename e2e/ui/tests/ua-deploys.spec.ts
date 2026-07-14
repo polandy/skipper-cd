@@ -166,10 +166,18 @@ test.describe('UA4: time mode', () => {
     page.locator('[data-testid="time-cell"]').first();
   const timeMode = (page: import('@playwright/test').Page) =>
     page.locator('[data-testid="time-mode"]');
+  // time-mode now lives in the deploys view-options popover (not the header row).
+  // Deploys is the default active view, so clicking its button opens the popover.
+  const openDeploysOptions = async (page: import('@playwright/test').Page) => {
+    const opts = page.locator('[data-testid="view-options"]');
+    if (await opts.evaluate((el) => el.classList.contains('open'))) return;
+    await page.locator('[data-testid="view-toggle"] button[data-view="deploys"]').click();
+  };
 
   test('toggling switches Time cells relative ↔ absolute', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     await expect(successRow(page)).toHaveCount(1); // startup settled
+    await openDeploysOptions(page);
 
     // Default is relative.
     await expect(timeMode(page)).not.toHaveClass(/\bactive\b/);
@@ -190,6 +198,7 @@ test.describe('UA4: time mode', () => {
   test('the toggle choice persists across reload, both directions', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     await expect(successRow(page)).toHaveCount(1);
+    await openDeploysOptions(page);
     await expect(timeMode(page)).not.toHaveClass(/\bactive\b/);
 
     // Switch to absolute and reload: absolute survives (localStorage timeMode).
@@ -197,6 +206,7 @@ test.describe('UA4: time mode', () => {
     await expect(timeMode(page)).toHaveClass(/\bactive\b/);
     await page.reload();
     await expect(successRow(page)).toHaveCount(1);
+    await openDeploysOptions(page);
     await expect(timeMode(page)).toHaveClass(/\bactive\b/);
     await expect(timeCell(page)).not.toHaveText(/ago|just now/);
 
@@ -205,6 +215,7 @@ test.describe('UA4: time mode', () => {
     await expect(timeMode(page)).not.toHaveClass(/\bactive\b/);
     await page.reload();
     await expect(successRow(page)).toHaveCount(1);
+    await openDeploysOptions(page);
     await expect(timeMode(page)).not.toHaveClass(/\bactive\b/);
     await expect(timeCell(page)).toHaveText(/ago|just now/);
   });
