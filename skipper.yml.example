@@ -23,12 +23,13 @@ stacks:
   - name: gitea
     env_files:
       - /run/secrets/rendered/skipper/compose.env
-    # Optional post-deploy health gate: up runs with --wait/--wait-timeout, and
-    # the optional url is GET-probed until it answers 2xx. On failure the stack
-    # is rolled back to the previous version. See docs/configuration.md.
+    # Optional post-deploy health gate → rollback on failure. `up` runs with
+    # --wait, so it waits for the service's compose `healthcheck:` (which runs
+    # INSIDE the container — no published port needed). `url` adds an extra HTTP
+    # probe FROM THE HOST, only for endpoints reachable there. See docs/configuration.md.
     # health_check:
     #   timeout_seconds: 60                # optional, default: 60
-    #   url: http://localhost:3000/healthz # optional HTTP probe
+    #   # url: http://localhost:3000/healthz # optional; host-reachable endpoints only
 
   - name: monitoring
     env_files:

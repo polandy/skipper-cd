@@ -47,4 +47,8 @@ unchanged.
   is assumed good, and a second wait could double the worst-case deploy time.
 - `--wait-timeout` requires Docker Compose v2.17+.
 - The HTTP probe runs from the skipper-cd host; the URL must be reachable
-  from there (e.g. a published port on localhost).
+  from there (e.g. a published port on localhost). For containers whose
+  endpoint is not exposed, stage 1 is the answer: the compose `healthcheck:`
+  runs inside the container, so `--wait` gates on it without any published
+  port. The probe is the optional extra for host-reachable endpoints, not
+  the primary mechanism — the docs lead with the compose healthcheck.

@@ -92,17 +92,37 @@ stacks:
       url: http://localhost:8080/health  # optional HTTP probe
 ```
 
-The gate has two stages:
+The gate has two stages.
 
-1. **Compose health** — always on when the section is present: `docker compose up` runs with `--wait --wait-timeout <timeout_seconds>`, so it fails unless every service reaches `running` (services without a compose healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
-2. **HTTP probe** — only when `url` is set: after a successful `up`, skipper-cd GETs the URL every 2 seconds until it answers with a 2xx status. Anything else for `timeout_seconds` fails the deploy. The probe runs from the skipper-cd host, so the URL must be reachable from there (e.g. a published port on localhost).
+### Stage 1 — the compose healthcheck (recommended)
+
+When the section is present, `docker compose up` runs with `--wait --wait-timeout <timeout_seconds>`, so the `up` fails unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
+
+The `healthy` state comes from a [`healthcheck:`](https://docs.docker.com/reference/compose-file/services/#healthcheck) defined on the service in your compose file. **This is the exposure-free path: the healthcheck command runs *inside* the container, so nothing needs a published port.** For a container whose endpoint is not reachable from the host, this is the mechanism to use:
+
+```yaml
+# docker-compose.yml
+services:
+  web:
+    image: myapp:latest
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]  # localhost = inside the container
+      interval: 5s
+      retries: 5
+```
+
+With that in place, a stack-level `health_check: {}` (no `url`) is enough — `--wait` gates the deploy on the internal healthcheck and rolls back if it never turns `healthy`.
+
+### Stage 2 — the HTTP probe (optional)
+
+Only when `url` is set: after a successful `up`, skipper-cd GETs the URL every 2 seconds until it answers with a 2xx status; anything else for `timeout_seconds` fails the deploy. The probe runs **from the skipper-cd host**, so the URL must be reachable from there (a published port on `localhost`, or a routable address via a reverse proxy). Use it when the stack has no internal `healthcheck:` but does expose a reachable endpoint, or as an extra end-to-end check on top of stage 1.
 
 A failure in either stage triggers the regular rollback: the previous compose file is restored from the last deployed Git commit, the deploy is marked `rolled_back` (events, metrics and [notifications](#notifications) all see that status), and the change stays pending so the next push retries.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
-| `url` | string | no | — | HTTP(S) URL probed after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on compose healthchecks alone. |
+| `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
 
 > **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Don't enable `health_check` on stacks with deliberate one-shot containers, or model those as [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependencies.
 
