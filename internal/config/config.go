@@ -48,6 +48,27 @@ type Stack struct {
 	// the global setting. When autosync is not effective, a detected change is
 	// queued instead of deployed. See docs/autosync.md.
 	Autosync *bool `yaml:"autosync"`
+
+	// HealthCheck optionally gates a deploy of this stack on a post-deploy
+	// health check; on failure the deploy is rolled back. nil disables the
+	// gate. See ADR-0022.
+	HealthCheck *HealthCheck `yaml:"health_check,omitempty"`
+}
+
+// HealthCheck configures the optional post-deploy health gate of a stack.
+// When present, `docker compose up` runs with --wait so it fails when the
+// services' compose healthchecks do not turn healthy in time, and an optional
+// HTTP probe additionally verifies the stack from the outside. Either failure
+// triggers the regular rollback path (ADR-0004, ADR-0022).
+type HealthCheck struct {
+	// TimeoutSeconds bounds the wait: it is passed as --wait-timeout to
+	// docker compose up and is also the deadline of the HTTP probe.
+	// Defaults to 60.
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+
+	// URL, when set, is HTTP-GET-probed after a successful up until it
+	// answers 2xx; anything else within TimeoutSeconds rolls the deploy back.
+	URL string `yaml:"url"`
 }
 
 // Config holds the full skipper-cd configuration.
@@ -235,6 +256,11 @@ func Load(path string) (*Config, error) {
 	if cfg.UITheme == "" {
 		cfg.UITheme = ui.ThemeCatppuccin
 	}
+	for i := range cfg.Stacks {
+		if hc := cfg.Stacks[i].HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
+			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
+		}
+	}
 
 	return cfg, validateConfig(cfg)
 }
@@ -255,6 +281,10 @@ const (
 // reservedStackName is used internally as the state key for NixOS rebuild
 // hashes and must not collide with a configured stack.
 const reservedStackName = "_nixos"
+
+// defaultHealthCheckTimeoutSeconds is applied when a health_check section is
+// present without an explicit timeout_seconds.
+const defaultHealthCheckTimeoutSeconds = 60
 
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
@@ -277,6 +307,10 @@ func validateConfig(cfg *Config) error {
 		if s.WorkingDir == "" && cfg.StacksBaseDir == "" {
 			return fmt.Errorf("stack %q: working_dir is required when stacks_base_dir is not set", s.Name)
 		}
+
+		if err := validateHealthCheck(s.HealthCheck); err != nil {
+			return fmt.Errorf("stack %q: health_check: %w", s.Name, err)
+		}
 	}
 
 	if cfg.NixOSRebuild.IsEnabled() && cfg.NixOSRebuild.Flake == "" {
@@ -297,6 +331,23 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
+	return nil
+}
+
+// validateHealthCheck checks a stack's optional health_check section.
+// TimeoutSeconds has already been defaulted in Load.
+func validateHealthCheck(hc *HealthCheck) error {
+	if hc == nil {
+		return nil
+	}
+	if hc.TimeoutSeconds < 0 {
+		return fmt.Errorf("timeout_seconds must not be negative, got %d", hc.TimeoutSeconds)
+	}
+	if hc.URL != "" {
+		if u, err := url.ParseRequestURI(hc.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("url %q must be a valid http(s) URL", hc.URL)
+		}
+	}
 	return nil
 }
 

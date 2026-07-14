@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -60,6 +61,7 @@ type Deployer struct {
 	autosync     *autosync.Controller        // nil = autosync always on
 	queue        *autosync.Queue             // nil = no pending tracking
 	postRunHook  func()                      // nil = none; runs after each deploy run
+	prober       *httpHealthProber           // nil = lazily built real prober
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -430,16 +432,23 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}
 
 	// --remove-orphans removes containers for services deleted from docker-compose.yml.
-	if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
-		slog.Error("docker compose up failed, attempting rollback", "stack", stack.Name, "err", err)
+	upArgs := []string{"up", "-d", "--remove-orphans"}
+	if hc := stack.HealthCheck; hc != nil {
+		// First health gate: --wait makes the up itself fail when the services'
+		// compose healthchecks do not turn healthy in time (ADR-0022).
+		upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
+	}
+	if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, upArgs...); err != nil {
+		return d.rollBackFailedDeploy(ctx, composePath, projectDir, baseEnv, stack, state, "docker compose up", err)
+	}
 
-		if rbErr := d.rollbackStack(ctx, composePath, projectDir, baseEnv, stack, state); rbErr != nil {
-			slog.Error("rollback failed", "stack", stack.Name, "err", rbErr)
-			return fmt.Errorf("docker compose up: %w (rollback also failed: %v)", err, rbErr)
+	// Second health gate: the optional HTTP probe verifies the stack from the
+	// outside after a successful up (ADR-0022).
+	if hc := stack.HealthCheck; hc != nil && hc.URL != "" {
+		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
+		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
+			return d.rollBackFailedDeploy(ctx, composePath, projectDir, baseEnv, stack, state, "health check", err)
 		}
-		slog.Info("rollback successful, old containers restored", "stack", stack.Name)
-		metrics.DeployRollbacks.WithLabelValues(stack.Name).Inc()
-		return fmt.Errorf("docker compose up: %w (%w)", err, ErrRolledBack)
 	}
 
 	if len(stack.OnDemandContainers) > 0 {
@@ -561,6 +570,22 @@ func (d *Deployer) runDockerCompose(ctx context.Context, composePath, projectDir
 	composeArgs = append(composeArgs, args...)
 
 	return d.runner.Run(ctx, runDir, env, "docker", composeArgs...)
+}
+
+// rollBackFailedDeploy handles a deploy that failed at the given stage ("docker
+// compose up" or "health check"): it attempts a rollback and wraps the outcome
+// so DeployAllStacks emits rolled_back on success (errors.Is ErrRolledBack)
+// and failed otherwise.
+func (d *Deployer) rollBackFailedDeploy(ctx context.Context, composePath, projectDir string, baseEnv []string, stack config.Stack, state *persistedState, stage string, cause error) error {
+	slog.Error(stage+" failed, attempting rollback", "stack", stack.Name, "err", cause)
+
+	if rbErr := d.rollbackStack(ctx, composePath, projectDir, baseEnv, stack, state); rbErr != nil {
+		slog.Error("rollback failed", "stack", stack.Name, "err", rbErr)
+		return fmt.Errorf("%s: %w (rollback also failed: %v)", stage, cause, rbErr)
+	}
+	slog.Info("rollback successful, old containers restored", "stack", stack.Name)
+	metrics.DeployRollbacks.WithLabelValues(stack.Name).Inc()
+	return fmt.Errorf("%s: %w (%w)", stage, cause, ErrRolledBack)
 }
 
 // rollbackStack restores containers to the previous compose file version after
