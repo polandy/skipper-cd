@@ -27,6 +27,8 @@ volumes:
 
 The Docker socket mount is required — skipper-cd uses it to manage compose stacks. The `skipper-data` volume persists the cloned repository and deploy state across restarts.
 
+> **Note:** [Notification](configuration.md#notifications) `url`s are resolved from inside skipper-cd's container, so `localhost` is the container itself — point them at an address reachable from the container.
+
 ## Locally Built Images
 
 Services with a `build:` section are automatically detected. skipper-cd runs `docker compose build --pull` for them and excludes them from `docker compose pull`. If a build service also has an `image:` field (tagging the built image), any other service referencing that same image name is also excluded from pull — since the image is produced locally, not available on a registry.
