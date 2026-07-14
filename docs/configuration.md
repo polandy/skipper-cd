@@ -179,13 +179,42 @@ notifications:
 ui_theme: nord   # optional, default: catppuccin
 ```
 
-| Value | Look |
-|---|---|
-| `catppuccin` (default) | Soft pastels on a muted indigo base (Mocha dark / Latte light). |
-| `nord` | Arctic blue-greys, a single frost-blue accent. |
-| `solarized` | The low-contrast terminal classic. |
-| `gruvbox` | Warm retro-groove browns, orange accent. |
-| `rose-pine` | Muted rose and iris-purple on a plum-black base. |
+Five palettes ship, each with a dark and light variant (the header's dark/light toggle flips between them per browser). The previews below are scaled-down mockups of the header and stack list in each palette.
+
+**`catppuccin`** — the default. Soft pastels on a muted indigo base (Mocha dark / Latte light).
+
+<div class="theme-grid">
+<figure class="tp" data-theme="catppuccin"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>Mocha · dark</figcaption></figure>
+<figure class="tp light" data-theme="catppuccin"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>Latte · light</figcaption></figure>
+</div>
+
+**`nord`** — arctic blue-greys, a single frost-blue accent.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="nord"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="nord"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
+
+**`solarized`** — the low-contrast terminal classic.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="solarized"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="solarized"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
+
+**`gruvbox`** — warm retro-groove browns, orange accent.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="gruvbox"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="gruvbox"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
+
+**`rose-pine`** — muted rose and iris-purple on a plum-black base.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="rose-pine"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="rose-pine"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
 
 Every palette drives the whole UI, including the PWA install identity (favicon, browser theme colour, app splash screen) — see [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#design) for the full token design and [PWA](pwa.md#33-theme) for the installed-app behaviour.
 
