@@ -45,7 +45,7 @@ asserting **behaviour + visual snapshots**.
 > hidden, saved override ignored), **UD2** (connection indicator
 > connected→reconnecting→connected, driven by a kill/relaunch of the binary on
 > the same port), **UD3** (deploy indicator names the active stack while held),
-> **UD4** (responsive ≤700px), **UD5** (build identity label). All four masks' behaviour is landed, **and the visual-snapshot
+> **UD4** (responsive ≤700px), **UD5** (build identity label), **UD8** (view-options popover), **UD9** (theme glyph). All four masks' behaviour is landed, **and the visual-snapshot
 > baselines (§5) too**: a lean set of six baselines (deploys table, diff panel,
 > autosync drawer, both themes, mobile layout) generated and compared in
 > Playwright's pinned container, gated by `RUN_SNAPSHOTS`. The `e2e-ui` CI job now
@@ -158,8 +158,9 @@ these, never on text/CSS. Minimum set:
 - Autosync: `autosync-btn`, `pending-pill`, `autosync-drawer`, `global-switch`,
   `stack-switch` (+ `data-stack`), `queue-item` (+ `wait-cell` for masking),
   `stack-filter`.
-- Chrome: `view-toggle`, `time-mode`, `theme-toggle`,
-  `conn-indicator` (+ `data-state`), `deploy-indicator`.
+- Chrome: `view-toggle`, `view-options` (+ `time-mode`, `log-sort`,
+  `follow-logs`), `theme-toggle`, `conn-indicator` (+ `data-state`),
+  `deploy-indicator`.
 
 ## 4. Test cases (Given/When/Then)
 
@@ -335,12 +336,16 @@ UI suite reuses.
   hidden; the **table** collapses to the 2×2 layout, the Files column hides, and
   tapping a row with changed files expands the panel. The 1280px control asserts
   the wordmark is visible with likewise no sideways scroll. *Snapshot: mobile
-  layout.* A companion case covers the **toggle glyphs**: the four header
-  filter-toggles hide their label *and* switch track at ≤700px and swap in a
-  per-toggle glyph (unlabelled bare tracks are indistinguishable and touch shows
-  no tooltip), asserted on a deploys-view toggle (`time-mode`) and both
-  logs-view toggles (`log-sort`, `follow-logs`); the `theme-toggle` glyph is
-  additionally asserted to reflect the mode (moon in dark → sun in light).
+  layout.*
+- **UD8 — View-options popover.** The view-specific toggles (`time-mode` for
+  deploys; `log-sort` + `follow-logs` for logs) live in the `view-options`
+  popover opened from the *active* view button, not the header row — so
+  switching views never surfaces or hides a header control. They stay hidden
+  until the popover opens, which shows only the active view's group; the toggle
+  works from inside it, and Esc / outside-click dismiss it.
+- **UD9 — Theme glyph.** The header `theme-toggle` is glyph-only on every
+  viewport; the `.tg-moon` / `.tg-sun` glyphs reflect the mode (moon in dark →
+  sun in light) and flip on toggle.
 - **UD5 — Version label.** The header `brand-version` shows the deployed version
   as `v<semver>`. `globalSetup` injects the version via `-ldflags` from
   `.release-please-manifest.json` (the same source as the Docker/Nix builds), so
