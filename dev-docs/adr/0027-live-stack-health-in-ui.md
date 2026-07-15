@@ -102,6 +102,13 @@ the teal `--success` deploy status. Clicking the pill reveals the per-service
 breakdown as a sibling panel below the row, reusing the existing files/diff/error
 expand pattern.
 
+To keep an open panel unambiguously tied to its row, the click also **tints the
+row and panel** in the stack's health colour with a shared left bar, and the
+panel header echoes the stack + status (variant A, chosen over a connector notch
+or a plain grouping rail because it names itself and so survives scrolling and
+multiple open panels). The bar colour is the rolled-up status — the worst
+(least-healthy) service — matching the pill.
+
 **The pill sits only on the newest row per stack, not on every row.** The deploy
 table is an *event log* — many rows for the same stack over time — while health is
 a single *current* per-stack value. Rendering the live pill on every historical

@@ -284,7 +284,7 @@ The picker is a **local, per-browser** override only: it never changes the deplo
 
 When the web UI is enabled, skipper-cd shows the **live runtime health** of the stacks it deploys, next to each stack in the deploy view: `healthy`, `unhealthy`, `starting`, `stopped`, or `unknown`. This is a current, at-a-glance view — distinct from the deploy outcome — so a stack that deployed fine but whose container has since started crash-looping reads as `unhealthy` without waiting for the next push.
 
-The health is read by polling `docker compose ps` for each stack, using the same compose file and `--project-directory` identity used to deploy it. Nothing is written and nothing is restarted — the view is read-only. It covers only skipper-cd's own stacks (not other containers on the host).
+The health is read by polling `docker compose ps` for each stack, using the same compose file and `--project-directory` identity used to deploy it. Nothing is written and nothing is restarted — the view is read-only. It covers only skipper-cd's own stacks (not other containers on the host). Click a stack's health to expand a per-service breakdown (each service's container state and health).
 
 `health_poll_interval_seconds` controls the cadence:
 

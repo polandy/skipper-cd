@@ -18,6 +18,17 @@ const stubDockerScript = `#!/bin/sh
 dir=$(pwd)
 printf '%s\\t%s\\n' "$dir" "$*" >> "$DOCKER_LOG"
 
+# Health poll: emit the scripted \`compose ps --format json\` output for this
+# stack (keyed by the project dir's basename), else nothing (-> stopped).
+case " $* " in
+  *" ps "*)
+    base=$(basename "$dir")
+    f="$STUB_DOCKER_PS_DIR/$base.json"
+    [ -n "$STUB_DOCKER_PS_DIR" ] && [ -f "$f" ] && cat "$f"
+    exit 0
+    ;;
+esac
+
 if [ -n "$STUB_DOCKER_ECHO" ]; then
   case " $* " in
     *" up "*) echo "$STUB_DOCKER_ECHO" ;;
@@ -138,6 +149,10 @@ export interface StartOptions {
    *  Defaults to false, matching the server default (picker hidden, the
    *  configured theme fixed). */
   themeSwitcher?: boolean;
+  /** Enable the stack-health poller at this interval (seconds). Default 0
+   *  (disabled), so masks predating health stay health-free; Maske H opts in and
+   *  scripts per-stack `docker compose ps` output via the stub. */
+  healthPoll?: number;
 }
 
 /** Skipper is a running skipper binary under test with its origin, stub docker,
@@ -151,6 +166,7 @@ export class Skipper {
   private readonly holdFile: string;
   private readonly stacks: string[];
   private readonly cfgPath: string;
+  private readonly healthDir: string;
   private readonly spawnEnv: NodeJS.ProcessEnv;
   private proc: ChildProcess;
   private out = '';
@@ -164,6 +180,7 @@ export class Skipper {
     holdFile: string;
     stacks: string[];
     cfgPath: string;
+    healthDir: string;
     spawnEnv: NodeJS.ProcessEnv;
     proc: ChildProcess;
   }) {
@@ -175,6 +192,7 @@ export class Skipper {
     this.holdFile = init.holdFile;
     this.stacks = init.stacks;
     this.cfgPath = init.cfgPath;
+    this.healthDir = init.healthDir;
     this.spawnEnv = init.spawnEnv;
     this.attach(init.proc);
   }
@@ -225,6 +243,10 @@ export class Skipper {
     mkdirSync(stubDir, { recursive: true });
     writeFileSync(join(stubDir, 'docker'), stubDockerScript, { mode: 0o755 });
 
+    // Where setStackHealth writes per-stack `compose ps` output for the stub.
+    const healthDir = join(base, 'health');
+    mkdirSync(healthDir, { recursive: true });
+
     const [port, metricsPort] = await freePorts(2);
     const baseURL = `http://127.0.0.1:${port}`;
     const metricsURL = `http://127.0.0.1:${metricsPort}`;
@@ -239,6 +261,9 @@ export class Skipper {
       `metrics_port: ${metricsPort}\n` +
       `ui_enabled: true\n` +
       (opts.themeSwitcher ? `ui_theme_switcher: true\n` : '') +
+      // Health polling off by default so masks predating it stay health-free;
+      // Maske H opts in via healthPoll (ADR-0027).
+      `health_poll_interval_seconds: ${opts.healthPoll ?? 0}\n` +
       `command_timeout_seconds: 30\n` +
       // source_url points at a closed local port so auto-match icon fetches fail
       // fast and deterministically (connection refused → 404 → monogram), keeping
@@ -262,6 +287,7 @@ export class Skipper {
       PATH: `${stubDir}:${process.env.PATH}`,
       DOCKER_LOG: dockerLog,
       STUB_DOCKER_HOLD_UP: holdFile,
+      STUB_DOCKER_PS_DIR: healthDir,
       ...opts.stubEnv,
     };
     const proc = spawn(skipperBinPath(), ['-config', cfgPath], {
@@ -278,6 +304,7 @@ export class Skipper {
       holdFile,
       stacks,
       cfgPath,
+      healthDir,
       spawnEnv,
       proc,
     });
@@ -311,6 +338,16 @@ export class Skipper {
       `services:\n  app:\n    image: nginx:${tag}\n`,
     );
     git(this.origin, 'commit', '-am', `bump ${stack} to ${tag}`);
+  }
+
+  /** setStackHealth scripts the stub's `docker compose ps` output for a stack, so
+   *  the health poller (enable with the `healthPoll` start option) reports the
+   *  given services on its next poll. */
+  setStackHealth(
+    stack: string,
+    services: Array<{ Service: string; State: string; Health?: string; ExitCode?: number }>,
+  ): void {
+    writeFileSync(join(this.healthDir, `${stack}.json`), JSON.stringify(services));
   }
 
   /** sendWebhook posts a correctly signed push payload for ref, returning the status. */
