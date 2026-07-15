@@ -46,7 +46,7 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
 The view-specific toggles live in a small popover anchored under the view toggle (styled like the [Autosync drawer](#autosync)), **not** in the header row — so switching views never makes a header control appear or disappear. It is opened by clicking the already-active view button (the `▾` hint), and dismisses on outside-click or `Esc`; it and the Autosync drawer are mutually exclusive. Inside, each option is a full row (glyph + label + switch track). Contents by active view:
 
-- **Deploys** → **Time mode** — switches the Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). `localStorage` key `timeMode`.
+- **Deploys** → **Time mode** — switches the Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). `localStorage` key `timeMode`. On **mobile only**, the group is preceded by a **"Search stacks"** action row that reveals and focuses the [Deploys filter](#deploys-filter) (the touch entry point for type-to-search).
 - **Logs** → **Sort** — reverses log order; default inactive (newest first), active flips to oldest-first (terminal semantics). `localStorage` key `logSort` (`desc` / `asc`); flipping resets the visible window to one page. And **Auto-scroll (Follow)** — auto-scrolls the log pane to the newest line on every append; default active. `localStorage` key `followLogs`.
 
 ### Theme override
@@ -72,7 +72,7 @@ Rows are prepended (newest first) with a slide-in animation. Time cells show rel
 
 The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain`) left of the name for recognition. The image is served same-origin from `GET /api/icons/<stack>` (no CSP concern); on any load error the chip swaps to a **monogram** — the stack's first letter on an accent-tinted chip — via the `<img>` `error` handler, so a broken image never shows. Icons are resolved server-side (repo `icon.svg`/`icon.png` override → configured `icon:` slug → auto-match on the stack name → 404 → monogram) and cached on the host; see the README "Service Icons" section.
 
-**Refreshing icons.** A manual refresh clears the server-side icon cache (`POST /api/icons/refresh`) and reloads every visible icon with a cache-busting query param, so renamed stacks and newly published icons appear. It is deliberately **not a header control** — rarely needed, so it stays off the header — and is triggered by the **`i`** hotkey (global, ignored only while typing in an input). The endpoint is also reachable directly (e.g. `curl -X POST …/api/icons/refresh`) for ops use.
+**Refreshing icons.** The server-side icon cache is cleared by `POST /api/icons/refresh` (e.g. `curl -X POST …/api/icons/refresh`); the next load of each icon then picks up renamed stacks and newly published icons. It is an **ops endpoint** — there is deliberately no header control and no keyboard trigger (the single-key `i` hotkey was removed so type-to-search in the deploys view can own printable keys — see [Deploys filter](#deploys-filter)).
 
 ### Status badges
 
@@ -90,6 +90,15 @@ The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain
 - **Files pill** — shown when `changed_files` is non-empty. Click inserts a full-width panel as a sibling element directly below the row (same pattern as the error detail panel). Clicking again removes the panel.
 - **Diff panel** — when `has_diffs` is `true` on the event, clicking the files pill fetches diffs from `GET /api/events/{id}/diffs` and renders a syntax-colored diff panel instead of the plain file list. Each file is a collapsible section (single-file diffs default to expanded). Diff lines are colored: additions (green), deletions (red), hunk headers (yellow), metadata (muted). Diffs are cached client-side after the first fetch.
 - **Error detail** — shown for `failed` events with an `error` field. Monospace, red-tinted, `pre-wrap`.
+
+### Deploys filter
+
+A **type-to-search** filter over the deploy rows by stack name, reusing the [Autosync drawer](#autosync)'s filter styling (magnifier + input + `×` clear). It has **no header control**: the bar is hidden until the user starts typing while the deploys view is active (with at least one row rendered), then it **folds down** above the table (`data-testid="deploy-filter"`). Any printable key reveals it and seeds the first character — this is why the old single-key `i` icon-refresh hotkey was removed (see [Stack icons](#stack-icons)).
+
+- **Matching** — case-insensitive substring on the stack name. Non-matching rows are hidden (`filtered-out`), and any files/diff/error panel trailing a hidden row is hidden with it. A small `shown/total` count sits in the field; an all-hidden result shows a **"No stack matches …"** note (`data-testid="deploy-filter-empty"`).
+- **Live rows** — the filter re-applies as new deploy events arrive, so a freshly deploying stack obeys the active query.
+- **Dismissing** — `Esc` clears a non-empty field (first press), then folds the bar away (second press); clearing to empty and blurring also folds it away. The query is purely client-side — no request, no persistence.
+- **Mobile** — touch has no keyboard to trigger type-to-search, so on mobile (≤ 700 px) the [Deploys view-options popover](#view-options-popover) carries a **"Search stacks"** entry (`data-testid="deploy-search"`, hidden on desktop): tapping it reveals the bar and focuses the field, raising the on-screen keyboard. The type-to-reveal behaviour is desktop-only.
 
 ---
 
@@ -238,6 +247,11 @@ assert on.
 | `files-panel` | Expanded plain file-list panel | |
 | `diff-panel` | Expanded diff panel | |
 | `error-panel` | Error detail panel under a failed row | |
+| `deploy-search` | "Search stacks" row in the deploys view-options popover | Mobile-only entry point; reveals + focuses `deploy-filter` |
+| `deploy-filter-wrap` | The filter bar container | Collapsed (height 0) until revealed; the reveal-state hook |
+| `deploy-filter` | Deploys type-to-search input | Hidden until the user types (desktop) or taps `deploy-search` (mobile); folds down above the table |
+| `deploy-filter-clear` | Deploys filter clear (`×`) button | Shown only when the field is non-empty |
+| `deploy-filter-empty` | "No stack matches …" note | Shown when the query hides every row |
 | `log-line` | A log line | `data-level` = level (or `cmd` for child output) |
 | `level-badge` | Log level badge | |
 | `stack-prefix` | `[stack]` prefix on a deploy log line | |
@@ -269,7 +283,7 @@ assert on.
 
 On touch there are no hover tooltips, so each control's label is reachable via the **tap-reveal bubble** (a tap flashes the `title`; the action still fires). The `.status-area` gap tightens to 10 px and the header padding to 12 px so the row fits a 360 px viewport without overflow.
 
-**Deploy table.** Column header hidden. Rows collapse to a 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden.
+**Deploy table.** Column header hidden. Rows collapse to a 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden. Since there is no keyboard for type-to-search, the [Deploys view-options popover](#view-options-popover) gains a **"Search stacks"** entry that reveals the [filter](#deploys-filter) — the type-to-reveal path is desktop-only.
 
 Since the Files pill is not visible on mobile, tapping anywhere on a row (that has `changed_files`) triggers the files/diff panel instead. Rows with changed files get `cursor: pointer` on mobile. The toggle behaviour (tap again to close) is identical to the desktop pill behaviour.
 

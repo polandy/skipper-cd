@@ -1240,6 +1240,9 @@
   .view-options .filter-toggle .tg-ico { display: block; width: 16px; height: 16px; order: 0; }
   .view-options .filter-toggle span { display: inline; margin-right: auto; order: 1; white-space: nowrap; }
   .view-options .filter-toggle .toggle-track { display: block; order: 2; }
+  /* The "Search stacks" popover row is a mobile-only entry point (desktop uses
+     type-to-search); shown via the media query in the responsive section. */
+  .view-options .vo-search { display: none; }
 
   /* ─── AUTOSYNC HEADER CONTROL ─── */
   /* Icon-only, like the filter toggles: no box or label. Muted by default
@@ -1357,6 +1360,18 @@
   .stack-filter-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; display: none; border-radius: 4px; }
   .stack-filter-clear:hover { color: var(--text-primary); }
   .stack-filter-wrap.has-value .stack-filter-clear { display: block; }
+
+  /* Deploys filter: hidden until the user starts typing (type-to-search), then
+     the bar folds down above the table. Collapsed while empty and unfocused. */
+  .deploy-filter { max-height: 0; opacity: 0; margin: 0 2px; overflow: hidden;
+    transition: max-height 0.18s ease, opacity 0.16s ease, margin-bottom 0.18s ease; }
+  .deploy-filter.revealed { max-height: 48px; opacity: 1; margin-bottom: 10px; }
+  .deploy-filter .stack-filter { padding-right: 52px; }
+  .stack-filter-count { position: absolute; right: 28px; top: 50%; transform: translateY(-50%);
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); pointer-events: none; }
+  .filter-empty { display: none; text-align: center; padding: 28px 0; color: var(--text-muted); font-size: 13px; }
+  .filter-empty.show { display: block; }
+  .event-list .filtered-out { display: none !important; }
 
   .stack-row {
     display: grid;
@@ -1518,6 +1533,11 @@
 
     .event-list-header { display: none; }
 
+    /* Touch has no keyboard to trigger type-to-search, so on mobile the deploys
+       view-options popover carries a "Search stacks" entry that reveals and
+       focuses the filter (hidden on desktop, where type-to-search covers it). */
+    body:not(.view-logs) .view-options .vo-search { display: flex; }
+
     .event-row {
       grid-template-columns: 1fr auto;
       grid-template-rows: auto auto;
@@ -1587,6 +1607,10 @@
       </div>
       <div class="view-options" id="view-options" data-testid="view-options" role="menu" aria-label="View options">
         <div class="vo-group" data-view="deploys">
+          <button class="filter-toggle vo-search" id="deploy-search-open" data-testid="deploy-search" type="button" title="Search stacks">
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Search stacks</span>
+          </button>
           <button class="filter-toggle" id="time-mode" data-testid="time-mode" title="Switch to absolute time">
             <div class="toggle-track"><div class="toggle-thumb"></div></div>
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1697,6 +1721,12 @@
   </div>
 
   <div id="deploy-table" data-testid="deploys-table" style="display:none">
+    <div class="stack-filter-wrap deploy-filter" id="deploy-filter-wrap" data-testid="deploy-filter-wrap">
+      <svg class="fi" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input class="stack-filter" id="deploy-filter" data-testid="deploy-filter" type="text" placeholder="Filter stacks…" autocomplete="off" spellcheck="false" aria-label="Filter deploys by stack">
+      <span class="stack-filter-count" id="deploy-filter-count"></span>
+      <button class="stack-filter-clear" id="deploy-filter-clear" data-testid="deploy-filter-clear" type="button" aria-label="Clear filter">&times;</button>
+    </div>
     <div class="event-list-header">
       <span>Time</span>
       <span>Stack</span>
@@ -1705,6 +1735,7 @@
       <span>Files</span>
     </div>
     <div class="event-list" id="tbody"></div>
+    <div class="filter-empty" id="deploy-filter-empty" data-testid="deploy-filter-empty">No stack matches &ldquo;<span id="deploy-filter-empty-q"></span>&rdquo;.</div>
   </div>
 
   <div id="log-view">
@@ -1892,11 +1923,8 @@
     return cls;
   }
 
-  // Bumped on refresh to bust the browser cache of icon images.
-  var iconVer = 0;
-
   function iconURL(stack) {
-    return '/api/icons/' + encodeURIComponent(stack) + (iconVer ? '?v=' + iconVer : '');
+    return '/api/icons/' + encodeURIComponent(stack);
   }
 
   // populateIcon fills a .stack-icon chip with the stack's image, swapping to a
@@ -1916,17 +1944,6 @@
   function iconFallback(chip, stack) {
     chip.classList.add('mono');
     chip.textContent = (stack || '?').charAt(0);
-  }
-
-  // refreshIcons clears the server cache, then reloads every visible icon so
-  // renamed stacks and newly published icons appear.
-  function refreshIcons() {
-    fetch('/api/icons/refresh', { method: 'POST' }).finally(function() {
-      iconVer = Date.now();
-      document.querySelectorAll('.stack-icon').forEach(function(chip) {
-        populateIcon(chip, chip.dataset.name);
-      });
-    });
   }
 
   // pausedTagHTML renders the "paused" tag on a queued deploy row, adding the
@@ -2160,6 +2177,7 @@
     es.addEventListener('deploy', function(e) {
       var evt = JSON.parse(e.data);
       handleEvent(evt, false);
+      refilterDeploys();
     });
 
     es.addEventListener('autosync', function(e) {
@@ -2220,15 +2238,93 @@
 
   applyTimeMode();
 
-  // Icon refresh — the "i" hotkey clears the server-side icon cache and reloads
-  // every visible icon. Intentionally hotkey-only (no header button): a manual
-  // refresh is rarely needed, so it stays out of the header. The endpoint is
-  // also reachable directly (POST /api/icons/refresh) for ops use.
+  // Deploys filter (type-to-search) — a substring filter over the deploy rows by
+  // stack name. There is no header control: the bar is hidden until the user
+  // starts typing in the deploys view, then folds down above the table. It hides
+  // rows whose data-stack doesn't match (and the panels trailing them); an empty
+  // result shows a "No stack matches" note.
+  const deployFilterWrap = document.getElementById('deploy-filter-wrap');
+  const deployFilter = document.getElementById('deploy-filter');
+  const deployFilterClear = document.getElementById('deploy-filter-clear');
+  const deployFilterCount = document.getElementById('deploy-filter-count');
+  const deployFilterEmpty = document.getElementById('deploy-filter-empty');
+  const deployFilterEmptyQ = document.getElementById('deploy-filter-empty-q');
+
+  function applyDeployFilter() {
+    var q = (deployFilter.value || '').trim().toLowerCase();
+    deployFilterWrap.classList.toggle('has-value', q.length > 0);
+    var total = 0, shown = 0, visible = false;
+    var kids = tbody.children;
+    for (var i = 0; i < kids.length; i++) {
+      var el = kids[i];
+      if (el.dataset && el.dataset.testid === 'deploy-row') {
+        total++;
+        visible = el.dataset.stack.toLowerCase().indexOf(q) !== -1;
+        if (visible) shown++;
+      }
+      // A panel (files/diff/error) trails its row and shares its visibility.
+      el.classList.toggle('filtered-out', !visible);
+    }
+    deployFilterCount.textContent = q ? (shown + '/' + total) : '';
+    deployFilterEmpty.classList.toggle('show', q.length > 0 && total > 0 && shown === 0);
+    deployFilterEmptyQ.textContent = q;
+  }
+
+  // Re-run the filter after live/replayed rows land so new stacks obey it too.
+  function refilterDeploys() {
+    if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
+  }
+
+  function revealDeployFilter(on) { deployFilterWrap.classList.toggle('revealed', on); }
+
+  function clearDeployFilter(hide) {
+    deployFilter.value = '';
+    applyDeployFilter();
+    if (hide) { revealDeployFilter(false); deployFilter.blur(); }
+  }
+
+  deployFilter.addEventListener('input', applyDeployFilter);
+  deployFilter.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      if (deployFilter.value) clearDeployFilter(false); // first Esc clears
+      else { revealDeployFilter(false); deployFilter.blur(); } // second Esc folds away
+    }
+  });
+  deployFilter.addEventListener('blur', function() {
+    if (!deployFilter.value) revealDeployFilter(false); // fold away only when empty
+  });
+  deployFilterClear.addEventListener('click', function() { clearDeployFilter(false); deployFilter.focus(); });
+
+  // Mobile entry point: the "Search stacks" row in the deploys view-options
+  // popover reveals the filter and focuses it (raising the on-screen keyboard).
+  // Hidden on desktop, where type-to-search covers the same job. setViewOptions
+  // is a hoisted function declaration further down in this scope.
+  document.getElementById('deploy-search-open').addEventListener('click', function() {
+    setViewOptions(false);
+    revealDeployFilter(true);
+    deployFilter.focus();
+  });
+
+  // Type-to-search: a printable key while viewing deploys reveals the bar and
+  // seeds it. Ignored while typing in any field, in the logs view, or before any
+  // row exists (nothing to filter).
   document.addEventListener('keydown', function(e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     var tag = (e.target && e.target.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
-    if (e.key === 'i') refreshIcons();
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+    if (document.body.classList.contains('view-logs') || !hasRows) return;
+    if (e.key === 'Escape') {
+      if (deployFilterWrap.classList.contains('revealed')) clearDeployFilter(true);
+      return;
+    }
+    if (e.key.length === 1 && e.key !== ' ') {
+      revealDeployFilter(true);
+      deployFilter.focus();
+      deployFilter.value += e.key; // focus mid-keydown doesn't reliably route the char
+      applyDeployFilter();
+      e.preventDefault();
+    }
   });
 
   // Colour-scheme toggle (dark is the default; light is opt-in per browser).
