@@ -2149,11 +2149,11 @@
       }
       line += '<span class="m-item">' + personGlyph + escapeHtml(head.author || '') + '</span>';
       if (head.date) {
-        line += '<span class="m-sep">·</span><span class="m-item" title="' + escapeAttr(fullTime(head.date)) + '">' +
+        line += '<span class="m-sep">·</span><span class="m-item" data-testid="commit-time" title="' + escapeAttr(fullTime(head.date)) + '">' +
           clockGlyph + escapeHtml(formatTime(head.date)) + '</span>';
       }
       if (!multi) {
-        line += '<span class="m-sep">·</span><span class="m-sha">' + escapeHtml(shortSHA(head.sha)) + '</span>';
+        line += '<span class="m-sep">·</span><span class="m-sha" data-testid="commit-sha">' + escapeHtml(shortSHA(head.sha)) + '</span>';
       }
       line += '</div>';
       html += line;
