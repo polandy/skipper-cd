@@ -270,6 +270,87 @@ func TestDiffSinceCommit_DiffsAgainstHead(t *testing.T) {
 	assertArgPresent(t, call.args, "/repo/mystack/docker-compose.yml")
 }
 
+func TestCommitsSinceCommit_NilWithoutFromSHA(t *testing.T) {
+	runner := &fakeOutputRunner{}
+	r := newRepoReaderWithRunner(runner, "/repo")
+
+	commits, err := r.CommitsSinceCommit(context.Background(), "", []string{"/repo/a/docker-compose.yml"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if commits != nil {
+		t.Errorf("expected nil commits, got %v", commits)
+	}
+	if len(runner.calls) != 0 {
+		t.Errorf("expected no git calls, got %d", len(runner.calls))
+	}
+}
+
+func TestCommitsSinceCommit_NilWithoutFiles(t *testing.T) {
+	runner := &fakeOutputRunner{}
+	r := newRepoReaderWithRunner(runner, "/repo")
+
+	commits, err := r.CommitsSinceCommit(context.Background(), "abc123", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if commits != nil {
+		t.Errorf("expected nil commits, got %v", commits)
+	}
+	if len(runner.calls) != 0 {
+		t.Errorf("expected no git calls, got %d", len(runner.calls))
+	}
+}
+
+func TestCommitsSinceCommit_LogsRangeRestrictedToFiles(t *testing.T) {
+	out := "def456\x1fAndy Pollari\x1f2026-07-15T14:19:07+02:00\x1ffeat: bump grafana\n" +
+		"abc123\x1fAndy Pollari\x1f2026-07-15T13:58:41+02:00\x1ffix: retry send"
+	runner := &fakeOutputRunner{output: []byte(out)}
+	r := newRepoReaderWithRunner(runner, "/repo")
+
+	commits, err := r.CommitsSinceCommit(context.Background(), "old-sha",
+		[]string{"/repo/grafana/docker-compose.yml"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	call := runner.calls[0]
+	assertArgPresent(t, call.args, "log")
+	assertArgPresent(t, call.args, "old-sha..HEAD")
+	assertArgPresent(t, call.args, "/repo/grafana/docker-compose.yml")
+	assertArgPresent(t, call.args, "--")
+
+	if len(commits) != 2 {
+		t.Fatalf("expected 2 commits, got %d", len(commits))
+	}
+	// Newest first.
+	if commits[0].SHA != "def456" || commits[0].Subject != "feat: bump grafana" || commits[0].Author != "Andy Pollari" {
+		t.Errorf("unexpected first commit: %+v", commits[0])
+	}
+	if commits[0].Date.IsZero() {
+		t.Error("expected first commit date to parse")
+	}
+	if commits[1].SHA != "abc123" || commits[1].Subject != "fix: retry send" {
+		t.Errorf("unexpected second commit: %+v", commits[1])
+	}
+}
+
+func TestParseCommitLog_SkipsMalformedLines(t *testing.T) {
+	out := "abc123\x1fAndy\x1f2026-07-15T13:58:41+02:00\x1ffix: retry send\n" +
+		"garbage-without-separators\n" +
+		"def456\x1fAndy\x1f2026-07-15T14:19:07+02:00\x1ffeat: bump"
+	commits := parseCommitLog(out)
+	if len(commits) != 2 {
+		t.Fatalf("expected 2 valid commits (1 malformed skipped), got %d", len(commits))
+	}
+}
+
+func TestParseCommitLog_EmptyOutput(t *testing.T) {
+	if commits := parseCommitLog("   \n  "); commits != nil {
+		t.Errorf("expected nil for blank output, got %v", commits)
+	}
+}
+
 // makeFakeClone returns a temp dir containing a .git directory, i.e. what a
 // successful clone leaves behind.
 func makeFakeClone(t *testing.T) string {

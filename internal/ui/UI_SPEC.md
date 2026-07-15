@@ -108,7 +108,9 @@ The health colours are their own semantic tier (`--h-*`), kept a distinct hue fr
 ### Expandable panels
 
 - **Files pill** — shown when `changed_files` is non-empty. Click inserts a full-width panel as a sibling element directly below the row (same pattern as the error detail panel). Clicking again removes the panel.
-- **Diff panel** — when `has_diffs` is `true` on the event, clicking the files pill fetches diffs from `GET /api/events/{id}/diffs` and renders a syntax-colored diff panel instead of the plain file list. Each file is a collapsible section (single-file diffs default to expanded). Diff lines are colored: additions (green), deletions (red), hunk headers (yellow), metadata (muted). Diffs are cached client-side after the first fetch.
+- **Diff panel** — when `has_diffs` is `true` on the event, clicking the files pill fetches diffs from `GET /api/events/{id}/diffs` and renders a syntax-colored diff panel instead of the plain file list. Each file is a collapsible section (single-file diffs default to expanded). Diff lines are colored: additions (green), deletions (red), hunk headers (yellow), metadata (muted). Diffs (and commits, below) are cached client-side after the first fetch.
+  - **Row binding (variant A)** — a diff panel opened from a deploy row binds to it exactly like the [health panel](#stack-health): the open row gains `diff-open` and the panel gains `bound` + `data-status`, so both share a **status-coloured left bar** (`inset 3px`) and tint (`--dc` from the deploy status: success→green, failed / rolled_back_unhealthy→red, rolled_back→rosé, queued→amber, deploying→accent). Opening again (or on an empty-diff fallback to the file list) clears `diff-open`.
+  - **Commit header** (`data-testid="diff-head"`) — above the file sections. When bound, an **echo line** repeats the stack name + `deploy diff` label + a status pill, so the panel names its own row even when scrolled away from it. Below that, when the diffs API returns `commits`, the **newest commit**'s subject (message first line), then a meta line of `author · relative time (full timestamp in title) · short SHA`. For a **multi-commit range** the meta line instead shows `oldestSHA → newestSHA`, an `N commits` pill (`data-testid="commits-pill"`) toggling a collapsible per-commit list (`data-testid="diff-commit-list"`, collapsed by default), and the newest commit's author/time. A diff panel opened from a **log line** is unbound (no row to tie to) and shows the commit header without the echo line.
 - **Error detail** — shown for `failed` events with an `error` field. Monospace, red-tinted, `pre-wrap`.
 
 ### Deploys filter
@@ -202,7 +204,7 @@ On connect the in-memory backlog (bounded ring, 1000 entries, no persistence acr
 
 ## Diff API
 
-`GET /api/events/{id}/diffs` — returns `{"diffs": {"filepath": "diff content", ...}}` or `{"diffs": null}`. Returns 404 for unknown event IDs.
+`GET /api/events/{id}/diffs` — returns `{"diffs": {"filepath": "diff content", ...}, "commits": [{"sha","subject","author","date"}, ...]}` or `{"diffs": null, "commits": null}`. `commits` are the git commits in the range `LastDeployedCommit..HEAD` that touched the event's changed files, newest first (capped at 50). Returns 404 for unknown event IDs.
 
 ## Version API
 
@@ -214,7 +216,7 @@ On connect the in-memory backlog (bounded ring, 1000 entries, no persistence acr
 
 The header label is painted once on load: a **feature-branch** build (branch set and ≠ `main`) shows `branch · commit`; otherwise it shows `v<version> · commit` (or `dev · commit`). The same `version-commit` string is baked into the service worker's cache name (`/sw.js`) so two feature-branch builds that share a release semver still bust the app-shell cache.
 
-Diffs are stored in `deploy-history.yaml` alongside events but are **not** included in SSE payloads (only `has_diffs: true` is sent). This keeps the real-time stream lightweight. Large diffs are truncated at 10 KB per file and 50 KB total per event.
+Diffs and commit metadata are stored in `deploy-history.yaml` alongside events but are **not** included in SSE payloads (only `has_diffs: true` is sent). This keeps the real-time stream lightweight. Large diffs are truncated at 10 KB per file and 50 KB total per event.
 
 ---
 

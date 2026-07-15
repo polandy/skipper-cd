@@ -154,3 +154,49 @@ func TestIntegration_RepoReaderReadsCommits(t *testing.T) {
 		t.Errorf("expected diff with new image line, got %q", diff)
 	}
 }
+
+func TestIntegration_CommitsSinceCommitRestrictedToFiles(t *testing.T) {
+	requireGit(t)
+	origin := makeOriginRepo(t)
+	repoDir := filepath.Join(t.TempDir(), "repo")
+
+	s := NewRepoSync(origin, repoDir, "main", time.Minute, nil)
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	baseSHA := runGit(t, repoDir, "rev-parse", "HEAD")
+
+	// Two more commits: one touches the compose file, one touches an unrelated
+	// file. Only the compose commit must show up when we restrict to it.
+	writeFile(t, filepath.Join(origin, "docker-compose.yml"), "services:\n  app:\n    image: nginx:1.26\n")
+	runGit(t, origin, "commit", "-am", "bump image to 1.26")
+	writeFile(t, filepath.Join(origin, "README.md"), "docs\n")
+	runGit(t, origin, "add", ".")
+	runGit(t, origin, "commit", "-m", "add readme")
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	r := NewRepoReader(repoDir, time.Minute, nil)
+	composePath := filepath.Join(repoDir, "docker-compose.yml")
+
+	commits, err := r.CommitsSinceCommit(context.Background(), baseSHA, []string{composePath})
+	if err != nil {
+		t.Fatalf("CommitsSinceCommit: %v", err)
+	}
+	if len(commits) != 1 {
+		t.Fatalf("expected exactly the compose commit, got %d: %+v", len(commits), commits)
+	}
+	if commits[0].Subject != "bump image to 1.26" {
+		t.Errorf("unexpected subject: %q", commits[0].Subject)
+	}
+	if commits[0].Author != "test" {
+		t.Errorf("expected author 'test', got %q", commits[0].Author)
+	}
+	if len(commits[0].SHA) != 40 {
+		t.Errorf("expected full 40-char SHA, got %q", commits[0].SHA)
+	}
+	if commits[0].Date.IsZero() {
+		t.Error("expected a parsed commit date")
+	}
+}

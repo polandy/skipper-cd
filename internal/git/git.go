@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/command"
+	"github.com/polandy/skipper-cd/internal/events"
 )
 
 const defaultRepoDir = "/var/lib/skipper/repo"
@@ -130,6 +131,57 @@ func (r *RepoReader) FileAtCommit(ctx context.Context, commitSHA, filePath strin
 		return nil, fmt.Errorf("git show %s:%s: %w", commitSHA, relPath, err)
 	}
 	return output, nil
+}
+
+// maxCommitsPerEvent bounds how many commits a single event carries, keeping
+// the on-demand payload small when a stack changed across a long history.
+const maxCommitsPerEvent = 50
+
+// commitLogFormat separates commit fields with the unit-separator byte (0x1f),
+// which cannot appear in a name or a subject, so parsing never splits wrongly.
+// Fields: full SHA, author name, author date (RFC3339), subject.
+const commitLogFormat = "--pretty=format:%H%x1f%an%x1f%aI%x1f%s"
+
+// CommitsSinceCommit returns the commits in the range fromSHA..HEAD that touched
+// any of the given files, newest first. The result feeds the diff panel's commit
+// header. Returns nil when fromSHA is empty (first deploy) or no files are given.
+func (r *RepoReader) CommitsSinceCommit(ctx context.Context, fromSHA string, filePaths []string) ([]events.CommitInfo, error) {
+	if fromSHA == "" || len(filePaths) == 0 {
+		return nil, nil
+	}
+	args := []string{"-C", r.repoDir, "log", "--no-merges",
+		fmt.Sprintf("--max-count=%d", maxCommitsPerEvent), commitLogFormat,
+		fromSHA + "..HEAD", "--"}
+	args = append(args, filePaths...)
+	output, err := r.runner.Output(ctx, "", "git", args...)
+	if err != nil {
+		return nil, fmt.Errorf("git log %s..HEAD: %w", fromSHA, err)
+	}
+	return parseCommitLog(string(output)), nil
+}
+
+// parseCommitLog turns commitLogFormat output into CommitInfo values, skipping
+// any malformed line rather than failing the whole deploy over one bad record.
+func parseCommitLog(output string) []events.CommitInfo {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return nil
+	}
+	var commits []events.CommitInfo
+	for line := range strings.SplitSeq(output, "\n") {
+		fields := strings.SplitN(line, "\x1f", 4)
+		if len(fields) != 4 {
+			continue
+		}
+		date, _ := time.Parse(time.RFC3339, fields[2])
+		commits = append(commits, events.CommitInfo{
+			SHA:     fields[0],
+			Author:  fields[1],
+			Date:    date,
+			Subject: fields[3],
+		})
+	}
+	return commits
 }
 
 // DiffSinceCommit returns the git diff of a file between fromSHA and HEAD.

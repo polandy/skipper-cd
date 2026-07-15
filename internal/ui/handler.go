@@ -305,7 +305,8 @@ func DiffHandler(history *events.History) http.Handler {
 		// The status header is already written; a failed body write cannot
 		// be reported to the client anymore.
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"diffs": evt.Diffs,
+			"diffs":   evt.Diffs,
+			"commits": evt.Commits,
 		})
 	})
 }

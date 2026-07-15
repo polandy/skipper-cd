@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/polandy/skipper-cd/internal/events"
 )
 
 // recordingRunner is a fake Runner that records every command it receives
@@ -61,9 +63,11 @@ func (f *fakeRepoSyncer) Sync(_ context.Context) error {
 }
 
 type fakeCommitReader struct {
-	diffs   map[string]string
-	files   map[string][]byte // commitSHA:filePath -> content
-	fileErr error             // error to return from FileAtCommit
+	diffs     map[string]string
+	commits   map[string][]events.CommitInfo // filePath -> commits touching it
+	commitErr error                          // error to return from CommitsSinceCommit
+	files     map[string][]byte              // commitSHA:filePath -> content
+	fileErr   error                          // error to return from FileAtCommit
 }
 
 func (f *fakeCommitReader) HeadCommitSHA(_ context.Context) (string, error) {
@@ -75,6 +79,26 @@ func (f *fakeCommitReader) DiffSinceCommit(_ context.Context, _, filePath string
 		return d, nil
 	}
 	return "", nil
+}
+
+// CommitsSinceCommit returns the union of canned commits for the given files,
+// de-duplicated by SHA (mirroring one git-log call over several pathspecs).
+func (f *fakeCommitReader) CommitsSinceCommit(_ context.Context, _ string, filePaths []string) ([]events.CommitInfo, error) {
+	if f.commitErr != nil {
+		return nil, f.commitErr
+	}
+	var out []events.CommitInfo
+	seen := map[string]bool{}
+	for _, p := range filePaths {
+		for _, c := range f.commits[p] {
+			if seen[c.SHA] {
+				continue
+			}
+			seen[c.SHA] = true
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeCommitReader) FileAtCommit(_ context.Context, commitSHA, filePath string) ([]byte, error) {
