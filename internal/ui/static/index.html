@@ -999,6 +999,139 @@
     font-style: italic;
   }
 
+  /* Variant-A binding (as for the health panel): the open row and its diff panel
+     share a status-coloured left bar + tint so the panel always reads as tied to
+     its row. --dc is the row's deploy-status colour; the diff panel opened from a
+     log line is unbound (no row to tie to) and keeps the plain background. */
+  .event-row.diff-open[data-status="success"],              .diff-panel.bound[data-status="success"]              { --dc: var(--success); }
+  .event-row.diff-open[data-status="failed"],               .diff-panel.bound[data-status="failed"]               { --dc: var(--danger); }
+  .event-row.diff-open[data-status="rolled_back"],          .diff-panel.bound[data-status="rolled_back"]          { --dc: var(--rollback); }
+  .event-row.diff-open[data-status="rolled_back_unhealthy"],.diff-panel.bound[data-status="rolled_back_unhealthy"]{ --dc: var(--danger); }
+  .event-row.diff-open[data-status="queued"],               .diff-panel.bound[data-status="queued"]               { --dc: var(--queued); }
+  .event-row.diff-open[data-status="deploying"],            .diff-panel.bound[data-status="deploying"]            { --dc: var(--accent); }
+  .event-row.diff-open {
+    background: color-mix(in srgb, var(--dc, var(--accent)) 8%, transparent);
+    box-shadow: inset 3px 0 0 var(--dc, var(--accent));
+  }
+  .diff-panel.bound {
+    background: color-mix(in srgb, var(--dc, var(--accent)) 5%, var(--bg-sunken));
+    border-color: color-mix(in srgb, var(--dc, var(--accent)) 22%, var(--border));
+    box-shadow: inset 3px 0 0 var(--dc, var(--accent));
+  }
+
+  /* Keep the variant-A left bar continuous across the row→panel seam: square the
+     adjoining corners and close the .event-list 2px inter-row gap, so an open row
+     and its bound panel read as one card with an unbroken left bar. Applies to the
+     health panel too — it shares the same binding. */
+  .event-row.health-open, .event-row.diff-open {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .health-panel, .diff-panel.bound {
+    margin-top: -2px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+  /* The diff panel carries a full 1px border (needed unbound, in the log view).
+     Bound, its top and left borders would sit beside the shared 3px status bar and
+     double the line — offsetting the bar from the row's. Drop them so the bar is
+     the left edge, exactly as the health panel (border-bottom only) does. */
+  .diff-panel.bound {
+    border-top: none;
+    border-left: none;
+  }
+
+  /* Commit-metadata header — the message/author/time/SHA of what shipped, above
+     the file diffs (git range LastDeployedCommit..HEAD, restricted to the changed
+     files). Fetched with the diffs from /api/events/{id}/diffs. */
+  .diff-head {
+    padding: 10px 14px 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .diff-head-echo {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .diff-head-echo .dh-who { color: var(--text-primary); font-size: 12.5px; font-weight: 700; }
+  .diff-head-echo .dh-label { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.09em; font-weight: 600; }
+  .diff-head-echo .dh-pill {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px 2px 6px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--dc, var(--accent));
+    border: 1px solid color-mix(in srgb, var(--dc, var(--accent)) 32%, transparent);
+    background: color-mix(in srgb, var(--dc, var(--accent)) 13%, transparent);
+  }
+  .diff-head-echo .dh-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--dc, var(--accent)); }
+  .diff-commit { display: flex; align-items: flex-start; gap: 9px; }
+  .diff-commit .commit-glyph { width: 14px; height: 14px; margin-top: 1px; color: var(--text-muted); flex-shrink: 0; }
+  .diff-commit .dh-subject {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.35;
+  }
+  .diff-meta-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-left: 23px;
+    font-family: var(--font-display);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+  .diff-meta-line .m-item { display: inline-flex; align-items: center; gap: 5px; }
+  .diff-meta-line .m-item svg { width: 12px; height: 12px; opacity: 0.7; }
+  .diff-meta-line .m-sep { color: var(--text-muted); }
+  .diff-meta-line .m-sha {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+  .diff-meta-line .m-range { display: inline-flex; align-items: center; gap: 5px; }
+  .diff-meta-line .m-range .m-arr { color: var(--text-muted); }
+  .diff-meta-line .commits-pill {
+    font-family: var(--font-display);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    padding: 1px 7px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .diff-commit-list {
+    list-style: none;
+    margin: 9px 0 0 23px;
+    padding: 9px 0 0;
+    border-top: 1px dashed var(--border);
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .diff-commit-list.expanded { display: flex; }
+  .diff-commit-list li { display: flex; gap: 9px; align-items: baseline; }
+  .diff-commit-list .cl-subject { font-family: var(--font-display); font-size: 12px; color: var(--text-primary); }
+  .diff-commit-list .cl-meta { font-family: var(--font-display); font-size: 10.5px; color: var(--text-muted); }
+
   /* ─── SEPARATOR ─── */
   .sep {
     display: flex;
@@ -1969,13 +2102,89 @@
     }).join('\n');
   }
 
-  function renderDiffPanel(diffs) {
+  function shortSHA(sha) { return (sha || '').slice(0, 7); }
+
+  // statusText renders a deploy status as the short label shown on the diff
+  // panel's echo pill (mirrors badge wording without the stacked layout).
+  function statusText(status) {
+    if (status === 'rolled_back') return 'rolled back';
+    if (status === 'rolled_back_unhealthy') return 'rolled back · unhealthy';
+    return status || '';
+  }
+
+  var personGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+  var clockGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
+
+  // renderCommitHead builds the diff panel's header: an optional row-echo
+  // (stack + status, present only when opened from a deploy row — meta set) and,
+  // when commit metadata is available, the newest commit's message/author/time
+  // plus a collapsible list for a multi-commit range. Returns '' when there is
+  // nothing to show.
+  function renderCommitHead(commits, meta) {
+    var hasEcho = !!(meta && meta.stack);
+    var hasCommits = !!(commits && commits.length);
+    if (!hasEcho && !hasCommits) return '';
+    var html = '<div class="diff-head" data-testid="diff-head">';
+    if (hasEcho) {
+      html += '<div class="diff-head-echo">' +
+        '<span class="dh-who">' + escapeHtml(meta.stack) + '</span>' +
+        '<span class="dh-label">deploy diff</span>' +
+        '<span class="dh-pill"><span class="hdot"></span>' + escapeHtml(statusText(meta.status)) + '</span>' +
+        '</div>';
+    }
+    if (hasCommits) {
+      var head = commits[0];
+      var multi = commits.length > 1;
+      html += '<div class="diff-commit">' +
+        '<svg class="commit-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21"/></svg>' +
+        '<span class="dh-subject">' + escapeHtml(head.subject || '') + '</span></div>';
+      var line = '<div class="diff-meta-line">';
+      if (multi) {
+        var oldest = commits[commits.length - 1];
+        line += '<span class="m-range"><span class="m-sha">' + escapeHtml(shortSHA(oldest.sha)) +
+          '</span><span class="m-arr">→</span><span class="m-sha">' + escapeHtml(shortSHA(head.sha)) + '</span></span>' +
+          '<span class="m-sep">·</span>' +
+          '<button class="commits-pill" data-testid="commits-pill">' + commits.length + ' commits</button>' +
+          '<span class="m-sep">·</span>';
+      }
+      line += '<span class="m-item">' + personGlyph + escapeHtml(head.author || '') + '</span>';
+      if (head.date) {
+        line += '<span class="m-sep">·</span><span class="m-item" data-testid="commit-time" title="' + escapeAttr(fullTime(head.date)) + '">' +
+          clockGlyph + escapeHtml(formatTime(head.date)) + '</span>';
+      }
+      if (!multi) {
+        line += '<span class="m-sep">·</span><span class="m-sha" data-testid="commit-sha">' + escapeHtml(shortSHA(head.sha)) + '</span>';
+      }
+      line += '</div>';
+      html += line;
+      if (multi) {
+        html += '<ul class="diff-commit-list" data-testid="diff-commit-list">' + commits.map(function(c) {
+          return '<li><span class="m-sha">' + escapeHtml(shortSHA(c.sha)) + '</span><span>' +
+            '<span class="cl-subject">' + escapeHtml(c.subject || '') + '</span> ' +
+            '<span class="cl-meta">— ' + escapeHtml(c.author || '') +
+            (c.date ? ', ' + escapeHtml(formatTime(c.date)) : '') + '</span></span></li>';
+        }).join('') + '</ul>';
+      }
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // renderDiffPanel builds the expandable diff panel. meta (optional) carries the
+  // deploy row's stack + status: when set, the panel binds to its row (variant A
+  // — shared status bar/tint) and echoes stack+status in the header. Opened from
+  // a log line, meta is absent and the panel stays unbound.
+  function renderDiffPanel(diffs, commits, meta) {
     var el = document.createElement('div');
     el.className = 'diff-panel';
     el.dataset.testid = 'diff-panel';
+    if (meta && meta.status) {
+      el.classList.add('bound');
+      el.dataset.status = meta.status;
+    }
     var files = Object.keys(diffs);
     var singleFile = files.length === 1;
-    el.innerHTML = files.map(function(f) {
+    el.innerHTML = renderCommitHead(commits, meta) + files.map(function(f) {
       var name = f.split('/').pop() || f;
       return '<div class="diff-file-section">' +
         '<div class="diff-file-header' + (singleFile ? ' expanded' : '') + '">' +
@@ -1991,20 +2200,20 @@
 
   function fetchDiffs(eventId, callback) {
     if (diffCache[eventId]) {
-      callback(diffCache[eventId]);
+      callback(diffCache[eventId].diffs, diffCache[eventId].commits);
       return;
     }
     fetch('/api/events/' + eventId + '/diffs')
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(data) {
         if (data && data.diffs) {
-          diffCache[eventId] = data.diffs;
-          callback(data.diffs);
+          diffCache[eventId] = { diffs: data.diffs, commits: data.commits || null };
+          callback(data.diffs, diffCache[eventId].commits);
         } else {
-          callback(null);
+          callback(null, null);
         }
       })
-      .catch(function() { callback(null); });
+      .catch(function() { callback(null, null); });
   }
 
   function escapeHtml(s) {
@@ -2879,6 +3088,14 @@
       return;
     }
 
+    var cpill = e.target.closest('.commits-pill');
+    if (cpill) {
+      var chead = cpill.closest('.diff-head');
+      var clist = chead && chead.querySelector('.diff-commit-list');
+      if (clist) clist.classList.toggle('expanded');
+      return;
+    }
+
     var pill = e.target.closest('.log-diff-pill');
     if (!pill) return;
     var line = pill.closest('.log-line');
@@ -2887,9 +3104,9 @@
       existing.remove();
       return;
     }
-    fetchDiffs(pill.dataset.eventId, function(diffs) {
+    fetchDiffs(pill.dataset.eventId, function(diffs, commits) {
       if (diffs && Object.keys(diffs).length > 0) {
-        line.after(renderDiffPanel(diffs));
+        line.after(renderDiffPanel(diffs, commits, null));
       } else {
         var note = document.createElement('div');
         note.className = 'files-list';
@@ -3089,6 +3306,15 @@
       return;
     }
 
+    // Commit-range pill: expand/collapse the multi-commit list in the diff head.
+    var cpill = e.target.closest('.commits-pill');
+    if (cpill) {
+      var chead = cpill.closest('.diff-head');
+      var clist = chead && chead.querySelector('.diff-commit-list');
+      if (clist) clist.classList.toggle('expanded');
+      return;
+    }
+
     // Stack-health pill: toggle its per-service panel. Handled before the files
     // logic so a tap on the pill never opens the row's files/diff panel (mobile).
     var hpill = e.target.closest('.health-pill');
@@ -3115,22 +3341,29 @@
     var existing = row.nextElementSibling;
     if (existing && (existing.classList.contains('files-list') || existing.classList.contains('diff-panel'))) {
       existing.remove();
+      row.classList.remove('diff-open');
       return;
     }
 
     var eventId = row.dataset.eventId;
     var hasDiffs = row.dataset.hasDiffs === '1';
+    // Bind the panel to its row (variant A): the shared status bar/tint keys off
+    // the row's status, so pass it to the panel and mark the row open.
+    var meta = { stack: row.dataset.stack, status: row.dataset.status };
 
     if (hasDiffs && eventId) {
+      row.classList.add('diff-open');
       var loading = document.createElement('div');
-      loading.className = 'diff-panel';
+      loading.className = 'diff-panel bound';
+      loading.dataset.status = meta.status;
       loading.innerHTML = '<div class="diff-loading">Loading diffs...</div>';
       row.after(loading);
-      fetchDiffs(eventId, function(diffs) {
+      fetchDiffs(eventId, function(diffs, commits) {
         if (loading.parentNode) loading.remove();
         if (diffs && Object.keys(diffs).length > 0) {
-          row.after(renderDiffPanel(diffs));
+          row.after(renderDiffPanel(diffs, commits, meta));
         } else {
+          row.classList.remove('diff-open');
           var files = JSON.parse(pillEl.dataset.files);
           row.after(createFilesPanel(files));
         }

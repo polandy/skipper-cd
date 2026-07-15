@@ -25,6 +25,18 @@ const (
 	StatusQueued Status = "queued"
 )
 
+// CommitInfo describes one git commit deployed by an event: the metadata
+// shown above the file diffs (message, author, time, SHA). Populated for the
+// range state.LastDeployedCommit..HEAD, restricted to the event's changed
+// files, and — like Diffs — carried on the event but fetched on demand rather
+// than streamed over SSE.
+type CommitInfo struct {
+	SHA     string    `json:"sha" yaml:"sha"`
+	Subject string    `json:"subject" yaml:"subject"`
+	Author  string    `json:"author" yaml:"author"`
+	Date    time.Time `json:"date" yaml:"date"`
+}
+
 // DeployEvent represents a single deployment status change.
 type DeployEvent struct {
 	ID           int64             `json:"id" yaml:"id"`
@@ -35,14 +47,17 @@ type DeployEvent struct {
 	Error        string            `json:"error,omitempty" yaml:"error,omitempty"`
 	ChangedFiles []string          `json:"changed_files,omitempty" yaml:"changed_files,omitempty"`
 	Diffs        map[string]string `json:"diffs,omitempty" yaml:"diffs,omitempty"`
+	Commits      []CommitInfo      `json:"commits,omitempty" yaml:"commits,omitempty"`
 	HasDiffs     bool              `json:"has_diffs,omitempty" yaml:"-"`
 }
 
-// SSEPayload returns a copy suitable for SSE streaming: diffs are stripped
-// and HasDiffs is set so the UI knows diffs are available on demand.
+// SSEPayload returns a copy suitable for SSE streaming: diffs and commits are
+// stripped (fetched on demand via /api/events/{id}/diffs) and HasDiffs is set
+// so the UI knows the detail panel is available.
 func (e DeployEvent) SSEPayload() DeployEvent {
 	e.HasDiffs = len(e.Diffs) > 0
 	e.Diffs = nil
+	e.Commits = nil
 	return e
 }
 

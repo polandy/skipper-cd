@@ -29,7 +29,7 @@ func TestEmit_ShortensPathsToRepoRelative(t *testing.T) {
 
 	d.emit(events.StatusSuccess, NixosStateKey, 0, "",
 		[]string{inside, outside},
-		map[string]string{inside: "diff-a", outside: "diff-b"})
+		map[string]string{inside: "diff-a", outside: "diff-b"}, nil)
 
 	wantFiles := []string{"system/argoneon/default.nix", outside}
 	if !slices.Equal(got.ChangedFiles, wantFiles) {

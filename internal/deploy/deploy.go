@@ -30,6 +30,7 @@ import (
 type CommitReader interface {
 	HeadCommitSHA(ctx context.Context) (string, error)
 	DiffSinceCommit(ctx context.Context, fromSHA, filePath string) (string, error)
+	CommitsSinceCommit(ctx context.Context, fromSHA string, filePaths []string) ([]events.CommitInfo, error)
 	FileAtCommit(ctx context.Context, commitSHA, filePath string) ([]byte, error)
 }
 
@@ -165,7 +166,7 @@ func (d *Deployer) InitEventID(startID int64) {
 // emit sends a deploy event to the sink and returns its ID (0 when no
 // sink is configured). The ID lets log lines reference the event, e.g.
 // for diff lookups via /api/events/{id}/diffs.
-func (d *Deployer) emit(status events.Status, stack string, duration time.Duration, errMsg string, changedFiles []string, diffs map[string]string) int64 {
+func (d *Deployer) emit(status events.Status, stack string, duration time.Duration, errMsg string, changedFiles []string, diffs map[string]string, commits []events.CommitInfo) int64 {
 	if d.eventSink == nil {
 		return 0
 	}
@@ -179,6 +180,7 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		Error:        errMsg,
 		ChangedFiles: d.repoRelativePaths(changedFiles),
 		Diffs:        d.repoRelativeDiffs(diffs),
+		Commits:      commits,
 	})
 	return id
 }
@@ -305,13 +307,13 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 			switch {
 			case errors.Is(err, ErrRollbackUnhealthy):
 				slog.Error("deploy failed, rollback ran but stack is still unhealthy", "stack", stack.Name, "err", err)
-				d.emit(events.StatusRolledBackUnhealthy, stack.Name, duration, err.Error(), nil, nil)
+				d.emit(events.StatusRolledBackUnhealthy, stack.Name, duration, err.Error(), nil, nil, nil)
 			case errors.Is(err, ErrRolledBack):
 				slog.Warn("deploy failed but rolled back", "stack", stack.Name, "err", err)
-				d.emit(events.StatusRolledBack, stack.Name, duration, err.Error(), nil, nil)
+				d.emit(events.StatusRolledBack, stack.Name, duration, err.Error(), nil, nil, nil)
 			default:
 				slog.Error("deploy failed", "stack", stack.Name, "err", err)
-				d.emit(events.StatusFailed, stack.Name, duration, err.Error(), nil, nil)
+				d.emit(events.StatusFailed, stack.Name, duration, err.Error(), nil, nil, nil)
 			}
 		}
 	}
@@ -366,7 +368,8 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		// at the pre-rebuild baseline: diff the reconciled files against it so the UI
 		// shows what changed, exactly like a normal rebuild success (ADR-0025).
 		reconciledDiffs := d.collectDiffs(ctx, reconciled, state.LastDeployedCommit)
-		d.emit(events.StatusSuccess, NixosStateKey, 0, "", reconciled, reconciledDiffs)
+		reconciledCommits := d.collectCommits(ctx, reconciled, state.LastDeployedCommit)
+		d.emit(events.StatusSuccess, NixosStateKey, 0, "", reconciled, reconciledDiffs, reconciledCommits)
 		slog.Info("reconciled nixos-rebuild interrupted by a self-restart", "changed_files", reconciled)
 		// Nothing changed since the interrupted rebuild → done. A nix change that
 		// arrived afterwards still falls through to a fresh rebuild below.
@@ -379,7 +382,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	if len(changed) == 0 {
 		d.clearQueued(NixosStateKey) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(NixosStateKey).Inc()
-		d.emit(events.StatusSkipped, NixosStateKey, 0, "", nil, nil)
+		d.emit(events.StatusSkipped, NixosStateKey, 0, "", nil, nil, nil)
 		return true
 	}
 
@@ -387,6 +390,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	// show *what* changed, not just which files did (LastDeployedCommit is only
 	// advanced at the end of the run, so it still points at the previous state).
 	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
+	commits := d.collectCommits(ctx, changed, state.LastDeployedCommit)
 
 	// Autosync gate: when _nixos is paused, defer the rebuild. Keep the previous
 	// nix hashes (do not pre-save) so the change stays pending, and return true
@@ -394,7 +398,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	if d.isPaused(NixosStateKey) {
 		reason := d.markQueued(NixosStateKey, changed)
 		metrics.DeploysQueued.WithLabelValues(NixosStateKey).Inc()
-		d.emit(events.StatusQueued, NixosStateKey, 0, "", changed, diffs)
+		d.emit(events.StatusQueued, NixosStateKey, 0, "", changed, diffs, commits)
 		slog.Info("nixos-rebuild deferred: autosync paused", "reason", reason, "changed_files", changed)
 		return true
 	}
@@ -432,7 +436,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		state.clearNixOSRebuildInFlight()
 		_ = saveDeployState(d.stateDir, state)
 		metrics.DeployErrors.WithLabelValues(NixosStateKey).Inc()
-		d.emit(events.StatusFailed, NixosStateKey, time.Since(startTime), err.Error(), changed, diffs)
+		d.emit(events.StatusFailed, NixosStateKey, time.Since(startTime), err.Error(), changed, diffs, commits)
 		return false
 	}
 
@@ -441,7 +445,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	state.clearNixOSRebuildInFlight()
 	metrics.DeploysTriggered.WithLabelValues(NixosStateKey).Inc()
 	metrics.LastDeployTimestamp.WithLabelValues(NixosStateKey).Set(float64(time.Now().Unix()))
-	d.emit(events.StatusSuccess, NixosStateKey, time.Since(startTime), "", changed, diffs)
+	d.emit(events.StatusSuccess, NixosStateKey, time.Since(startTime), "", changed, diffs, commits)
 	slog.Info("nixos-rebuild complete", "changed_files", changed)
 	return true
 }
@@ -496,7 +500,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		d.clearQueued(stack.Name) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
-		d.emit(events.StatusSkipped, stack.Name, 0, "", nil, nil)
+		d.emit(events.StatusSkipped, stack.Name, 0, "", nil, nil, nil)
 		return nil
 	}
 
@@ -509,7 +513,8 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		// Carry the diff of what is waiting so the paused row can show the
 		// effective change, not just the file paths.
 		diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
-		d.emit(events.StatusQueued, stack.Name, 0, "", changed, diffs)
+		commits := d.collectCommits(ctx, changed, state.LastDeployedCommit)
+		d.emit(events.StatusQueued, stack.Name, 0, "", changed, diffs, commits)
 		slog.Info("deploy deferred: autosync paused", "stack", stack.Name, "reason", reason, "changed_files", changed)
 		return nil
 	}
@@ -518,11 +523,12 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.clearQueued(stack.Name)
 
 	deployStart := time.Now()
-	d.emit(events.StatusDeploying, stack.Name, 0, "", changed, nil)
+	d.emit(events.StatusDeploying, stack.Name, 0, "", changed, nil, nil)
 	// This stack is now the active deploy: surface the ones still to come.
 	d.publishUpcomingAfter(stack.Name)
 	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", projectDir, "changed_files", changed)
 	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
+	commits := d.collectCommits(ctx, changed, state.LastDeployedCommit)
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
 	var currentImages serviceImageByName
@@ -573,7 +579,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		state.recordImages(stack.Name, currentImages)
 	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
-	eventID := d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs)
+	eventID := d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs, commits)
 	if eventID != 0 {
 		// The event ID lets the log view fetch this deploy's diffs.
 		slog.Info("deploy complete", "stack", stack.Name, "event_id", eventID)
@@ -652,6 +658,33 @@ func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, 
 		return nil
 	}
 	return result
+}
+
+// collectCommits returns the commits in the range lastDeployedCommit..HEAD that
+// touched the event's changed files (repo-relative story of what shipped), for
+// the diff panel's commit header. Returns nil when no CommitReader is configured,
+// no previous commit is known, or no changed file lives inside the repo clone —
+// mirroring collectDiffs so the header and the diffs stay in lockstep.
+func (d *Deployer) collectCommits(ctx context.Context, changedFilePaths []string, lastDeployedCommit string) []events.CommitInfo {
+	if d.commitReader == nil || lastDeployedCommit == "" {
+		return nil
+	}
+	repoFiles := make([]string, 0, len(changedFilePaths))
+	for _, filePath := range changedFilePaths {
+		if d.repoDir != "" && !strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(d.repoDir)) {
+			continue
+		}
+		repoFiles = append(repoFiles, filePath)
+	}
+	if len(repoFiles) == 0 {
+		return nil
+	}
+	commits, err := d.commitReader.CommitsSinceCommit(ctx, lastDeployedCommit, repoFiles)
+	if err != nil {
+		slog.Warn("could not read commit metadata", "err", err)
+		return nil
+	}
+	return commits
 }
 
 // runDockerCompose executes a docker compose command.

@@ -215,7 +215,7 @@ notifications:
 | Format | Body sent | Use for |
 |---|---|---|
 | `signal` | `{"message": …, "number": …, "recipients": […]}` to `<url>/v2/send` | The `bbernhard/signal-cli-rest-api` service. |
-| `generic` | The full deploy event as JSON (diffs stripped), plus any `headers` | ntfy, Gotify, or your own endpoint. |
+| `generic` | The full deploy event as JSON (diffs and commit metadata stripped), plus any `headers` | ntfy, Gotify, or your own endpoint. |
 
 > **Reachability.** `url` must be reachable from wherever skipper-cd runs. As a **host service** (e.g. the [NixOS module](nixos.md)), a container's host-published port is `http://localhost:8020` — reaching it directly, bypassing any reverse proxy/auth. When skipper-cd itself runs **in a container**, `localhost` is the container, not the host (see [Docker](docker.md)).
 

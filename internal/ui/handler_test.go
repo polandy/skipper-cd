@@ -388,9 +388,10 @@ func TestDiffHandler_ReturnsNotFoundForUnknownID(t *testing.T) {
 func TestDiffHandler_ReturnsDiffsForKnownEvent(t *testing.T) {
 	history := events.NewHistory("")
 	history.Add(events.DeployEvent{
-		ID:    1,
-		Stack: "gitea",
-		Diffs: map[string]string{"docker-compose.yml": "+new line"},
+		ID:      1,
+		Stack:   "gitea",
+		Diffs:   map[string]string{"docker-compose.yml": "+new line"},
+		Commits: []events.CommitInfo{{SHA: "def456", Subject: "feat: bump gitea", Author: "Andy Pollari"}},
 	})
 
 	handler := DiffHandler(history)
@@ -413,6 +414,9 @@ func TestDiffHandler_ReturnsDiffsForKnownEvent(t *testing.T) {
 	}
 	if !strings.Contains(body, "+new line") {
 		t.Error("expected diff text in response")
+	}
+	if !strings.Contains(body, "feat: bump gitea") || !strings.Contains(body, "def456") {
+		t.Errorf("expected commit metadata in response, got %s", body)
 	}
 }
 

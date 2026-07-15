@@ -382,7 +382,14 @@ test.describe('UA8: diff panel', () => {
 
     // Snapshot: the coloured diff panel (§5 anchor). Its content is the static
     // nginx image bump, so nothing needs masking.
-    await visualSnapshot(diffPanel(page), 'diff-panel.png');
+    // Mask the commit header's volatile bits: the real git short SHA and the
+    // relative commit time both vary per run (the harness makes real commits).
+    await visualSnapshot(diffPanel(page), 'diff-panel.png', {
+      mask: [
+        page.locator('[data-testid="commit-sha"]'),
+        page.locator('[data-testid="commit-time"]'),
+      ],
+    });
 
     // Clicking again collapses it.
     await filesPill(page).click();

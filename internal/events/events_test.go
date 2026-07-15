@@ -110,6 +110,25 @@ func TestSSEPayload_StripsDiffsAndSetsHasDiffs(t *testing.T) {
 	}
 }
 
+func TestSSEPayload_StripsCommits(t *testing.T) {
+	evt := DeployEvent{
+		ID:      1,
+		Stack:   "gitea",
+		Status:  StatusSuccess,
+		Diffs:   map[string]string{"docker-compose.yml": "+new line"},
+		Commits: []CommitInfo{{SHA: "abc123", Subject: "feat: x", Author: "Andy"}},
+	}
+
+	payload := evt.SSEPayload()
+	if payload.Commits != nil {
+		t.Error("expected Commits to be nil in SSE payload (fetched on demand)")
+	}
+	// Original event should be unchanged.
+	if len(evt.Commits) != 1 {
+		t.Error("original event Commits should not be modified")
+	}
+}
+
 func TestSSEPayload_NoDiffs(t *testing.T) {
 	evt := DeployEvent{
 		ID:     2,

@@ -292,6 +292,58 @@ func TestCollectDiffs_SkipsFilesOutsideRepo(t *testing.T) {
 	}
 }
 
+// --- collectCommits tests ---
+
+func TestCollectCommits_ReturnsCommits(t *testing.T) {
+	cr := &fakeCommitReader{
+		commits: map[string][]events.CommitInfo{
+			"/repo/docker-compose.yml": {{SHA: "def456", Subject: "feat: bump", Author: "Andy"}},
+		},
+	}
+	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+
+	commits := d.collectCommits(context.Background(), []string{"/repo/docker-compose.yml"}, "old-sha")
+
+	if len(commits) != 1 || commits[0].SHA != "def456" {
+		t.Fatalf("expected the def456 commit, got %+v", commits)
+	}
+}
+
+func TestCollectCommits_NilWithoutCommitReader(t *testing.T) {
+	d := &Deployer{runner: &recordingRunner{}, stateDir: t.TempDir()}
+	if commits := d.collectCommits(context.Background(), []string{"file.yml"}, "old-sha"); commits != nil {
+		t.Error("expected nil commits without commit reader")
+	}
+}
+
+func TestCollectCommits_NilWithEmptyCommit(t *testing.T) {
+	cr := &fakeCommitReader{commits: map[string][]events.CommitInfo{}}
+	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, stateDir: t.TempDir()}
+	if commits := d.collectCommits(context.Background(), []string{"file.yml"}, ""); commits != nil {
+		t.Error("expected nil commits with empty last deployed commit")
+	}
+}
+
+func TestCollectCommits_SkipsFilesOutsideRepo(t *testing.T) {
+	cr := &fakeCommitReader{
+		commits: map[string][]events.CommitInfo{
+			"/other/file.yml": {{SHA: "def456", Subject: "feat: bump"}},
+		},
+	}
+	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+	if commits := d.collectCommits(context.Background(), []string{"/other/file.yml"}, "old-sha"); commits != nil {
+		t.Error("expected nil for files outside repo")
+	}
+}
+
+func TestCollectCommits_NilOnReaderError(t *testing.T) {
+	cr := &fakeCommitReader{commitErr: context.DeadlineExceeded}
+	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+	if commits := d.collectCommits(context.Background(), []string{"/repo/file.yml"}, "old-sha"); commits != nil {
+		t.Error("expected nil commits when the reader errors (deploy must not fail over metadata)")
+	}
+}
+
 func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "gitea")
@@ -300,9 +352,13 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
 	cr := &fakeCommitReader{
 		diffs: map[string]string{
-			filepath.Join(stackDir, "docker-compose.yml"): "+image: nginx:1.25\n",
+			composePath: "+image: nginx:1.25\n",
+		},
+		commits: map[string][]events.CommitInfo{
+			composePath: {{SHA: "def456", Subject: "feat: bump gitea image", Author: "Andy Pollari"}},
 		},
 	}
 	runner := &recordingRunner{}
@@ -334,6 +390,9 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 	}
 	if !strings.Contains(successEvt.Diffs["gitea/docker-compose.yml"], "nginx:1.25") {
 		t.Error("expected diff content in success event")
+	}
+	if len(successEvt.Commits) != 1 || successEvt.Commits[0].Subject != "feat: bump gitea image" {
+		t.Errorf("expected commit metadata in success event, got %+v", successEvt.Commits)
 	}
 }
 
