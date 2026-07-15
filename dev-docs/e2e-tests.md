@@ -59,7 +59,9 @@ asserting **behaviour + visual snapshots**.
 > client-side filter over the startup deploy rows. **Mask H** (§4.9) covers the
 > stack-health pill — **UH1** (pill per stack), **UH2** (per-service panel),
 > **UH3** (newest row per stack) — driven by a health poller scripted through the
-> stub docker's `ps` output.
+> stub docker's `ps` output. **Mask I** (§4.10) covers the diff panel's commit
+> metadata + variant-A row binding — **UI1** (commit header), **UI2** (row/panel
+> binding), **UI3** (multi-commit range) — driven by webhook image bumps.
 
 ## 1. Scope & boundaries
 
@@ -443,6 +445,25 @@ real docker, no real containers. Behaviour-only (no snapshot).
 - **UH3 — Newest row per stack.** Health is a current value, so with the pill on
   a stack's row, a pushed change that prepends a second row leaves exactly one
   pill — on the newest (first) row, not the older one.
+
+### 4.10 UI — Maske I: Diff-panel commit metadata + row binding
+
+The diff panel's commit header and its variant-A binding to the deploy row. A
+webhook that bumps a stack's image commits against the startup commit, so the
+deploy carries a real diff **and** commit metadata; the harness commits as author
+`e2e` with message `bump <stack> to <tag>`, making the header deterministic.
+Behaviour-only (no snapshot — UA8 already snapshots the diff colouring).
+
+- **UI1 — Commit header.** After a bump deploy, opening the diff panel shows a
+  `diff-head` that echoes the row (`web` + `deploy diff` + a `success` pill) and
+  the deployed commit's subject (`bump web to 1.26`), author (`e2e`) and 7-char
+  short SHA.
+- **UI2 — Variant-A binding.** Opening the panel marks the row `diff-open` and the
+  panel `bound` with `data-status="success"`, and the panel is the row's direct
+  sibling (shared, unbroken left bar); clicking again clears both.
+- **UI3 — Multi-commit range.** Two commits before a single deploy render the
+  newest as the headline (`bump web to 1.27`) and a `commits-pill` reading
+  `2 commits` that toggles the collapsed `diff-commit-list` (both commits listed).
 
 ## 5. Visual snapshot strategy
 
