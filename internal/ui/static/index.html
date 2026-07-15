@@ -3104,6 +3104,10 @@
           return;
         }
         if (authSubmit) authSubmit.disabled = false;
+        if (r.status === 429) {
+          showAuthError('Too many attempts — wait a minute and try again.');
+          return;
+        }
         showAuthError(r.status === 401 ? 'Invalid token.' : 'Unexpected error (' + r.status + ').');
       })
       .catch(function() {
@@ -3142,9 +3146,13 @@
   // EventSource does not spin retrying against a gated endpoint.
   fetch('/api/version')
     .then(function(r) {
-      if (r.status === 401) {
-        r.json().then(function(b) { showLogin(!!(b && b.tokenAuth)); },
-                      function() { showLogin(false); });
+      // 401 = gated, 429 = rate-limited after too many token attempts; both keep
+      // the client out, so show the login overlay (with a note on 429).
+      if (r.status === 401 || r.status === 429) {
+        r.json().then(function(b) {
+          showLogin(!!(b && b.tokenAuth));
+          if (r.status === 429) showAuthError('Too many attempts — wait a minute and try again.');
+        }, function() { showLogin(false); });
         return;
       }
       r.json().then(paintVersion, function() {});

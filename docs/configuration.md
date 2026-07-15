@@ -276,6 +276,11 @@ request — including the SSE event stream and PWA navigations, which cannot car
 a custom header, which is why a cookie (not a header) is used. Sign out from the
 view-options popover, which clears the cookie.
 
+Failed token attempts are **rate-limited per client IP**: after 10 wrong tokens
+within a minute that IP is locked out (`429`) until the minute elapses, so the
+token cannot be brute-forced online. Merely opening the UI (no token presented)
+never counts, and a trusted proxy is never throttled.
+
 ## Web UI Theme
 
 `ui_theme` picks the web UI's colour palette. This is a per-instance, config-time choice — handy for telling several skipper-cd instances apart at a glance (e.g. one per host) — and is independent of the header's dark/light toggle, which stays a per-browser preference within whichever palette is configured.

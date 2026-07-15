@@ -71,8 +71,14 @@ viz tool. Sign-out clears the cookie from the view-options popover.
   the shell and operational endpoints stay on the parent mux.
 - The token must be **cookie-safe** (hex/base64) since it is stored verbatim in
   a cookie; documented in `docs/configuration.md`.
+- Failed token attempts are rate-limited per client IP (a fixed-window counter,
+  10/minute by default) so the token cannot be brute-forced online; a lockout
+  returns `429`. Only presented-but-wrong tokens count — a no-credential page
+  load never locks anyone out — and a trusted proxy bypasses the limiter
+  entirely, so a shared proxy IP cannot be used to lock out other proxy users.
 - Not built: user accounts, sessions/expiry, or multiple tokens. A single shared
   token (or upstream proxy identity) matches the tool's scale; revocation is
-  "rotate the token / cookie".
+  "rotate the token / cookie". The rate-limit thresholds are fixed constants, not
+  config — sane defaults over another knob.
 - `401` (not `403`) is returned so the UI treats it as "authenticate here" and
   shows the login overlay.

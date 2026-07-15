@@ -240,7 +240,9 @@ on the `tokenAuth` flag in the 401 body:
   form (`auth-form`). Submitting validates the token via
   `Authorization: Bearer …` against `/api/version`; on `200` it stores the token
   in the `skipper_auth` cookie (`SameSite=Lax`, one year, `Secure` on HTTPS) and
-  reloads; on `401` it shows an inline error (`auth-error`) without a reload.
+  reloads; on `401` it shows an inline error (`auth-error`) without a reload. The
+  server rate-limits wrong tokens per IP (10/min): a `429` shows a "too many
+  attempts" message instead.
 - **Proxy-only** (`tokenAuth:false`) — no token to enter, so the form is hidden
   and an explanatory note (`auth-note`) says access is controlled by the reverse
   proxy.

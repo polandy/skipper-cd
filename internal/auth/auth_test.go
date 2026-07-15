@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // okHandler records whether it was reached and answers 200.
@@ -196,6 +197,84 @@ func TestNew_InvalidProxy(t *testing.T) {
 		if _, err := New("Remote-User", []string{entry}, ""); err == nil {
 			t.Fatalf("New with proxy %q should error", entry)
 		}
+	}
+}
+
+func TestGate_RateLimitsFailedTokenAttempts(t *testing.T) {
+	g, err := New("", nil, "s3cret")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Shrink the limiter so the test is quick and deterministic.
+	g.limiter = newAttemptLimiter(3, time.Minute)
+
+	wrongCookie := func(ip string) *http.Request {
+		r := request(ip+":4000", nil)
+		r.AddCookie(&http.Cookie{Name: CookieName, Value: "nope"})
+		return r
+	}
+
+	// The first max wrong attempts each get a plain 401.
+	for i := 0; i < 3; i++ {
+		rec, _ := serve(t, g, wrongCookie("203.0.113.5"))
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: want 401, got %d", i+1, rec.Code)
+		}
+	}
+
+	// Now locked out: even the correct token is refused with 429 + Retry-After.
+	good := request("203.0.113.5:4000", nil)
+	good.AddCookie(&http.Cookie{Name: CookieName, Value: "s3cret"})
+	rec, reached := serve(t, g, good)
+	if reached || rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("locked out: want 429, reached=%v code=%d", reached, rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("429 response should carry a Retry-After header")
+	}
+
+	// A different client IP shares no bucket and still authorizes.
+	other := request("198.51.100.7:4000", nil)
+	other.AddCookie(&http.Cookie{Name: CookieName, Value: "s3cret"})
+	if _, reached := serve(t, g, other); !reached {
+		t.Fatal("a different IP must not be locked out")
+	}
+}
+
+func TestGate_NoCredentialDoesNotLockOut(t *testing.T) {
+	g, _ := New("", nil, "s3cret")
+	g.limiter = newAttemptLimiter(3, time.Minute)
+
+	// Merely loading the page (no cookie/bearer) never consumes the budget, so
+	// after many such requests the client is still not blocked.
+	for i := 0; i < 10; i++ {
+		if rec, _ := serve(t, g, request("203.0.113.5:4000", nil)); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("no-credential request %d: want 401, got %d", i+1, rec.Code)
+		}
+	}
+	// The correct token still works — never rate-limited.
+	good := request("203.0.113.5:4000", nil)
+	good.AddCookie(&http.Cookie{Name: CookieName, Value: "s3cret"})
+	if _, reached := serve(t, g, good); !reached {
+		t.Fatal("no-credential loads must not lock out a valid token")
+	}
+}
+
+func TestGate_TrustedProxyNotRateLimited(t *testing.T) {
+	g, _ := New("Remote-User", []string{"10.0.0.0/8"}, "s3cret")
+	g.limiter = newAttemptLimiter(2, time.Minute)
+
+	// Exhaust the token budget from the proxy's IP with wrong cookies.
+	for i := 0; i < 5; i++ {
+		r := request("10.0.0.9:4000", nil)
+		r.AddCookie(&http.Cookie{Name: CookieName, Value: "nope"})
+		serve(t, g, r)
+	}
+	// The proxy path still authorizes despite the exhausted token budget.
+	h := http.Header{}
+	h.Set("Remote-User", "alice")
+	if _, reached := serve(t, g, request("10.0.0.9:4000", h)); !reached {
+		t.Fatal("trusted proxy path must bypass the token rate limit")
 	}
 }
 

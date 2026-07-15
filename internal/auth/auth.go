@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +37,10 @@ type Gate struct {
 	header  string       // trusted header name; "" disables the proxy path
 	proxies []*net.IPNet // upstreams allowed to assert the header
 	token   string       // shared token; "" disables the token path
+
+	// limiter throttles failed token attempts per client IP. Non-nil only when
+	// the token path is enabled.
+	limiter *attemptLimiter
 }
 
 // New builds a Gate. An empty header disables the proxy path and an empty token
@@ -51,6 +56,9 @@ func New(header string, proxies []string, token string) (*Gate, error) {
 		}
 		g.proxies = nets
 	}
+	if token != "" {
+		g.limiter = newAttemptLimiter(maxTokenAttempts, tokenAttemptWindow)
+	}
 	return g, nil
 }
 
@@ -61,23 +69,51 @@ func (g *Gate) Enabled() bool { return g.header != "" || g.token != "" }
 func (g *Gate) TokenAuthEnabled() bool { return g.token != "" }
 
 // Wrap returns a handler that authorizes requests before delegating to next.
-// A disabled gate returns next unchanged.
+// A disabled gate returns next unchanged. A trusted upstream is authorized
+// outright; every other request goes through the token path, which is throttled
+// per client IP against brute force.
 func (g *Gate) Wrap(next http.Handler) http.Handler {
 	if !g.Enabled() {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !g.authorized(r) {
-			g.reject(w)
+		// A trusted proxy is never rate-limited.
+		if g.proxyTrusted(r) {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		key := peerHost(r.RemoteAddr)
+		if g.limiter != nil && g.limiter.blocked(key) {
+			g.rejectRateLimited(w)
+			return
+		}
+		if g.tokenValid(r) {
+			if g.limiter != nil {
+				g.limiter.clear(key) // a good token forgives earlier misses
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Count only real token guesses, so merely loading the page (no
+		// credential) never locks anyone out.
+		if g.limiter != nil && g.tokenAttempted(r) {
+			g.limiter.fail(key)
+		}
+		g.reject(w)
 	})
 }
 
-// authorized reports whether r satisfies the token path or the proxy path.
-func (g *Gate) authorized(r *http.Request) bool {
-	return g.tokenValid(r) || g.proxyTrusted(r)
+// tokenAttempted reports whether r presented a token credential at all (right or
+// wrong) — a cookie or a bearer scheme.
+func (g *Gate) tokenAttempted(r *http.Request) bool {
+	if g.token == "" {
+		return false
+	}
+	if _, err := r.Cookie(CookieName); err == nil {
+		return true
+	}
+	scheme, _, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+	return ok && strings.EqualFold(scheme, "Bearer")
 }
 
 // tokenValid reports whether r presents the shared token via cookie or bearer.
@@ -106,11 +142,7 @@ func (g *Gate) proxyTrusted(r *http.Request) bool {
 
 // trustedPeer reports whether remoteAddr's IP is within a trusted proxy network.
 func (g *Gate) trustedPeer(remoteAddr string) bool {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr // RemoteAddr may already be a bare host.
-	}
-	ip := net.ParseIP(host)
+	ip := net.ParseIP(peerHost(remoteAddr))
 	if ip == nil {
 		return false
 	}
@@ -120,6 +152,16 @@ func (g *Gate) trustedPeer(remoteAddr string) bool {
 		}
 	}
 	return false
+}
+
+// peerHost returns the host part of a "host:port" RemoteAddr, or the input
+// unchanged when it carries no port.
+func peerHost(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
 }
 
 // reject writes the 401 response. The body carries a tokenAuth hint so the UI
@@ -133,6 +175,15 @@ func (g *Gate) reject(w http.ResponseWriter) {
 	}
 	// Small fixed shape; hand-written to avoid an allocation and an error path.
 	_, _ = fmt.Fprintf(w, `{"error":"unauthorized","tokenAuth":%s}`+"\n", hint)
+}
+
+// rejectRateLimited writes the 429 response for a locked-out client. The limiter
+// only exists on the token path, so tokenAuth is always true here.
+func (g *Gate) rejectRateLimited(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", strconv.Itoa(int(g.limiter.window.Seconds())))
+	w.WriteHeader(http.StatusTooManyRequests)
+	_, _ = fmt.Fprint(w, `{"error":"too many attempts","tokenAuth":true}`+"\n")
 }
 
 // tokenEqual compares two tokens in constant time. Empty inputs never match.
