@@ -768,13 +768,49 @@
   @keyframes hpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
   @media (prefers-reduced-motion: reduce) { .health-pill .hdot { animation: none; } }
 
-  .health-panel {
-    padding: 8px 14px 10px;
-    background: var(--bg-sunken);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    margin: 2px 0 4px;
+  /* Variant A: the open row and its panel share a health-coloured left bar and a
+     tint, and the panel repeats the stack + status — so it always reads as tied
+     to its row, whatever its position. --hc is the row/stack's health colour. */
+  .event-row.health-open[data-health="healthy"],   .health-panel[data-health="healthy"]   { --hc: var(--h-healthy); }
+  .event-row.health-open[data-health="unhealthy"], .health-panel[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .event-row.health-open[data-health="starting"],  .health-panel[data-health="starting"]  { --hc: var(--h-starting); }
+  .event-row.health-open[data-health="stopped"],   .health-panel[data-health="stopped"]   { --hc: var(--h-stopped); }
+  .event-row.health-open[data-health="unknown"],   .health-panel[data-health="unknown"]   { --hc: var(--h-unknown); }
+
+  .event-row.health-open {
+    background: color-mix(in srgb, var(--hc) 8%, transparent);
+    box-shadow: inset 3px 0 0 var(--hc);
   }
+  .health-panel {
+    padding: 9px 14px 12px;
+    background: color-mix(in srgb, var(--hc) 6%, var(--bg-sunken));
+    border-bottom: 1px solid var(--border);
+    box-shadow: inset 3px 0 0 var(--hc);
+  }
+  .health-panel .health-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 0 9px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .health-panel .hp-head-label { color: var(--text-muted); letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; }
+  .health-panel .hp-head-who { color: var(--text-primary); font-size: 12.5px; font-weight: 600; }
+  .health-panel .hp-head-pill {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px 2px 6px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--hc);
+    border: 1px solid color-mix(in srgb, var(--hc) 32%, transparent);
+    background: color-mix(in srgb, var(--hc) 13%, transparent);
+  }
+  .health-panel .hp-head-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--hc); }
   .health-panel .hp-svc {
     display: grid;
     grid-template-columns: 1fr auto auto;
@@ -2094,6 +2130,8 @@
   function closeHealthPanel(row) {
     var next = row.nextElementSibling;
     if (next && next.classList.contains('health-panel')) next.remove();
+    row.classList.remove('health-open');
+    row.removeAttribute('data-health');
   }
 
   function createHealthPanel(stack) {
@@ -2102,12 +2140,20 @@
     el.dataset.testid = 'health-panel';
     el.dataset.healthFor = stack;
     var h = healthSnap[stack];
+    var status = (h && h.status) || 'unknown';
+    el.dataset.health = status; // drives the shared --hc colour (variant A)
+    // Header echoes the stack + status so the panel names its own row.
+    var head = '<div class="health-panel-head">' +
+      '<span class="hp-head-label">health</span>' +
+      '<span class="hp-head-who">' + escapeHtml(stack) + '</span>' +
+      '<span class="hp-head-pill"><span class="hdot"></span>' + escapeHtml(status) + '</span>' +
+      '</div>';
     var svcs = (h && h.services) || [];
     if (!svcs.length) {
-      el.innerHTML = '<div class="hp-empty">No services reported for this stack.</div>';
+      el.innerHTML = head + '<div class="hp-empty">No services reported for this stack.</div>';
       return el;
     }
-    el.innerHTML = svcs.map(function(s) {
+    el.innerHTML = head + svcs.map(function(s) {
       var st = s.health || s.state || 'unknown';
       var state = s.health ? (s.state + ' · health: ' + s.health) : s.state;
       return '<div class="hp-svc" data-testid="health-service">' +
@@ -3051,8 +3097,10 @@
       if (hrow) {
         var hnext = hrow.nextElementSibling;
         if (hnext && hnext.classList.contains('health-panel')) {
-          hnext.remove();
+          closeHealthPanel(hrow);
         } else {
+          hrow.dataset.health = hpill.dataset.health || 'unknown'; // tint the row (variant A)
+          hrow.classList.add('health-open');
           hrow.after(createHealthPanel(hrow.dataset.stack));
         }
       }
