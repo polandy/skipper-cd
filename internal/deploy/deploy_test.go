@@ -1096,3 +1096,50 @@ func TestRebuildNixOS_ReconcilesInterruptedRebuildIntoSuccess(t *testing.T) {
 		t.Error("reconciliation must not trigger another nixos-rebuild when nothing changed")
 	}
 }
+
+// A reconciled _nixos success must carry the diffs of the reconciled files, not
+// just their names: the interrupted run never advanced LastDeployedCommit, so the
+// pre-restart baseline is still the right one to diff against. Without this the UI
+// shows the changed-file list but no diff for every self-restarting rebuild
+// (ADR-0025).
+func TestRebuildNixOS_ReconciledSuccessCarriesDiffs(t *testing.T) {
+	baseDir := t.TempDir()
+	nixFile := filepath.Join(baseDir, "flake.nix")
+	writeFile(t, nixFile, "{ }")
+
+	runner := &recordingRunner{}
+	reader := &fakeCommitReader{diffs: map[string]string{
+		nixFile: "diff --git a/flake.nix b/flake.nix\n+changed",
+	}}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir(), commitReader: reader}
+
+	var reconciled events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Stack == NixosStateKey && e.Status == events.StatusSuccess {
+			reconciled = e
+		}
+	})
+
+	// State left by a switch-interrupted rebuild: hashes pre-saved, in-flight
+	// marker survived, and LastDeployedCommit still points at the pre-change commit
+	// because the interrupted run never reached the end-of-run update.
+	currentHashes, _ := nixos.HashFiles(baseDir)
+	state := newEmptyState()
+	state.recordStack(NixosStateKey, currentHashes)
+	state.markNixOSRebuildInFlight([]string{nixFile})
+	state.LastDeployedCommit = "prev-sha"
+
+	enabled := true
+	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"}}
+
+	if ok := d.rebuildNixOSIfChanged(context.Background(), cfg, state); !ok {
+		t.Fatal("reconciliation must not abort the run")
+	}
+
+	if reconciled.Status != events.StatusSuccess {
+		t.Fatalf("expected a reconciled _nixos success event, got %q", reconciled.Status)
+	}
+	if got := reconciled.Diffs[nixFile]; got == "" {
+		t.Errorf("reconciled success must carry the diff for %s, got diffs=%v", nixFile, reconciled.Diffs)
+	}
+}
