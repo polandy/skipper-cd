@@ -92,6 +92,8 @@ The health colours are their own semantic tier (`--h-*`), kept a distinct hue fr
 
 **Per-service breakdown.** Clicking the pill inserts a sibling panel directly below the row (`data-testid="health-panel"`, same expand pattern as the files/diff/error panels), listing each service (`data-testid="health-service"`) with its container state and per-service health. Clicking again removes it. On mobile the pill stays tappable in the collapsed 2×2 row.
 
+**Row binding.** So the open panel always reads as tied to its row (whatever its position, and with several panels open), the pill click also **tints the parent row and the panel** in the stack's health colour and draws a shared 3px left bar down both, and the panel leads with a **header echoing the stack name + status pill**. The tint/bar colour is the stack's rolled-up status — the worst (least-healthy) service, the same colour as the pill: `unhealthy` (red) dominates, else `starting` (amber), else `healthy` (green), else `stopped` (grey). The parent row carries `health-open` + `data-health` while its panel is open (both cleared on close); the panel carries `data-health` for the same colour (ADR-0027, variant A).
+
 ### Status badges
 
 | Status | Colour | Notes |
@@ -262,7 +264,7 @@ assert on.
 | `status-badge` | Status badge inside a row | |
 | `stack-icon` | Icon chip in the stack cell | |
 | `health-pill` | Stack health pill in the stack cell | Newest row per stack only; `data-health` = `healthy`/`unhealthy`/`starting`/`stopped`/`unknown`; opens `health-panel` |
-| `health-panel` | Per-service health breakdown panel below the row | Sibling of the row, like `files-panel` |
+| `health-panel` | Per-service health breakdown panel below the row | Sibling of the row, like `files-panel`; leads with a stack + status header; carries `data-health` (drives the shared left bar/tint); the open row gets `health-open` + `data-health` |
 | `health-service` | A service row inside `health-panel` | `data-health` per service |
 | `time-cell`, `duration-cell` | Time / duration cells | Masked in snapshots (dynamic) |
 | `files-pill` | Files pill on a row | |
