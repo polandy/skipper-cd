@@ -290,49 +290,6 @@ test.describe('UA5: stack icon + monogram fallback', () => {
   });
 });
 
-// UA6 — Icon refresh. The `i` hotkey clears the server icon cache
-// (POST /api/icons/refresh) and reloads every visible icon with a cache-busting
-// `?v=<ts>` query so renamed or newly published icons appear. There is no header
-// button — the refresh is deliberately hotkey-only. The test observes the network
-// directly: the POST fires and the follow-up icon request carries the `?v=` param.
-test.describe('UA6: icon refresh', () => {
-  test.use({
-    startOptions: {
-      stacks: ['web'],
-      stackIcons: {
-        web: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#4c9"/></svg>',
-      },
-    },
-  });
-
-  const iconChip = (page: import('@playwright/test').Page) =>
-    page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="stack-icon"]');
-
-  // Arms request waiters, runs `act`, and asserts it drove a refresh POST and a
-  // cache-busted icon reload. The initial icon load (iconVer 0) has no `?v=`, so
-  // the busted request is unambiguously the reload.
-  const expectRefresh = async (page: import('@playwright/test').Page, act: () => Promise<void>) => {
-    const post = page.waitForRequest(
-      (r) => r.url().endsWith('/api/icons/refresh') && r.method() === 'POST',
-    );
-    const busted = page.waitForRequest((r) => /\/api\/icons\/web\?v=\d+$/.test(r.url()));
-    await act();
-    await Promise.all([post, busted]);
-  };
-
-  test('the "i" hotkey POSTs /api/icons/refresh and reloads icons cache-busted', async ({ page, skipper }) => {
-    await page.goto(`${skipper.baseURL}/`);
-    await expect(iconChip(page).locator('img')).toHaveCount(1); // initial load settled
-
-    await expectRefresh(page, () => page.keyboard.press('i'));
-  });
-
-  test('there is no header icon-refresh button', async ({ page, skipper }) => {
-    await page.goto(`${skipper.baseURL}/`);
-    await expect(page.locator('[data-testid="icon-refresh"]')).toHaveCount(0);
-  });
-});
-
 // UA7 — Files pill. A deploy that changed files renders a `files-pill` in its row;
 // clicking it inserts a `files-panel` (the changed file paths) right below the row,
 // and clicking again removes it. The startup deploy is a stack's first deploy, so it

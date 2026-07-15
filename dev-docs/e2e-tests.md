@@ -20,8 +20,7 @@ asserting **behaviour + visual snapshots**.
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
 > Go harness drives the real binary — with **UA1** (row lifecycle), **UA2** (all
 > six rendered status badges), **UA3** (skipped deploys never render a row), **UA4** (time-mode
-> toggle + persistence), **UA5** (stack icon + monogram fallback), **UA6** (icon
-> refresh: POST + cache-busted reload), **UA7** (files-pill panel toggle),
+> toggle + persistence), **UA5** (stack icon + monogram fallback), **UA7** (files-pill panel toggle),
 > **UA8** (diff-panel fetch + colouring), **UA9** (error-panel tied to the
 > failed row with its message), **UA10** (empty-state placeholder for a
 > stack-free, event-free instance), **UD5** (header version label from
@@ -54,7 +53,10 @@ asserting **behaviour + visual snapshots**.
 > keeps the current version) — driven by relaunching onto a second binary whose
 > service worker carries a new version. A later **Mask F** (§4.7) covers the
 > upcoming-deploys look-ahead — **UF1** (trail), **UF2** (run panel), **UF3**
-> (mobile `+N` chip) — driven by a multi-stack run held on its first stack.
+> (mobile `+N` chip) — driven by a multi-stack run held on its first stack. **Mask
+> G** (§4.8) covers the deploys stack search — **UG1** (type-to-reveal + filter +
+> Esc fold), **UG2** (no-match note), **UG3** (mobile popover entry) — a
+> client-side filter over the startup deploy rows.
 
 ## 1. Scope & boundaries
 
@@ -212,8 +214,6 @@ UI suite reuses.
 - **UA5 — Stack icon + monogram fallback.** A resolvable icon renders in
   `stack-icon`; a stack whose icon 404s falls back to the monogram chip (no
   broken image).
-- **UA6 — Icon refresh.** The `i` hotkey issues `POST /api/icons/refresh`
-  and reloads icons with a cache-busting param (there is no header button).
 - **UA7 — Files pill.** For an event with `changed_files`, clicking `files-pill`
   inserts `files-panel` below the row; clicking again removes it.
 - **UA8 — Diff panel.** For a `has_diffs` event, clicking the pill fetches
@@ -404,6 +404,25 @@ nothing is faked. Behaviour-only (no snapshot), like Maske E.
   upcoming stacks collapse to the `deploy-count` `+N` chip (`+2`); the names stay
   in `aria-label`.
 
+### 4.8 UI — Maske G: Deploys stack search
+
+A client-side type-to-search filter over the deploy rows by stack name. Three
+stacks (`web`, `api`, `db`) deploy on startup, giving three success rows to
+filter; nothing is faked. Behaviour-only (no snapshot). The reveal state is read
+from `deploy-filter-wrap` (collapsed to zero height until revealed).
+
+- **UG1 — Desktop type-to-search.** The bar (`deploy-filter-wrap`) starts hidden.
+  Typing `api` reveals it, focuses `deploy-filter` with the seeded query, and
+  leaves only the `api` row visible (`web`/`db` hidden). First `Esc` clears the
+  field (all rows back) but keeps the bar open; a second `Esc` folds it away.
+- **UG2 — No match.** Typing `zzz` hides every row and shows the
+  `deploy-filter-empty` note echoing the query; clearing the field restores the
+  rows and hides the note.
+- **UG3 — Mobile entry point.** On desktop the deploys view-options popover has
+  no `deploy-search` row (type-to-search covers it). At 390px the row appears;
+  tapping it closes the popover, reveals the bar, and focuses the field, after
+  which typing `db` filters exactly as on desktop.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -469,7 +488,6 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Skipped deploys never render a row | **UA3** |
 | Time mode toggle + persistence | **UA4** |
 | Stack icon chip + monogram fallback | **UA5** |
-| Icon refresh via `i` hotkey | **UA6** |
 | Files pill expandable panel | **UA7** |
 | Diff panel fetch + colouring | **UA8** |
 | Error detail panel | **UA9** |
@@ -501,6 +519,9 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Upcoming look-ahead trail (active + next) | **UF1** |
 | Run panel (open on click, ordered run, close on end) | **UF2** |
 | Upcoming mobile `+N` count chip | **UF3** |
+| Deploys search: type-to-reveal + filter + Esc fold | **UG1** |
+| Deploys search: no-match empty note | **UG2** |
+| Deploys search: mobile popover entry (desktop-hidden) | **UG3** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |

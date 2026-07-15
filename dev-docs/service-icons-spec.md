@@ -73,10 +73,10 @@ Highest priority wins; first hit stops the search:
 - Each stack row in the deploy table gets a small icon chip to the left of the
   stack name (`<img src="/api/icons/<stack>">` with an `onerror` swap to the
   monogram fallback — same-origin only, no CSP concern).
-- A header control (button **and** keyboard hotkey) triggers
-  `POST /api/icons/refresh`, then forces the visible icons to reload
-  (cache-busting query param). Hotkey and glyph to be chosen during
-  implementation; documented in `internal/ui/UI_SPEC.md`.
+- `POST /api/icons/refresh` clears the cache; icons are re-fetched on the next
+  load. It is an **ops endpoint** — no UI control and no keyboard hotkey (the
+  `i` hotkey was removed so the deploys type-to-search filter can own printable
+  keys; see `internal/ui/UI_SPEC.md`).
 - Icon rendering is size-normalized (fixed box, `object-fit: contain`) so mixed
   SVG/PNG sources line up.
 
@@ -143,5 +143,5 @@ section.
    refresh action. Simplest and matches the refresh button.
 3. Refresh (`POST /api/icons/refresh`) stays **lazy** — it clears the cache;
    icons are re-fetched on the next view, not eagerly re-warmed.
-4. Hotkey and glyph for the refresh control are chosen during the UI step and
-   documented in `internal/ui/UI_SPEC.md`.
+4. Refresh is an ops-only endpoint — no UI control or keyboard hotkey (see
+   `internal/ui/UI_SPEC.md`).
