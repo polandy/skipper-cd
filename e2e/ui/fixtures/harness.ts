@@ -138,6 +138,10 @@ export interface StartOptions {
    *  Defaults to false, matching the server default (picker hidden, the
    *  configured theme fixed). */
   themeSwitcher?: boolean;
+  /** Enable the stack-health poller at this interval (seconds). Default 0
+   *  (disabled), so masks predating health stay health-free; Maske H opts in and
+   *  scripts per-stack `docker compose ps` output via the stub. */
+  healthPoll?: number;
 }
 
 /** Skipper is a running skipper binary under test with its origin, stub docker,
@@ -239,6 +243,9 @@ export class Skipper {
       `metrics_port: ${metricsPort}\n` +
       `ui_enabled: true\n` +
       (opts.themeSwitcher ? `ui_theme_switcher: true\n` : '') +
+      // Health polling off by default so masks predating it stay health-free;
+      // Maske H opts in via healthPoll (ADR-0027).
+      `health_poll_interval_seconds: ${opts.healthPoll ?? 0}\n` +
       `command_timeout_seconds: 30\n` +
       // source_url points at a closed local port so auto-match icon fetches fail
       // fast and deterministically (connection refused → 404 → monogram), keeping
