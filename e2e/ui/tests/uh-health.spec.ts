@@ -41,15 +41,20 @@ test.describe('UH2: per-service panel', () => {
     await page.goto(`${skipper.baseURL}/`);
 
     const p = pill(page, 'web');
+    const row = page.locator('[data-testid="deploy-row"][data-stack="web"]');
     await expect(p).toHaveAttribute('data-health', 'unhealthy');
 
     await p.click();
     const panel = page.locator('[data-testid="health-panel"]');
     await expect(panel).toBeVisible();
     await expect(panel.locator('[data-testid="health-service"]')).toHaveCount(2);
+    // The panel is bound to its row (variant A): the row is marked open + coloured.
+    await expect(row).toHaveClass(/health-open/);
+    await expect(row).toHaveAttribute('data-health', 'unhealthy');
 
     await p.click();
     await expect(panel).toHaveCount(0);
+    await expect(row).not.toHaveClass(/health-open/);
   });
 });
 
