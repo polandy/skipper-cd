@@ -1,6 +1,6 @@
 # skipper-cd Web UI — Specification
 
-Single-page application served at `/` when `ui_enabled: true`. No external JS dependencies. Real-time deployment events via SSE (`/api/events`); real-time log lines via SSE (`/api/logs`). The `/api/events` stream also carries `autosync` and `queue` events that drive the autosync controls and the queue drawer live (see [Autosync](#autosync)).
+Single-page application served at `/` when `ui_enabled: true`. No external JS dependencies. Real-time deployment events via SSE (`/api/events`); real-time log lines via SSE (`/api/logs`). The `/api/events` stream also carries `autosync` and `queue` events that drive the autosync controls and the queue drawer live (see [Autosync](#autosync)), and a `health` snapshot that drives the per-stack [Stack health](#stack-health) pill.
 
 ---
 
@@ -74,6 +74,24 @@ The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain
 
 **Refreshing icons.** The server-side icon cache is cleared by `POST /api/icons/refresh` (e.g. `curl -X POST …/api/icons/refresh`); the next load of each icon then picks up renamed stacks and newly published icons. It is an **ops endpoint** — there is deliberately no header control and no keyboard trigger (the single-key `i` hotkey was removed so type-to-search in the deploys view can own printable keys — see [Deploys filter](#deploys-filter)).
 
+### Stack health
+
+The Stack cell also carries a **health pill** (`data-testid="health-pill"`) right of the stack name — a small dot + label showing the stack's *current* runtime health, ArgoCD-style. It reflects the live [`health`](#event-lifecycle-sse) SSE snapshot, not the deploy outcome, and is a distinct axis from the [Status badge](#status-badges): a `success` deploy can still be `unhealthy` now (a container crash-looped afterwards), and a `deploying` stack can be `starting`. This is skipper-cd's own-stack health only (see [ADR-0027](../../dev-docs/adr/0027-live-stack-health-in-ui.md)); it is read-only and never restarts or redeploys anything.
+
+| Health | Colour | Meaning |
+|---|---|---|
+| `healthy` | `--h-healthy` (green) | Every service running; every service with a healthcheck healthy |
+| `unhealthy` | `--h-unhealthy` (red) | Any service `unhealthy`, `restarting`, or unexpectedly `exited`; dot pulses |
+| `starting` | `--h-starting` (amber) | Any service still `starting` and none unhealthy; dot pulses |
+| `stopped` | `--h-stopped` (grey) | No running containers for the project |
+| `unknown` | `--h-unknown` (grey, dashed border) | Health could not be read (`ps` failed) — never a false `unhealthy` |
+
+The health colours are their own semantic tier (`--h-*`), kept a distinct hue from `--accent` and the teal `--success` so the pill never reads as a deploy status.
+
+**Placement — newest row per stack only.** The deploy table is an event log (many rows per stack over time) while health is a single current per-stack value, so the pill renders **only on the topmost (most recent) row for each stack**; older rows of the same stack carry no pill. This keeps the pill reading as "the current state of this stack" rather than implying it belonged to a past deploy, and keeps the 5-column grid intact (no dedicated Health column).
+
+**Per-service breakdown.** Clicking the pill inserts a sibling panel directly below the row (`data-testid="health-panel"`, same expand pattern as the files/diff/error panels), listing each service (`data-testid="health-service"`) with its container state and per-service health. Clicking again removes it. On mobile the pill stays tappable in the collapsed 2×2 row.
+
 ### Status badges
 
 | Status | Colour | Notes |
@@ -114,9 +132,10 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `skipped` | Dropped — never rendered (an unchanged stack carries no signal). |
 | `queued` | Row created with the `queued` badge and a `paused:` tag, **keyed by stack**: a further `queued` for the same stack (another push while paused) replaces it rather than stacking a duplicate. It is removed when the stack next deploys (a `deploying` event supersedes it) or when the stack leaves the pending set in a `queue` snapshot (resumed then found unchanged). Like a deploy, a `queued` event carries `has_diffs`, so the paused row expands the pending diff. |
 
-Besides `deploy` events, the stream carries named **state snapshots** — `autosync`, `queue`, and `upcoming` — each replacing the prior snapshot of that name (also sent once on connect as initial state).
+Besides `deploy` events, the stream carries named **state snapshots** — `autosync`, `queue`, `upcoming`, and `health` — each replacing the prior snapshot of that name (also sent once on connect as initial state).
 
 - **`upcoming`** `{ "upcoming": ["grafana", "loki"] }` — the stacks that will deploy *after* the one currently deploying, in deploy order. The backend hashes every stack once upfront (after the git sync) to know which will actually deploy this run, then publishes the shrinking list as each stack starts; an empty list is published when the run ends. Drives the [Deploy indicator](#header--right) look-ahead trail and the [Run panel](#run-panel). Distinct from the autosync pending `queue` (deferred, paused stacks). `_nixos` is excluded — the rebuild has no per-stack deploying state.
+- **`health`** `{ "stacks": { "gitea": { "status": "healthy", "services": [{ "name": "gitea", "state": "running", "health": "healthy" }] }, … } }` — the current runtime health of skipper-cd's own stacks, driving the [Stack health](#stack-health) pill. The backend polls `docker compose ps` for each stack (only while the UI is on **and** a client is subscribed), rolls each stack up to `healthy`/`unhealthy`/`starting`/`stopped`/`unknown`, and republishes the snapshot on its interval, on connect, and after each deploy run. `_nixos` carries no health (it is not a compose project). See [ADR-0027](../../dev-docs/adr/0027-live-stack-health-in-ui.md).
 
 ---
 
@@ -242,6 +261,9 @@ assert on.
 | `deploy-row` | A deploy table row | `data-stack`, `data-status` |
 | `status-badge` | Status badge inside a row | |
 | `stack-icon` | Icon chip in the stack cell | |
+| `health-pill` | Stack health pill in the stack cell | Newest row per stack only; `data-health` = `healthy`/`unhealthy`/`starting`/`stopped`/`unknown`; opens `health-panel` |
+| `health-panel` | Per-service health breakdown panel below the row | Sibling of the row, like `files-panel` |
+| `health-service` | A service row inside `health-panel` | `data-health` per service |
 | `time-cell`, `duration-cell` | Time / duration cells | Masked in snapshots (dynamic) |
 | `files-pill` | Files pill on a row | |
 | `files-panel` | Expanded plain file-list panel | |
@@ -285,6 +307,6 @@ On touch there are no hover tooltips, so each control's label is reachable via t
 
 **Deploy table.** Column header hidden. Rows collapse to a 2×2 grid (stack + badge on row 1, time + duration on row 2). Files column hidden. Since there is no keyboard for type-to-search, the [Deploys view-options popover](#view-options-popover) gains a **"Search stacks"** entry that reveals the [filter](#deploys-filter) — the type-to-reveal path is desktop-only.
 
-Since the Files pill is not visible on mobile, tapping anywhere on a row (that has `changed_files`) triggers the files/diff panel instead. Rows with changed files get `cursor: pointer` on mobile. The toggle behaviour (tap again to close) is identical to the desktop pill behaviour.
+Since the Files pill is not visible on mobile, tapping anywhere on a row (that has `changed_files`) triggers the files/diff panel instead. Rows with changed files get `cursor: pointer` on mobile. The toggle behaviour (tap again to close) is identical to the desktop pill behaviour. The [health pill](#stack-health) keeps its own tap target — a tap on it stops propagation and opens the `health-panel`, not the row's files/diff panel.
 
 The Autosync drawer spans the full width below the header.
