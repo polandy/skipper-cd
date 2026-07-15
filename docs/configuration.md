@@ -64,6 +64,7 @@ nixos_rebuild:
 | `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
 | `ui_theme` | string | no | `catppuccin` | Web UI colour palette: one of `catppuccin`, `nord`, `solarized`, `gruvbox`, `rose-pine` (see [Web UI Theme](#web-ui-theme)). |
 | `ui_theme_switcher` | bool | no | `false` | Show the in-UI theme picker so a browser can try other palettes locally. Off by default — the deployed `ui_theme` is then fixed (see [Web UI Theme](#web-ui-theme)). |
+| `health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
 
 ## Stack Fields
 
@@ -278,3 +279,17 @@ ui_theme_switcher: true   # optional, default: false
 ```
 
 The picker is a **local, per-browser** override only: it never changes the deployment's `ui_theme` (there is no endpoint to do so) and only affects the browser that set it, applied instantly with no reload. While an override differs from the configured theme, a dismissible notice under the header points it out. Turning the flag back off hides the picker and re-pins every browser to the configured theme (a stale override left in a browser's `localStorage` simply lies dormant). See [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#theme-override) for the exact behaviour.
+
+## Stack health
+
+When the web UI is enabled, skipper-cd shows the **live runtime health** of the stacks it deploys, next to each stack in the deploy view: `healthy`, `unhealthy`, `starting`, `stopped`, or `unknown`. This is a current, at-a-glance view — distinct from the deploy outcome — so a stack that deployed fine but whose container has since started crash-looping reads as `unhealthy` without waiting for the next push.
+
+The health is read by polling `docker compose ps` for each stack, using the same compose file and `--project-directory` identity used to deploy it. Nothing is written and nothing is restarted — the view is read-only. It covers only skipper-cd's own stacks (not other containers on the host).
+
+`health_poll_interval_seconds` controls the cadence:
+
+- **default `30`** — poll every 30 seconds.
+- **`0`** — disable the health view entirely (no polling, no pill).
+- The poll only runs while `ui_enabled` **and** at least one browser is connected to the dashboard, so an unattended instance does no health work.
+
+On a resource-constrained host, raise the interval rather than disabling it. See [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#stack-health) for the UI surface.

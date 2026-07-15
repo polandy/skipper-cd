@@ -14,6 +14,9 @@ ui_enabled: false                      # enable the real-time web UI on the webh
 # ui_theme_switcher: false             # optional, default: false. When true, shows an in-UI
                                         # palette picker (a per-browser override) — handy for
                                         # trying themes out; off keeps the deployed theme fixed.
+# health_poll_interval_seconds: 30       # optional, default: 30. How often the UI polls its
+                                        # stacks' runtime health (docker compose ps). 0 disables
+                                        # the health view. Only polls while a browser is connected.
 
 stacks:
   - name: traefik

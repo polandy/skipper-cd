@@ -89,6 +89,15 @@ func (b *Broadcaster[T]) Subscribe() (<-chan T, func()) {
 	}
 }
 
+// HasSubscribers reports whether at least one subscriber is currently
+// connected. It lets a producer skip work that no one is watching — e.g. the
+// stack-health poller idles while no UI client is subscribed (ADR-0027).
+func (b *Broadcaster[T]) HasSubscribers() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return len(b.subs) > 0
+}
+
 // Publish sends a value to all subscribers. Non-blocking: if a
 // subscriber's buffer is full the value is dropped for that subscriber.
 func (b *Broadcaster[T]) Publish(event T) {
