@@ -14,6 +14,35 @@ import (
 	"github.com/polandy/skipper-cd/internal/nixos"
 )
 
+// The UI has no notion of the repo clone dir, so events must carry repo-relative
+// paths, not the absolute filesystem paths the hashing/diff layers use
+// internally. Both changed_files and the diff-map keys are shortened; paths
+// outside the repo are left untouched.
+func TestEmit_ShortensPathsToRepoRelative(t *testing.T) {
+	repoDir := "/var/lib/skipper/repo"
+	inside := repoDir + "/system/argoneon/default.nix"
+	outside := "/etc/somewhere/else.nix"
+
+	d := &Deployer{repoDir: repoDir}
+	var got events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) { got = e })
+
+	d.emit(events.StatusSuccess, NixosStateKey, 0, "",
+		[]string{inside, outside},
+		map[string]string{inside: "diff-a", outside: "diff-b"})
+
+	wantFiles := []string{"system/argoneon/default.nix", outside}
+	if !slices.Equal(got.ChangedFiles, wantFiles) {
+		t.Errorf("changed_files = %v, want %v", got.ChangedFiles, wantFiles)
+	}
+	if _, ok := got.Diffs["system/argoneon/default.nix"]; !ok {
+		t.Errorf("diff key not shortened to repo-relative: %v", got.Diffs)
+	}
+	if _, ok := got.Diffs[outside]; !ok {
+		t.Errorf("out-of-repo diff key must be left unchanged: %v", got.Diffs)
+	}
+}
+
 func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "gitea")
@@ -1139,7 +1168,7 @@ func TestRebuildNixOS_ReconciledSuccessCarriesDiffs(t *testing.T) {
 	if reconciled.Status != events.StatusSuccess {
 		t.Fatalf("expected a reconciled _nixos success event, got %q", reconciled.Status)
 	}
-	if got := reconciled.Diffs[nixFile]; got == "" {
-		t.Errorf("reconciled success must carry the diff for %s, got diffs=%v", nixFile, reconciled.Diffs)
+	if got := reconciled.Diffs["flake.nix"]; got == "" {
+		t.Errorf("reconciled success must carry the diff for flake.nix, got diffs=%v", reconciled.Diffs)
 	}
 }

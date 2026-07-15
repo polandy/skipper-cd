@@ -112,7 +112,7 @@ func TestDeployStack_QueuedEventIncludesDiffs(t *testing.T) {
 	if queuedEvt.Diffs == nil {
 		t.Fatal("expected diffs in the queued event, got nil")
 	}
-	if !strings.Contains(queuedEvt.Diffs[filepath.Join(stackDir, "docker-compose.yml")], "nginx:1.25") {
+	if !strings.Contains(queuedEvt.Diffs["gitea/docker-compose.yml"], "nginx:1.25") {
 		t.Errorf("expected diff content in the queued event, got %+v", queuedEvt.Diffs)
 	}
 	// It was deferred, not deployed.

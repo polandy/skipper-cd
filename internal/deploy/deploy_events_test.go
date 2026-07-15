@@ -332,7 +332,7 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 	if successEvt.Diffs == nil {
 		t.Fatal("expected diffs in success event")
 	}
-	if !strings.Contains(successEvt.Diffs[filepath.Join(stackDir, "docker-compose.yml")], "nginx:1.25") {
+	if !strings.Contains(successEvt.Diffs["gitea/docker-compose.yml"], "nginx:1.25") {
 		t.Error("expected diff content in success event")
 	}
 }
@@ -371,8 +371,8 @@ func TestRebuildNixOS_SuccessEventIncludesDiffs(t *testing.T) {
 	if successEvt.Diffs == nil {
 		t.Fatal("expected diffs in the _nixos success event, got nil")
 	}
-	if !strings.Contains(successEvt.Diffs[nixFile], "services.foo.enable") {
-		t.Errorf("expected nix diff content in the _nixos success event, got %q", successEvt.Diffs[nixFile])
+	if !strings.Contains(successEvt.Diffs["configuration.nix"], "services.foo.enable") {
+		t.Errorf("expected nix diff content in the _nixos success event, got %q", successEvt.Diffs["configuration.nix"])
 	}
 }
 
