@@ -227,6 +227,32 @@ The UI is an **installable PWA** (full spec: [`docs/pwa.md`](../../docs/pwa.md);
 - **Update banner** (ADR-0023) — on an update the new worker does **not** `skipWaiting`; it stays *waiting* so a long-lived standalone window is not silently swapped. When a new worker reaches `installed` while one already controls the page (or is already `waiting` on load), a dismissible **`#update-banner`** (`data-testid="update-banner"`, bottom-centred, `role="status"`) appears: text plus a **Reload** action (`update-banner-reload`) and a **dismiss** (`update-banner-close`). Reload posts `{type:'SKIP_WAITING'}` to the waiting worker; the worker calls `self.skipWaiting()`, and the resulting `controllerchange` reloads the page **once** — when the update was accepted (Reload tapped) or a worker already controlled the page at load (cross-tab), but never on a bare first-install `clients.claim()`. `registration.update()` is polled on load and on `visibilitychange`→visible so a backgrounded app notices a deploy. Prompts are deduped per worker so a dismissed banner can still re-appear for a *later* deploy.
 - **Secure context** — installability requires HTTPS (or `localhost`); the usual TLS reverse proxy satisfies this. Over plain HTTP the UI still works but is not installable. No new configuration — the PWA is active whenever `ui_enabled: true`.
 
+## Login overlay (auth)
+
+When the server's [`auth`](../../docs/configuration.md#access-control) gate is
+configured, the boot probe (`/api/version`, which is gated) returns `401` and a
+full-screen **login overlay** (`data-testid="auth-overlay"`, `role="dialog"`,
+z 1000) covers the app; the event stream is **not** opened. Two variants, keyed
+on the `tokenAuth` flag in the 401 body:
+
+- **Token auth** (`tokenAuth:true`) — a card with a token field
+  (`data-testid="auth-token"`) and a **Sign in** button (`auth-submit`) inside a
+  form (`auth-form`). Submitting validates the token via
+  `Authorization: Bearer …` against `/api/version`; on `200` it stores the token
+  in the `skipper_auth` cookie (`SameSite=Lax`, one year, `Secure` on HTTPS) and
+  reloads; on `401` it shows an inline error (`auth-error`) without a reload.
+- **Proxy-only** (`tokenAuth:false`) — no token to enter, so the form is hidden
+  and an explanatory note (`auth-note`) says access is controlled by the reverse
+  proxy.
+
+**Sign out** — a global row at the foot of the [View-options popover](#view-options-popover)
+(`data-testid="vo-signout"`), shown only while the `skipper_auth` cookie is set;
+clicking it clears the cookie and reloads (back to the login overlay). See
+[ADR-0028](../../dev-docs/adr/0028-trusted-proxy-and-pwa-token-auth.md).
+
+When `auth` is unset the gate is a no-op: the probe returns `200`, the overlay
+stays hidden, and the app boots normally.
+
 ---
 
 ## Test hooks (`data-testid`)
@@ -290,6 +316,13 @@ assert on.
 | `update-banner` | PWA "new version available" banner | Hidden until a newer service worker is waiting (UE1/UE2) |
 | `update-banner-reload` | Banner's Reload action | Activates the waiting worker → one reload |
 | `update-banner-close` | Banner's dismiss button | |
+| `auth-overlay` | Login overlay shown on a gated `401` | `role="dialog"`; hidden when auth passes or is unset |
+| `auth-form` | Token login form | Hidden in the proxy-only variant |
+| `auth-token` | Token input | Type `password` |
+| `auth-submit` | Sign in button | Validates via bearer, then sets cookie + reloads |
+| `auth-error` | Inline login error | Hidden until an invalid token / network error |
+| `auth-note` | Proxy-only explanatory note | Shown only when `tokenAuth:false` |
+| `vo-signout` | Sign-out row in the view-options popover | Shown only while the `skipper_auth` cookie is set |
 
 ---
 

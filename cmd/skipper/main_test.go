@@ -12,9 +12,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/polandy/skipper-cd/internal/auth"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
+	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/icons"
+	"github.com/polandy/skipper-cd/internal/ui"
 )
 
 func TestResolveCommit(t *testing.T) {
@@ -156,5 +159,57 @@ func TestStackLocator_UnknownStackIsNotFound(t *testing.T) {
 
 	if _, ok := locate("nope"); ok {
 		t.Error("expected unknown stack to be not found")
+	}
+}
+
+// testMux builds a webhookMux with the UI enabled and the given auth gate. Only
+// the routing/gating wiring is under test, so most dependencies are minimal.
+func testMux(t *testing.T, gate *auth.Gate) http.Handler {
+	t.Helper()
+	cfg := &config.Config{UITheme: ui.ThemeCatppuccin, Icons: config.IconsConfig{CacheDir: t.TempDir()}}
+	as := &autosyncDeps{}
+	return webhookMux(cfg, deploy.NewDeployer(), nil, events.NewBroadcaster(), nil, nil, as, ui.BuildInfo{Version: "test"}, gate)
+}
+
+func status(t *testing.T, h http.Handler, req *http.Request) int {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+func TestWebhookMux_GateProtectsDataAPIButNotShell(t *testing.T) {
+	gate, err := auth.New("", nil, "s3cret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := testMux(t, gate)
+
+	// Data API is gated: no credential ⇒ 401.
+	if code := status(t, mux, httptest.NewRequest(http.MethodGet, "/api/version", nil)); code != http.StatusUnauthorized {
+		t.Errorf("GET /api/version unauthenticated = %d, want 401", code)
+	}
+	// With a valid token cookie it passes.
+	authed := httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	authed.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "s3cret"})
+	if code := status(t, mux, authed); code != http.StatusOK {
+		t.Errorf("GET /api/version with cookie = %d, want 200", code)
+	}
+	// The app shell and liveness probe stay open even with auth enabled.
+	for _, path := range []string{"/", "/healthz", "/sw.js", "/manifest.webmanifest"} {
+		if code := status(t, mux, httptest.NewRequest(http.MethodGet, path, nil)); code == http.StatusUnauthorized {
+			t.Errorf("GET %s = 401, must stay open", path)
+		}
+	}
+}
+
+func TestWebhookMux_DisabledGateLeavesAPIOpen(t *testing.T) {
+	gate, err := auth.New("", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := testMux(t, gate)
+	if code := status(t, mux, httptest.NewRequest(http.MethodGet, "/api/version", nil)); code != http.StatusOK {
+		t.Errorf("GET /api/version with auth disabled = %d, want 200", code)
 	}
 }

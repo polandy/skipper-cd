@@ -32,3 +32,4 @@ One file per decision, numbered sequentially (see
 | [0025](0025-reconcile-self-restart-interrupted-nixos-rebuild.md) | Reconcile a self-restart-interrupted NixOS rebuild into a success |
 | [0026](0026-yaml-state-persistence-not-sqlite.md) | Persist state as YAML files, not an embedded database |
 | [0027](0027-live-stack-health-in-ui.md) | Live stack health in the UI (own stacks, display-only) |
+| [0028](0028-trusted-proxy-and-pwa-token-auth.md) | Trusted-proxy and PWA-token auth for the web UI |

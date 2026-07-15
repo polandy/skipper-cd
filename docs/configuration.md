@@ -65,6 +65,7 @@ nixos_rebuild:
 | `ui_theme` | string | no | `catppuccin` | Web UI colour palette: one of `catppuccin`, `nord`, `solarized`, `gruvbox`, `rose-pine` (see [Web UI Theme](#web-ui-theme)). |
 | `ui_theme_switcher` | bool | no | `false` | Show the in-UI theme picker so a browser can try other palettes locally. Off by default — the deployed `ui_theme` is then fixed (see [Web UI Theme](#web-ui-theme)). |
 | `health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
+| `auth` | object | no | — | Access control for the web UI's data API: a trusted reverse-proxy header and/or a shared token entered in the PWA (see [Access control](#access-control)). Omit to leave the UI open. |
 
 ## Stack Fields
 
@@ -222,6 +223,58 @@ notifications:
 > **No email.** Native SMTP is deliberately unsupported (see [ADR-0020](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0020-outbound-deploy-notifications.md)). Point a `generic` target at an email-capable relay (ntfy, Apprise, Shoutrrr) if you need email.
 
 > **Self-notify caveat.** If Signal is delivered through a `signal-api` stack that skipper itself deploys, a failed `signal-api` deploy cannot notify you about itself. Configure a second, independent target (e.g. `generic` → ntfy) so at least one path never depends on the stack being reported on.
+
+## Access control
+
+By default the web UI is open — skipper-cd is designed to sit behind a reverse
+proxy that authenticates users (e.g. Authelia forward-auth). The optional `auth`
+section lets skipper-cd authorize clients itself instead, gating the **data API**
+(`/api/*` — deploy events, logs, autosync, health). Two independent paths are
+supported; configure either or both. When neither is set the UI stays open.
+
+The gate **fails closed**: with `auth` configured, a request satisfying no path
+gets `401`. The app **shell** (`/`, the manifest, the service worker, PWA icons)
+and the operational endpoints (`POST /webhook`, which has its own HMAC, and
+`GET /healthz`) always stay open, so the page can load and prompt for a token and
+so liveness probes keep working.
+
+```yaml
+auth:
+  # Proxy path — trust a header your reverse proxy sets after it authenticated
+  # the user. Only requests coming *from* a trusted proxy are believed.
+  trusted_header: Remote-User
+  trusted_proxies:
+    - 10.0.0.0/8
+    - 127.0.0.1
+
+  # Token path — a shared secret entered once in the PWA login screen.
+  token: "a-long-random-cookie-safe-secret"
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `trusted_header` | string | no | — | HTTP header your reverse proxy sets once it has authenticated the user (e.g. `Remote-User`). A request carrying a non-empty value **and** arriving from a trusted proxy is authorized. Empty disables the proxy path. |
+| `trusted_proxies` | list of strings | when `trusted_header` is set | — | Upstreams allowed to assert `trusted_header`, as CIDRs (`10.0.0.0/8`) or bare IPs (`127.0.0.1`). The check is anchored on the request's real network peer, not a forwardable header, so a direct client cannot spoof the header. |
+| `token` | string | no | — | Shared secret for the PWA/direct path. Presented via the `skipper_auth` cookie (set by the login screen) or an `Authorization: Bearer <token>` header (handy for scripts). Compared in constant time. Empty disables the token path. Use a **cookie-safe** value — hex or base64/base64url — as it is stored in a cookie verbatim. |
+
+### Proxy path
+
+Point `trusted_header` at whatever your proxy injects after authenticating the
+user, and list the proxy's address in `trusted_proxies`. Because authorization
+requires the request to *originate* from a trusted proxy, ensure your proxy
+**strips** the header from inbound client requests before setting it — otherwise
+a client that can reach skipper-cd directly (not through the proxy) is still
+rejected, but a client routed *through* a misconfigured proxy that forwards a
+client-supplied header would not be.
+
+### Token path (PWA login)
+
+With `token` set, opening the UI shows a login screen. The entered token is
+validated and then stored in the `skipper_auth` cookie (`SameSite=Lax`, one
+year; `Secure` on HTTPS). The browser then sends it automatically on every
+request — including the SSE event stream and PWA navigations, which cannot carry
+a custom header, which is why a cookie (not a header) is used. Sign out from the
+view-options popover, which clears the cookie.
 
 ## Web UI Theme
 

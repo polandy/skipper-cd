@@ -1136,6 +1136,94 @@
     .update-banner { animation: none; }
   }
 
+  /* Auth login overlay (z 1000, above the header and every popover). Shown when
+     a data-API request comes back 401 and the instance uses token auth; it
+     covers the app so the shell can render underneath without being usable
+     before the client authenticates. See ADR-0028. */
+  .auth-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: color-mix(in srgb, var(--bg-deep) 82%, transparent);
+    backdrop-filter: blur(8px) saturate(1.1);
+    -webkit-backdrop-filter: blur(8px) saturate(1.1);
+  }
+  .auth-overlay[hidden] { display: none; }
+  .auth-card {
+    width: min(340px, 100%);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 11px;
+    padding: 28px 24px 24px;
+    background: color-mix(in srgb, var(--bg-base) 97%, transparent);
+    border: 1px solid var(--border-lit);
+    border-radius: 14px;
+    box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.55);
+    text-align: center;
+    animation: auth-card-in 0.18s ease;
+  }
+  .auth-brand { color: var(--accent); line-height: 0; }
+  .auth-brand svg { width: 32px; height: 32px; display: block; }
+  .auth-title { margin: 2px 0 0; font-size: 16px; font-weight: 650; letter-spacing: -0.01em; color: var(--text-primary); }
+  .auth-sub { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
+  .auth-form { display: flex; flex-direction: column; gap: 9px; width: 100%; margin-top: 4px; }
+  .auth-form[hidden] { display: none; }
+  .auth-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--text-primary);
+    background: var(--bg-sunken);
+    border: 1px solid var(--border-lit);
+    border-radius: 9px;
+    outline: none;
+  }
+  .auth-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .auth-submit {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--bg-base);
+    background: var(--accent);
+    border: none;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  .auth-submit:hover { filter: brightness(1.08); }
+  .auth-submit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .auth-submit:disabled { opacity: 0.6; cursor: default; filter: none; }
+  .auth-error { margin: 1px 0 0; font-size: 12px; color: var(--danger); min-height: 0; }
+  .auth-error[hidden] { display: none; }
+  .auth-note { margin: 3px 0 0; font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+  .auth-note[hidden] { display: none; }
+  @keyframes auth-card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .auth-card { animation: none; }
+  }
+
+  /* Sign-out row: a global entry at the foot of the view-options popover, shown
+     only while a token-auth cookie is set. */
+  .view-options .vo-signout {
+    width: 100%;
+    margin-top: 4px;
+    padding-top: 9px;
+    border-top: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .view-options .vo-signout[hidden] { display: none; }
+  .view-options .vo-signout:hover { color: var(--danger); background: var(--bg-raised); }
+
   .filter-toggle.active .toggle-thumb {
     transform: translateX(12px);
     background: var(--accent);
@@ -1629,6 +1717,10 @@
             <span>Auto-scroll</span>
           </button>
         </div>
+        <button class="filter-toggle vo-signout" id="vo-signout" data-testid="vo-signout" type="button" title="Sign out" hidden>
+          <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17 15l3-3-3-3M20 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Sign out</span>
+        </button>
       </div>
     </div>
     <div class="autosync-btn" id="autosync-btn" data-testid="autosync-btn" role="button" tabindex="0" aria-expanded="false" title="Autosync">
@@ -1664,6 +1756,24 @@
 <div class="theme-notice" id="theme-notice" data-testid="theme-notice" role="status" hidden>
   <span id="theme-notice-text"></span>
   <button class="theme-notice-close" id="theme-notice-close" data-testid="theme-notice-close" aria-label="Dismiss">&times;</button>
+</div>
+
+<div class="auth-overlay" id="auth-overlay" data-testid="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title" hidden>
+  <div class="auth-card">
+    <div class="auth-brand" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none"><rect x="4.5" y="10.5" width="15" height="10" rx="2.2" stroke="currentColor" stroke-width="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15" r="1.6" fill="currentColor"/></svg>
+    </div>
+    <h1 class="auth-title" id="auth-title">skipper-cd</h1>
+    <p class="auth-sub" id="auth-sub">Authentication required</p>
+    <form class="auth-form" id="auth-form" data-testid="auth-form">
+      <input class="auth-input" id="auth-token" data-testid="auth-token" type="password" name="token"
+             placeholder="Access token" aria-label="Access token" autocomplete="current-password"
+             spellcheck="false" autocapitalize="off" autocorrect="off">
+      <button class="auth-submit" id="auth-submit" data-testid="auth-submit" type="submit">Sign in</button>
+    </form>
+    <p class="auth-error" id="auth-error" data-testid="auth-error" role="alert" hidden></p>
+    <p class="auth-note" id="auth-note" data-testid="auth-note" hidden>Access is controlled by your reverse proxy — you are not authorized.</p>
+  </div>
 </div>
 
 <div class="update-banner" id="update-banner" data-testid="update-banner" role="status" hidden>
@@ -2928,25 +3038,119 @@
     }
   });
 
-  // Paint the deployed skipper-cd build identity in the header once on load.
-  // Feature-branch builds show the branch (which release semver alone cannot
-  // distinguish); release/Nix/dev builds show the version. The short commit is
-  // appended whenever the build path knows it.
+  // ─── AUTH (TOKEN LOGIN) ───
+  // A configured instance gates the data API. /api/version doubles as the auth
+  // probe: a 401 means this client is not authorized. When the instance uses
+  // token auth we show a login overlay; the entered token is validated via the
+  // bearer path, then stored in the skipper_auth cookie so the browser sends it
+  // on every request — including the SSE stream and PWA navigations, which
+  // cannot carry a custom header. See ADR-0028.
+  var AUTH_COOKIE = 'skipper_auth';
+  var authOverlay = document.getElementById('auth-overlay');
+  var authForm = document.getElementById('auth-form');
+  var authInput = document.getElementById('auth-token');
+  var authSubmit = document.getElementById('auth-submit');
+  var authError = document.getElementById('auth-error');
+  var authNote = document.getElementById('auth-note');
+  var authSub = document.getElementById('auth-sub');
+
+  function hasAuthCookie() {
+    return document.cookie.split('; ').some(function(c) { return c.indexOf(AUTH_COOKIE + '=') === 0; });
+  }
+  function setAuthCookie(token) {
+    var secure = location.protocol === 'https:' ? '; Secure' : '';
+    // One year. The token is a cookie-safe secret, so it is stored verbatim.
+    document.cookie = AUTH_COOKIE + '=' + token + '; path=/; max-age=31536000; SameSite=Lax' + secure;
+  }
+  function clearAuthCookie() {
+    document.cookie = AUTH_COOKIE + '=; path=/; max-age=0; SameSite=Lax';
+  }
+  function updateSignoutRow() {
+    var row = document.getElementById('vo-signout');
+    if (row) row.hidden = !hasAuthCookie();
+  }
+  function showAuthError(msg) {
+    if (!authError) return;
+    authError.textContent = msg;
+    authError.hidden = false;
+  }
+  function showLogin(tokenAuth) {
+    if (!authOverlay) return;
+    if (authError) authError.hidden = true;
+    if (tokenAuth) {
+      if (authSub) authSub.textContent = 'Authentication required';
+      if (authForm) authForm.hidden = false;
+      if (authNote) authNote.hidden = true;
+    } else {
+      // Proxy-only instance reached without proxy auth: there is no token to
+      // enter, so explain rather than offer an input.
+      if (authSub) authSub.textContent = 'Access denied';
+      if (authForm) authForm.hidden = true;
+      if (authNote) authNote.hidden = false;
+    }
+    authOverlay.hidden = false;
+    if (tokenAuth && authInput) authInput.focus();
+  }
+  function attemptLogin() {
+    var token = authInput ? authInput.value.trim() : '';
+    if (!token) return;
+    if (authSubmit) authSubmit.disabled = true;
+    if (authError) authError.hidden = true;
+    fetch('/api/version', { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(function(r) {
+        if (r.status === 200) {
+          setAuthCookie(token);
+          location.reload();
+          return;
+        }
+        if (authSubmit) authSubmit.disabled = false;
+        showAuthError(r.status === 401 ? 'Invalid token.' : 'Unexpected error (' + r.status + ').');
+      })
+      .catch(function() {
+        if (authSubmit) authSubmit.disabled = false;
+        showAuthError('Network error — please try again.');
+      });
+  }
+  if (authForm) {
+    authForm.addEventListener('submit', function(e) { e.preventDefault(); attemptLogin(); });
+  }
+  var signoutRow = document.getElementById('vo-signout');
+  if (signoutRow) {
+    signoutRow.addEventListener('click', function() { clearAuthCookie(); location.reload(); });
+  }
+  updateSignoutRow();
+
+  // Paint the deployed skipper-cd build identity in the header. Feature-branch
+  // builds show the branch (which release semver alone cannot distinguish);
+  // release/Nix/dev builds show the version. The short commit is appended
+  // whenever the build path knows it.
+  function paintVersion(d) {
+    if (!d || !d.version) return;
+    var el = document.getElementById('brand-version');
+    if (!el) return;
+    var base = d.version === 'dev' ? 'dev' : 'v' + d.version;
+    var head = (d.branch && d.branch !== 'main') ? d.branch : base;
+    var text = d.commit ? head + ' · ' + d.commit : head;
+    el.textContent = text;
+    // The label may be clipped (ellipsis) on narrow viewports or long branch
+    // names; the title exposes the full identity on hover / long-press.
+    el.title = text;
+  }
+
+  // Boot: probe auth via /api/version, then open the event stream only when the
+  // client is authorized. A 401 stops here and shows the login overlay so the
+  // EventSource does not spin retrying against a gated endpoint.
   fetch('/api/version')
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (!d || !d.version) return;
-      var el = document.getElementById('brand-version');
-      if (!el) return;
-      var base = d.version === 'dev' ? 'dev' : 'v' + d.version;
-      var head = (d.branch && d.branch !== 'main') ? d.branch : base;
-      var text = d.commit ? head + ' · ' + d.commit : head;
-      el.textContent = text;
-      // The label may be clipped (ellipsis) on narrow viewports or long branch
-      // names; the title exposes the full identity on hover / long-press.
-      el.title = text;
+    .then(function(r) {
+      if (r.status === 401) {
+        r.json().then(function(b) { showLogin(!!(b && b.tokenAuth)); },
+                      function() { showLogin(false); });
+        return;
+      }
+      r.json().then(paintVersion, function() {});
+      connect();
     })
-    .catch(function() {});
+    .catch(function() { connect(); });
 
   // Tap-reveal tooltips for touch: title attributes never show on touch, so a
   // tap on any header control flashes its title in a bubble. Mouse/pen keep the
@@ -2984,8 +3188,6 @@
     }, { passive: true });
     window.addEventListener('scroll', hide, { passive: true });
   })();
-
-  connect();
 
   // Register the service worker for installability + app-shell caching, and
   // prompt to reload when a newer version has been deployed. Failure-tolerant:

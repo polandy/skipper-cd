@@ -56,7 +56,10 @@ asserting **behaviour + visual snapshots**.
 > (mobile `+N` chip) — driven by a multi-stack run held on its first stack. **Mask
 > G** (§4.8) covers the deploys stack search — **UG1** (type-to-reveal + filter +
 > Esc fold), **UG2** (no-match note), **UG3** (mobile popover entry) — a
-> client-side filter over the startup deploy rows.
+> client-side filter over the startup deploy rows. **Mask H** (§4.9) covers the
+> web UI auth login overlay (ADR-0028) — **UH1** (token login: wrong → error,
+> right → unlock + cookie, sign-out → overlay) and **UH2** (proxy-only
+> access-denied note) — via a new `auth` harness start option.
 
 ## 1. Scope & boundaries
 
@@ -422,6 +425,25 @@ from `deploy-filter-wrap` (collapsed to zero height until revealed).
   no `deploy-search` row (type-to-search covers it). At 390px the row appears;
   tapping it closes the popover, reveals the bar, and focuses the field, after
   which typing `db` filters exactly as on desktop.
+
+### 4.9 UI — Maske H: Web UI auth (login overlay)
+
+The server auth gate ([ADR-0028](adr/0028-trusted-proxy-and-pwa-token-auth.md))
+protects `/api/*` while the app shell stays open, so a 401 renders the login
+overlay (`auth-overlay`). The harness gains an `auth` start option that writes
+the `auth:` config section. Behaviour-only (no snapshot); the idle header is
+unchanged so existing baselines hold.
+
+- **UH1 — Token login.** With `auth.token` set, the overlay covers the app
+  (`auth-form` shown) and no `deploy-row` streams (the event stream is not
+  opened). A wrong token shows `auth-error` without a reload; the right token
+  validates (bearer probe), persists the `skipper_auth` cookie, and reloads onto
+  the app (one startup `deploy-row`). Signing out via the popover `vo-signout`
+  row clears the cookie and returns to the overlay.
+- **UH2 — Proxy-only.** With only `auth.trusted_header` + `auth.trusted_proxies`
+  (a CIDR excluding the test client), the direct browser is denied: the overlay
+  shows the `auth-note` (access controlled by the reverse proxy) and hides
+  `auth-form`.
 
 ## 5. Visual snapshot strategy
 

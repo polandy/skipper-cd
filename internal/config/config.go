@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -143,6 +144,34 @@ type Config struct {
 	// health view. Only meaningful with ui_enabled; the poll additionally runs
 	// only while a UI client is connected. See docs/configuration.md.
 	HealthPollIntervalSeconds *int `yaml:"health_poll_interval_seconds"`
+
+	// Auth optionally gates the web UI's data API behind a trusted reverse
+	// proxy and/or a shared token entered in the PWA. Omit the section (or leave
+	// it empty) to keep the UI open, the default. See docs/configuration.md.
+	Auth AuthConfig `yaml:"auth"`
+}
+
+// AuthConfig gates the web UI's data API. A request is authorized when EITHER
+// path succeeds: the proxy path (its network peer is in TrustedProxies AND it
+// carries a non-empty TrustedHeader set by that proxy) or the token path (it
+// presents Token via the skipper_auth cookie or an Authorization bearer). Both
+// are optional and independent; leaving both empty disables the gate. The gate
+// fails closed. See docs/configuration.md.
+type AuthConfig struct {
+	// TrustedHeader is the HTTP header a reverse proxy sets once it has
+	// authenticated the user (e.g. "Remote-User"). Empty disables the proxy path.
+	TrustedHeader string `yaml:"trusted_header"`
+
+	// TrustedProxies lists the upstreams allowed to assert TrustedHeader, as
+	// CIDRs ("10.0.0.0/8") or bare IPs ("127.0.0.1"). A request whose network
+	// peer is outside every entry is rejected even if it carries the header, so
+	// a direct client cannot spoof it. Required when TrustedHeader is set.
+	TrustedProxies []string `yaml:"trusted_proxies"`
+
+	// Token is a shared secret the PWA login stores in the skipper_auth cookie
+	// (also accepted as an "Authorization: Bearer <token>" header). Empty
+	// disables the token path.
+	Token string `yaml:"token"`
 }
 
 // NotificationTarget configures a single outbound notification sink: where to
@@ -358,6 +387,10 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
+	if err := validateAuth(cfg.Auth); err != nil {
+		return fmt.Errorf("auth: %w", err)
+	}
+
 	return nil
 }
 
@@ -374,6 +407,41 @@ func validateHealthCheck(hc *HealthCheck) error {
 		if u, err := url.ParseRequestURI(hc.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 			return fmt.Errorf("url %q must be a valid http(s) URL", hc.URL)
 		}
+	}
+	return nil
+}
+
+// validateAuth checks the optional auth section. A trusted header needs at
+// least one valid trusted proxy; trusted proxies without a header are a
+// misconfiguration (they would never be consulted).
+func validateAuth(a AuthConfig) error {
+	if a.TrustedHeader == "" {
+		if len(a.TrustedProxies) > 0 {
+			return fmt.Errorf("trusted_proxies set without trusted_header")
+		}
+		return nil
+	}
+	if len(a.TrustedProxies) == 0 {
+		return fmt.Errorf("trusted_proxies is required when trusted_header is set")
+	}
+	for _, p := range a.TrustedProxies {
+		if err := validateProxyEntry(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateProxyEntry checks that a trusted-proxy entry is a valid CIDR or IP.
+func validateProxyEntry(entry string) error {
+	if strings.Contains(entry, "/") {
+		if _, _, err := net.ParseCIDR(entry); err != nil {
+			return fmt.Errorf("invalid trusted_proxies CIDR %q", entry)
+		}
+		return nil
+	}
+	if net.ParseIP(entry) == nil {
+		return fmt.Errorf("invalid trusted_proxies IP %q", entry)
 	}
 	return nil
 }

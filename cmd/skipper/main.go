@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/auth"
 	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
@@ -263,8 +264,23 @@ func main() {
 		Commit:  resolveCommit(commit, bi, ok),
 	}
 
+	// Auth gate for the UI data API. Config is already validated in Load, so a
+	// build error here is a programming bug, not user input.
+	gate, err := auth.New(cfg.Auth.TrustedHeader, cfg.Auth.TrustedProxies, cfg.Auth.Token)
+	if err != nil {
+		slog.Error("failed to build auth gate", "err", err)
+		os.Exit(1)
+	}
+	if gate.Enabled() {
+		slog.Info("web UI auth enabled",
+			"proxy_header", cfg.Auth.TrustedHeader != "",
+			"trusted_proxies", len(cfg.Auth.TrustedProxies),
+			"token", gate.TokenAuthEnabled(),
+		)
+	}
+
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, healthPoller, broadcaster, history, logRing, as, build))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, healthPoller, broadcaster, history, logRing, as, build, gate))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -353,7 +369,7 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *health.Poller, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
+func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *health.Poller, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo, gate *auth.Gate) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
@@ -373,23 +389,32 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *hea
 		}
 		autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)
 
+		// App shell — stays open even when auth is enabled: it carries no deploy
+		// data (identical bytes for everyone) and must load so the PWA installs
+		// and the token-login overlay can render before the client is authorized.
 		mux.Handle("GET /{$}", ui.IndexHandler(cfg.UITheme, cfg.UIThemeSwitcher))
 		mux.Handle("GET /manifest.webmanifest", ui.ManifestHandler(cfg.UITheme))
 		mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(build))
 		mux.Handle("GET /icons/", ui.IconsHandler())
-		mux.Handle("GET /api/version", ui.VersionHandler(build))
-		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, as.stateB, history, initialState))
-		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
-		mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
+
+		// Data API — the deploy state. Mounted behind the auth gate; when auth is
+		// unconfigured gate.Wrap is a no-op and this stays open as before.
+		api := http.NewServeMux()
+		api.Handle("GET /api/version", ui.VersionHandler(build))
+		api.Handle("GET /api/events", ui.SSEHandler(broadcaster, as.stateB, history, initialState))
+		api.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
+		api.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
 
 		iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 		iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
-		mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg)))
-		mux.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
+		api.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg)))
+		api.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
 
-		mux.Handle("GET /api/autosync", autosyncH)
-		mux.Handle("POST /api/autosync", autosyncH)
-		mux.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
+		api.Handle("GET /api/autosync", autosyncH)
+		api.Handle("POST /api/autosync", autosyncH)
+		api.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
+
+		mux.Handle("/api/", gate.Wrap(api))
 	}
 	return mux
 }

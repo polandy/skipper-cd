@@ -138,6 +138,10 @@ export interface StartOptions {
    *  Defaults to false, matching the server default (picker hidden, the
    *  configured theme fixed). */
   themeSwitcher?: boolean;
+  /** Enable the web UI auth gate (ADR-0028). `token` turns on the PWA token
+   *  path; `trustedHeader` + `trustedProxies` turn on the proxy path. Omit for
+   *  an open UI (the default). */
+  auth?: { trustedHeader?: string; trustedProxies?: string[]; token?: string };
 }
 
 /** Skipper is a running skipper binary under test with its origin, stub docker,
@@ -240,6 +244,17 @@ export class Skipper {
       `ui_enabled: true\n` +
       (opts.themeSwitcher ? `ui_theme_switcher: true\n` : '') +
       `command_timeout_seconds: 30\n` +
+      (opts.auth
+        ? `auth:\n` +
+          (opts.auth.trustedHeader
+            ? `  trusted_header: ${JSON.stringify(opts.auth.trustedHeader)}\n`
+            : '') +
+          (opts.auth.trustedProxies
+            ? `  trusted_proxies:\n` +
+              opts.auth.trustedProxies.map((p) => `    - ${JSON.stringify(p)}\n`).join('')
+            : '') +
+          (opts.auth.token ? `  token: ${JSON.stringify(opts.auth.token)}\n` : '')
+        : '') +
       // source_url points at a closed local port so auto-match icon fetches fail
       // fast and deterministically (connection refused → 404 → monogram), keeping
       // the whole UI suite offline. Repo icon.svg overrides still resolve.
