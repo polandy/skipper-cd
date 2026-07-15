@@ -1019,6 +1019,20 @@
     box-shadow: inset 3px 0 0 var(--dc, var(--accent));
   }
 
+  /* Keep the variant-A left bar continuous across the row→panel seam: square the
+     adjoining corners and close the .event-list 2px inter-row gap, so an open row
+     and its bound panel read as one card with an unbroken left bar. Applies to the
+     health panel too — it shares the same binding. */
+  .event-row.health-open, .event-row.diff-open {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .health-panel, .diff-panel.bound {
+    margin-top: -2px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
   /* Commit-metadata header — the message/author/time/SHA of what shipped, above
      the file diffs (git range LastDeployedCommit..HEAD, restricted to the changed
      files). Fetched with the diffs from /api/events/{id}/diffs. */
