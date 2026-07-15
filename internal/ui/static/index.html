@@ -1032,6 +1032,14 @@
     border-top-left-radius: 0;
     border-top-right-radius: 0;
   }
+  /* The diff panel carries a full 1px border (needed unbound, in the log view).
+     Bound, its top and left borders would sit beside the shared 3px status bar and
+     double the line — offsetting the bar from the row's. Drop them so the bar is
+     the left edge, exactly as the health panel (border-bottom only) does. */
+  .diff-panel.bound {
+    border-top: none;
+    border-left: none;
+  }
 
   /* Commit-metadata header — the message/author/time/SHA of what shipped, above
      the file diffs (git range LastDeployedCommit..HEAD, restricted to the changed
