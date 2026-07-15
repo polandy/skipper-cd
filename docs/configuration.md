@@ -186,6 +186,7 @@ notifications:
     url: http://localhost:8020        # service base; /v2/send is appended
     number: "+491234567890"           # sender (required for signal)
     recipients: ["+491234567890"]     # recipients (required for signal)
+    prefix: nuc                       # optional; message becomes "[nuc] …"
     # on:  defaults to [failed, success, rolled_back, rolled_back_unhealthy]
 
   # A second, independent target for failures only.
@@ -203,6 +204,7 @@ notifications:
 | `format` | string | no | `generic` | Provider shape of the request: `signal` or `generic`. |
 | `url` | string | yes | — | Endpoint the notification is POSTed to. For `signal` this is the `signal-cli-rest-api` **base** (e.g. `http://localhost:8020`); `/v2/send` is appended automatically. |
 | `on` | list | no | all four | Subset of `failed`, `success`, `rolled_back`, `rolled_back_unhealthy` that triggers this target. |
+| `prefix` | string | no | — | Prepended as `[<prefix>] ` to the `signal` message, e.g. to label which host/instance sent it. Ignored by `generic` (its structured payload already carries the event). |
 | `headers` | map | no | — | Static HTTP headers added to the request. Only meaningful for `generic` (e.g. an auth token). |
 | `number` | string | for `signal` | — | Signal sender number. Required for `format: signal`, rejected on any other format. |
 | `recipients` | list | for `signal` | — | Signal recipient numbers (non-empty). Required for `format: signal`, rejected on any other format. |

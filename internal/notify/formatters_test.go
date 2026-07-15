@@ -73,6 +73,30 @@ func TestSignalFormatter_RolledBackUnhealthyMessage(t *testing.T) {
 	}
 }
 
+func TestSignalFormatter_PrefixPrependsMessage(t *testing.T) {
+	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}, prefix: "argoneon"}
+	ev := events.DeployEvent{Stack: "jdownloader", Status: events.StatusSuccess, DurationMs: 3000}
+	req := mustFormat(t, f, ev)
+
+	msg, _ := bodyOf(t, req)["message"].(string)
+	if !strings.HasPrefix(msg, "[argoneon] ") {
+		t.Errorf("message should start with the host prefix, got %q", msg)
+	}
+	if !strings.Contains(msg, "jdownloader") {
+		t.Errorf("prefixed message still carries the stack, got %q", msg)
+	}
+}
+
+func TestSignalFormatter_EmptyPrefixIsOmitted(t *testing.T) {
+	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}}
+	ev := events.DeployEvent{Stack: "web", Status: events.StatusSuccess, DurationMs: 3000}
+	req := mustFormat(t, f, ev)
+
+	if msg, _ := bodyOf(t, req)["message"].(string); strings.HasPrefix(msg, "[") {
+		t.Errorf("no prefix configured, message must not start with a bracket, got %q", msg)
+	}
+}
+
 func TestIsTerminal_IncludesRolledBackUnhealthy(t *testing.T) {
 	if !isTerminal(events.StatusRolledBackUnhealthy) {
 		t.Error("rolled_back_unhealthy must be a terminal status so it can be delivered")

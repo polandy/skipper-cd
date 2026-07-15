@@ -157,6 +157,12 @@ type NotificationTarget struct {
 	// Empty means all four.
 	On []string `yaml:"on"`
 
+	// Prefix is prepended (as "[<prefix>] ") to the human-readable message of
+	// the "signal" format, e.g. to label which host/instance sent it. Optional;
+	// empty adds no prefix. Ignored by the "generic" format, whose structured
+	// payload already carries the event.
+	Prefix string `yaml:"prefix"`
+
 	// Headers are static HTTP headers added to the request. Only meaningful for
 	// the "generic" format (e.g. an Authorization bearer token).
 	Headers map[string]string `yaml:"headers"`
