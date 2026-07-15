@@ -44,6 +44,7 @@ Run it **[on NixOS](docs/nixos.md)** as a declarative systemd service, or **[wit
 - **Deploy notifications** — POST a message to Signal (via `signal-cli-rest-api`) or any HTTP endpoint (ntfy, Gotify, custom) on terminal deploy outcomes ([docs](docs/configuration.md#notifications)).
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
+- **Access control** — optionally gate the web UI behind a trusted reverse-proxy header and/or a shared token you enter once in the PWA ([docs](docs/configuration.md#access-control)).
 
 ## The Bigger Picture
 

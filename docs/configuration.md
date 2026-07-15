@@ -257,29 +257,76 @@ auth:
 | `trusted_proxies` | list of strings | when `trusted_header` is set | — | Upstreams allowed to assert `trusted_header`, as CIDRs (`10.0.0.0/8`) or bare IPs (`127.0.0.1`). The check is anchored on the request's real network peer, not a forwardable header, so a direct client cannot spoof the header. |
 | `token` | string | no | — | Shared secret for the PWA/direct path. Presented via the `skipper_auth` cookie (set by the login screen) or an `Authorization: Bearer <token>` header (handy for scripts). Compared in constant time. Empty disables the token path. Use a **cookie-safe** value — hex or base64/base64url — as it is stored in a cookie verbatim. |
 
-### Proxy path
+### Token auth (PWA login)
 
-Point `trusted_header` at whatever your proxy injects after authenticating the
-user, and list the proxy's address in `trusted_proxies`. Because authorization
-requires the request to *originate* from a trusted proxy, ensure your proxy
-**strips** the header from inbound client requests before setting it — otherwise
-a client that can reach skipper-cd directly (not through the proxy) is still
-rejected, but a client routed *through* a misconfigured proxy that forwards a
-client-supplied header would not be.
+Best when skipper-cd is reachable directly, without a forward-auth proxy. A
+single shared token unlocks the UI, and each browser enters it once.
 
-### Token path (PWA login)
+**1. Generate a cookie-safe token.** It is stored verbatim in a cookie, so use
+hex or base64 — no spaces or `; , " \`:
 
-With `token` set, opening the UI shows a login screen. The entered token is
-validated and then stored in the `skipper_auth` cookie (`SameSite=Lax`, one
-year; `Secure` on HTTPS). The browser then sends it automatically on every
-request — including the SSE event stream and PWA navigations, which cannot carry
-a custom header, which is why a cookie (not a header) is used. Sign out from the
-view-options popover, which clears the cookie.
+```bash
+openssl rand -hex 32
+```
 
-Failed token attempts are **rate-limited per client IP**: after 10 wrong tokens
-within a minute that IP is locked out (`429`) until the minute elapses, so the
-token cannot be brute-forced online. Merely opening the UI (no token presented)
-never counts, and a trusted proxy is never throttled.
+**2. Put it in `skipper.yml`** and restart skipper-cd:
+
+```yaml
+auth:
+  token: "a3f9c1e8b7d24506f1c9e2a7b4d80f36"
+```
+
+Serve the UI over **HTTPS** (your usual TLS reverse proxy) so the login cookie
+gets the `Secure` flag and the token never crosses the network in the clear.
+
+**3. Sign in from the browser or installed PWA.** Opening the UI now shows a
+login screen:
+
+1. Paste the token and select **Sign in**.
+2. skipper-cd validates it, stores it in the `skipper_auth` cookie
+   (`SameSite=Lax`, one year, `Secure` on HTTPS), and reloads.
+3. The browser then sends the cookie automatically on every request — including
+   the SSE event stream and PWA navigations, which cannot carry a custom header
+   (that is why a cookie, not a header, is used). So you enter the token **once
+   per browser/device**.
+4. **Sign out** from the view-options popover (the menu on the active view
+   button) to clear the cookie.
+
+A wrong token shows an inline error. Failed attempts are **rate-limited per
+client IP**: after 10 wrong tokens within a minute that IP is locked out (`429`)
+until the minute elapses, so the token cannot be brute-forced online. Merely
+opening the UI (no token presented) never counts, and a trusted proxy is never
+throttled.
+
+**Scripts and automation.** The same token also works as a bearer header, handy
+for curl or monitoring:
+
+```bash
+curl -H "Authorization: Bearer a3f9c1e8b7d24506f1c9e2a7b4d80f36" \
+  https://skipper.example.com/api/version
+```
+
+### Proxy auth (trusted header)
+
+Best when skipper-cd already sits behind a reverse proxy that authenticates
+users (e.g. Authelia forward-auth). Point `trusted_header` at whatever the proxy
+injects after authenticating the user, and list the proxy's address in
+`trusted_proxies`:
+
+```yaml
+auth:
+  trusted_header: Remote-User
+  trusted_proxies:
+    - 10.0.0.0/8
+```
+
+Because authorization requires the request to *originate* from a trusted proxy,
+ensure your proxy **strips** this header from inbound client requests before
+setting it, so a client cannot supply it themselves. A request reaching
+skipper-cd from any other address is rejected even if it carries the header.
+
+Both paths are independent, so you can set `token` **and** the proxy fields
+together; a request is authorized when either one is satisfied.
 
 ## Web UI Theme
 
