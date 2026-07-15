@@ -177,10 +177,51 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		Status:       status,
 		DurationMs:   duration.Milliseconds(),
 		Error:        errMsg,
-		ChangedFiles: changedFiles,
-		Diffs:        diffs,
+		ChangedFiles: d.repoRelativePaths(changedFiles),
+		Diffs:        d.repoRelativeDiffs(diffs),
 	})
 	return id
+}
+
+// repoRelative shortens an absolute path under the repo clone to a repo-relative
+// path for display: the hashing and diff layers work in absolute filesystem
+// paths, but the UI has no notion of the repo dir. Paths outside the repo (or
+// when the repo dir is unknown) are returned unchanged.
+func (d *Deployer) repoRelative(path string) string {
+	if d.repoDir == "" {
+		return path
+	}
+	rel, err := filepath.Rel(d.repoDir, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return rel
+}
+
+// repoRelativePaths returns a copy of files with each path shortened to
+// repo-relative for display; nil in, nil out (leaves the caller's slice intact).
+func (d *Deployer) repoRelativePaths(files []string) []string {
+	if files == nil {
+		return nil
+	}
+	out := make([]string, len(files))
+	for i, f := range files {
+		out[i] = d.repoRelative(f)
+	}
+	return out
+}
+
+// repoRelativeDiffs returns a copy of the diff map re-keyed to repo-relative
+// paths for display; nil in, nil out.
+func (d *Deployer) repoRelativeDiffs(diffs map[string]string) map[string]string {
+	if diffs == nil {
+		return nil
+	}
+	out := make(map[string]string, len(diffs))
+	for path, diff := range diffs {
+		out[d.repoRelative(path)] = diff
+	}
+	return out
 }
 
 // SyncAndDeployAll acquires the deploy lock, syncs the repository, and
