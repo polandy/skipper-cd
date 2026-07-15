@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/events"
+	"github.com/polandy/skipper-cd/internal/nixos"
 )
 
 func TestDeployStack_DeploysWhenHashChanges(t *testing.T) {
@@ -982,5 +984,115 @@ func TestDeployAllStacks_KeepsNixHashesWhenRebuildAbandonedOnShutdown(t *testing
 	}
 	if got := state.hashesFor(NixosStateKey); len(got) == 0 {
 		t.Fatal("expected _nixos hashes to be kept after a shutdown-abandoned rebuild")
+	}
+}
+
+// A rebuild the switch interrupts by restarting skipper-cd (shutdown requested)
+// is a normal outcome, not a failure: it must not emit a _nixos failed event,
+// and it must leave an in-flight marker so the next startup can reconcile it
+// into a success (ADR-0025).
+func TestDeployAllStacks_ShutdownDuringRebuildDoesNotEmitFailure(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "flake.nix"), "{ }")
+	stackDir := filepath.Join(baseDir, "modules", "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	stateDir := t.TempDir()
+	runner := &shutdownAwareRunner{rebuildStarted: make(chan struct{})}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: stateDir}
+
+	// All emits happen in the deploy goroutine before it closes done, so reading
+	// the slice after <-done is race-free (the channel establishes happens-before).
+	var nixStatuses []events.Status
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Stack == NixosStateKey {
+			nixStatuses = append(nixStatuses, e.Status)
+		}
+	})
+
+	shutdownCtx, requestShutdown := context.WithCancel(context.Background())
+	defer requestShutdown()
+	d.SetShutdownContext(shutdownCtx)
+
+	enabled := true
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: filepath.Join(baseDir, "modules"),
+		Stacks:        []config.Stack{{Name: "gitea"}},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		d.DeployAllStacks(context.Background(), cfg)
+		close(done)
+	}()
+
+	<-runner.rebuildStarted
+	requestShutdown()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("deploy run did not return after shutdown")
+	}
+
+	if slices.Contains(nixStatuses, events.StatusFailed) {
+		t.Errorf("shutdown-abandoned rebuild must not emit a _nixos failed event, got %v", nixStatuses)
+	}
+
+	state, err := loadPersistedDeployState(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.NixOSRebuildInFlight) == 0 {
+		t.Fatal("expected an in-flight marker after a shutdown-abandoned rebuild so the next startup can reconcile it")
+	}
+}
+
+// On the next startup after a self-restart interrupted a rebuild, the in-flight
+// marker is reconciled into a _nixos success event (the rebuild applied in its
+// transient unit) and cleared, so the UI stops showing the stale failure and no
+// redundant rebuild runs (ADR-0025).
+func TestRebuildNixOS_ReconcilesInterruptedRebuildIntoSuccess(t *testing.T) {
+	baseDir := t.TempDir()
+	nixFile := filepath.Join(baseDir, "flake.nix")
+	writeFile(t, nixFile, "{ }")
+
+	runner := &recordingRunner{}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
+
+	var nixStatuses []events.Status
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Stack == NixosStateKey {
+			nixStatuses = append(nixStatuses, e.Status)
+		}
+	})
+
+	// State left by a rebuild the switch interrupted: hashes were pre-saved (so
+	// they match the current files) and the in-flight marker survived the restart.
+	currentHashes, _ := nixos.HashFiles(baseDir)
+	state := newEmptyState()
+	state.recordStack(NixosStateKey, currentHashes)
+	state.markNixOSRebuildInFlight([]string{nixFile})
+
+	enabled := true
+	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"}}
+
+	if ok := d.rebuildNixOSIfChanged(context.Background(), cfg, state); !ok {
+		t.Fatal("reconciliation must not abort the run")
+	}
+
+	if !slices.Contains(nixStatuses, events.StatusSuccess) {
+		t.Errorf("expected a reconciled _nixos success event, got %v", nixStatuses)
+	}
+	if len(state.NixOSRebuildInFlight) != 0 {
+		t.Error("expected the in-flight marker to be cleared after reconciliation")
+	}
+	if nixosRebuildCalled(runner.calls) {
+		t.Error("reconciliation must not trigger another nixos-rebuild when nothing changed")
 	}
 }

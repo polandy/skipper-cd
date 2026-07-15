@@ -25,6 +25,15 @@ type persistedState struct {
 	// Images maps stack names to their service→image references from the last deployment.
 	// Used to determine whether docker compose pull is necessary.
 	Images map[string]serviceImageByName `yaml:"images,omitempty"`
+
+	// NixOSRebuildInFlight holds the changed nix files of a rebuild that was
+	// started but whose outcome was not yet recorded. It is set (and persisted)
+	// just before a rebuild whose switch may restart skipper-cd, and cleared once
+	// the rebuild's outcome is observed. If skipper is restarted mid-rebuild, the
+	// marker survives and the next startup reconciles it into a _nixos success
+	// event — the rebuild kept running in its transient unit and applied
+	// (ADR-0025). Empty means no rebuild is in flight.
+	NixOSRebuildInFlight []string `yaml:"nixos_rebuild_in_flight,omitempty"`
 }
 
 func newEmptyState() *persistedState {
@@ -53,6 +62,19 @@ func (s *persistedState) revertStack(stack string, previous stackFileHashes) {
 		return
 	}
 	s.Stacks[stack] = previous
+}
+
+// markNixOSRebuildInFlight records that a nixos-rebuild is about to run for the
+// given changed files, so a self-restart that interrupts it can be reconciled
+// on the next startup.
+func (s *persistedState) markNixOSRebuildInFlight(changed []string) {
+	s.NixOSRebuildInFlight = changed
+}
+
+// clearNixOSRebuildInFlight clears the in-flight marker once the rebuild's
+// outcome has been observed (success or genuine failure).
+func (s *persistedState) clearNixOSRebuildInFlight() {
+	s.NixOSRebuildInFlight = nil
 }
 
 // imagesFor returns the service→image map recorded for a stack (nil when unknown).
