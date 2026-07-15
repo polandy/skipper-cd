@@ -149,3 +149,20 @@ func TestBroadcaster_ConcurrentPubSub(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestBroadcaster_HasSubscribers(t *testing.T) {
+	b := NewStateBroadcaster()
+	if b.HasSubscribers() {
+		t.Fatal("expected no subscribers on a fresh broadcaster")
+	}
+
+	_, unsub := b.Subscribe()
+	if !b.HasSubscribers() {
+		t.Fatal("expected a subscriber after Subscribe")
+	}
+
+	unsub()
+	if b.HasSubscribers() {
+		t.Fatal("expected no subscribers after unsubscribe")
+	}
+}

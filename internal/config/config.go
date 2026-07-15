@@ -137,6 +137,12 @@ type Config struct {
 	// browser (keeping the per-instance colour a reliable at-a-glance marker).
 	// See docs/configuration.md.
 	UIThemeSwitcher bool `yaml:"ui_theme_switcher"`
+
+	// HealthPollIntervalSeconds sets how often the UI polls its stacks' runtime
+	// health (ADR-0027). nil (omitted) defaults to 30; an explicit 0 disables the
+	// health view. Only meaningful with ui_enabled; the poll additionally runs
+	// only while a UI client is connected. See docs/configuration.md.
+	HealthPollIntervalSeconds *int `yaml:"health_poll_interval_seconds"`
 }
 
 // NotificationTarget configures a single outbound notification sink: where to
@@ -264,6 +270,10 @@ func Load(path string) (*Config, error) {
 	if cfg.UITheme == "" {
 		cfg.UITheme = ui.ThemeCatppuccin
 	}
+	if cfg.HealthPollIntervalSeconds == nil {
+		d := defaultHealthPollIntervalSeconds
+		cfg.HealthPollIntervalSeconds = &d
+	}
 	for i := range cfg.Stacks {
 		if hc := cfg.Stacks[i].HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
 			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
@@ -293,6 +303,11 @@ const reservedStackName = "_nixos"
 // defaultHealthCheckTimeoutSeconds is applied when a health_check section is
 // present without an explicit timeout_seconds.
 const defaultHealthCheckTimeoutSeconds = 60
+
+// defaultHealthPollIntervalSeconds is the UI stack-health poll cadence applied
+// when health_poll_interval_seconds is omitted (ADR-0027). An explicit 0
+// disables the health view.
+const defaultHealthPollIntervalSeconds = 30
 
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
@@ -331,6 +346,10 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {
 		return fmt.Errorf("log_format must be %q or %q, got %q", LogFormatText, LogFormatJSON, cfg.LogFormat)
+	}
+
+	if cfg.HealthPollIntervalSeconds != nil && *cfg.HealthPollIntervalSeconds < 0 {
+		return fmt.Errorf("health_poll_interval_seconds must be >= 0, got %d", *cfg.HealthPollIntervalSeconds)
 	}
 
 	for i, t := range cfg.Notifications {

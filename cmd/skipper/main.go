@@ -25,6 +25,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/git"
+	"github.com/polandy/skipper-cd/internal/health"
 	"github.com/polandy/skipper-cd/internal/icons"
 	"github.com/polandy/skipper-cd/internal/logbuf"
 	"github.com/polandy/skipper-cd/internal/metrics"
@@ -153,9 +154,10 @@ func main() {
 	deployer.SetShutdownContext(signalCtx)
 
 	var (
-		broadcaster *events.Broadcaster[events.DeployEvent]
-		stateB      *events.Broadcaster[events.StateEvent]
-		history     *events.History
+		broadcaster  *events.Broadcaster[events.DeployEvent]
+		stateB       *events.Broadcaster[events.StateEvent]
+		history      *events.History
+		healthPoller *health.Poller
 	)
 	// The deploy event sink is composed from whatever consumers are configured;
 	// each is independent, so notifications work with the UI off (ADR-0020).
@@ -177,6 +179,22 @@ func main() {
 			stateB.Publish(events.StateEvent{Name: "upcoming", Data: p})
 		})
 		slog.Info("web UI enabled")
+
+		// Live stack health: poll the UI's stacks and publish a `health` snapshot.
+		// Gated on a positive interval and, at poll time, on a connected client
+		// (ADR-0027) so an idle dashboard does no docker work.
+		if interval := *cfg.HealthPollIntervalSeconds; interval > 0 {
+			healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
+			healthPoller = health.New(health.Config{
+				Outputter:      command.NewShellRunner(healthTimeout),
+				Stacks:         func() []health.StackRef { return healthStacks(cfg) },
+				Publish:        func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: "health", Data: s}) },
+				Interval:       time.Duration(interval) * time.Second,
+				HasSubscribers: stateB.HasSubscribers,
+			})
+			go healthPoller.Run(signalCtx)
+			slog.Info("stack health polling enabled", "interval_seconds", interval)
+		}
 	}
 
 	// Outbound notifications. Config is already validated in Load; New only
@@ -218,7 +236,12 @@ func main() {
 			stateB.Publish(events.StateEvent{Name: "queue", Data: autosyncQueue.View(order())})
 		}
 	}
-	deployer.SetPostRunHook(publishAutosync)
+	deployer.SetPostRunHook(func() {
+		publishAutosync()
+		if healthPoller != nil {
+			healthPoller.Poll() // refresh health right after a deploy run
+		}
+	})
 	publishAutosync() // initialize the gauges
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
@@ -241,7 +264,7 @@ func main() {
 	}
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, broadcaster, history, logRing, as, build))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, healthPoller, broadcaster, history, logRing, as, build))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -295,6 +318,21 @@ func stackAutosyncConfig(cfg *config.Config) map[string]*bool {
 	return m
 }
 
+// healthStacks maps each configured stack to the compose identity the health
+// poller probes: the compose file from the repo clone plus the working_dir (if
+// any) as --project-directory — the same identity the deploy path uses.
+func healthStacks(cfg *config.Config) []health.StackRef {
+	refs := make([]health.StackRef, 0, len(cfg.Stacks))
+	for _, s := range cfg.Stacks {
+		refs = append(refs, health.StackRef{
+			Name:        s.Name,
+			ComposePath: filepath.Join(cfg.StacksBaseDir, s.Name, "docker-compose.yml"),
+			ProjectDir:  s.WorkingDir,
+		})
+	}
+	return refs
+}
+
 // deployOrder returns stack names in the order DeployAllStacks processes them:
 // _nixos first (when the rebuild is enabled), then the configured stacks.
 func deployOrder(cfg *config.Config) []string {
@@ -315,18 +353,23 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
+func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *health.Poller, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
 
 	if broadcaster != nil {
 		initialState := func() []events.StateEvent {
-			return []events.StateEvent{
+			state := []events.StateEvent{
 				{Name: "autosync", Data: as.ctrl.Snapshot(as.order())},
 				{Name: "queue", Data: as.queue.View(as.order())},
 				{Name: "upcoming", Data: deployer.CurrentRunPlan()},
 			}
+			if healthPoller != nil {
+				state = append(state, events.StateEvent{Name: "health", Data: healthPoller.Current()})
+				healthPoller.Poll() // a client just connected — refresh now
+			}
+			return state
 		}
 		autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)
 
