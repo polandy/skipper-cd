@@ -56,7 +56,10 @@ asserting **behaviour + visual snapshots**.
 > (mobile `+N` chip) — driven by a multi-stack run held on its first stack. **Mask
 > G** (§4.8) covers the deploys stack search — **UG1** (type-to-reveal + filter +
 > Esc fold), **UG2** (no-match note), **UG3** (mobile popover entry) — a
-> client-side filter over the startup deploy rows.
+> client-side filter over the startup deploy rows. **Mask H** (§4.9) covers the
+> stack-health pill — **UH1** (pill per stack), **UH2** (per-service panel),
+> **UH3** (newest row per stack) — driven by a health poller scripted through the
+> stub docker's `ps` output.
 
 ## 1. Scope & boundaries
 
@@ -423,6 +426,24 @@ from `deploy-filter-wrap` (collapsed to zero height until revealed).
   tapping it closes the popover, reveals the bar, and focuses the field, after
   which typing `db` filters exactly as on desktop.
 
+### 4.9 UI — Maske H: Stack health (ADR-0027)
+
+The live per-stack health pill. The poller is enabled with `healthPoll: 1` and
+each stack's `docker compose ps --format json` output is scripted through the
+stub docker (`skipper.setStackHealth`), so it is deterministic and offline — no
+real docker, no real containers. Behaviour-only (no snapshot).
+
+- **UH1 — Health pill per stack.** Three stacks (`web`, `db`, `cache`) get
+  scripted `ps` output — running/healthy, running/unhealthy, exited(0) — and each
+  stack's newest row shows a `health-pill` whose `data-health` is the rolled-up
+  status (`healthy` / `unhealthy` / `stopped`).
+- **UH2 — Per-service panel.** A stack with a healthy and an unhealthy service
+  rolls up to `unhealthy`; clicking the pill opens the `health-panel` listing
+  every `health-service`, and clicking again removes it.
+- **UH3 — Newest row per stack.** Health is a current value, so with the pill on
+  a stack's row, a pushed change that prepends a second row leaves exactly one
+  pill — on the newest (first) row, not the older one.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -522,6 +543,9 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Deploys search: type-to-reveal + filter + Esc fold | **UG1** |
 | Deploys search: no-match empty note | **UG2** |
 | Deploys search: mobile popover entry (desktop-hidden) | **UG3** |
+| Stack health: rolled-up pill per stack (healthy/unhealthy/stopped) | **UH1** |
+| Stack health: per-service panel toggle | **UH2** |
+| Stack health: pill on the newest row per stack | **UH3** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |
