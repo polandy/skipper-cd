@@ -17,7 +17,7 @@ import (
 func formatterFor(t config.NotificationTarget) (Formatter, error) {
 	switch t.Format {
 	case config.NotifyFormatSignal:
-		return signalFormatter{base: t.URL, number: t.Number, recipients: t.Recipients}, nil
+		return signalFormatter{base: t.URL, number: t.Number, recipients: t.Recipients, prefix: t.Prefix}, nil
 	case config.NotifyFormatGeneric:
 		return genericFormatter{url: t.URL, headers: t.Headers}, nil
 	default:
@@ -29,12 +29,13 @@ type signalFormatter struct {
 	base       string
 	number     string
 	recipients []string
+	prefix     string
 }
 
 func (f signalFormatter) Format(ctx context.Context, ev events.DeployEvent) (*http.Request, error) {
 	url := strings.TrimRight(f.base, "/") + "/v2/send"
 	body := map[string]any{
-		"message":    renderMessage(ev),
+		"message":    renderMessage(f.prefix, ev),
 		"number":     f.number,
 		"recipients": f.recipients,
 	}
@@ -68,8 +69,12 @@ func jsonPost(ctx context.Context, url string, payload any, headers map[string]s
 }
 
 // renderMessage renders the human-readable one-liner used by the signal
-// formatter's message body.
-func renderMessage(ev events.DeployEvent) string {
+// formatter's message body. A non-empty prefix is prepended as "[<prefix>] "
+// to label the sending host/instance.
+func renderMessage(prefix string, ev events.DeployEvent) string {
+	if prefix != "" {
+		return "[" + prefix + "] " + renderMessage("", ev)
+	}
 	dur := (time.Duration(ev.DurationMs) * time.Millisecond).Round(time.Millisecond)
 	switch ev.Status {
 	case events.StatusSuccess:

@@ -62,6 +62,7 @@ nixos_rebuild:
 #     url: http://localhost:8020           # signal-api base; /v2/send is appended
 #     number: "+491234567890"              # sender (required for signal)
 #     recipients: ["+491234567890"]        # recipients (required for signal)
+#     prefix: nuc                          # optional; message becomes "[nuc] …"
 #     # on: [failed, success, rolled_back, rolled_back_unhealthy] # default; subset of these four
 #   - format: generic                      # a second, independent target for failures
 #     url: https://ntfy.example.com/skipper

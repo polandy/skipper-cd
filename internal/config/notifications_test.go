@@ -66,6 +66,25 @@ notifications:
 	}
 }
 
+func TestLoad_NotificationPrefix(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+notifications:
+  - format: signal
+    url: http://localhost:8020
+    prefix: argoneon
+    number: "+491234567890"
+    recipients: ["+491234567890"]
+`
+	cfg := loadFromString(t, content)
+
+	if got := cfg.Notifications[0].Prefix; got != "argoneon" {
+		t.Errorf("prefix = %q, want %q", got, "argoneon")
+	}
+}
+
 func TestLoad_NotificationValidation(t *testing.T) {
 	tests := []struct {
 		name    string
