@@ -1,6 +1,6 @@
 # ADR-0027: Live stack health in the UI
 
-Status: proposed
+Status: accepted
 Date: 2026-07-15
 
 ## Context
