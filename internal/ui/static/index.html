@@ -167,6 +167,13 @@
     --queued: var(--raw-queued);   /* Queued/deferred deploy, autosync paused */
     --diff-add: var(--raw-diffadd);
     --hunk: var(--raw-queued);
+    /* Stack health (ADR-0027) — its own tier, derived from existing raws so it
+       tracks every theme; a hue kept distinct from --accent and --success. */
+    --h-healthy: var(--raw-diffadd);
+    --h-unhealthy: var(--raw-danger);
+    --h-starting: var(--raw-queued);
+    --h-stopped: var(--overlay2);
+    --h-unknown: var(--overlay1);
     --accent-dim: color-mix(in srgb, var(--accent) 12%, transparent);
     --accent-glow: color-mix(in srgb, var(--accent) 30%, transparent);
     --success-dim: color-mix(in srgb, var(--success) 12%, transparent);
@@ -728,6 +735,67 @@
     background: currentColor;
     animation: breathe 1.4s ease-in-out infinite;
   }
+
+  /* ─── STACK HEALTH (ADR-0027) ─── */
+  .health-pill {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px 2px 6px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.1px;
+    cursor: pointer;
+    color: var(--hc);
+    border: 1px solid color-mix(in srgb, var(--hc) 32%, transparent);
+    background: color-mix(in srgb, var(--hc) 13%, transparent);
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+  }
+  .health-pill:hover { background: color-mix(in srgb, var(--hc) 20%, transparent); border-color: color-mix(in srgb, var(--hc) 45%, transparent); }
+  .health-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--hc); flex-shrink: 0; }
+  .health-pill[data-health="healthy"]   { --hc: var(--h-healthy); }
+  .health-pill[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-pill[data-health="starting"]  { --hc: var(--h-starting); }
+  .health-pill[data-health="stopped"]   { --hc: var(--h-stopped); }
+  .health-pill[data-health="unknown"]   { --hc: var(--h-unknown); border-style: dashed; }
+  .health-pill[data-health="starting"] .hdot,
+  .health-pill[data-health="unhealthy"] .hdot { animation: hpulse 1.4s ease-in-out infinite; }
+  @keyframes hpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { .health-pill .hdot { animation: none; } }
+
+  .health-panel {
+    padding: 8px 14px 10px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 2px 0 4px;
+  }
+  .health-panel .hp-svc {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 5px 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay2) 8%, transparent);
+  }
+  .health-panel .hp-svc:last-child { border-bottom: 0; }
+  .health-panel .hp-name { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+  .health-panel .hp-state { color: var(--text-muted); }
+  .health-panel .hp-status { display: inline-flex; align-items: center; gap: 5px; color: var(--hc); font-weight: 600; }
+  .health-panel .hp-status .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--hc); }
+  .health-panel .hp-status[data-health="healthy"]   { --hc: var(--h-healthy); }
+  .health-panel .hp-status[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-panel .hp-status[data-health="starting"]  { --hc: var(--h-starting); }
+  .health-panel .hp-status[data-health="stopped"]   { --hc: var(--h-stopped); }
+  .health-panel .hp-status[data-health="unknown"]   { --hc: var(--h-unknown); }
+  .health-panel .hp-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
 
   /* ─── FILES PILL ─── */
   .files-pill {
@@ -1779,6 +1847,10 @@
   // the one currently deploying, in deploy order.
   let upcomingSnap = [];
 
+  // Live stack health, from the 'health' SSE snapshot: stack name -> { status,
+  // services }. Rendered as a pill on the newest row of each stack (ADR-0027).
+  let healthSnap = {};
+
   function showTable() {
     if (!hasRows) {
       hasRows = true;
@@ -1986,6 +2058,76 @@
     return el;
   }
 
+  // Place a health pill on the newest row of each stack that has a health
+  // status, and remove pills from older rows (health is a current per-stack
+  // value; the deploy table is an event log — see ADR-0027). Cheap to re-run on
+  // every deploy or health snapshot: a handful of rows.
+  function updateHealthPills() {
+    var seen = {};
+    tbody.querySelectorAll('.event-row[data-stack]').forEach(function(row) {
+      var stack = row.dataset.stack;
+      var cell = row.querySelector('.cell-stack');
+      if (!cell) return;
+      var pill = cell.querySelector('.health-pill');
+      var newest = !seen[stack];
+      seen[stack] = true;
+      var h = newest ? healthSnap[stack] : null;
+      if (h && h.status) {
+        if (!pill) {
+          pill = document.createElement('span');
+          pill.className = 'health-pill';
+          pill.dataset.testid = 'health-pill';
+          pill.innerHTML = '<span class="hdot"></span><span class="hlabel"></span>';
+          cell.appendChild(pill);
+        }
+        pill.dataset.health = h.status;
+        pill.dataset.stack = stack;
+        pill.querySelector('.hlabel').textContent = h.status;
+        pill.title = stack + ' — ' + h.status;
+      } else if (pill) {
+        pill.remove();
+        closeHealthPanel(row);
+      }
+    });
+  }
+
+  function closeHealthPanel(row) {
+    var next = row.nextElementSibling;
+    if (next && next.classList.contains('health-panel')) next.remove();
+  }
+
+  function createHealthPanel(stack) {
+    var el = document.createElement('div');
+    el.className = 'health-panel';
+    el.dataset.testid = 'health-panel';
+    el.dataset.healthFor = stack;
+    var h = healthSnap[stack];
+    var svcs = (h && h.services) || [];
+    if (!svcs.length) {
+      el.innerHTML = '<div class="hp-empty">No services reported for this stack.</div>';
+      return el;
+    }
+    el.innerHTML = svcs.map(function(s) {
+      var st = s.health || s.state || 'unknown';
+      var state = s.health ? (s.state + ' · health: ' + s.health) : s.state;
+      return '<div class="hp-svc" data-testid="health-service">' +
+        '<span class="hp-name">' + escapeHtml(s.name) + '</span>' +
+        '<span class="hp-state">' + escapeHtml(state) + '</span>' +
+        '<span class="hp-status" data-health="' + escapeAttr(healthClass(s)) + '"><span class="hdot"></span>' + escapeHtml(st) + '</span>' +
+        '</div>';
+    }).join('');
+    return el;
+  }
+
+  // healthClass maps one service to the same status vocabulary as the rollup, so
+  // the per-service dot colour matches the pill's tier.
+  function healthClass(s) {
+    if (s.health === 'unhealthy' || s.state === 'restarting' || s.state === 'dead') return 'unhealthy';
+    if (s.health === 'starting' || s.state === 'created') return 'starting';
+    if (s.health === 'healthy' || s.state === 'running') return 'healthy';
+    return 'stopped';
+  }
+
   function updateDeployingIndicator() {
     var active = Object.keys(deployingRows);
     var up = upcomingSnap;
@@ -2178,6 +2320,7 @@
       var evt = JSON.parse(e.data);
       handleEvent(evt, false);
       refilterDeploys();
+      updateHealthPills(); // a new/mutated row may change which row is newest
     });
 
     es.addEventListener('autosync', function(e) {
@@ -2201,6 +2344,12 @@
       var d = JSON.parse(e.data);
       upcomingSnap = (d && d.upcoming) || [];
       updateDeployingIndicator();
+    });
+
+    es.addEventListener('health', function(e) {
+      var d = JSON.parse(e.data);
+      healthSnap = (d && d.stacks) || {};
+      updateHealthPills();
     });
 
     es.onerror = function() {
@@ -2891,6 +3040,22 @@
     var fileHeader = e.target.closest('.diff-file-header');
     if (fileHeader) {
       fileHeader.classList.toggle('expanded');
+      return;
+    }
+
+    // Stack-health pill: toggle its per-service panel. Handled before the files
+    // logic so a tap on the pill never opens the row's files/diff panel (mobile).
+    var hpill = e.target.closest('.health-pill');
+    if (hpill) {
+      var hrow = hpill.closest('.event-row');
+      if (hrow) {
+        var hnext = hrow.nextElementSibling;
+        if (hnext && hnext.classList.contains('health-panel')) {
+          hnext.remove();
+        } else {
+          hrow.after(createHealthPanel(hrow.dataset.stack));
+        }
+      }
       return;
     }
 
