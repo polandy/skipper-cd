@@ -29,3 +29,4 @@ One file per decision, numbered sequentially (see
 | [0022](0022-health-check-gated-rollback.md) | Health-check-gated rollback |
 | [0023](0023-pwa-update-prompt.md) | Prompt to reload when a new PWA version is waiting |
 | [0024](0024-upcoming-deploys-look-ahead.md) | Upcoming-deploys look-ahead (run plan) in the header |
+| [0025](0025-reconcile-self-restart-interrupted-nixos-rebuild.md) | Reconcile a self-restart-interrupted NixOS rebuild into a success |
