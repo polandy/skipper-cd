@@ -67,7 +67,9 @@ asserting **behaviour + visual snapshots**.
 > row → panel → error) — driven by a failing `up` that rolls back. **Mask K**
 > (§4.12) covers self-heal — **UK1** (a degraded stack is restored, `healed`
 > row), **UK2** (a stack that stays unhealthy exhausts into `heal_exhausted`) —
-> driving the real self-heal loop off the scripted health poller.
+> driving the real self-heal loop off the scripted health poller. **Mask L**
+> (§4.13) covers the one-open-panel-per-row rule — **UL1** (the health panel and
+> the files/diff panel swap each other out, in both click orders).
 
 ## 1. Scope & boundaries
 
@@ -504,6 +506,19 @@ snapshots badge colouring, and the two new badges are covered there in spirit).
   (`max_attempts: 1`) trips the circuit breaker: a single `heal_exhausted` row
   with the give-up error in its `error-panel`, emitted once (not per poll).
 
+### 4.13 UI — Maske L: one open panel per deploy row
+
+The health panel and the files/diff panel are mutually exclusive on a row:
+opening one closes the other, so the layout never depends on click order and the
+variant-A row binding is never split across two panels. A webhook image bump
+puts a diff on the newest row while the health poller (scripted stub) puts the
+health pill on the same row. Behaviour-only (no snapshot).
+
+- **UL1 — Mutual exclusion, both orders.** With the health panel open, clicking
+  the files pill swaps in the diff panel (row `diff-open`, not `health-open`);
+  clicking the health pill swaps the health panel back (row `health-open`, not
+  `diff-open`). The surviving panel is always the row's direct sibling.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -606,6 +621,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: rolled-up pill per stack (healthy/unhealthy/stopped) | **UH1** |
 | Stack health: per-service panel toggle | **UH2** |
 | Stack health: pill on the newest row per stack | **UH3** |
+| One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |

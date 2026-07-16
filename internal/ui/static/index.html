@@ -2445,6 +2445,15 @@
     row.removeAttribute('data-health');
   }
 
+  // closeDiffPanel is the files/diff counterpart of closeHealthPanel. Together
+  // they enforce one open panel per row: opening either panel first closes the
+  // other, so a toggleable panel is always the row's direct next sibling.
+  function closeDiffPanel(row) {
+    var next = row.nextElementSibling;
+    if (next && (next.classList.contains('files-list') || next.classList.contains('diff-panel'))) next.remove();
+    row.classList.remove('diff-open');
+  }
+
   function createHealthPanel(stack) {
     var el = document.createElement('div');
     el.className = 'health-panel';
@@ -2584,7 +2593,7 @@
     var row = queuedRows[stack];
     if (!row) return;
     var sib = row.nextElementSibling;
-    if (sib && (sib.classList.contains('files-list') || sib.classList.contains('diff-panel'))) {
+    if (sib && (sib.classList.contains('files-list') || sib.classList.contains('diff-panel') || sib.classList.contains('health-panel'))) {
       sib.remove();
     }
     row.remove();
@@ -3427,6 +3436,7 @@
         if (hnext && hnext.classList.contains('health-panel')) {
           closeHealthPanel(hrow);
         } else {
+          closeDiffPanel(hrow); // one panel per row: replace an open files/diff panel
           hrow.dataset.health = hpill.dataset.health || 'unknown'; // tint the row (variant A)
           hrow.classList.add('health-open');
           hrow.after(createHealthPanel(hrow.dataset.stack));
@@ -3442,10 +3452,10 @@
     if (!pillEl) return;
     var existing = row.nextElementSibling;
     if (existing && (existing.classList.contains('files-list') || existing.classList.contains('diff-panel'))) {
-      existing.remove();
-      row.classList.remove('diff-open');
+      closeDiffPanel(row);
       return;
     }
+    closeHealthPanel(row); // one panel per row: replace an open health panel
 
     var eventId = row.dataset.eventId;
     var hasDiffs = row.dataset.hasDiffs === '1';
@@ -3463,7 +3473,10 @@
       loading.innerHTML = '<div class="diff-loading">Loading diffs...</div>';
       row.after(loading);
       fetchDiffs(eventId, function(diffs, commits) {
-        if (loading.parentNode) loading.remove();
+        // The placeholder gone means the panel was closed (or replaced by the
+        // health panel) while loading — don't resurrect it.
+        if (!loading.parentNode) return;
+        loading.remove();
         if (diffs && Object.keys(diffs).length > 0) {
           row.after(renderDiffPanel(diffs, commits, meta));
         } else {
