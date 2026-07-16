@@ -160,7 +160,9 @@ func TestDeployAllStacks_EmitsRolledBackEvent(t *testing.T) {
 	oldCompose := composeWithImage("nginx:1.25")
 
 	cr := &fakeCommitReader{
-		diffs: map[string]string{},
+		diffs: map[string]string{
+			composePath: "@@ -1 +1 @@\n-    image: nginx:1.25\n+    image: nginx:1.26",
+		},
 		files: map[string][]byte{
 			"old-sha:" + composePath: []byte(oldCompose),
 		},
@@ -202,6 +204,15 @@ func TestDeployAllStacks_EmitsRolledBackEvent(t *testing.T) {
 	if rolledBack.Stack != "mystack" {
 		t.Errorf("expected stack 'mystack', got %q", rolledBack.Stack)
 	}
+	// A rolled-back deploy must carry the same change context a success does, so
+	// the UI can show what was being deployed (not just the file path retained
+	// from the deploying row) and render its diff.
+	if len(rolledBack.ChangedFiles) == 0 {
+		t.Error("rolled_back event should carry changed_files")
+	}
+	if len(rolledBack.Diffs) == 0 {
+		t.Error("rolled_back event should carry diffs so the diff panel works, not just the file path")
+	}
 }
 
 func TestDeployAllStacks_EmitsRolledBackUnhealthyEvent(t *testing.T) {
@@ -214,7 +225,9 @@ func TestDeployAllStacks_EmitsRolledBackUnhealthyEvent(t *testing.T) {
 
 	composePath := filepath.Join(stackDir, "docker-compose.yml")
 	cr := &fakeCommitReader{
-		diffs: map[string]string{},
+		diffs: map[string]string{
+			composePath: "@@ -1 +1 @@\n-    image: nginx:1.25\n+    image: nginx:1.26",
+		},
 		files: map[string][]byte{
 			"old-sha:" + composePath: []byte(composeWithImage("nginx:1.25")),
 		},
@@ -257,6 +270,12 @@ func TestDeployAllStacks_EmitsRolledBackUnhealthyEvent(t *testing.T) {
 	}
 	if unhealthy.Stack != "mystack" {
 		t.Errorf("expected stack 'mystack', got %q", unhealthy.Stack)
+	}
+	if len(unhealthy.ChangedFiles) == 0 {
+		t.Error("rolled_back_unhealthy event should carry changed_files")
+	}
+	if len(unhealthy.Diffs) == 0 {
+		t.Error("rolled_back_unhealthy event should carry diffs so the diff panel works")
 	}
 }
 

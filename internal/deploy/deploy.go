@@ -185,6 +185,27 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 	return id
 }
 
+// emitDeployFailure counts the error and emits the terminal event that matches
+// how the deploy ended: rolled_back_unhealthy when the restored version also
+// failed its health gate, rolled_back when the rollback recovered, else a plain
+// failed. It carries the same changed files / diffs / commits a success does, so
+// the UI can show what the failed deploy was applying and render its diff — not
+// just the file paths left over from the deploying row.
+func (d *Deployer) emitDeployFailure(stack string, duration time.Duration, err error, changedFiles []string, diffs map[string]string, commits []events.CommitInfo) {
+	metrics.DeployErrors.WithLabelValues(stack).Inc()
+	switch {
+	case errors.Is(err, ErrRollbackUnhealthy):
+		slog.Error("deploy failed, rollback ran but stack is still unhealthy", "stack", stack, "err", err)
+		d.emit(events.StatusRolledBackUnhealthy, stack, duration, err.Error(), changedFiles, diffs, commits)
+	case errors.Is(err, ErrRolledBack):
+		slog.Warn("deploy failed but rolled back", "stack", stack, "err", err)
+		d.emit(events.StatusRolledBack, stack, duration, err.Error(), changedFiles, diffs, commits)
+	default:
+		slog.Error("deploy failed", "stack", stack, "err", err)
+		d.emit(events.StatusFailed, stack, duration, err.Error(), changedFiles, diffs, commits)
+	}
+}
+
 // repoRelative shortens an absolute path under the repo clone to a repo-relative
 // path for display: the hashing and diff layers work in absolute filesystem
 // paths, but the UI has no notion of the repo dir. Paths outside the repo (or
@@ -321,22 +342,12 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	}
 
 	for _, stack := range cfg.Stacks {
-		startTime := time.Now()
-		if err := d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state); err != nil {
-			duration := time.Since(startTime)
-			metrics.DeployErrors.WithLabelValues(stack.Name).Inc()
-			switch {
-			case errors.Is(err, ErrRollbackUnhealthy):
-				slog.Error("deploy failed, rollback ran but stack is still unhealthy", "stack", stack.Name, "err", err)
-				d.emit(events.StatusRolledBackUnhealthy, stack.Name, duration, err.Error(), nil, nil, nil)
-			case errors.Is(err, ErrRolledBack):
-				slog.Warn("deploy failed but rolled back", "stack", stack.Name, "err", err)
-				d.emit(events.StatusRolledBack, stack.Name, duration, err.Error(), nil, nil, nil)
-			default:
-				slog.Error("deploy failed", "stack", stack.Name, "err", err)
-				d.emit(events.StatusFailed, stack.Name, duration, err.Error(), nil, nil, nil)
-			}
-		}
+		// deployStackIfChanged emits its own terminal event — success, skipped,
+		// queued, or (via emitDeployFailure) failed / rolled_back /
+		// rolled_back_unhealthy — and counts errors, so a failed deploy carries the
+		// same change context as a successful one. The returned error is fully
+		// handled inside; just move on to the next stack.
+		_ = d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state)
 	}
 
 	// Run finished: clear the look-ahead so the header returns to idle.
@@ -493,7 +504,7 @@ func (d *Deployer) shutdownRequested() bool {
 	return d.shutdownCtx != nil && d.shutdownCtx.Err() != nil
 }
 
-func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) error {
+func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) (err error) {
 	// Change detection always uses the repo clone so that merged PRs are detected.
 	repoDir := filepath.Join(baseDir, stack.Name)
 	composePath := filepath.Join(repoDir, "docker-compose.yml")
@@ -518,7 +529,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
 	if err != nil {
-		return fmt.Errorf("compute per-file hashes: %w", err)
+		err = fmt.Errorf("compute per-file hashes: %w", err)
+		d.emitDeployFailure(stack.Name, 0, err, nil, nil, nil)
+		return err
 	}
 
 	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
@@ -555,6 +568,14 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", projectDir, "changed_files", changed)
 	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
 	commits := d.collectCommits(ctx, changed, state.LastDeployedCommit)
+	// From here the stack is actually deploying: any error returned below emits
+	// the matching terminal event with the change context gathered above. The
+	// success path emits StatusSuccess and returns nil, so this never double-fires.
+	defer func() {
+		if err != nil {
+			d.emitDeployFailure(stack.Name, time.Since(deployStart), err, changed, diffs, commits)
+		}
+	}()
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
 	var currentImages serviceImageByName
