@@ -1,8 +1,8 @@
 // Package reconcile periodically re-runs skipper's git sync + deploy so a
 // missed or lost webhook cannot leave the host drifted from the deploy repo
-// indefinitely (ADR-0028). It reconciles against git desired state only, using
-// the same sync + deploy path a webhook does; it does not inspect container
-// runtime state.
+// indefinitely (ADR-0028). It drives an injected Reconciler on a timer and
+// knows nothing about git, docker, or config — the reconcile pass itself lives
+// behind the Reconciler seam, which keeps this package isolated and testable.
 package reconcile
 
 import (
@@ -11,24 +11,31 @@ import (
 	"time"
 )
 
-// Loop calls a reconcile function on a fixed interval until its context is
-// cancelled. The function reports whether it ran: a false return means a deploy
-// was already in progress and the tick was skipped, so the loop never queues
-// reconciles behind a long deploy.
+// Reconciler performs one reconcile pass — a git sync followed by deploying
+// only the stacks whose tracked inputs changed — and reports whether it ran. A
+// false return means a deploy was already in progress, so the pass was skipped
+// rather than queued behind it. In production it is backed by the deployer's
+// TrySyncAndDeployAll; tests supply a fake.
+type Reconciler interface {
+	Reconcile(ctx context.Context) bool
+}
+
+// Loop drives a Reconciler on a fixed interval until its context is cancelled.
 type Loop struct {
-	interval  time.Duration
-	reconcile func(context.Context) bool
+	interval   time.Duration
+	reconciler Reconciler
 }
 
-// New builds a Loop that calls reconcile every interval. A non-positive
-// interval disables the loop (see Run).
-func New(interval time.Duration, reconcile func(context.Context) bool) *Loop {
-	return &Loop{interval: interval, reconcile: reconcile}
+// New builds a Loop that calls r every interval. A non-positive interval
+// disables the loop (see Run).
+func New(interval time.Duration, r Reconciler) *Loop {
+	return &Loop{interval: interval, reconciler: r}
 }
 
-// Run ticks every interval, calling reconcile once per tick, until ctx is
-// cancelled. A non-positive interval disables the loop: Run returns
-// immediately, so pure webhook + startup behaviour is restored.
+// Run runs one reconcile pass every interval until ctx is cancelled. A
+// non-positive interval disables the loop: Run returns immediately, so pure
+// webhook + startup behaviour is restored. A skipped pass (a deploy already in
+// flight) does not stop the loop — the next tick tries again.
 func (l *Loop) Run(ctx context.Context) {
 	if l.interval <= 0 {
 		return
@@ -40,7 +47,7 @@ func (l *Loop) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if !l.reconcile(ctx) {
+			if !l.reconciler.Reconcile(ctx) {
 				slog.Debug("reconcile tick skipped: deploy already in progress")
 			}
 		}

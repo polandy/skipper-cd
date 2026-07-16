@@ -253,9 +253,7 @@ func main() {
 	// (ADR-0028). Not UI-gated — it is a correctness feature that must run
 	// headless. A tick is skipped while a deploy is already in flight.
 	if interval := *cfg.ReconcileIntervalSeconds; interval > 0 {
-		loop := reconcile.New(time.Duration(interval)*time.Second, func(ctx context.Context) bool {
-			return deployer.TrySyncAndDeployAll(ctx, cfg)
-		})
+		loop := reconcile.New(time.Duration(interval)*time.Second, deployReconciler{deployer, cfg})
 		go loop.Run(signalCtx)
 		slog.Info("periodic reconcile enabled", "interval_seconds", interval)
 	}
@@ -319,6 +317,19 @@ type autosyncDeps struct {
 	order   func() []string
 	publish func() // publish snapshots + refresh gauges
 	trigger func() // start a deploy run (drains the queue)
+}
+
+// deployReconciler adapts the deployer to reconcile.Reconciler, binding the
+// process config so each reconcile pass runs the same skip-if-busy sync +
+// deploy a webhook does. It keeps the reconcile package free of any deploy or
+// config dependency.
+type deployReconciler struct {
+	deployer *deploy.Deployer
+	cfg      *config.Config
+}
+
+func (r deployReconciler) Reconcile(ctx context.Context) bool {
+	return r.deployer.TrySyncAndDeployAll(ctx, r.cfg)
 }
 
 // stackAutosyncConfig maps each configured stack to its config-as-code autosync
