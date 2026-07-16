@@ -34,6 +34,7 @@ Run it **[on NixOS](nixos.md)** as a declarative systemd service, or **[with Doc
 - **Automatic rollback** — if `docker compose up` fails, or an optional post-deploy health check (compose `--wait` and/or an HTTP probe) doesn't pass, skipper-cd restores the previous compose file from the last deployed Git commit ([details](configuration.md#health-check-gated-rollback)).
 - **NixOS rebuilds** — optionally run `nixos-rebuild switch` before stack deploys when `.nix` files change, so one webhook updates both the host and its containers.
 - **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([details](autosync.md)).
+- **Periodic reconcile** — re-syncs and redeploys on a timer (default every 5 minutes) so a missed webhook can't leave the host drifted ([details](configuration.md#periodic-reconcile)).
 - **Web UI** — a single embedded page with live deploy status, service icons, an event log, and installable as a PWA.
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
