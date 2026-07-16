@@ -17,9 +17,9 @@ import (
 // alertRecorder is a local generic health_watch target capturing every POSTed
 // alert payload.
 type alertRecorder struct {
-	mu      sync.Mutex
-	alerts  []map[string]any
-	server  *httptest.Server
+	mu     sync.Mutex
+	alerts []map[string]any
+	server *httptest.Server
 }
 
 func newAlertRecorder(t *testing.T) *alertRecorder {
