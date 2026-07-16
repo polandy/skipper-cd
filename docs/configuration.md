@@ -308,3 +308,31 @@ To close that gap, skipper also re-runs its git sync + deploy on a timer. Each t
 - Unlike the health poll, it is **not** tied to the UI — it runs headless, since it is a correctness feature rather than a display feed.
 
 A tick is skipped while a deploy is already in flight (a reconcile carries no unique information, so it is dropped rather than queued behind the running deploy), and it flows through the same per-stack deploy gate as a webhook — so a stack with `autosync` off is queued, not force-deployed. See [ADR-0028](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0028-periodic-reconcile-loop.md).
+
+## Keeping images up to date
+
+skipper deploys the images your compose files declare; it does **not** watch registries for new versions on its own. That is a deliberate scope choice: skipper acts on git, so an image update should reach it *as a change in git* — see [ADR-0030](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0030-image-update-automation.md). The supported way to automate updates is to let [Renovate](https://docs.renovatebot.com/) keep the `image:` references in your **deploy repo** current: Renovate opens (or auto-merges) a change that bumps the reference and pins it to a digest, and that merge is an ordinary push, so skipper's webhook and [periodic reconcile](#periodic-reconcile) path pick it up and redeploy — no skipper configuration required.
+
+Digest pinning is what makes this work. With a plain mutable tag like `image: caddy:latest`, the text in git never changes when the registry publishes a new image behind the same tag, so skipper never sees a change. Renovate's digest pinning rewrites the reference to `image: caddy:2.8.4@sha256:…` and keeps that digest current — so **every** update lands in git as a changed reference and deploys through the normal path.
+
+A minimal `renovate.json` for the deploy repo:
+
+```json
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "docker:pinDigests"],
+  "packageRules": [
+    {
+      "matchManagers": ["docker-compose"],
+      "automerge": true,
+      "automergeType": "pr"
+    }
+  ]
+}
+```
+
+- `docker:pinDigests` makes Renovate pin (and keep current) a `@sha256:…` digest on every image reference — the key that closes the mutable-tag gap.
+- The `docker-compose` manager covers `docker-compose.yml` / `compose.yaml` `image:` fields out of the box.
+- `automerge: true` lets low-risk updates merge without review, so the deploy is hands-off end to end. Drop it to keep every bump behind a reviewed PR — the merge still triggers the deploy either way.
+
+On a Gitea/Gogs forge, run **self-hosted** Renovate (the hosted Mend app is GitHub-only) — for example a scheduled `renovatebot/renovate` container with `RENOVATE_PLATFORM=gitea`, a bot token, and an explicit repo list (or `RENOVATE_AUTODISCOVER=true`) pointed at the deploy repo. A missed merge webhook is not fatal: the [periodic reconcile](#periodic-reconcile) loop re-fetches the branch tip within its interval and converges.

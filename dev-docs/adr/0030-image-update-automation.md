@@ -151,76 +151,14 @@ yet* — delegation covers the homelab today.
   answer because "how do I auto-update images?" is a first-class CD question and
   deserves a supported answer (C) rather than silence.
 
-## Appendix: draft docs section (not yet published)
+## Deliverable
 
-This is the concrete deliverable of decision (C) — the "ship documentation, not
-code" section. It is kept here as a draft and only lands in the published
-`docs/configuration.md` (and a short README pointer) once this ADR is **accepted**.
-
-The design assumption baked into it is the one skipper's own change detection needs:
-**Renovate pins every image to a digest** (`docker:pinDigests`). Once every `image:`
-reference in the deploy repo carries a `@sha256:…`, *every* upstream change — a new
-patch release **and** a mutable tag whose digest silently moved — becomes a changed
-reference string in git, which `hasAnyImageChanged` (Invariant 5) already detects and
-pulls. The "mutable tag never updates" blind spot disappears entirely, with no
-skipper-side code.
-
----
-
-### Keeping images up to date
-
-skipper deploys the images your compose files declare; it does **not** watch
-registries for new versions on its own (a deliberate scope choice — see
-[ADR-0030](../dev-docs/adr/0030-image-update-automation.md)). Instead, let
-[Renovate](https://docs.renovatebot.com/) keep the `image:` references in your
-**deploy repo** current. Renovate opens (or auto-merges) a change that bumps the
-reference and **pins it to a digest**; that merge is an ordinary push, so skipper's
-existing webhook + [periodic reconcile](configuration.md#periodic-reconcile) path
-picks it up and redeploys — no skipper configuration required.
-
-Why digest pinning matters: with a plain mutable tag like `image: caddy:latest`, the
-text in git never changes when the registry publishes a new image, so skipper never
-sees a change. Renovate's digest pinning turns the reference into
-`image: caddy:2.8.4@sha256:…` and keeps that digest current — so **every** update
-lands in git as a changed reference and deploys through the normal path.
-
-Minimal `renovate.json` for the deploy repo:
-
-```json
-{
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "docker:pinDigests"],
-  "packageRules": [
-    {
-      "matchManagers": ["docker-compose"],
-      "automerge": true,
-      "automergeType": "pr"
-    }
-  ]
-}
-```
-
-- `docker:pinDigests` makes Renovate pin (and keep current) a `@sha256:…` digest on
-  every image reference — the key that closes the mutable-tag gap.
-- The `docker-compose` manager covers `docker-compose.yml` / `compose.yaml` `image:`
-  fields out of the box.
-- `automerge: true` lets low-risk updates merge without review, so the deploy is
-  hands-off end to end. Drop it to keep every bump behind a reviewed PR — the merge
-  still triggers the deploy either way.
-
-On a Gitea/Gogs forge (the homelab setup), run **self-hosted** Renovate — the hosted
-Mend app is GitHub-only. For example, a scheduled `renovatebot/renovate` container
-with `RENOVATE_PLATFORM=gitea`, a bot token, and `RENOVATE_AUTODISCOVER=true` (or an
-explicit repo list) pointed at the deploy repo. A missed merge webhook is not fatal:
-the reconcile loop re-fetches the branch tip within its interval and converges.
-
-> Prefer a self-contained skipper with no external updater? That would be an in-repo
-> registry watcher, considered and deferred in
-> [ADR-0030](../dev-docs/adr/0030-image-update-automation.md); Renovate is the
-> supported path today.
-
----
-
-*(The cross-links above use `docs/`-relative paths as they would read once moved into
-`docs/configuration.md`; the ADR link would become an absolute GitHub URL there, per
-the repo rule that published pages never `../` into `dev-docs/`.)*
+The concrete output of decision (C) is a user-facing docs section, now published as
+**"Keeping images up to date"** in
+[`docs/configuration.md`](https://github.com/polandy/skipper-cd/blob/main/docs/configuration.md):
+the `renovate.json` (with `docker:pinDigests`), the self-hosted-Renovate note for
+Gitea/Gogs, and the digest-pinning rationale — that once every `image:` reference
+carries a `@sha256:…`, *every* upstream change (a new release **and** a mutable tag
+whose digest silently moved) becomes a changed reference string in git, which
+`hasAnyImageChanged` (Invariant 5) already detects and pulls. The "mutable tag never
+updates" blind spot closes with no skipper-side code.
