@@ -889,13 +889,20 @@
   }
 
   /* ─── ERROR ─── */
+  /* Bound to its deploy row like the diff/health panels (variant A): a negative
+     top margin closes the 2px inter-row gap and the top corners square off, so
+     the message reads as attached to the row above it rather than floating
+     ambiguously between rows. --ec is the row's status colour (set below). */
   .error-detail {
     grid-column: 1 / -1;
-    margin-top: 4px;
+    margin-top: -2px;
     padding: 10px 14px;
-    background: color-mix(in srgb, var(--danger) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 16%, transparent);
-    border-radius: 6px;
+    background: color-mix(in srgb, var(--ec, var(--danger)) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ec, var(--danger)) 16%, transparent);
+    border-top: none;
+    border-left: none;
+    border-radius: 0 0 6px 6px;
+    box-shadow: inset 3px 0 0 var(--ec, var(--danger));
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--danger);
@@ -903,6 +910,20 @@
     word-break: break-all;
     line-height: 1.6;
     animation: expand 0.2s ease-out;
+  }
+
+  /* --ec: the deploy-status colour shared by the row's left bar and its error
+     box, so the two read as one unit. The row keeps a continuous full-height bar
+     (via box-shadow) and squares its bottom corners only while an error box
+     trails it. Rolled-back uses the rollback tint; failed / rolled_back_unhealthy
+     use danger. */
+  .event-row[data-status="failed"]:has(+ .error-detail),                .error-detail[data-status="failed"]                { --ec: var(--danger); }
+  .event-row[data-status="rolled_back"]:has(+ .error-detail),           .error-detail[data-status="rolled_back"]           { --ec: var(--rollback); }
+  .event-row[data-status="rolled_back_unhealthy"]:has(+ .error-detail), .error-detail[data-status="rolled_back_unhealthy"] { --ec: var(--danger); }
+  .event-row:has(+ .error-detail) {
+    box-shadow: inset 3px 0 0 var(--ec, var(--danger));
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
   }
 
   /* ─── DIFF PANEL ─── */
@@ -2299,6 +2320,7 @@
     el.className = 'error-detail';
     el.dataset.testid = 'error-panel';
     el.dataset.errorFor = evt.stack;
+    if (evt.status) el.dataset.status = evt.status;
     el.textContent = evt.error;
     return el;
   }
