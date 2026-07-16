@@ -153,6 +153,22 @@ export interface StartOptions {
    *  (disabled), so masks predating health stay health-free; Maske H opts in and
    *  scripts per-stack `docker compose ps` output via the stub. */
   healthPoll?: number;
+  /** Enable self-heal (ADR-0029): a degraded stack is restored by a corrective
+   *  `up`. Requires healthPoll > 0. Maske J opts in. */
+  selfHeal?: boolean;
+  /** Self-heal pacing overrides; omitted keys use the backend defaults (3/3/60).
+   *  A small min_unhealthy_polls / cooldown keeps the mask fast. */
+  selfHealMinUnhealthyPolls?: number;
+  selfHealMaxAttempts?: number;
+  selfHealCooldownSeconds?: number;
+  /** Per-stack `docker compose ps` output written *before* skipper starts, so the
+   *  first health poll already sees it. Removes the boot-time race where a
+   *  freshly-deployed but unscripted stack reads as `stopped` and (with self-heal
+   *  on) would be healed spuriously. Same shape as setStackHealth. */
+  initialHealth?: Record<
+    string,
+    Array<{ Service: string; State: string; Health?: string; ExitCode?: number }>
+  >;
 }
 
 /** Skipper is a running skipper binary under test with its origin, stub docker,
@@ -246,6 +262,10 @@ export class Skipper {
     // Where setStackHealth writes per-stack `compose ps` output for the stub.
     const healthDir = join(base, 'health');
     mkdirSync(healthDir, { recursive: true });
+    // Pre-boot health seed, so the very first poll already sees it.
+    for (const [name, services] of Object.entries(opts.initialHealth ?? {})) {
+      writeFileSync(join(healthDir, `${name}.json`), JSON.stringify(services));
+    }
 
     const [port, metricsPort] = await freePorts(2);
     const baseURL = `http://127.0.0.1:${port}`;
@@ -264,6 +284,16 @@ export class Skipper {
       // Health polling off by default so masks predating it stay health-free;
       // Maske H opts in via healthPoll (ADR-0027).
       `health_poll_interval_seconds: ${opts.healthPoll ?? 0}\n` +
+      (opts.selfHeal ? `self_heal: true\n` : '') +
+      (opts.selfHealMinUnhealthyPolls !== undefined
+        ? `self_heal_min_unhealthy_polls: ${opts.selfHealMinUnhealthyPolls}\n`
+        : '') +
+      (opts.selfHealMaxAttempts !== undefined
+        ? `self_heal_max_attempts: ${opts.selfHealMaxAttempts}\n`
+        : '') +
+      (opts.selfHealCooldownSeconds !== undefined
+        ? `self_heal_cooldown_seconds: ${opts.selfHealCooldownSeconds}\n`
+        : '') +
       `command_timeout_seconds: 30\n` +
       // source_url points at a closed local port so auto-match icon fetches fail
       // fast and deterministically (connection refused → 404 → monogram), keeping

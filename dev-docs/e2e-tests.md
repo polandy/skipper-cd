@@ -64,7 +64,10 @@ asserting **behaviour + visual snapshots**.
 > binding), **UI3** (multi-commit range) — driven by webhook image bumps. **Mask
 > J** (§4.11) covers the rolled-back error panel — **UJ1** (error box bound to its
 > row), **UJ2** (diff carried on the rolled-back event, bar continuous through
-> row → panel → error) — driven by a failing `up` that rolls back.
+> row → panel → error) — driven by a failing `up` that rolls back. **Mask K**
+> (§4.12) covers self-heal — **UK1** (a degraded stack is restored, `healed`
+> row), **UK2** (a stack that stays unhealthy exhausts into `heal_exhausted`) —
+> driving the real self-heal loop off the scripted health poller.
 
 ## 1. Scope & boundaries
 
@@ -482,6 +485,24 @@ Behaviour-only (no snapshot).
   diff, so the row is `data-has-diffs="1"`; opening the files pill inserts a
   `bound` `diff-panel` (`data-status="rolled_back"`) between the row and the error
   panel, so the DOM order is row → `diff-panel` → `error-panel` — one unbroken bar.
+
+### 4.12 UI — Maske K: Self-heal (ADR-0029)
+
+The real self-heal loop, driven end-to-end through the running binary. The health
+poller (`healthPoll: 1`) reports a stack degraded via the stub docker's scripted
+`ps` output, and self-heal (`selfHeal: true`) restores it with a corrective `up`.
+`initialHealth` seeds each stack healthy *before* boot so the first poll does not
+read the freshly-deployed-but-unscripted stack as `stopped` and heal it
+spuriously; `self_heal_min_unhealthy_polls` / `_cooldown_seconds` are lowered so
+the loop resolves in a couple of polls. Behaviour-only (no snapshot — UA2 already
+snapshots badge colouring, and the two new badges are covered there in spirit).
+
+- **UK1 — Restore.** A stack seeded healthy turns unhealthy; within a poll
+  self-heal runs a corrective `up` (a real extra `docker … up`, asserted via
+  `dockerUps`) and a `healed` row appears. `max_attempts: 5` so it never exhausts.
+- **UK2 — Give up.** A stack that stays unhealthy after its one allowed heal
+  (`max_attempts: 1`) trips the circuit breaker: a single `heal_exhausted` row
+  with the give-up error in its `error-panel`, emitted once (not per poll).
 
 ## 5. Visual snapshot strategy
 
