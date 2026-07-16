@@ -37,6 +37,9 @@ import (
 //     2,3 also fails a health-gated rollback `up` → rolled_back_unhealthy).
 //   - STUB_DOCKER_ECHO=<line>      print <line> to stdout on `up`, so tests can
 //     observe captured child-process output in the log ring.
+//   - STUB_DOCKER_PS_FILE=<file>   print <file> on `ps` (compose ps --format
+//     json), driving the health poller and the healthwatch watchdog; the test
+//     flips the file's content to simulate a health transition.
 const stubDockerScript = `#!/bin/sh
 dir=$(pwd)
 printf '%s\t%s\n' "$dir" "$*" >> "$DOCKER_LOG"
@@ -44,6 +47,12 @@ printf '%s\t%s\n' "$dir" "$*" >> "$DOCKER_LOG"
 if [ -n "$STUB_DOCKER_ECHO" ]; then
   case " $* " in
     *" up "*) echo "$STUB_DOCKER_ECHO" ;;
+  esac
+fi
+
+if [ -n "$STUB_DOCKER_PS_FILE" ]; then
+  case " $* " in
+    *" ps "*) cat "$STUB_DOCKER_PS_FILE" ;;
   esac
 fi
 
@@ -91,6 +100,7 @@ type skipper struct {
 	metricsURL string // http://127.0.0.1:<metrics_port>
 	stacks     []string
 	stubEnv    map[string]string // extra env for the stub docker (fail/hold scripting)
+	extraCfg   string            // raw top-level YAML appended to skipper.yml
 
 	proc   *exec.Cmd
 	stderr *syncBuffer
@@ -107,6 +117,12 @@ func startSkipper(t *testing.T, stacks ...string) *skipper {
 // startSkipperEnv is startSkipper with extra environment for the stub docker,
 // used to script failing/held `up` invocations (see stubDockerScript).
 func startSkipperEnv(t *testing.T, stubEnv map[string]string, stacks ...string) *skipper {
+	return startSkipperOpts(t, stubEnv, "", stacks...)
+}
+
+// startSkipperOpts additionally appends extraCfg (raw top-level YAML, e.g. a
+// health_watch block) to the generated skipper.yml.
+func startSkipperOpts(t *testing.T, stubEnv map[string]string, extraCfg string, stacks ...string) *skipper {
 	t.Helper()
 	requireGit(t)
 
@@ -120,6 +136,7 @@ func startSkipperEnv(t *testing.T, stubEnv map[string]string, stacks ...string) 
 		secret:    "e2e-secret",
 		stacks:    stacks,
 		stubEnv:   stubEnv,
+		extraCfg:  extraCfg,
 		stderr:    &syncBuffer{},
 	}
 	if err := os.MkdirAll(s.stateDir, 0o755); err != nil {
@@ -201,6 +218,9 @@ func (s *skipper) writeConfig(base string) string {
 	fmt.Fprintf(&b, "stacks:\n")
 	for _, name := range s.stacks {
 		fmt.Fprintf(&b, "  - name: %q\n", name)
+	}
+	if s.extraCfg != "" {
+		b.WriteString(s.extraCfg)
 	}
 
 	cfgPath := filepath.Join(base, "skipper.yml")
