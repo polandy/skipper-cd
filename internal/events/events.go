@@ -23,6 +23,17 @@ const (
 	// StatusQueued marks a deploy deferred because autosync is paused; the
 	// change waits and deploys when sync resumes. See docs/autosync.md.
 	StatusQueued Status = "queued"
+	// StatusHealed marks a corrective redeploy that self-heal ran to restore a
+	// stack that had drifted from its deployed running state (a stopped/removed
+	// container, an unhealthy service). It is not a git deploy — the desired
+	// version is unchanged — so it carries no changed files or diffs (ADR-0029).
+	StatusHealed Status = "healed"
+	// StatusHealExhausted marks a stack that self-heal gave up on: repeated
+	// corrective redeploys did not restore it, so skipper stopped trying and
+	// left it reported unhealthy. Emitted once per outage, not per interval, and
+	// is the high-signal "a stack is down and I could not fix it" notification
+	// (ADR-0029).
+	StatusHealExhausted Status = "heal_exhausted"
 )
 
 // CommitInfo describes one git commit deployed by an event: the metadata

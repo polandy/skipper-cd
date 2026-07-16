@@ -275,6 +275,76 @@ func (d *Deployer) TrySyncAndDeployAll(ctx context.Context, cfg *config.Config) 
 	return true
 }
 
+// HealStack runs a corrective `docker compose up -d` for a single stack to
+// restore it to its currently deployed running state after runtime drift (a
+// stopped/removed container, an unhealthy service). It is self-heal's action
+// (ADR-0029) and is deliberately *not* a git deploy: no change detection, no
+// hash update, and no rollback, because the desired version is unchanged — it
+// only restarts what should already be running, so a "rollback" to an older
+// commit would be wrong.
+//
+// It serializes on the deploy mutex like every other deploy source (Invariant
+// 7). If a deploy is already in progress it returns ran=false without waiting:
+// that deploy converges the stack anyway, and the next health poll
+// re-evaluates, so piling a heal behind it carries no unique information
+// (mirrors the reconcile loop's skip-if-busy, ADR-0010/ADR-0028). A successful
+// up emits a healed event; an up error is returned for the caller to count as a
+// failed attempt without emitting a misleading failed-deploy event.
+func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName string) (ran bool, err error) {
+	if !d.mu.TryLock() {
+		return false, nil
+	}
+	defer d.mu.Unlock()
+
+	stack, ok := stackByName(cfg, stackName)
+	if !ok {
+		return true, fmt.Errorf("self-heal: unknown stack %q", stackName)
+	}
+
+	composePath := filepath.Join(cfg.StacksBaseDir, stack.Name, "docker-compose.yml")
+	projectDir := stack.WorkingDir
+
+	baseEnv := os.Environ()
+	if cfg.VarsFile != "" {
+		varsEnv, verr := parseEnvFile(cfg.VarsFile)
+		if verr != nil {
+			return true, fmt.Errorf("self-heal: load vars_file: %w", verr)
+		}
+		baseEnv = append(baseEnv, varsEnv...)
+	}
+
+	start := time.Now()
+	slog.Info("self-heal: restoring stack to its deployed running state", "stack", stack.Name)
+	// A plain up — no --wait/health gate, no rollback (see the doc comment).
+	if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
+		return true, fmt.Errorf("self-heal up %q: %w", stack.Name, err)
+	}
+	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
+	d.emit(events.StatusHealed, stack.Name, time.Since(start), "", nil, nil, nil)
+	slog.Info("self-heal: stack restored", "stack", stack.Name)
+	return true, nil
+}
+
+// EmitHealExhausted records that self-heal gave up on a stack it could not
+// restore after repeated corrective redeploys (ADR-0029). It is routed through
+// the deploy event pipeline so it lands in history, the SSE stream, and
+// notifications like any other terminal outcome, and counts a deploy error for
+// metrics/alerting.
+func (d *Deployer) EmitHealExhausted(stack string) {
+	metrics.DeployErrors.WithLabelValues(stack).Inc()
+	d.emit(events.StatusHealExhausted, stack, 0, "self-heal exhausted: still unhealthy after repeated corrective redeploys", nil, nil, nil)
+}
+
+// stackByName returns the configured stack with the given name.
+func stackByName(cfg *config.Config, name string) (config.Stack, bool) {
+	for _, s := range cfg.Stacks {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return config.Stack{}, false
+}
+
 // syncAndDeployLocked syncs the repository and deploys all stacks. The caller
 // must hold d.mu.
 func (d *Deployer) syncAndDeployLocked(ctx context.Context, cfg *config.Config) {

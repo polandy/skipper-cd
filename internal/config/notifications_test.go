@@ -24,7 +24,7 @@ notifications:
 	if got.Format != config.NotifyFormatGeneric {
 		t.Errorf("expected default format %q, got %q", config.NotifyFormatGeneric, got.Format)
 	}
-	want := []string{config.NotifyOnFailed, config.NotifyOnSuccess, config.NotifyOnRolledBack, config.NotifyOnRolledBackUnhealthy}
+	want := []string{config.NotifyOnFailed, config.NotifyOnSuccess, config.NotifyOnRolledBack, config.NotifyOnRolledBackUnhealthy, config.NotifyOnHealExhausted}
 	if strings.Join(got.On, ",") != strings.Join(want, ",") {
 		t.Errorf("expected default on %v, got %v", want, got.On)
 	}

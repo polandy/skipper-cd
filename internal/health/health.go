@@ -67,6 +67,16 @@ type Config struct {
 	Publish        func(Snapshot)
 	Interval       time.Duration
 	HasSubscribers func() bool
+	// AlwaysPoll makes every periodic tick poll regardless of HasSubscribers.
+	// Self-heal sets it so the poller runs headless on an unattended host — the
+	// subscriber gate then guards only the display Publish, never the poll
+	// itself (ADR-0029).
+	AlwaysPoll bool
+	// OnSnapshot, when set, receives every fresh snapshot in addition to Publish.
+	// It is self-heal's feed; it runs on the poller goroutine, so a consumer that
+	// blocks (e.g. taking the deploy mutex) delays the next tick, which is the
+	// intended serialization.
+	OnSnapshot func(Snapshot)
 }
 
 // Poller periodically probes each stack's health and publishes snapshots.
@@ -76,6 +86,8 @@ type Poller struct {
 	publish        func(Snapshot)
 	interval       time.Duration
 	hasSubscribers func() bool
+	alwaysPoll     bool
+	onSnapshot     func(Snapshot)
 
 	last    atomic.Pointer[Snapshot]
 	trigger chan struct{}
@@ -89,6 +101,8 @@ func New(cfg Config) *Poller {
 		publish:        cfg.Publish,
 		interval:       cfg.Interval,
 		hasSubscribers: cfg.HasSubscribers,
+		alwaysPoll:     cfg.AlwaysPoll,
+		onSnapshot:     cfg.OnSnapshot,
 		trigger:        make(chan struct{}, 1),
 	}
 }
@@ -130,15 +144,16 @@ func (p *Poller) Current() Snapshot {
 }
 
 // tick polls only when someone is watching, so a UI-enabled but unattended host
-// does no health work.
+// does no health work — unless AlwaysPoll is set (self-heal), which needs a
+// snapshot every interval regardless of who is watching.
 func (p *Poller) tick(ctx context.Context) {
-	if p.hasSubscribers == nil || p.hasSubscribers() {
+	if p.alwaysPoll || p.hasSubscribers == nil || p.hasSubscribers() {
 		p.pollOnce(ctx)
 	}
 }
 
-// pollOnce probes every stack, stores the snapshot for late joiners, and
-// publishes it.
+// pollOnce probes every stack, stores the snapshot for late joiners, publishes
+// it to the UI, and feeds it to any snapshot consumer (self-heal).
 func (p *Poller) pollOnce(ctx context.Context) {
 	snap := Snapshot{Stacks: map[string]StackHealth{}}
 	for _, s := range p.stacks() {
@@ -147,6 +162,9 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	p.last.Store(&snap)
 	if p.publish != nil {
 		p.publish(snap)
+	}
+	if p.onSnapshot != nil {
+		p.onSnapshot(snap)
 	}
 }
 

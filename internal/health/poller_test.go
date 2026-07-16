@@ -152,6 +152,41 @@ func TestPoller_TickSkipsWhenNoSubscribers(t *testing.T) {
 	}
 }
 
+func TestPoller_TickAlwaysPollsWhenAlwaysPollSet(t *testing.T) {
+	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
+	var snaps int
+	// No subscribers, but AlwaysPoll (self-heal) forces the poll anyway.
+	p := New(Config{
+		Outputter:      out,
+		Stacks:         func() []StackRef { return []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}} },
+		Interval:       time.Hour,
+		HasSubscribers: func() bool { return false },
+		AlwaysPoll:     true,
+		OnSnapshot:     func(Snapshot) { snaps++ },
+	})
+
+	p.tick(context.Background())
+	if snaps != 1 {
+		t.Errorf("expected AlwaysPoll to poll despite no subscribers, got %d snapshots", snaps)
+	}
+}
+
+func TestPoller_OnSnapshotReceivesEveryPoll(t *testing.T) {
+	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
+	var got Snapshot
+	p := New(Config{
+		Outputter:  out,
+		Stacks:     func() []StackRef { return []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}} },
+		Interval:   time.Hour,
+		OnSnapshot: func(s Snapshot) { got = s },
+	})
+
+	p.pollOnce(context.Background())
+	if got.Stacks["app"].Status != Healthy {
+		t.Errorf("OnSnapshot did not receive the fresh snapshot, got %+v", got)
+	}
+}
+
 func TestPoller_CurrentReturnsLatestSnapshot(t *testing.T) {
 	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
 	p := newTestPoller(out, []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}}, func(Snapshot) {}, nil)

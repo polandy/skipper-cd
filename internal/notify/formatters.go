@@ -85,6 +85,8 @@ func renderMessage(prefix string, ev events.DeployEvent) string {
 		return fmt.Sprintf("↩️ deploy rolled back: %s (%s) — %s", ev.Stack, dur, ev.Error)
 	case events.StatusRolledBackUnhealthy:
 		return fmt.Sprintf("🚨 deploy rolled back but still unhealthy: %s (%s) — %s", ev.Stack, dur, ev.Error)
+	case events.StatusHealExhausted:
+		return fmt.Sprintf("🚨 self-heal gave up: %s is still unhealthy after repeated redeploys — %s", ev.Stack, ev.Error)
 	default:
 		return fmt.Sprintf("deploy %s: %s", ev.Status, ev.Stack)
 	}

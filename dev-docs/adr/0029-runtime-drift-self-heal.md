@@ -1,6 +1,6 @@
 # ADR-0029: Runtime drift self-heal via corrective redeploy
 
-Status: proposed
+Status: accepted
 Date: 2026-07-16
 
 ## Context
