@@ -65,6 +65,7 @@ nixos_rebuild:
 | `ui_theme` | string | no | `catppuccin` | Web UI colour palette: one of `catppuccin`, `nord`, `solarized`, `gruvbox`, `rose-pine` (see [Web UI Theme](#web-ui-theme)). |
 | `ui_theme_switcher` | bool | no | `false` | Show the in-UI theme picker so a browser can try other palettes locally. Off by default — the deployed `ui_theme` is then fixed (see [Web UI Theme](#web-ui-theme)). |
 | `health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
+| `reconcile_interval_seconds` | int | no | `300` | How often skipper re-runs its git sync + deploy on a timer, so a missed webhook cannot leave the host drifted (see [Periodic reconcile](#periodic-reconcile)). `0` disables it (pure webhook + startup). Runs headless — not tied to the UI. |
 
 ## Stack Fields
 
@@ -293,3 +294,17 @@ The health is read by polling `docker compose ps` for each stack, using the same
 - The poll only runs while `ui_enabled` **and** at least one browser is connected to the dashboard, so an unattended instance does no health work.
 
 On a resource-constrained host, raise the interval rather than disabling it. See [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#stack-health) for the UI surface.
+
+## Periodic reconcile
+
+Deploys are normally driven by push webhooks. The webhook is a single point of delivery, though: if one is lost — skipper was down or restarting when the push landed, a network blip, a misconfigured hook, or a change that reached the branch some other way — the running stacks stay drifted from the deploy repo until the *next* push or a restart.
+
+To close that gap, skipper also re-runs its git sync + deploy on a timer. Each tick fetches the branch tip and deploys only what actually changed (via the same hash-based change detection as a webhook), so a reconcile against an unchanged repo is a cheap no-op: no compose command runs and no event is emitted. It reconciles against **git desired state only** — it does not inspect or restart containers.
+
+`reconcile_interval_seconds` controls the cadence:
+
+- **default `300`** — reconcile every 5 minutes. On by default, so a missed webhook self-corrects within one interval.
+- **`0`** — disable the loop entirely, restoring pure webhook + startup behaviour.
+- Unlike the health poll, it is **not** tied to the UI — it runs headless, since it is a correctness feature rather than a display feed.
+
+A tick is skipped while a deploy is already in flight (a reconcile carries no unique information, so it is dropped rather than queued behind the running deploy), and it flows through the same per-stack deploy gate as a webhook — so a stack with `autosync` off is queued, not force-deployed. See [ADR-0028](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0028-periodic-reconcile-loop.md).

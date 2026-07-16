@@ -206,3 +206,67 @@ func TestDeployStack_UnchangedClearsQueue(t *testing.T) {
 		t.Errorf("unchanged stack should clear the queue, count = %d", q.Count())
 	}
 }
+
+// deployAllStacksCommitBaseDeployer builds a Deployer wired for a full run with
+// a commit reader (HeadCommitSHA → "abc123") and a persisted state seeded to
+// last_deployed_commit=old-sha. The stack has one changed compose file.
+func deployAllStacksCommitBaseDeployer(t *testing.T, paused bool) (*Deployer, *config.Config, string) {
+	t.Helper()
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	stateDir := t.TempDir()
+	seed := newEmptyState()
+	seed.LastDeployedCommit = "old-sha"
+	if err := saveDeployState(stateDir, seed); err != nil {
+		t.Fatal(err)
+	}
+
+	d := &Deployer{runner: &recordingRunner{}, commitReader: &fakeCommitReader{}, repoDir: baseDir, stateDir: stateDir}
+	var global *bool
+	if paused {
+		global = off()
+	}
+	d.SetAutosync(autosync.NewController(global, nil), autosync.NewQueue())
+
+	cfg := &config.Config{StacksBaseDir: baseDir, Stacks: []config.Stack{{Name: "gitea"}}}
+	return d, cfg, stateDir
+}
+
+// A change deferred by paused autosync must NOT advance last_deployed_commit:
+// the change has not deployed yet, so the commit base has to stay put or the
+// eventual deploy diffs HEAD..HEAD and shows no diff (the reconciled _nixos row
+// that only listed flake.lock with no diff, seen in prod).
+func TestDeployAllStacks_KeepsCommitBaseWhileQueued(t *testing.T) {
+	d, cfg, stateDir := deployAllStacksCommitBaseDeployer(t, true)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	after, err := loadPersistedDeployState(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.LastDeployedCommit != "old-sha" {
+		t.Errorf("last_deployed_commit advanced to %q while a change was queued; want it kept at old-sha", after.LastDeployedCommit)
+	}
+}
+
+// The counterpart: when the run actually deploys everything (nothing queued),
+// last_deployed_commit advances to HEAD so future deploys diff against it.
+func TestDeployAllStacks_AdvancesCommitBaseWhenDeployed(t *testing.T) {
+	d, cfg, stateDir := deployAllStacksCommitBaseDeployer(t, false)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	after, err := loadPersistedDeployState(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.LastDeployedCommit != "abc123" {
+		t.Errorf("last_deployed_commit = %q, want it advanced to HEAD abc123 after a clean deploy", after.LastDeployedCommit)
+	}
+}

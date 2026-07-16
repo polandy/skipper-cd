@@ -505,6 +505,45 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	}
 }
 
+func TestTrySyncAndDeployAll_RunsWhenIdle(t *testing.T) {
+	syncer := &fakeRepoSyncer{}
+	d := &Deployer{runner: &recordingRunner{}, syncer: syncer, stateDir: t.TempDir()}
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: t.TempDir(),
+		Stacks:        []config.Stack{},
+	}
+
+	if ran := d.TrySyncAndDeployAll(context.Background(), cfg); !ran {
+		t.Error("expected TrySyncAndDeployAll to run when no deploy is in progress")
+	}
+	if syncer.called.Load() != 1 {
+		t.Errorf("expected sync to run once, got %d", syncer.called.Load())
+	}
+}
+
+func TestTrySyncAndDeployAll_SkipsWhenDeployInProgress(t *testing.T) {
+	syncer := &fakeRepoSyncer{}
+	d := &Deployer{runner: &recordingRunner{}, syncer: syncer, stateDir: t.TempDir()}
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: t.TempDir(),
+		Stacks:        []config.Stack{},
+	}
+
+	// Simulate an in-flight deploy by holding the deploy lock, as a running
+	// SyncAndDeployAll would. A reconcile tick must skip, not queue behind it.
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if ran := d.TrySyncAndDeployAll(context.Background(), cfg); ran {
+		t.Error("expected TrySyncAndDeployAll to skip while a deploy holds the lock")
+	}
+	if syncer.called.Load() != 0 {
+		t.Errorf("expected no sync while skipped, got %d", syncer.called.Load())
+	}
+}
+
 func TestHealth_NilBeforeFirstRun(t *testing.T) {
 	d := newDeployerWithRunner(&recordingRunner{})
 	if err := d.Health(); err != nil {
