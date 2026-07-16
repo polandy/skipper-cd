@@ -33,5 +33,5 @@ One file per decision, numbered sequentially (see
 | [0026](0026-yaml-state-persistence-not-sqlite.md) | Persist state as YAML files, not an embedded database |
 | [0027](0027-live-stack-health-in-ui.md) | Live stack health in the UI (own stacks, display-only) |
 | [0028](0028-periodic-reconcile-loop.md) | Periodic reconcile loop against git |
-| [0029](0029-runtime-drift-self-heal.md) | Runtime drift self-heal via corrective redeploy |
+| [0029](0029-runtime-drift-self-heal.md) | Runtime drift self-heal via corrective redeploy (opt-in) |
 | [0030](0030-image-update-automation.md) | Image-update automation (delegate to Renovate; git write-back if in-repo) |

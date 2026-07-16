@@ -559,6 +559,42 @@
     border-radius: 0 2px 2px 0;
   }
 
+  /* Self-heal restored a stack — a positive recovery, so it borrows the
+     success (teal) colours to read distinctly from a git deploy (ADR-0029). */
+  .event-row.healed-row {
+    background: var(--success-dim);
+  }
+
+  .event-row.healed-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--success);
+    border-radius: 0 2px 2px 0;
+  }
+
+  /* Self-heal gave up — the worst self-heal outcome, so it borrows the failed
+     (danger) colours like rolled_back_unhealthy (ADR-0029). */
+  .event-row.heal_exhausted-row {
+    background: var(--danger-dim);
+  }
+
+  .event-row.heal_exhausted-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--danger);
+    border-radius: 0 2px 2px 0;
+  }
+
   .event-row.queued-row {
     background: var(--queued-dim);
   }
@@ -726,6 +762,26 @@
     background: var(--queued-dim);
     color: var(--queued);
     border: 1px solid color-mix(in srgb, var(--queued) 30%, transparent);
+  }
+
+  /* Self-heal restored a stack — recovery, so the success (teal) colours. */
+  .badge-healed {
+    background: var(--success-dim);
+    color: var(--success);
+    border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
+  }
+
+  /* Self-heal gave up — borrows the failed (danger) colours; the wording
+     stacks two lines at a reduced size like rolled_back_unhealthy. */
+  .badge-heal_exhausted {
+    background: var(--danger-dim);
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
+    flex-direction: column;
+    gap: 0;
+    font-size: 9px;
+    line-height: 1.3;
+    padding: 2px 8px;
   }
 
   .spinner {
@@ -2090,6 +2146,11 @@
       // instead of <br> because the badge is a flex container (column).
       return '<span class="' + cls + '" data-testid="status-badge"><span>rolled back</span><span>unhealthy</span></span>';
     }
+    if (status === 'heal_exhausted') {
+      // Same stacked treatment as rolled_back_unhealthy — the wording overflows
+      // one line (ADR-0029).
+      return '<span class="' + cls + '" data-testid="status-badge"><span>self-heal</span><span>failed</span></span>';
+    }
     var label = status === 'rolled_back' ? 'rolled back' : status;
     return '<span class="' + cls + '" data-testid="status-badge">' + label + '</span>';
   }
@@ -2145,6 +2206,7 @@
   function statusText(status) {
     if (status === 'rolled_back') return 'rolled back';
     if (status === 'rolled_back_unhealthy') return 'rolled back · unhealthy';
+    if (status === 'heal_exhausted') return 'self-heal · failed';
     return status || '';
   }
 
@@ -2271,6 +2333,8 @@
     if (status === 'success') cls += ' success-row';
     if (status === 'rolled_back') cls += ' rolled_back-row';
     if (status === 'rolled_back_unhealthy') cls += ' rolled_back_unhealthy-row';
+    if (status === 'healed') cls += ' healed-row';
+    if (status === 'heal_exhausted') cls += ' heal_exhausted-row';
     if (status === 'queued') cls += ' queued-row';
     if (!isHistory) cls += ' new-row';
     return cls;

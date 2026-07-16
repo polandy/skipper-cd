@@ -53,6 +53,12 @@ type Stack struct {
 	// health check; on failure the deploy is rolled back. nil disables the
 	// gate. See ADR-0022.
 	HealthCheck *HealthCheck `yaml:"health_check,omitempty"`
+
+	// SelfHeal overrides the global self_heal for this stack. nil means inherit
+	// the global setting. When effective, a stack found degraded by the health
+	// poller is automatically restored to its deployed running state by a
+	// corrective redeploy. See ADR-0029.
+	SelfHeal *bool `yaml:"self_heal"`
 }
 
 // HealthCheck configures the optional post-deploy health gate of a stack.
@@ -151,6 +157,58 @@ type Config struct {
 	// behaviour). Unlike the health poll it is not UI-gated — it runs headless.
 	// See docs/configuration.md.
 	ReconcileIntervalSeconds *int `yaml:"reconcile_interval_seconds"`
+
+	// SelfHeal is the global default for whether a stack the health poller finds
+	// degraded (a stopped/removed container, an unhealthy service) is
+	// automatically restored to its deployed running state by a corrective
+	// redeploy (ADR-0029). nil means false (off). A per-stack SelfHeal overrides
+	// it. Runs headless like reconcile, so it needs health_poll_interval_seconds
+	// > 0 — which drives the detection cadence — even with the UI off.
+	SelfHeal *bool `yaml:"self_heal"`
+
+	// SelfHealMinUnhealthyPolls is how many consecutive degraded health polls a
+	// stack must show before self-heal acts. The debounce keeps skipper from
+	// racing Docker's own restart policy on a transient blip. Defaults to 3;
+	// must be >= 1 (ADR-0029).
+	SelfHealMinUnhealthyPolls int `yaml:"self_heal_min_unhealthy_polls"`
+
+	// SelfHealMaxAttempts caps consecutive corrective redeploys per outage
+	// before self-heal gives up and reports heal_exhausted, so an app-level
+	// fault an `up` cannot fix does not become a hot loop. Defaults to 3; must
+	// be >= 1 (ADR-0029).
+	SelfHealMaxAttempts int `yaml:"self_heal_max_attempts"`
+
+	// SelfHealCooldownSeconds is the minimum gap between corrective redeploys of
+	// the same stack. Defaults to 60; must be >= 0. An explicit 0 falls back to
+	// the default (ADR-0029).
+	SelfHealCooldownSeconds int `yaml:"self_heal_cooldown_seconds"`
+}
+
+// SelfHealEnabled reports whether self-heal is effective for the named stack:
+// the per-stack override when set, otherwise the global default (off when
+// unset). An unknown name falls back to the global default.
+func (c *Config) SelfHealEnabled(name string) bool {
+	for _, s := range c.Stacks {
+		if s.Name == name {
+			if s.SelfHeal != nil {
+				return *s.SelfHeal
+			}
+			break
+		}
+	}
+	return c.SelfHeal != nil && *c.SelfHeal
+}
+
+// SelfHealActive reports whether self-heal is effective for at least one stack.
+// When true the health poller must run headless (not UI/subscriber-gated) so
+// self-heal sees degradation on an unattended host (ADR-0029).
+func (c *Config) SelfHealActive() bool {
+	for _, s := range c.Stacks {
+		if c.SelfHealEnabled(s.Name) {
+			return true
+		}
+	}
+	return false
 }
 
 // NotificationTarget configures a single outbound notification sink: where to
@@ -203,6 +261,11 @@ const (
 	NotifyOnSuccess             = "success"
 	NotifyOnRolledBack          = "rolled_back"
 	NotifyOnRolledBackUnhealthy = "rolled_back_unhealthy"
+	// NotifyOnHealExhausted fires when self-heal gave up on a stack it could not
+	// restore — the high-signal "a stack is down and I couldn't fix it" alarm
+	// (ADR-0029). Part of the default set, so a target with no explicit `on`
+	// reports it.
+	NotifyOnHealExhausted = "heal_exhausted"
 )
 
 // IconsConfig configures how the web UI resolves and caches stack icons.
@@ -272,7 +335,7 @@ func Load(path string) (*Config, error) {
 			t.Format = NotifyFormatGeneric
 		}
 		if len(t.On) == 0 {
-			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy}
+			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted}
 		}
 	}
 	if cfg.UITheme == "" {
@@ -285,6 +348,15 @@ func Load(path string) (*Config, error) {
 	if cfg.ReconcileIntervalSeconds == nil {
 		d := defaultReconcileIntervalSeconds
 		cfg.ReconcileIntervalSeconds = &d
+	}
+	if cfg.SelfHealMinUnhealthyPolls == 0 {
+		cfg.SelfHealMinUnhealthyPolls = defaultSelfHealMinUnhealthyPolls
+	}
+	if cfg.SelfHealMaxAttempts == 0 {
+		cfg.SelfHealMaxAttempts = defaultSelfHealMaxAttempts
+	}
+	if cfg.SelfHealCooldownSeconds == 0 {
+		cfg.SelfHealCooldownSeconds = defaultSelfHealCooldownSeconds
 	}
 	for i := range cfg.Stacks {
 		if hc := cfg.Stacks[i].HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
@@ -325,6 +397,15 @@ const defaultHealthPollIntervalSeconds = 30
 // reconcile_interval_seconds is omitted (ADR-0028). On by default so skipper
 // self-corrects a missed webhook out of the box; an explicit 0 disables it.
 const defaultReconcileIntervalSeconds = 300
+
+// Defaults for the self-heal pacing constants, applied when the corresponding
+// field is omitted or 0 (ADR-0029). Self-heal itself is off unless self_heal is
+// set true globally or per stack.
+const (
+	defaultSelfHealMinUnhealthyPolls = 3
+	defaultSelfHealMaxAttempts       = 3
+	defaultSelfHealCooldownSeconds   = 60
+)
 
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
@@ -373,6 +454,21 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("reconcile_interval_seconds must be >= 0, got %d", *cfg.ReconcileIntervalSeconds)
 	}
 
+	if cfg.SelfHealMinUnhealthyPolls < 1 {
+		return fmt.Errorf("self_heal_min_unhealthy_polls must be >= 1, got %d", cfg.SelfHealMinUnhealthyPolls)
+	}
+	if cfg.SelfHealMaxAttempts < 1 {
+		return fmt.Errorf("self_heal_max_attempts must be >= 1, got %d", cfg.SelfHealMaxAttempts)
+	}
+	if cfg.SelfHealCooldownSeconds < 0 {
+		return fmt.Errorf("self_heal_cooldown_seconds must be >= 0, got %d", cfg.SelfHealCooldownSeconds)
+	}
+	// Self-heal rides the health poll cadence and runs headless, so it needs a
+	// positive poll interval even with the UI off (ADR-0029).
+	if cfg.SelfHealActive() && (cfg.HealthPollIntervalSeconds == nil || *cfg.HealthPollIntervalSeconds <= 0) {
+		return fmt.Errorf("self_heal requires health_poll_interval_seconds > 0 (it drives the detection cadence)")
+	}
+
 	for i, t := range cfg.Notifications {
 		if err := validateNotificationTarget(t); err != nil {
 			return fmt.Errorf("notifications[%d]: %w", i, err)
@@ -417,7 +513,7 @@ func validateNotificationTarget(t NotificationTarget) error {
 
 	for _, s := range t.On {
 		switch s {
-		case NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy:
+		case NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted:
 		default:
 			return fmt.Errorf("unknown on value %q", s)
 		}

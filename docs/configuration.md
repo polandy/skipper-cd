@@ -66,6 +66,10 @@ nixos_rebuild:
 | `ui_theme_switcher` | bool | no | `false` | Show the in-UI theme picker so a browser can try other palettes locally. Off by default — the deployed `ui_theme` is then fixed (see [Web UI Theme](#web-ui-theme)). |
 | `health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
 | `reconcile_interval_seconds` | int | no | `300` | How often skipper re-runs its git sync + deploy on a timer, so a missed webhook cannot leave the host drifted (see [Periodic reconcile](#periodic-reconcile)). `0` disables it (pure webhook + startup). Runs headless — not tied to the UI. |
+| `self_heal` | bool | no | `false` | Global default for whether a stack the health poller finds degraded is automatically restored to its running state by a corrective redeploy (see [Self-heal](#self-heal)). A per-stack `self_heal` overrides it. Requires `health_poll_interval_seconds` > 0. |
+| `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce). Must be ≥ 1. |
+| `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
+| `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0. |
 
 ## Stack Fields
 
@@ -81,6 +85,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
 | `health_check` | section | no | — | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. See [Health-check-gated rollback](#health-check-gated-rollback). |
+| `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
 
 ## Health-check-gated rollback
 
@@ -205,7 +210,7 @@ notifications:
 |---|---|---|---|---|
 | `format` | string | no | `generic` | Provider shape of the request: `signal` or `generic`. |
 | `url` | string | yes | — | Endpoint the notification is POSTed to. For `signal` this is the `signal-cli-rest-api` **base** (e.g. `http://localhost:8020`); `/v2/send` is appended automatically. |
-| `on` | list | no | all four | Subset of `failed`, `success`, `rolled_back`, `rolled_back_unhealthy` that triggers this target. |
+| `on` | list | no | all five | Subset of `failed`, `success`, `rolled_back`, `rolled_back_unhealthy`, `heal_exhausted` that triggers this target. |
 | `prefix` | string | no | — | Prepended as `[<prefix>] ` to the `signal` message, e.g. to label which host/instance sent it. Ignored by `generic` (its structured payload already carries the event). |
 | `headers` | map | no | — | Static HTTP headers added to the request. Only meaningful for `generic` (e.g. an auth token). |
 | `number` | string | for `signal` | — | Signal sender number. Required for `format: signal`, rejected on any other format. |
@@ -308,6 +313,20 @@ To close that gap, skipper also re-runs its git sync + deploy on a timer. Each t
 - Unlike the health poll, it is **not** tied to the UI — it runs headless, since it is a correctness feature rather than a display feed.
 
 A tick is skipped while a deploy is already in flight (a reconcile carries no unique information, so it is dropped rather than queued behind the running deploy), and it flows through the same per-stack deploy gate as a webhook — so a stack with `autosync` off is queued, not force-deployed. See [ADR-0028](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0028-periodic-reconcile-loop.md).
+
+## Self-heal
+
+Periodic reconcile closes drift on the **git axis** (git changed, live didn't). Self-heal closes it on the **runtime axis**: a stack the [health poller](#stack-health) finds degraded — a container that was stopped or removed out of band, exhausted its restart policy, or turned `unhealthy` — is automatically restored to its **currently deployed** running state by a corrective `docker compose up -d`. It is **not** a git deploy: the desired version is unchanged, so there is no change detection and no rollback — it only restarts what should already be running.
+
+Self-heal is **opt-in and off by default**. Enable it globally with `self_heal: true`, or per stack, and leave it off for stacks you deliberately stop (an on-demand scheduler, a one-shot job). It is a backstop for the cases Docker's own `restart:` policy cannot handle — recreating a removed container, recovering an exhausted policy, reacting to a failing `HEALTHCHECK` — not a replacement for it; set a restart policy too.
+
+Guardrails keep it from fighting a genuinely broken stack:
+
+- **Debounce** — a stack must read degraded for `self_heal_min_unhealthy_polls` consecutive polls (default 3) before the first redeploy, so a transient blip or Docker's own restart wins the race first.
+- **Cooldown** — at least `self_heal_cooldown_seconds` (default 60) between redeploys of the same stack.
+- **Circuit breaker** — after `self_heal_max_attempts` (default 3) redeploys that don't restore the stack, skipper gives up, leaves it reported `unhealthy`, and emits a single `heal_exhausted` event (a `heal_exhausted` [notification](#notifications) fires by default — the "a stack is down and I couldn't fix it" alarm). The counter resets when the stack recovers or a real git deploy of it runs.
+
+Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `health_poll_interval_seconds` > 0 even with the UI off. A successful redeploy shows as a `healed` event in the deploy log. See [ADR-0029](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0029-runtime-drift-self-heal.md).
 
 ## Keeping images up to date
 

@@ -31,6 +31,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/metrics"
 	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/reconcile"
+	"github.com/polandy/skipper-cd/internal/selfheal"
 	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -180,22 +181,6 @@ func main() {
 			stateB.Publish(events.StateEvent{Name: "upcoming", Data: p})
 		})
 		slog.Info("web UI enabled")
-
-		// Live stack health: poll the UI's stacks and publish a `health` snapshot.
-		// Gated on a positive interval and, at poll time, on a connected client
-		// (ADR-0027) so an idle dashboard does no docker work.
-		if interval := *cfg.HealthPollIntervalSeconds; interval > 0 {
-			healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
-			healthPoller = health.New(health.Config{
-				Outputter:      command.NewShellRunner(healthTimeout),
-				Stacks:         func() []health.StackRef { return healthStacks(cfg) },
-				Publish:        func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: "health", Data: s}) },
-				Interval:       time.Duration(interval) * time.Second,
-				HasSubscribers: stateB.HasSubscribers,
-			})
-			go healthPoller.Run(signalCtx)
-			slog.Info("stack health polling enabled", "interval_seconds", interval)
-		}
 	}
 
 	// Outbound notifications. Config is already validated in Load; New only
@@ -210,6 +195,54 @@ func main() {
 		go notifier.Run(signalCtx)
 		eventSinks = append(eventSinks, notifier.Notify)
 		slog.Info("notifications enabled", "targets", len(cfg.Notifications))
+	}
+
+	// Self-heal: automatically restore a stack the health poller finds degraded
+	// (ADR-0029). The engine owns the policy; the deployer performs the
+	// corrective redeploy. A real git deploy of a stack resets its breaker so a
+	// push that fixes the fault grants a fresh attempt budget.
+	selfHealActive := cfg.SelfHealActive()
+	var selfHealEngine *selfheal.Engine
+	if selfHealActive {
+		selfHealEngine = selfheal.New(selfheal.Config{
+			Healer:            deployHealer{deployer, cfg},
+			Enabled:           cfg.SelfHealEnabled,
+			MinUnhealthyPolls: cfg.SelfHealMinUnhealthyPolls,
+			MaxAttempts:       cfg.SelfHealMaxAttempts,
+			Cooldown:          time.Duration(cfg.SelfHealCooldownSeconds) * time.Second,
+			OnExhausted:       deployer.EmitHealExhausted,
+		})
+		eventSinks = append(eventSinks, func(e events.DeployEvent) {
+			if e.Status == events.StatusDeploying {
+				selfHealEngine.Reset(e.Stack)
+			}
+		})
+		slog.Info("self-heal enabled", "min_unhealthy_polls", cfg.SelfHealMinUnhealthyPolls, "max_attempts", cfg.SelfHealMaxAttempts, "cooldown_seconds", cfg.SelfHealCooldownSeconds)
+	}
+
+	// Stack-health poller. It feeds the UI health view (when enabled) and/or
+	// self-heal. For the UI it is subscriber-gated so an idle dashboard does no
+	// docker work (ADR-0027); self-heal sets AlwaysPoll so it still runs headless
+	// on an unattended host (ADR-0029). Config validation guarantees a positive
+	// interval whenever self-heal is active.
+	if interval := *cfg.HealthPollIntervalSeconds; interval > 0 && (cfg.UIEnabled || selfHealActive) {
+		healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
+		hpCfg := health.Config{
+			Outputter:  command.NewShellRunner(healthTimeout),
+			Stacks:     func() []health.StackRef { return healthStacks(cfg) },
+			Interval:   time.Duration(interval) * time.Second,
+			AlwaysPoll: selfHealActive,
+		}
+		if stateB != nil {
+			hpCfg.Publish = func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: "health", Data: s}) }
+			hpCfg.HasSubscribers = stateB.HasSubscribers
+		}
+		if selfHealEngine != nil {
+			hpCfg.OnSnapshot = func(s health.Snapshot) { selfHealEngine.Observe(context.Background(), s) }
+		}
+		healthPoller = health.New(hpCfg)
+		go healthPoller.Run(signalCtx)
+		slog.Info("stack health polling enabled", "interval_seconds", interval, "self_heal", selfHealActive)
 	}
 
 	if len(eventSinks) > 0 {
@@ -330,6 +363,18 @@ type deployReconciler struct {
 
 func (r deployReconciler) Reconcile(ctx context.Context) bool {
 	return r.deployer.TrySyncAndDeployAll(ctx, r.cfg)
+}
+
+// deployHealer adapts the deployer to selfheal.Healer, binding the process
+// config so each heal restores the named stack via HealStack. It keeps the
+// selfheal package free of any deploy or config dependency.
+type deployHealer struct {
+	deployer *deploy.Deployer
+	cfg      *config.Config
+}
+
+func (h deployHealer) Heal(ctx context.Context, stack string) (bool, error) {
+	return h.deployer.HealStack(ctx, h.cfg, stack)
 }
 
 // stackAutosyncConfig maps each configured stack to its config-as-code autosync
