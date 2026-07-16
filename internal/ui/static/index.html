@@ -889,13 +889,20 @@
   }
 
   /* ─── ERROR ─── */
+  /* Bound to its deploy row like the diff/health panels (variant A): a negative
+     top margin closes the 2px inter-row gap and the top corners square off, so
+     the message reads as attached to the row above it rather than floating
+     ambiguously between rows. --ec is the row's status colour (set below). */
   .error-detail {
     grid-column: 1 / -1;
-    margin-top: 4px;
+    margin-top: -2px;
     padding: 10px 14px;
-    background: color-mix(in srgb, var(--danger) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 16%, transparent);
-    border-radius: 6px;
+    background: color-mix(in srgb, var(--ec, var(--danger)) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ec, var(--danger)) 16%, transparent);
+    border-top: none;
+    border-left: none;
+    border-radius: 0 0 6px 6px;
+    box-shadow: inset 3px 0 0 var(--ec, var(--danger));
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--danger);
@@ -903,6 +910,20 @@
     word-break: break-all;
     line-height: 1.6;
     animation: expand 0.2s ease-out;
+  }
+
+  /* --ec: the deploy-status colour shared by the row's left bar and its error
+     box, so the two read as one unit. The row keeps a continuous full-height bar
+     (via box-shadow) and squares its bottom corners only while an error box
+     trails it. Rolled-back uses the rollback tint; failed / rolled_back_unhealthy
+     use danger. */
+  .event-row[data-status="failed"]:has(+ .error-detail),                .error-detail[data-status="failed"]                { --ec: var(--danger); }
+  .event-row[data-status="rolled_back"]:has(+ .error-detail),           .error-detail[data-status="rolled_back"]           { --ec: var(--rollback); }
+  .event-row[data-status="rolled_back_unhealthy"]:has(+ .error-detail), .error-detail[data-status="rolled_back_unhealthy"] { --ec: var(--danger); }
+  .event-row:has(+ .error-detail) {
+    box-shadow: inset 3px 0 0 var(--ec, var(--danger));
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
   }
 
   /* ─── DIFF PANEL ─── */
@@ -999,44 +1020,52 @@
     font-style: italic;
   }
 
-  /* Variant-A binding (as for the health panel): the open row and its diff panel
-     share a status-coloured left bar + tint so the panel always reads as tied to
-     its row. --dc is the row's deploy-status colour; the diff panel opened from a
-     log line is unbound (no row to tie to) and keeps the plain background. */
-  .event-row.diff-open[data-status="success"],              .diff-panel.bound[data-status="success"]              { --dc: var(--success); }
-  .event-row.diff-open[data-status="failed"],               .diff-panel.bound[data-status="failed"]               { --dc: var(--danger); }
-  .event-row.diff-open[data-status="rolled_back"],          .diff-panel.bound[data-status="rolled_back"]          { --dc: var(--rollback); }
-  .event-row.diff-open[data-status="rolled_back_unhealthy"],.diff-panel.bound[data-status="rolled_back_unhealthy"]{ --dc: var(--danger); }
-  .event-row.diff-open[data-status="queued"],               .diff-panel.bound[data-status="queued"]               { --dc: var(--queued); }
-  .event-row.diff-open[data-status="deploying"],            .diff-panel.bound[data-status="deploying"]            { --dc: var(--accent); }
+  /* Variant-A binding (as for the health panel): the open row and its trailing
+     panels — diff, files, and the error detail — share a status-coloured left bar
+     + tint so they always read as tied to the row. --dc is the row's deploy-status
+     colour; a diff panel opened from a log line is unbound (no row to tie to) and
+     keeps the plain background. */
+  .event-row.diff-open[data-status="success"],              .diff-panel.bound[data-status="success"],              .files-list.bound[data-status="success"]              { --dc: var(--success); }
+  .event-row.diff-open[data-status="failed"],               .diff-panel.bound[data-status="failed"],               .files-list.bound[data-status="failed"]               { --dc: var(--danger); }
+  .event-row.diff-open[data-status="rolled_back"],          .diff-panel.bound[data-status="rolled_back"],          .files-list.bound[data-status="rolled_back"]          { --dc: var(--rollback); }
+  .event-row.diff-open[data-status="rolled_back_unhealthy"],.diff-panel.bound[data-status="rolled_back_unhealthy"],.files-list.bound[data-status="rolled_back_unhealthy"]{ --dc: var(--danger); }
+  .event-row.diff-open[data-status="queued"],               .diff-panel.bound[data-status="queued"],               .files-list.bound[data-status="queued"]               { --dc: var(--queued); }
+  .event-row.diff-open[data-status="deploying"],            .diff-panel.bound[data-status="deploying"],            .files-list.bound[data-status="deploying"]            { --dc: var(--accent); }
   .event-row.diff-open {
     background: color-mix(in srgb, var(--dc, var(--accent)) 8%, transparent);
     box-shadow: inset 3px 0 0 var(--dc, var(--accent));
   }
-  .diff-panel.bound {
+  .diff-panel.bound, .files-list.bound {
     background: color-mix(in srgb, var(--dc, var(--accent)) 5%, var(--bg-sunken));
     border-color: color-mix(in srgb, var(--dc, var(--accent)) 22%, var(--border));
     box-shadow: inset 3px 0 0 var(--dc, var(--accent));
   }
 
-  /* Keep the variant-A left bar continuous across the row→panel seam: square the
-     adjoining corners and close the .event-list 2px inter-row gap, so an open row
-     and its bound panel read as one card with an unbroken left bar. Applies to the
-     health panel too — it shares the same binding. */
+  /* Keep the variant-A left bar continuous across every row→panel→error seam:
+     square the adjoining corners and close the .event-list 2px inter-row gap, so
+     an open row and all its bound trailers read as one card with an unbroken left
+     bar. Applies to the health panel too — it shares the same binding. */
   .event-row.health-open, .event-row.diff-open {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .health-panel, .diff-panel.bound {
+  .health-panel, .diff-panel.bound, .files-list.bound {
     margin-top: -2px;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
   }
-  /* The diff panel carries a full 1px border (needed unbound, in the log view).
-     Bound, its top and left borders would sit beside the shared 3px status bar and
-     double the line — offsetting the bar from the row's. Drop them so the bar is
-     the left edge, exactly as the health panel (border-bottom only) does. */
-  .diff-panel.bound {
+  /* A bound panel with the error detail stacked below it is mid-stack, not the
+     last card: square its bottom too so the bar runs straight into the error box. */
+  .diff-panel.bound:has(+ .error-detail),
+  .files-list.bound:has(+ .error-detail) {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  /* The diff/files panels carry a full 1px border (needed unbound, in the log
+     view). Bound, their top and left borders would sit beside the shared 3px status
+     bar and double the line — offsetting the bar from the row's. Drop them so the
+     bar is the left edge, exactly as the health panel (border-bottom only) does. */
+  .diff-panel.bound, .files-list.bound {
     border-top: none;
     border-left: none;
   }
@@ -2077,10 +2106,17 @@
     return html;
   }
 
-  function createFilesPanel(files) {
+  function createFilesPanel(files, meta) {
     var el = document.createElement('div');
     el.className = 'files-list';
     el.dataset.testid = 'files-panel';
+    // Bound to its row (variant A) when opened from a deploy row, so it carries
+    // the same status left bar as the diff panel — keeps the bar continuous when
+    // an error detail is stacked below it. Unbound in the log view (no meta).
+    if (meta) {
+      el.classList.add('bound');
+      el.dataset.status = meta.status;
+    }
     el.innerHTML = files.map(function(f) {
       return '<span class="file-path">' + escapeHtml(f) + '</span>';
     }).join('<br>');
@@ -2299,6 +2335,7 @@
     el.className = 'error-detail';
     el.dataset.testid = 'error-panel';
     el.dataset.errorFor = evt.stack;
+    if (evt.status) el.dataset.status = evt.status;
     el.textContent = evt.error;
     return el;
   }
@@ -3351,8 +3388,10 @@
     // the row's status, so pass it to the panel and mark the row open.
     var meta = { stack: row.dataset.stack, status: row.dataset.status };
 
+    // Mark the row open for any panel (diff or plain file list) so it keeps the
+    // shared status bar; the trailing panel binds to it via --dc.
+    row.classList.add('diff-open');
     if (hasDiffs && eventId) {
-      row.classList.add('diff-open');
       var loading = document.createElement('div');
       loading.className = 'diff-panel bound';
       loading.dataset.status = meta.status;
@@ -3363,14 +3402,13 @@
         if (diffs && Object.keys(diffs).length > 0) {
           row.after(renderDiffPanel(diffs, commits, meta));
         } else {
-          row.classList.remove('diff-open');
           var files = JSON.parse(pillEl.dataset.files);
-          row.after(createFilesPanel(files));
+          row.after(createFilesPanel(files, meta));
         }
       });
     } else {
       var files = JSON.parse(pillEl.dataset.files);
-      row.after(createFilesPanel(files));
+      row.after(createFilesPanel(files, meta));
     }
   });
 
