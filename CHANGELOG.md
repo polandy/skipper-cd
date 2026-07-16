@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.12.0](https://github.com/polandy/skipper-cd/compare/v0.11.0...v0.12.0) (2026-07-16)
+
+
+### Features
+
+* **deploy:** health-check-gated rollback ([#71](https://github.com/polandy/skipper-cd/issues/71)) ([1eb5bcf](https://github.com/polandy/skipper-cd/commit/1eb5bcf68d67e3eec621d256dac46e5fe47ac2ff))
+* **notify:** optional per-target message prefix for signal ([#78](https://github.com/polandy/skipper-cd/issues/78)) ([a480e5d](https://github.com/polandy/skipper-cd/commit/a480e5d8657ebb9853fd3787eb5131f09fc28075))
+* **ui:** glyph-only header with a view-options popover ([6d5ee2f](https://github.com/polandy/skipper-cd/commit/6d5ee2fee9023e508ff1ec6ab3ed6501ba43e76a))
+* **ui:** live stack health — poller + ADR-0027 ([#83](https://github.com/polandy/skipper-cd/issues/83)) ([65dc66d](https://github.com/polandy/skipper-cd/commit/65dc66d033673ee6cb13c2ea9b66e54bc4a12f65))
+* **ui:** prompt to reload when a new PWA version is waiting ([#74](https://github.com/polandy/skipper-cd/issues/74)) ([489d291](https://github.com/polandy/skipper-cd/commit/489d291196cea5a40af6115aa337e08dfc5b9d54))
+* **ui:** render live stack-health pill in the deploy view ([#84](https://github.com/polandy/skipper-cd/issues/84)) ([3bd28af](https://github.com/polandy/skipper-cd/commit/3bd28af837915cca8ee6891c2bcf960bc2633d34))
+* **ui:** show commit metadata in the diff panel ([c706a84](https://github.com/polandy/skipper-cd/commit/c706a84ffc8935d631c2456c1a315aeeb2647c5a))
+* **ui:** show repo-relative file paths in deploy events ([c41d32d](https://github.com/polandy/skipper-cd/commit/c41d32d6b464d73dca56e8e7a0a25771ddd8e8e7))
+* **ui:** type-to-search filter for the deploys view ([#77](https://github.com/polandy/skipper-cd/issues/77)) ([2a74f45](https://github.com/polandy/skipper-cd/commit/2a74f45701af2f545f70349a7fa7b4971e53f1a9))
+* **ui:** upcoming-deploys look-ahead in the header ([#76](https://github.com/polandy/skipper-cd/issues/76)) ([eaf7c77](https://github.com/polandy/skipper-cd/commit/eaf7c7761965e58cb947156cb04e203d7679534b))
+
+
+### Bug Fixes
+
+* **deploy:** carry diffs on a reconciled _nixos success ([28d1c54](https://github.com/polandy/skipper-cd/commit/28d1c54d6dfee74088bdf55fd704988e148b0f27))
+* **deploy:** keep the diff base while a change is queued ([d8763a8](https://github.com/polandy/skipper-cd/commit/d8763a80c76f9352c1487240253f27655b28c00f))
+* **deploy:** reconcile a self-restart-interrupted nixos-rebuild into success ([#79](https://github.com/polandy/skipper-cd/issues/79)) ([d1d6c29](https://github.com/polandy/skipper-cd/commit/d1d6c296e343ecfd69e306dcb57adde64c4b483d))
+
 ## [0.11.0](https://github.com/polandy/skipper-cd/compare/v0.10.0...v0.11.0) (2026-07-14)
 
 
