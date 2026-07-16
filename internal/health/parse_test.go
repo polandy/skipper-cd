@@ -123,7 +123,7 @@ func TestServicesOf(t *testing.T) {
 	if len(svcs) != 1 {
 		t.Fatalf("expected 1 service, got %d", len(svcs))
 	}
-	if svcs[0] != (ServiceHealth{Name: "app", State: "running", Health: "healthy"}) {
+	if svcs[0] != (ServiceHealth{Name: "app", State: "running", Health: "healthy", Status: Healthy}) {
 		t.Errorf("unexpected service: %+v", svcs[0])
 	}
 	if servicesOf(nil) != nil {

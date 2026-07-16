@@ -116,7 +116,7 @@ func servicesOf(lines []psLine) []ServiceHealth {
 	}
 	svcs := make([]ServiceHealth, 0, len(lines))
 	for _, l := range lines {
-		svcs = append(svcs, ServiceHealth{Name: l.Service, State: l.State, Health: l.Health})
+		svcs = append(svcs, ServiceHealth{Name: l.Service, State: l.State, Health: l.Health, Status: serviceStatus(l)})
 	}
 	return svcs
 }
