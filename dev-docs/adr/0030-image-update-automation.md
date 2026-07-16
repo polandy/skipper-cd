@@ -1,6 +1,6 @@
 # ADR-0030: Image-update automation
 
-Status: proposed
+Status: accepted
 Date: 2026-07-16
 
 ## Context
