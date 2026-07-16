@@ -30,6 +30,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/logbuf"
 	"github.com/polandy/skipper-cd/internal/metrics"
 	"github.com/polandy/skipper-cd/internal/notify"
+	"github.com/polandy/skipper-cd/internal/reconcile"
 	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -246,6 +247,18 @@ func main() {
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
 	go deployer.SyncAndDeployAll(context.Background(), cfg)
+
+	// Periodic reconcile: re-run sync + deploy on a timer so a missed or lost
+	// webhook cannot leave the host drifted from the deploy repo indefinitely
+	// (ADR-0028). Not UI-gated — it is a correctness feature that must run
+	// headless. A tick is skipped while a deploy is already in flight.
+	if interval := *cfg.ReconcileIntervalSeconds; interval > 0 {
+		loop := reconcile.New(time.Duration(interval)*time.Second, func(ctx context.Context) bool {
+			return deployer.TrySyncAndDeployAll(ctx, cfg)
+		})
+		go loop.Run(signalCtx)
+		slog.Info("periodic reconcile enabled", "interval_seconds", interval)
+	}
 
 	as := &autosyncDeps{
 		ctrl:    autosyncCtrl,

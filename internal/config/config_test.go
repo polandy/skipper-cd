@@ -423,3 +423,43 @@ func TestLoad_HealthPollIntervalNegativeIsRejected(t *testing.T) {
 		t.Fatal("expected an error for a negative interval")
 	}
 }
+
+func TestLoad_ReconcileIntervalDefaultsTo300WhenOmitted(t *testing.T) {
+	cfg, err := loadStringToConfig(t, minimalConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ReconcileIntervalSeconds == nil {
+		t.Fatal("expected default to be applied, got nil")
+	}
+	if got := *cfg.ReconcileIntervalSeconds; got != 300 {
+		t.Errorf("expected default 300, got %d", got)
+	}
+}
+
+func TestLoad_ReconcileIntervalExplicitZeroIsPreserved(t *testing.T) {
+	cfg, err := loadStringToConfig(t, minimalConfig+"reconcile_interval_seconds: 0\n")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ReconcileIntervalSeconds == nil || *cfg.ReconcileIntervalSeconds != 0 {
+		t.Errorf("expected explicit 0 to be preserved (disabled), got %v", cfg.ReconcileIntervalSeconds)
+	}
+}
+
+func TestLoad_ReconcileIntervalExplicitValue(t *testing.T) {
+	cfg, err := loadStringToConfig(t, minimalConfig+"reconcile_interval_seconds: 120\n")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ReconcileIntervalSeconds == nil || *cfg.ReconcileIntervalSeconds != 120 {
+		t.Errorf("expected 120, got %v", cfg.ReconcileIntervalSeconds)
+	}
+}
+
+func TestLoad_ReconcileIntervalNegativeIsRejected(t *testing.T) {
+	_, err := loadStringToConfig(t, minimalConfig+"reconcile_interval_seconds: -5\n")
+	if err == nil {
+		t.Fatal("expected an error for a negative interval")
+	}
+}

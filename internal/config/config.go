@@ -143,6 +143,14 @@ type Config struct {
 	// health view. Only meaningful with ui_enabled; the poll additionally runs
 	// only while a UI client is connected. See docs/configuration.md.
 	HealthPollIntervalSeconds *int `yaml:"health_poll_interval_seconds"`
+
+	// ReconcileIntervalSeconds sets how often skipper re-runs its git sync +
+	// deploy on a timer, so a missed or lost webhook cannot leave the host
+	// drifted from the deploy repo indefinitely (ADR-0028). nil (omitted)
+	// defaults to 300; an explicit 0 disables the loop (pure webhook + startup
+	// behaviour). Unlike the health poll it is not UI-gated — it runs headless.
+	// See docs/configuration.md.
+	ReconcileIntervalSeconds *int `yaml:"reconcile_interval_seconds"`
 }
 
 // NotificationTarget configures a single outbound notification sink: where to
@@ -274,6 +282,10 @@ func Load(path string) (*Config, error) {
 		d := defaultHealthPollIntervalSeconds
 		cfg.HealthPollIntervalSeconds = &d
 	}
+	if cfg.ReconcileIntervalSeconds == nil {
+		d := defaultReconcileIntervalSeconds
+		cfg.ReconcileIntervalSeconds = &d
+	}
 	for i := range cfg.Stacks {
 		if hc := cfg.Stacks[i].HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
 			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
@@ -308,6 +320,11 @@ const defaultHealthCheckTimeoutSeconds = 60
 // when health_poll_interval_seconds is omitted (ADR-0027). An explicit 0
 // disables the health view.
 const defaultHealthPollIntervalSeconds = 30
+
+// defaultReconcileIntervalSeconds is the git sync + deploy cadence applied when
+// reconcile_interval_seconds is omitted (ADR-0028). On by default so skipper
+// self-corrects a missed webhook out of the box; an explicit 0 disables it.
+const defaultReconcileIntervalSeconds = 300
 
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
@@ -350,6 +367,10 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.HealthPollIntervalSeconds != nil && *cfg.HealthPollIntervalSeconds < 0 {
 		return fmt.Errorf("health_poll_interval_seconds must be >= 0, got %d", *cfg.HealthPollIntervalSeconds)
+	}
+
+	if cfg.ReconcileIntervalSeconds != nil && *cfg.ReconcileIntervalSeconds < 0 {
+		return fmt.Errorf("reconcile_interval_seconds must be >= 0, got %d", *cfg.ReconcileIntervalSeconds)
 	}
 
 	for i, t := range cfg.Notifications {

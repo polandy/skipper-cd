@@ -236,6 +236,27 @@ func (d *Deployer) SyncAndDeployAll(ctx context.Context, cfg *config.Config) {
 	}
 	defer d.mu.Unlock()
 
+	d.syncAndDeployLocked(ctx, cfg)
+}
+
+// TrySyncAndDeployAll runs a sync + deploy only if no deploy is already in
+// progress; otherwise it returns false immediately without waiting. It is the
+// reconcile loop's entry point (ADR-0028): a periodic tick carries no unique
+// information, so it is dropped rather than queued behind an in-flight deploy
+// (ADR-0010). Returns true when the run happened.
+func (d *Deployer) TrySyncAndDeployAll(ctx context.Context, cfg *config.Config) bool {
+	if !d.mu.TryLock() {
+		return false
+	}
+	defer d.mu.Unlock()
+
+	d.syncAndDeployLocked(ctx, cfg)
+	return true
+}
+
+// syncAndDeployLocked syncs the repository and deploys all stacks. The caller
+// must hold d.mu.
+func (d *Deployer) syncAndDeployLocked(ctx context.Context, cfg *config.Config) {
 	if d.syncer != nil {
 		if err := d.syncer.Sync(ctx); err != nil {
 			slog.Error("git sync failed, aborting deploy", "err", err)
@@ -321,8 +342,13 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// Run finished: clear the look-ahead so the header returns to idle.
 	d.publishRunPlan(nil)
 
-	// Record the current HEAD commit so future deploys can diff against it.
-	if d.commitReader != nil {
+	// Record the current HEAD commit so future deploys can diff against it — but
+	// only when nothing is still queued. A change deferred by paused autosync has
+	// not deployed yet; advancing the base past it would make its eventual deploy
+	// (or a self-restart reconcile) diff HEAD..HEAD and show no diff at all. The
+	// base is also what rollback restores, so keeping it at the last fully-deployed
+	// commit is the correct behaviour, not just a display fix.
+	if d.commitReader != nil && (d.queue == nil || d.queue.Count() == 0) {
 		if sha, err := d.commitReader.HeadCommitSHA(ctx); err != nil {
 			slog.Warn("could not read HEAD commit SHA", "err", err)
 		} else {
