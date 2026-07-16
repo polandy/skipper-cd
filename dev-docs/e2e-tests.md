@@ -61,7 +61,10 @@ asserting **behaviour + visual snapshots**.
 > **UH3** (newest row per stack) — driven by a health poller scripted through the
 > stub docker's `ps` output. **Mask I** (§4.10) covers the diff panel's commit
 > metadata + variant-A row binding — **UI1** (commit header), **UI2** (row/panel
-> binding), **UI3** (multi-commit range) — driven by webhook image bumps.
+> binding), **UI3** (multi-commit range) — driven by webhook image bumps. **Mask
+> J** (§4.11) covers the rolled-back error panel — **UJ1** (error box bound to its
+> row), **UJ2** (diff carried on the rolled-back event, bar continuous through
+> row → panel → error) — driven by a failing `up` that rolls back.
 
 ## 1. Scope & boundaries
 
@@ -464,6 +467,21 @@ Behaviour-only (no snapshot — UA8 already snapshots the diff colouring).
 - **UI3 — Multi-commit range.** Two commits before a single deploy render the
   newest as the headline (`bump web to 1.27`) and a `commits-pill` reading
   `2 commits` that toggles the collapsed `diff-commit-list` (both commits listed).
+
+### 4.11 UI — Maske J: rolled-back error panel binding + diff
+
+The rolled-back error box's variant-A binding and the diff now carried on the
+terminal event. Startup up#1 succeeds (sets `LastDeployedCommit`); the deploy's
+up#2 fails and the rollback up#3 succeeds → `rolled_back` (`STUB_DOCKER_FAIL_NTH_UP=2`).
+Behaviour-only (no snapshot).
+
+- **UJ1 — Error box binding.** The rolled-back row's error panel carries
+  `data-status="rolled_back"` and is the row's direct sibling, so the shared left
+  bar is unbroken (the message reads as attached to its row, not a floating card).
+- **UJ2 — Diff carried + continuous bar.** The rolled-back event now reports its
+  diff, so the row is `data-has-diffs="1"`; opening the files pill inserts a
+  `bound` `diff-panel` (`data-status="rolled_back"`) between the row and the error
+  panel, so the DOM order is row → `diff-panel` → `error-panel` — one unbroken bar.
 
 ## 5. Visual snapshot strategy
 
