@@ -182,7 +182,7 @@ icons:
 
 skipper-cd can POST a message to one or more targets whenever a deploy reaches a **terminal** outcome. This works independently of the web UI — notifications need neither `ui_enabled` nor an open browser.
 
-Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back`, `rolled_back_unhealthy` (the transient `deploying`, `skipped` and `queued` are never sent). Each target chooses which of the four it wants via `on:`; when omitted, all four are delivered.
+Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back`, `rolled_back_unhealthy`, `heal_exhausted` (the transient `deploying`, `skipped` and `queued` are never sent, and neither is the routine `healed`). Each target chooses which of the five it wants via `on:`; when omitted, all five are delivered.
 
 Delivery is **fire-and-forget**: sending runs in the background with its own 10-second per-request timeout, never blocking or delaying a deploy. A failed or slow target is logged and dropped — there is no retry queue, so a notification can be lost if the target is down. For guaranteed history, read the persisted events or scrape metrics instead.
 
@@ -194,7 +194,7 @@ notifications:
     number: "+491234567890"           # sender (required for signal)
     recipients: ["+491234567890"]     # recipients (required for signal)
     prefix: nuc                       # optional; message becomes "[nuc] …"
-    # on:  defaults to [failed, success, rolled_back, rolled_back_unhealthy]
+    # on:  defaults to [failed, success, rolled_back, rolled_back_unhealthy, heal_exhausted]
 
   # A second, independent target for failures only.
   - format: generic

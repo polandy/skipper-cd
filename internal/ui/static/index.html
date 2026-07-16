@@ -976,6 +976,7 @@
   .event-row[data-status="failed"]:has(+ .error-detail),                .error-detail[data-status="failed"]                { --ec: var(--danger); }
   .event-row[data-status="rolled_back"]:has(+ .error-detail),           .error-detail[data-status="rolled_back"]           { --ec: var(--rollback); }
   .event-row[data-status="rolled_back_unhealthy"]:has(+ .error-detail), .error-detail[data-status="rolled_back_unhealthy"] { --ec: var(--danger); }
+  .event-row[data-status="heal_exhausted"]:has(+ .error-detail),        .error-detail[data-status="heal_exhausted"]        { --ec: var(--danger); }
   .event-row:has(+ .error-detail) {
     box-shadow: inset 3px 0 0 var(--ec, var(--danger));
     border-bottom-left-radius: 0;
