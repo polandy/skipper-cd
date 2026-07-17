@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.13.0](https://github.com/polandy/skipper-cd/compare/v0.12.0...v0.13.0) (2026-07-17)
+
+
+### Features
+
+* **deploy:** stack deploy ordering via depends_on ([#101](https://github.com/polandy/skipper-cd/issues/101)) ([8f8e6fa](https://github.com/polandy/skipper-cd/commit/8f8e6fa4b3a6b7edf36b35a6e0ff094996f61c24))
+* **healthwatch:** alert on own-stack health transitions (ADR-0031) ([bbd94c2](https://github.com/polandy/skipper-cd/commit/bbd94c2ae7c4cb106445ab4a5117be9068b7ee30))
+* **healthwatch:** per-service alert cooldown with catch-up ([#100](https://github.com/polandy/skipper-cd/issues/100)) ([1cd70eb](https://github.com/polandy/skipper-cd/commit/1cd70eb376b470260b8c5f8b79eb925bef3f7d84))
+* **selfheal:** add opt-in runtime-drift self-heal (ADR-0029) ([#94](https://github.com/polandy/skipper-cd/issues/94)) ([06e8731](https://github.com/polandy/skipper-cd/commit/06e8731e7fd1a0278acf000ee0e720bd0e4f2e31))
+* **ui:** health-watch status history in the per-service panel (ADR-0031) ([e141474](https://github.com/polandy/skipper-cd/commit/e141474d77eb5c6efad891b20493324a955ba7e7))
+
+
+### Bug Fixes
+
+* **ui:** bind deploy error box to its row + carry diffs on rolled-back events ([#95](https://github.com/polandy/skipper-cd/issues/95)) ([368535e](https://github.com/polandy/skipper-cd/commit/368535e6eaf492f02b34c6e994badb6c6b31c520))
+* **ui:** enforce one open panel per deploy row ([#98](https://github.com/polandy/skipper-cd/issues/98)) ([4597fe3](https://github.com/polandy/skipper-cd/commit/4597fe3619687d3a56cdd76ab2bf3f590c3dd83a))
+
 ## [0.12.0](https://github.com/polandy/skipper-cd/compare/v0.11.0...v0.12.0) (2026-07-16)
 
 
