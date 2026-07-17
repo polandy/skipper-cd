@@ -83,7 +83,7 @@ The Stack cell also carries a **health pill** (`data-testid="health-pill"`) righ
 | `healthy` | `--h-healthy` (green) | Every service running; every service with a healthcheck healthy |
 | `unhealthy` | `--h-unhealthy` (red) | Any service `unhealthy`, `restarting`, or unexpectedly `exited`; dot pulses |
 | `starting` | `--h-starting` (amber) | Any service still `starting` and none unhealthy; dot pulses |
-| `stopped` | `--h-stopped` (grey) | No running containers for the project |
+| `stopped` | `--h-stopped` (grey) | No running containers for the project. Also the per-service status of an exited `on_demand_containers` container, whatever its exit code — skipper stops those on purpose after the deploy (ADR-0027 amendment) |
 | `unknown` | `--h-unknown` (grey, dashed border) | Health could not be read (`ps` failed) — never a false `unhealthy` |
 
 The health colours are their own semantic tier (`--h-*`), kept a distinct hue from `--accent` and the teal `--success` so the pill never reads as a deploy status.

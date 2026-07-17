@@ -293,6 +293,8 @@ When the web UI is enabled, skipper-cd shows the **live runtime health** of the 
 
 The health is read by polling `docker compose ps` for each stack, using the same compose file and `--project-directory` identity used to deploy it. Nothing is written and nothing is restarted — the view is read-only. It covers only skipper-cd's own stacks (not other containers on the host). Click a stack's health to expand a per-service breakdown (each service's container state and health).
 
+Containers listed in a stack's [`on_demand_containers`](#stack-fields) get special treatment: skipper stops them itself after every deploy (often via SIGKILL, so they exit non-zero) and the on-demand scheduler starts them on request — that idle is their intended state. An exited on-demand container therefore always reads as `stopped`, never `unhealthy`, whatever its exit code; the per-service panel labels it `on-demand`. A crash-looping or unhealthy on-demand container still counts as a real failure.
+
 `health_poll_interval_seconds` controls the cadence:
 
 - **default `30`** — poll every 30 seconds.

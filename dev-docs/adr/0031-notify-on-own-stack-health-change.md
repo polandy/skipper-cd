@@ -87,7 +87,11 @@ stacks and compares each service's status to its last accepted status:
   ("newly failed") and for **`unhealthy → healthy`** ("recovered"), so a fired
   alert always gets a matching all-clear. Transitions involving `starting` or
   `stopped` are **recorded and logged but never alert** — an intentional
-  `docker compose down` must not page.
+  `docker compose down` must not page. This is also what keeps on-demand
+  (Sablier-style) stacks quiet: an exited `on_demand_containers` container
+  classifies as `stopped` whatever its exit code (see the ADR-0027 amendment),
+  so skipper's own post-deploy stop and every scheduler-driven idle→run→idle
+  cycle stay silent instead of paging unhealthy/recovered on each deploy.
 - **`unknown` is not a transition.** A failed `ps` (docker hiccup) yields
   `unknown`; the watcher **holds the last known status** for that stack's
   services and does not alert in either direction. This preserves ADR-0027's
