@@ -2560,8 +2560,12 @@
       return el;
     }
     el.innerHTML = head + svcs.map(function(s) {
-      var st = s.health || s.state || 'unknown';
-      var state = s.health ? (s.state + ' · health: ' + s.health) : s.state;
+      // One status per line: the classified per-service status (backend field,
+      // healthClass as fallback for older snapshots). The raw `health:` value is
+      // never shown — with a healthcheck it always equals the classified status,
+      // so spelling it out only duplicated the coloured status. The state text
+      // keeps the container fact the status doesn't carry (running/exited/…).
+      var st = s.status || healthClass(s);
       // With the health watch on, the service line carries the current
       // phase's age and a status timeline below it (ADR-0031).
       var phases = (healthwatchSnap[stack] || {})[s.name];
@@ -2570,8 +2574,8 @@
         : '';
       return '<div class="hp-svc" data-testid="health-service">' +
         '<span class="hp-name">' + escapeHtml(s.name) + '</span>' +
-        '<span class="hp-state">' + escapeHtml(state) + '</span>' +
-        '<span class="hp-status" data-health="' + escapeAttr(healthClass(s)) + '"><span class="hdot"></span>' + escapeHtml(st) + age + '</span>' +
+        '<span class="hp-state">' + escapeHtml(s.state) + '</span>' +
+        '<span class="hp-status" data-health="' + escapeAttr(st) + '"><span class="hdot"></span>' + escapeHtml(st) + age + '</span>' +
         '</div>' + healthHistoryHTML(stack, s.name);
     }).join('');
     return el;
