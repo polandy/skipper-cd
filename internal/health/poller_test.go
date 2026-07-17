@@ -103,6 +103,42 @@ func TestPoller_ProbeUsesComposeIdentityWithoutWorkingDir(t *testing.T) {
 	}
 }
 
+func TestPoller_ProbeMarksOnDemandContainersByName(t *testing.T) {
+	// monica-style stack: the on-demand app container was stopped by skipper
+	// after the deploy (exit 137), a sibling keeps running. The stack must read
+	// stopped-not-unhealthy for the app and healthy overall.
+	ps := `{"Service":"app","Name":"monica-app","State":"exited","ExitCode":137}
+{"Service":"db","Name":"monica-db","State":"running","Health":"healthy"}`
+	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return []byte(ps), nil }}
+	p := newTestPoller(out, nil, nil, nil)
+
+	got := p.probe(context.Background(), StackRef{
+		Name:        "monica",
+		ComposePath: "/repo/monica/docker-compose.yml",
+		OnDemand:    []string{"monica-app"},
+	})
+
+	if got.Status != Healthy {
+		t.Errorf("stack rollup: got %q, want healthy (idle on-demand app must not degrade it)", got.Status)
+	}
+	if len(got.Services) != 2 || got.Services[0].Status != Stopped {
+		t.Errorf("expected the on-demand app classified stopped, got %+v", got.Services)
+	}
+	// The snapshot labels the service so the UI can say *why* it is stopped.
+	if !got.Services[0].OnDemand || got.Services[1].OnDemand {
+		t.Errorf("expected only the app marked on-demand, got %+v", got.Services)
+	}
+
+	// Without the on-demand marking the same output is a real failure.
+	plain := p.probe(context.Background(), StackRef{
+		Name:        "monica",
+		ComposePath: "/repo/monica/docker-compose.yml",
+	})
+	if plain.Status != Unhealthy {
+		t.Errorf("non-on-demand exit 137 must stay unhealthy, got %q", plain.Status)
+	}
+}
+
 func TestPoller_ProbeUnknownOnCommandError(t *testing.T) {
 	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return nil, errors.New("boom") }}
 	p := newTestPoller(out, nil, nil, nil)

@@ -82,7 +82,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `working_dir` | string | no | — | Absolute path passed as `--project-directory` to `docker compose`. Controls Docker Compose project identity (container labels) and `.env` file loading. Change detection and the compose file always come from `<stacks_base_dir>/<name>`. See [working_dir and Docker Compose project identity](nixos.md#working_dir-and-docker-compose-project-identity). |
 | `env_files` | list of strings | no | — | Absolute paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. |
 | `watch_dirs` | list of strings | no | — | Absolute paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). |
-| `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. |
+| `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. The [Stack health](#stack-health) view and the [health watch](#health-watch) know about this: an exited on-demand container reads as `stopped` (its intended idle state) whatever its exit code — never as `unhealthy`. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
 | `health_check` | section | no | — | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. See [Health-check-gated rollback](#health-check-gated-rollback). |
@@ -293,6 +293,8 @@ When the web UI is enabled, skipper-cd shows the **live runtime health** of the 
 
 The health is read by polling `docker compose ps` for each stack, using the same compose file and `--project-directory` identity used to deploy it. Nothing is written and nothing is restarted — the view is read-only. It covers only skipper-cd's own stacks (not other containers on the host). Click a stack's health to expand a per-service breakdown (each service's container state and health).
 
+Containers listed in a stack's [`on_demand_containers`](#stack-fields) get special treatment: skipper stops them itself after every deploy (often via SIGKILL, so they exit non-zero) and the on-demand scheduler starts them on request — that idle is their intended state. An exited on-demand container therefore always reads as `stopped`, never `unhealthy`, whatever its exit code; the per-service panel labels it `on-demand`. A crash-looping or unhealthy on-demand container still counts as a real failure.
+
 `health_poll_interval_seconds` controls the cadence:
 
 - **default `30`** — poll every 30 seconds.
@@ -328,6 +330,8 @@ health_watch:                      # cadence = health_poll_interval_seconds
 A new failure reads `🚨 stack health: <stack>/<service> healthy → unhealthy (was healthy 2h13m) — after deploy of a1b2c3d`; the recovery reads `✅ stack health recovered: <stack>/<service> after 4m12s`. The `generic` format posts the structured alert as JSON with a `"type": "health"` marker so a receiver shared with deploy notifications can tell the payloads apart.
 
 Every accepted transition is also written to the log and persisted (per service, the last 10 status phases with their start times) in `healthwatch.yaml` next to the [state file](state.md) — so the watchdog survives a restart without re-alerting known failures, and a failure that happened *while skipper was down* is still detected and alerted on the first polls after startup. A probe failure (`unknown`) holds the last known status rather than alerting.
+
+With the web UI enabled, that history is also visible in the [Stack health](#stack-health) per-service panel: each service shows how long its current status has held, plus a timeline of its last 10 status phases — with the deploy's short commit on phases that began right after a deploy. With the watchdog off the panel simply shows the live status, as before.
 
 This watches **only skipper's own stacks** — it is not a host-wide container watchdog. Design details in [ADR-0031](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0031-notify-on-own-stack-health-change.md).
 

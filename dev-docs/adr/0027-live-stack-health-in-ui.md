@@ -61,6 +61,14 @@ Compose's per-service `State` (`running`/`exited`/`restarting`) and `Health`
 - `stopped` — no running containers for the project
 - `unknown` — the `ps` call or its output could not be read
 
+*Amended 2026-07-17:* "unexpectedly `exited`" excludes a stack's
+`on_demand_containers`. skipper stops those itself after the deploy — often via
+SIGKILL, so they exit non-zero — and the on-demand scheduler restarts them on
+request; that idle is their intended state, so an exited on-demand container
+always classifies as `stopped` (any exit code) and the per-service panel labels
+it `on-demand`. A *running* on-demand container classifies as usual, and a
+`restarting`/`unhealthy` one is still a real failure.
+
 The rollup, not raw service rows, is what the header/table shows; the per-service
 detail is available on demand (see UI surface).
 

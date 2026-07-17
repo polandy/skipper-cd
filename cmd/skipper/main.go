@@ -238,12 +238,18 @@ func main() {
 			go alerter.Run(signalCtx)
 			alertSink = alerter
 		}
-		healthWatcher = healthwatch.New(healthwatch.Config{
+		hwCfg := healthwatch.Config{
 			Alerter:           alertSink,
 			StatePath:         filepath.Join(stateDir, "healthwatch.yaml"),
 			DebouncePolls:     hw.DebouncePolls,
 			AttributionWindow: time.Duration(hw.AttributionWindowSeconds) * time.Second,
-		})
+		}
+		if stateB != nil {
+			// The per-service panel's since/history/commit feed (ADR-0031 UI
+			// surface): every accepted change pushes the fresh view to UI clients.
+			hwCfg.Publish = func(v healthwatch.View) { stateB.Publish(events.StateEvent{Name: "healthwatch", Data: v}) }
+		}
+		healthWatcher = healthwatch.New(hwCfg)
 		eventSinks = append(eventSinks, healthWatcher.ObserveDeploy)
 		slog.Info("health watch enabled",
 			"debounce_polls", hw.DebouncePolls,
@@ -351,7 +357,7 @@ func main() {
 	}
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, healthPoller, broadcaster, history, logRing, as, build))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, healthPoller, healthWatcher, broadcaster, history, logRing, as, build))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -440,6 +446,7 @@ func healthStacks(cfg *config.Config) []health.StackRef {
 			Name:        s.Name,
 			ComposePath: filepath.Join(cfg.StacksBaseDir, s.Name, "docker-compose.yml"),
 			ProjectDir:  s.WorkingDir,
+			OnDemand:    s.OnDemandContainers,
 		})
 	}
 	return refs
@@ -465,7 +472,7 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *health.Poller, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
+func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *health.Poller, healthWatcher *healthwatch.Watcher, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
@@ -480,6 +487,9 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *hea
 			if healthPoller != nil {
 				state = append(state, events.StateEvent{Name: "health", Data: healthPoller.Current()})
 				healthPoller.Poll() // a client just connected — refresh now
+			}
+			if healthWatcher != nil {
+				state = append(state, events.StateEvent{Name: "healthwatch", Data: healthWatcher.Current()})
 			}
 			return state
 		}

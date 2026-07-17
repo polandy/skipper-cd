@@ -7,12 +7,18 @@ import (
 )
 
 // psLine mirrors the fields skipper needs from one object of
-// `docker compose ps --format json` output.
+// `docker compose ps --format json` output. Name is the container name — the
+// identifier on_demand_containers uses. onDemand is not part of the compose
+// output; probe marks it from the stack's config so classification can treat
+// an intentionally stopped on-demand container as stopped, not unhealthy.
 type psLine struct {
 	Service  string `json:"Service"`
+	Name     string `json:"Name"`
 	State    string `json:"State"`
 	Health   string `json:"Health"`
 	ExitCode int    `json:"ExitCode"`
+
+	onDemand bool
 }
 
 // parsePS parses `docker compose ps --format json` output into per-service
@@ -52,7 +58,11 @@ func parsePS(out []byte) ([]psLine, error) {
 // serviceStatus classifies one container. The compose Health field wins when
 // present (the service has a healthcheck); otherwise the container State is
 // used. A container that exited cleanly (code 0) counts as stopped, not
-// unhealthy — it is treated as a completed one-shot rather than a crash.
+// unhealthy — it is treated as a completed one-shot rather than a crash. An
+// exited on-demand container is stopped whatever its exit code: skipper itself
+// stops it after the deploy (often via SIGKILL → 137) and the scheduler starts
+// it on request, so idle is its intended state. Any other state of an
+// on-demand container (restarting, unhealthy) classifies as usual.
 func serviceStatus(l psLine) Status {
 	switch l.Health {
 	case "healthy":
@@ -71,7 +81,7 @@ func serviceStatus(l psLine) Status {
 	case "created", "starting":
 		return Starting
 	case "exited", "removing":
-		if l.ExitCode != 0 {
+		if l.ExitCode != 0 && !l.onDemand {
 			return Unhealthy
 		}
 		return Stopped
@@ -116,7 +126,7 @@ func servicesOf(lines []psLine) []ServiceHealth {
 	}
 	svcs := make([]ServiceHealth, 0, len(lines))
 	for _, l := range lines {
-		svcs = append(svcs, ServiceHealth{Name: l.Service, State: l.State, Health: l.Health, Status: serviceStatus(l)})
+		svcs = append(svcs, ServiceHealth{Name: l.Service, State: l.State, Health: l.Health, Status: serviceStatus(l), OnDemand: l.onDemand})
 	}
 	return svcs
 }

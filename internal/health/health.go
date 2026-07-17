@@ -33,6 +33,11 @@ type ServiceHealth struct {
 	State  string `json:"state"`
 	Health string `json:"health"`
 	Status Status `json:"status"`
+	// OnDemand marks a service whose container is in the stack's
+	// on_demand_containers: skipper stops it after the deploy and a scheduler
+	// starts it on request, so the UI labels it rather than letting an exited
+	// state look like a problem.
+	OnDemand bool `json:"on_demand,omitempty"`
 }
 
 // StackHealth is a stack's rolled-up status plus its per-service detail.
@@ -49,11 +54,15 @@ type Snapshot struct {
 // StackRef identifies a stack to probe. ComposePath and ProjectDir mirror how
 // the deploy path invokes compose (Invariant 1): the compose file comes from
 // the repo clone, and ProjectDir (a stack's working_dir, possibly empty) is the
-// --project-directory that fixes the compose project identity.
+// --project-directory that fixes the compose project identity. OnDemand lists
+// the stack's on_demand_containers (container names): skipper stops those
+// after the deploy on purpose, so an exited one classifies as stopped, never
+// unhealthy.
 type StackRef struct {
 	Name        string
 	ComposePath string
 	ProjectDir  string
+	OnDemand    []string
 }
 
 // Outputter runs a command and returns its captured stdout.
@@ -192,5 +201,24 @@ func (p *Poller) probe(ctx context.Context, s StackRef) StackHealth {
 	if err != nil {
 		return StackHealth{Status: Unknown}
 	}
+	markOnDemand(lines, s.OnDemand)
 	return StackHealth{Status: rollup(lines), Services: servicesOf(lines)}
+}
+
+// markOnDemand flags the lines whose container is one of the stack's
+// on_demand_containers, so classification treats their exited state as the
+// intended idle, not a failure.
+func markOnDemand(lines []psLine, onDemand []string) {
+	if len(onDemand) == 0 {
+		return
+	}
+	set := make(map[string]bool, len(onDemand))
+	for _, n := range onDemand {
+		set[n] = true
+	}
+	for i := range lines {
+		if set[lines[i].Name] {
+			lines[i].onDemand = true
+		}
+	}
 }

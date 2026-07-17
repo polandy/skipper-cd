@@ -78,6 +78,21 @@ func TestRollup(t *testing.T) {
 			want:  Unhealthy,
 		},
 		{
+			// An on-demand container (Sablier-style) is stopped by skipper after
+			// the deploy — often via SIGKILL (137). That is its intended idle
+			// state, never a failure.
+			name:  "stopped when an on-demand container exited non-zero",
+			lines: []psLine{{Service: "app", Name: "monica-app", State: "exited", ExitCode: 137, onDemand: true}},
+			want:  Stopped,
+		},
+		{
+			// Only the exited state is forgiven: a crash-looping on-demand
+			// container is still a real failure.
+			name:  "unhealthy when an on-demand container is restarting",
+			lines: []psLine{{Service: "app", Name: "monica-app", State: "restarting", onDemand: true}},
+			want:  Unhealthy,
+		},
+		{
 			name:  "starting when any service still starting and none unhealthy",
 			lines: []psLine{{Service: "a", State: "running", Health: "healthy"}, {Service: "b", State: "running", Health: "starting"}},
 			want:  Starting,
