@@ -19,6 +19,7 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 | `skipper_notifications_dropped_total` | counter | Notification events dropped because the delivery buffer was full. |
 | `skipper_health_transitions_total` | counter | Accepted per-service health transitions observed by the [health watch](configuration.md#health-watch), labelled by resulting `status`. |
 | `skipper_health_alerts_sent_total` | counter | Outbound health alert deliveries, labelled by `format` and `outcome` (`ok`/`error`). |
+| `skipper_health_alerts_suppressed_total` | counter | Health alerts held back by the [alert cooldown](configuration.md#health-watch), labelled by target `status`. |
 
 ## Recommended Alerts
 

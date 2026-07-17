@@ -243,6 +243,7 @@ func main() {
 			StatePath:         filepath.Join(stateDir, "healthwatch.yaml"),
 			DebouncePolls:     hw.DebouncePolls,
 			AttributionWindow: time.Duration(hw.AttributionWindowSeconds) * time.Second,
+			AlertCooldown:     time.Duration(hw.AlertCooldownSeconds) * time.Second,
 		}
 		if stateB != nil {
 			// The per-service panel's since/history/commit feed (ADR-0031 UI
@@ -253,6 +254,7 @@ func main() {
 		eventSinks = append(eventSinks, healthWatcher.ObserveDeploy)
 		slog.Info("health watch enabled",
 			"debounce_polls", hw.DebouncePolls,
+			"alert_cooldown_seconds", hw.AlertCooldownSeconds,
 			"targets", len(hw.Targets),
 		)
 	}
