@@ -71,7 +71,12 @@ asserting **behaviour + visual snapshots**.
 > row), **UK2** (a stack that stays unhealthy exhausts into `heal_exhausted`) —
 > driving the real self-heal loop off the scripted health poller. **Mask L**
 > (§4.13) covers the one-open-panel-per-row rule — **UL1** (the health panel and
-> the files/diff panel swap each other out, in both click orders).
+> the files/diff panel swap each other out, in both click orders). **Mask M**
+> (§4.14) covers the per-stack deploy-history panel (audit log, ADR-0033) —
+> **UM1** (the history button opens a panel of the stack's terminal outcomes
+> from `/api/audit`), **UM2** (the button is on the newest row per stack only),
+> **UM3** (the panel is mutually exclusive with the diff panel) — driven by real
+> deploys (startup + a webhook bump).
 
 ## 1. Scope & boundaries
 
@@ -540,6 +545,25 @@ health pill on the same row. Behaviour-only (no snapshot).
   the files pill swaps in the diff panel (row `diff-open`, not `health-open`);
   clicking the health pill swaps the health panel back (row `health-open`, not
   `diff-open`). The surviving panel is always the row's direct sibling.
+
+### 4.14 UI — Maske M: per-stack deploy history (ADR-0033)
+
+The newest row per stack carries a history button that opens a panel of the
+stack's durable terminal deploy outcomes, fetched from `/api/audit`. The panel
+joins the one-open-panel-per-row rule (Maske L). The harness runs the real
+backend, so the records come from real deploys: the startup deploy plus a
+webhook image bump give two `success` records. Behaviour-only (no snapshot).
+
+- **UM1 — History panel content.** Clicking the newest row's `history-btn` opens
+  the `audit-panel` (row gains `audit-open`, panel is its direct sibling) with
+  two `audit-row`s, newest first, each `data-status="success"` and carrying the
+  deployed commit's short SHA. A second click closes it.
+- **UM2 — Newest row only.** With two `web` rows, only the newest carries the
+  `history-btn`; the older row has none (the button is a current per-stack value,
+  like the health pill).
+- **UM3 — Mutual exclusion with the diff panel.** Opening the history panel then
+  the files/diff panel swaps in the diff panel (row `diff-open`, not
+  `audit-open`); opening the history button again swaps it back.
 
 ## 5. Visual snapshot strategy
 

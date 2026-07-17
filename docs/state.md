@@ -21,3 +21,9 @@ A transient top-level key `nixos_rebuild_in_flight` may appear while a rebuild i
 ## Health-watch state
 
 When the [health watch](configuration.md#health-watch) is enabled, it keeps its own file `healthwatch.yaml` in the same directory (also written atomically): per stack, the last successful deploy (`commit`, `at`) and, per service, the last 10 accepted status phases — each with the status, when it began (`since`, second-granular UTC), and the newest commit that had touched the stack at that time. This is what lets a restart resume transition detection without re-alerting known failures. A missing or corrupt `healthwatch.yaml` is a clean slate: the next poll re-baselines silently, no alerts fire.
+
+## Deploy audit log
+
+When the [web UI](configuration.md) is enabled, skipper keeps a durable per-stack deploy audit log at `deploy-audit.jsonl` in the same directory — the "what happened to this stack, and when" trail behind the UI's [deploy-history panel](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md). It is separate from the bounded, in-memory live event feed: one **append-only** JSON record per line, so it survives restarts and is not evicted when older events roll off the live window.
+
+Each record holds the metadata of one **terminal** deploy outcome — `stack`, `timestamp`, `status`, `duration_ms`, `commit_sha`, `changed_files` (a count), and `error` — with no diffs (the commit SHA identifies the change). Only `success`, `failed`, `rolled_back`, `rolled_back_unhealthy`, `healed`, and `heal_exhausted` are recorded; in-progress, skipped and deferred (`queued`/`blocked`) statuses are not. The log keeps the most recent 200 records **per stack** (so a busy stack never evicts a quiet one's history) and is compacted in place — atomically, temp file + rename — to stay bounded; a torn trailing line from a crash mid-append is skipped on load rather than failing the whole file.

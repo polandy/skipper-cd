@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/audit"
 	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/events"
 )
@@ -308,6 +309,34 @@ func DiffHandler(history *events.History) http.Handler {
 			"diffs":   evt.Diffs,
 			"commits": evt.Commits,
 		})
+	})
+}
+
+// AuditHandler serves GET /api/audit — the durable per-stack deploy audit log
+// (ADR-0033) as a JSON array, newest first. With ?stack=<name> it returns that
+// one stack's history; without it, recent records across all stacks. An
+// optional ?limit=<n> caps the count.
+func AuditHandler(log *audit.Log) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limit := 0
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				limit = n
+			}
+		}
+
+		var records []audit.Record
+		if stack := r.URL.Query().Get("stack"); stack != "" {
+			records = log.Stack(stack, limit)
+		} else {
+			records = log.Recent(limit)
+		}
+		if records == nil {
+			records = []audit.Record{} // encode [] not null for an empty history
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(records)
 	})
 }
 
