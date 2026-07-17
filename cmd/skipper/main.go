@@ -446,6 +446,7 @@ func healthStacks(cfg *config.Config) []health.StackRef {
 			Name:        s.Name,
 			ComposePath: filepath.Join(cfg.StacksBaseDir, s.Name, "docker-compose.yml"),
 			ProjectDir:  s.WorkingDir,
+			OnDemand:    s.OnDemandContainers,
 		})
 	}
 	return refs
