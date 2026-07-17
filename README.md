@@ -4,7 +4,7 @@
 
 <h1 align="center">skipper-cd</h1>
 
-<p align="center"><i>Simple, fast Docker Compose CD — with first-class NixOS support</i></p>
+<p align="center"><i>Simple, fast GitOps CD for Docker Compose — runs on any Docker host, with first-class NixOS support</i></p>
 
 <p align="center">📖 <b><a href="https://polandy.github.io/skipper-cd/">Documentation</a></b></p>
 <br>
