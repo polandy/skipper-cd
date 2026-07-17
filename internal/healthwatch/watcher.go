@@ -57,6 +57,10 @@ type Config struct {
 	AttributionWindow time.Duration
 	// Now overrides the clock in tests; nil uses time.Now.
 	Now func() time.Time
+	// Publish, when set, receives the fresh View after every accepted change
+	// (baseline, transition, or a service appearing/vanishing) — the UI's
+	// healthwatch SSE feed. Called on the poller goroutine, outside the lock.
+	Publish func(View)
 }
 
 // Watcher turns the health poller's snapshots into accepted per-service status
@@ -68,6 +72,7 @@ type Watcher struct {
 	debounce  int
 	window    time.Duration
 	now       func() time.Time
+	publish   func(View)
 
 	mu      sync.Mutex
 	state   *state
@@ -100,6 +105,7 @@ func New(cfg Config) *Watcher {
 		debounce:  debounce,
 		window:    cfg.AttributionWindow,
 		now:       now,
+		publish:   cfg.Publish,
 		state:     loadState(cfg.StatePath),
 		pending:   map[string]map[string]*pendingStatus{},
 	}
@@ -123,11 +129,11 @@ func (w *Watcher) ObserveDeploy(e events.DeployEvent) {
 }
 
 // Observe feeds one poller snapshot through the transition detector,
-// persisting the state once when anything was accepted. It runs on the
-// poller's goroutine (the OnSnapshot contract).
+// persisting the state once when anything was accepted and publishing the
+// fresh View to the UI feed. It runs on the poller's goroutine (the OnSnapshot
+// contract).
 func (w *Watcher) Observe(snap health.Snapshot) {
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	now := normalizeTime(w.now())
 	for name, sh := range snap.Stacks {
 		if sh.Status == health.Unknown {
@@ -151,11 +157,20 @@ func (w *Watcher) Observe(snap health.Snapshot) {
 			}
 		}
 	}
-	if w.dirty {
+	changed := w.dirty
+	var view View
+	if changed {
 		if err := w.state.save(w.statePath); err != nil {
 			slog.Error("healthwatch state save failed", "path", w.statePath, "err", err)
 		}
 		w.dirty = false
+		if w.publish != nil {
+			view = w.view()
+		}
+	}
+	w.mu.Unlock()
+	if changed && w.publish != nil {
+		w.publish(view)
 	}
 }
 

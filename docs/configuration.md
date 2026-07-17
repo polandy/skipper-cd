@@ -329,6 +329,8 @@ A new failure reads `🚨 stack health: <stack>/<service> healthy → unhealthy 
 
 Every accepted transition is also written to the log and persisted (per service, the last 10 status phases with their start times) in `healthwatch.yaml` next to the [state file](state.md) — so the watchdog survives a restart without re-alerting known failures, and a failure that happened *while skipper was down* is still detected and alerted on the first polls after startup. A probe failure (`unknown`) holds the last known status rather than alerting.
 
+With the web UI enabled, that history is also visible in the [Stack health](#stack-health) per-service panel: each service shows how long its current status has held, plus a timeline of its last 10 status phases — with the deploy's short commit on phases that began right after a deploy. With the watchdog off the panel simply shows the live status, as before.
+
 This watches **only skipper's own stacks** — it is not a host-wide container watchdog. Design details in [ADR-0031](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0031-notify-on-own-stack-health-change.md).
 
 ## Periodic reconcile

@@ -878,6 +878,9 @@
     border-bottom: 1px solid color-mix(in srgb, var(--overlay2) 8%, transparent);
   }
   .health-panel .hp-svc:last-child { border-bottom: 0; }
+  /* A service line directly followed by its timeline hands the separator down
+     to the timeline block, so the pair reads as one unit. */
+  .health-panel .hp-svc:has(+ .hp-history) { border-bottom: 0; }
   .health-panel .hp-name { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
   .health-panel .hp-state { color: var(--text-muted); }
   .health-panel .hp-status { display: inline-flex; align-items: center; gap: 5px; color: var(--hc); font-weight: 600; }
@@ -888,6 +891,34 @@
   .health-panel .hp-status[data-health="stopped"]   { --hc: var(--h-stopped); }
   .health-panel .hp-status[data-health="unknown"]   { --hc: var(--h-unknown); }
   .health-panel .hp-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
+  /* Health-watch additions (ADR-0031): current-phase age on the service line,
+     and a compact per-service status timeline below it. Absent entirely when
+     the watchdog is off (no healthwatch snapshot). */
+  .health-panel .hp-for { color: var(--text-muted); font-weight: 400; }
+  .health-panel .hp-history {
+    padding: 2px 0 6px 14px;
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay2) 8%, transparent);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .health-panel .hp-history:last-child { border-bottom: 0; }
+  .health-panel .hp-phase {
+    display: flex; align-items: baseline; gap: 7px;
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .health-panel .hp-phase .hdot { width: 5px; height: 5px; border-radius: 50%; background: var(--hc); flex: none; align-self: center; }
+  .health-panel .hp-phase .hp-pstatus { color: var(--hc); font-weight: 600; }
+  .health-panel .hp-phase[data-health="healthy"]   { --hc: var(--h-healthy); }
+  .health-panel .hp-phase[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-panel .hp-phase[data-health="starting"]  { --hc: var(--h-starting); }
+  .health-panel .hp-phase[data-health="stopped"]   { --hc: var(--h-stopped); }
+  .health-panel .hp-phase[data-health="unknown"]   { --hc: var(--h-unknown); }
+  .health-panel .hp-commit {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
+    background: color-mix(in srgb, var(--overlay2) 8%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 4px; padding: 0 4px;
+  }
 
   /* ─── FILES PILL ─── */
   .files-pill {
@@ -2106,6 +2137,11 @@
   // services }. Rendered as a pill on the newest row of each stack (ADR-0027).
   let healthSnap = {};
 
+  // Health-watch status history, from the 'healthwatch' SSE snapshot: stack ->
+  // service -> phases (newest first, <= 10). Empty when the watchdog is off —
+  // the health panel then renders without age/timeline (ADR-0031).
+  let healthwatchSnap = {};
+
   function showTable() {
     if (!hasRows) {
       hasRows = true;
@@ -2454,6 +2490,55 @@
     row.classList.remove('diff-open');
   }
 
+  // phaseDuration renders a millisecond span the way the health timeline needs
+  // it: compact, coarse ("6h12m", "5m", "3d4h"), never seconds-precise beyond
+  // the first minute.
+  function phaseDuration(ms) {
+    if (!ms || ms < 1000) return '0s';
+    var s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's';
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + 'm';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + 'h' + (m % 60 ? (m % 60) + 'm' : '');
+    var d = Math.floor(h / 24);
+    return d + 'd' + (h % 24 ? (h % 24) + 'h' : '');
+  }
+
+  // phaseSince renders a phase start compactly in local time: time-of-day for
+  // today, day+month plus time otherwise.
+  function phaseSince(ts) {
+    var d = new Date(ts);
+    var time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === new Date().toDateString()) return time;
+    return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + time;
+  }
+
+  // healthHistoryHTML renders one service's status timeline from the
+  // healthwatch snapshot (ADR-0031): newest first, each accepted phase with its
+  // start, how long it held, and the deploy commit when correlated. Returns ''
+  // when the watchdog is off or has nothing for this service.
+  function healthHistoryHTML(stack, svc) {
+    var phases = (healthwatchSnap[stack] || {})[svc];
+    if (!phases || !phases.length) return '';
+    var html = '<div class="hp-history" data-testid="health-history">';
+    for (var i = 0; i < phases.length; i++) {
+      var p = phases[i];
+      var end = i === 0 ? Date.now() : new Date(phases[i - 1].since).getTime();
+      var dur = phaseDuration(end - new Date(p.since).getTime());
+      html += '<div class="hp-phase" data-testid="health-phase" data-health="' + escapeAttr(p.status) + '">' +
+        '<span class="hdot"></span>' +
+        '<span class="hp-pstatus">' + escapeHtml(p.status) + '</span>' +
+        '<span>' + escapeHtml(phaseSince(p.since)) + '</span>' +
+        '<span>' + escapeHtml(i === 0 ? 'for ' + dur : dur) + '</span>' +
+        (p.deploy_correlated && p.commit
+          ? '<span class="hp-commit" data-testid="health-phase-commit" title="deployed just before this phase began">' + escapeHtml(shortSHA(p.commit)) + '</span>'
+          : '') +
+        '</div>';
+    }
+    return html + '</div>';
+  }
+
   function createHealthPanel(stack) {
     var el = document.createElement('div');
     el.className = 'health-panel';
@@ -2476,11 +2561,17 @@
     el.innerHTML = head + svcs.map(function(s) {
       var st = s.health || s.state || 'unknown';
       var state = s.health ? (s.state + ' · health: ' + s.health) : s.state;
+      // With the health watch on, the service line carries the current
+      // phase's age and a status timeline below it (ADR-0031).
+      var phases = (healthwatchSnap[stack] || {})[s.name];
+      var age = phases && phases.length
+        ? ' <span class="hp-for">· ' + escapeHtml(phaseDuration(Date.now() - new Date(phases[0].since).getTime())) + '</span>'
+        : '';
       return '<div class="hp-svc" data-testid="health-service">' +
         '<span class="hp-name">' + escapeHtml(s.name) + '</span>' +
         '<span class="hp-state">' + escapeHtml(state) + '</span>' +
-        '<span class="hp-status" data-health="' + escapeAttr(healthClass(s)) + '"><span class="hdot"></span>' + escapeHtml(st) + '</span>' +
-        '</div>';
+        '<span class="hp-status" data-health="' + escapeAttr(healthClass(s)) + '"><span class="hdot"></span>' + escapeHtml(st) + age + '</span>' +
+        '</div>' + healthHistoryHTML(stack, s.name);
     }).join('');
     return el;
   }
@@ -2716,6 +2807,11 @@
       var d = JSON.parse(e.data);
       healthSnap = (d && d.stacks) || {};
       updateHealthPills();
+    });
+
+    es.addEventListener('healthwatch', function(e) {
+      var d = JSON.parse(e.data);
+      healthwatchSnap = (d && d.stacks) || {};
     });
 
     es.onerror = function() {
