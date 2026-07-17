@@ -221,3 +221,25 @@ stack with `self_heal: true` still gets restored to whatever it last deployed.
   latency, but means holding a long-lived subprocess and parsing an open-ended
   feed (the same trade ADR-0027 declined). The existing periodic `ps` is cheap
   enough at homelab stack counts and reuses machinery already built.
+
+## Amendment (2026-07-18): drift detail on the healed event
+
+The original `healed` event carried no payload — no changed files (there are
+none) and no diff (a heal is not a version change), so the UI row was a dead end:
+not expandable, with nothing to explain *why* it healed. A stack that keeps
+healing gave the operator no way to see what drifted.
+
+The healed event now carries the **services that were degraded when the heal
+fired** (`DriftedService{name, status}`, `status` ∈ `unhealthy`/`stopped`), taken
+from the same health snapshot self-heal already consumes to decide to act. The
+Engine passes them through the `Healer` seam (`Heal(ctx, stack, drift)`), and
+`HealStack` attaches them to the event. It is small, so — unlike diffs — it rides
+the SSE payload directly rather than a fetch-on-demand endpoint.
+
+In the UI the healed row's files cell shows a teal **self-heal badge** in place of
+the (absent) files pill; clicking it expands a bound detail panel with the
+corrective-redeploy explanation and the drifted-service list (see
+`internal/ui/UI_SPEC.md` → Self-heal). This surfaces the heal's cause without
+adding any trigger surface — the action stays backend-only and unchanged; only
+its *reporting* got richer. Older healed events (no recorded drift) degrade
+gracefully to the explanation alone.

@@ -31,7 +31,8 @@ func TestHealStack_RunsCorrectiveUpAndEmitsHealed(t *testing.T) {
 	d.SetEventSink(func(e events.DeployEvent) { got = append(got, e) })
 
 	cfg := healConfig(t, "web")
-	ran, err := d.HealStack(context.Background(), cfg, "web")
+	drift := []events.DriftedService{{Name: "web", Status: "unhealthy"}}
+	ran, err := d.HealStack(context.Background(), cfg, "web", drift)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -52,6 +53,13 @@ func TestHealStack_RunsCorrectiveUpAndEmitsHealed(t *testing.T) {
 	if len(got) != 1 || got[0].Status != events.StatusHealed || got[0].Stack != "web" {
 		t.Fatalf("expected one healed event for web, got %+v", got)
 	}
+	// The drift that triggered the heal rides the event (no changed files/diffs).
+	if !slices.Equal(got[0].HealDrift, drift) {
+		t.Fatalf("expected healed event to carry drift %+v, got %+v", drift, got[0].HealDrift)
+	}
+	if got[0].ChangedFiles != nil || got[0].Diffs != nil {
+		t.Fatalf("a heal carries no changed files or diffs, got files=%v diffs=%v", got[0].ChangedFiles, got[0].Diffs)
+	}
 }
 
 func TestHealStack_SkipsWhenDeployInProgress(t *testing.T) {
@@ -63,7 +71,7 @@ func TestHealStack_SkipsWhenDeployInProgress(t *testing.T) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	ran, err := d.HealStack(context.Background(), cfg, "web")
+	ran, err := d.HealStack(context.Background(), cfg, "web", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +90,7 @@ func TestHealStack_ReturnsErrorWithoutHealedEventOnUpFailure(t *testing.T) {
 	d.SetEventSink(func(e events.DeployEvent) { got = append(got, e) })
 
 	cfg := healConfig(t, "web")
-	ran, err := d.HealStack(context.Background(), cfg, "web")
+	ran, err := d.HealStack(context.Background(), cfg, "web", nil)
 	if !ran {
 		t.Fatal("expected ran=true: the up was attempted")
 	}
@@ -103,7 +111,7 @@ func TestHealStack_UnknownStack(t *testing.T) {
 	d := newDeployerWithRunner(r)
 	cfg := healConfig(t, "web")
 
-	ran, err := d.HealStack(context.Background(), cfg, "nope")
+	ran, err := d.HealStack(context.Background(), cfg, "nope", nil)
 	if !ran || err == nil {
 		t.Fatalf("expected ran=true and an error for an unknown stack, got ran=%v err=%v", ran, err)
 	}

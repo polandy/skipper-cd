@@ -290,7 +290,7 @@ func (d *Deployer) TrySyncAndDeployAll(ctx context.Context, cfg *config.Config) 
 // (mirrors the reconcile loop's skip-if-busy, ADR-0010/ADR-0028). A successful
 // up emits a healed event; an up error is returned for the caller to count as a
 // failed attempt without emitting a misleading failed-deploy event.
-func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName string) (ran bool, err error) {
+func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName string, drift []events.DriftedService) (ran bool, err error) {
 	if !d.mu.TryLock() {
 		return false, nil
 	}
@@ -320,9 +320,28 @@ func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName 
 		return true, fmt.Errorf("self-heal up %q: %w", stack.Name, err)
 	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
-	d.emit(events.StatusHealed, stack.Name, time.Since(start), "", nil, nil, nil)
+	d.emitHealed(stack.Name, time.Since(start), drift)
 	slog.Info("self-heal: stack restored", "stack", stack.Name)
 	return true, nil
+}
+
+// emitHealed emits the self-heal corrective-redeploy event. A heal has no
+// changed files, diffs, or commits (the desired version is unchanged), so it
+// carries only the drift that triggered it — the services the UI shows the heal
+// reacted to. Its own path rather than emit's, whose diff/commit params never
+// apply here.
+func (d *Deployer) emitHealed(stack string, duration time.Duration, drift []events.DriftedService) {
+	if d.eventSink == nil {
+		return
+	}
+	d.eventSink(events.DeployEvent{
+		ID:         d.nextEventID.Add(1),
+		Timestamp:  time.Now(),
+		Stack:      stack,
+		Status:     events.StatusHealed,
+		DurationMs: duration.Milliseconds(),
+		HealDrift:  drift,
+	})
 }
 
 // EmitHealExhausted records that self-heal gave up on a stack it could not

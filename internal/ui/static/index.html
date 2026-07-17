@@ -1013,6 +1013,86 @@
     opacity: 0.5;
   }
 
+  /* ─── SELF-HEAL BADGE + PANEL ─── */
+  /* The heal-pill stands in for the files-pill on a healed row (a heal has no
+     changed files). Tinted teal to match the healed status, it expands the
+     self-heal detail panel below the row. */
+  .heal-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--success) 30%, var(--border));
+    color: var(--success);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .heal-pill:hover {
+    background: color-mix(in srgb, var(--success) 18%, transparent);
+    border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  }
+  .heal-pill svg { width: 12px; height: 12px; opacity: 0.8; }
+
+  .heal-panel {
+    padding: 11px 14px 12px 16px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    animation: expand 0.2s ease-out;
+  }
+  .heal-summary {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+  .heal-summary code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--overlay2) 12%, transparent);
+    color: var(--text-primary);
+  }
+  .heal-drift-label {
+    margin-top: 10px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .heal-drift-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .heal-drift-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+  .heal-drift-list .hd-name { color: var(--text-primary); }
+  .heal-drift-list .hd-status {
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--h-unhealthy);
+    background: color-mix(in srgb, var(--h-unhealthy) 14%, transparent);
+  }
+
   .files-list {
     padding: 10px 14px;
     background: var(--bg-sunken);
@@ -1183,11 +1263,12 @@
   .event-row.diff-open[data-status="rolled_back_unhealthy"],.diff-panel.bound[data-status="rolled_back_unhealthy"],.files-list.bound[data-status="rolled_back_unhealthy"]{ --dc: var(--danger); }
   .event-row.diff-open[data-status="queued"],               .diff-panel.bound[data-status="queued"],               .files-list.bound[data-status="queued"]               { --dc: var(--queued); }
   .event-row.diff-open[data-status="deploying"],            .diff-panel.bound[data-status="deploying"],            .files-list.bound[data-status="deploying"]            { --dc: var(--accent); }
+  .event-row.diff-open[data-status="healed"],               .heal-panel.bound[data-status="healed"]                                                                     { --dc: var(--success); }
   .event-row.diff-open {
     background: color-mix(in srgb, var(--dc, var(--accent)) 8%, transparent);
     box-shadow: inset 3px 0 0 var(--dc, var(--accent));
   }
-  .diff-panel.bound, .files-list.bound {
+  .diff-panel.bound, .files-list.bound, .heal-panel.bound {
     background: color-mix(in srgb, var(--dc, var(--accent)) 5%, var(--bg-sunken));
     border-color: color-mix(in srgb, var(--dc, var(--accent)) 22%, var(--border));
     box-shadow: inset 3px 0 0 var(--dc, var(--accent));
@@ -1201,7 +1282,7 @@
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel {
+  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel, .heal-panel.bound {
     margin-top: -2px;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
@@ -1217,7 +1298,7 @@
      view). Bound, their top and left borders would sit beside the shared 3px status
      bar and double the line — offsetting the bar from the row's. Drop them so the
      bar is the left edge, exactly as the health panel (border-bottom only) does. */
-  .diff-panel.bound, .files-list.bound {
+  .diff-panel.bound, .files-list.bound, .heal-panel.bound {
     border-top: none;
     border-left: none;
   }
@@ -1968,7 +2049,7 @@
     .status-cell { grid-column: 2; grid-row: 1; }
     .cell-duration { grid-column: 2; grid-row: 2; text-align: right; }
     .col-files { display: none; }
-    .event-row:has(.files-pill) { cursor: pointer; }
+    .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
   }
 
   /* Portrait phones keep the build identity next to the logo. It clips with an
@@ -2268,6 +2349,43 @@
     return html;
   }
 
+  // healPillHTML renders the self-heal "badge" that stands in for the files pill
+  // on a healed row (a heal has no changed files). Clicking it expands a panel
+  // explaining the corrective redeploy and listing the services that had
+  // drifted (ADR-0029). The drift rides the event, so it is stashed on the pill.
+  function healPillHTML(drift) {
+    var encoded = escapeAttr(JSON.stringify(drift || []));
+    var html = '<button class="heal-pill" data-testid="heal-pill" data-drift="' + encoded + '">';
+    html += '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>';
+    html += 'self-heal';
+    html += '</button>';
+    return html;
+  }
+
+  // createHealPanel builds the expandable detail for a healed row: a one-line
+  // explanation (no git change → no diff) and, when known, the drifted services
+  // the corrective redeploy reacted to. Bound to its row (variant A) so it shares
+  // the teal status bar.
+  function createHealPanel(drift, meta) {
+    var el = document.createElement('div');
+    el.className = 'heal-panel';
+    el.dataset.testid = 'heal-panel';
+    if (meta) {
+      el.classList.add('bound');
+      el.dataset.status = meta.status;
+    }
+    var html = '<div class="heal-summary">Self-heal restored this stack to its deployed running state — a corrective <code>docker compose up -d</code>. Nothing in git changed, so there is no diff.</div>';
+    if (drift && drift.length > 0) {
+      html += '<div class="heal-drift-label">Drifted when it ran</div>';
+      html += '<ul class="heal-drift-list">' + drift.map(function(d) {
+        return '<li><span class="hd-name">' + escapeHtml(d.name) + '</span>' +
+          '<span class="hd-status hd-' + escapeAttr(d.status) + '">' + escapeHtml(d.status) + '</span></li>';
+      }).join('') + '</ul>';
+    }
+    el.innerHTML = html;
+    return el;
+  }
+
   function createFilesPanel(files, meta) {
     var el = document.createElement('div');
     el.className = 'files-list';
@@ -2489,12 +2607,15 @@
     var absTs = fullTime(evt.timestamp);
     var relTs = formatTime(evt.timestamp);
     var pausedTag = (evt.status === 'queued' || evt.status === 'blocked') ? pendingTagHTML(evt) : '';
+    // A healed row has no changed files; its files cell instead carries the
+    // self-heal badge, which expands the corrective-redeploy detail (ADR-0029).
+    var filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
     row.innerHTML =
       '<span class="cell-time" data-testid="time-cell" data-ts="' + evt.timestamp + '" title="' + (absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
       '<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon" data-name="' + escapeHtml(evt.stack) + '"></span><span class="stack-name">' + escapeHtml(evt.stack) + '</span>' + pausedTag + '</span>' +
       '<span class="status-cell">' + badgeHTML(evt.status) + '</span>' +
       '<span class="cell-duration" data-testid="duration-cell">' + formatDuration(evt.duration_ms) + '</span>' +
-      '<span class="col-files">' + filesHTML(evt.changed_files) + '</span>';
+      '<span class="col-files">' + filesCell + '</span>';
 
     populateIcon(row.querySelector('.stack-icon'), evt.stack);
     return row;
@@ -2577,7 +2698,7 @@
   // other, so a toggleable panel is always the row's direct next sibling.
   function closeDiffPanel(row) {
     var next = row.nextElementSibling;
-    if (next && (next.classList.contains('files-list') || next.classList.contains('diff-panel'))) next.remove();
+    if (next && (next.classList.contains('files-list') || next.classList.contains('diff-panel') || next.classList.contains('heal-panel'))) next.remove();
     row.classList.remove('diff-open');
   }
 
@@ -3741,6 +3862,27 @@
           hrow.classList.add('health-open');
           hrow.after(createHealthPanel(hrow.dataset.stack));
         }
+      }
+      return;
+    }
+
+    // Self-heal badge: toggle the corrective-redeploy detail panel. A healed row
+    // has no files pill, so it is handled on its own (ADR-0029).
+    var healPill = e.target.closest('.heal-pill');
+    var healRow = healPill ? healPill.closest('.event-row') : (e.target.closest('.event-row.healed-row'));
+    if (healRow) {
+      var healBtn = healPill || healRow.querySelector('.heal-pill');
+      if (!healBtn) return;
+      var hnext = healRow.nextElementSibling;
+      if (hnext && hnext.classList.contains('heal-panel')) {
+        closeDiffPanel(healRow);
+      } else {
+        closeHealthPanel(healRow); // one panel per row
+        closeAuditPanel(healRow);
+        closeDiffPanel(healRow);
+        healRow.classList.add('diff-open'); // shares the panel's status bar
+        var drift = JSON.parse(healBtn.dataset.drift || '[]');
+        healRow.after(createHealPanel(drift, { stack: healRow.dataset.stack, status: healRow.dataset.status }));
       }
       return;
     }

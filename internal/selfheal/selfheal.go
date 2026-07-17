@@ -18,17 +18,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/health"
 )
 
 // Healer performs one corrective redeploy of a single stack, restoring it to
 // its currently deployed running state (a plain `compose up`, no version
-// change, no rollback). It reports whether the redeploy actually ran: false
-// means a deploy was already in progress, so this tick was skipped and must not
-// count against the stack's attempt budget. Backed by the deployer's HealStack
-// in production; tests supply a fake.
+// change, no rollback). drift lists the services that were degraded when the
+// heal was triggered, so the healed event can show what it reacted to. It
+// reports whether the redeploy actually ran: false means a deploy was already in
+// progress, so this tick was skipped and must not count against the stack's
+// attempt budget. Backed by the deployer's HealStack in production; tests supply
+// a fake.
 type Healer interface {
-	Heal(ctx context.Context, stack string) (ran bool, err error)
+	Heal(ctx context.Context, stack string, drift []events.DriftedService) (ran bool, err error)
 }
 
 // Config wires an Engine.
@@ -100,8 +103,22 @@ func (e *Engine) Observe(ctx context.Context, snap health.Snapshot) {
 		if e.enabled != nil && !e.enabled(name) {
 			continue
 		}
-		e.evaluate(ctx, name, sh.Status)
+		e.evaluate(ctx, name, sh)
 	}
+}
+
+// driftedServices lists the services that are degraded (unhealthy or stopped) in
+// a stack's health, in the order the poller reported them — the "what triggered
+// the heal" detail carried on the healed event. Returns nil when the rollup is
+// degraded but no individual service is (e.g. an unreadable per-service state).
+func driftedServices(sh health.StackHealth) []events.DriftedService {
+	var drift []events.DriftedService
+	for _, svc := range sh.Services {
+		if classify(svc.Status) == degradedCat {
+			drift = append(drift, events.DriftedService{Name: svc.Name, Status: string(svc.Status)})
+		}
+	}
+	return drift
 }
 
 // Reset clears a stack's self-heal state. The wiring calls it when a real git
@@ -113,7 +130,7 @@ func (e *Engine) Reset(stack string) {
 	delete(e.states, stack)
 }
 
-func (e *Engine) evaluate(ctx context.Context, stack string, status health.Status) {
+func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHealth) {
 	e.mu.Lock()
 	s := e.states[stack]
 	if s == nil {
@@ -121,7 +138,7 @@ func (e *Engine) evaluate(ctx context.Context, stack string, status health.Statu
 		e.states[stack] = s
 	}
 
-	switch classify(status) {
+	switch classify(sh.Status) {
 	case recovered:
 		// Healthy again: clear the outage so a future one starts fresh.
 		delete(e.states, stack)
@@ -162,7 +179,7 @@ func (e *Engine) evaluate(ctx context.Context, stack string, status health.Statu
 	// mutex and can block). A skipped run (deploy already in progress) does not
 	// count against the attempt budget — the next poll retries.
 	slog.Info("self-heal triggering corrective redeploy", "stack", stack)
-	ran, err := e.healer.Heal(ctx, stack)
+	ran, err := e.healer.Heal(ctx, stack, driftedServices(sh))
 	if !ran {
 		slog.Debug("self-heal skipped: deploy already in progress", "stack", stack)
 		return
