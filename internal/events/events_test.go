@@ -129,6 +129,22 @@ func TestSSEPayload_StripsCommits(t *testing.T) {
 	}
 }
 
+func TestSSEPayload_KeepsHealDrift(t *testing.T) {
+	// A heal has no diff to fetch on demand, so its drift detail must survive the
+	// SSE payload (unlike Diffs/Commits) — the healed row renders it directly.
+	evt := DeployEvent{
+		ID:        3,
+		Stack:     "cyberchef",
+		Status:    StatusHealed,
+		HealDrift: []DriftedService{{Name: "cyberchef", Status: "unhealthy"}},
+	}
+
+	payload := evt.SSEPayload()
+	if len(payload.HealDrift) != 1 || payload.HealDrift[0].Name != "cyberchef" {
+		t.Fatalf("expected HealDrift preserved in SSE payload, got %+v", payload.HealDrift)
+	}
+}
+
 func TestSSEPayload_NoDiffs(t *testing.T) {
 	evt := DeployEvent{
 		ID:     2,

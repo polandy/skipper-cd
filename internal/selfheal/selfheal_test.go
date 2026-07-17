@@ -5,19 +5,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/health"
 	"github.com/polandy/skipper-cd/internal/selfheal"
 )
 
 // fakeHealer records Heal calls and returns a scripted (ran, err).
 type fakeHealer struct {
-	calls []string
-	ran   bool
-	err   error
+	calls     []string
+	lastDrift []events.DriftedService
+	ran       bool
+	err       error
 }
 
-func (f *fakeHealer) Heal(_ context.Context, stack string) (bool, error) {
+func (f *fakeHealer) Heal(_ context.Context, stack string, drift []events.DriftedService) (bool, error) {
 	f.calls = append(f.calls, stack)
+	f.lastDrift = drift
 	return f.ran, f.err
 }
 
@@ -59,6 +62,37 @@ func TestEngine_DebouncesBeforeHealing(t *testing.T) {
 	eng.Observe(context.Background(), snap("web", health.Unhealthy))
 	if len(h.calls) != 1 {
 		t.Fatalf("expected one heal at the debounce threshold, got %d", len(h.calls))
+	}
+}
+
+func TestEngine_PassesDegradedServicesAsDrift(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	eng := newEngine(h, clk, 1, 3, time.Minute, nil)
+
+	// A stack whose rollup is unhealthy: one service unhealthy, one stopped, one
+	// healthy. The heal should carry only the two degraded services, in order.
+	sh := health.StackHealth{
+		Status: health.Unhealthy,
+		Services: []health.ServiceHealth{
+			{Name: "api", Status: health.Unhealthy},
+			{Name: "sidecar", Status: health.Healthy},
+			{Name: "worker", Status: health.Stopped},
+		},
+	}
+	eng.Observe(context.Background(), health.Snapshot{Stacks: map[string]health.StackHealth{"web": sh}})
+
+	want := []events.DriftedService{
+		{Name: "api", Status: "unhealthy"},
+		{Name: "worker", Status: "stopped"},
+	}
+	if len(h.lastDrift) != len(want) {
+		t.Fatalf("expected %d drifted services, got %+v", len(want), h.lastDrift)
+	}
+	for i, d := range want {
+		if h.lastDrift[i] != d {
+			t.Fatalf("drift[%d] = %+v, want %+v", i, h.lastDrift[i], d)
+		}
 	}
 }
 

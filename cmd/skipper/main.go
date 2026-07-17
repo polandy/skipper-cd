@@ -431,8 +431,8 @@ type deployHealer struct {
 	cfg      *config.Config
 }
 
-func (h deployHealer) Heal(ctx context.Context, stack string) (bool, error) {
-	return h.deployer.HealStack(ctx, h.cfg, stack)
+func (h deployHealer) Heal(ctx context.Context, stack string, drift []events.DriftedService) (bool, error) {
+	return h.deployer.HealStack(ctx, h.cfg, stack, drift)
 }
 
 // stackAutosyncConfig maps each configured stack to its config-as-code autosync

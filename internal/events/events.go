@@ -54,6 +54,16 @@ type CommitInfo struct {
 	Date    time.Time `json:"date" yaml:"date"`
 }
 
+// DriftedService names one service that had drifted from its running state when
+// self-heal ran, with the degraded status (unhealthy/stopped) that triggered the
+// corrective redeploy. Carried on healed events so the UI can show what the heal
+// was reacting to (ADR-0029). Small enough to ride the SSE payload directly,
+// unlike diffs — a heal has no diff to fetch on demand.
+type DriftedService struct {
+	Name   string `json:"name" yaml:"name"`
+	Status string `json:"status" yaml:"status"`
+}
+
 // DeployEvent represents a single deployment status change.
 type DeployEvent struct {
 	ID           int64             `json:"id" yaml:"id"`
@@ -66,6 +76,10 @@ type DeployEvent struct {
 	Diffs        map[string]string `json:"diffs,omitempty" yaml:"diffs,omitempty"`
 	Commits      []CommitInfo      `json:"commits,omitempty" yaml:"commits,omitempty"`
 	HasDiffs     bool              `json:"has_diffs,omitempty" yaml:"-"`
+	// HealDrift lists the services that had drifted when a self-heal ran; set only
+	// on healed events. Unlike Diffs it is kept on the SSE payload (it is small and
+	// there is no on-demand endpoint for it).
+	HealDrift []DriftedService `json:"heal_drift,omitempty" yaml:"heal_drift,omitempty"`
 }
 
 // SSEPayload returns a copy suitable for SSE streaming: diffs and commits are
