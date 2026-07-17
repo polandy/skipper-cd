@@ -58,8 +58,9 @@ asserting **behaviour + visual snapshots**.
 > Esc fold), **UG2** (no-match note), **UG3** (mobile popover entry) — a
 > client-side filter over the startup deploy rows. **Mask H** (§4.9) covers the
 > stack-health pill — **UH1** (pill per stack), **UH2** (per-service panel),
-> **UH3** (newest row per stack) — driven by a health poller scripted through the
-> stub docker's `ps` output. **Mask I** (§4.10) covers the diff panel's commit
+> **UH3** (newest row per stack), **UH4** (health-watch status history:
+> age + phase timeline + deploy-correlated commit chip, ADR-0031) — driven by a
+> health poller scripted through the stub docker's `ps` output. **Mask I** (§4.10) covers the diff panel's commit
 > metadata + variant-A row binding — **UI1** (commit header), **UI2** (row/panel
 > binding), **UI3** (multi-commit range) — driven by webhook image bumps. **Mask
 > J** (§4.11) covers the rolled-back error panel — **UJ1** (error box bound to its
@@ -459,6 +460,13 @@ real docker, no real containers. Behaviour-only (no snapshot).
 - **UH3 — Newest row per stack.** Health is a current value, so with the pill on
   a stack's row, a pushed change that prepends a second row leaves exactly one
   pill — on the newest (first) row, not the older one.
+- **UH4 — Status history (ADR-0031).** With the health watch on (`healthWatch:
+  true`, debounce 1, riding `healthPoll: 1`): a service with only its baseline
+  phase shows the inline age but **no** `health-history`; after a webhook deploy
+  (records the commit context) and a `ps` flip to unhealthy, reopening the panel
+  shows the timeline — two `health-phase` rows newest-first (`unhealthy`,
+  `healthy`) with a 7-hex `health-phase-commit` chip on the deploy-correlated
+  unhealthy phase only (the commit-less baseline carries none).
 
 ### 4.10 UI — Maske I: Diff-panel commit metadata + row binding
 
@@ -627,6 +635,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: rolled-up pill per stack (healthy/unhealthy/stopped) | **UH1** |
 | Stack health: per-service panel toggle | **UH2** |
 | Stack health: pill on the newest row per stack | **UH3** |
+| Stack health: status history — age, ≥2-phase timeline, deploy-correlated commit chip | **UH4** |
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |

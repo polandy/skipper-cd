@@ -83,3 +83,58 @@ test.describe('UH3: newest row per stack', () => {
     await expect(rows.nth(1).locator('[data-testid="health-pill"]')).toHaveCount(0);
   });
 });
+
+// UH4 — status history (ADR-0031): with the health watch on, the per-service
+// panel shows the current phase's age, and — once a service has more than one
+// accepted phase — a timeline of its phases, with the deploy's short commit as
+// a chip on a phase that began right after a deploy. A lone baseline shows no
+// timeline (it would only repeat the inline age).
+test.describe('UH4: status history (health watch)', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      healthPoll: 1,
+      healthWatch: true,
+      initialHealth: { web: [{ Service: 'app', State: 'running', Health: 'healthy' }] },
+    },
+  });
+
+  test('a transition grows a timeline with a deploy-correlated commit chip', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    const p = pill(page, 'web');
+    await expect(p).toHaveAttribute('data-health', 'healthy');
+
+    // Baseline only: the service line carries the inline age, but no timeline —
+    // a single phase would just repeat it.
+    await p.click();
+    const panel = page.locator('[data-testid="health-panel"]');
+    await expect(panel.locator('.hp-for')).toHaveCount(1);
+    await expect(panel.locator('[data-testid="health-history"]')).toHaveCount(0);
+    await p.click();
+
+    // A deploy records the commit context, then the service turns unhealthy
+    // within the attribution window: the accepted phase is deploy-correlated.
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+    const rows = page.locator('[data-testid="deploy-row"][data-stack="web"]');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first().locator('[data-testid="status-badge"]')).toHaveText('success');
+
+    skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'unhealthy' }]);
+    const newestPill = rows.first().locator('[data-testid="health-pill"]');
+    await expect(newestPill).toHaveAttribute('data-health', 'unhealthy');
+
+    // Reopen: two accepted phases now — the timeline appears, newest first,
+    // with the commit chip on the correlated unhealthy phase only.
+    await newestPill.click();
+    const history = panel.locator('[data-testid="health-history"]');
+    await expect(history).toHaveCount(1);
+    const phases = history.locator('[data-testid="health-phase"]');
+    await expect(phases).toHaveCount(2);
+    await expect(phases.first()).toHaveAttribute('data-health', 'unhealthy');
+    await expect(phases.nth(1)).toHaveAttribute('data-health', 'healthy');
+    const chip = phases.first().locator('[data-testid="health-phase-commit"]');
+    await expect(chip).toHaveText(/^[0-9a-f]{7}$/);
+    await expect(phases.nth(1).locator('[data-testid="health-phase-commit"]')).toHaveCount(0);
+  });
+});
