@@ -76,7 +76,12 @@ asserting **behaviour + visual snapshots**.
 > **UM1** (the history button opens a panel of the stack's terminal outcomes
 > from `/api/audit`), **UM2** (the button is on the newest row per stack only),
 > **UM3** (the panel is mutually exclusive with the diff panel) — driven by real
-> deploys (startup + a webhook bump).
+> deploys (startup + a webhook bump). **Mask N** (§4.15) covers the self-heal row
+> detail (ADR-0029 amendment) — **UN1** (a `healed` row carries a self-heal badge,
+> not a files pill; clicking it opens a panel that notes there is no diff and
+> lists the drifted service but not the healthy one), **UN2** (the heal panel
+> obeys the one-open-panel-per-row rule against the health panel) — driving the
+> real self-heal loop with a mixed healthy/unhealthy service snapshot.
 
 ## 1. Scope & boundaries
 
@@ -564,6 +569,25 @@ webhook image bump give two `success` records. Behaviour-only (no snapshot).
 - **UM3 — Mutual exclusion with the diff panel.** Opening the history panel then
   the files/diff panel swaps in the diff panel (row `diff-open`, not
   `audit-open`); opening the history button again swaps it back.
+
+### 4.15 UI — Maske N: self-heal row detail (ADR-0029 amendment)
+
+A `healed` row is not a git deploy, so it has no changed files and no diff. Its
+files cell instead carries a teal **self-heal badge** (`heal-pill`) that expands a
+detail panel explaining the corrective redeploy and listing the services that had
+drifted when it ran (from the `heal_drift` carried on the event). Builds on the
+real self-heal loop of Maske K: `initialHealth` seeds two services healthy before
+boot, then one service (`app`) is turned unhealthy while the other (`db`) stays
+healthy — the rollup goes unhealthy so self-heal fires, but only the degraded
+service is listed. Behaviour-only (no snapshot).
+
+- **UN1 — Badge + drift panel.** The healed row carries a `heal-pill` (not a
+  `files-pill`); clicking it opens the bound `heal-panel` (`data-status="healed"`)
+  whose text notes there is no diff and lists the drifted service `app`
+  (`unhealthy`) but not the healthy `db`. A second click toggles it closed.
+- **UN2 — One panel per row.** With the health panel open on the healed row,
+  clicking the self-heal badge swaps in the heal panel — the health panel is
+  gone, never two panels under one row (the rule of Maske L).
 
 ## 5. Visual snapshot strategy
 
