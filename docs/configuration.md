@@ -87,6 +87,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
 | `health_check` | section | no | — | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
+| `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic (both checked at startup). See [Deploy ordering](#deploy-ordering). |
 
 ## Health-check-gated rollback
 
@@ -336,6 +337,28 @@ Every accepted transition is also written to the log and persisted (per service,
 With the web UI enabled, that history is also visible in the [Stack health](#stack-health) per-service panel: each service shows how long its current status has held, plus a timeline of its last 10 status phases — with the deploy's short commit on phases that began right after a deploy. With the watchdog off the panel simply shows the live status, as before.
 
 This watches **only skipper's own stacks** — it is not a host-wide container watchdog. Design details in [ADR-0031](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0031-notify-on-own-stack-health-change.md).
+
+## Deploy ordering
+
+By default stacks deploy in the order they appear under `stacks`. When one stack must come up before another — a database before the app that migrates against it — declare it with `depends_on`:
+
+```yaml
+stacks:
+  - name: postgres
+  - name: app
+    depends_on: [postgres]
+  - name: monitoring        # unrelated, deploys in config order
+```
+
+Stacks then deploy in dependency order (a stable topological sort: a stack never deploys before one it depends on, and stacks not otherwise constrained keep their config order). A config with no `depends_on` anywhere behaves exactly as before. Deploys stay sequential — this orders the sequence, it does not run stacks in parallel. Names must refer to defined stacks and the graph must be acyclic; both are checked at startup, so a typo or cycle fails fast rather than at deploy time.
+
+Within a run, a dependency's outcome gates its dependents:
+
+- **Dependency failed or rolled back** → the dependent does not deploy. It emits a `blocked` event, stays dirty (its hashes are not recorded), and retries automatically on the next sync — once the dependency deploys cleanly, the dependent follows in the same run. `blocked` is deliberately not a notification (the dependency's own failure already alerts, and a blocked stack re-reports every reconcile tick).
+- **Dependency queued** (its `autosync` is paused) → the dependent queues too, rather than overtaking a change that is being deliberately held back.
+- **Dependency unchanged** (skipped) → it is already at its desired state, so the dependent proceeds.
+
+`depends_on` guarantees the dependency's deploy *completed*; by default `docker compose up` returns once containers start, not once they are ready. For true readiness (the database accepting connections before the app starts), add a [`health_check`](#health-check-gated-rollback) to the **dependency** — because deploys are sequential, the dependent only starts once the dependency proved healthy. See [ADR-0032](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0032-stack-deploy-ordering-via-depends-on.md).
 
 ## Periodic reconcile
 

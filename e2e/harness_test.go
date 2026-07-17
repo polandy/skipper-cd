@@ -91,6 +91,7 @@ const defaultCompose = "services:\n  app:\n    image: nginx:1.25\n"
 // stub docker, and derived paths.
 type skipper struct {
 	t          *testing.T
+	base       string // temp root holding origin, state, config
 	origin     string // local git origin repo (bare-less working tree)
 	repoDir    string // where skipper clones the repo
 	stateDir   string // where state.yaml is written (parent of repoDir)
@@ -99,8 +100,9 @@ type skipper struct {
 	baseURL    string // http://127.0.0.1:<port> (webhook + UI)
 	metricsURL string // http://127.0.0.1:<metrics_port>
 	stacks     []string
-	stubEnv    map[string]string // extra env for the stub docker (fail/hold scripting)
-	extraCfg   string            // raw top-level YAML appended to skipper.yml
+	dependsOn  map[string][]string // per-stack depends_on edges (ADR-0032); optional
+	stubEnv    map[string]string   // extra env for the stub docker (fail/hold scripting)
+	extraCfg   string              // raw top-level YAML appended to skipper.yml
 
 	proc   *exec.Cmd
 	stderr *syncBuffer
@@ -124,11 +126,28 @@ func startSkipperEnv(t *testing.T, stubEnv map[string]string, stacks ...string) 
 // health_watch block) to the generated skipper.yml.
 func startSkipperOpts(t *testing.T, stubEnv map[string]string, extraCfg string, stacks ...string) *skipper {
 	t.Helper()
-	requireGit(t)
+	s := newSkipper(t, stubEnv, extraCfg, stacks)
+	s.bootstrap(t)
+	return s
+}
 
+// startSkipperOrdered starts skipper with per-stack depends_on edges (ADR-0032),
+// so an e2e can exercise dependency ordering and the block-on-failure edge.
+func startSkipperOrdered(t *testing.T, dependsOn map[string][]string, stubEnv map[string]string, stacks ...string) *skipper {
+	t.Helper()
+	s := newSkipper(t, stubEnv, "", stacks)
+	s.dependsOn = dependsOn
+	s.bootstrap(t)
+	return s
+}
+
+// newSkipper builds the skipper fixture without launching it, so callers can set
+// optional fields (e.g. dependsOn) before bootstrap.
+func newSkipper(t *testing.T, stubEnv map[string]string, extraCfg string, stacks []string) *skipper {
 	base := t.TempDir()
-	s := &skipper{
+	return &skipper{
 		t:         t,
+		base:      base,
 		origin:    filepath.Join(base, "origin"),
 		repoDir:   filepath.Join(base, "state", "repo"),
 		stateDir:  filepath.Join(base, "state"),
@@ -139,22 +158,37 @@ func startSkipperOpts(t *testing.T, stubEnv map[string]string, extraCfg string, 
 		extraCfg:  extraCfg,
 		stderr:    &syncBuffer{},
 	}
+}
+
+// bootstrap launches the built fixture and waits until every stack's startup
+// deploy has settled.
+func (s *skipper) bootstrap(t *testing.T) {
+	t.Helper()
+	requireGit(t)
 	if err := os.MkdirAll(s.stateDir, 0o755); err != nil {
 		t.Fatalf("mkdir state dir: %v", err)
 	}
 
 	s.initOrigin()
 	stubDir := s.writeStubDocker()
-	cfgPath := s.writeConfig(base)
+	cfgPath := s.writeConfig(s.base)
 	s.launch(cfgPath, stubDir)
 
 	s.waitHealthy()
-	for _, name := range stacks {
+	for _, name := range s.stacks {
 		s.waitFor(fmt.Sprintf("startup deploy of %q", name), func() bool {
 			return s.stateHasStack(name)
 		})
 	}
-	return s
+}
+
+// quoteAll returns each string double-quoted, for inlining into a YAML flow list.
+func quoteAll(xs []string) []string {
+	out := make([]string, len(xs))
+	for i, x := range xs {
+		out[i] = fmt.Sprintf("%q", x)
+	}
+	return out
 }
 
 // initOrigin creates the origin repo with one committed directory per stack.
@@ -218,6 +252,9 @@ func (s *skipper) writeConfig(base string) string {
 	fmt.Fprintf(&b, "stacks:\n")
 	for _, name := range s.stacks {
 		fmt.Fprintf(&b, "  - name: %q\n", name)
+		if deps := s.dependsOn[name]; len(deps) > 0 {
+			fmt.Fprintf(&b, "    depends_on: [%s]\n", strings.Join(quoteAll(deps), ", "))
+		}
 	}
 	if s.extraCfg != "" {
 		b.WriteString(s.extraCfg)

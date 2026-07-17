@@ -59,6 +59,12 @@ type Stack struct {
 	// poller is automatically restored to its deployed running state by a
 	// corrective redeploy. See ADR-0029.
 	SelfHeal *bool `yaml:"self_heal"`
+
+	// DependsOn lists stacks that must deploy before this one. Within a run,
+	// a failed dependency blocks this stack (it stays dirty and retries on the
+	// next sync) and a queued dependency queues it. Entries must name other
+	// configured stacks and the graph must be acyclic. See ADR-0032.
+	DependsOn []string `yaml:"depends_on,omitempty"`
 }
 
 // HealthCheck configures the optional post-deploy health gate of a stack.
@@ -495,6 +501,10 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
+	if err := validateStackDependencies(cfg.Stacks); err != nil {
+		return err
+	}
+
 	if cfg.NixOSRebuild.IsEnabled() && cfg.NixOSRebuild.Flake == "" {
 		return fmt.Errorf("nixos_rebuild.flake is required when nixos_rebuild is enabled")
 	}
@@ -546,6 +556,61 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("health_watch requires health_poll_interval_seconds > 0 (it drives the watch cadence)")
 	}
 
+	return nil
+}
+
+// validateStackDependencies checks every depends_on edge (ADR-0032): entries
+// must name other configured stacks (never the stack itself or the reserved
+// _nixos key, which is implicitly first for everyone) and the resulting graph
+// must be acyclic. A broken graph is a config bug, caught at load time.
+func validateStackDependencies(stacks []Stack) error {
+	names := make(map[string]struct{}, len(stacks))
+	for _, s := range stacks {
+		names[s.Name] = struct{}{}
+	}
+	for _, s := range stacks {
+		for _, dep := range s.DependsOn {
+			if dep == s.Name {
+				return fmt.Errorf("stack %q: depends_on must not reference the stack itself", s.Name)
+			}
+			if _, ok := names[dep]; !ok {
+				return fmt.Errorf("stack %q: depends_on references unknown stack %q", s.Name, dep)
+			}
+		}
+	}
+
+	// Kahn's algorithm: peel stacks whose dependencies are all resolved; any
+	// leftover is part of (or downstream of) a cycle.
+	resolved := make(map[string]bool, len(stacks))
+	for remaining := len(stacks); remaining > 0; {
+		progressed := false
+		for _, s := range stacks {
+			if resolved[s.Name] {
+				continue
+			}
+			allResolved := true
+			for _, dep := range s.DependsOn {
+				if !resolved[dep] {
+					allResolved = false
+					break
+				}
+			}
+			if allResolved {
+				resolved[s.Name] = true
+				remaining--
+				progressed = true
+			}
+		}
+		if !progressed {
+			var stuck []string
+			for _, s := range stacks {
+				if !resolved[s.Name] {
+					stuck = append(stuck, s.Name)
+				}
+			}
+			return fmt.Errorf("depends_on cycle involving stacks: %s", strings.Join(stuck, ", "))
+		}
+	}
 	return nil
 }
 

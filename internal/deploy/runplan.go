@@ -1,8 +1,6 @@
 package deploy
 
 import (
-	"path/filepath"
-
 	"github.com/polandy/skipper-cd/internal/config"
 )
 
@@ -42,35 +40,17 @@ func (d *Deployer) CurrentRunPlan() RunPlan {
 // no per-stack "deploying" state in the UI and may restart skipper.
 func (d *Deployer) computeRunPlan(cfg *config.Config, state *persistedState) []string {
 	var plan []string
-	for _, stack := range cfg.Stacks {
+	// Plan in deploy order so the header's "next up" trail matches the real
+	// sequence, including dependency ordering (ADR-0032).
+	for _, stack := range orderStacks(cfg.Stacks) {
 		if d.isPaused(stack.Name) {
 			continue
 		}
-		if stackHasChanges(stack, cfg.StacksBaseDir, cfg.VarsFile, state) {
+		if _, changed := pendingChanges(stack, cfg.StacksBaseDir, cfg.VarsFile, state); changed {
 			plan = append(plan, stack.Name)
 		}
 	}
 	return plan
-}
-
-// stackHasChanges reports whether the stack's tracked files differ from the
-// persisted state — the same decision deployStackIfChanged makes, factored out
-// for the planning pass. A hash error yields false: the real deploy would fail
-// before emitting a deploying event, so the stack is not planned.
-func stackHasChanges(stack config.Stack, baseDir, varsFile string, state *persistedState) bool {
-	repoDir := filepath.Join(baseDir, stack.Name)
-	composePath := filepath.Join(repoDir, "docker-compose.yml")
-
-	var dockerfilePaths []string
-	if compose, err := parseComposeFile(composePath); err == nil && compose != nil {
-		dockerfilePaths = compose.dockerfilePaths(repoDir)
-	}
-
-	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
-	if err != nil {
-		return false
-	}
-	return len(changedFiles(currentHashes, state.hashesFor(stack.Name))) > 0
 }
 
 // publishUpcomingAfter publishes the run plan as of `stack` starting to deploy:

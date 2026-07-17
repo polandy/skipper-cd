@@ -1,6 +1,6 @@
 # ADR-0032: Stack deploy ordering via depends_on
 
-Status: proposed
+Status: accepted
 Date: 2026-07-17
 
 ## Context

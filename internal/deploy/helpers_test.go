@@ -18,7 +18,8 @@ import (
 type recordingRunner struct {
 	calls        []runCall
 	errOnCommand string
-	delay        time.Duration // optional delay per call for concurrency tests
+	failFn       func(dir string, args []string) error // optional per-call failure hook, e.g. to fail one stack's up
+	delay        time.Duration                         // optional delay per call for concurrency tests
 }
 
 type runCall struct {
@@ -47,6 +48,9 @@ func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name st
 	}
 	if r.errOnCommand != "" && slices.Contains(args, r.errOnCommand) {
 		return fmt.Errorf("simulated error for command: %s", r.errOnCommand)
+	}
+	if r.failFn != nil {
+		return r.failFn(dir, args)
 	}
 	return nil
 }

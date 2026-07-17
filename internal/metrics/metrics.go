@@ -62,6 +62,14 @@ var (
 		Help: "Total number of deploys deferred because autosync was paused, per stack.",
 	}, []string{"stack"})
 
+	// DeploysBlocked counts deploys held back because a depends_on dependency
+	// failed or was blocked in the same run, per stack (ADR-0032). A blocked
+	// stack stays dirty and retries on the next sync.
+	DeploysBlocked = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "skipper_deploys_blocked_total",
+		Help: "Total number of deploys blocked by a failed depends_on dependency, per stack.",
+	}, []string{"stack"})
+
 	// AutosyncEnabled reports the effective per-stack autosync state (1 = on,
 	// 0 = paused), including the reserved stack "_nixos".
 	AutosyncEnabled = promauto.NewGaugeVec(prometheus.GaugeOpts{

@@ -34,6 +34,12 @@ const (
 	// is the high-signal "a stack is down and I could not fix it" notification
 	// (ADR-0029).
 	StatusHealExhausted Status = "heal_exhausted"
+	// StatusBlocked marks a changed stack that did not deploy because a
+	// depends_on dependency failed (or was itself blocked) in the same run
+	// (ADR-0032). Like a queued stack it stays dirty and retries on the next
+	// sync; it is deliberately not a notification status (the dependency's own
+	// failure already pages, and this recurs on every reconcile tick).
+	StatusBlocked Status = "blocked"
 )
 
 // CommitInfo describes one git commit deployed by an event: the metadata
