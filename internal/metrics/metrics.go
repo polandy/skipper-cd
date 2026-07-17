@@ -105,6 +105,14 @@ var (
 		Help: "Total accepted per-service health transitions by resulting status.",
 	}, []string{"status"})
 
+	// HealthAlertsSuppressed counts alert-worthy health transitions whose
+	// alert the per-service cooldown held back, by target status. See the
+	// ADR-0031 amendment.
+	HealthAlertsSuppressed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "skipper_health_alerts_suppressed_total",
+		Help: "Total health alerts suppressed by the alert cooldown, by target status.",
+	}, []string{"status"})
+
 	// HealthAlertsSent counts outbound health alert deliveries by target format
 	// and outcome ("ok" for a 2xx response, "error" otherwise), mirroring
 	// NotificationsSent. See ADR-0031.

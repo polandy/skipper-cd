@@ -126,6 +126,29 @@ func newWatcherFor(env *testEnv, debounce int) *Watcher {
 	})
 }
 
+// newWatcherWithCooldown builds a Watcher whose per-service alert cooldown is
+// active (ADR-0031 amendment); debounce 1 keeps the flap sequences short.
+func newWatcherWithCooldown(env *testEnv, cooldown time.Duration) *Watcher {
+	return New(Config{
+		Alerter:           env.alerter,
+		StatePath:         env.statePath,
+		DebouncePolls:     1,
+		AttributionWindow: 5 * time.Minute,
+		AlertCooldown:     cooldown,
+		Now:               env.clock.now,
+	})
+}
+
+// flapOnce drives one accepted unhealthy→healthy flap cycle a minute apart.
+func flapOnce(env *testEnv) {
+	env.clock.advance(time.Minute)
+	env.set(health.Unhealthy)
+	env.tick()
+	env.clock.advance(time.Minute)
+	env.set(health.Healthy)
+	env.tick()
+}
+
 func successEvent(stack, sha string, at time.Time) events.DeployEvent {
 	return events.DeployEvent{
 		Stack:     stack,
@@ -479,6 +502,161 @@ func TestWatcher_DebounceOfOneAcceptsImmediately(t *testing.T) {
 
 	if got := env.alerter.all(); len(got) != 1 {
 		t.Fatalf("debounce 1 must accept on the first snapshot, got %+v", got)
+	}
+}
+
+func TestWatcher_NoCooldownAlertsEveryFlap(t *testing.T) {
+	env := newTestEnv(t)
+	env.watcher = newWatcherFor(env, 1) // cooldown disabled: the default
+	env.tick()                          // baseline healthy
+
+	flapOnce(env)
+	flapOnce(env)
+
+	if got := env.alerter.all(); len(got) != 4 {
+		t.Fatalf("without a cooldown every flap must page, got %d alerts: %+v", len(got), got)
+	}
+}
+
+func TestWatcher_CooldownStillDeliversFirstFailAndRecovery(t *testing.T) {
+	env := newTestEnv(t)
+	env.watcher = newWatcherWithCooldown(env, 30*time.Minute)
+	env.tick() // baseline healthy
+
+	// One ordinary incident: fail + recover two minutes apart. The cooldown is
+	// per direction, so the all-clear is never delayed by the unhealthy alert.
+	flapOnce(env)
+
+	got := env.alerter.all()
+	if len(got) != 2 || got[0].To != health.Unhealthy || got[1].To != health.Healthy {
+		t.Fatalf("expected the ordinary fail+recovery pair untouched, got %+v", got)
+	}
+}
+
+func TestWatcher_CooldownSuppressesRepeatedFlapAlerts(t *testing.T) {
+	env := newTestEnv(t)
+	env.watcher = newWatcherWithCooldown(env, 30*time.Minute)
+	env.tick() // baseline healthy
+
+	flapOnce(env) // first cycle pages both directions
+	flapOnce(env) // second cycle within the cooldown: fully suppressed
+
+	if got := env.alerter.all(); len(got) != 2 {
+		t.Fatalf("the repeat flap must be suppressed, got %d alerts: %+v", len(got), got)
+	}
+	// Suppression never loses history: all five phases are recorded.
+	if phases := env.watcher.phases("app", "app"); len(phases) != 5 {
+		t.Fatalf("suppressed transitions must still be recorded, got %+v", phases)
+	}
+}
+
+func TestWatcher_CooldownCatchesUpWhenFlapSettlesUnhealthy(t *testing.T) {
+	env := newTestEnv(t)
+	env.watcher = newWatcherWithCooldown(env, 30*time.Minute)
+	env.tick()    // baseline healthy
+	flapOnce(env) // pages fail + recovery
+
+	// The flap's last transition lands unhealthy — suppressed by the cooldown.
+	env.clock.advance(time.Minute)
+	env.set(health.Unhealthy)
+	settledSince := env.clock.now()
+	env.tick()
+	if got := env.alerter.all(); len(got) != 2 {
+		t.Fatalf("the repeat unhealthy within the cooldown must not page, got %+v", got)
+	}
+
+	// Once the cooldown expires the owed alert is delivered late: the operator
+	// last heard "recovered" but the service is still down.
+	env.clock.advance(31 * time.Minute)
+	env.tick()
+	got := env.alerter.all()
+	if len(got) != 3 {
+		t.Fatalf("expected the catch-up alert after cooldown expiry, got %+v", got)
+	}
+	a := got[2]
+	if a.To != health.Unhealthy || a.From != health.Healthy {
+		t.Errorf("unexpected catch-up alert: %+v", a)
+	}
+	if !a.Since.Equal(settledSince) {
+		t.Errorf("catch-up since must be when the phase began, got %v want %v", a.Since, settledSince)
+	}
+
+	// It is delivered exactly once.
+	env.clock.advance(time.Minute)
+	env.tick()
+	if got := env.alerter.all(); len(got) != 3 {
+		t.Fatalf("the catch-up must fire only once, got %+v", got)
+	}
+}
+
+func TestWatcher_CooldownCatchUpStaysSilentWhenConverged(t *testing.T) {
+	env := newTestEnv(t)
+	env.watcher = newWatcherWithCooldown(env, 30*time.Minute)
+	env.tick() // baseline healthy
+
+	flapOnce(env) // pages both directions
+	flapOnce(env) // suppressed, ends healthy — matching what was last alerted
+
+	env.clock.advance(31 * time.Minute)
+	env.tick()
+	if got := env.alerter.all(); len(got) != 2 {
+		t.Fatalf("a converged flap owes no catch-up, got %+v", got)
+	}
+
+	// A fresh failure after the cooldown pages normally again.
+	env.clock.advance(time.Minute)
+	env.set(health.Unhealthy)
+	env.tick()
+	if got := env.alerter.all(); len(got) != 3 || got[2].To != health.Unhealthy {
+		t.Fatalf("a failure after cooldown expiry must page, got %+v", got)
+	}
+}
+
+func TestWatcher_CooldownSuppressionSurvivesRestart(t *testing.T) {
+	env := newTestEnv(t)
+	env.watcher = newWatcherWithCooldown(env, 30*time.Minute)
+	env.tick()    // baseline healthy
+	flapOnce(env) // pages fail + recovery
+	env.clock.advance(time.Minute)
+	env.set(health.Unhealthy) // suppressed; service stays down
+	env.tick()
+
+	// Restart within the cooldown: the suppression state is persisted, so the
+	// unchanged unhealthy status must not re-page early…
+	env.watcher = newWatcherWithCooldown(env, 30*time.Minute)
+	env.tick()
+	if got := env.alerter.all(); len(got) != 2 {
+		t.Fatalf("restart must not bypass the cooldown, got %+v", got)
+	}
+
+	// …but the owed catch-up still arrives once the cooldown expires.
+	env.clock.advance(31 * time.Minute)
+	env.tick()
+	got := env.alerter.all()
+	if len(got) != 3 || got[2].To != health.Unhealthy {
+		t.Fatalf("the catch-up must survive a restart, got %+v", got)
+	}
+}
+
+func TestWatcher_CooldownSettledStoppedResolvesSilently(t *testing.T) {
+	env := newTestEnv(t)
+	env.watcher = newWatcherWithCooldown(env, 30*time.Minute)
+	env.tick()    // baseline healthy
+	flapOnce(env) // pages fail + recovery
+	env.clock.advance(time.Minute)
+	env.set(health.Unhealthy) // suppressed
+	env.tick()
+
+	// The service is then taken down intentionally: stopped never alerts, so
+	// the pending catch-up resolves silently at expiry.
+	env.clock.advance(time.Minute)
+	env.set(health.Stopped)
+	env.tick()
+	env.clock.advance(31 * time.Minute)
+	env.tick()
+
+	if got := env.alerter.all(); len(got) != 2 {
+		t.Fatalf("a stopped service owes no catch-up, got %+v", got)
 	}
 }
 

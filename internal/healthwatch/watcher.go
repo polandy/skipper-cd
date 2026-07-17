@@ -55,6 +55,12 @@ type Config struct {
 	// AttributionWindow is how long after a deploy a transition still counts
 	// as deploy-correlated.
 	AttributionWindow time.Duration
+	// AlertCooldown is the minimum gap between delivered alerts of the same
+	// service and direction (unhealthy / recovered); 0 disables it. Within the
+	// cooldown an alert-worthy transition is recorded but not delivered; once
+	// it expires, a still-diverged service gets the owed alert late (catch-up),
+	// so a flap never settles silently down (ADR-0031 amendment).
+	AlertCooldown time.Duration
 	// Now overrides the clock in tests; nil uses time.Now.
 	Now func() time.Time
 	// Publish, when set, receives the fresh View after every accepted change
@@ -71,6 +77,7 @@ type Watcher struct {
 	statePath string
 	debounce  int
 	window    time.Duration
+	cooldown  time.Duration
 	now       func() time.Time
 	publish   func(View)
 
@@ -104,6 +111,7 @@ func New(cfg Config) *Watcher {
 		statePath: cfg.StatePath,
 		debounce:  debounce,
 		window:    cfg.AttributionWindow,
+		cooldown:  cfg.AlertCooldown,
 		now:       now,
 		publish:   cfg.Publish,
 		state:     loadState(cfg.StatePath),
@@ -156,6 +164,7 @@ func (w *Watcher) Observe(snap health.Snapshot) {
 				}
 			}
 		}
+		w.catchUpStack(name, now)
 	}
 	changed := w.dirty
 	var view View
@@ -236,7 +245,14 @@ func (w *Watcher) observe(stack, svc string, status health.Status, now time.Time
 	if w.alerter == nil || !alertWorthy {
 		return
 	}
-	w.alerter.Fire(Alert{
+	if w.inCooldown(ss, svc, status, now) {
+		ss.ensureAlert(svc).Suppressed = true
+		metrics.HealthAlertsSuppressed.WithLabelValues(string(status)).Inc()
+		slog.Info("health alert suppressed by cooldown",
+			"stack", stack, "service", svc, "to", status)
+		return
+	}
+	w.deliver(svc, ss, Alert{
 		Stack:            stack,
 		Service:          svc,
 		From:             cur,
@@ -245,7 +261,95 @@ func (w *Watcher) observe(stack, svc string, status health.Status, now time.Time
 		PrevDuration:     pd.since.Sub(hist[1].Since),
 		Commit:           phase.Commit,
 		DeployCorrelated: correlated,
-	})
+	}, now)
+}
+
+// inCooldown reports whether delivering an alert with the given target status
+// would violate the service's per-direction cooldown. A disabled cooldown or a
+// never-alerted direction is never in cooldown. Callers hold w.mu.
+func (w *Watcher) inCooldown(ss *stackState, svc string, to health.Status, now time.Time) bool {
+	if w.cooldown <= 0 {
+		return false
+	}
+	rec := ss.Alerts[svc]
+	if rec == nil {
+		return false
+	}
+	last := rec.UnhealthyAt
+	if to == health.Healthy {
+		last = rec.RecoveredAt
+	}
+	return !last.IsZero() && now.Sub(last) < w.cooldown
+}
+
+// deliver fires an alert and, when the cooldown is enabled, records the
+// delivery so later transitions of the same direction are rate-limited and a
+// pending catch-up is settled. Callers hold w.mu.
+func (w *Watcher) deliver(svc string, ss *stackState, a Alert, now time.Time) {
+	if w.cooldown > 0 {
+		rec := ss.ensureAlert(svc)
+		if a.To == health.Unhealthy {
+			rec.UnhealthyAt = now
+		} else {
+			rec.RecoveredAt = now
+		}
+		rec.Suppressed = false
+		w.dirty = true
+	}
+	w.alerter.Fire(a)
+}
+
+// catchUpStack delivers alerts owed from cooldown suppression: once the
+// direction's cooldown has expired, a service whose current accepted status
+// still diverges alert-worthily from the last delivered alert gets that alert
+// late — so a flap that settles down-state never stays silently down. A
+// converged or silent (starting/stopped) service resolves without paging.
+// Callers hold w.mu.
+func (w *Watcher) catchUpStack(stack string, now time.Time) {
+	if w.cooldown <= 0 || w.alerter == nil {
+		return
+	}
+	ss := w.state.stacks[stack]
+	if ss == nil {
+		return
+	}
+	for svc, rec := range ss.Alerts {
+		if rec == nil || !rec.Suppressed {
+			continue
+		}
+		hist := ss.Services[svc]
+		if len(hist) < 2 {
+			continue
+		}
+		cur := hist[0].Status
+		// The operator's picture is the status of the most recent delivered
+		// alert; only a still-diverged service owes a catch-up.
+		lastAlertedUnhealthy := rec.UnhealthyAt.After(rec.RecoveredAt)
+		owesUnhealthy := cur == health.Unhealthy && !lastAlertedUnhealthy
+		owesRecovered := cur == health.Healthy && lastAlertedUnhealthy
+		if !owesUnhealthy && !owesRecovered {
+			rec.Suppressed = false
+			w.dirty = true
+			continue
+		}
+		if w.inCooldown(ss, svc, cur, now) {
+			continue // still cooling; retried on the next snapshot
+		}
+		a := Alert{
+			Stack:            stack,
+			Service:          svc,
+			From:             hist[1].Status,
+			To:               cur,
+			Since:            hist[0].Since,
+			PrevDuration:     hist[0].Since.Sub(hist[1].Since),
+			Commit:           hist[0].Commit,
+			DeployCorrelated: w.deployCorrelated(ss, hist[0].Since),
+		}
+		slog.Info("health alert delivered after cooldown",
+			"stack", stack, "service", svc, "to", cur,
+			"since", a.Since.Format(time.RFC3339))
+		w.deliver(svc, ss, a, now)
+	}
 }
 
 // phases returns a copy of a service's recorded history, newest first.

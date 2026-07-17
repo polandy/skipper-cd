@@ -31,11 +31,36 @@ type deployRecord struct {
 	At     time.Time `yaml:"at"`
 }
 
+// alertRecord remembers when a service's alerts were last delivered, per
+// direction, plus whether a cooldown-suppressed transition still awaits
+// catch-up. Maintained (and persisted) only while the alert cooldown is
+// enabled, so suppression survives a skipper restart (ADR-0031 amendment).
+type alertRecord struct {
+	UnhealthyAt time.Time `yaml:"unhealthy_at,omitempty"`
+	RecoveredAt time.Time `yaml:"recovered_at,omitempty"`
+	Suppressed  bool      `yaml:"suppressed,omitempty"`
+}
+
 // stackState is the watcher's persisted knowledge of one stack: its last
-// deploy and the phase history of each of its services (newest first).
+// deploy, the phase history of each of its services (newest first), and the
+// per-service alert delivery records the cooldown works from.
 type stackState struct {
-	LastDeploy *deployRecord      `yaml:"last_deploy,omitempty"`
-	Services   map[string][]Phase `yaml:"services"`
+	LastDeploy *deployRecord           `yaml:"last_deploy,omitempty"`
+	Services   map[string][]Phase      `yaml:"services"`
+	Alerts     map[string]*alertRecord `yaml:"alerts,omitempty"`
+}
+
+// ensureAlert returns the service's delivery record, creating it on first use.
+func (ss *stackState) ensureAlert(svc string) *alertRecord {
+	if ss.Alerts == nil {
+		ss.Alerts = map[string]*alertRecord{}
+	}
+	rec := ss.Alerts[svc]
+	if rec == nil {
+		rec = &alertRecord{}
+		ss.Alerts[svc] = rec
+	}
+	return rec
 }
 
 // state is the watcher's full persisted state, stored in its own file
@@ -107,6 +132,16 @@ func (s *state) save(path string) error {
 				cp[i] = Phase{Status: p.Status, Since: normalizeTime(p.Since), Commit: p.Commit}
 			}
 			c.Services[svc] = cp
+		}
+		if len(ss.Alerts) > 0 {
+			c.Alerts = make(map[string]*alertRecord, len(ss.Alerts))
+			for svc, r := range ss.Alerts {
+				c.Alerts[svc] = &alertRecord{
+					UnhealthyAt: normalizeTime(r.UnhealthyAt),
+					RecoveredAt: normalizeTime(r.RecoveredAt),
+					Suppressed:  r.Suppressed,
+				}
+			}
 		}
 		out.Stacks[name] = c
 	}

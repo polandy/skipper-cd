@@ -81,8 +81,10 @@ stacks and compares each service's status to its last accepted status:
   (default 2) before it is accepted. This absorbs a single transient bad probe
   and, combined with the interval, is the flap guard — a service flipping every
   poll never reaches the debounce threshold, so it does not spam. A dedicated
-  per-service cooldown is deliberately **not** built; it is the revisit trigger if
-  a slow flapper (period longer than the debounce window) ever pages in practice.
+  per-service cooldown was deliberately **not** built at first, with the slow
+  flapper (period longer than the debounce window) named as the revisit
+  trigger; that trigger fired — see the amendment below for the opt-in
+  `alert_cooldown_seconds`.
 - **Alert policy**: an alert fires only for a transition **into `unhealthy`**
   ("newly failed") and for **`unhealthy → healthy`** ("recovered"), so a fired
   alert always gets a matching all-clear. Transitions involving `starting` or
@@ -348,3 +350,66 @@ implementation PR is backend-only and deliberately exposes no unused API.
 - **Gate the watcher on having ≥1 target.** Rejected: journal logging + persisted
   history are valuable on their own (and argoneon currently has no local
   signal-api); omitting the `health_watch` section is the off switch.
+
+## Amendment (2026-07-17): per-service alert cooldown
+
+The original decision left a dedicated cooldown deliberately unbuilt, naming a
+**slow flapper** — a service whose flap period is longer than the debounce
+window — as the revisit trigger: every cycle passes the debounce, so every
+cycle pages fail *and* recovery. This amendment adds that cooldown, on by
+default.
+
+### Semantics
+
+- **Config**: `health_watch.alert_cooldown_seconds` (default `1800` = 30
+  minutes when omitted; must be ≥ 0). An explicit `0` disables the cooldown
+  and keeps the original behaviour bit-for-bit — no delivery records are kept
+  and `healthwatch.yaml` is unchanged. The field is a pointer in config so an
+  omitted field (→ default) and an explicit `0` (→ off) stay distinguishable,
+  the `health_poll_interval_seconds` pattern.
+- **Per service *and* per direction**: the cooldown is the minimum gap between
+  delivered `→ unhealthy` alerts of one service, and independently between its
+  `recovered` alerts. An ordinary incident (one failure, one recovery) is
+  therefore never delayed — the all-clear pairing of the original decision
+  survives intact. Only the *repeat* of the same direction within the window
+  is suppressed.
+- **Suppressed ≠ lost**: a suppressed transition is still accepted, journaled
+  (`msg="health alert suppressed by cooldown"`), persisted in the phase
+  history, and counted by a new metric
+  `skipper_health_alerts_suppressed_total{status}`. Only the outbound delivery
+  is held back.
+- **Catch-up — a flap must never settle silently down.** Suppression sets a
+  persisted per-service marker. On every later snapshot, once the direction's
+  cooldown has expired, the watcher compares the service's current accepted
+  status with the operator's picture (the status of the most recent delivered
+  alert). If they still diverge alert-worthily — the service sits `unhealthy`
+  but the last delivered alert said recovered, or vice versa — the owed alert
+  is delivered late, describing the current phase truthfully (`since` is when
+  the phase began). A converged service, or one that settled in a silent
+  status (`starting`/`stopped`), resolves the marker without paging. So the
+  worst case under cooldown is a *late* page, never a missing one, and a
+  persistent flapper pages at most one fail/recovery pair per cooldown window.
+- **Restart-safe**: the delivery records (`alerts:` map in `healthwatch.yaml`
+  — `unhealthy_at`, `recovered_at`, `suppressed` per service) are persisted
+  next to the phase history, so a skipper restart mid-flap neither re-pages
+  early nor forgets an owed catch-up. Old state files without the map load
+  as "never alerted" — the first transition after upgrade delivers normally.
+
+### Alternatives considered (amendment)
+
+- **One cooldown per service across both directions.** Simpler record, but it
+  delays the all-clear of an ordinary incident (recovery within the window of
+  its own failure alert would be suppressed) — breaking the "a fired alert
+  always gets a matching all-clear" decision. Rejected.
+- **Cooldown on `→ unhealthy` only, recovery always delivered.** Keeps the
+  pairing trivially, but a flapper then still pages "recovered" every cycle —
+  half the spam remains. Rejected.
+- **Suppress without catch-up.** Smallest change, but a flap whose *last*
+  suppressed transition lands `unhealthy` leaves the operator's final
+  information as "recovered" while the service is down — a silently-down
+  watchdog is worse than a noisy one. Rejected.
+- **Opt-in default (`0` = off).** Considered to avoid changing alert timing
+  for existing installs, but rejected: the cooldown only ever suppresses
+  redundant re-pages of an already-reported direction, and the catch-up
+  guarantees eventual delivery — so a sensible default benefits every install
+  while an explicit `0` remains the off switch.

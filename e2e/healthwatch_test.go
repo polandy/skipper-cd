@@ -121,3 +121,48 @@ health_watch:
 		t.Errorf("expected the unhealthy phase persisted, got:\n%s", data)
 	}
 }
+
+// P11 — Alert cooldown journey: with alert_cooldown_seconds set, the first
+// fail + recovery pair is delivered, but a repeat failure within the cooldown
+// is suppressed — recorded and persisted (with the pending catch-up marker),
+// yet no third alert is POSTed (ADR-0031 amendment).
+func TestP11_HealthWatchCooldownSuppressesRepeatFlap(t *testing.T) {
+	rec := newAlertRecorder(t)
+
+	psFile := filepath.Join(t.TempDir(), "ps.json")
+	writeFile(t, psFile, psHealthy)
+
+	extraCfg := fmt.Sprintf(`health_poll_interval_seconds: 1
+health_watch:
+  debounce_polls: 1
+  alert_cooldown_seconds: 3600
+  targets:
+    - format: generic
+      url: %q
+`, rec.server.URL)
+
+	s := startSkipperOpts(t, map[string]string{"STUB_DOCKER_PS_FILE": psFile}, extraCfg, "web")
+
+	statePath := filepath.Join(s.stateDir, "healthwatch.yaml")
+	s.waitFor("healthwatch baseline persisted", func() bool {
+		data, err := os.ReadFile(statePath)
+		return err == nil && strings.Contains(string(data), "status: healthy")
+	})
+
+	// The first fail + recovery pair pages both directions despite the cooldown.
+	writeFile(t, psFile, psUnhealthy)
+	s.waitFor("unhealthy health alert", func() bool { return rec.firstTo("unhealthy") != nil })
+	writeFile(t, psFile, psHealthy)
+	s.waitFor("recovery health alert", func() bool { return rec.firstTo("healthy") != nil })
+
+	// The repeat failure within the cooldown is suppressed: the persisted
+	// catch-up marker appears, but no further alert is delivered.
+	writeFile(t, psFile, psUnhealthy)
+	s.waitFor("suppression persisted", func() bool {
+		data, err := os.ReadFile(statePath)
+		return err == nil && strings.Contains(string(data), "suppressed: true")
+	})
+	if n := rec.count(); n != 2 {
+		t.Fatalf("the repeat failure must be suppressed by the cooldown, got %d alerts", n)
+	}
+}

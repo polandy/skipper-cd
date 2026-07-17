@@ -313,6 +313,7 @@ The watchdog has no poll loop of its own: it consumes the health poller's feed (
 health_watch:                      # cadence = health_poll_interval_seconds
   debounce_polls: 2                # consecutive confirmations before a change is accepted
   attribution_window_seconds: 300  # transitions this soon after a deploy are marked deploy-correlated
+  alert_cooldown_seconds: 1800     # rate limit for repeat alerts of one service; 0 = off
   targets:                         # optional; same fields as notifications targets, but no `on:`
     - format: signal
       url: http://localhost:8020
@@ -325,6 +326,7 @@ health_watch:                      # cadence = health_poll_interval_seconds
 |---|---|---|---|---|
 | `debounce_polls` | int | no | `2` | How many consecutive health polls a new status must persist before it is accepted. Absorbs transient blips; a service flapping every poll never alerts. |
 | `attribution_window_seconds` | int | no | `300` | A transition beginning within this window after a stack's deploy is reported as *deploy-correlated* (with the deploy's newest commit). Later transitions still carry the commit as context, without the correlation. |
+| `alert_cooldown_seconds` | int | no | `1800` | Minimum gap between delivered alerts of the same service and direction (failure / recovery) — a rate limit against a *slow flapper* that flips slower than the debounce window and would otherwise page on every cycle. A single failure and its recovery are never delayed. Suppressed transitions are still logged and recorded; if the service still sits in an unreported state once the cooldown expires, the withheld alert is delivered late — a flap can end in a delayed page, never a missing one. Set an explicit `0` to disable and deliver every alert-worthy transition. |
 | `targets` | list | no | — | Alert sinks in the same shape as [notification targets](#target-fields), except `on:` is not valid here (a health target receives all alert-worthy transitions). With no targets, transitions are still logged and recorded. |
 
 A new failure reads `🚨 stack health: <stack>/<service> healthy → unhealthy (was healthy 2h13m) — after deploy of a1b2c3d`; the recovery reads `✅ stack health recovered: <stack>/<service> after 4m12s`. The `generic` format posts the structured alert as JSON with a `"type": "health"` marker so a receiver shared with deploy notifications can tell the payloads apart.
