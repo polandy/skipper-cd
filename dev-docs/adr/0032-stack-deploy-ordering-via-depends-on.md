@@ -65,17 +65,29 @@ Within one deploy run, each stack's outcome is tracked. A stack with pending
 changes does **not** deploy when any of its dependencies (transitively) ended
 this run as `failed`, `rolled_back`, or `rolled_back_unhealthy`. Instead it:
 
-- emits a new terminal event status **`blocked`**, carrying the same changed
-  files / diffs / commits context a failed deploy would, so the UI and
-  notifications show *what* is being held back and *why* (the failed
-  dependency's name in the error text);
+- emits a new event status **`blocked`**, carrying the same changed files /
+  diffs / commits context a failed deploy would, so the UI shows *what* is
+  being held back and *why* (the failed dependency's name in the error text);
 - does **not** record its hashes — the stack stays dirty and is retried
   automatically on the next sync: the next webhook push or reconcile tick
   ([ADR-0028](0028-periodic-reconcile-loop.md)) re-detects the change, and once
   the dependency deploys cleanly the dependent follows in the same run. This is
   the same leave-dirty pattern autosync uses
   ([ADR-0016](0016-autosync-and-queue-via-leave-dirty.md)); no new retry
-  machinery exists.
+  machinery exists;
+- **marks the pending registry** (reason `blocked by <name>`), exactly like a
+  queued stack. This is not just for the queue drawer: end-of-run
+  `LastDeployedCommit` advancement is gated on the pending registry being empty
+  (the diff-base fix that previously landed for queued stacks) — without the
+  mark, the diff base would advance past the blocked change and its eventual
+  deploy would show an empty diff and roll back to the wrong commit. Blocked
+  and queued must pin the base through the same mechanism;
+- is **not** a notification status: `blocked` stays out of the notifier's
+  terminal-status whitelist (like `queued`). The operator is already paged by
+  the dependency's own `failed`/`rolled_back` notification, and a blocked
+  event recurs on every reconcile tick while the dependency stays broken —
+  paging per dependent per tick would be pure noise. The UI event history and
+  the pending registry carry the visibility instead.
 
 A dependency that was **skipped** (no changes) satisfies the edge: it is
 already at its desired state. Ordering gates on *this run's deploy outcomes*
@@ -136,7 +148,33 @@ know about the other.
   because every stack may depend on the host configuration).
 - A long chain behind a paused dependency accumulates in the pending registry —
   the queue drawer shows the entire held-back chain with reasons, which is the
-  desired visibility, not a leak.
+  desired visibility, not a leak. The flip side: while anything is blocked or
+  queued, `LastDeployedCommit` stays pinned at the last fully-deployed commit
+  (correct for diffs and rollback, but a permanently failing dependency keeps
+  the base — and the shown diffs — growing until it is fixed).
+- While a dependency stays broken, each reconcile tick re-emits the
+  dependency's `failed` and the dependents' `blocked` events into the history —
+  the same recurrence a persistently failing stack already has today, just with
+  more rows per tick. Notifications do not repeat (only the dependency's own
+  failure pages, and repeat pages are the operator's existing reconcile-tick
+  behaviour).
+- **Use edges sparsely.** A hub edge like "every stack depends_on traefik"
+  makes one bad ingress deploy block the entire host: dozens of pending
+  entries, a pinned diff base for everything, and no availability gain — a
+  blocked stack just keeps running its old version, which is also what it
+  would have done deploying normally. Declare an edge only where deploying
+  *before* the dependency is actually wrong, not wherever a runtime arrow
+  exists (reverse-proxy discovery, scraping, dashboards are runtime couplings
+  and need no edge).
+- Config validation rejecting cycles/unknown names means a bad `depends_on`
+  stops skipper from starting. On hosts where skipper.yml is produced by the
+  NixOS module and shipped via skipper's own nixos-rebuild, that would brick
+  the CD loop until a manual rebuild — the module should therefore validate
+  the names at eval time (assertion over the stack list) so a typo fails
+  `nix build`, never the running service.
+- Self-heal is unaffected: `HealStack` restores the *currently deployed*
+  version of a single stack, so ordering (a property of applying *new*
+  versions) does not apply.
 - Slightly more state per run: the orchestration loop tracks per-stack outcomes
   to evaluate edges; the graph itself is computed once per run from config.
 
