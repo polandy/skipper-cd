@@ -17,7 +17,7 @@ One semantic token layer consumes the palette; all tints, borders and glows are 
 | `--danger` | Failed, errors, reconnecting, diff deletions |
 | `--rollback` | Rolled back |
 | `--skip` | DEBUG log level (aliases the muted text tier) |
-| `--queued` | Queued/deferred deploy, pending count, autosync paused (shares its colour with `--hunk`, distinct semantic) |
+| `--queued` | Queued/deferred deploy, pending count, autosync paused, and `blocked` (dependency failed) — all pending states (shares its colour with `--hunk`, distinct semantic) |
 | `--diff-add` | Diff additions |
 | `--hunk` | Diff hunk headers, WARN log level |
 
@@ -110,6 +110,7 @@ Where the [Stack health](#stack-health) pill only *reports* a degraded stack, **
 | `rolled_back` | `--rollback` (maroon) | Deploy failed but old containers restored and verified healthy; error panel shows details |
 | `rolled_back_unhealthy` | `--danger` (red) | Rollback ran but the restored version also failed the health gate — badge label stacks "rolled back" / "unhealthy" on two lines at a reduced font size (one line would overflow the status column); error panel shows details |
 | `queued` | `--queued` (yellow) | Deploy deferred — autosync paused, change waiting; tinted row with amber left bar and a `paused: <global\|stack>` tag on the stack cell. See [Autosync](#autosync). |
+| `blocked` | `--queued` (yellow) | Deploy held back — a `depends_on` dependency failed this run; shares the amber pending treatment of `queued` (tinted row, amber left bar) with a `blocked by <dep>` tag on the stack cell. Like `queued` it is a pending row keyed by stack, not a notification. See [Deploy ordering](configuration.md#deploy-ordering). |
 | `healed` | `--success` (teal) | Self-heal restored a degraded stack with a corrective redeploy (not a git deploy — no diffs); tinted row with a teal left bar. See [Self-heal](#self-heal). |
 | `heal_exhausted` | `--danger` (red) | Self-heal gave up after repeated redeploys did not restore the stack — badge label stacks "self-heal" / "failed" on two lines (like `rolled_back_unhealthy`); tinted row with a red left bar; error panel shows details. See [Self-heal](#self-heal). |
 
@@ -142,7 +143,7 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `success` / `failed` / `rolled_back` / `rolled_back_unhealthy` (deploying row exists) | Existing row mutated in-place; error panel appended if needed. |
 | `success` / `failed` / `rolled_back` / `rolled_back_unhealthy` (no existing row) | New row created directly. |
 | `skipped` | Dropped — never rendered (an unchanged stack carries no signal). |
-| `queued` | Row created with the `queued` badge and a `paused:` tag, **keyed by stack**: a further `queued` for the same stack (another push while paused) replaces it rather than stacking a duplicate. It is removed when the stack next deploys (a `deploying` event supersedes it) or when the stack leaves the pending set in a `queue` snapshot (resumed then found unchanged). Like a deploy, a `queued` event carries `has_diffs`, so the paused row expands the pending diff. |
+| `queued` / `blocked` | Pending row **keyed by stack**, sharing one lifecycle: a further `queued`/`blocked` for the same stack (another push while paused, or another reconcile tick while blocked) replaces it rather than stacking a duplicate. `queued` shows a `paused:` tag; `blocked` shows a `blocked by <dep>` tag. Removed when the stack next deploys (a `deploying` event supersedes it) or when it leaves the pending set in a `queue` snapshot. Both carry `has_diffs`, so the row expands the held-back diff. |
 | `healed` / `heal_exhausted` | New row created directly (self-heal is not preceded by a `deploying` event); `heal_exhausted` carries an error and expands an error panel. See [Self-heal](#self-heal). |
 
 Besides `deploy` events, the stream carries named **state snapshots** — `autosync`, `queue`, `upcoming`, `health`, and `healthwatch` — each replacing the prior snapshot of that name (also sent once on connect as initial state).

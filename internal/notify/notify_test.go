@@ -120,6 +120,9 @@ func TestNotifier_NotifyEnqueuesTerminalOnly(t *testing.T) {
 	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusDeploying})
 	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusSkipped})
 	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusQueued})
+	// blocked is deliberately not a notification: the failed dependency already
+	// pages, and a blocked event recurs on every reconcile tick (ADR-0032).
+	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusBlocked})
 	if len(n.queue) != 0 {
 		t.Fatalf("non-terminal statuses must not enqueue, got %d", len(n.queue))
 	}

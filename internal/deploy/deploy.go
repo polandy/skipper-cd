@@ -401,6 +401,10 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		return
 	}
 
+	// Deploy in dependency order (ADR-0032): a stable topological sort that keeps
+	// config order among stacks not otherwise constrained.
+	ordered := orderStacks(cfg.Stacks)
+
 	// Look-ahead for the UI: hash every stack upfront to learn which will deploy
 	// this run, so the header can show what is coming next. Skipped when the UI
 	// is off (no sink). The loop below re-evaluates each stack independently and
@@ -411,13 +415,15 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		d.plan = nil
 	}
 
-	for _, stack := range cfg.Stacks {
-		// deployStackIfChanged emits its own terminal event — success, skipped,
-		// queued, or (via emitDeployFailure) failed / rolled_back /
-		// rolled_back_unhealthy — and counts errors, so a failed deploy carries the
-		// same change context as a successful one. The returned error is fully
-		// handled inside; just move on to the next stack.
-		_ = d.deployStackIfChanged(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state)
+	// The gate records each stack's outcome so a dependent can block (dependency
+	// failed) or queue (dependency queued) before it deploys. deployStackGated
+	// emits every stack's own terminal event — success, skipped, queued, blocked,
+	// or (via emitDeployFailure) failed / rolled_back / rolled_back_unhealthy —
+	// so each carries its change context; we only track the outcome here.
+	gate := newDepGate()
+	for _, stack := range ordered {
+		outcome := d.deployStackGated(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state, gate.decide(stack.DependsOn))
+		gate.record(stack.Name, outcome)
 	}
 
 	// Run finished: clear the look-ahead so the header returns to idle.

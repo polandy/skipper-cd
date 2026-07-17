@@ -595,11 +595,15 @@
     border-radius: 0 2px 2px 0;
   }
 
-  .event-row.queued-row {
+  /* Queued (autosync paused) and blocked (a failed depends_on dependency,
+     ADR-0032) are both pending, leave-dirty states that retry on the next sync,
+     so they share the amber pending treatment; the badge label and the row tag
+     carry the distinction (paused vs blocked by a dependency). */
+  .event-row.queued-row, .event-row.blocked-row {
     background: var(--queued-dim);
   }
 
-  .event-row.queued-row::before {
+  .event-row.queued-row::before, .event-row.blocked-row::before {
     content: '';
     position: absolute;
     left: 0;
@@ -758,7 +762,7 @@
     padding: 2px 8px;
   }
 
-  .badge-queued {
+  .badge-queued, .badge-blocked {
     background: var(--queued-dim);
     color: var(--queued);
     border: 1px solid color-mix(in srgb, var(--queued) 30%, transparent);
@@ -2373,6 +2377,7 @@
     if (status === 'healed') cls += ' healed-row';
     if (status === 'heal_exhausted') cls += ' heal_exhausted-row';
     if (status === 'queued') cls += ' queued-row';
+    if (status === 'blocked') cls += ' blocked-row';
     if (!isHistory) cls += ' new-row';
     return cls;
   }
@@ -2400,11 +2405,15 @@
     chip.textContent = (stack || '?').charAt(0);
   }
 
-  // pausedTagHTML renders the "paused" tag on a queued deploy row, adding the
-  // reason (global/stack) when the queue snapshot for that stack is known.
-  function pausedTagHTML(stack) {
-    var item = queueByStack[stack];
+  // pendingTagHTML renders the tag on a pending deploy row. Queued rows show
+  // "paused[: reason]"; blocked rows (ADR-0032) show the dependency reason
+  // ("blocked by <dep>") directly, both drawn from the queue snapshot.
+  function pendingTagHTML(evt) {
+    var item = queueByStack[evt.stack];
     var reason = item && item.reason;
+    if (evt.status === 'blocked') {
+      return '<span class="paused-tag">' + (reason || 'blocked') + '</span>';
+    }
     return '<span class="paused-tag">' + (reason ? 'paused: ' + reason : 'paused') + '</span>';
   }
 
@@ -2419,7 +2428,7 @@
 
     var absTs = fullTime(evt.timestamp);
     var relTs = formatTime(evt.timestamp);
-    var pausedTag = evt.status === 'queued' ? pausedTagHTML(evt.stack) : '';
+    var pausedTag = (evt.status === 'queued' || evt.status === 'blocked') ? pendingTagHTML(evt) : '';
     row.innerHTML =
       '<span class="cell-time" data-testid="time-cell" data-ts="' + evt.timestamp + '" title="' + (absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
       '<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon" data-name="' + escapeHtml(evt.stack) + '"></span><span class="stack-name">' + escapeHtml(evt.stack) + '</span>' + pausedTag + '</span>' +
@@ -2710,9 +2719,11 @@
 
     showTable();
 
-    if (evt.status === 'queued') {
-      // Replace any prior pending row for this stack — multiple pushes while
-      // paused collapse into one — and key it so it can be cleared on deploy.
+    if (evt.status === 'queued' || evt.status === 'blocked') {
+      // Both are pending, leave-dirty states re-emitted every sync/reconcile
+      // tick (queued = autosync paused; blocked = a failed depends_on
+      // dependency, ADR-0032). Collapse repeats into one live row per stack,
+      // keyed so it clears when the stack finally deploys.
       removeQueuedRow(evt.stack);
       var qrow = createRow(evt, isHistory);
       tbody.insertBefore(qrow, tbody.firstChild);

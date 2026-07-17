@@ -61,6 +61,16 @@ func (q *Queue) Count() int {
 	return len(q.pending)
 }
 
+// Has reports whether the stack currently has a pending (deferred) entry. It
+// lets a caller read the registry as the source of truth for whether a stack
+// was deferred this run, rather than inferring it.
+func (q *Queue) Has(stack string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	_, ok := q.pending[stack]
+	return ok
+}
+
 // QueuePending is a pending item plus its 1-based position in the drain order.
 type QueuePending struct {
 	Position int `json:"position"`

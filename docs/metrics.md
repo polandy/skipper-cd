@@ -12,6 +12,7 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 | `skipper_last_deploy_timestamp_seconds` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |
 | `skipper_deploy_lock_waits_total` | counter | Deploy runs that had to wait for a running deploy to finish (queueing indicator). |
 | `skipper_deploys_queued_total` | counter | Deploys deferred because autosync was paused, labelled by `stack` (see [Autosync](autosync.md)). |
+| `skipper_deploys_blocked_total` | counter | Deploys held back because a `depends_on` dependency failed in the same run, labelled by `stack` (see [Deploy ordering](configuration.md#deploy-ordering)). |
 | `skipper_autosync_enabled` | gauge | Effective per-stack autosync (`1`/`0`), labelled by `stack` (incl. `_nixos`). |
 | `skipper_autosync_global` | gauge | Effective global autosync (`1`/`0`). |
 | `skipper_autosync_pending` | gauge | Number of stacks currently queued (queue depth). |

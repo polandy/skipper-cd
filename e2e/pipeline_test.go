@@ -156,6 +156,41 @@ func TestE2E_RollbackOnFailedUp(t *testing.T) {
 	}
 }
 
+// TestE2E_DependencyOrdering (P12): with `app` depends_on `db`, a run that
+// changes both deploys db first, and when db's `up` fails, app is blocked — no
+// app `up`, a `blocked` event, and the pending queue lists app for retry
+// (ADR-0032).
+//
+// Up invocations across the process: startup deploys db (#1) then app (#2); the
+// webhook run then does db (#3). The stub fails #3, so db rolls back (up #4)
+// and its failure blocks app before any app up.
+func TestE2E_DependencyOrdering(t *testing.T) {
+	s := startSkipperOrdered(t, map[string][]string{"app": {"db"}}, map[string]string{"STUB_DOCKER_FAIL_NTH_UP": "3"}, "db", "app")
+
+	es := s.openEvents()
+	es.awaitStreamReady("db")
+
+	appUpsBefore := s.dockerUps("app")
+
+	s.setStackImage("db", "1.26")
+	s.setStackImage("app", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+
+	es.waitEvent("app", "blocked")
+
+	if got := s.dockerUps("app"); got != appUpsBefore {
+		t.Fatalf("blocked stack must not deploy; app ups = %d, want %d", got, appUpsBefore)
+	}
+	if q := s.queueBody(); !strings.Contains(q, "app") {
+		t.Fatalf("pending queue does not list the blocked stack app: %s", q)
+	}
+	if v, ok := metricValue(s.metricsBody(), `skipper_deploys_blocked_total{stack="app"}`); !ok || v < 1 {
+		t.Errorf("skipper_deploys_blocked_total{app} = %v (ok=%v), want >= 1", v, ok)
+	}
+}
+
 // TestE2E_PausedStackQueued (P9): with autosync paused, a change is queued
 // instead of deployed — a `queued` event, no docker up, and /api/queue lists it.
 func TestE2E_PausedStackQueued(t *testing.T) {
