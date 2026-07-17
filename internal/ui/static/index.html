@@ -924,6 +924,66 @@
     border-radius: 4px; padding: 0 4px;
   }
 
+  /* ─── AUDIT (per-stack deploy history, ADR-0033) ─── */
+  /* A small clock button on the newest row per stack, next to the health pill.
+     Opens the durable per-stack deploy history — a distinct axis from the live
+     health pill and the row's own diff, so it gets its own affordance. */
+  .history-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: transparent; color: var(--text-muted); cursor: pointer;
+  }
+  .history-btn:hover {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .history-btn svg { width: 12px; height: 12px; }
+  /* The history panel is not one status — it lists many — so it binds to its row
+     with the neutral accent bar rather than a status colour. */
+  .event-row.audit-open {
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .audit-panel {
+    padding: 9px 14px 12px;
+    background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+    border-bottom: 1px solid var(--border);
+    box-shadow: inset 3px 0 0 var(--accent);
+    animation: slidein 0.18s ease;
+  }
+  .audit-panel .ap-head {
+    display: flex; align-items: center; gap: 8px; padding: 0 0 8px;
+    font-family: var(--font-mono); font-size: 11px;
+  }
+  .audit-panel .ap-head-label { color: var(--text-muted); letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; }
+  .audit-panel .ap-head-who { color: var(--text-primary); font-size: 12.5px; font-weight: 600; }
+  .audit-panel .ap-count { color: var(--text-muted); margin-left: auto; }
+  .audit-panel .ap-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
+  .audit-row {
+    display: grid;
+    grid-template-columns: 150px 116px 66px 76px 1fr;
+    align-items: center; gap: 8px;
+    padding: 3px 0;
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    border-top: 1px solid color-mix(in srgb, var(--overlay2) 7%, transparent);
+  }
+  .audit-row:first-of-type { border-top: 0; }
+  .audit-row .ar-time { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .audit-row .ar-status { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: var(--ac); }
+  .audit-row .ar-status .adot { width: 6px; height: 6px; border-radius: 50%; background: var(--ac); flex: none; }
+  .audit-row[data-status="success"]               { --ac: var(--success); }
+  .audit-row[data-status="failed"]                { --ac: var(--danger); }
+  .audit-row[data-status="rolled_back"]           { --ac: var(--rollback); }
+  .audit-row[data-status="rolled_back_unhealthy"] { --ac: var(--danger); }
+  .audit-row[data-status="healed"]                { --ac: var(--success); }
+  .audit-row[data-status="heal_exhausted"]        { --ac: var(--danger); }
+  .audit-row .ar-dur { color: var(--text-muted); }
+  .audit-row .ar-sha { color: var(--text-secondary); }
+  .audit-row .ar-files { color: var(--text-muted); text-align: right; }
+  .audit-row .ar-err { color: var(--danger); grid-column: 2 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
   /* ─── FILES PILL ─── */
   .files-pill {
     display: inline-flex;
@@ -1137,11 +1197,11 @@
      square the adjoining corners and close the .event-list 2px inter-row gap, so
      an open row and all its bound trailers read as one card with an unbroken left
      bar. Applies to the health panel too — it shares the same binding. */
-  .event-row.health-open, .event-row.diff-open {
+  .event-row.health-open, .event-row.diff-open, .event-row.audit-open {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .health-panel, .diff-panel.bound, .files-list.bound {
+  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel {
     margin-top: -2px;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
@@ -2454,15 +2514,22 @@
   // status, and remove pills from older rows (health is a current per-stack
   // value; the deploy table is an event log — see ADR-0027). Cheap to re-run on
   // every deploy or health snapshot: a handful of rows.
-  function updateHealthPills() {
+  // Manage the two per-stack affordances that belong on the newest row of each
+  // stack only: the live health pill (ADR-0027) and the deploy-history button
+  // (ADR-0033). Both are current per-stack values, not per-event, so an older
+  // row of the same stack carries neither. Cheap to re-run on every deploy or
+  // health snapshot — a handful of rows.
+  function updateStackAffordances() {
     var seen = {};
     tbody.querySelectorAll('.event-row[data-stack]').forEach(function(row) {
       var stack = row.dataset.stack;
       var cell = row.querySelector('.cell-stack');
       if (!cell) return;
-      var pill = cell.querySelector('.health-pill');
       var newest = !seen[stack];
       seen[stack] = true;
+
+      // Health pill — only when a health status is known for the stack.
+      var pill = cell.querySelector('.health-pill');
       var h = newest ? healthSnap[stack] : null;
       if (h && h.status) {
         if (!pill) {
@@ -2479,6 +2546,21 @@
       } else if (pill) {
         pill.remove();
         closeHealthPanel(row);
+      }
+
+      // History button — always on the newest row (independent of health).
+      var hist = cell.querySelector('.history-btn');
+      if (newest && !hist) {
+        hist = document.createElement('button');
+        hist.className = 'history-btn';
+        hist.dataset.testid = 'history-btn';
+        hist.title = 'deploy history for ' + stack;
+        hist.setAttribute('aria-label', 'deploy history for ' + stack);
+        hist.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.4 1.5"/></svg>';
+        cell.appendChild(hist);
+      } else if (!newest && hist) {
+        hist.remove();
+        closeAuditPanel(row);
       }
     });
   }
@@ -2497,6 +2579,85 @@
     var next = row.nextElementSibling;
     if (next && (next.classList.contains('files-list') || next.classList.contains('diff-panel'))) next.remove();
     row.classList.remove('diff-open');
+  }
+
+  // closeAuditPanel is the deploy-history counterpart, part of the same
+  // one-panel-per-row rule (ADR-0033): opening the history panel closes the
+  // health/diff panel and vice versa.
+  function closeAuditPanel(row) {
+    var next = row.nextElementSibling;
+    if (next && next.classList.contains('audit-panel')) next.remove();
+    row.classList.remove('audit-open');
+  }
+
+  // fetchAudit loads one stack's durable deploy history. Not cached: the history
+  // grows with every deploy, and a re-fetch against localhost is cheap, so a
+  // fresh open always shows the latest rather than risking a stale panel.
+  function fetchAudit(stack, callback) {
+    fetch('/api/audit?stack=' + encodeURIComponent(stack))
+      .then(function(r) { return r.ok ? r.json() : []; })
+      .then(function(records) { callback(records || []); })
+      .catch(function() { callback([]); });
+  }
+
+  // createAuditPanel returns the panel immediately with a loading line and fills
+  // it once the fetch resolves — the same lazy pattern the diff panel uses. The
+  // panel is removed-if-closed guard keeps a slow fetch from resurrecting it.
+  function createAuditPanel(stack) {
+    var el = document.createElement('div');
+    el.className = 'audit-panel';
+    el.dataset.testid = 'audit-panel';
+    el.dataset.auditFor = stack;
+    el.innerHTML =
+      '<div class="ap-head"><span class="ap-head-label">deploy history</span>' +
+      '<span class="ap-head-who">' + escapeHtml(stack) + '</span>' +
+      '<span class="ap-count"></span></div>' +
+      '<div class="ap-empty">Loading history…</div>';
+    fetchAudit(stack, function(records) {
+      if (!el.parentNode) return; // closed (or replaced) while loading
+      renderAuditRecords(el, stack, records);
+    });
+    return el;
+  }
+
+  function renderAuditRecords(el, stack, records) {
+    var count = el.querySelector('.ap-count');
+    if (count) count.textContent = records.length ? records.length + (records.length === 1 ? ' deploy' : ' deploys') : '';
+    if (!records.length) {
+      var empty = el.querySelector('.ap-empty');
+      if (empty) empty.textContent = 'No recorded deploys for this stack yet.';
+      return;
+    }
+    var body = records.map(function(r) {
+      var abs = fullTime(r.timestamp), rel = formatTime(r.timestamp);
+      var sha = r.commit_sha ? '<span class="ar-sha" title="' + escapeAttr(r.commit_sha) + '">' + escapeHtml(shortSHA(r.commit_sha)) + '</span>' : '<span class="ar-sha">—</span>';
+      var files = r.changed_files ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : '')) : '—';
+      var err = r.error
+        ? '<span class="ar-err" title="' + escapeAttr(r.error) + '">' + escapeHtml(r.error) + '</span>'
+        : '';
+      return '<div class="audit-row" data-testid="audit-row" data-status="' + escapeAttr(r.status) + '">' +
+        '<span class="ar-time" data-ts="' + escapeAttr(r.timestamp) + '" title="' + escapeAttr(absoluteTime ? rel : abs) + '">' + escapeHtml(absoluteTime ? abs : rel) + '</span>' +
+        '<span class="ar-status"><span class="adot"></span>' + escapeHtml(auditStatusLabel(r.status)) + '</span>' +
+        '<span class="ar-dur">' + escapeHtml(formatDuration(r.duration_ms)) + '</span>' +
+        sha +
+        '<span class="ar-files">' + files + '</span>' +
+        err +
+        '</div>';
+    }).join('');
+    // Replace the loading line with the rows (keep the head).
+    var head = el.querySelector('.ap-head');
+    el.innerHTML = '';
+    if (head) el.appendChild(head);
+    el.insertAdjacentHTML('beforeend', body);
+  }
+
+  // auditStatusLabel spells the two stacked-badge statuses on one line — the
+  // history rows are compact, so the two-line badge wording is flattened here.
+  function auditStatusLabel(status) {
+    if (status === 'rolled_back') return 'rolled back';
+    if (status === 'rolled_back_unhealthy') return 'rolled back · unhealthy';
+    if (status === 'heal_exhausted') return 'self-heal failed';
+    return status;
   }
 
   // phaseDuration renders a millisecond span the way the health timeline needs
@@ -2800,7 +2961,7 @@
       var evt = JSON.parse(e.data);
       handleEvent(evt, false);
       refilterDeploys();
-      updateHealthPills(); // a new/mutated row may change which row is newest
+      updateStackAffordances(); // a new/mutated row may change which row is newest
     });
 
     es.addEventListener('autosync', function(e) {
@@ -2829,7 +2990,7 @@
     es.addEventListener('health', function(e) {
       var d = JSON.parse(e.data);
       healthSnap = (d && d.stacks) || {};
-      updateHealthPills();
+      updateStackAffordances();
     });
 
     es.addEventListener('healthwatch', function(e) {
@@ -3545,6 +3706,25 @@
       return;
     }
 
+    // History button: toggle the per-stack deploy-history panel (ADR-0033).
+    // Handled before the files logic so a tap never opens the row's diff panel.
+    var histBtn = e.target.closest('.history-btn');
+    if (histBtn) {
+      var arow = histBtn.closest('.event-row');
+      if (arow) {
+        var anext = arow.nextElementSibling;
+        if (anext && anext.classList.contains('audit-panel')) {
+          closeAuditPanel(arow);
+        } else {
+          closeHealthPanel(arow); // one panel per row
+          closeDiffPanel(arow);
+          arow.classList.add('audit-open');
+          arow.after(createAuditPanel(arow.dataset.stack));
+        }
+      }
+      return;
+    }
+
     // Stack-health pill: toggle its per-service panel. Handled before the files
     // logic so a tap on the pill never opens the row's files/diff panel (mobile).
     var hpill = e.target.closest('.health-pill');
@@ -3556,6 +3736,7 @@
           closeHealthPanel(hrow);
         } else {
           closeDiffPanel(hrow); // one panel per row: replace an open files/diff panel
+          closeAuditPanel(hrow);
           hrow.dataset.health = hpill.dataset.health || 'unknown'; // tint the row (variant A)
           hrow.classList.add('health-open');
           hrow.after(createHealthPanel(hrow.dataset.stack));
@@ -3575,6 +3756,7 @@
       return;
     }
     closeHealthPanel(row); // one panel per row: replace an open health panel
+    closeAuditPanel(row);
 
     var eventId = row.dataset.eventId;
     var hasDiffs = row.dataset.hasDiffs === '1';

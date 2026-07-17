@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/audit"
 	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
@@ -183,6 +184,12 @@ func main() {
 		})
 		slog.Info("web UI enabled")
 	}
+
+	// Durable per-stack deploy audit trail (ADR-0033). Recorded unconditionally
+	// so the history is complete even with the UI off; only the query API below
+	// is UI-gated. Empty stateDir disables persistence (in-memory only).
+	auditLog := audit.NewLog(stateDir)
+	eventSinks = append(eventSinks, auditLog.Record)
 
 	// Outbound notifications. Config is already validated in Load; New only
 	// re-derives formatters, so an error here is a programming bug, not user
@@ -359,7 +366,7 @@ func main() {
 	}
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, healthPoller, healthWatcher, broadcaster, history, logRing, as, build))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, healthPoller, healthWatcher, broadcaster, history, auditLog, logRing, as, build))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -474,7 +481,7 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *health.Poller, healthWatcher *healthwatch.Watcher, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
+func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *health.Poller, healthWatcher *healthwatch.Watcher, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
@@ -504,6 +511,7 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *hea
 		mux.Handle("GET /api/version", ui.VersionHandler(build))
 		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, as.stateB, history, initialState))
 		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
+		mux.Handle("GET /api/audit", ui.AuditHandler(auditLog))
 		mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
 
 		iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second

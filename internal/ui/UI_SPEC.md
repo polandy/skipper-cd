@@ -100,6 +100,15 @@ The health colours are their own semantic tier (`--h-*`), kept a distinct hue fr
 
 Where the [Stack health](#stack-health) pill only *reports* a degraded stack, **self-heal** (opt-in, per stack) automatically restores it with a corrective `docker compose up -d` — the runtime-drift counterpart to the [periodic reconcile](configuration.md#periodic-reconcile) loop's git-drift correction. It surfaces in the deploy log as two statuses (see [Status badges](#status-badges)): a `healed` row each time a corrective redeploy runs, and a single `heal_exhausted` row when skipper gives up after repeated redeploys fail to restore the stack (also the default `heal_exhausted` notification). The action is backend-only — there is no UI control to trigger or configure it; it is driven entirely by `self_heal` config. See [ADR-0029](../../dev-docs/adr/0029-runtime-drift-self-heal.md).
 
+### Deploy history
+
+Next to the [health pill](#stack-health), the **newest row per stack** also carries a small **history button** (`data-testid="history-btn"`) — a clock glyph. Clicking it inserts a per-stack **deploy-history panel** (`data-testid="audit-panel"`) below the row, listing that stack's *durable* record of past **terminal deploy outcomes** (skipper-cd [ADR-0033](../../dev-docs/adr/0033-durable-per-stack-deploy-audit-log.md)). Unlike the live deploy table — a bounded, global, cross-stack event log — this is the answer to "what is the full deploy history of *this* stack", kept per stack and surviving both ring eviction and restarts.
+
+- **Source.** Fetched on open from [`GET /api/audit?stack=<name>`](#audit-api) (not from the SSE feed), so it always reflects the latest — no client cache to go stale.
+- **Rows** (`data-testid="audit-row"`, newest first) — each past deploy as time · **status** (coloured dot + label, keyed off `data-status`) · duration · short commit SHA (full SHA in `title`) · changed-file count. A `failed` / `rolled_back*` / `heal_exhausted` record also shows its error message (truncated, full text in `title`). Only terminal outcomes appear — `success`, `failed`, `rolled_back`, `rolled_back_unhealthy`, `healed`, `heal_exhausted`; in-progress (`deploying`), no-op (`skipped`) and deferral (`queued`, `blocked`) statuses are never recorded.
+- **No diffs.** Records are metadata only; the short SHA identifies the commit, and the live [diff panel](#expandable-panels) still serves diffs for events still in the ring. The history answers *when / result / how long / which commit / how many files*, not "show me the code change".
+- **One panel per row.** The history panel shares the [health panel](#stack-health)'s binding: opening it closes an open health or files/diff panel on the row (and vice versa), and it tints the row with a neutral **accent** bar (not a status colour — the panel is many statuses, not one).
+
 ### Status badges
 
 | Status | Colour | Notes |
@@ -217,6 +226,10 @@ On connect the in-memory backlog (bounded ring, 1000 entries, no persistence acr
 
 `GET /api/events/{id}/diffs` — returns `{"diffs": {"filepath": "diff content", ...}, "commits": [{"sha","subject","author","date"}, ...]}` or `{"diffs": null, "commits": null}`. `commits` are the git commits in the range `LastDeployedCommit..HEAD` that touched the event's changed files, newest first (capped at 50). Returns 404 for unknown event IDs.
 
+## Audit API
+
+`GET /api/audit` — the durable per-stack deploy audit log ([ADR-0033](../../dev-docs/adr/0033-durable-per-stack-deploy-audit-log.md)) as a JSON array, newest first. Each record: `{"stack","timestamp","status","duration_ms","commit_sha","changed_files","error"}` (`changed_files` is a **count**, not a list; `commit_sha` and `error` may be absent). Query params: `stack=<name>` returns that one stack's history (omit for recent records across all stacks); `limit=<n>` caps the count. An empty history returns `[]`. Only terminal outcomes are recorded (`success`, `failed`, `rolled_back`, `rolled_back_unhealthy`, `healed`, `heal_exhausted`); records are retained per stack (default 200 each). Drives the [Deploy history](#deploy-history) panel.
+
 ## Version API
 
 `GET /api/version` — returns the build identity `{"version": "<semver>|dev", "branch": "<name>", "commit": "<short-sha>"}`. Fields are injected at build time via `-ldflags "-X main.version=… -X main.commit=… -X main.branch=…"`:
@@ -279,6 +292,9 @@ assert on.
 | `health-pill` | Stack health pill in the stack cell | Newest row per stack only; `data-health` = `healthy`/`unhealthy`/`starting`/`stopped`/`unknown`; opens `health-panel` |
 | `health-panel` | Per-service health breakdown panel below the row | Sibling of the row, like `files-panel`; leads with a stack + status header; carries `data-health` (drives the shared left bar/tint); the open row gets `health-open` + `data-health` |
 | `health-service` | A service row inside `health-panel` | `data-health` per service |
+| `history-btn` | Deploy-history button in the stack cell | Newest row per stack only; opens `audit-panel` |
+| `audit-panel` | Per-stack deploy-history panel below the row | Sibling of the row; fetched from `/api/audit`; opens exclusively with health/diff panels; the open row gets `audit-open` |
+| `audit-row` | A past-deploy row inside `audit-panel` | `data-status` = the terminal deploy status |
 | `time-cell`, `duration-cell` | Time / duration cells | Masked in snapshots (dynamic) |
 | `files-pill` | Files pill on a row | |
 | `files-panel` | Expanded plain file-list panel | |
