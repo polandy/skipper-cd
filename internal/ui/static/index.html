@@ -2517,10 +2517,11 @@
   // healthHistoryHTML renders one service's status timeline from the
   // healthwatch snapshot (ADR-0031): newest first, each accepted phase with its
   // start, how long it held, and the deploy commit when correlated. Returns ''
-  // when the watchdog is off or has nothing for this service.
+  // when the watchdog is off — and for a service with only its baseline phase,
+  // where a one-line timeline would just repeat the inline age.
   function healthHistoryHTML(stack, svc) {
     var phases = (healthwatchSnap[stack] || {})[svc];
-    if (!phases || !phases.length) return '';
+    if (!phases || phases.length < 2) return '';
     var html = '<div class="hp-history" data-testid="health-history">';
     for (var i = 0; i < phases.length; i++) {
       var p = phases[i];
