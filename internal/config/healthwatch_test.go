@@ -82,22 +82,35 @@ health_watch:
 	}
 }
 
-func TestLoad_HealthWatchAlertCooldownDefaultsToDisabled(t *testing.T) {
+func TestLoad_HealthWatchAlertCooldownDefaultsToThirtyMinutes(t *testing.T) {
 	cfg := loadFromString(t, minimalConfig+`
 health_watch: {}
 `)
-	if got := cfg.HealthWatch.AlertCooldownSeconds; got != 0 {
-		t.Errorf("expected alert cooldown disabled (0) by default, got %d", got)
+	got := cfg.HealthWatch.AlertCooldownSeconds
+	if got == nil || *got != 1800 {
+		t.Errorf("expected default alert cooldown 1800, got %v", got)
+	}
+}
+
+func TestLoad_HealthWatchExplicitZeroDisablesAlertCooldown(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig+`
+health_watch:
+  alert_cooldown_seconds: 0
+`)
+	got := cfg.HealthWatch.AlertCooldownSeconds
+	if got == nil || *got != 0 {
+		t.Errorf("expected explicit 0 to disable the cooldown, got %v", got)
 	}
 }
 
 func TestLoad_HealthWatchHonoursAlertCooldown(t *testing.T) {
 	cfg := loadFromString(t, minimalConfig+`
 health_watch:
-  alert_cooldown_seconds: 1800
+  alert_cooldown_seconds: 900
 `)
-	if got := cfg.HealthWatch.AlertCooldownSeconds; got != 1800 {
-		t.Errorf("expected alert cooldown 1800, got %d", got)
+	got := cfg.HealthWatch.AlertCooldownSeconds
+	if got == nil || *got != 900 {
+		t.Errorf("expected alert cooldown 900, got %v", got)
 	}
 }
 

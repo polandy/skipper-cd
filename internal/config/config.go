@@ -234,8 +234,9 @@ type HealthWatch struct {
 	// rate limit against a slow flapper paging on every cycle. Suppressed
 	// transitions are still journaled and persisted, and once the cooldown
 	// expires a still-diverged service gets the owed alert late (catch-up).
-	// 0 (the default) disables the cooldown; must be >= 0.
-	AlertCooldownSeconds int `yaml:"alert_cooldown_seconds"`
+	// Defaults to 1800 when omitted; an explicit 0 disables the cooldown;
+	// must be >= 0.
+	AlertCooldownSeconds *int `yaml:"alert_cooldown_seconds"`
 
 	// Targets lists the outbound sinks health alerts are delivered to, in the
 	// same shape as the notifications targets but without `on:` (a health
@@ -398,6 +399,12 @@ func Load(path string) (*Config, error) {
 		if hw.AttributionWindowSeconds == 0 {
 			hw.AttributionWindowSeconds = defaultHealthWatchAttributionWindowSeconds
 		}
+		if hw.AlertCooldownSeconds == nil {
+			// Only an omitted field takes the default — an explicit 0 is the
+			// off switch for the cooldown.
+			d := defaultHealthWatchAlertCooldownSeconds
+			hw.AlertCooldownSeconds = &d
+		}
 		for i := range hw.Targets {
 			if hw.Targets[i].Format == "" {
 				hw.Targets[i].Format = NotifyFormatGeneric
@@ -458,6 +465,7 @@ const (
 const (
 	defaultHealthWatchDebouncePolls            = 2
 	defaultHealthWatchAttributionWindowSeconds = 300
+	defaultHealthWatchAlertCooldownSeconds     = 1800
 )
 
 func validateConfig(cfg *Config) error {
@@ -553,8 +561,8 @@ func validateHealthWatch(hw *HealthWatch) error {
 	if hw.AttributionWindowSeconds < 0 {
 		return fmt.Errorf("attribution_window_seconds must be >= 0, got %d", hw.AttributionWindowSeconds)
 	}
-	if hw.AlertCooldownSeconds < 0 {
-		return fmt.Errorf("alert_cooldown_seconds must be >= 0, got %d", hw.AlertCooldownSeconds)
+	if hw.AlertCooldownSeconds != nil && *hw.AlertCooldownSeconds < 0 {
+		return fmt.Errorf("alert_cooldown_seconds must be >= 0, got %d", *hw.AlertCooldownSeconds)
 	}
 	for i, t := range hw.Targets {
 		// Health targets carry no `on:` — they receive every alert-worthy

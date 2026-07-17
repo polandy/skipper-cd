@@ -356,14 +356,17 @@ implementation PR is backend-only and deliberately exposes no unused API.
 The original decision left a dedicated cooldown deliberately unbuilt, naming a
 **slow flapper** — a service whose flap period is longer than the debounce
 window — as the revisit trigger: every cycle passes the debounce, so every
-cycle pages fail *and* recovery. This amendment adds that cooldown as an
-opt-in rate limit.
+cycle pages fail *and* recovery. This amendment adds that cooldown, on by
+default.
 
 ### Semantics
 
-- **Config**: `health_watch.alert_cooldown_seconds` (default `0` = disabled,
-  must be ≥ 0). `0` keeps the original behaviour bit-for-bit — no delivery
-  records are kept and `healthwatch.yaml` is unchanged.
+- **Config**: `health_watch.alert_cooldown_seconds` (default `1800` = 30
+  minutes when omitted; must be ≥ 0). An explicit `0` disables the cooldown
+  and keeps the original behaviour bit-for-bit — no delivery records are kept
+  and `healthwatch.yaml` is unchanged. The field is a pointer in config so an
+  omitted field (→ default) and an explicit `0` (→ off) stay distinguishable,
+  the `health_poll_interval_seconds` pattern.
 - **Per service *and* per direction**: the cooldown is the minimum gap between
   delivered `→ unhealthy` alerts of one service, and independently between its
   `recovered` alerts. An ordinary incident (one failure, one recovery) is
@@ -405,6 +408,8 @@ opt-in rate limit.
   suppressed transition lands `unhealthy` leaves the operator's final
   information as "recovered" while the service is down — a silently-down
   watchdog is worse than a noisy one. Rejected.
-- **A non-zero default (e.g. 30 min).** Tempting, but it silently changes
-  alert timing for existing installs; the debounce remains the first-line flap
-  guard and the cooldown is a deliberate opt-in. Rejected.
+- **Opt-in default (`0` = off).** Considered to avoid changing alert timing
+  for existing installs, but rejected: the cooldown only ever suppresses
+  redundant re-pages of an already-reported direction, and the catch-up
+  guarantees eventual delivery — so a sensible default benefits every install
+  while an explicit `0` remains the off switch.
