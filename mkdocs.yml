@@ -41,6 +41,7 @@ theme:
 nav:
   - Home: index.md
   - Getting Started:
+      - Walkthrough: getting-started.md
       - Configuration: configuration.md
       - Autosync: autosync.md
       - Install as App (PWA): pwa.md

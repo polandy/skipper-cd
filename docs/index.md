@@ -26,7 +26,7 @@ stacks:
 
 Each stack's compose file lives at `<stacks_base_dir>/<name>/docker-compose.yml`. Push to the repo, your Git host fires a webhook, and skipper-cd pulls, diffs, and redeploys only what changed.
 
-Run it **[on NixOS](nixos.md)** as a declarative systemd service, or **[with Docker](docker.md)** as a container. The full configuration reference is in **[Configuration](configuration.md)**.
+New here? The **[Getting Started walkthrough](getting-started.md)** covers the whole loop end to end — repo layout, running the service, and wiring up the webhook. Run it **[on NixOS](nixos.md)** as a declarative systemd service, or **[with Docker](docker.md)** as a container; the full configuration reference is in **[Configuration](configuration.md)**.
 
 ## Features
 
