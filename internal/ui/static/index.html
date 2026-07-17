@@ -2572,9 +2572,16 @@
       var age = phases && phases.length
         ? ' <span class="hp-for">· ' + escapeHtml(phaseDuration(Date.now() - new Date(phases[0].since).getTime())) + '</span>'
         : '';
-      return '<div class="hp-svc" data-testid="health-service">' +
+      // An on-demand service is labelled so its stopped state reads as the
+      // intended idle (skipper stops it after the deploy; the scheduler starts
+      // it on request), not as something to worry about.
+      var state = s.on_demand ? s.state + ' · on-demand' : s.state;
+      var svcTitle = s.on_demand
+        ? ' title="on-demand container: stopped by skipper after the deploy, started by the scheduler on request"'
+        : '';
+      return '<div class="hp-svc" data-testid="health-service"' + svcTitle + '>' +
         '<span class="hp-name">' + escapeHtml(s.name) + '</span>' +
-        '<span class="hp-state">' + escapeHtml(s.state) + '</span>' +
+        '<span class="hp-state">' + escapeHtml(state) + '</span>' +
         '<span class="hp-status" data-health="' + escapeAttr(st) + '"><span class="hdot"></span>' + escapeHtml(st) + age + '</span>' +
         '</div>' + healthHistoryHTML(stack, s.name);
     }).join('');

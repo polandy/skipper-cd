@@ -124,6 +124,10 @@ func TestPoller_ProbeMarksOnDemandContainersByName(t *testing.T) {
 	if len(got.Services) != 2 || got.Services[0].Status != Stopped {
 		t.Errorf("expected the on-demand app classified stopped, got %+v", got.Services)
 	}
+	// The snapshot labels the service so the UI can say *why* it is stopped.
+	if !got.Services[0].OnDemand || got.Services[1].OnDemand {
+		t.Errorf("expected only the app marked on-demand, got %+v", got.Services)
+	}
 
 	// Without the on-demand marking the same output is a real failure.
 	plain := p.probe(context.Background(), StackRef{

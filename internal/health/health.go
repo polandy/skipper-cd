@@ -33,6 +33,11 @@ type ServiceHealth struct {
 	State  string `json:"state"`
 	Health string `json:"health"`
 	Status Status `json:"status"`
+	// OnDemand marks a service whose container is in the stack's
+	// on_demand_containers: skipper stops it after the deploy and a scheduler
+	// starts it on request, so the UI labels it rather than letting an exited
+	// state look like a problem.
+	OnDemand bool `json:"on_demand,omitempty"`
 }
 
 // StackHealth is a stack's rolled-up status plus its per-service detail.
