@@ -96,4 +96,20 @@ var (
 		Name: "skipper_notifications_dropped_total",
 		Help: "Total notification events dropped because the delivery buffer was full.",
 	})
+
+	// HealthTransitions counts accepted (debounced) per-service health
+	// transitions observed by the healthwatch watcher, by resulting status.
+	// See ADR-0031.
+	HealthTransitions = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "skipper_health_transitions_total",
+		Help: "Total accepted per-service health transitions by resulting status.",
+	}, []string{"status"})
+
+	// HealthAlertsSent counts outbound health alert deliveries by target format
+	// and outcome ("ok" for a 2xx response, "error" otherwise), mirroring
+	// NotificationsSent. See ADR-0031.
+	HealthAlertsSent = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "skipper_health_alerts_sent_total",
+		Help: "Total outbound health alert deliveries by format and outcome (ok|error).",
+	}, []string{"format", "outcome"})
 )

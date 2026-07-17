@@ -25,11 +25,14 @@ const (
 )
 
 // ServiceHealth is one service's container state and health, for the UI's
-// per-service breakdown panel.
+// per-service breakdown panel. Status is the classified per-service status —
+// the same classification the stack rollup aggregates — consumed by the
+// healthwatch transition detector (ADR-0031).
 type ServiceHealth struct {
 	Name   string `json:"name"`
 	State  string `json:"state"`
 	Health string `json:"health"`
+	Status Status `json:"status"`
 }
 
 // StackHealth is a stack's rolled-up status plus its per-service detail.

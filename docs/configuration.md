@@ -70,6 +70,7 @@ nixos_rebuild:
 | `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce). Must be ≥ 1. |
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
 | `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0. |
+| `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `health_poll_interval_seconds` > 0. |
 
 ## Stack Fields
 
@@ -299,6 +300,36 @@ The health is read by polling `docker compose ps` for each stack, using the same
 - The poll only runs while `ui_enabled` **and** at least one browser is connected to the dashboard, so an unattended instance does no health work.
 
 On a resource-constrained host, raise the interval rather than disabling it. See [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#stack-health) for the UI surface.
+
+## Health watch
+
+The [Stack health](#stack-health) view only *shows* health, and only while a browser is watching. The **health watch** goes one step further: it tracks each **service's** health over time and reports **transitions**: a service turning `unhealthy` fires an alert, and its recovery fires a matching all-clear. Transitions between the other statuses (`starting`, `stopped`) are recorded and logged but never alert, so an intentional `docker compose down` does not page.
+
+The watchdog has no poll loop of its own: it consumes the health poller's feed (like [self-heal](#self-heal)), so its cadence **is** `health_poll_interval_seconds` — which must therefore be > 0 — and enabling it makes that poll run headless, independent of the UI and of connected browsers. There is no extra `docker compose ps` work: one poll serves the UI view, self-heal, and the watchdog.
+
+```yaml
+health_watch:                      # cadence = health_poll_interval_seconds
+  debounce_polls: 2                # consecutive confirmations before a change is accepted
+  attribution_window_seconds: 300  # transitions this soon after a deploy are marked deploy-correlated
+  targets:                         # optional; same fields as notifications targets, but no `on:`
+    - format: signal
+      url: http://localhost:8020
+      number: "+491234567890"
+      recipients: ["+491234567890"]
+      prefix: nuc
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `debounce_polls` | int | no | `2` | How many consecutive health polls a new status must persist before it is accepted. Absorbs transient blips; a service flapping every poll never alerts. |
+| `attribution_window_seconds` | int | no | `300` | A transition beginning within this window after a stack's deploy is reported as *deploy-correlated* (with the deploy's newest commit). Later transitions still carry the commit as context, without the correlation. |
+| `targets` | list | no | — | Alert sinks in the same shape as [notification targets](#target-fields), except `on:` is not valid here (a health target receives all alert-worthy transitions). With no targets, transitions are still logged and recorded. |
+
+A new failure reads `🚨 stack health: <stack>/<service> healthy → unhealthy (was healthy 2h13m) — after deploy of a1b2c3d`; the recovery reads `✅ stack health recovered: <stack>/<service> after 4m12s`. The `generic` format posts the structured alert as JSON with a `"type": "health"` marker so a receiver shared with deploy notifications can tell the payloads apart.
+
+Every accepted transition is also written to the log and persisted (per service, the last 10 status phases with their start times) in `healthwatch.yaml` next to the [state file](state.md) — so the watchdog survives a restart without re-alerting known failures, and a failure that happened *while skipper was down* is still detected and alerted on the first polls after startup. A probe failure (`unknown`) holds the last known status rather than alerting.
+
+This watches **only skipper's own stacks** — it is not a host-wide container watchdog. Design details in [ADR-0031](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0031-notify-on-own-stack-health-change.md).
 
 ## Periodic reconcile
 

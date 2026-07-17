@@ -17,6 +17,8 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 | `skipper_autosync_pending` | gauge | Number of stacks currently queued (queue depth). |
 | `skipper_notifications_sent_total` | counter | Outbound notification deliveries, labelled by `format` and `outcome` (`ok`/`error`) (see [Notifications](configuration.md#notifications)). |
 | `skipper_notifications_dropped_total` | counter | Notification events dropped because the delivery buffer was full. |
+| `skipper_health_transitions_total` | counter | Accepted per-service health transitions observed by the [health watch](configuration.md#health-watch), labelled by resulting `status`. |
+| `skipper_health_alerts_sent_total` | counter | Outbound health alert deliveries, labelled by `format` and `outcome` (`ok`/`error`). |
 
 ## Recommended Alerts
 

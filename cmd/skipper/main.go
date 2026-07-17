@@ -26,6 +26,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/git"
 	"github.com/polandy/skipper-cd/internal/health"
+	"github.com/polandy/skipper-cd/internal/healthwatch"
 	"github.com/polandy/skipper-cd/internal/icons"
 	"github.com/polandy/skipper-cd/internal/logbuf"
 	"github.com/polandy/skipper-cd/internal/metrics"
@@ -220,29 +221,71 @@ func main() {
 		slog.Info("self-heal enabled", "min_unhealthy_polls", cfg.SelfHealMinUnhealthyPolls, "max_attempts", cfg.SelfHealMaxAttempts, "cooldown_seconds", cfg.SelfHealCooldownSeconds)
 	}
 
-	// Stack-health poller. It feeds the UI health view (when enabled) and/or
-	// self-heal. For the UI it is subscriber-gated so an idle dashboard does no
-	// docker work (ADR-0027); self-heal sets AlwaysPoll so it still runs headless
-	// on an unattended host (ADR-0029). Config validation guarantees a positive
-	// interval whenever self-heal is active.
-	if interval := *cfg.HealthPollIntervalSeconds; interval > 0 && (cfg.UIEnabled || selfHealActive) {
+	// Own-stack health watchdog (ADR-0031): detects per-service health
+	// transitions and alerts on newly-failed and recovered services. It owns no
+	// poll loop — it consumes the shared health poller's snapshot feed below
+	// (the ADR-0029 seam) and observes deploy events only for commit context;
+	// the deploy path is untouched.
+	var healthWatcher *healthwatch.Watcher
+	if hw := cfg.HealthWatch; hw != nil {
+		alerter, err := notify.NewHealthAlerter(hw.Targets, nil, 0)
+		if err != nil {
+			slog.Error("failed to build health alerter", "err", err)
+			os.Exit(1)
+		}
+		var alertSink healthwatch.Alerter
+		if alerter.Enabled() {
+			go alerter.Run(signalCtx)
+			alertSink = alerter
+		}
+		healthWatcher = healthwatch.New(healthwatch.Config{
+			Alerter:           alertSink,
+			StatePath:         filepath.Join(stateDir, "healthwatch.yaml"),
+			DebouncePolls:     hw.DebouncePolls,
+			AttributionWindow: time.Duration(hw.AttributionWindowSeconds) * time.Second,
+		})
+		eventSinks = append(eventSinks, healthWatcher.ObserveDeploy)
+		slog.Info("health watch enabled",
+			"debounce_polls", hw.DebouncePolls,
+			"targets", len(hw.Targets),
+		)
+	}
+
+	// Stack-health poller. It feeds the UI health view (when enabled),
+	// self-heal, and/or the health watchdog. For the UI it is subscriber-gated
+	// so an idle dashboard does no docker work (ADR-0027); self-heal and the
+	// watchdog set AlwaysPoll so it still runs headless on an unattended host
+	// (ADR-0029, ADR-0031). Config validation guarantees a positive interval
+	// whenever self-heal or the watchdog is active.
+	if interval := *cfg.HealthPollIntervalSeconds; interval > 0 && (cfg.UIEnabled || selfHealActive || healthWatcher != nil) {
 		healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 		hpCfg := health.Config{
 			Outputter:  command.NewShellRunner(healthTimeout),
 			Stacks:     func() []health.StackRef { return healthStacks(cfg) },
 			Interval:   time.Duration(interval) * time.Second,
-			AlwaysPoll: selfHealActive,
+			AlwaysPoll: selfHealActive || healthWatcher != nil,
 		}
 		if stateB != nil {
 			hpCfg.Publish = func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: "health", Data: s}) }
 			hpCfg.HasSubscribers = stateB.HasSubscribers
 		}
+		var snapshotSinks []func(health.Snapshot)
 		if selfHealEngine != nil {
-			hpCfg.OnSnapshot = func(s health.Snapshot) { selfHealEngine.Observe(context.Background(), s) }
+			snapshotSinks = append(snapshotSinks, func(s health.Snapshot) { selfHealEngine.Observe(context.Background(), s) })
+		}
+		if healthWatcher != nil {
+			snapshotSinks = append(snapshotSinks, healthWatcher.Observe)
+		}
+		if len(snapshotSinks) > 0 {
+			hpCfg.OnSnapshot = func(s health.Snapshot) {
+				for _, sink := range snapshotSinks {
+					sink(s)
+				}
+			}
 		}
 		healthPoller = health.New(hpCfg)
 		go healthPoller.Run(signalCtx)
-		slog.Info("stack health polling enabled", "interval_seconds", interval, "self_heal", selfHealActive)
+		slog.Info("stack health polling enabled", "interval_seconds", interval, "self_heal", selfHealActive, "health_watch", healthWatcher != nil)
 	}
 
 	if len(eventSinks) > 0 {
