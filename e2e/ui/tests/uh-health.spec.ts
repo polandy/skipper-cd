@@ -84,6 +84,43 @@ test.describe('UH3: newest row per stack', () => {
   });
 });
 
+// UH5 — on-demand containers (ADR-0027 amendment): skipper stops a stack's
+// on_demand_containers itself after the deploy (often exit 137), so an exited
+// one classifies as stopped — the stack stays healthy — and the panel labels
+// the service on-demand instead of letting the exit look like a failure.
+test.describe('UH5: on-demand container reads stopped, not unhealthy', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      healthPoll: 1,
+      onDemand: { web: ['web-app'] },
+      initialHealth: {
+        web: [
+          { Service: 'app', Name: 'web-app', State: 'exited', ExitCode: 137 },
+          { Service: 'db', Name: 'web-db', State: 'running', Health: 'healthy' },
+        ],
+      },
+    },
+  });
+
+  test('the stack rolls up healthy and the panel labels the idle service', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // The killed-but-intended-idle app must not degrade the stack.
+    const p = pill(page, 'web');
+    await expect(p).toHaveAttribute('data-health', 'healthy');
+
+    await p.click();
+    const services = page.locator('[data-testid="health-service"]');
+    await expect(services).toHaveCount(2);
+    const app = services.filter({ hasText: 'app' }).first();
+    await expect(app.locator('.hp-status')).toHaveAttribute('data-health', 'stopped');
+    await expect(app.locator('.hp-state')).toHaveText(/exited · on-demand/);
+    // The sibling keeps its plain state text.
+    await expect(services.filter({ hasText: 'db' }).first().locator('.hp-state')).toHaveText('running');
+  });
+});
+
 // UH4 — status history (ADR-0031): with the health watch on, the per-service
 // panel shows the current phase's age, and — once a service has more than one
 // accepted phase — a timeline of its phases, with the deploy's short commit as

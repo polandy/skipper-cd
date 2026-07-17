@@ -158,6 +158,10 @@ export interface StartOptions {
    *  debounce_polls 1 so a single scripted `ps` flip is accepted immediately.
    *  Maske H's status-history case opts in. */
   healthWatch?: boolean;
+  /** Per-stack on_demand_containers (container names). An exited one classifies
+   *  as stopped whatever its exit code and the panel labels it on-demand
+   *  (ADR-0027 amendment). Maske H's on-demand case opts in. */
+  onDemand?: Record<string, string[]>;
   /** Enable self-heal (ADR-0029): a degraded stack is restored by a corrective
    *  `up`. Requires healthPoll > 0. Maske J opts in. */
   selfHeal?: boolean;
@@ -172,7 +176,7 @@ export interface StartOptions {
    *  on) would be healed spuriously. Same shape as setStackHealth. */
   initialHealth?: Record<
     string,
-    Array<{ Service: string; State: string; Health?: string; ExitCode?: number }>
+    Array<{ Service: string; Name?: string; State: string; Health?: string; ExitCode?: number }>
   >;
 }
 
@@ -312,6 +316,10 @@ export class Skipper {
             `  - name: ${JSON.stringify(n)}\n` +
             ((opts.healthCheck ?? []).includes(n)
               ? `    health_check:\n      timeout_seconds: 1\n`
+              : '') +
+            ((opts.onDemand?.[n] ?? []).length
+              ? `    on_demand_containers:\n` +
+                (opts.onDemand?.[n] ?? []).map((c) => `      - ${JSON.stringify(c)}\n`).join('')
               : ''),
         )
         .join('');
@@ -381,7 +389,7 @@ export class Skipper {
    *  given services on its next poll. */
   setStackHealth(
     stack: string,
-    services: Array<{ Service: string; State: string; Health?: string; ExitCode?: number }>,
+    services: Array<{ Service: string; Name?: string; State: string; Health?: string; ExitCode?: number }>,
   ): void {
     writeFileSync(join(this.healthDir, `${stack}.json`), JSON.stringify(services));
   }

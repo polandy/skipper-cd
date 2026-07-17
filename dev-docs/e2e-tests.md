@@ -59,8 +59,9 @@ asserting **behaviour + visual snapshots**.
 > client-side filter over the startup deploy rows. **Mask H** (§4.9) covers the
 > stack-health pill — **UH1** (pill per stack), **UH2** (per-service panel),
 > **UH3** (newest row per stack), **UH4** (health-watch status history:
-> age + phase timeline + deploy-correlated commit chip, ADR-0031) — driven by a
-> health poller scripted through the stub docker's `ps` output. **Mask I** (§4.10) covers the diff panel's commit
+> age + phase timeline + deploy-correlated commit chip, ADR-0031), **UH5**
+> (an exited on-demand container reads stopped + labelled, ADR-0027 amendment) —
+> driven by a health poller scripted through the stub docker's `ps` output. **Mask I** (§4.10) covers the diff panel's commit
 > metadata + variant-A row binding — **UI1** (commit header), **UI2** (row/panel
 > binding), **UI3** (multi-commit range) — driven by webhook image bumps. **Mask
 > J** (§4.11) covers the rolled-back error panel — **UJ1** (error box bound to its
@@ -467,6 +468,13 @@ real docker, no real containers. Behaviour-only (no snapshot).
   shows the timeline — two `health-phase` rows newest-first (`unhealthy`,
   `healthy`) with a 7-hex `health-phase-commit` chip on the deploy-correlated
   unhealthy phase only (the commit-less baseline carries none).
+- **UH5 — On-demand container (ADR-0027 amendment).** A stack with
+  `on_demand_containers` (`onDemand` start option) whose scripted `ps` shows the
+  on-demand container `exited` with code 137 next to a healthy sibling: the
+  pill stays `healthy` (the intended idle never degrades the rollup), and the
+  panel shows the service as `stopped` with `exited · on-demand` in its state
+  cell while the sibling's state stays plain. Covers the
+  config→StackRef→probe→snapshot→label through-line the unit tests cannot see.
 
 ### 4.10 UI — Maske I: Diff-panel commit metadata + row binding
 
@@ -636,6 +644,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: per-service panel toggle | **UH2** |
 | Stack health: pill on the newest row per stack | **UH3** |
 | Stack health: status history — age, ≥2-phase timeline, deploy-correlated commit chip | **UH4** |
+| Stack health: exited on-demand container reads stopped + on-demand label | **UH5** |
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
