@@ -19,7 +19,7 @@ stacks_base_dir: /var/lib/skipper/repo/modules
 webhook_secret: "your-secret-here"
 port: 8080
 metrics_port: 9120
-ui_enabled: true                        # optional, default: false (live web UI on the webhook port)
+ui_enabled: true                        # optional, default: true (live web UI on the webhook port)
 autosync: true                          # optional, default: true (pause deploys globally)
 
 stacks:
@@ -58,7 +58,7 @@ nixos_rebuild:
 | `webhook_secret` | string | no | — | HMAC-SHA256 secret used to validate incoming webhook payloads (supports Gitea and GitHub/Forgejo signatures). When empty, signature validation is skipped (not recommended for production). |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. |
-| `ui_enabled` | bool | no | `false` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
+| `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
 | `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
 | `stacks` | list | yes | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
