@@ -128,7 +128,7 @@ func (d *Deployer) deployStackGated(ctx context.Context, stack config.Stack, bas
 		// A dependency failed or is queued. Only a stack that actually has a
 		// change needs holding back; an unchanged stack is already at its desired
 		// state, so the constraint is moot and it does not block its dependents.
-		if changed, pending := pendingChanges(stack, baseDir, varsFile, state); pending {
+		if changed, pending := d.pendingChanges(stack, baseDir, varsFile, state); pending {
 			return d.deferForDependency(ctx, stack, changed, state, gate)
 		}
 	}
@@ -188,7 +188,7 @@ func (d *Deployer) markPending(stack string, changed []string, reason string) {
 // state, and whether any exist — the same detection deployStackIfChanged makes,
 // exposed so the ordering layer can describe a stack it defers without deploying
 // it. A hash error yields no changes; the real deploy would surface it.
-func pendingChanges(stack config.Stack, baseDir, varsFile string, state *persistedState) ([]string, bool) {
+func (d *Deployer) pendingChanges(stack config.Stack, baseDir, varsFile string, state *persistedState) ([]string, bool) {
 	repoDir := filepath.Join(baseDir, stack.Name)
 	composePath := filepath.Join(repoDir, "docker-compose.yml")
 
@@ -201,6 +201,7 @@ func pendingChanges(stack config.Stack, baseDir, varsFile string, state *persist
 	if err != nil {
 		return nil, false
 	}
+	d.addStackConfigHash(currentHashes, stack)
 	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
 	return changed, len(changed) > 0
 }

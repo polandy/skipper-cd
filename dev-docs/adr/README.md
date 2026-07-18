@@ -37,3 +37,5 @@ One file per decision, numbered sequentially (see
 | [0030](0030-image-update-automation.md) | Image-update automation (delegate to Renovate; git write-back if in-repo) |
 | [0031](0031-notify-on-own-stack-health-change.md) | Notify on own-stack health change (background watchdog, persisted phase history) |
 | [0032](0032-stack-deploy-ordering-via-depends-on.md) | Stack deploy ordering via depends_on (block on failed dependency, queue-aware) |
+| [0033](0033-durable-per-stack-deploy-audit-log.md) | Durable per-stack deploy audit log (append-only NDJSON, terminal outcomes) |
+| [0034](0034-stack-discovery-from-repo.md) | Stack definitions come from the deploy repo (auto-discovery + central overrides) |

@@ -140,6 +140,7 @@ func main() {
 
 	slog.Info("skipper-cd starting",
 		"stacks", len(cfg.Stacks),
+		"stack_discovery", cfg.StackDiscovery,
 		"webhook_port", cfg.Port,
 		"metrics_port", cfg.MetricsPort,
 		"branch", cfg.Branch,
@@ -160,6 +161,18 @@ func main() {
 	// Closures built earlier (e.g. the self-heal healer) capture this variable;
 	// they only run once the background loops start, after the construction.
 	var deployer *deploy.Deployer
+
+	// stacksNow returns the effective stack set: the host config's static list,
+	// or — in stack-discovery mode (ADR-0034) — the set most recently discovered
+	// from the repo (empty until the startup sync completes). Every consumer
+	// that enumerates stacks (health poller, self-heal, autosync order, icons)
+	// reads through this so discovery updates reach them on the next call.
+	stacksNow := func() []config.Stack {
+		if cfg.StackDiscovery {
+			return deployer.CurrentStacks()
+		}
+		return cfg.Stacks
+	}
 
 	var (
 		broadcaster  *events.Broadcaster[events.DeployEvent]
@@ -224,7 +237,7 @@ func main() {
 			Healer: healerFunc(func(ctx context.Context, stack string, drift []events.DriftedService) (bool, error) {
 				return deployer.HealStack(ctx, cfg, stack, drift)
 			}),
-			Enabled:           cfg.SelfHealEnabled,
+			Enabled:           func(name string) bool { return cfg.EffectiveSelfHeal(stacksNow(), name) },
 			MinUnhealthyPolls: cfg.SelfHealMinUnhealthyPolls,
 			MaxAttempts:       cfg.SelfHealMaxAttempts,
 			Cooldown:          time.Duration(*cfg.SelfHealCooldownSeconds) * time.Second,
@@ -286,7 +299,7 @@ func main() {
 		healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 		hpCfg := health.Config{
 			Outputter:  command.NewShellRunner(healthTimeout),
-			Stacks:     func() []health.StackRef { return healthStacks(cfg) },
+			Stacks:     func() []health.StackRef { return healthStacks(cfg, stacksNow()) },
 			Interval:   time.Duration(interval) * time.Second,
 			AlwaysPoll: selfHealActive || healthWatcher != nil,
 		}
@@ -325,7 +338,7 @@ func main() {
 	// Autosync is active regardless of the UI so config-as-code pauses apply.
 	autosyncCtrl := autosync.NewController(cfg.Autosync, stackAutosyncConfig(cfg))
 	autosyncQueue := autosync.NewQueue()
-	order := func() []string { return deployOrder(cfg) }
+	order := func() []string { return deployOrder(cfg, stacksNow()) }
 	publishAutosync := func() {
 		snap := autosyncCtrl.Snapshot(order())
 		metrics.AutosyncGlobal.Set(boolToFloat(autosyncCtrl.GlobalEffective()))
@@ -395,7 +408,7 @@ func main() {
 	}
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, deployer, healthPoller, healthWatcher, broadcaster, history, auditLog, logRing, as, build))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, stacksNow, deployer, healthPoller, healthWatcher, broadcaster, history, auditLog, logRing, as, build))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -471,12 +484,12 @@ func stackAutosyncConfig(cfg *config.Config) map[string]*bool {
 	return m
 }
 
-// healthStacks maps each configured stack to the compose identity the health
+// healthStacks maps each effective stack to the compose identity the health
 // poller probes: the compose file from the repo clone plus the working_dir (if
 // any) as --project-directory — the same identity the deploy path uses.
-func healthStacks(cfg *config.Config) []health.StackRef {
-	refs := make([]health.StackRef, 0, len(cfg.Stacks))
-	for _, s := range cfg.Stacks {
+func healthStacks(cfg *config.Config, stacks []config.Stack) []health.StackRef {
+	refs := make([]health.StackRef, 0, len(stacks))
+	for _, s := range stacks {
 		refs = append(refs, health.StackRef{
 			Name:        s.Name,
 			ComposePath: filepath.Join(cfg.StacksBaseDir, s.Name, "docker-compose.yml"),
@@ -488,13 +501,13 @@ func healthStacks(cfg *config.Config) []health.StackRef {
 }
 
 // deployOrder returns stack names in the order DeployAllStacks processes them:
-// _nixos first (when the rebuild is enabled), then the configured stacks.
-func deployOrder(cfg *config.Config) []string {
-	order := make([]string, 0, len(cfg.Stacks)+1)
+// _nixos first (when the rebuild is enabled), then the effective stacks.
+func deployOrder(cfg *config.Config, stacks []config.Stack) []string {
+	order := make([]string, 0, len(stacks)+1)
 	if cfg.NixOSRebuild.IsEnabled() {
 		order = append(order, "_nixos")
 	}
-	for _, s := range cfg.Stacks {
+	for _, s := range stacks {
 		order = append(order, s.Name)
 	}
 	return order
@@ -507,7 +520,7 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *health.Poller, healthWatcher *healthwatch.Watcher, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
+func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *deploy.Deployer, healthPoller *health.Poller, healthWatcher *healthwatch.Watcher, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
@@ -542,7 +555,7 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *hea
 
 		iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 		iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
-		mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg)))
+		mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg, stacks)))
 		mux.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
 
 		mux.Handle("GET /api/autosync", autosyncH)
@@ -552,23 +565,27 @@ func webhookMux(cfg *config.Config, deployer *deploy.Deployer, healthPoller *hea
 	return mux
 }
 
-// stackLocator maps a stack name to its icon-resolution inputs from config.
-// The icon file lives in the stack's directory in the clone
-// (stacks_base_dir/<name>), the same directory change detection reads from.
-func stackLocator(cfg *config.Config) icons.StackLocator {
+// stackLocator maps a stack name to its icon-resolution inputs from the
+// effective stack set. The icon file lives in the stack's directory in the
+// clone (stacks_base_dir/<name>), the same directory change detection reads
+// from.
+func stackLocator(cfg *config.Config, stacks func() []config.Stack) icons.StackLocator {
 	return func(name string) (icons.Request, bool) {
 		// The reserved NixOS pseudo-stack has no directory in the clone and is
-		// not in cfg.Stacks; resolve its icon by auto-matching the "nixos" slug
-		// so it gets a recognizable logo instead of the "_" monogram fallback.
+		// not in the stack set; resolve its icon by auto-matching the "nixos"
+		// slug so it gets a recognizable logo instead of the "_" monogram
+		// fallback.
 		if name == deploy.NixosStateKey {
 			return icons.Request{Name: "nixos"}, true
 		}
-		if s, ok := cfg.StackByName(name); ok {
-			return icons.Request{
-				Name: s.Name,
-				Slug: s.Icon,
-				Dir:  filepath.Join(cfg.StacksBaseDir, s.Name),
-			}, true
+		for _, s := range stacks() {
+			if s.Name == name {
+				return icons.Request{
+					Name: s.Name,
+					Slug: s.Icon,
+					Dir:  filepath.Join(cfg.StacksBaseDir, s.Name),
+				}, true
+			}
 		}
 		return icons.Request{}, false
 	}
