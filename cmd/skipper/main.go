@@ -149,6 +149,9 @@ func main() {
 		"branch", cfg.Branch,
 		"command_timeout", timeout,
 	)
+	if cfg.WebhookSecret == "" {
+		slog.Warn("webhook_secret is empty: /webhook accepts unsigned requests from anyone who can reach this port, and a malformed payload still triggers a deploy")
+	}
 
 	// Cancels on SIGINT/SIGTERM. The deployer abandons a pending
 	// nixos-rebuild wait when it fires (ADR-0014).

@@ -8,6 +8,15 @@ import (
 	"path/filepath"
 )
 
+// PrivateFileMode is the permission mode for persisted skipper state files
+// (deploy state, event history, audit log, health-watch state): readable and
+// writable by the owner and group only, not world-readable on a multi-user host.
+const PrivateFileMode os.FileMode = 0o640
+
+// PrivateDirMode is the matching directory mode: without it, PrivateFileMode
+// on the files it holds would still let other users list the directory.
+const PrivateDirMode os.FileMode = 0o750
+
 // WriteFile writes data to path atomically: it writes a temp file in the same
 // directory, applies perm, and renames it over path. On any error the target
 // file is left untouched.

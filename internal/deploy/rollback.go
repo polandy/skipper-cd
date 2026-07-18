@@ -39,7 +39,7 @@ func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, state
 			return fmt.Errorf("%s: %w (%w)", stage, cause, rbErr)
 		}
 		slog.Error("rollback failed", "stack", run.stack.Name, "err", rbErr)
-		return fmt.Errorf("%s: %w (rollback also failed: %v)", stage, cause, rbErr)
+		return fmt.Errorf("%s: %w (rollback also failed: %w)", stage, cause, rbErr)
 	}
 	slog.Info("rollback successful, old containers restored", "stack", run.stack.Name)
 	metrics.DeployRollbacks.WithLabelValues(run.stack.Name).Inc()
@@ -91,14 +91,14 @@ func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persi
 	}
 	if err := d.runDockerCompose(ctx, rbRun, upArgs...); err != nil {
 		if run.stack.HealthCheck != nil {
-			return fmt.Errorf("restored version did not come up healthy: %v (%w)", err, ErrRollbackUnhealthy)
+			return fmt.Errorf("restored version did not come up healthy: %w (%w)", err, ErrRollbackUnhealthy)
 		}
 		return err
 	}
 	if hc := run.stack.HealthCheck; hc != nil && hc.URL != "" {
 		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
 		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
-			return fmt.Errorf("restored version failed the health probe: %v (%w)", err, ErrRollbackUnhealthy)
+			return fmt.Errorf("restored version failed the health probe: %w (%w)", err, ErrRollbackUnhealthy)
 		}
 	}
 	return nil

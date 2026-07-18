@@ -8,6 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/polandy/skipper-cd/internal/fsatomic"
 	"github.com/polandy/skipper-cd/internal/health"
 )
 
@@ -161,7 +162,7 @@ func (s *state) save(path string) error {
 		tmp.Close()
 		return err
 	}
-	if err := tmp.Chmod(0o644); err != nil {
+	if err := tmp.Chmod(fsatomic.PrivateFileMode); err != nil {
 		tmp.Close()
 		return err
 	}
