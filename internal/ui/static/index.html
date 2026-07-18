@@ -1983,6 +1983,8 @@
   .oc-image { color: var(--text-muted); }
   .oc-ports { color: var(--text-muted); font-size: 10px; }
   .oc-status { color: var(--text-muted); margin-left: auto; white-space: nowrap; }
+  .orphan-cont.filtered-out { display: none !important; }
+  .orphan-item.filtered-out { display: none !important; }
   body.view-logs #orphans { display: none !important; }
 
   .stack-row {
@@ -2356,10 +2358,10 @@
   </div>
 
   <div class="orphans" id="orphans" data-testid="orphans">
-    <button class="orphans-head" id="orphans-head" aria-expanded="false" title="Running compose projects the discovered stack set no longer accounts for.">
+    <button class="orphans-head" id="orphans-head" data-testid="orphans-head" aria-expanded="false" title="Running compose projects the discovered stack set no longer accounts for.">
       <span class="orphans-caret" aria-hidden="true">▶</span>
       <span>Orphans</span>
-      <span class="orphans-count" id="orphans-count">0</span>
+      <span class="orphans-count" id="orphans-count" data-testid="orphans-count">0</span>
     </button>
     <div class="orphans-body" id="orphans-body"></div>
   </div>
@@ -2439,12 +2441,17 @@
 
   // Orphans (ADR-0036): compose projects the discovered stack set no longer
   // accounts for, from the 'orphans' SSE snapshot. Rendered as a collapsed
-  // section below the table; hidden when empty.
+  // section below the table; hidden when empty. orphansOpen remembers which
+  // rows the user expanded so a re-render (the snapshot re-publishes on every
+  // health-poll tick) does not collapse them.
   let orphansSnap = [];
+  let orphansOpen = new Set();
+  let orphansSectionOpen = false; // the user's manual toggle of the section header
 
   function orphanContainerRow(c) {
     var row = document.createElement('div');
     row.className = 'orphan-cont';
+    row.setAttribute('data-testid', 'orphan-cont');
     var dot = document.createElement('span');
     dot.className = 'oc-dot ' + orphanStateClass(c.state);
     dot.title = c.state || '';
@@ -2494,12 +2501,20 @@
     var body = document.getElementById('orphans-body');
     var count = document.getElementById('orphans-count');
     body.textContent = '';
-    count.textContent = String(orphansSnap.length);
+    // With an active search the count badge shows matching orphans (0 when
+    // none), otherwise the total.
+    var q = (deployFilter.value || '').trim().toLowerCase();
+    count.textContent = String(q
+      ? orphansSnap.filter(function(o) { return orphanMatchesQuery(o, q); }).length
+      : orphansSnap.length);
     if (!orphansSnap.length) { wrap.classList.remove('shown'); return; }
     orphansSnap.forEach(function(o) {
       var conts = o.containers || [];
       var item = document.createElement('div');
       item.className = 'orphan-item';
+      item.setAttribute('data-testid', 'orphan-item');
+      item.setAttribute('data-project', o.project);
+      item.setAttribute('data-class', o.class);
 
       var row = document.createElement(conts.length ? 'button' : 'div');
       row.className = 'orphan-row';
@@ -2532,13 +2547,30 @@
         if (vols.length) facts.appendChild(orphanFactRow('volumes', vols.join(', '), 'kept on prune'));
         detail.appendChild(facts);
       }
-      conts.forEach(function(c) { detail.appendChild(orphanContainerRow(c)); });
+      // Search integration: the active deploy-search query (q, above) also scans
+      // orphans. A container match hides the non-matching containers so the hit
+      // stands out; an orphan that matches (project fields or any container) is
+      // auto-expanded on top of any manual expansion.
+      var anyContMatch = q && conts.some(function(c) { return containerMatchesQuery(c, q); });
+      conts.forEach(function(c) {
+        var crow = orphanContainerRow(c);
+        if (anyContMatch && !containerMatchesQuery(c, q)) crow.classList.add('filtered-out');
+        detail.appendChild(crow);
+      });
+
+      var orphanMatch = !q || orphanMatchesQuery(o, q);
+      // During an active search, an orphan that does not match is hidden (like
+      // the deploy table filters its rows), not merely left collapsed.
+      item.classList.toggle('filtered-out', !orphanMatch);
 
       if (conts.length) {
-        row.setAttribute('aria-expanded', 'false');
+        var startOpen = orphansOpen.has(o.project) || (!!q && orphanMatch);
+        item.classList.toggle('open', startOpen);
+        row.setAttribute('aria-expanded', startOpen ? 'true' : 'false');
         row.addEventListener('click', function() {
           var open = item.classList.toggle('open');
           row.setAttribute('aria-expanded', open ? 'true' : 'false');
+          if (open) { orphansOpen.add(o.project); } else { orphansOpen.delete(o.project); }
         });
       }
 
@@ -2546,14 +2578,24 @@
       body.appendChild(item);
     });
     wrap.classList.add('shown');
+    applyOrphansSectionOpen();
+  }
+
+  // The section is open when the user opened it, or when an active search
+  // matches an orphan (so search hits are actually visible, not hidden behind a
+  // collapsed section).
+  function applyOrphansSectionOpen() {
+    var q = (deployFilter.value || '').trim().toLowerCase();
+    var searchOpen = !!q && orphansSnap.some(function(o) { return orphanMatchesQuery(o, q); });
+    var open = orphansSectionOpen || searchOpen;
+    document.getElementById('orphans').classList.toggle('open', open);
+    document.getElementById('orphans-head').setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
   (function() {
-    var head = document.getElementById('orphans-head');
-    head.addEventListener('click', function() {
-      var wrap = document.getElementById('orphans');
-      var open = wrap.classList.toggle('open');
-      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.getElementById('orphans-head').addEventListener('click', function() {
+      orphansSectionOpen = !orphansSectionOpen;
+      applyOrphansSectionOpen();
     });
   })();
 
@@ -3363,7 +3405,10 @@
     es.addEventListener('orphans', function(e) {
       var d = JSON.parse(e.data);
       orphansSnap = (d && d.orphans) || [];
-      renderOrphans();
+      // Under an active search, re-run the filter so new orphan data obeys the
+      // query (hide non-matching, refresh hits/total); otherwise a plain render.
+      if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
+      else renderOrphans();
     });
 
     es.onerror = function() {
@@ -3431,6 +3476,15 @@
       }
       // A panel (files/diff/error) trails its row and shares its visibility.
       el.classList.toggle('filtered-out', !visible);
+    }
+    // The same query drives orphan search; re-render to apply it, and count
+    // orphans among the searchable elements so hits/total reflects them too.
+    renderOrphans();
+    if (q) {
+      for (var j = 0; j < orphansSnap.length; j++) {
+        total++;
+        if (orphanMatchesQuery(orphansSnap[j], q)) shown++;
+      }
     }
     deployFilterCount.textContent = q ? (shown + '/' + total) : '';
     deployFilterEmpty.classList.toggle('show', q.length > 0 && total > 0 && shown === 0);

@@ -143,6 +143,26 @@ function orphanStateClass(state) {
   return 'stopped';
 }
 
+// containerMatchesQuery reports whether an orphan container matches the
+// already-lowercased search query across its searchable fields. Empty query
+// never matches (search inactive).
+function containerMatchesQuery(c, q) {
+  if (!q) return false;
+  return [c.name, c.service, c.image, c.ports, c.status].some(function (v) {
+    return (v || '').toLowerCase().indexOf(q) !== -1;
+  });
+}
+
+// orphanMatchesQuery reports whether an orphan matches the query — its
+// project-level fields (name, working_dir, config file, volumes) or any of its
+// containers. Drives search-expansion of the orphan section.
+function orphanMatchesQuery(o, q) {
+  if (!q) return false;
+  var fields = [o.project, o.working_dir, o.config_file].concat(o.volumes || []);
+  if (fields.some(function (v) { return (v || '').toLowerCase().indexOf(q) !== -1; })) return true;
+  return (o.containers || []).some(function (c) { return containerMatchesQuery(c, q); });
+}
+
 // Dual-use export: in the browser this file loads as a plain <script>, so the
 // functions above are already globals and `module` is undefined — the export is
 // skipped. Under `node --test` `module` exists, so the helpers are exported for
@@ -152,5 +172,6 @@ if (typeof module !== 'undefined' && module.exports) {
     formatDuration, formatTime, fullTime, classifyDiffLine, shortSHA,
     statusText, auditStatusLabel, phaseDuration, phaseSince, healthClass,
     levelClass, logTime, reasonFromSnap, orphanMeta, orphanStateClass,
+    containerMatchesQuery, orphanMatchesQuery,
   };
 }
