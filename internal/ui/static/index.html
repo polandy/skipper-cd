@@ -2440,10 +2440,9 @@
   }
 
   // Orphans (ADR-0036): compose projects the discovered stack set no longer
-  // accounts for, from the 'orphans' SSE snapshot. Rendered as a collapsed
-  // section below the table; hidden when empty. orphansOpen remembers which
-  // rows the user expanded so a re-render (the snapshot re-publishes on every
-  // health-poll tick) does not collapse them.
+  // accounts for, from the 'orphans' SSE snapshot — a collapsed section below
+  // the table, hidden when empty. orphansOpen remembers expanded rows so the
+  // per-poll re-render does not collapse them.
   let orphansSnap = [];
   let orphansOpen = new Set();
   let orphansSectionOpen = false; // the user's manual toggle of the section header
@@ -2501,8 +2500,7 @@
     const body = document.getElementById('orphans-body');
     const count = document.getElementById('orphans-count');
     body.textContent = '';
-    // With an active search the count badge shows matching orphans (0 when
-    // none), otherwise the total.
+    // The badge shows matching orphans during a search, else the total.
     const q = (deployFilter.value || '').trim().toLowerCase();
     count.textContent = String(q
       ? orphansSnap.filter(function(o) { return orphanMatchesQuery(o, q); }).length
@@ -2547,10 +2545,8 @@
         if (vols.length) facts.appendChild(orphanFactRow('volumes', vols.join(', '), 'kept on prune'));
         detail.appendChild(facts);
       }
-      // Search integration: the active deploy-search query (q, above) also scans
-      // orphans. A container match hides the non-matching containers so the hit
-      // stands out; an orphan that matches (project fields or any container) is
-      // auto-expanded on top of any manual expansion.
+      // Search: on a container match, hide the non-matching containers so the
+      // hit stands out.
       const anyContMatch = q && conts.some(function(c) { return containerMatchesQuery(c, q); });
       conts.forEach(function(c) {
         const crow = orphanContainerRow(c);
@@ -2558,9 +2554,9 @@
         detail.appendChild(crow);
       });
 
+      // A non-matching orphan is hidden during search, not just left collapsed;
+      // a matching one auto-expands on top of any manual expansion.
       const orphanMatch = !q || orphanMatchesQuery(o, q);
-      // During an active search, an orphan that does not match is hidden (like
-      // the deploy table filters its rows), not merely left collapsed.
       item.classList.toggle('filtered-out', !orphanMatch);
 
       if (conts.length) {
@@ -2581,9 +2577,8 @@
     applyOrphansSectionOpen();
   }
 
-  // The section is open when the user opened it, or when an active search
-  // matches an orphan (so search hits are actually visible, not hidden behind a
-  // collapsed section).
+  // Open the section when the user opened it, or when a search matches an orphan
+  // (so the hit isn't hidden behind a collapsed section).
   function applyOrphansSectionOpen() {
     const q = (deployFilter.value || '').trim().toLowerCase();
     const searchOpen = !!q && orphansSnap.some(function(o) { return orphanMatchesQuery(o, q); });
@@ -3405,8 +3400,8 @@
     es.addEventListener('orphans', function(e) {
       const d = JSON.parse(e.data);
       orphansSnap = (d && d.orphans) || [];
-      // Under an active search, re-run the filter so new orphan data obeys the
-      // query (hide non-matching, refresh hits/total); otherwise a plain render.
+      // Under an active search, re-run the filter so new data obeys the query;
+      // otherwise a plain render.
       if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
       else renderOrphans();
     });
@@ -3477,8 +3472,8 @@
       // A panel (files/diff/error) trails its row and shares its visibility.
       el.classList.toggle('filtered-out', !visible);
     }
-    // The same query drives orphan search; re-render to apply it, and count
-    // orphans among the searchable elements so hits/total reflects them too.
+    // The same query drives orphan search; re-render, and count orphans into
+    // hits/total.
     renderOrphans();
     if (q) {
       for (let j = 0; j < orphansSnap.length; j++) {

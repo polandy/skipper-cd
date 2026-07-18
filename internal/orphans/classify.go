@@ -1,8 +1,7 @@
 // Package orphans detects compose projects running on the host that skipper's
-// discovered stack set no longer accounts for (ADR-0036). It is the "prune /
-// orphaned resources" gap for docker-compose: a stack whose directory is
-// removed from the repo keeps running forever otherwise. Detection is
-// read-only and viz-only; the optional prune layer acts on the orphaned class.
+// discovered stack set no longer accounts for (ADR-0036) — the "prune /
+// orphaned resources" gap for docker-compose. Detection is read-only and
+// viz-only; the optional prune layer acts on the orphaned class.
 package orphans
 
 import (
@@ -24,8 +23,8 @@ const (
 	Unmanaged Class = "unmanaged"
 )
 
-// Container is one container of a compose project, for the UI's per-orphan
-// expansion — so a user can see exactly which containers an orphan owns.
+// Container is one container of a compose project, shown in the UI's per-orphan
+// expansion.
 type Container struct {
 	Name    string `json:"name"`
 	Service string `json:"service,omitempty"`
@@ -35,10 +34,9 @@ type Container struct {
 	Ports   string `json:"ports,omitempty"`  // published ports, e.g. "0.0.0.0:8080->80/tcp"
 }
 
-// Project is a running docker compose project observed on the host, identified
-// by its com.docker.compose.project.working_dir label — the stable identity a
-// rollback (temp compose file in /tmp, --project-directory unchanged) preserves
-// (Invariant 3), unlike the compose file path.
+// Project is a running compose project observed on the host, identified by its
+// working_dir label — the identity a rollback preserves (Invariant 3), unlike
+// the compose file path.
 type Project struct {
 	Name       string
 	WorkingDir string
@@ -70,28 +68,23 @@ type Snapshot struct {
 // classified. Matching is by project working_dir throughout; compose project
 // names are display-only.
 type Managed struct {
-	// BaseDir is stacks_base_dir. A project whose working_dir lies under it,
-	// but matches no active or disabled stack, is a formerly-managed orphan.
+	// BaseDir is stacks_base_dir; a project under it with no matching stack is a
+	// formerly-managed orphan.
 	BaseDir string
-	// ActiveDirs holds the project dir of every active (deployed) discovered
-	// stack; a running project matching one is managed and not surfaced.
+	// ActiveDirs holds each active stack's project dir — a match is managed.
 	ActiveDirs map[string]bool
-	// DisabledDirs holds the project dir of every disabled stack. A disabled
-	// stack is hands-off — skipper neither deploys nor prunes it — so a matching
-	// project is managed and not surfaced as an orphan.
+	// DisabledDirs holds each disabled stack's project dir — hands-off, a match
+	// is managed and never pruned.
 	DisabledDirs map[string]bool
-	// StateDirs maps every stack name recorded in state to its last deployed
-	// project dir. It recognizes a removed stack whose working_dir pointed
-	// outside BaseDir as formerly managed, and surfaces stale state entries with
-	// nothing running as state-only orphans.
+	// StateDirs maps recorded stack name → last deployed project dir. Catches
+	// orphans whose dir sits outside BaseDir, and stale state-only entries.
 	StateDirs map[string]string
 }
 
-// Classify partitions the running projects into orphans (formerly managed,
-// prunable) and unmanaged (never pruned), and appends stale state-only orphans
-// for recorded stacks that are gone with nothing left running. Managed projects
-// (active or disabled) are dropped — they render as normal rows. The result is
-// sorted by project name for a stable UI and stable tests.
+// Classify partitions the running projects into orphaned (formerly managed,
+// prunable) and unmanaged (never pruned), appends stale state-only orphans for
+// recorded stacks that are gone with nothing running, and drops managed
+// projects. Sorted by project name.
 func Classify(projects []Project, m Managed) Snapshot {
 	running := make(map[string]bool, len(projects))
 	var orphans []Orphan

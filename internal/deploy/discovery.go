@@ -35,10 +35,9 @@ func (d *Deployer) CurrentDisabledStacks() []string {
 	return nil
 }
 
-// CurrentProjectDirs returns the recorded stack→project-dir map of the last
-// deploy run, for orphan detection (ADR-0036): it lets a removed stack's
-// running project be recognized by its working_dir even when that dir lay
-// outside stacks_base_dir. Empty before the first run. Safe for concurrent use.
+// CurrentProjectDirs returns the recorded stack→project-dir map, for orphan
+// detection (ADR-0036) — it recognizes a removed stack's project even when its
+// dir lay outside stacks_base_dir. Empty before the first run; concurrent-safe.
 func (d *Deployer) CurrentProjectDirs() map[string]string {
 	if p := d.projectDirs.Load(); p != nil {
 		return *p

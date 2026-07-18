@@ -28,11 +28,10 @@ type persistedState struct {
 	// Used to determine whether docker compose pull is necessary.
 	Images map[string]serviceImageByName `yaml:"images,omitempty"`
 
-	// ProjectDirs maps each stack to the compose project directory of its last
-	// successful deploy — its working_dir (--project-directory) when set, else
-	// the compose file's own directory. It is the working_dir label a running
-	// project carries, so orphan detection (ADR-0036) can recognize a removed
-	// stack's project even when its working_dir pointed outside stacks_base_dir.
+	// ProjectDirs maps each stack to its last successful deploy's compose project
+	// directory (the working_dir label). Lets orphan detection (ADR-0036)
+	// recognize a removed stack's project even when its dir lay outside
+	// stacks_base_dir.
 	ProjectDirs map[string]string `yaml:"project_dirs,omitempty"`
 
 	// NixOSRebuildInFlight holds the changed nix files of a rebuild that was

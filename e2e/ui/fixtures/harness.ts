@@ -18,11 +18,9 @@ const stubDockerScript = `#!/bin/sh
 dir=$(pwd)
 printf '%s\\t%s\\n' "$dir" "$*" >> "$DOCKER_LOG"
 
-# Orphan detection (ADR-0036): \`docker volume ls\` and \`docker ps -a\` are
-# answered from a shared listing (keyed off STUB_DOCKER_ORPHANS_DIR), written by
-# setOrphans/setVolumes. Matched before the health \`ps\` case below because
-# \`ps -a\` also contains " ps ". Health uses \`ps --format json --all\`, never
-# " ps -a ", so the two never collide.
+# Orphan detection (ADR-0036): \`volume ls\` / \`ps -a\` answered from a shared
+# listing (setOrphans/setVolumes). Matched before the health \`ps\` case: \`ps -a\`
+# also contains " ps ", but health's \`ps --format json --all\` never does.
 case " $* " in
   *" volume "*)
     [ -n "$STUB_DOCKER_ORPHANS_DIR" ] && [ -f "$STUB_DOCKER_ORPHANS_DIR/volumes.txt" ] && cat "$STUB_DOCKER_ORPHANS_DIR/volumes.txt"

@@ -175,10 +175,8 @@ func main() {
 		return cfg.Stacks
 	}
 
-	// managedNow builds the expected set for orphan detection (ADR-0036) from
-	// the current effective stacks, the disabled set, and the project dirs
-	// recorded in state. It captures deployer like stacksNow does; both are only
-	// called from background loops that start after the deployer is constructed.
+	// managedNow builds the expected set for orphan detection (ADR-0036) from the
+	// effective stacks, the disabled set, and the recorded project dirs.
 	managedNow := func() orphans.Managed {
 		m := orphans.Managed{
 			BaseDir:      cfg.StacksBaseDir,
@@ -336,10 +334,9 @@ func main() {
 		if healthWatcher != nil {
 			snapshotSinks = append(snapshotSinks, healthWatcher.Observe)
 		}
-		// Orphan detection (ADR-0036) piggybacks on the health-poll cadence so it
-		// needs no second timer. It is viz-only, so it runs only while a UI client
-		// is watching — the HasSubscribers gate skips the headless AlwaysPoll ticks
-		// self-heal/healthwatch may drive.
+		// Orphan detection (ADR-0036) rides the health-poll cadence (no second
+		// timer) and is UI-gated: HasSubscribers skips the headless AlwaysPoll ticks
+		// self-heal/healthwatch drive.
 		if stateB != nil {
 			orphanDetector = orphans.New(orphans.Config{
 				Outputter: command.NewShellRunner(healthTimeout),

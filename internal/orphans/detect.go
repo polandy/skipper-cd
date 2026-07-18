@@ -14,10 +14,8 @@ type Outputter interface {
 }
 
 // psColumns are the tab-separated fields psArgs emits per container, in order.
-// Matching on the working_dir label (not the compose file path) is what makes a
-// rollback's temp /tmp compose file irrelevant to identity (Invariant 3); the
-// remaining columns populate the UI's per-orphan container expansion. Status is
-// last because it is free human text (it never contains a tab).
+// Identity is the working_dir label, not the compose path — stable across a
+// rollback's /tmp file (Invariant 3). Status is last: free text, tab-free.
 var psColumns = []string{
 	`{{.Label "com.docker.compose.project"}}`,
 	`{{.Label "com.docker.compose.project.working_dir"}}`,
@@ -30,26 +28,22 @@ var psColumns = []string{
 	`{{.Ports}}`,
 }
 
-// psArgs lists every compose-managed container, one line per container so Detect
-// can group them into projects with their full container detail.
+// psArgs lists every compose-managed container, one line each.
 var psArgs = []string{
 	"ps", "-a",
 	"--filter", "label=com.docker.compose.project",
 	"--format", strings.Join(psColumns, "\t"),
 }
 
-// volumeArgs lists every named volume with its owning compose project, so Detect
-// can show which volumes an orphan holds — the data prune deliberately keeps
-// (no --volumes). Only compose-created volumes carry the project label; external
-// volumes have none and are skipped (prune never touches them either).
+// volumeArgs lists every named volume with its owning compose project. Only
+// compose-created volumes carry the project label; external ones are skipped.
 var volumeArgs = []string{
 	"volume", "ls",
 	"--format", `{{.Label "com.docker.compose.project"}}` + "\t" + `{{.Name}}`,
 }
 
-// Config wires a Detector. Managed supplies skipper's current expected set on
-// every detection (it changes as discovery re-runs); Publish (optional)
-// receives every fresh snapshot for the UI.
+// Config wires a Detector. Managed supplies the expected set fresh on every
+// detection; Publish (optional) receives each new snapshot for the UI.
 type Config struct {
 	Outputter Outputter
 	Managed   func() Managed
@@ -83,8 +77,7 @@ func (d *Detector) Detect(ctx context.Context) Snapshot {
 	}
 	projects := parseProjects(out)
 
-	// Volumes are best-effort: a failure just omits the data-safety note, it
-	// never blocks detection.
+	// Volumes are best-effort — a failure just omits them, never blocks detection.
 	if volsOut, verr := d.out.Output(ctx, "", "docker", volumeArgs...); verr != nil {
 		slog.Warn("orphan detection: could not list volumes", "err", verr)
 	} else {
@@ -108,10 +101,9 @@ func (d *Detector) Current() Snapshot {
 	return Snapshot{}
 }
 
-// parseProjects folds the tab-separated docker ps output (one line per
-// container, columns per psColumns) into one Project per compose project: its
-// working_dir is the first non-empty label seen and its Containers the lines
-// that belong to it. Lines without a project label are skipped.
+// parseProjects folds the ps output (one line per container, columns per
+// psColumns) into one Project per compose project. Lines with no project label
+// are skipped; working_dir/config_file take the first non-empty value seen.
 func parseProjects(out []byte) []Project {
 	byName := map[string]*Project{}
 	var order []string
@@ -162,9 +154,8 @@ func field(f []string, i int) string {
 	return ""
 }
 
-// parseVolumes folds `docker volume ls` output (project<TAB>volume, one line per
-// volume) into a project→volume-names map, skipping volumes with no project
-// label (not compose-created). Names are kept in the order docker returns them.
+// parseVolumes folds `docker volume ls` output (project<TAB>volume) into a
+// project→volume-names map, skipping volumes with no project label.
 func parseVolumes(out []byte) map[string][]string {
 	byProject := map[string][]string{}
 	for _, line := range strings.Split(string(out), "\n") {
@@ -181,8 +172,7 @@ func parseVolumes(out []byte) map[string][]string {
 	return byProject
 }
 
-// attachVolumes fills each project's Volumes from the project→volumes map, keyed
-// by compose project name (the same label volumes and containers share).
+// attachVolumes fills each project's Volumes from the project→volumes map.
 func attachVolumes(projects []Project, vols map[string][]string) {
 	for i := range projects {
 		projects[i].Volumes = vols[projects[i].Name]

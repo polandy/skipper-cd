@@ -165,10 +165,9 @@ type stackRun struct {
 	baseEnv     []string // os.Environ() + vars_file (env_files are added per call)
 }
 
-// effectiveProjectDir returns the directory docker compose uses as the
-// project's working_dir label: the explicit --project-directory when set, else
-// the compose file's own directory (Invariant 1). It is what a running project
-// reports and what orphan detection matches against.
+// effectiveProjectDir returns the directory docker compose uses as the project's
+// working_dir label: --project-directory when set, else the compose file's dir
+// (Invariant 1). It is what orphan detection matches against.
 func (r stackRun) effectiveProjectDir() string {
 	if r.projectDir != "" {
 		return r.projectDir

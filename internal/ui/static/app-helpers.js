@@ -125,27 +125,24 @@ function reasonFromSnap(s) {
   return 'global';
 }
 
-// orphanMeta is the right-hand note on an orphan row (ADR-0036): a state-only
-// orphan has nothing running, otherwise it shows the container count. Purely a
-// function of the orphan object, so the unit layer covers the pluralization.
+// orphanMeta is the right-hand note on an orphan row: "state only" when nothing
+// runs, otherwise the container count.
 function orphanMeta(o) {
   if (o.state_only) return 'state only';
   const n = (o.containers || []).length;
   return n + (n === 1 ? ' container' : ' containers');
 }
 
-// orphanStateClass maps a container's docker State to the same dot vocabulary
-// the health pills use (healthy / unhealthy / stopped), so the orphan expansion
-// reuses one set of colours.
+// orphanStateClass maps a container's docker State to the health-pill dot
+// vocabulary (healthy / unhealthy / stopped).
 function orphanStateClass(state) {
   if (state === 'running') return 'healthy';
   if (state === 'restarting' || state === 'dead') return 'unhealthy';
   return 'stopped';
 }
 
-// containerMatchesQuery reports whether an orphan container matches the
-// already-lowercased search query across its searchable fields. Empty query
-// never matches (search inactive).
+// containerMatchesQuery reports whether a container matches the lowercased query
+// across its fields. Empty query never matches.
 function containerMatchesQuery(c, q) {
   if (!q) return false;
   return [c.name, c.service, c.image, c.ports, c.status].some(function (v) {
@@ -153,9 +150,8 @@ function containerMatchesQuery(c, q) {
   });
 }
 
-// orphanMatchesQuery reports whether an orphan matches the query — its
-// project-level fields (name, working_dir, config file, volumes) or any of its
-// containers. Drives search-expansion of the orphan section.
+// orphanMatchesQuery reports whether an orphan matches the query — its project
+// fields (name, working_dir, config file, volumes) or any of its containers.
 function orphanMatchesQuery(o, q) {
   if (!q) return false;
   const fields = [o.project, o.working_dir, o.config_file].concat(o.volumes || []);
