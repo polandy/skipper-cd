@@ -14,13 +14,21 @@
 
 const CACHE = 'skipper-shell-__VERSION__';
 
-// The app shell: the page plus the assets it needs to paint.
+// The app shell: the page plus the assets it needs to paint — including the
+// self-hosted fonts (served same-origin from /fonts/), so the installed UI
+// renders with its real typography offline.
 const SHELL = [
   '/',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/icon-maskable-512.png',
+  '/fonts/dm-sans-400.woff2',
+  '/fonts/dm-sans-500.woff2',
+  '/fonts/dm-sans-600.woff2',
+  '/fonts/jetbrains-mono-400.woff2',
+  '/fonts/jetbrains-mono-500.woff2',
+  '/fonts/jetbrains-mono-600.woff2',
 ];
 
 self.addEventListener('install', (event) => {

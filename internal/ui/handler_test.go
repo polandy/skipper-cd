@@ -306,6 +306,44 @@ func TestIconsHandler_DoesNotServeAppShell(t *testing.T) {
 	}
 }
 
+func TestFontsHandler_ServesWoff2(t *testing.T) {
+	handler := FontsHandler()
+	req := httptest.NewRequest(http.MethodGet, "/fonts/dm-sans-400.woff2", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "font/woff2" {
+		t.Errorf("content type = %q, want font/woff2", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("cache-control = %q, want an immutable long-lived cache", cc)
+	}
+	if got := rec.Body.Bytes(); len(got) < 4 || string(got[0:4]) != "wOF2" {
+		t.Error("body does not start with the woff2 signature (wOF2)")
+	}
+}
+
+// TestFontsHandler_DoesNotServeAppShell mirrors the icons guarantee: the fonts
+// file server is scoped to static/fonts, so it cannot serve app-shell files even
+// for a path that reaches it, independent of how the router mounts it.
+func TestFontsHandler_DoesNotServeAppShell(t *testing.T) {
+	handler := FontsHandler()
+	for _, path := range []string{"/index.html", "/sw.js", "/manifest.webmanifest"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404 (fonts handler must not serve app-shell files)", path, rec.Code)
+		}
+	}
+}
+
 func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")

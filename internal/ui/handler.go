@@ -17,7 +17,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-//go:embed static/index.html static/manifest.webmanifest static/sw.js static/icons
+//go:embed static/index.html static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
 
 // IndexHandler serves the embedded UI HTML page, with the configured theme
@@ -120,6 +120,28 @@ func IconsHandler() http.Handler {
 		panic(err) // staticFS embeds static/icons at compile time, so this cannot fail.
 	}
 	return http.StripPrefix("/icons/", http.FileServerFS(sub))
+}
+
+// FontsHandler serves the self-hosted web fonts (DM Sans + JetBrains Mono, woff2)
+// under /fonts/ from the embedded FS. Like IconsHandler it is scoped to
+// static/fonts and mounted with StripPrefix, so it can only ever serve fonts —
+// never the app-shell files. The woff2 content type is set explicitly because
+// Go's mime table does not include it, and the files are served immutable with a
+// long max-age: they are content-stable (a font change lands under a new name),
+// and the service worker caches them under a per-build cache name anyway.
+func FontsHandler() http.Handler {
+	sub, err := fs.Sub(staticFS, "static/fonts")
+	if err != nil {
+		panic(err) // staticFS embeds static/fonts at compile time, so this cannot fail.
+	}
+	fileServer := http.StripPrefix("/fonts/", http.FileServerFS(sub))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".woff2") {
+			w.Header().Set("Content-Type", "font/woff2")
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 // SSEHandler returns an HTTP handler that streams deploy events via
