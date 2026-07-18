@@ -161,7 +161,7 @@ func (l *Log) appendLine(rec Record) {
 	if err != nil {
 		return
 	}
-	f, err := os.OpenFile(l.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(l.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, fsatomic.PrivateFileMode)
 	if err != nil {
 		return
 	}
@@ -196,7 +196,7 @@ func (l *Log) compact() {
 		buf.Write(line)
 		buf.WriteByte('\n')
 	}
-	if err := fsatomic.WriteFile(l.filePath, buf.Bytes(), 0o644); err != nil {
+	if err := fsatomic.WriteFile(l.filePath, buf.Bytes(), fsatomic.PrivateFileMode); err != nil {
 		return
 	}
 	l.diskLines = len(all)

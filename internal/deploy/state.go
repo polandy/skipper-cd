@@ -144,12 +144,12 @@ func loadPersistedDeployState(stateDir string) (*persistedState, error) {
 }
 
 func saveDeployState(stateDir string, state *persistedState) error {
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+	if err := os.MkdirAll(stateDir, fsatomic.PrivateDirMode); err != nil {
 		return err
 	}
 	data, err := yaml.Marshal(state)
 	if err != nil {
 		return err
 	}
-	return fsatomic.WriteFile(filepath.Join(stateDir, stateFileName), data, 0o644)
+	return fsatomic.WriteFile(filepath.Join(stateDir, stateFileName), data, fsatomic.PrivateFileMode)
 }

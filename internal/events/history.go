@@ -113,5 +113,5 @@ func (h *History) save() error {
 	if err != nil {
 		return fmt.Errorf("marshal history: %w", err)
 	}
-	return fsatomic.WriteFile(h.filePath, data, 0o644)
+	return fsatomic.WriteFile(h.filePath, data, fsatomic.PrivateFileMode)
 }
