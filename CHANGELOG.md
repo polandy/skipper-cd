@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.0](https://github.com/polandy/skipper-cd/compare/v0.15.0...v0.16.0) (2026-07-18)
+
+
+### Features
+
+* **dev:** add ui-preview for eyeballing the web UI ([#120](https://github.com/polandy/skipper-cd/issues/120)) ([d77a8ad](https://github.com/polandy/skipper-cd/commit/d77a8ad4066db69672ae8ed51ced33f3cbdce596))
+
+
+### Bug Fixes
+
+* **ui:** reconnect the /api/logs stream after a fatal error ([#117](https://github.com/polandy/skipper-cd/issues/117)) ([943fdd1](https://github.com/polandy/skipper-cd/commit/943fdd19c1ccc9ff8e7a68803820115302031dd5))
+* **ui:** recover connection indicator from a fatal SSE stream error ([#116](https://github.com/polandy/skipper-cd/issues/116)) ([8440e42](https://github.com/polandy/skipper-cd/commit/8440e42ea57b8a9dcee412ccfe686ef2166438f0))
+* **ui:** scope IconsHandler to static/icons and fail-fast on missing sw.js ([#114](https://github.com/polandy/skipper-cd/issues/114)) ([06fe8a3](https://github.com/polandy/skipper-cd/commit/06fe8a34a5e18ec1cbaf08ce5eff0b0545ac7b1a))
+
 ## [0.15.0](https://github.com/polandy/skipper-cd/compare/v0.14.0...v0.15.0) (2026-07-18)
 
 
