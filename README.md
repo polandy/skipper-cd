@@ -4,7 +4,7 @@
 
 <h1 align="center">skipper-cd</h1>
 
-<p align="center"><i>Simple, fast Docker Compose CD — with first-class NixOS support</i></p>
+<p align="center"><i>Simple, fast GitOps CD for Docker Compose — push to Git, redeploy only what changed</i></p>
 
 <p align="center">📖 <b><a href="https://polandy.github.io/skipper-cd/">Documentation</a></b></p>
 <br>
@@ -32,7 +32,7 @@ stacks:
 
 Each stack's compose file lives at `<stacks_base_dir>/<name>/docker-compose.yml`. Push to the repo, your Git host fires a webhook, and skipper-cd pulls, diffs, and redeploys only what changed.
 
-Run it **[on NixOS](docs/nixos.md)** as a declarative systemd service, or **[with Docker](docs/docker.md)** as a container. The full configuration reference is in **[docs/configuration.md](docs/configuration.md)**.
+New here? The **[Getting Started walkthrough](https://polandy.github.io/skipper-cd/getting-started/)** covers the whole loop end to end — repo layout, running the service, and wiring up the webhook. Run it **[on NixOS](docs/nixos.md)** as a declarative systemd service, or **[with Docker](docs/docker.md)** as a container; the full configuration reference is in **[docs/configuration.md](docs/configuration.md)**.
 
 ## Features
 
@@ -76,6 +76,7 @@ Concurrent webhook requests and the startup deploy are serialized by a deploymen
 
 | Topic | Description |
 |---|---|
+| **[Getting Started](https://polandy.github.io/skipper-cd/getting-started/)** | End-to-end walkthrough — deploy-repo layout, running the service, and wiring up the webhook. |
 | **[Configuration](docs/configuration.md)** | Full config reference — top-level & stack fields, `vars_file`, service icons, notifications. |
 | **[NixOS](docs/nixos.md)** | Running skipper-cd on NixOS: the `nixos_rebuild` feature, the NixOS module, and the self-registering-stacks pattern. |
 | **[Docker](docs/docker.md)** | Running skipper-cd as a container, and how locally-built images are handled. |

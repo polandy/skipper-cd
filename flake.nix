@@ -1,5 +1,5 @@
 {
-  description = "skipper-cd — lightweight Docker Compose CD for NixOS";
+  description = "skipper-cd — lightweight GitOps CD for Docker Compose, with first-class NixOS support";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

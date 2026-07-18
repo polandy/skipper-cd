@@ -1,5 +1,5 @@
 site_name: skipper-cd
-site_description: Simple, fast Docker Compose CD — with first-class NixOS support
+site_description: Simple, fast GitOps CD for Docker Compose — push to Git, redeploy only what changed
 site_url: https://polandy.github.io/skipper-cd/
 repo_url: https://github.com/polandy/skipper-cd
 repo_name: polandy/skipper-cd
@@ -41,6 +41,7 @@ theme:
 nav:
   - Home: index.md
   - Getting Started:
+      - Walkthrough: getting-started.md
       - Configuration: configuration.md
       - Autosync: autosync.md
       - Install as App (PWA): pwa.md
