@@ -19,6 +19,7 @@ const CACHE = 'skipper-shell-__VERSION__';
 // renders with its real typography offline.
 const SHELL = [
   '/',
+  '/app-helpers.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

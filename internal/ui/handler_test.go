@@ -344,6 +344,27 @@ func TestFontsHandler_DoesNotServeAppShell(t *testing.T) {
 	}
 }
 
+func TestAppHelpersHandler_ServesJS(t *testing.T) {
+	handler := AppHelpersHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-helpers.js", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/javascript") {
+		t.Errorf("content type = %q, want text/javascript", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("cache-control = %q, want no-cache (lockstep with the app shell)", cc)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "function formatDuration") {
+		t.Error("body does not contain the extracted helper functions")
+	}
+}
+
 func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")

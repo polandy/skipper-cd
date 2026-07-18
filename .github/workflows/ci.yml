@@ -26,6 +26,17 @@ jobs:
           go mod vendor
           git diff --exit-code
 
+  # JS unit layer for the pure UI helpers (internal/ui/static/app-helpers.js),
+  # run with the Node built-in test runner — no build step, no npm deps (ADR-0035).
+  ui-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test internal/ui/static/app-helpers.test.js
+
   # End-to-end tests: run the real skipper binary against a local git origin
   # and a stub docker on PATH (no docker daemon needed). Guarded by the "e2e"
   # build tag so they stay out of the fast `go test ./...` job above.

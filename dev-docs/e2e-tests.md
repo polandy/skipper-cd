@@ -5,9 +5,14 @@ adding or changing E2E coverage. Pure logic lives in unit tests (see below) —
 E2E owns only the **wiring and the through-line journeys** the unit tests
 cannot see.
 
-**Primary goal: quality-assure the Web UI requirements.** The UI is one
-embedded `internal/ui/static/index.html` whose contract is
-[`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md). A dependency/version bump
+**Primary goal: quality-assure the Web UI requirements.** The UI is a
+self-contained app shell (`internal/ui/static/index.html` plus same-origin
+embedded assets — fonts and the extracted `app-helpers.js`, ADR-0035) whose
+contract is
+[`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md).
+The pure, DOM-free helpers in `app-helpers.js` have their own fast unit layer —
+`node --test` (`make ui-unit`, its own CI job) — so E2E need not re-verify
+formatting/classification edge cases. A dependency/version bump
 or an edit to that file can silently break a control, an SSE→DOM render, a
 badge, or the drawer. The UI E2E layer exercises the **real rendered UI against
 the real backend** so those breaks fail CI. Coverage spans all four UI masks,

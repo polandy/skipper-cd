@@ -23,7 +23,7 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 - `internal/nixos` — nixos-rebuild; must stay free of docker/state/metrics/events knowledge
 - `internal/events` — SSE broadcaster + bounded persisted event history
 - `internal/metrics` — Prometheus metrics
-- `internal/ui` — the web UI is **self-contained** (ADR-0035): everything ships inside the binary and is served same-origin — no build step, no bundler, no external/CDN/npm dep, works offline. The app-shell markup+CSS+JS is one embedded file `static/index.html`; other assets (fonts under `static/fonts`, PWA icons under `static/icons`) are separate embedded files served by their own scoped handlers. Read `internal/ui/UI_SPEC.md` before UI changes
+- `internal/ui` — the web UI is **self-contained** (ADR-0035): everything ships inside the binary and is served same-origin — no build step, no bundler, no external/CDN/npm dep, works offline. The app shell (markup, CSS, and the main app script) is the embedded file `static/index.html`; the pure, DOM-free helpers it calls are extracted into `static/app-helpers.js` (loaded first, exposed as globals) so a `node --test` unit layer can import them (`make ui-unit`, its own CI job); fonts (`static/fonts`) and PWA icons (`static/icons`) are separate embedded files, each served by its own scoped handler. Read `internal/ui/UI_SPEC.md` before UI changes
 
 ## Invariants — do not break these
 
