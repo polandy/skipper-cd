@@ -2,7 +2,7 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check e2e e2e-ui lint govulncheck docs docker-build
+.PHONY: ci build vet fmt test vendor-check e2e e2e-ui lint govulncheck docs docker-build ui-preview
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
@@ -61,3 +61,10 @@ docs:
 docker-build:
 	docker build -t skipper-cd:ci .
 	trivy image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 skipper-cd:ci
+
+## --- ui-preview (not a CI job) --------------------------------------------
+# Boot a seeded skipper instance for manually eyeballing the web UI, then stay
+# up until Ctrl-C. Builds from the current checkout; no docker/network needed.
+# Override the port with PORT=… (default 3000). See dev-docs/ui-preview.md.
+ui-preview:
+	node scripts/ui-preview.mjs
