@@ -543,9 +543,32 @@ const (
 	defaultHealthWatchAlertCooldownSeconds     = 1800
 )
 
+// TCP port bounds for the webhook/UI and metrics listeners.
+const (
+	minPort = 1
+	maxPort = 65535
+)
+
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
 		return fmt.Errorf("repo_url is required")
+	}
+
+	// A negative command_timeout_seconds would build an already-expired context,
+	// failing every git/docker/nixos command from the first sync with an opaque
+	// "context deadline exceeded". An omitted or 0 value took the default above.
+	if cfg.CommandTimeoutSeconds < 0 {
+		return fmt.Errorf("command_timeout_seconds must be >= 0, got %d", cfg.CommandTimeoutSeconds)
+	}
+
+	if cfg.Port < minPort || cfg.Port > maxPort {
+		return fmt.Errorf("port must be between %d and %d, got %d", minPort, maxPort, cfg.Port)
+	}
+	if cfg.MetricsPort < minPort || cfg.MetricsPort > maxPort {
+		return fmt.Errorf("metrics_port must be between %d and %d, got %d", minPort, maxPort, cfg.MetricsPort)
+	}
+	if cfg.Port == cfg.MetricsPort {
+		return fmt.Errorf("port and metrics_port must differ, both are %d", cfg.Port)
 	}
 
 	if cfg.StackDiscovery {
