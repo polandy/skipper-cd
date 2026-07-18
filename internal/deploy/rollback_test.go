@@ -73,6 +73,69 @@ func TestDeployStack_RollbackOnUpFailure(t *testing.T) {
 	}
 }
 
+var errSimulatedRollbackFailure = errors.New("simulated rollback failure")
+
+// failUpCallsRunner fails the Nth "up" call (1-indexed) with the mapped error.
+type failUpCallsRunner struct {
+	upCount int
+	errs    map[int]error
+}
+
+func (r *failUpCallsRunner) Run(_ context.Context, _ string, _ []string, _ string, args ...string) error {
+	for _, a := range args {
+		if a == "up" {
+			r.upCount++
+			if err, ok := r.errs[r.upCount]; ok {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func TestDeployStack_RollbackAlsoFailsPreservesUnderlyingError(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	oldCompose := composeWithImage("nginx:1.25")
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{},
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(oldCompose),
+		},
+	}
+
+	// 1st "up" is the failed deploy, 2nd is the rollback's own "up" — make it
+	// fail with a distinguishable sentinel so the test can prove the wrap
+	// chain is errors.Is-unwrappable end to end (this is what %v vs %w changes).
+	runner := &failUpCallsRunner{errs: map[int]error{
+		1: errors.New("initial deploy failed"),
+		2: errSimulatedRollbackFailure,
+	}}
+	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+
+	stack := config.Stack{Name: "mystack"}
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
+	if err == nil {
+		t.Fatal("expected error from failed deploy")
+	}
+	if !errors.Is(err, errSimulatedRollbackFailure) {
+		t.Errorf("expected errors.Is to unwrap the rollback's underlying error, got: %v", err)
+	}
+}
+
 func TestDeployStack_RollbackSucceeds(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "mystack")
