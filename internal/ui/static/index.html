@@ -3837,12 +3837,42 @@
     if (nearOlderEdge) loadMoreLogs();
   });
 
+  // The log stream has no connection indicator (see the events indicator for
+  // that), so a fatal error must recover silently. Like /api/events, EventSource
+  // auto-reconnects after a transient drop but gives up for good on a fatal error
+  // (non-2xx / bad content-type, readyState CLOSED); without our own retry the
+  // pane would then stop receiving lines with nothing on screen to explain it.
+  // Backoff mirrors the events stream and shares maxReconnectDelay.
+  var logReconnectDelay = 1000;
+  var logReconnectTimer = null;
+
+  function scheduleLogReconnect() {
+    if (logReconnectTimer) return; // a retry is already pending
+    logReconnectTimer = setTimeout(function() {
+      logReconnectTimer = null;
+      connectLogs();
+    }, logReconnectDelay);
+    logReconnectDelay = Math.min(logReconnectDelay * 2, maxReconnectDelay);
+  }
+
   function connectLogs() {
     if (logSource) return;
     logSource = new EventSource('/api/logs');
     logSource.addEventListener('log', function(e) {
       pushLog(JSON.parse(e.data));
     });
+    logSource.onopen = function() {
+      logReconnectDelay = 1000; // a good connection resets the backoff
+    };
+    logSource.onerror = function() {
+      // CONNECTING: the browser is retrying itself (Last-Event-ID replays the
+      // gap on reconnect), so leave it. CLOSED: it gave up — clear the guard and
+      // retry ourselves with a capped backoff.
+      if (logSource.readyState === EventSource.CLOSED) {
+        logSource = null;
+        scheduleLogReconnect();
+      }
+    };
   }
 
   function applyView() {
