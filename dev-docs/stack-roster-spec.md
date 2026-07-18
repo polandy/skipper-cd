@@ -66,49 +66,65 @@ view's disabled line, unchanged) and gains `roster`:
 
 ## Frontend
 
+The Stacks view is a **table of stacks** that reuses the deploy table's row,
+column, and expand language wholesale — see
+[`dev-docs/ui-design-concept.md`](ui-design-concept.md) for that shared design.
+Only what is specific to the roster is listed here.
+
 - Third `data-view="stacks"` button in the header view switcher; `activeView`
-  gains the `stacks` value (persisted in `localStorage`).
-- A roster container, shown for the stacks view and hidden otherwise (the
-  deploy table and logs pane hide for it in turn).
-- One row per `Entry`: icon (`/api/icons/<name>`) · name · **status** ·
-  relative time · short commit SHA. Status reuses the deploy table's badge
-  (`badgeHTML`), plus two synthetic states: **never deployed** (no
-  `last_status`) and **disabled** (`disabled: true`, muted, no badge). Reuses
-  `formatTime` / `shortSHA`.
-- A tab header line: `N stacks`, and in discovery mode a quiet
-  `discovery` hint. Empty state when the set is empty.
-- Re-renders on each `stacks` snapshot. A live `deploying` event refreshes
-  only the affected row (not the whole list, so an open panel survives); the
-  next snapshot settles it to the terminal status.
+  gains the `stacks` value (persisted in `localStorage`). The roster container
+  shows for the stacks view and hides the deploy table + logs pane (and back).
+- **Aligned table**, same fixed-grid + header treatment as the deploy table
+  (`.roster-list-header`): columns `Stack · Status · Last deploy · Commit`. The
+  Stack cell is icon (`/api/icons/<name>`) + name, like the deploy table's Stack
+  cell. Rows are the deploy table's frame **without** the status left bar
+  (status is the badge). Mobile collapses to the same 2×2 shape.
+- **Status** reuses `badgeHTML` for the last terminal outcome, plus two
+  synthetic `.roster-flag`s: **never deployed** (no `last_status`) and
+  **disabled** (`disabled: true`, muted row, no badge). Time/commit are shown
+  only for a real past deploy (suppressed while deploying, parked, or never
+  deployed) and reuse `formatTime` / `fullTime` / `shortSHA`.
+- **No title line.** The roster starts straight at the column header — no count
+  or mode hint, matching the deploy table (which has none either).
+- Re-renders on each `stacks` snapshot. A live `deploying` event refreshes only
+  the affected row (an open panel survives); the next snapshot settles it.
 
 ### Row interactions (parity with the deploys view)
 
-- **Click a row → deploy history.** Toggles the deploy table's audit panel
-  (ADR-0033, `createAuditPanel`) below the row, loaded from
-  `/api/audit?stack=<name>`. One open at a time; the panel trails its row as a
-  sibling and connects to it visually. A full re-render (new snapshot) drops
-  any open panel — acceptable at the snapshot's per-run cadence.
+- **Click a row → containers + deploy history.** Expanding a stack stacks two
+  bound panels below the row as one accent card: the **containers** panel first
+  (the stack's live health/services, `createHealthPanel`, from the `health`
+  snapshot — shown only when health data exists for the stack), then the
+  **deploy-history** panel (ADR-0033, `createAuditPanel`, `/api/audit`). One
+  stack open at a time; a full re-render (new snapshot) drops the open panels.
+  These are the same two panels the Deploys view opens separately (health pill /
+  clock button); in the roster they carry the neutral accent bar.
+- **Time mode.** The Stacks options popover carries the same **Absolute time**
+  toggle as Deploys — one shared mode; flipping it re-renders the roster too.
+  Hovering a relative time reveals the absolute value (mouse; touch uses the
+  toggle).
 - **Search.** The same filter as the deploys view: a hidden bar revealed by
   type-to-search (a printable key while on the Stacks view) or, on touch, the
   "Search stacks" row in the Stacks view-options popover. Case-insensitive
-  substring match on the stack name; `shown/total` count; "No stack matches"
-  empty note; Esc clears then folds; a trailing history panel shares its
-  row's filtered visibility. The Stacks view gains its own view-options group
-  so the popover is consistent across all three views.
+  substring on the name; `shown/total` count; "No stack matches" note; Esc
+  clears then folds; trailing panels share their row's filtered visibility.
 
 ## Testing
 
 - `internal/roster`: table tests — merge/sort, never-deployed (no record),
   disabled ordering + parking, empty set.
-- Frontend: Playwright Maske Q (`uq-roster.spec.ts`) — tab switch + deployed/
-  disabled rows + discovery hint (UQ1), click-a-row-for-history (UQ2), search
-  incl. the mobile popover entry (UQ3/UQ4). Behaviour-only; the "never
-  deployed" state is covered by the roster unit test (in discovery mode the
-  first sync deploys every stack, so it isn't deterministically seedable in
-  e2e) and shares its `.roster-flag` rendering with the disabled row.
-- The header switcher gains a third control, so the full-page `ud-chrome`
-  baselines (`theme-dark`, `theme-light`, `mobile-layout`) are regenerated;
-  the element-scoped baselines are unaffected.
+- Frontend: Playwright Maske Q (`uq-roster.spec.ts`) — view switch + deployed/
+  disabled rows + aligned column header (UQ1), click-a-row → containers +
+  history (UQ2), search incl. the mobile popover entry (UQ3/UQ4). Behaviour-
+  only; the "never deployed" state is covered by the roster unit test (in
+  discovery mode the first sync deploys every stack, so it isn't
+  deterministically seedable in e2e) and shares its `.roster-flag` rendering
+  with the disabled row.
+- The header switcher gained a third control, so the full-page `ud-chrome`
+  baselines (`theme-dark`, `theme-light`, `mobile-layout`) were regenerated for
+  it; the roster's own view is not snapshotted (behaviour-only) and the
+  element-scoped baselines are unaffected.
 
-Not an ADR: no new architectural decision — this is a presentation surface
-over the set ADR-0034 already established. Recorded here + in `UI_SPEC.md`.
+Not an ADR: no new architectural decision — this is a presentation surface over
+the set ADR-0034 already established. Recorded here, in
+[`ui-design-concept.md`](ui-design-concept.md), and in `UI_SPEC.md`.

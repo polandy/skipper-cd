@@ -855,7 +855,9 @@
   .health-panel {
     padding: 9px 14px 12px;
     background: color-mix(in srgb, var(--hc) 6%, var(--bg-sunken));
+    border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
+    border-radius: var(--radius); /* top corners squared where bound (below) */
     box-shadow: inset 3px 0 0 var(--hc);
   }
   .health-panel .health-panel-head {
@@ -952,15 +954,18 @@
   }
   .history-btn svg { width: 12px; height: 12px; }
   /* The history panel is not one status — it lists many — so it binds to its row
-     with the neutral accent bar rather than a status colour. */
-  .event-row.audit-open {
+     with the neutral accent bar rather than a status colour. Shared with the
+     Stacks roster's open row so an expanded stack looks identical in both. */
+  .event-row.audit-open, .roster-row.audit-open {
     background: color-mix(in srgb, var(--accent) 7%, transparent);
     box-shadow: inset 3px 0 0 var(--accent);
   }
   .audit-panel {
     padding: 9px 14px 12px;
     background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+    border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
+    border-radius: var(--radius); /* top corners squared where bound (below) */
     box-shadow: inset 3px 0 0 var(--accent);
     animation: slidein 0.18s ease;
   }
@@ -968,9 +973,7 @@
     display: flex; align-items: center; gap: 8px; padding: 0 0 8px;
     font-family: var(--font-mono); font-size: 11px;
   }
-  .audit-panel .ap-head-label { color: var(--text-muted); letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; }
-  .audit-panel .ap-head-who { color: var(--text-primary); font-size: 12.5px; font-weight: 600; }
-  .audit-panel .ap-count { color: var(--text-muted); margin-left: auto; }
+  .audit-panel .ap-count { color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
   .audit-panel .ap-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
   .audit-row {
     display: grid;
@@ -1289,7 +1292,8 @@
      square the adjoining corners and close the .event-list 2px inter-row gap, so
      an open row and all its bound trailers read as one card with an unbroken left
      bar. Applies to the health panel too — it shares the same binding. */
-  .event-row.health-open, .event-row.diff-open, .event-row.audit-open {
+  .event-row.health-open, .event-row.diff-open, .event-row.audit-open,
+  .roster-row.audit-open {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
@@ -1301,7 +1305,8 @@
   /* A bound panel with the error detail stacked below it is mid-stack, not the
      last card: square its bottom too so the bar runs straight into the error box. */
   .diff-panel.bound:has(+ .error-detail),
-  .files-list.bound:has(+ .error-detail) {
+  .files-list.bound:has(+ .error-detail),
+  .health-panel:has(+ .audit-panel) {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
@@ -1708,9 +1713,6 @@
     border-top: 3px solid currentColor;
     opacity: 0.55;
   }
-  /* Stacks has no desktop options (its only popover entry is the mobile-only
-     "Search stacks"), so it carries no caret there; restored ≤ 700 px below. */
-  .view-toggle button[data-view="stacks"].active::after { content: none; }
 
   /* ─── VIEW OPTIONS POPOVER ─── */
   /* View-specific toggles (deploys: time mode; logs: sort + auto-scroll) live
@@ -1991,41 +1993,54 @@
   body.view-stacks #deploy-table, body.view-stacks #empty-state,
   body.view-stacks #disabled-stacks, body.view-stacks #log-view { display: none !important; }
 
-  .roster-head {
-    display: flex; align-items: center; gap: 10px;
-    padding: 2px 4px 12px; color: var(--text-muted); font-size: 13px;
-  }
-  .roster-count { color: var(--text-primary); font-weight: 600; }
-  .roster-source {
-    font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
-    color: var(--accent);
-    padding: 2px 8px; border: 1px solid var(--accent-dim); border-radius: 999px;
-  }
-  .roster-list { display: flex; flex-direction: column; gap: 4px; }
-  .roster-row {
+  /* The roster rows share the deploy table's row frame exactly (borderless,
+     rounded, hover overlay, the same 2px inter-row gap and open/bound-panel
+     seam) — the only deliberate difference is that a roster row carries no
+     status-coloured left bar, since status here is shown as a badge. The
+     open-history styling is shared with .event-row.audit-open (see AUDIT), so
+     an expanded stack looks identical in both views. */
+  .roster-list { display: flex; flex-direction: column; gap: 2px; }
+  /* Column header + rows share one fixed grid so the roster reads as an aligned
+     table, exactly like the deploy table's .event-list-header + .event-row
+     (fixed tracks are what line the columns up across rows). Stack · Status ·
+     Last deploy · Commit. */
+  .roster-list-header, .roster-row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-    align-items: center; gap: 12px;
-    padding: 9px 12px;
-    background: var(--bg-sunken);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    cursor: pointer;
+    grid-template-columns: 1fr 130px 160px 90px;
+    gap: 12px;
+    align-items: center;
   }
-  .roster-row:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
-  /* Open history panel connects to its row: drop the seam between them. */
-  .roster-row.audit-open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-  .roster-row.audit-open + .audit-panel { margin-top: -4px; border-top-left-radius: 0; border-top-right-radius: 0; }
+  .roster-list-header {
+    padding: 0 20px 10px;
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  /* No rows (empty set): drop the lone column header, the count line carries it. */
+  .roster-list-header:has(+ .roster-list:empty) { display: none; }
+  .roster-row {
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .roster-row:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
   .roster-row.disabled { opacity: 0.55; }
   .roster-list .filtered-out { display: none !important; }
-  .roster-name {
+  .roster-stack {
+    display: flex; align-items: center; gap: 8px; min-width: 0;
     font-family: var(--font-mono); font-size: 13px; font-weight: 500;
     color: var(--text-primary); letter-spacing: -0.3px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  .roster-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .roster-when, .roster-sha {
     font-family: var(--font-mono); font-size: 12px;
     color: var(--text-muted); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
   }
   .roster-flag {
     font-size: 11px; color: var(--text-muted);
@@ -2034,7 +2049,16 @@
   }
   .roster-empty { display: none; color: var(--text-muted); text-align: center; padding: 28px 12px; }
   .roster-list:empty ~ .roster-empty { display: block; }
-  @media (max-width: 520px) { .roster-sha { display: none; } }
+  /* The expanded stack stacks a containers (health) panel above the history
+     panel. Force the health panel's frame to the accent — not its health colour
+     — so row → containers → history reads as one continuous accent card, and
+     drop the redundant stack name from its head (the row already names it). The
+     per-service dots keep the real health colours. */
+  .roster-list .health-panel {
+    background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .roster-list .health-panel .hp-head-who { display: none; }
 
   .log-pane {
     background: var(--bg-sunken);
@@ -2136,8 +2160,6 @@
        view-options popover carries a "Search stacks" entry that reveals and
        focuses the filter (hidden on desktop, where type-to-search covers it). */
     body:not(.view-logs) .view-options .vo-search { display: flex; }
-    /* On mobile the Stacks popover carries "Search stacks", so its caret returns. */
-    .view-toggle button[data-view="stacks"].active::after { content: ""; }
 
     .event-row {
       grid-template-columns: 1fr auto;
@@ -2152,6 +2174,34 @@
     .cell-duration { grid-column: 2; grid-row: 2; text-align: right; }
     .col-files { display: none; }
     .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
+
+    /* Roster collapses like the deploy rows: drop the column header, 2×2 grid —
+       stack / status on top, last-deploy / commit below, same tighter padding. */
+    .roster-list-header { display: none; }
+    .roster-row {
+      grid-template-columns: 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 4px 12px;
+      padding: 10px 14px;
+    }
+    .roster-stack  { grid-column: 1; grid-row: 1; }
+    .roster-status { grid-column: 2; grid-row: 1; justify-self: end; }
+    .roster-when   { grid-column: 1; grid-row: 2; font-size: 11px; }
+    .roster-sha    { grid-column: 2; grid-row: 2; justify-self: end; }
+
+    /* Deploy-history rows stay on one line on a phone too: the desktop's
+       generous fixed columns (which overflowed and clipped the right column, in
+       both the deploy view and the Stacks roster) give way to content-width
+       tracks — time · status · duration · commit — with the changed-file count
+       dropped on narrow screens, as the deploy table drops its own files column.
+       Any error message spans the full width on its own line. */
+    .audit-row {
+      grid-template-columns: auto auto auto 1fr;
+      gap: 10px;
+    }
+    .audit-row .ar-sha   { justify-self: end; text-align: right; }
+    .audit-row .ar-files { display: none; }
+    .audit-row .ar-err   { grid-column: 1 / -1; }
   }
 
   /* Portrait phones keep the build identity next to the logo. It clips with an
@@ -2225,6 +2275,11 @@
           <button class="filter-toggle vo-search" id="roster-search-open" data-testid="roster-search" type="button" title="Search stacks">
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span>Search stacks</span>
+          </button>
+          <button class="filter-toggle" id="roster-time-mode" data-testid="roster-time-mode" title="Switch to absolute time">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Absolute time</span>
           </button>
         </div>
         <div class="vo-group" data-view="logs">
@@ -2360,9 +2415,11 @@
       <span class="stack-filter-count" id="roster-filter-count" data-testid="roster-filter-count"></span>
       <button class="stack-filter-clear" id="roster-filter-clear" data-testid="roster-filter-clear" type="button" aria-label="Clear filter">&times;</button>
     </div>
-    <div class="roster-head">
-      <span class="roster-count" id="roster-count" data-testid="roster-count"></span>
-      <span class="roster-source" id="roster-source" data-testid="roster-source"></span>
+    <div class="roster-list-header">
+      <span>Stack</span>
+      <span>Status</span>
+      <span>Last deploy</span>
+      <span>Commit</span>
     </div>
     <div class="roster-list" id="roster-list" data-testid="roster-list"></div>
     <div class="filter-empty" id="roster-filter-empty" data-testid="roster-filter-empty">No stack matches &ldquo;<span id="roster-filter-empty-q"></span>&rdquo;.</div>
@@ -2448,7 +2505,6 @@
   // appears, including never-deployed and disabled ones. See
   // dev-docs/stack-roster-spec.md.
   let rosterSnap = [];
-  let rosterDiscovery = false;
 
   // rosterStatusHTML picks the row's status: a live in-flight deploy wins, then
   // the parked/never-deployed synthetic flags, else the last terminal badge.
@@ -2461,28 +2517,26 @@
 
   function renderRoster() {
     const list = document.getElementById('roster-list');
-    const count = document.getElementById('roster-count');
-    const source = document.getElementById('roster-source');
-    count.textContent = `${rosterSnap.length} ${rosterSnap.length === 1 ? 'stack' : 'stacks'}`;
-    source.textContent = rosterDiscovery ? 'discovery' : '';
-    source.style.display = rosterDiscovery ? '' : 'none';
     list.textContent = '';
     rosterSnap.forEach(function(entry) {
       const deploying = !!deployingRows[entry.name];
       // Time + commit only make sense for a real past deploy — suppressed while
       // deploying, when parked, and when never deployed.
       const showMeta = !entry.disabled && !deploying && !!entry.last_status;
-      const when = showMeta && entry.last_at ? formatTime(entry.last_at) : '';
+      // Honour the shared time mode (Deploys' toggle), and — like the deploy
+      // table — hovering a relative time reveals the absolute one via title,
+      // and vice versa.
+      const when = showMeta && entry.last_at ? (absoluteTime ? fullTime(entry.last_at) : formatTime(entry.last_at)) : '';
+      const whenTitle = showMeta && entry.last_at ? (absoluteTime ? formatTime(entry.last_at) : fullTime(entry.last_at)) : '';
       const sha = showMeta && entry.last_commit ? shortSHA(entry.last_commit) : '';
       const row = document.createElement('div');
       row.className = entry.disabled ? 'roster-row disabled' : 'roster-row';
       row.dataset.testid = 'roster-row';
       row.dataset.stack = entry.name;
       row.innerHTML =
-        `<span class="stack-icon" data-testid="stack-icon"></span>` +
-        `<span class="roster-name">${escapeHtml(entry.name)}</span>` +
+        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span></span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}</span>` +
-        `<span class="roster-when">${escapeHtml(when)}</span>` +
+        `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
       populateIcon(row.querySelector('.stack-icon'), entry.name);
       list.appendChild(row);
@@ -2887,10 +2941,10 @@
     el.className = 'audit-panel';
     el.dataset.testid = 'audit-panel';
     el.dataset.auditFor = stack;
+    // No "deploy history" heading — expanding a stack's row makes it obvious;
+    // the count is the only header text.
     el.innerHTML =
-      `<div class="ap-head"><span class="ap-head-label">deploy history</span>` +
-      `<span class="ap-head-who">${escapeHtml(stack)}</span>` +
-      `<span class="ap-count"></span></div>` +
+      `<div class="ap-head"><span class="ap-count"></span></div>` +
       `<div class="ap-empty">Loading history…</div>`;
     fetchAudit(stack, function(records) {
       if (!el.parentNode) return; // closed (or replaced) while loading
@@ -3292,7 +3346,6 @@
       const d = JSON.parse(e.data);
       disabledSnap = (d && d.disabled) || [];
       rosterSnap = (d && d.roster) || [];
-      rosterDiscovery = !!(d && d.discovery);
       renderDisabledStacks();
       renderRoster();
     });
@@ -3309,17 +3362,17 @@
     };
   }
 
-  // Time mode toggle (default: relative)
-  const timeModeBtn = document.getElementById('time-mode');
+  // Time mode toggle (default: relative). One shared mode, surfaced in both the
+  // Deploys and Stacks view-options popovers; flipping either updates the deploy
+  // rows and re-renders the roster so both views stay in sync.
+  const timeModeBtns = [document.getElementById('time-mode'), document.getElementById('roster-time-mode')];
 
   function applyTimeMode() {
-    if (absoluteTime) {
-      timeModeBtn.classList.add('active');
-      timeModeBtn.title = 'Switch to relative time';
-    } else {
-      timeModeBtn.classList.remove('active');
-      timeModeBtn.title = 'Switch to absolute time';
-    }
+    timeModeBtns.forEach(function(btn) {
+      if (!btn) return;
+      btn.classList.toggle('active', absoluteTime);
+      btn.title = absoluteTime ? 'Switch to relative time' : 'Switch to absolute time';
+    });
     tbody.querySelectorAll('.cell-time').forEach(function(cell) {
       const ts = cell.dataset.ts;
       if (!ts) return;
@@ -3328,10 +3381,17 @@
     });
   }
 
-  timeModeBtn.addEventListener('click', function() {
-    absoluteTime = !absoluteTime;
-    localStorage.setItem('timeMode', absoluteTime ? 'absolute' : 'relative');
-    applyTimeMode();
+  timeModeBtns.forEach(function(btn) {
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      absoluteTime = !absoluteTime;
+      localStorage.setItem('timeMode', absoluteTime ? 'absolute' : 'relative');
+      applyTimeMode();
+      // Re-render the roster so its times follow the mode too. Only reached on a
+      // user click (post-setup), so the roster's own state is safely in scope —
+      // unlike applyTimeMode's initial call, which runs before that block.
+      if (activeView === 'stacks') renderRoster();
+    });
   });
 
   applyTimeMode();
@@ -3438,19 +3498,30 @@
   // audit panel. One open at a time; the panel trails its row as a sibling, so
   // clicks inside it don't re-trigger the row.
   function closeRosterPanels() {
-    rosterList.querySelectorAll('.audit-panel').forEach(function(p) { p.remove(); });
+    rosterList.querySelectorAll('.audit-panel, .health-panel').forEach(function(p) { p.remove(); });
     rosterList.querySelectorAll('.roster-row.audit-open').forEach(function(r) { r.classList.remove('audit-open'); });
   }
   rosterList.addEventListener('click', function(e) {
     const row = e.target.closest('.roster-row');
     if (!row || !rosterList.contains(row)) return;
     const next = row.nextElementSibling;
-    const isOpen = next && next.classList.contains('audit-panel');
+    const isOpen = next && (next.classList.contains('audit-panel') || next.classList.contains('health-panel'));
     closeRosterPanels();
     if (!isOpen) {
       row.classList.add('audit-open');
-      row.after(createAuditPanel(row.dataset.stack));
-      refilterRoster(); // a freshly opened panel obeys an active filter
+      const stack = row.dataset.stack;
+      // Expanding a stack shows its containers (current health) above its deploy
+      // history — both bound under the row's accent bar as one card. The
+      // containers panel only appears when health data exists for the stack.
+      let anchor = row;
+      const h = healthSnap[stack];
+      if (h && h.services && h.services.length) {
+        const health = createHealthPanel(stack);
+        anchor.after(health);
+        anchor = health;
+      }
+      anchor.after(createAuditPanel(stack));
+      refilterRoster(); // freshly opened panels obey an active filter
     }
   });
 
@@ -4070,15 +4141,11 @@
   viewButtons.forEach(function(btn) {
     btn.addEventListener('click', function() {
       if (btn.dataset.view === activeView) {
-        // Toggle the popover only if the active view has a *visible* option —
-        // Stacks' sole entry ("Search stacks") is mobile-only, so on desktop it
-        // has none and must not open an empty box. getComputedStyle reports the
-        // child's own display even while the closed popover is display:none.
-        const group = document.querySelector(`.vo-group[data-view="${activeView}"]`);
-        const hasOption = group && Array.prototype.some.call(group.children, function(c) {
-          return getComputedStyle(c).display !== 'none';
-        });
-        if (hasOption) setViewOptions(!viewOptions.classList.contains('open'));
+        // The active view's button opens its options popover (every view has at
+        // least one option group entry).
+        if (document.querySelector(`.vo-group[data-view="${activeView}"]`)) {
+          setViewOptions(!viewOptions.classList.contains('open'));
+        }
         return;
       }
       activeView = btn.dataset.view;

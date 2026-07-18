@@ -350,7 +350,7 @@ func main() {
 		if stateB != nil {
 			stateB.Publish(events.StateEvent{Name: "autosync", Data: snap})
 			stateB.Publish(events.StateEvent{Name: "queue", Data: autosyncQueue.View(order())})
-			stateB.Publish(events.StateEvent{Name: "stacks", Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), cfg.StackDiscovery, auditLog)})
+			stateB.Publish(events.StateEvent{Name: "stacks", Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), auditLog)})
 		}
 	}
 	deployer = deploy.New(deploy.Config{
@@ -452,14 +452,11 @@ func metricsMux() *http.ServeMux {
 type stacksState struct {
 	Disabled []string       `json:"disabled"`
 	Roster   []roster.Entry `json:"roster"`
-	// Discovery is true in stack-discovery mode (ADR-0034): the roster is the
-	// repo-authoritative set. The Stacks view shows a quiet hint for it.
-	Discovery bool `json:"discovery"`
 }
 
 // buildStacksState assembles the `stacks` snapshot from the effective stack
 // set, the parked (disabled) names, and each stack's newest audit record.
-func buildStacksState(stacks []config.Stack, disabled []string, discovery bool, auditLog *audit.Log) stacksState {
+func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.Log) stacksState {
 	last := func(name string) (audit.Record, bool) {
 		recs := auditLog.Stack(name, 1)
 		if len(recs) == 0 {
@@ -468,9 +465,8 @@ func buildStacksState(stacks []config.Stack, disabled []string, discovery bool, 
 		return recs[0], true
 	}
 	return stacksState{
-		Disabled:  disabled,
-		Roster:    roster.Build(stacks, disabled, last),
-		Discovery: discovery,
+		Disabled: disabled,
+		Roster:   roster.Build(stacks, disabled, last),
 	}
 }
 
@@ -563,7 +559,7 @@ func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *depl
 				{Name: "autosync", Data: as.ctrl.Snapshot(as.order())},
 				{Name: "queue", Data: as.queue.View(as.order())},
 				{Name: "upcoming", Data: deployer.CurrentRunPlan()},
-				{Name: "stacks", Data: buildStacksState(stacks(), deployer.CurrentDisabledStacks(), cfg.StackDiscovery, auditLog)},
+				{Name: "stacks", Data: buildStacksState(stacks(), deployer.CurrentDisabledStacks(), auditLog)},
 			}
 			if healthPoller != nil {
 				state = append(state, events.StateEvent{Name: "health", Data: healthPoller.Current()})
