@@ -117,7 +117,7 @@ Next to the [health pill](#stack-health), the **newest row per stack** also carr
 
 In [stack-discovery mode](../../docs/configuration.md#stack-discovery) a stack can be parked with `disabled: true` — present in the repo, deliberately not deployed. Those names render as a quiet **chip line below the deploy table** (`data-testid="disabled-stacks"`): a muted `disabled` label followed by one dashed-border chip per name, with an explanatory `title` on the line. Driven by the [`stacks`](#event-lifecycle-sse) SSE snapshot; the line is hidden entirely when the set is empty (always, in legacy mode) and in the logs view. Deliberately **not** table rows: the table is an event log and a disabled stack has no events — the line is inventory, not history.
 
-A file-level config failure in discovery mode emits an ordinary `failed` event under the reserved `_config` pseudo-stack, so it renders as a regular failed row (error panel with the parse error) — no dedicated surface; its [icon](#stack-icons) is the git logo.
+A file-level config failure in discovery mode emits an ordinary `failed` event under the reserved `_config` pseudo-stack, so it renders as a regular failed row — no dedicated surface; the error panel shows the message including a `>`-marked excerpt of the offending `skipper.yaml` lines, and its [icon](#stack-icons) is the git logo.
 
 ### Status badges
 
