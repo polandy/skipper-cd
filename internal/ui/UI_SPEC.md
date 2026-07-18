@@ -72,6 +72,8 @@ Rows are prepended (newest first) with a slide-in animation. Time cells show rel
 
 The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain`) left of the name for recognition. The image is served same-origin from `GET /api/icons/<stack>` (no CSP concern); on any load error the chip swaps to a **monogram** — the stack's first letter on an accent-tinted chip — via the `<img>` `error` handler, so a broken image never shows. Icons are resolved server-side (repo `icon.svg`/`icon.png` override → configured `icon:` slug → auto-match on the stack name → 404 → monogram) and cached on the host; see the README "Service Icons" section.
 
+The reserved pseudo-stacks resolve to fixed slugs instead of the monogram: `_nixos` (the NixOS rebuild) auto-matches the `nixos` icon and `_config` (repo stack-config failures in stack-discovery mode, ADR-0034) the `git` icon — its failures are about the repo's `skipper.yaml`.
+
 **Refreshing icons.** The server-side icon cache is cleared by `POST /api/icons/refresh` (e.g. `curl -X POST …/api/icons/refresh`); the next load of each icon then picks up renamed stacks and newly published icons. It is an **ops endpoint** — there is deliberately no header control and no keyboard trigger (the single-key `i` hotkey was removed so type-to-search in the deploys view can own printable keys — see [Deploys filter](#deploys-filter)).
 
 ### Stack health
@@ -110,6 +112,12 @@ Next to the [health pill](#stack-health), the **newest row per stack** also carr
 - **Rows** (`data-testid="audit-row"`, newest first) — each past deploy as time · **status** (coloured dot + label, keyed off `data-status`) · duration · short commit SHA (full SHA in `title`) · changed-file count. A `failed` / `rolled_back*` / `heal_exhausted` record also shows its error message (truncated, full text in `title`). Only terminal outcomes appear — `success`, `failed`, `rolled_back`, `rolled_back_unhealthy`, `healed`, `heal_exhausted`; in-progress (`deploying`), no-op (`skipped`) and deferral (`queued`, `blocked`) statuses are never recorded.
 - **No diffs.** Records are metadata only; the short SHA identifies the commit, and the live [diff panel](#expandable-panels) still serves diffs for events still in the ring. The history answers *when / result / how long / which commit / how many files*, not "show me the code change".
 - **One panel per row.** The history panel shares the [health panel](#stack-health)'s binding: opening it closes an open health or files/diff panel on the row (and vice versa), and it tints the row with a neutral **accent** bar (not a status colour — the panel is many statuses, not one).
+
+### Disabled stacks
+
+In [stack-discovery mode](../../docs/configuration.md#stack-discovery) a stack can be parked with `disabled: true` — present in the repo, deliberately not deployed. Those names render as a quiet **chip line below the deploy table** (`data-testid="disabled-stacks"`): a muted `disabled` label followed by one dashed-border chip per name, with an explanatory `title` on the line. Driven by the [`stacks`](#event-lifecycle-sse) SSE snapshot; the line is hidden entirely when the set is empty (always, in legacy mode) and in the logs view. Deliberately **not** table rows: the table is an event log and a disabled stack has no events — the line is inventory, not history.
+
+A file-level config failure in discovery mode emits an ordinary `failed` event under the reserved `_config` pseudo-stack, so it renders as a regular failed row (error panel with the parse error) — no dedicated surface; its [icon](#stack-icons) is the git logo.
 
 ### Status badges
 
@@ -158,10 +166,11 @@ On connect, history is replayed as `deploy` events, then live events stream in.
 | `queued` / `blocked` | Pending row **keyed by stack**, sharing one lifecycle: a further `queued`/`blocked` for the same stack (another push while paused, or another reconcile tick while blocked) replaces it rather than stacking a duplicate. `queued` shows a `paused:` tag; `blocked` shows a `blocked by <dep>` tag. Removed when the stack next deploys (a `deploying` event supersedes it) or when it leaves the pending set in a `queue` snapshot. Both carry `has_diffs`, so the row expands the held-back diff. |
 | `healed` / `heal_exhausted` | New row created directly (self-heal is not preceded by a `deploying` event); `heal_exhausted` carries an error and expands an error panel. See [Self-heal](#self-heal). |
 
-Besides `deploy` events, the stream carries named **state snapshots** — `autosync`, `queue`, `upcoming`, `health`, and `healthwatch` — each replacing the prior snapshot of that name (also sent once on connect as initial state).
+Besides `deploy` events, the stream carries named **state snapshots** — `autosync`, `queue`, `upcoming`, `health`, `healthwatch`, and `stacks` — each replacing the prior snapshot of that name (also sent once on connect as initial state).
 
 - **`upcoming`** `{ "upcoming": ["grafana", "loki"] }` — the stacks that will deploy *after* the one currently deploying, in deploy order. The backend hashes every stack once upfront (after the git sync) to know which will actually deploy this run, then publishes the shrinking list as each stack starts; an empty list is published when the run ends. Drives the [Deploy indicator](#header--right) look-ahead trail and the [Run panel](#run-panel). Distinct from the autosync pending `queue` (deferred, paused stacks). `_nixos` is excluded — the rebuild has no per-stack deploying state.
 - **`health`** `{ "stacks": { "gitea": { "status": "healthy", "services": [{ "name": "gitea", "state": "running", "health": "healthy" }] }, … } }` — the current runtime health of skipper-cd's own stacks, driving the [Stack health](#stack-health) pill. The backend polls `docker compose ps` for each stack (only while the UI is on **and** a client is subscribed), rolls each stack up to `healthy`/`unhealthy`/`starting`/`stopped`/`unknown`, and republishes the snapshot on its interval, on connect, and after each deploy run. `_nixos` carries no health (it is not a compose project). See [ADR-0027](../../dev-docs/adr/0027-live-stack-health-in-ui.md).
+- **`stacks`** `{ "disabled": ["experiments"] }` — stack-set facts that are not deploy events: today the names parked via `disabled: true` in stack-discovery mode (ADR-0034), driving the [Disabled stacks](#disabled-stacks) line. `disabled` is empty/null in legacy mode. Published on connect and after every deploy run.
 - **`healthwatch`** `{ "stacks": { "vaultwarden": { "vaultwarden": [{ "status": "unhealthy", "since": "2026-07-16T15:47:05Z", "commit": "a1b2c3d…", "deploy_correlated": true }, …] } } }` — the health watchdog's per-service status history (≤ 10 accepted phases per service, newest first), driving the [Status history](#stack-health) in the per-service panel. Only present when `health_watch` is configured; published on every accepted change and once on connect. `deploy_correlated` is derived by the backend from the attribution window — the UI never computes it. See [ADR-0031](../../dev-docs/adr/0031-notify-on-own-stack-health-change.md).
 
 ---
@@ -308,6 +317,7 @@ assert on.
 | `deploy-filter` | Deploys type-to-search input | Hidden until the user types (desktop) or taps `deploy-search` (mobile); folds down above the table |
 | `deploy-filter-clear` | Deploys filter clear (`×`) button | Shown only when the field is non-empty |
 | `deploy-filter-empty` | "No stack matches …" note | Shown when the query hides every row |
+| `disabled-stacks` | Disabled-stacks chip line below the table | `.shown` when non-empty; hidden in legacy mode and in the logs view |
 | `log-line` | A log line | `data-level` = level (or `cmd` for child output) |
 | `level-badge` | Log level badge | |
 | `stack-prefix` | `[stack]` prefix on a deploy log line | |

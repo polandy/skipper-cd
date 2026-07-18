@@ -119,9 +119,9 @@ type Deployer struct {
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64
-	lastSyncErr      atomic.Pointer[syncOutcome]    // nil until the first run
-	currentRunPlan   atomic.Pointer[RunPlan]        // latest published plan, for late joiners
-	discoveredStacks atomic.Pointer[[]config.Stack] // stack-discovery result, nil in legacy mode
+	lastSyncErr      atomic.Pointer[syncOutcome]       // nil until the first run
+	currentRunPlan   atomic.Pointer[RunPlan]           // latest published plan, for late joiners
+	discoveredStacks atomic.Pointer[config.RepoStacks] // stack-discovery result, nil in legacy mode
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -499,16 +499,16 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// dependency gate below so their dependents block.
 	var stackErrs []config.StackError
 	if cfg.StackDiscovery {
-		stacks, errs, err := config.LoadRepoStacks(d.repoDir, cfg.StacksBaseDir)
+		repo, errs, err := config.LoadRepoStacks(d.repoDir, cfg.StacksBaseDir)
 		if err != nil {
 			slog.Error("stack discovery failed, no stacks deploy this run", "err", err)
 			d.emitDeployFailure(ConfigStateKey, 0, err, changeSet{})
 			return
 		}
-		d.discoveredStacks.Store(&stacks)
+		d.discoveredStacks.Store(&repo)
 		stackErrs = errs
 		effective := *cfg
-		effective.Stacks = stacks
+		effective.Stacks = repo.Stacks
 		cfg = &effective
 	}
 

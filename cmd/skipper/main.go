@@ -349,6 +349,7 @@ func main() {
 		if stateB != nil {
 			stateB.Publish(events.StateEvent{Name: "autosync", Data: snap})
 			stateB.Publish(events.StateEvent{Name: "queue", Data: autosyncQueue.View(order())})
+			stateB.Publish(events.StateEvent{Name: "stacks", Data: stacksState{Disabled: deployer.CurrentDisabledStacks()}})
 		}
 	}
 	deployer = deploy.New(deploy.Config{
@@ -442,6 +443,14 @@ func metricsMux() *http.ServeMux {
 	return mux
 }
 
+// stacksState is the `stacks` SSE snapshot: stack-set facts that are not
+// deploy events. Today only the names parked via disabled: true in
+// stack-discovery mode (ADR-0034), driving the UI's disabled line; empty in
+// legacy mode.
+type stacksState struct {
+	Disabled []string `json:"disabled"`
+}
+
 // autosyncDeps bundles the autosync wiring the UI handlers need.
 type autosyncDeps struct {
 	ctrl    *autosync.Controller
@@ -531,6 +540,7 @@ func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *depl
 				{Name: "autosync", Data: as.ctrl.Snapshot(as.order())},
 				{Name: "queue", Data: as.queue.View(as.order())},
 				{Name: "upcoming", Data: deployer.CurrentRunPlan()},
+				{Name: "stacks", Data: stacksState{Disabled: deployer.CurrentDisabledStacks()}},
 			}
 			if healthPoller != nil {
 				state = append(state, events.StateEvent{Name: "health", Data: healthPoller.Current()})
@@ -577,6 +587,12 @@ func stackLocator(cfg *config.Config, stacks func() []config.Stack) icons.StackL
 		// fallback.
 		if name == deploy.NixosStateKey {
 			return icons.Request{Name: "nixos"}, true
+		}
+		// The reserved stack-config pseudo-stack (ADR-0034) likewise has no
+		// directory; its failures are about the repo skipper.yaml, so the git
+		// logo is the recognizable stand-in.
+		if name == deploy.ConfigStateKey {
+			return icons.Request{Name: "git"}, true
 		}
 		for _, s := range stacks() {
 			if s.Name == name {

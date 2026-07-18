@@ -118,11 +118,11 @@ stacks:
     disabled: true      # in the repo, deliberately not deployed
 ```
 
-- Available per-stack fields: the [Stack Fields](#stack-fields) above except `name` and `autosync`, plus `disabled`. Relative `env_files`/`watch_dirs` paths resolve against the repo root. A per-stack `autosync` override is not available in discovery mode (global autosync and the UI overrides work as usual).
-- `disabled: true` means hands-off: not deployed, not health-polled. A running stack that becomes disabled keeps running.
-- Each stack's effective config is hash-tracked: a `skipper.yaml` edit redeploys exactly the affected stacks (shown as a `skipper.yaml` change with its git diff). Enabling discovery therefore redeploys every stack once.
-- Failure containment, evaluated on every sync: an unparseable `skipper.yaml` fails the run under the reserved `_config` name and deploys nothing; an invalid single entry (typo'd name, unknown `depends_on` reference, cycle) fails only that stack — dependents are `blocked`, everything else deploys.
-- Self-heal in discovery mode: activation follows the global `self_heal` flag (the stack set is unknown at startup); per-stack `self_heal: false` still opts a stack out.
+- **Fields** — the [Stack Fields](#stack-fields) above except `name` and `autosync`, plus `disabled`. Relative `env_files`/`watch_dirs` paths resolve against the repo root.
+- **`disabled: true`** — parked: not deployed, not health-checked; a running stack keeps running. The web UI lists parked names in a `disabled` line below the deploy table.
+- **Config edits redeploy** — a `skipper.yaml` edit redeploys the affected stacks (shown as a `skipper.yaml` change). Enabling discovery redeploys every stack once.
+- **Broken config fails visibly** — an unparseable `skipper.yaml` shows as a failed `_config` row and deploys nothing; a single bad entry fails only that stack. Running containers are never touched.
+- **Self-heal** — needs the global `self_heal: true`; per-stack `self_heal: false` opts out.
 
 ## Health-check-gated rollback
 

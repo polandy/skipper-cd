@@ -52,14 +52,14 @@ func TestLoadRepoStacks_DiscoversDirsWithComposeFile(t *testing.T) {
 		"stacks/alpha/sub/docker-compose.yml": minimalCompose, // nested: not scanned
 	})
 
-	stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
 	if len(stackErrs) != 0 {
 		t.Fatalf("unexpected stack errors: %v", stackErrs)
 	}
-	got := stackNames(stacks)
+	got := stackNames(repo.Stacks)
 	want := []string{"alpha", "beta"} // alphabetical = deterministic deploy seed order
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("discovered stacks = %v, want %v", got, want)
@@ -71,14 +71,14 @@ func TestLoadRepoStacks_MissingRepoConfigYieldsDefaults(t *testing.T) {
 		"stacks/web/docker-compose.yml": minimalCompose,
 	})
 
-	stacks, _, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, _, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
-	if len(stacks) != 1 {
-		t.Fatalf("got %d stacks, want 1", len(stacks))
+	if len(repo.Stacks) != 1 {
+		t.Fatalf("got %d stacks, want 1", len(repo.Stacks))
 	}
-	s := stacks[0]
+	s := repo.Stacks[0]
 	if s.Name != "web" || s.WorkingDir != "" || len(s.EnvFiles) != 0 || s.HealthCheck != nil || len(s.DependsOn) != 0 {
 		t.Errorf("stack not built with defaults: %+v", s)
 	}
@@ -107,14 +107,14 @@ stacks:
 `,
 	})
 
-	stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
 	if len(stackErrs) != 0 {
 		t.Fatalf("unexpected stack errors: %v", stackErrs)
 	}
-	s := stacks[0]
+	s := repo.Stacks[0]
 	if s.WorkingDir != "/opt/web" {
 		t.Errorf("WorkingDir = %q", s.WorkingDir)
 	}
@@ -143,12 +143,16 @@ func TestLoadRepoStacks_DisabledStackExcluded(t *testing.T) {
 		"skipper.yaml":                  "stacks:\n  wip:\n    disabled: true\n",
 	})
 
-	stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 0 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v", err, stackErrs)
 	}
-	if got := stackNames(stacks); strings.Join(got, ",") != "web" {
+	if got := stackNames(repo.Stacks); strings.Join(got, ",") != "web" {
 		t.Errorf("stacks = %v, want [web]", got)
+	}
+	// The parked name is carried for the UI's disabled line.
+	if strings.Join(repo.Disabled, ",") != "wip" {
+		t.Errorf("Disabled = %v, want [wip]", repo.Disabled)
 	}
 }
 
@@ -158,7 +162,7 @@ func TestLoadRepoStacks_UnknownOverrideEntryReported(t *testing.T) {
 		"skipper.yaml":                  "stacks:\n  ghost:\n    icon: casper\n",
 	})
 
-	stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -166,7 +170,7 @@ func TestLoadRepoStacks_UnknownOverrideEntryReported(t *testing.T) {
 	if got := errorStacks(stackErrs); strings.Join(got, ",") != "ghost" {
 		t.Fatalf("error stacks = %v, want [ghost]", got)
 	}
-	if got := stackNames(stacks); strings.Join(got, ",") != "web" {
+	if got := stackNames(repo.Stacks); strings.Join(got, ",") != "web" {
 		t.Errorf("stacks = %v, want [web]", got)
 	}
 }
@@ -207,14 +211,14 @@ func TestLoadRepoStacks_ReservedDirNameReported(t *testing.T) {
 		"stacks/web/docker-compose.yml":    minimalCompose,
 	})
 
-	stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
 	if got := errorStacks(stackErrs); strings.Join(got, ",") != "_nixos" {
 		t.Fatalf("error stacks = %v, want [_nixos]", got)
 	}
-	if got := stackNames(stacks); strings.Join(got, ",") != "web" {
+	if got := stackNames(repo.Stacks); strings.Join(got, ",") != "web" {
 		t.Errorf("stacks = %v, want [web]", got)
 	}
 }
@@ -226,14 +230,14 @@ func TestLoadRepoStacks_InvalidHealthCheckReported(t *testing.T) {
 		"skipper.yaml":                  "stacks:\n  bad:\n    health_check:\n      url: notaurl\n",
 	})
 
-	stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
 	if got := errorStacks(stackErrs); strings.Join(got, ",") != "bad" {
 		t.Fatalf("error stacks = %v, want [bad]", got)
 	}
-	if got := stackNames(stacks); strings.Join(got, ",") != "ok" {
+	if got := stackNames(repo.Stacks); strings.Join(got, ",") != "ok" {
 		t.Errorf("stacks = %v, want [ok]", got)
 	}
 }
@@ -252,14 +256,14 @@ stacks:
 `,
 	})
 
-	stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
 	if got := errorStacks(stackErrs); strings.Join(got, ",") != "dangling,selfref" {
 		t.Fatalf("error stacks = %v, want [dangling selfref]", got)
 	}
-	if got := stackNames(stacks); strings.Join(got, ",") != "ok" {
+	if got := stackNames(repo.Stacks); strings.Join(got, ",") != "ok" {
 		t.Errorf("stacks = %v, want [ok]", got)
 	}
 }
@@ -278,14 +282,14 @@ stacks:
 `,
 	})
 
-	stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
 	if got := errorStacks(stackErrs); strings.Join(got, ",") != "a,b" {
 		t.Fatalf("error stacks = %v, want [a b]", got)
 	}
-	if got := stackNames(stacks); strings.Join(got, ",") != "ok" {
+	if got := stackNames(repo.Stacks); strings.Join(got, ",") != "ok" {
 		t.Errorf("stacks = %v, want [ok]", got)
 	}
 }
@@ -305,11 +309,11 @@ stacks:
 `,
 	})
 
-	stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 0 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v", err, stackErrs)
 	}
-	if got := stackNames(stacks); strings.Join(got, ",") != "app" {
+	if got := stackNames(repo.Stacks); strings.Join(got, ",") != "app" {
 		t.Errorf("stacks = %v, want [app]", got)
 	}
 }
@@ -322,11 +326,11 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 			f["skipper.yaml"] = repoConfig
 		}
 		repoDir := writeRepo(t, f)
-		stacks, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
-		if err != nil || len(stackErrs) != 0 || len(stacks) != 1 {
-			t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, stacks)
+		repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+		if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
+			t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 		}
-		return stacks[0].ConfigHash
+		return repo.Stacks[0].ConfigHash
 	}
 
 	base := hashFor(t, "")

@@ -54,6 +54,14 @@ type repoConfig struct {
 	Stacks map[string]repoStackOverride `yaml:"stacks"`
 }
 
+// RepoStacks is the result of stack discovery: the deployable stacks and the
+// names parked via disabled: true — excluded from everything skipper does,
+// carried only so the UI can show they exist.
+type RepoStacks struct {
+	Stacks   []Stack
+	Disabled []string
+}
+
 // LoadRepoStacks discovers the stack set from the deploy-repo clone
 // (ADR-0034): every direct subdirectory of stacksBaseDir containing a
 // docker-compose.yml is a stack (name = directory name, alphabetical order),
@@ -63,14 +71,14 @@ type repoConfig struct {
 // unknown-field skipper.yaml): nothing can be trusted, the caller must not
 // deploy anything. StackErrors are entry-level: those stacks are excluded and
 // reported, the returned stacks are fine to deploy.
-func LoadRepoStacks(repoDir, stacksBaseDir string) ([]Stack, []StackError, error) {
+func LoadRepoStacks(repoDir, stacksBaseDir string) (RepoStacks, []StackError, error) {
 	discovered, err := discoverStackDirs(stacksBaseDir)
 	if err != nil {
-		return nil, nil, err
+		return RepoStacks{}, nil, err
 	}
 	overrides, err := loadRepoOverrides(filepath.Join(repoDir, RepoConfigFileName))
 	if err != nil {
-		return nil, nil, err
+		return RepoStacks{}, nil, err
 	}
 
 	known := make(map[string]bool, len(discovered))
@@ -93,9 +101,11 @@ func LoadRepoStacks(repoDir, stacksBaseDir string) ([]Stack, []StackError, error
 	}
 
 	var stacks []Stack
+	var disabled []string
 	for _, name := range discovered {
 		ov := overrides[name]
 		if ov.Disabled {
+			disabled = append(disabled, name)
 			continue
 		}
 		stack := Stack{
@@ -133,7 +143,7 @@ func LoadRepoStacks(repoDir, stacksBaseDir string) ([]Stack, []StackError, error
 	}
 
 	sort.Slice(stackErrs, func(i, j int) bool { return stackErrs[i].Stack < stackErrs[j].Stack })
-	return stacks, stackErrs, nil
+	return RepoStacks{Stacks: stacks, Disabled: disabled}, stackErrs, nil
 }
 
 // discoverStackDirs returns the names of the direct subdirectories of
