@@ -76,7 +76,7 @@ func LoadRepoStacks(repoDir, stacksBaseDir string) (RepoStacks, []StackError, er
 	if err != nil {
 		return RepoStacks{}, nil, err
 	}
-	overrides, err := loadRepoOverrides(filepath.Join(repoDir, RepoConfigFileName))
+	ovf, err := loadRepoOverrides(filepath.Join(repoDir, RepoConfigFileName))
 	if err != nil {
 		return RepoStacks{}, nil, err
 	}
@@ -86,24 +86,27 @@ func LoadRepoStacks(repoDir, stacksBaseDir string) (RepoStacks, []StackError, er
 		known[name] = true
 	}
 
+	// failAt records an entry-level error, appending the marked skipper.yaml
+	// excerpt of the stack's entry (or one of its fields) when the location is
+	// known — so the failed row shows the offending config, not just its name.
 	var stackErrs []StackError
-	fail := func(name string, format string, args ...any) {
-		stackErrs = append(stackErrs, StackError{Stack: name, Err: fmt.Errorf(format, args...)})
+	failAt := func(name, field string, format string, args ...any) {
+		stackErrs = append(stackErrs, StackError{Stack: name, Err: ovf.withSnippet(fmt.Errorf(format, args...), name, field)})
 	}
 
 	// A typo'd entry (no matching stack directory) must fail loudly — it is
 	// most likely a rename or misspelling that would otherwise silently strip
 	// a stack of its config.
-	for name := range overrides {
+	for name := range ovf.stacks {
 		if !known[name] {
-			fail(name, "no stack directory %s/%s with a docker-compose.yml", stacksBaseDir, name)
+			failAt(name, "", "no stack directory %s/%s with a docker-compose.yml", stacksBaseDir, name)
 		}
 	}
 
 	var stacks []Stack
 	var disabled []string
 	for _, name := range discovered {
-		ov := overrides[name]
+		ov := ovf.stacks[name]
 		if ov.Disabled {
 			disabled = append(disabled, name)
 			continue
@@ -123,19 +126,24 @@ func LoadRepoStacks(repoDir, stacksBaseDir string) (RepoStacks, []StackError, er
 			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
 		}
 
+		hcErr := validateHealthCheck(stack.HealthCheck)
+		depErr := invalidDependency(stack, known)
 		switch {
 		case strings.HasPrefix(name, "_"):
-			fail(name, "stack names starting with _ are reserved")
-		case validateHealthCheck(stack.HealthCheck) != nil:
-			fail(name, "health_check: %v", validateHealthCheck(stack.HealthCheck))
-		case invalidDependency(stack, known) != nil:
-			fail(name, "%v", invalidDependency(stack, known))
+			failAt(name, "", "stack names starting with _ are reserved")
+		case hcErr != nil:
+			failAt(name, "health_check", "health_check: %v", hcErr)
+		case depErr != nil:
+			failAt(name, "depends_on", "%v", depErr)
 		default:
 			stacks = append(stacks, stack)
 		}
 	}
 
 	stacks, cycleErrs := dropDependencyCycles(stacks)
+	for i := range cycleErrs {
+		cycleErrs[i].Err = ovf.withSnippet(cycleErrs[i].Err, cycleErrs[i].Stack, "depends_on")
+	}
 	stackErrs = append(stackErrs, cycleErrs...)
 
 	for i := range stacks {
@@ -168,26 +176,58 @@ func discoverStackDirs(stacksBaseDir string) ([]string, error) {
 	return names, nil
 }
 
+// repoOverridesFile is the parsed repo-root skipper.yaml plus the raw source
+// and a stack/field → line index, kept so error messages can show the marked
+// excerpt of the offending entry. The zero value (missing file) yields no
+// overrides and no snippets.
+type repoOverridesFile struct {
+	stacks map[string]repoStackOverride
+	src    []byte
+	lines  map[string]map[string]int
+}
+
+// withSnippet appends the marked skipper.yaml excerpt for the stack entry (or
+// one of its fields, falling back to the entry) to err; err is returned
+// unchanged when no location is known.
+func (f repoOverridesFile) withSnippet(err error, stack, field string) error {
+	fields := f.lines[stack]
+	if fields == nil {
+		return err
+	}
+	line := fields[field]
+	if line == 0 {
+		line = fields[""]
+	}
+	if snip := yamlSnippet(f.src, line); snip != "" {
+		return fmt.Errorf("%w\n\n%s", err, snip)
+	}
+	return err
+}
+
 // loadRepoOverrides parses the optional repo-root skipper.yaml. A missing file
 // means no overrides. Decoding is strict: an unknown field is a file-level
 // error, so a misspelled field fails loudly instead of silently deploying
-// without it.
-func loadRepoOverrides(path string) (map[string]repoStackOverride, error) {
+// without it. Parse errors carry the marked excerpt of the failing line.
+func loadRepoOverrides(path string) (repoOverridesFile, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return repoOverridesFile{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", RepoConfigFileName, err)
+		return repoOverridesFile{}, fmt.Errorf("read %s: %w", RepoConfigFileName, err)
 	}
 
 	var rc repoConfig
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&rc); err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("parse %s: %w", RepoConfigFileName, err)
+		parseErr := fmt.Errorf("parse %s: %w", RepoConfigFileName, err)
+		if snip := yamlSnippet(data, yamlErrorLine(err)); snip != "" {
+			parseErr = fmt.Errorf("%w\n\n%s", parseErr, snip)
+		}
+		return repoOverridesFile{}, parseErr
 	}
-	return rc.Stacks, nil
+	return repoOverridesFile{stacks: rc.Stacks, src: data, lines: indexOverrideLines(data)}, nil
 }
 
 // resolveRepoPaths resolves relative paths against the repo clone root, so
