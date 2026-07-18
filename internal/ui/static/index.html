@@ -3039,11 +3039,28 @@
   deployStatus.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); deployStatus.click(); }
   });
-  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') setRunDrawer(false); });
-  document.addEventListener('click', function(e) {
-    if (!runDrawer.classList.contains('open')) return;
-    if (runDrawer.contains(e.target) || deployStatus.contains(e.target)) return;
-    setRunDrawer(false);
+
+  // registerSurface wires the shared dismiss behaviour for a pop-out surface (a
+  // drawer or popover): Escape closes it, and a click outside it closes it. Each
+  // surface used to copy-paste its own pair of global document handlers; this
+  // centralizes them. `isOpen` reports whether the surface is showing, `close`
+  // dismisses it, and `within` lists the elements (the surface plus its trigger)
+  // whose clicks are internal and must not dismiss it.
+  function registerSurface(opts) {
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') opts.close();
+    });
+    document.addEventListener('click', function(e) {
+      if (!opts.isOpen()) return;
+      if (opts.within.some(function(el) { return el.contains(e.target); })) return;
+      opts.close();
+    });
+  }
+
+  registerSurface({
+    isOpen: function() { return runDrawer.classList.contains('open'); },
+    close: function() { setRunDrawer(false); },
+    within: [runDrawer, deployStatus],
   });
 
   // refreshPendingTags re-renders the paused/blocked tag on every live pending
@@ -3619,11 +3636,10 @@
   });
   asFilterClear.addEventListener('click', function() { asFilter.value = ''; renderStackList(); asFilter.focus(); });
 
-  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') setDrawer(false); });
-  document.addEventListener('click', function(e) {
-    if (!asDrawer.classList.contains('open')) return;
-    if (asDrawer.contains(e.target) || asBtn.contains(e.target)) return;
-    setDrawer(false);
+  registerSurface({
+    isOpen: function() { return asDrawer.classList.contains('open'); },
+    close: function() { setDrawer(false); },
+    within: [asDrawer, asBtn],
   });
 
   renderAutosync(); // initial paint before the first SSE snapshot arrives
@@ -3701,22 +3717,30 @@
     return line;
   }
 
-  // Diff pill in the log view — same fetch/render/toggle behaviour as the
-  // files pill in the deploy table, but anchored below the log line.
-  logPane.addEventListener('click', function(e) {
-    var fileHeader = e.target.closest('.diff-file-header');
+  // handleDiffToggle handles the two collapse/expand controls every diff panel
+  // carries — the per-file header and the multi-commit "N commits" pill —
+  // wherever the panel is rendered (deploy table or log view). Returns true when
+  // it consumed the click so the caller stops. Shared by both click handlers.
+  function handleDiffToggle(target) {
+    var fileHeader = target.closest('.diff-file-header');
     if (fileHeader) {
       fileHeader.classList.toggle('expanded');
-      return;
+      return true;
     }
-
-    var cpill = e.target.closest('.commits-pill');
+    var cpill = target.closest('.commits-pill');
     if (cpill) {
       var chead = cpill.closest('.diff-head');
       var clist = chead && chead.querySelector('.diff-commit-list');
       if (clist) clist.classList.toggle('expanded');
-      return;
+      return true;
     }
+    return false;
+  }
+
+  // Diff pill in the log view — same fetch/render/toggle behaviour as the
+  // files pill in the deploy table, but anchored below the log line.
+  logPane.addEventListener('click', function(e) {
+    if (handleDiffToggle(e.target)) return;
 
     var pill = e.target.closest('.log-diff-pill');
     if (!pill) return;
@@ -3914,11 +3938,10 @@
     });
   });
 
-  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') setViewOptions(false); });
-  document.addEventListener('click', function(e) {
-    if (!viewOptions.classList.contains('open')) return;
-    if (viewSwitch.contains(e.target)) return; // clicks on the buttons/options manage themselves
-    setViewOptions(false);
+  registerSurface({
+    isOpen: function() { return viewOptions.classList.contains('open'); },
+    close: function() { setViewOptions(false); },
+    within: [viewSwitch], // the switch wraps both buttons and the options popover
   });
 
   function applyFollow() {
@@ -3951,21 +3974,8 @@
   // Files panel — open/close as full-width sibling below the row.
   // When diffs are available, shows a diff panel; otherwise shows file list.
   tbody.addEventListener('click', function(e) {
-    // Handle diff file section collapse/expand
-    var fileHeader = e.target.closest('.diff-file-header');
-    if (fileHeader) {
-      fileHeader.classList.toggle('expanded');
-      return;
-    }
-
-    // Commit-range pill: expand/collapse the multi-commit list in the diff head.
-    var cpill = e.target.closest('.commits-pill');
-    if (cpill) {
-      var chead = cpill.closest('.diff-head');
-      var clist = chead && chead.querySelector('.diff-commit-list');
-      if (clist) clist.classList.toggle('expanded');
-      return;
-    }
+    // Diff panel collapse/expand controls (per-file header, multi-commit pill).
+    if (handleDiffToggle(e.target)) return;
 
     // History button: toggle the per-stack deploy-history panel (ADR-0033).
     // Handled before the files logic so a tap never opens the row's diff panel.
