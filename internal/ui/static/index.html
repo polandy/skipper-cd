@@ -1963,19 +1963,26 @@
   .orphan-meta { color: var(--text-muted); font-size: 10.5px; white-space: nowrap; }
 
   /* Per-container expansion of one orphan row. */
-  .orphan-detail { display: none; flex-direction: column; gap: 2px; padding: 4px 8px 6px 30px; }
+  .orphan-detail { display: none; flex-direction: column; gap: 2px; padding: 4px 8px 8px 30px; }
   .orphan-item.open .orphan-detail { display: flex; }
+  /* Project-level facts (config file, volumes) above the container list. */
+  .orphan-facts { display: flex; flex-direction: column; gap: 2px; margin-bottom: 5px; }
+  .of-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-family: var(--font-mono); font-size: 10.5px; }
+  .of-key { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; font-weight: 600; min-width: 52px; }
+  .of-val { color: var(--text-secondary); word-break: break-all; }
+  .of-note { color: var(--text-muted); font-style: italic; }
   .orphan-cont {
-    display: grid; grid-template-columns: 8px minmax(0, auto) 1fr auto; align-items: center;
-    gap: 8px; padding: 3px 0; font-family: var(--font-mono); font-size: 11px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 3px 0; font-family: var(--font-mono); font-size: 11px;
   }
-  .oc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+  .oc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex: none; }
   .oc-dot.healthy { background: var(--h-healthy); }
   .oc-dot.unhealthy { background: var(--h-unhealthy); }
   .oc-dot.stopped { background: var(--text-muted); }
-  .oc-name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .oc-image { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .oc-status { color: var(--text-muted); white-space: nowrap; }
+  .oc-name { color: var(--text); }
+  .oc-image { color: var(--text-muted); }
+  .oc-ports { color: var(--text-muted); font-size: 10px; }
+  .oc-status { color: var(--text-muted); margin-left: auto; white-space: nowrap; }
   body.view-logs #orphans { display: none !important; }
 
   .stack-row {
@@ -2448,11 +2455,38 @@
     image.className = 'oc-image';
     image.textContent = c.image || '';
     image.title = c.image || '';
+    row.append(dot, name, image);
+    if (c.ports) {
+      var ports = document.createElement('span');
+      ports.className = 'oc-ports';
+      ports.textContent = c.ports;
+      row.appendChild(ports);
+    }
     var status = document.createElement('span');
     status.className = 'oc-status';
     status.textContent = c.status || c.state || '';
-    row.append(dot, name, image, status);
+    row.appendChild(status);
     return row;
+  }
+
+  // orphanFactRow builds one project-level fact line (config file, volumes).
+  function orphanFactRow(key, val, note) {
+    var line = document.createElement('div');
+    line.className = 'of-line';
+    var k = document.createElement('span');
+    k.className = 'of-key';
+    k.textContent = key;
+    var v = document.createElement('span');
+    v.className = 'of-val';
+    v.textContent = val;
+    line.append(k, v);
+    if (note) {
+      var n = document.createElement('span');
+      n.className = 'of-note';
+      n.textContent = note;
+      line.appendChild(n);
+    }
+    return line;
   }
 
   function renderOrphans() {
@@ -2490,6 +2524,14 @@
 
       var detail = document.createElement('div');
       detail.className = 'orphan-detail';
+      var vols = o.volumes || [];
+      if (o.config_file || vols.length) {
+        var facts = document.createElement('div');
+        facts.className = 'orphan-facts';
+        if (o.config_file) facts.appendChild(orphanFactRow('config', o.config_file));
+        if (vols.length) facts.appendChild(orphanFactRow('volumes', vols.join(', '), 'kept on prune'));
+        detail.appendChild(facts);
+      }
       conts.forEach(function(c) { detail.appendChild(orphanContainerRow(c)); });
 
       if (conts.length) {

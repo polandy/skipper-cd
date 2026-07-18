@@ -32,6 +32,7 @@ type Container struct {
 	Image   string `json:"image,omitempty"`
 	State   string `json:"state,omitempty"`  // running, exited, …
 	Status  string `json:"status,omitempty"` // human text, e.g. "Up 5 days"
+	Ports   string `json:"ports,omitempty"`  // published ports, e.g. "0.0.0.0:8080->80/tcp"
 }
 
 // Project is a running docker compose project observed on the host, identified
@@ -41,6 +42,8 @@ type Container struct {
 type Project struct {
 	Name       string
 	WorkingDir string
+	ConfigFile string   // com.docker.compose.project.config_files label
+	Volumes    []string // named volumes compose created for this project
 	Containers []Container
 }
 
@@ -49,6 +52,8 @@ type Orphan struct {
 	Project    string      `json:"project"`
 	Class      Class       `json:"class"`
 	WorkingDir string      `json:"working_dir,omitempty"`
+	ConfigFile string      `json:"config_file,omitempty"`
+	Volumes    []string    `json:"volumes,omitempty"`
 	Containers []Container `json:"containers,omitempty"`
 	Prunable   bool        `json:"prunable"`
 	// StateOnly marks an orphan that has no running containers, surfaced purely
@@ -100,6 +105,8 @@ func Classify(projects []Project, m Managed) Snapshot {
 			Project:    p.Name,
 			Class:      Unmanaged,
 			WorkingDir: p.WorkingDir,
+			ConfigFile: p.ConfigFile,
+			Volumes:    p.Volumes,
 			Containers: p.Containers,
 		}
 		if formerly {

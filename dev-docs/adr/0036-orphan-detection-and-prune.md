@@ -44,10 +44,15 @@ The proposal named `docker compose ls`, which does not carry the working_dir
 label — it would need a second per-project query. Instead a single
 `docker ps -a --filter label=com.docker.compose.project` with a tab-separated
 `--format` yields, one line per container, the project name, working_dir,
-container name, service, image, state and status. That is enough to group into
-projects *and* populate the UI's per-orphan container expansion (which
-containers an orphan owns, running or stopped) in one call — no JSON
-label-string parsing, no second query.
+config-files label, container name, service, image, state, status and ports.
+That is enough to group into projects *and* populate the UI's per-orphan
+container expansion (which containers an orphan owns, running or stopped, on
+which ports) in one call — no JSON label-string parsing.
+
+A second best-effort `docker volume ls --format '{{project}}\t{{name}}'` maps
+compose-created named volumes to their project, so the expansion shows the data
+an orphan holds — tagged "kept on prune" because prune never passes
+`--volumes`. A failure of that query omits the note but never blocks detection.
 
 ### Classification
 

@@ -39,6 +39,9 @@ case " $* " in
     f="$STUB_PS_DIR/$(basename "$(pwd)").json"
     [ -f "$f" ] && cat "$f"
     exit 0 ;;
+  *" volume "*)
+    [ -f "$STUB_PS_DIR/volumes.txt" ] && cat "$STUB_PS_DIR/volumes.txt"
+    exit 0 ;;
   *" ps "*)
     [ -f "$STUB_PS_DIR/orphans.txt" ] && cat "$STUB_PS_DIR/orphans.txt"
     exit 0 ;;
@@ -173,21 +176,29 @@ setHealth('api', [{ Service: 'api', Name: 'api-1', State: 'running', Health: 'he
 setHealth('worker', [{ Service: 'worker', Name: 'worker-1', State: 'restarting', Health: 'unhealthy' }]);
 setHealth('database', [{ Service: 'database', Name: 'db-1', State: 'exited', ExitCode: 0 }]);
 
-// Orphan detection listing (one line per container, columns:
-// project, working_dir, name, service, image, state, status): the four active
-// stacks (matched + filtered as managed), a removed stack still running under
-// stacks_base_dir (orphaned + prunable, 2 containers — one running, one exited),
-// and a hand-started project outside it (unmanaged, never prunable).
-const orphanRow = (proj, dir, name, svc, image, state, status) =>
-  [proj, dir, name, svc, image, state, status].join('\t');
+// Orphan detection listing (one line per container, columns per psColumns:
+// project, working_dir, config_file, name, service, image, state, status,
+// ports): the four active stacks (matched + filtered as managed), a removed
+// stack still running under stacks_base_dir (orphaned + prunable, 2 containers —
+// one running, one exited), and a hand-started project outside it (unmanaged).
+const compose = (dir) => join(dir, 'docker-compose.yml');
+const orphanRow = (proj, dir, name, svc, image, state, status, ports) =>
+  [proj, dir, compose(dir), name, svc, image, state, status, ports].join('\t');
 writeFileSync(
   join(healthDir, 'orphans.txt'),
   [
-    ...stacks.map((n) => orphanRow(n, join(repoDir, n), `${n}-1`, n, 'nginx:1.25', 'running', 'Up 4 minutes')),
-    orphanRow('legacy-cache', join(repoDir, 'legacy-cache'), 'legacy-cache-redis-1', 'redis', 'redis:7', 'running', 'Up 5 days'),
-    orphanRow('legacy-cache', join(repoDir, 'legacy-cache'), 'legacy-cache-worker-1', 'worker', 'redis:7', 'exited', 'Exited (0) 2 days ago'),
-    orphanRow('portainer', '/opt/portainer', 'portainer', 'portainer', 'portainer/portainer-ce:2.19', 'running', 'Up 3 weeks'),
+    ...stacks.map((n) => orphanRow(n, join(repoDir, n), `${n}-1`, n, 'nginx:1.25', 'running', 'Up 4 minutes', '')),
+    orphanRow('legacy-cache', join(repoDir, 'legacy-cache'), 'legacy-cache-redis-1', 'redis', 'redis:7', 'running', 'Up 5 days', '0.0.0.0:6379->6379/tcp'),
+    orphanRow('legacy-cache', join(repoDir, 'legacy-cache'), 'legacy-cache-worker-1', 'worker', 'redis:7', 'exited', 'Exited (0) 2 days ago', ''),
+    orphanRow('portainer', '/opt/portainer', 'portainer', 'portainer', 'portainer/portainer-ce:2.19', 'running', 'Up 3 weeks', '0.0.0.0:9000->9000/tcp'),
   ].join('\n') + '\n',
+);
+
+// Named volumes per project (project<TAB>volume), for the orphan data-safety
+// note: the removed stack's data that prune keeps.
+writeFileSync(
+  join(healthDir, 'volumes.txt'),
+  ['legacy-cache\tlegacy-cache_redis-data', 'legacy-cache\tlegacy-cache_backups', 'web\tweb_data'].join('\n') + '\n',
 );
 
 // A pushed change → a deploy row carrying a real git diff + commit metadata.

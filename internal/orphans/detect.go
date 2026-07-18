@@ -21,11 +21,13 @@ type Outputter interface {
 var psColumns = []string{
 	`{{.Label "com.docker.compose.project"}}`,
 	`{{.Label "com.docker.compose.project.working_dir"}}`,
+	`{{.Label "com.docker.compose.project.config_files"}}`,
 	`{{.Names}}`,
 	`{{.Label "com.docker.compose.service"}}`,
 	`{{.Image}}`,
 	`{{.State}}`,
 	`{{.Status}}`,
+	`{{.Ports}}`,
 }
 
 // psArgs lists every compose-managed container, one line per container so Detect
@@ -34,6 +36,15 @@ var psArgs = []string{
 	"ps", "-a",
 	"--filter", "label=com.docker.compose.project",
 	"--format", strings.Join(psColumns, "\t"),
+}
+
+// volumeArgs lists every named volume with its owning compose project, so Detect
+// can show which volumes an orphan holds — the data prune deliberately keeps
+// (no --volumes). Only compose-created volumes carry the project label; external
+// volumes have none and are skipped (prune never touches them either).
+var volumeArgs = []string{
+	"volume", "ls",
+	"--format", `{{.Label "com.docker.compose.project"}}` + "\t" + `{{.Name}}`,
 }
 
 // Config wires a Detector. Managed supplies skipper's current expected set on
@@ -70,7 +81,17 @@ func (d *Detector) Detect(ctx context.Context) Snapshot {
 		slog.Warn("orphan detection skipped: could not list compose projects", "err", err)
 		return d.Current()
 	}
-	snap := Classify(parseProjects(out), d.managed())
+	projects := parseProjects(out)
+
+	// Volumes are best-effort: a failure just omits the data-safety note, it
+	// never blocks detection.
+	if volsOut, verr := d.out.Output(ctx, "", "docker", volumeArgs...); verr != nil {
+		slog.Warn("orphan detection: could not list volumes", "err", verr)
+	} else {
+		attachVolumes(projects, parseVolumes(volsOut))
+	}
+
+	snap := Classify(projects, d.managed())
 	d.last.Store(&snap)
 	if d.publish != nil {
 		d.publish(snap)
@@ -113,12 +134,16 @@ func parseProjects(out []byte) []Project {
 		if p.WorkingDir == "" {
 			p.WorkingDir = dir
 		}
+		if p.ConfigFile == "" {
+			p.ConfigFile = field(f, 2)
+		}
 		p.Containers = append(p.Containers, Container{
-			Name:    field(f, 2),
-			Service: field(f, 3),
-			Image:   field(f, 4),
-			State:   field(f, 5),
-			Status:  field(f, 6),
+			Name:    field(f, 3),
+			Service: field(f, 4),
+			Image:   field(f, 5),
+			State:   field(f, 6),
+			Status:  field(f, 7),
+			Ports:   field(f, 8),
 		})
 	}
 	projects := make([]Project, 0, len(order))
@@ -135,4 +160,31 @@ func field(f []string, i int) string {
 		return f[i]
 	}
 	return ""
+}
+
+// parseVolumes folds `docker volume ls` output (project<TAB>volume, one line per
+// volume) into a project→volume-names map, skipping volumes with no project
+// label (not compose-created). Names are kept in the order docker returns them.
+func parseVolumes(out []byte) map[string][]string {
+	byProject := map[string][]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		project, vol, _ := strings.Cut(line, "\t")
+		if project == "" || vol == "" {
+			continue
+		}
+		byProject[project] = append(byProject[project], vol)
+	}
+	return byProject
+}
+
+// attachVolumes fills each project's Volumes from the project→volumes map, keyed
+// by compose project name (the same label volumes and containers share).
+func attachVolumes(projects []Project, vols map[string][]string) {
+	for i := range projects {
+		projects[i].Volumes = vols[projects[i].Name]
+	}
 }
