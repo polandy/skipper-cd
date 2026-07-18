@@ -183,6 +183,10 @@ export interface StartOptions {
    *  (when set) is committed as the repo-root skipper.yaml; names in `disabled`
    *  are parked there and not awaited at startup. Maske O opts in. */
   discovery?: { repoConfig?: string; disabled?: string[] };
+  /** Per-stack depends_on edges (ADR-0032), mirroring the Go harness's
+   *  startSkipperOrdered: a stack deploys only after its dependencies, and a
+   *  failed dependency blocks it (a `blocked` row). Maske P opts in. */
+  dependsOn?: Record<string, string[]>;
 }
 
 /** Skipper is a running skipper binary under test with its origin, stub docker,
@@ -324,6 +328,9 @@ export class Skipper {
             .map(
               (n) =>
                 `  - name: ${JSON.stringify(n)}\n` +
+                ((opts.dependsOn?.[n] ?? []).length
+                  ? `    depends_on: [${(opts.dependsOn?.[n] ?? []).map((d) => JSON.stringify(d)).join(', ')}]\n`
+                  : '') +
                 ((opts.healthCheck ?? []).includes(n)
                   ? `    health_check:\n      timeout_seconds: 1\n`
                   : '') +

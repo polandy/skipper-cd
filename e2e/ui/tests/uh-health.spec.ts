@@ -175,3 +175,27 @@ test.describe('UH4: status history (health watch)', () => {
     await expect(phases.nth(1).locator('[data-testid="health-phase-commit"]')).toHaveCount(0);
   });
 });
+
+// UH6 — the pill is a real button: keyboard users can reach it with Tab and
+// toggle the per-service panel with Enter/Space, like the files pill and the
+// history button (which are native <button>s too).
+test.describe('UH6: health pill is keyboard-operable', () => {
+  test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
+
+  test('the pill takes focus and Enter toggles the panel', async ({ page, skipper }) => {
+    skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
+    await page.goto(`${skipper.baseURL}/`);
+
+    const p = pill(page, 'web');
+    await expect(p).toHaveAttribute('data-health', 'healthy');
+
+    await p.focus();
+    await expect(p).toBeFocused(); // a plain <span> would refuse focus
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-testid="health-panel"]')).toHaveCount(1);
+
+    await page.keyboard.press('Enter'); // still focused: toggles closed again
+    await expect(page.locator('[data-testid="health-panel"]')).toHaveCount(0);
+  });
+});

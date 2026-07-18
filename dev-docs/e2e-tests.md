@@ -485,6 +485,9 @@ real docker, no real containers. Behaviour-only (no snapshot).
   panel shows the service as `stopped` with `exited · on-demand` in its state
   cell while the sibling's state stays plain. Covers the
   config→StackRef→probe→snapshot→label through-line the unit tests cannot see.
+- **UH6 — Keyboard operability.** The pill is a real `<button>`: it takes focus
+  (`Tab`-reachable) and `Enter` toggles the per-service panel open and closed —
+  the keyboard twin of UH2's clicks.
 
 ### 4.10 UI — Maske I: Diff-panel commit metadata + row binding
 
@@ -569,6 +572,11 @@ webhook image bump give two `success` records. Behaviour-only (no snapshot).
 - **UM3 — Mutual exclusion with the diff panel.** Opening the history panel then
   the files/diff panel swaps in the diff panel (row `diff-open`, not
   `audit-open`); opening the history button again swaps it back.
+- **UM4 — No orphaned panel on a queued row.** With autosync paused, a pushed
+  change renders a queued `web` row (the stack's newest, so it carries the
+  history button); the panel is opened on it, and resuming autosync drains the
+  queue — the queued row is superseded by the real deploy and the open
+  `audit-panel` is removed with it instead of stranding in the table.
 
 ### 4.15 UI — Maske N: self-heal row detail (ADR-0029 amendment)
 
@@ -604,6 +612,22 @@ empty, so the existing visual baselines are untouched.
 - **UO2 — Broken repo config.** Pushing a `skipper.yaml` with a syntax error on
   line 3 produces a `failed` row for the reserved `_config` stack whose error
   panel carries the parse error plus the marked excerpt (`> 3 |`).
+
+### 4.17 UI — Maske P: blocked rows + hostile-name escaping (ADR-0032)
+
+The first UI coverage of the `blocked` status, doubling as the escaping guard
+for repo-controlled stack names (in stack-discovery mode a stack name comes
+from the deploy repo, so it must never be interpreted as markup). `app` depends
+on a stack literally named `dep<img>x` (`dependsOn` start option, the Node twin
+of the Go harness's `startSkipperOrdered`); `STUB_DOCKER_FAIL_NTH_UP: '3'`
+fails the dependency's redeploy after the two startup deploys. Behaviour-only
+(no snapshot).
+
+- **UP1 — Blocked row renders the reason as text.** A webhook run that changes
+  both stacks fails the dependency and blocks `app`: the blocked row's tag reads
+  the literal `blocked by dep<img>x` and contains no injected `<img>` element,
+  and the dependency's own row shows the hostile name verbatim in its stack
+  cell.
 
 ## 5. Visual snapshot strategy
 
