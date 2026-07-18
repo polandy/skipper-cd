@@ -50,8 +50,8 @@ Andy's priorities for all work in this repo:
 - **Readability first**: small files, doc comments on exported symbols, names that reveal behavior. Readable beats clever.
 - **Clear responsibilities & encapsulation**: each package/type owns its data — don't pass raw mutable maps/structs around when a type with methods would hide the representation. Delete dead code instead of keeping it "for later"; unused APIs are complexity.
 - **Extensibility**: consumer-side interfaces (like `Runner`, `CommitReader`) instead of concrete coupling; keep packages small with one job.
-- **Coverage**: every non-trivial package has tests; check `go test ./... -cover` for regressions when touching a package.
-- **Go conventions**: gofmt/vet clean, sentinel errors (`errors.Is`) instead of matching error strings, `any` instead of `interface{}`, atomic writes (temp file + rename) for persisted state.
+- **Coverage**: every non-trivial package has tests; check `go test ./... -cover` for regressions when touching a package. A package that implements a safety/correctness invariant (e.g. `internal/fsatomic`'s atomic writes) needs its failure paths tested too, not just the happy path.
+- **Go conventions**: gofmt/vet clean, sentinel errors (`errors.Is`) instead of matching error strings, `any` instead of `interface{}`, atomic writes (temp file + rename) for persisted state, no magic strings/numbers (hoist a literal to a named constant once it's repeated across files or compared/switched against), never discard an error that matters with `_ = fn()` — log it at minimum, especially for state-persisting calls.
 - **Commit messages** follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): `<type>(<optional scope>): <description>` with types like `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci` (see existing history: `fix: gitignore actual binary name skipper`).
 
 ## Don'ts & pointers
