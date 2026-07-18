@@ -7,7 +7,7 @@ Date: 2026-07-18
 
 The deploy repo declares the host completely: every stack directory in the
 repo *is* a deployed stack, per-stack config lives in **one** central
-`skipper.yaml` at the repo root, and adding/changing/removing a stack is a
+`skipper.yaml` at the `stacks_base_dir` root, and adding/changing/removing a stack is a
 single git push. The host `skipper.yml` shrinks to host concerns. Decision
 record incl. the rejected explicit-list variant: ADR-0034.
 
@@ -31,25 +31,31 @@ multi-repo support.
   poller, self-heal, the autosync/queue order, and the icon resolver read
   the effective stacks through it (`stacksNow` in `cmd/skipper/main.go`).
 
-## Central overrides: repo-root `skipper.yaml`
+## Central overrides: `skipper.yaml` at `stacks_base_dir`
 
 ```yaml
-# skipper.yaml — at the deploy-repo root; optional, entries only for exceptions
+# skipper.yaml — at the root of stacks_base_dir; optional, entries only for exceptions
 stacks:
   traefik:
     depends_on: [authelia, crowdsec]
   paperless:
-    env_files: [stacks/paperless/secrets.env]
+    env_files: [paperless/secrets.env]
     health_check: { timeout_seconds: 60 }
   experiments:
     disabled: true        # in the repo, deliberately not deployed
 ```
 
+The file lives **at the root of the watched `stacks_base_dir`**, not the repo
+root (ADR-0034 amendment, 2026-07-18): one deploy repo can serve several hosts
+that each watch a different subtree, and each gets its own disjoint
+`skipper.yaml` — an override for a stack the host does not discover would
+otherwise be an entry-level error.
+
 - Keyed by stack name; every key is optional. Available fields: the
   per-stack fields of the host config except `name` and `autosync`
   (`working_dir`, `env_files`, `watch_dirs`, `on_demand_containers`, `icon`,
   `health_check`, `self_heal`, `depends_on`) plus `disabled`. Relative
-  `env_files`/`watch_dirs` paths resolve against the repo root. Decoding is
+  `env_files`/`watch_dirs` paths resolve against `stacks_base_dir`. Decoding is
   strict — an unknown field is a file-level error, so a typo fails loudly
   instead of silently deploying without the setting.
 - `disabled: true` — skipper ignores the stack entirely: not deployed, not

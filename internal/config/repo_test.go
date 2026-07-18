@@ -52,7 +52,7 @@ func TestLoadRepoStacks_DiscoversDirsWithComposeFile(t *testing.T) {
 		"stacks/alpha/sub/docker-compose.yml": minimalCompose, // nested: not scanned
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestLoadRepoStacks_MissingRepoConfigYieldsDefaults(t *testing.T) {
 		"stacks/web/docker-compose.yml": minimalCompose,
 	})
 
-	repo, _, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -90,15 +90,15 @@ func TestLoadRepoStacks_MissingRepoConfigYieldsDefaults(t *testing.T) {
 func TestLoadRepoStacks_AppliesOverrides(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"skipper.yaml": `
+		"stacks/skipper.yaml": `
 stacks:
   web:
     working_dir: /opt/web
     env_files:
-      - stacks/web/secrets.env
+      - web/secrets.env
       - /etc/global.env
     watch_dirs:
-      - stacks/web/conf
+      - web/conf
     on_demand_containers: [web-app]
     icon: nginx
     self_heal: true
@@ -107,7 +107,7 @@ stacks:
 `,
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -118,7 +118,8 @@ stacks:
 	if s.WorkingDir != "/opt/web" {
 		t.Errorf("WorkingDir = %q", s.WorkingDir)
 	}
-	// Relative paths resolve against the repo root; absolute ones stay as-is.
+	// Relative paths resolve against the stacks base dir (where skipper.yaml
+	// lives); absolute ones stay as-is.
 	if want := filepath.Join(repoDir, "stacks/web/secrets.env"); s.EnvFiles[0] != want {
 		t.Errorf("EnvFiles[0] = %q, want %q", s.EnvFiles[0], want)
 	}
@@ -140,10 +141,10 @@ func TestLoadRepoStacks_DisabledStackExcluded(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
 		"stacks/wip/docker-compose.yml": minimalCompose,
-		"skipper.yaml":                  "stacks:\n  wip:\n    disabled: true\n",
+		"stacks/skipper.yaml":           "stacks:\n  wip:\n    disabled: true\n",
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 0 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -159,10 +160,10 @@ func TestLoadRepoStacks_DisabledStackExcluded(t *testing.T) {
 func TestLoadRepoStacks_UnknownOverrideEntryReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"skipper.yaml":                  "stacks:\n  ghost:\n    icon: casper\n",
+		"stacks/skipper.yaml":           "stacks:\n  ghost:\n    icon: casper\n",
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -178,10 +179,10 @@ func TestLoadRepoStacks_UnknownOverrideEntryReported(t *testing.T) {
 func TestLoadRepoStacks_ParseErrorIsFileLevel(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"skipper.yaml":                  "stacks: [not: {a map\n",
+		"stacks/skipper.yaml":           "stacks: [not: {a map\n",
 	})
 
-	if _, _, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks")); err == nil {
+	if _, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks")); err == nil {
 		t.Fatal("expected a file-level error for unparseable skipper.yaml")
 	}
 }
@@ -190,17 +191,17 @@ func TestLoadRepoStacks_UnknownFieldIsFileLevel(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
 		// A misspelled field must fail loudly, not silently deploy without it.
-		"skipper.yaml": "stacks:\n  web:\n    depends_onn: [db]\n",
+		"stacks/skipper.yaml": "stacks:\n  web:\n    depends_onn: [db]\n",
 	})
 
-	if _, _, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks")); err == nil {
+	if _, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks")); err == nil {
 		t.Fatal("expected a file-level error for an unknown field")
 	}
 }
 
 func TestLoadRepoStacks_MissingBaseDirIsFileLevel(t *testing.T) {
 	repoDir := t.TempDir()
-	if _, _, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "missing")); err == nil {
+	if _, _, err := LoadRepoStacks(filepath.Join(repoDir, "missing")); err == nil {
 		t.Fatal("expected a file-level error for a missing stacks_base_dir")
 	}
 }
@@ -211,7 +212,7 @@ func TestLoadRepoStacks_ReservedDirNameReported(t *testing.T) {
 		"stacks/web/docker-compose.yml":    minimalCompose,
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -227,10 +228,10 @@ func TestLoadRepoStacks_InvalidHealthCheckReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/bad/docker-compose.yml": minimalCompose,
 		"stacks/ok/docker-compose.yml":  minimalCompose,
-		"skipper.yaml":                  "stacks:\n  bad:\n    health_check:\n      url: notaurl\n",
+		"stacks/skipper.yaml":           "stacks:\n  bad:\n    health_check:\n      url: notaurl\n",
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -247,7 +248,7 @@ func TestLoadRepoStacks_InvalidDependencyReported(t *testing.T) {
 		"stacks/selfref/docker-compose.yml":  minimalCompose,
 		"stacks/dangling/docker-compose.yml": minimalCompose,
 		"stacks/ok/docker-compose.yml":       minimalCompose,
-		"skipper.yaml": `
+		"stacks/skipper.yaml": `
 stacks:
   selfref:
     depends_on: [selfref]
@@ -256,7 +257,7 @@ stacks:
 `,
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -273,7 +274,7 @@ func TestLoadRepoStacks_DependencyCycleReported(t *testing.T) {
 		"stacks/a/docker-compose.yml":  minimalCompose,
 		"stacks/b/docker-compose.yml":  minimalCompose,
 		"stacks/ok/docker-compose.yml": minimalCompose,
-		"skipper.yaml": `
+		"stacks/skipper.yaml": `
 stacks:
   a:
     depends_on: [b]
@@ -282,7 +283,7 @@ stacks:
 `,
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -300,7 +301,7 @@ func TestLoadRepoStacks_DependencyOnDisabledStackAllowed(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/app/docker-compose.yml": minimalCompose,
 		"stacks/db/docker-compose.yml":  minimalCompose,
-		"skipper.yaml": `
+		"stacks/skipper.yaml": `
 stacks:
   app:
     depends_on: [db]
@@ -309,7 +310,7 @@ stacks:
 `,
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 0 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -323,10 +324,10 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 		t.Helper()
 		f := map[string]string{"stacks/web/docker-compose.yml": minimalCompose}
 		if repoConfig != "" {
-			f["skipper.yaml"] = repoConfig
+			f["stacks/skipper.yaml"] = repoConfig
 		}
 		repoDir := writeRepo(t, f)
-		repo, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+		repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 		if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 			t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 		}
@@ -338,8 +339,8 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 		t.Error("ConfigHash must be stable across loads of the same config")
 	}
 	// env_files shape the deploy → hash changes. The path resolves against the
-	// repo root, which is a temp dir per load, so compare via absolute path to
-	// keep the input identical across loads.
+	// stacks base dir, which is a temp dir per load, so compare via absolute
+	// path to keep the input identical across loads.
 	if withEnv := hashFor(t, "stacks:\n  web:\n    env_files: [/etc/web.env]\n"); withEnv == base {
 		t.Error("ConfigHash must change when env_files change")
 	}

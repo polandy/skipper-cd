@@ -11,8 +11,8 @@ import (
 )
 
 // discoveryRepo lays out a fake deploy-repo clone with the given stacks under
-// <repo>/stacks and an optional repo-root skipper.yaml, and returns the config
-// pointing at it in stack-discovery mode.
+// <repo>/stacks and an optional skipper.yaml at the stacks base dir, and
+// returns the config pointing at it in stack-discovery mode.
 func discoveryRepo(t *testing.T, stackNames []string, repoConfig string) (repoDir string, cfg *config.Config) {
 	t.Helper()
 	repoDir = t.TempDir()
@@ -24,7 +24,7 @@ func discoveryRepo(t *testing.T, stackNames []string, repoConfig string) (repoDi
 		writeFile(t, filepath.Join(dir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 	}
 	if repoConfig != "" {
-		writeFile(t, filepath.Join(repoDir, "skipper.yaml"), repoConfig)
+		writeFile(t, filepath.Join(repoDir, "stacks", "skipper.yaml"), repoConfig)
 	}
 	return repoDir, &config.Config{
 		StacksBaseDir:  filepath.Join(repoDir, "stacks"),
@@ -91,7 +91,7 @@ func TestDeployAllStacks_DiscoveryConfigEditRedeploysOnlyThatStack(t *testing.T)
 	if err := os.MkdirAll(filepath.Join(repoDir, "stacks", "alpha", "conf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(repoDir, "skipper.yaml"), "stacks:\n  alpha:\n    watch_dirs: [stacks/alpha/conf]\n")
+	writeFile(t, filepath.Join(repoDir, "stacks", "skipper.yaml"), "stacks:\n  alpha:\n    watch_dirs: [alpha/conf]\n")
 
 	secondRunner := &recordingRunner{}
 	var recorded []events.DeployEvent
@@ -107,7 +107,7 @@ func TestDeployAllStacks_DiscoveryConfigEditRedeploysOnlyThatStack(t *testing.T)
 	}
 	// The change is attributed to the repo config file, so the UI shows
 	// skipper.yaml as the changed file.
-	configPath := filepath.Join(repoDir, "skipper.yaml")
+	configPath := filepath.Join(repoDir, "stacks", "skipper.yaml")
 	var deployingChanged []string
 	for _, e := range recorded {
 		if e.Status == events.StatusDeploying && e.Stack == "alpha" {
@@ -116,7 +116,7 @@ func TestDeployAllStacks_DiscoveryConfigEditRedeploysOnlyThatStack(t *testing.T)
 	}
 	found := false
 	for _, f := range deployingChanged {
-		if f == "skipper.yaml" || f == configPath {
+		if f == "stacks/skipper.yaml" || f == configPath {
 			found = true
 		}
 	}

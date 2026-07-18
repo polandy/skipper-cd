@@ -48,10 +48,10 @@ func TestLoadRepoStacks_ParseErrorCarriesSnippet(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
 		// The stray tab on line 3 breaks the YAML there.
-		"skipper.yaml": "stacks:\n  web:\n\ticon: nginx\n",
+		"stacks/skipper.yaml": "stacks:\n  web:\n\ticon: nginx\n",
 	})
 
-	_, _, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	_, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err == nil {
 		t.Fatal("expected a parse error")
 	}
@@ -63,10 +63,10 @@ func TestLoadRepoStacks_ParseErrorCarriesSnippet(t *testing.T) {
 func TestLoadRepoStacks_UnknownFieldErrorCarriesSnippet(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"skipper.yaml":                  "stacks:\n  web:\n    depends_onn: [db]\n",
+		"stacks/skipper.yaml":           "stacks:\n  web:\n    depends_onn: [db]\n",
 	})
 
-	_, _, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	_, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err == nil {
 		t.Fatal("expected an unknown-field error")
 	}
@@ -78,10 +78,10 @@ func TestLoadRepoStacks_UnknownFieldErrorCarriesSnippet(t *testing.T) {
 func TestLoadRepoStacks_UnknownEntryErrorCarriesSnippet(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"skipper.yaml":                  "stacks:\n  web:\n    icon: nginx\n  ghost:\n    icon: casper\n",
+		"stacks/skipper.yaml":           "stacks:\n  web:\n    icon: nginx\n  ghost:\n    icon: casper\n",
 	})
 
-	_, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 1 {
 		t.Fatalf("err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -94,10 +94,10 @@ func TestLoadRepoStacks_UnknownEntryErrorCarriesSnippet(t *testing.T) {
 func TestLoadRepoStacks_HealthCheckErrorPointsAtTheField(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/bad/docker-compose.yml": minimalCompose,
-		"skipper.yaml":                  "stacks:\n  bad:\n    icon: x\n    health_check:\n      url: notaurl\n",
+		"stacks/skipper.yaml":           "stacks:\n  bad:\n    icon: x\n    health_check:\n      url: notaurl\n",
 	})
 
-	_, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 1 {
 		t.Fatalf("err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -110,10 +110,10 @@ func TestLoadRepoStacks_HealthCheckErrorPointsAtTheField(t *testing.T) {
 func TestLoadRepoStacks_DependencyErrorPointsAtTheField(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/app/docker-compose.yml": minimalCompose,
-		"skipper.yaml":                  "stacks:\n  app:\n    depends_on: [missing]\n",
+		"stacks/skipper.yaml":           "stacks:\n  app:\n    depends_on: [missing]\n",
 	})
 
-	_, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 1 {
 		t.Fatalf("err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -127,10 +127,10 @@ func TestLoadRepoStacks_CycleErrorsPointAtTheEdges(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/a/docker-compose.yml": minimalCompose,
 		"stacks/b/docker-compose.yml": minimalCompose,
-		"skipper.yaml":                "stacks:\n  a:\n    depends_on: [b]\n  b:\n    depends_on: [a]\n",
+		"stacks/skipper.yaml":         "stacks:\n  a:\n    depends_on: [b]\n  b:\n    depends_on: [a]\n",
 	})
 
-	_, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 2 {
 		t.Fatalf("err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -148,7 +148,7 @@ func TestLoadRepoStacks_ErrorWithoutFileLocationHasNoSnippet(t *testing.T) {
 		"stacks/_nixos/docker-compose.yml": minimalCompose,
 	})
 
-	_, stackErrs, err := LoadRepoStacks(repoDir, filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 1 {
 		t.Fatalf("err=%v stackErrs=%v", err, stackErrs)
 	}
