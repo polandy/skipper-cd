@@ -20,6 +20,10 @@ import (
 // new events rather than blocking the deploy path (same stance as the log ring).
 const notifyBufferSize = 64
 
+// defaultRequestTimeout is the per-request HTTP timeout applied when a
+// Notifier/HealthAlerter is built with timeout <= 0.
+const defaultRequestTimeout = 10 * time.Second
+
 // Doer sends an HTTP request. *http.Client satisfies it; tests inject a fake.
 type Doer interface {
 	Do(*http.Request) (*http.Response, error)
@@ -61,7 +65,7 @@ func New(cfgTargets []config.NotificationTarget, doer Doer, timeout time.Duratio
 		doer = http.DefaultClient
 	}
 	if timeout <= 0 {
-		timeout = 10 * time.Second
+		timeout = defaultRequestTimeout
 	}
 	return &Notifier{
 		targets: targets,

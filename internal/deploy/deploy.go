@@ -474,6 +474,10 @@ func (d *Deployer) WaitIdle() {
 	defer d.mu.Unlock()
 }
 
+// DeployAllStacks runs one full sync-and-deploy pass: it loads persisted
+// state, runs the NixOS rebuild first if configured (aborting all stack
+// deploys on failure), then deploys every changed stack in dependency order.
+// Callers serialize on SyncAndDeployAll — this method does not lock itself.
 func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	baseEnv, err := buildBaseEnv(cfg.VarsFile)
 	if err != nil {

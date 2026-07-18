@@ -14,6 +14,15 @@ var (
 		Help: "Total number of webhooks received and accepted.",
 	})
 
+	// WebhooksRejected counts incoming webhooks rejected before triggering a
+	// deploy, by reason ("signature" for a bad/missing HMAC signature,
+	// "too_large" for a body over MaxBodyBytes). A rising signature count
+	// usually means a misconfigured webhook_secret or unsolicited probing.
+	WebhooksRejected = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "skipper_webhooks_rejected_total",
+		Help: "Total number of webhooks rejected before deploy, by reason (signature|too_large).",
+	}, []string{"reason"})
+
 	// DeploysTriggered counts deployments that were actually executed, per stack.
 	DeploysTriggered = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "skipper_deploys_triggered_total",
