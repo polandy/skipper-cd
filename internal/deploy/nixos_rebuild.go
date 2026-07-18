@@ -13,8 +13,9 @@ import (
 
 // NixosStateKey is the reserved stack key used for the NixOS rebuild in the
 // persisted state, deploy events, and metrics. It is exported so the UI wiring
-// can recognize the pseudo-stack (e.g. to resolve its icon).
-const NixosStateKey = "_nixos"
+// can recognize the pseudo-stack (e.g. to resolve its icon). Aliases
+// config.ReservedStackName, the single source of truth for the reserved value.
+const NixosStateKey = config.ReservedStackName
 
 // rebuildNixOSIfChanged hashes the repo's nix files and runs nixos-rebuild
 // when any of them changed. The new hashes are persisted to state *before*

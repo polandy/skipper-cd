@@ -502,13 +502,15 @@ const (
 	defaultIconSourceURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons"
 )
 
-// reservedStackName is used internally as the state key for NixOS rebuild
-// hashes and must not collide with a configured stack.
-const reservedStackName = "_nixos"
+// ReservedStackName is used as the state/event key for NixOS rebuild hashes
+// (mirrored as deploy.NixosStateKey) and must not collide with a configured
+// stack.
+const ReservedStackName = "_nixos"
 
-// reservedConfigStackName is the event key for repo stack-config failures in
-// stack-discovery mode (ADR-0034) and must not collide with a configured stack.
-const reservedConfigStackName = "_config"
+// ReservedConfigStackName is the event key for repo stack-config failures in
+// stack-discovery mode (ADR-0034, mirrored as deploy.ConfigStateKey) and must
+// not collide with a configured stack.
+const ReservedConfigStackName = "_config"
 
 // defaultHealthCheckTimeoutSeconds is applied when a health_check section is
 // present without an explicit timeout_seconds.
@@ -560,7 +562,7 @@ func validateConfig(cfg *Config) error {
 		if s.Name == "" {
 			return fmt.Errorf("every stack needs a name")
 		}
-		if s.Name == reservedStackName || s.Name == reservedConfigStackName {
+		if s.Name == ReservedStackName || s.Name == ReservedConfigStackName {
 			return fmt.Errorf("stack name %q is reserved", s.Name)
 		}
 		if _, dup := seen[s.Name]; dup {
