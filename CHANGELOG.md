@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.0](https://github.com/polandy/skipper-cd/compare/v0.13.0...v0.14.0) (2026-07-18)
+
+
+### Features
+
+* **audit:** durable per-stack deploy history (ADR-0033) ([#102](https://github.com/polandy/skipper-cd/issues/102)) ([406d299](https://github.com/polandy/skipper-cd/commit/406d299216a249a52ed96aa6f4a302a826589ada))
+* **config:** enable the web UI by default ([5ff2ba3](https://github.com/polandy/skipper-cd/commit/5ff2ba318a131c8c73bf0ee701880a54ad1f7f28))
+* **ui:** self-heal row detail badge and drifted-services panel ([#105](https://github.com/polandy/skipper-cd/issues/105)) ([9edc848](https://github.com/polandy/skipper-cd/commit/9edc8481990ccf27b412766c4c0f2e962c344e28))
+
 ## [0.13.0](https://github.com/polandy/skipper-cd/compare/v0.12.0...v0.13.0) (2026-07-17)
 
 
