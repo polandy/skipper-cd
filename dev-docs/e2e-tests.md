@@ -711,6 +711,36 @@ e2e — and shares its `.roster-flag` rendering with the disabled row.
 - **UR5 — Shared time mode.** The stacks popover's `Absolute time` toggle (the
   shared `timeMode`) switches the roster's relative times to absolute.
 
+### 4.20 UI — Maske S: cross-view stack jump
+
+The compass jump button beside every stack name — deploy row and roster row
+alike — that switches between the Deploys and Stacks views and lands on that
+stack's row there (`internal/ui/UI_SPEC.md#cross-view-stack-jump`). Two
+`test.describe` blocks: the default two-stack boot (`api`, `web`) for the
+landing/regression cases, and a discovery+disabled boot (mirroring Maske O/R's
+`wip` fixture) for the no-landing-target case. Behaviour-only — no new
+snapshot, but the jump-btn's footprint on every row required regenerating
+`deploys-table.png` and the full-page `theme-dark`/`theme-light`/
+`mobile-layout` baselines (§5).
+
+- **US1 — Deploys → Stacks.** Clicking a deploy row's jump button switches to
+  the Stacks view and its (sole) roster row for that stack is visible and
+  briefly carries `.jump-target`, which clears again on its own.
+- **US2 — Stacks → Deploys lands on the newest row.** With two deploys of the
+  same stack (two rows, newest first), jumping from the roster flashes
+  `.jump-target` on the first (newest) row only — never the older one.
+  Where the roster view is *inventory* (one row per stack), the deploy table
+  is a *log*, so "the stack's row" is ambiguous there and the newest wins.
+- **US3 — The jump doesn't also open the row it sits on.** A regression guard:
+  the jump button and the row's own click-to-open-panel handler are on the
+  same delegated listener, so the jump must pre-empt it. Neither `diff-open`
+  (deploy row) nor `audit-open` + a rendered `audit-panel` (roster row) appear
+  after a jump click.
+- **US4 — No landing target.** A parked (`disabled: true`) stack has a roster
+  row and a jump button, but no deploy row (it has never deployed). Jumping
+  from it still switches to the Deploys view; there is simply nothing to land
+  on or flash.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -819,6 +849,10 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stacks roster: mobile popover search entry | **UR4** |
 | Stacks roster: shared time-mode toggle (relative → absolute) | **UR5** |
 | Stacks roster: never-deployed synthetic state | Unit `roster` — not e2e-seedable |
+| Cross-view jump: Deploys → Stacks lands on the roster row | **US1** |
+| Cross-view jump: Stacks → Deploys lands on the newest row | **US2** |
+| Cross-view jump: pre-empts the row's own panel-open click | **US3** |
+| Cross-view jump: no landing target (never-deployed stack) | **US4** |
 | Stack health: rolled-up pill per stack (healthy/unhealthy/stopped) | **UH1** |
 | Stack health: per-service panel toggle | **UH2** |
 | Stack health: pill on the newest row per stack | **UH3** |
