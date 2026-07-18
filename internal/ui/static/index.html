@@ -15,9 +15,9 @@
   // is enabled (data-theme-switcher="on"); with it off the deployed theme is
   // fixed and any stale override in localStorage stays dormant.
   (function() {
-    var el = document.documentElement;
+    const el = document.documentElement;
     if (el.getAttribute('data-theme-switcher') === 'on') {
-      var override = localStorage.getItem('themeOverride');
+      const override = localStorage.getItem('themeOverride');
       if (override) el.setAttribute('data-theme', override);
     }
     if (localStorage.getItem('colorScheme') === 'light') el.classList.add('light');
@@ -2345,12 +2345,12 @@
   let disabledSnap = [];
 
   function renderDisabledStacks() {
-    var wrap = document.getElementById('disabled-stacks');
-    var list = document.getElementById('disabled-list');
+    const wrap = document.getElementById('disabled-stacks');
+    const list = document.getElementById('disabled-list');
     list.textContent = '';
     if (!disabledSnap.length) { wrap.classList.remove('shown'); return; }
     disabledSnap.forEach(function(name) {
-      var chip = document.createElement('span');
+      const chip = document.createElement('span');
       chip.className = 'dis-chip';
       chip.textContent = name;
       list.appendChild(chip);
@@ -2410,7 +2410,7 @@
   // the corrective redeploy reacted to. Bound to its row (variant A) so it shares
   // the teal status bar.
   function createHealPanel(drift, meta) {
-    var el = document.createElement('div');
+    const el = document.createElement('div');
     el.className = 'heal-panel';
     el.dataset.testid = 'heal-panel';
     if (meta) {
@@ -2430,7 +2430,7 @@
   }
 
   function createFilesPanel(files, meta) {
-    var el = document.createElement('div');
+    const el = document.createElement('div');
     el.className = 'files-list';
     el.dataset.testid = 'files-panel';
     // Bound to its row (variant A) when opened from a deploy row, so it carries
@@ -2453,8 +2453,8 @@
     }).join('\n');
   }
 
-  var personGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
-  var clockGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
+  const personGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+  const clockGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
 
   // renderCommitHead builds the diff panel's header: an optional row-echo
   // (stack + status, present only when opened from a deploy row — meta set) and,
@@ -2513,7 +2513,7 @@
   // — shared status bar/tint) and echoes stack+status in the header. Opened from
   // a log line, meta is absent and the panel stays unbound.
   function renderDiffPanel(diffs, commits, meta) {
-    var el = document.createElement('div');
+    const el = document.createElement('div');
     el.className = 'diff-panel';
     el.dataset.testid = 'diff-panel';
     if (meta && meta.status) {
@@ -2534,7 +2534,7 @@
     return el;
   }
 
-  var diffCache = {};
+  const diffCache = {};
 
   function fetchDiffs(eventId, callback) {
     if (diffCache[eventId]) {
@@ -2555,7 +2555,7 @@
   }
 
   function escapeHtml(s) {
-    var d = document.createElement('div');
+    const d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
   }
@@ -2567,7 +2567,7 @@
   }
 
   function rowClass(status, isHistory) {
-    var cls = 'event-row';
+    let cls = 'event-row';
     if (status === 'deploying') cls += ' deploying-row';
     if (status === 'failed') cls += ' failed-row';
     if (status === 'success') cls += ' success-row';
@@ -2591,7 +2591,7 @@
     if (!chip) return;
     chip.classList.remove('mono');
     chip.textContent = '';
-    var img = document.createElement('img');
+    const img = document.createElement('img');
     img.alt = '';
     img.loading = 'lazy';
     img.addEventListener('error', function() { iconFallback(chip, stack); });
@@ -2619,7 +2619,7 @@
   }
 
   function createRow(evt, isHistory) {
-    var row = document.createElement('div');
+    const row = document.createElement('div');
     row.className = rowClass(evt.status, isHistory);
     row.dataset.testid = 'deploy-row';
     row.dataset.stack = evt.stack;
@@ -2645,7 +2645,7 @@
   }
 
   function createErrorDetail(evt) {
-    var el = document.createElement('div');
+    const el = document.createElement('div');
     el.className = 'error-detail';
     el.dataset.testid = 'error-panel';
     el.dataset.errorFor = evt.stack;
@@ -2664,17 +2664,17 @@
   // row of the same stack carries neither. Cheap to re-run on every deploy or
   // health snapshot — a handful of rows.
   function updateStackAffordances() {
-    var seen = {};
+    const seen = {};
     tbody.querySelectorAll('.event-row[data-stack]').forEach(function(row) {
-      var stack = row.dataset.stack;
-      var cell = row.querySelector('.cell-stack');
+      const stack = row.dataset.stack;
+      const cell = row.querySelector('.cell-stack');
       if (!cell) return;
-      var newest = !seen[stack];
+      const newest = !seen[stack];
       seen[stack] = true;
 
       // Health pill — only when a health status is known for the stack.
-      var pill = cell.querySelector('.health-pill');
-      var h = newest ? healthSnap[stack] : null;
+      let pill = cell.querySelector('.health-pill');
+      const h = newest ? healthSnap[stack] : null;
       if (h && h.status) {
         if (!pill) {
           // A real <button> like the files pill and history button, so the
@@ -2696,7 +2696,7 @@
       }
 
       // History button — always on the newest row (independent of health).
-      var hist = cell.querySelector('.history-btn');
+      let hist = cell.querySelector('.history-btn');
       if (newest && !hist) {
         hist = document.createElement('button');
         hist.className = 'history-btn';
@@ -2713,7 +2713,7 @@
   }
 
   function closeHealthPanel(row) {
-    var next = row.nextElementSibling;
+    const next = row.nextElementSibling;
     if (next && next.classList.contains('health-panel')) next.remove();
     row.classList.remove('health-open');
     row.removeAttribute('data-health');
@@ -2723,7 +2723,7 @@
   // they enforce one open panel per row: opening either panel first closes the
   // other, so a toggleable panel is always the row's direct next sibling.
   function closeDiffPanel(row) {
-    var next = row.nextElementSibling;
+    const next = row.nextElementSibling;
     if (next && (next.classList.contains('files-list') || next.classList.contains('diff-panel') || next.classList.contains('heal-panel'))) next.remove();
     row.classList.remove('diff-open');
   }
@@ -2732,7 +2732,7 @@
   // one-panel-per-row rule (ADR-0033): opening the history panel closes the
   // health/diff panel and vice versa.
   function closeAuditPanel(row) {
-    var next = row.nextElementSibling;
+    const next = row.nextElementSibling;
     if (next && next.classList.contains('audit-panel')) next.remove();
     row.classList.remove('audit-open');
   }
@@ -2751,7 +2751,7 @@
   // it once the fetch resolves — the same lazy pattern the diff panel uses. The
   // panel is removed-if-closed guard keeps a slow fetch from resurrecting it.
   function createAuditPanel(stack) {
-    var el = document.createElement('div');
+    const el = document.createElement('div');
     el.className = 'audit-panel';
     el.dataset.testid = 'audit-panel';
     el.dataset.auditFor = stack;
@@ -2825,7 +2825,7 @@
   }
 
   function createHealthPanel(stack) {
-    var el = document.createElement('div');
+    const el = document.createElement('div');
     el.className = 'health-panel';
     el.dataset.testid = 'health-panel';
     el.dataset.healthFor = stack;
@@ -2873,8 +2873,8 @@
   }
 
   function updateDeployingIndicator() {
-    var active = Object.keys(deployingRows);
-    var up = upcomingSnap;
+    const active = Object.keys(deployingRows);
+    const up = upcomingSnap;
     if (active.length > 0) {
       deployStatus.className = 'deploy-status active';
       dsActive.textContent = active.join(', ');
@@ -2889,7 +2889,7 @@
     }
     // Mirror everything into title/aria so it survives when the labels are
     // hidden on mobile (the dot + count chip stay — see UI_SPEC §Responsive).
-    var label = active.length > 0
+    const label = active.length > 0
       ? 'deploying ' + active.join(', ') + (up.length ? ' · next ' + up.join(', ') : '')
       : 'idle';
     deployStatus.title = label;
@@ -2990,8 +2990,8 @@
   // the snapshot lands.
   function refreshPendingTags() {
     Object.keys(queuedRows).forEach(function(stack) {
-      var row = queuedRows[stack];
-      var tag = row.querySelector('.paused-tag');
+      const row = queuedRows[stack];
+      const tag = row.querySelector('.paused-tag');
       if (tag) tag.outerHTML = pendingTagHTML({ stack: stack, status: row.dataset.status });
     });
   }
@@ -3001,7 +3001,7 @@
   // (files/diff, health, deploy history), so a drained row never strands a
   // panel in the table. No-op when the stack has no queued row.
   function removeQueuedRow(stack) {
-    var row = queuedRows[stack];
+    const row = queuedRows[stack];
     if (!row) return;
     closeDiffPanel(row);
     closeHealthPanel(row);
@@ -3023,7 +3023,7 @@
       // dependency, ADR-0032). Collapse repeats into one live row per stack,
       // keyed so it clears when the stack finally deploys.
       removeQueuedRow(evt.stack);
-      var qrow = createRow(evt, isHistory);
+      const qrow = createRow(evt, isHistory);
       tbody.insertBefore(qrow, tbody.firstChild);
       queuedRows[evt.stack] = qrow;
       return;
@@ -3033,7 +3033,7 @@
     removeQueuedRow(evt.stack);
 
     if (evt.status === 'deploying') {
-      var row = createRow(evt, isHistory);
+      const row = createRow(evt, isHistory);
       tbody.insertBefore(row, tbody.firstChild);
       deployingRows[evt.stack] = row;
       updateDeployingIndicator();
@@ -3041,14 +3041,14 @@
     }
 
     if ((evt.status === 'success' || evt.status === 'failed' || evt.status === 'rolled_back' || evt.status === 'rolled_back_unhealthy') && deployingRows[evt.stack]) {
-      var existing = deployingRows[evt.stack];
+      const existing = deployingRows[evt.stack];
       existing.className = rowClass(evt.status, isHistory);
       existing.dataset.status = evt.status;
       existing.dataset.eventId = evt.id;
       if (evt.has_diffs) existing.dataset.hasDiffs = '1';
       existing.querySelector('.status-cell').innerHTML = badgeHTML(evt.status);
       existing.querySelector('.cell-duration').textContent = formatDuration(evt.duration_ms);
-      var tc = existing.querySelector('.cell-time');
+      const tc = existing.querySelector('.cell-time');
       tc.dataset.ts = evt.timestamp;
       tc.textContent = absoluteTime ? fullTime(evt.timestamp) : formatTime(evt.timestamp);
       tc.title = absoluteTime ? formatTime(evt.timestamp) : fullTime(evt.timestamp);
@@ -3063,7 +3063,7 @@
       return;
     }
 
-    var row = createRow(evt, isHistory);
+    const row = createRow(evt, isHistory);
     tbody.insertBefore(row, tbody.firstChild);
     if (evt.error) {
       row.after(createErrorDetail(evt));
@@ -3073,7 +3073,7 @@
   setInterval(function() {
     if (!absoluteTime) {
       tbody.querySelectorAll('.cell-time').forEach(function(cell) {
-        var abs = cell.dataset.ts;
+        const abs = cell.dataset.ts;
         if (abs) cell.textContent = formatTime(abs);
       });
     }
@@ -3084,9 +3084,9 @@
   // it in CLOSED for good and it never retries. Without our own retry the
   // indicator would then sit on `reconnecting` forever. reconnectDelay backs off
   // our manual retries (capped), and onopen resets it once a connection is good.
-  var reconnectDelay = 1000;
-  var reconnectTimer = null;
-  var maxReconnectDelay = 30000;
+  let reconnectDelay = 1000;
+  let reconnectTimer = null;
+  const maxReconnectDelay = 30000;
 
   function scheduleReconnect() {
     if (reconnectTimer) return; // a retry is already pending
@@ -3103,7 +3103,7 @@
     connDot.parentElement.dataset.state = 'connecting';
     connDot.parentElement.title = 'connecting';
 
-    var es = new EventSource('/api/events');
+    const es = new EventSource('/api/events');
 
     es.onopen = function() {
       reconnectDelay = 1000; // a good connection resets the backoff
@@ -3114,7 +3114,7 @@
     };
 
     es.addEventListener('deploy', function(e) {
-      var evt = JSON.parse(e.data);
+      const evt = JSON.parse(e.data);
       handleEvent(evt, false);
       refilterDeploys();
       updateStackAffordances(); // a new/mutated row may change which row is newest
@@ -3139,24 +3139,24 @@
     });
 
     es.addEventListener('upcoming', function(e) {
-      var d = JSON.parse(e.data);
+      const d = JSON.parse(e.data);
       upcomingSnap = (d && d.upcoming) || [];
       updateDeployingIndicator();
     });
 
     es.addEventListener('health', function(e) {
-      var d = JSON.parse(e.data);
+      const d = JSON.parse(e.data);
       healthSnap = (d && d.stacks) || {};
       updateStackAffordances();
     });
 
     es.addEventListener('healthwatch', function(e) {
-      var d = JSON.parse(e.data);
+      const d = JSON.parse(e.data);
       healthwatchSnap = (d && d.stacks) || {};
     });
 
     es.addEventListener('stacks', function(e) {
-      var d = JSON.parse(e.data);
+      const d = JSON.parse(e.data);
       disabledSnap = (d && d.disabled) || [];
       renderDisabledStacks();
     });
@@ -3185,7 +3185,7 @@
       timeModeBtn.title = 'Switch to absolute time';
     }
     tbody.querySelectorAll('.cell-time').forEach(function(cell) {
-      var ts = cell.dataset.ts;
+      const ts = cell.dataset.ts;
       if (!ts) return;
       cell.textContent = absoluteTime ? fullTime(ts) : formatTime(ts);
       cell.title = absoluteTime ? formatTime(ts) : fullTime(ts);
@@ -3213,12 +3213,12 @@
   const deployFilterEmptyQ = document.getElementById('deploy-filter-empty-q');
 
   function applyDeployFilter() {
-    var q = (deployFilter.value || '').trim().toLowerCase();
+    const q = (deployFilter.value || '').trim().toLowerCase();
     deployFilterWrap.classList.toggle('has-value', q.length > 0);
-    var total = 0, shown = 0, visible = false;
-    var kids = tbody.children;
-    for (var i = 0; i < kids.length; i++) {
-      var el = kids[i];
+    let total = 0, shown = 0, visible = false;
+    const kids = tbody.children;
+    for (let i = 0; i < kids.length; i++) {
+      const el = kids[i];
       if (el.dataset && el.dataset.testid === 'deploy-row') {
         total++;
         visible = el.dataset.stack.toLowerCase().indexOf(q) !== -1;
@@ -3273,7 +3273,7 @@
   // row exists (nothing to filter).
   document.addEventListener('keydown', function(e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-    var tag = (e.target && e.target.tagName) || '';
+    const tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
     if (document.body.classList.contains('view-logs') || !hasRows) return;
     if (e.key === 'Escape') {
@@ -3405,7 +3405,7 @@
   }
 
   function waited(since) {
-    var diffS = Math.floor((Date.now() - new Date(since).getTime()) / 1000);
+    const diffS = Math.floor((Date.now() - new Date(since).getTime()) / 1000);
     if (diffS < 60) return diffS + 's';
     if (diffS < 3600) return Math.floor(diffS / 60) + 'm';
     if (diffS < 86400) return Math.floor(diffS / 3600) + 'h';
@@ -3529,7 +3529,7 @@
 
   // Per-stack switches are event-delegated so re-rendering the lists is cheap.
   function toggleFromEvent(target) {
-    var sw = target.closest ? target.closest('.sw[data-stack]') : null;
+    const sw = target.closest ? target.closest('.sw[data-stack]') : null;
     if (!sw) return false;
     autosyncPost('stack', sw.getAttribute('data-stack'), !sw.classList.contains('on'));
     return true;
@@ -3570,7 +3570,7 @@
   // scrolls to the older edge.
   const logPageSize = 500;
   const maxLogBuffer = 2000;
-  let logEntries = [];            // chronological, oldest → newest
+  const logEntries = [];            // chronological, oldest → newest
   let logVisible = logPageSize;   // number of newest entries currently rendered
   let logDescending = localStorage.getItem('logSort') !== 'asc'; // default: newest first
   let followLogs = localStorage.getItem('followLogs') !== 'false';
@@ -3578,7 +3578,7 @@
   let logSource = null;
 
   function renderLogLine(entry) {
-    var line = document.createElement('div');
+    const line = document.createElement('div');
     line.className = 'log-line';
     line.dataset.testid = 'log-line';
     const attrs = entry.attrs || {};
@@ -3618,15 +3618,15 @@
   // wherever the panel is rendered (deploy table or log view). Returns true when
   // it consumed the click so the caller stops. Shared by both click handlers.
   function handleDiffToggle(target) {
-    var fileHeader = target.closest('.diff-file-header');
+    const fileHeader = target.closest('.diff-file-header');
     if (fileHeader) {
       fileHeader.classList.toggle('expanded');
       return true;
     }
-    var cpill = target.closest('.commits-pill');
+    const cpill = target.closest('.commits-pill');
     if (cpill) {
-      var chead = cpill.closest('.diff-head');
-      var clist = chead && chead.querySelector('.diff-commit-list');
+      const chead = cpill.closest('.diff-head');
+      const clist = chead && chead.querySelector('.diff-commit-list');
       if (clist) clist.classList.toggle('expanded');
       return true;
     }
@@ -3638,10 +3638,10 @@
   logPane.addEventListener('click', function(e) {
     if (handleDiffToggle(e.target)) return;
 
-    var pill = e.target.closest('.log-diff-pill');
+    const pill = e.target.closest('.log-diff-pill');
     if (!pill) return;
-    var line = pill.closest('.log-line');
-    var existing = line.nextElementSibling;
+    const line = pill.closest('.log-line');
+    const existing = line.nextElementSibling;
     if (existing && (existing.classList.contains('diff-panel') || existing.classList.contains('files-list'))) {
       existing.remove();
       return;
@@ -3650,7 +3650,7 @@
       if (diffs && Object.keys(diffs).length > 0) {
         line.after(renderDiffPanel(diffs, commits, null));
       } else {
-        var note = document.createElement('div');
+        const note = document.createElement('div');
         note.className = 'files-list';
         note.textContent = 'No diff recorded for this deploy.';
         line.after(note);
@@ -3667,7 +3667,7 @@
   // Remove a rendered line together with any diff/files panel opened below it,
   // so trimming the window never leaves an orphaned panel behind.
   function removeLogLine(line) {
-    var next = line.nextElementSibling;
+    const next = line.nextElementSibling;
     if (next && (next.classList.contains('diff-panel') || next.classList.contains('files-list'))) {
       next.remove();
     }
@@ -3678,9 +3678,9 @@
   // (bottom when descending, top when ascending). The dropped entries stay in
   // the buffer, so scrolling back can reveal them again.
   function trimLogDom() {
-    var lines = logPane.querySelectorAll('.log-line');
-    var over = lines.length - logVisible;
-    for (var i = 0; i < over; i++) {
+    const lines = logPane.querySelectorAll('.log-line');
+    const over = lines.length - logVisible;
+    for (let i = 0; i < over; i++) {
       removeLogLine(logDescending ? lines[lines.length - 1 - i] : lines[i]);
     }
   }
@@ -3690,17 +3690,17 @@
   function renderLogWindow() {
     logPane.innerHTML = '';
     if (logEntries.length === 0) {
-      var empty = document.createElement('div');
+      const empty = document.createElement('div');
       empty.className = 'log-empty';
       empty.id = 'log-empty';
       empty.textContent = 'Awaiting log output...';
       logPane.appendChild(empty);
       return;
     }
-    var count = Math.min(logVisible, logEntries.length);
-    var slice = logEntries.slice(logEntries.length - count); // oldest → newest
+    const count = Math.min(logVisible, logEntries.length);
+    const slice = logEntries.slice(logEntries.length - count); // oldest → newest
     if (logDescending) slice.reverse();
-    var frag = document.createDocumentFragment();
+    const frag = document.createDocumentFragment();
     slice.forEach(function(e) { frag.appendChild(renderLogLine(e)); });
     logPane.appendChild(frag);
     scrollToNewest();
@@ -3709,18 +3709,18 @@
   // Reveal another page of older entries at the older edge, preserving the
   // reading position. No-op once the whole buffer is rendered.
   function loadMoreLogs() {
-    var have = Math.min(logVisible, logEntries.length);
-    var target = Math.min(logVisible + logPageSize, maxLogBuffer, logEntries.length);
+    const have = Math.min(logVisible, logEntries.length);
+    const target = Math.min(logVisible + logPageSize, maxLogBuffer, logEntries.length);
     if (target <= have) return;
     logVisible = target;
-    var older = logEntries.slice(logEntries.length - target, logEntries.length - have);
-    var frag = document.createDocumentFragment();
+    const older = logEntries.slice(logEntries.length - target, logEntries.length - have);
+    const frag = document.createDocumentFragment();
     if (logDescending) {
       older.reverse(); // append newest → oldest at the bottom
       older.forEach(function(e) { frag.appendChild(renderLogLine(e)); });
       logPane.appendChild(frag); // grows below the fold; scrollTop unchanged
     } else {
-      var prevHeight = logPane.scrollHeight, prevTop = logPane.scrollTop;
+      const prevHeight = logPane.scrollHeight, prevTop = logPane.scrollTop;
       older.forEach(function(e) { frag.appendChild(renderLogLine(e)); }); // oldest → newest
       logPane.insertBefore(frag, logPane.firstChild);
       logPane.scrollTop = prevTop + (logPane.scrollHeight - prevHeight);
@@ -3729,9 +3729,9 @@
 
   // A single fresh (newest) line arrived over the stream.
   function appendNewestToDom(entry) {
-    var empty = logPane.querySelector('.log-empty');
+    const empty = logPane.querySelector('.log-empty');
     if (empty) empty.remove();
-    var node = renderLogLine(entry);
+    const node = renderLogLine(entry);
     if (logDescending) {
       logPane.insertBefore(node, logPane.firstChild);
     } else {
@@ -3743,7 +3743,7 @@
 
   function pushLog(entry) {
     logEntries.push(entry);
-    var overflow = logEntries.length - maxLogBuffer;
+    const overflow = logEntries.length - maxLogBuffer;
     if (overflow > 0) logEntries.splice(0, overflow);
     // While the logs view is hidden we only buffer; the pane is rebuilt from
     // the buffer when the view is next activated.
@@ -3751,7 +3751,7 @@
   }
 
   logPane.addEventListener('scroll', function() {
-    var nearOlderEdge = logDescending
+    const nearOlderEdge = logDescending
       ? logPane.scrollTop + logPane.clientHeight >= logPane.scrollHeight - 40
       : logPane.scrollTop <= 40;
     if (nearOlderEdge) loadMoreLogs();
@@ -3763,8 +3763,8 @@
   // (non-2xx / bad content-type, readyState CLOSED); without our own retry the
   // pane would then stop receiving lines with nothing on screen to explain it.
   // Backoff mirrors the events stream and shares maxReconnectDelay.
-  var logReconnectDelay = 1000;
-  var logReconnectTimer = null;
+  let logReconnectDelay = 1000;
+  let logReconnectTimer = null;
 
   function scheduleLogReconnect() {
     if (logReconnectTimer) return; // a retry is already pending
@@ -3875,11 +3875,11 @@
 
     // History button: toggle the per-stack deploy-history panel (ADR-0033).
     // Handled before the files logic so a tap never opens the row's diff panel.
-    var histBtn = e.target.closest('.history-btn');
+    const histBtn = e.target.closest('.history-btn');
     if (histBtn) {
-      var arow = histBtn.closest('.event-row');
+      const arow = histBtn.closest('.event-row');
       if (arow) {
-        var anext = arow.nextElementSibling;
+        const anext = arow.nextElementSibling;
         if (anext && anext.classList.contains('audit-panel')) {
           closeAuditPanel(arow);
         } else {
@@ -3894,11 +3894,11 @@
 
     // Stack-health pill: toggle its per-service panel. Handled before the files
     // logic so a tap on the pill never opens the row's files/diff panel (mobile).
-    var hpill = e.target.closest('.health-pill');
+    const hpill = e.target.closest('.health-pill');
     if (hpill) {
-      var hrow = hpill.closest('.event-row');
+      const hrow = hpill.closest('.event-row');
       if (hrow) {
-        var hnext = hrow.nextElementSibling;
+        const hnext = hrow.nextElementSibling;
         if (hnext && hnext.classList.contains('health-panel')) {
           closeHealthPanel(hrow);
         } else {
@@ -3914,12 +3914,12 @@
 
     // Self-heal badge: toggle the corrective-redeploy detail panel. A healed row
     // has no files pill, so it is handled on its own (ADR-0029).
-    var healPill = e.target.closest('.heal-pill');
-    var healRow = healPill ? healPill.closest('.event-row') : (e.target.closest('.event-row.healed-row'));
+    const healPill = e.target.closest('.heal-pill');
+    const healRow = healPill ? healPill.closest('.event-row') : (e.target.closest('.event-row.healed-row'));
     if (healRow) {
-      var healBtn = healPill || healRow.querySelector('.heal-pill');
+      const healBtn = healPill || healRow.querySelector('.heal-pill');
       if (!healBtn) return;
-      var hnext = healRow.nextElementSibling;
+      const hnext = healRow.nextElementSibling;
       if (hnext && hnext.classList.contains('heal-panel')) {
         closeDiffPanel(healRow);
       } else {
@@ -3927,18 +3927,18 @@
         closeAuditPanel(healRow);
         closeDiffPanel(healRow);
         healRow.classList.add('diff-open'); // shares the panel's status bar
-        var drift = JSON.parse(healBtn.dataset.drift || '[]');
+        const drift = JSON.parse(healBtn.dataset.drift || '[]');
         healRow.after(createHealPanel(drift, { stack: healRow.dataset.stack, status: healRow.dataset.status }));
       }
       return;
     }
 
-    var pill = e.target.closest('.files-pill');
-    var row = pill ? pill.closest('.event-row') : e.target.closest('.event-row');
+    const pill = e.target.closest('.files-pill');
+    const row = pill ? pill.closest('.event-row') : e.target.closest('.event-row');
     if (!row) return;
-    var pillEl = pill || row.querySelector('.files-pill');
+    const pillEl = pill || row.querySelector('.files-pill');
     if (!pillEl) return;
-    var existing = row.nextElementSibling;
+    const existing = row.nextElementSibling;
     if (existing && (existing.classList.contains('files-list') || existing.classList.contains('diff-panel'))) {
       closeDiffPanel(row);
       return;
@@ -3946,17 +3946,17 @@
     closeHealthPanel(row); // one panel per row: replace an open health panel
     closeAuditPanel(row);
 
-    var eventId = row.dataset.eventId;
-    var hasDiffs = row.dataset.hasDiffs === '1';
+    const eventId = row.dataset.eventId;
+    const hasDiffs = row.dataset.hasDiffs === '1';
     // Bind the panel to its row (variant A): the shared status bar/tint keys off
     // the row's status, so pass it to the panel and mark the row open.
-    var meta = { stack: row.dataset.stack, status: row.dataset.status };
+    const meta = { stack: row.dataset.stack, status: row.dataset.status };
 
     // Mark the row open for any panel (diff or plain file list) so it keeps the
     // shared status bar; the trailing panel binds to it via --dc.
     row.classList.add('diff-open');
     if (hasDiffs && eventId) {
-      var loading = document.createElement('div');
+      const loading = document.createElement('div');
       loading.className = 'diff-panel bound';
       loading.dataset.status = meta.status;
       loading.innerHTML = '<div class="diff-loading">Loading diffs...</div>';
@@ -3969,12 +3969,12 @@
         if (diffs && Object.keys(diffs).length > 0) {
           row.after(renderDiffPanel(diffs, commits, meta));
         } else {
-          var files = JSON.parse(pillEl.dataset.files);
+          const files = JSON.parse(pillEl.dataset.files);
           row.after(createFilesPanel(files, meta));
         }
       });
     } else {
-      var files = JSON.parse(pillEl.dataset.files);
+      const files = JSON.parse(pillEl.dataset.files);
       row.after(createFilesPanel(files, meta));
     }
   });
@@ -3987,11 +3987,11 @@
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (!d || !d.version) return;
-      var el = document.getElementById('brand-version');
+      const el = document.getElementById('brand-version');
       if (!el) return;
-      var base = d.version === 'dev' ? 'dev' : 'v' + d.version;
-      var head = (d.branch && d.branch !== 'main') ? d.branch : base;
-      var text = d.commit ? head + ' · ' + d.commit : head;
+      const base = d.version === 'dev' ? 'dev' : 'v' + d.version;
+      const head = (d.branch && d.branch !== 'main') ? d.branch : base;
+      const text = d.commit ? head + ' · ' + d.commit : head;
       el.textContent = text;
       // The label may be clipped (ellipsis) on narrow viewports or long branch
       // names; the title exposes the full identity on hover / long-press.
@@ -4003,20 +4003,20 @@
   // tap on any header control flashes its title in a bubble. Mouse/pen keep the
   // native tooltip (we only handle touch pointers), avoiding a double tooltip.
   (function setupTapTips() {
-    var header = document.querySelector('header');
+    const header = document.querySelector('header');
     if (!header) return;
-    var tip = document.createElement('div');
+    const tip = document.createElement('div');
     tip.className = 'tap-tip';
     tip.setAttribute('aria-hidden', 'true');
     document.body.appendChild(tip);
-    var hideTimer = null;
+    let hideTimer = null;
     function hide() { tip.classList.remove('show'); }
     header.addEventListener('pointerdown', function(e) {
       if (e.pointerType && e.pointerType !== 'touch') return; // mouse/pen: native tooltip
-      var el = e.target.closest && e.target.closest('[title]');
+      const el = e.target.closest && e.target.closest('[title]');
       if (!el || !header.contains(el)) return;
       if (el.closest('.view-options')) return; // popover rows already show labels
-      var text = el.getAttribute('title');
+      const text = el.getAttribute('title');
       if (!text) return;
       tip.textContent = text;
       // Render off-screen first to measure, then centre under the control and
@@ -4024,9 +4024,9 @@
       tip.style.left = '-9999px';
       tip.style.top = '0px';
       tip.classList.add('show');
-      var r = el.getBoundingClientRect();
-      var margin = 6;
-      var left = r.left + r.width / 2 - tip.offsetWidth / 2;
+      const r = el.getBoundingClientRect();
+      const margin = 6;
+      let left = r.left + r.width / 2 - tip.offsetWidth / 2;
       left = Math.max(margin, Math.min(left, window.innerWidth - tip.offsetWidth - margin));
       tip.style.left = left + 'px';
       tip.style.top = (r.bottom + 6) + 'px';
@@ -4054,18 +4054,18 @@
   // Deduped by worker identity: the same waiting worker never re-prompts (its
   // statechange and the on-load reg.waiting check can both reach here), but a
   // later deploy's new worker can prompt again even after a dismissal.
-  var promptedWorker = null;
+  let promptedWorker = null;
   // Set when the user accepts the prompt. Together with a worker already
   // controlling the page at load, it tells a real version handover (reload onto
   // it) apart from the first-install clients.claim() (must not bounce a fresh
   // visit) — see the controllerchange listener.
-  var updateAccepted = false;
+  let updateAccepted = false;
   function showUpdateBanner(worker) {
     if (promptedWorker === worker) return;
     promptedWorker = worker;
-    var banner = document.getElementById('update-banner');
-    var reload = document.getElementById('update-banner-reload');
-    var close = document.getElementById('update-banner-close');
+    const banner = document.getElementById('update-banner');
+    const reload = document.getElementById('update-banner-reload');
+    const close = document.getElementById('update-banner-close');
     reload.onclick = function() {
       updateAccepted = true;
       reload.disabled = true;
@@ -4080,8 +4080,8 @@
     // prompt (here or, via hadController, in another tab). A controllerchange
     // with neither — no controller at load and no acceptance — is just the
     // first-install clients.claim(), which must not bounce a fresh visit.
-    var hadController = !!navigator.serviceWorker.controller;
-    var reloading = false;
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', function() {
       if (reloading || (!updateAccepted && !hadController)) return;
       reloading = true;
@@ -4095,7 +4095,7 @@
         showUpdateBanner(reg.waiting);
       }
       reg.addEventListener('updatefound', function() {
-        var sw = reg.installing;
+        const sw = reg.installing;
         if (!sw) return;
         sw.addEventListener('statechange', function() {
           // installed + an existing controller ⇒ an update is ready; without a
