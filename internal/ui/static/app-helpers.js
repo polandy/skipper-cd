@@ -73,21 +73,21 @@ function auditStatusLabel(status) {
 // the first minute.
 function phaseDuration(ms) {
   if (!ms || ms < 1000) return '0s';
-  var s = Math.floor(ms / 1000);
+  const s = Math.floor(ms / 1000);
   if (s < 60) return s + 's';
-  var m = Math.floor(s / 60);
+  const m = Math.floor(s / 60);
   if (m < 60) return m + 'm';
-  var h = Math.floor(m / 60);
+  const h = Math.floor(m / 60);
   if (h < 24) return h + 'h' + (m % 60 ? (m % 60) + 'm' : '');
-  var d = Math.floor(h / 24);
+  const d = Math.floor(h / 24);
   return d + 'd' + (h % 24 ? (h % 24) + 'h' : '');
 }
 
 // phaseSince renders a phase start compactly in local time: time-of-day for
 // today, day+month plus time otherwise.
 function phaseSince(ts) {
-  var d = new Date(ts);
-  var time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const d = new Date(ts);
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   if (d.toDateString() === new Date().toDateString()) return time;
   return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + time;
 }
@@ -109,8 +109,8 @@ function levelClass(level) {
 // logTime shows the time of day; lines from another day get a date
 // prefix. The full timestamp is always in the tooltip.
 function logTime(ts) {
-  var d = new Date(ts);
-  var t = d.toLocaleTimeString();
+  const d = new Date(ts);
+  const t = d.toLocaleTimeString();
   if (d.toDateString() !== new Date().toDateString()) {
     return d.toLocaleDateString() + ' ' + t;
   }
