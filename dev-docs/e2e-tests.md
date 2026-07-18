@@ -676,8 +676,9 @@ masked the pane's layout diffs run-to-run. UB2's value — the level-badge mappi
   Chromium) leaves it unset, so the behaviour assertions still run but the
   screenshot is skipped: local runs compare behaviour, CI compares pixels. The
   gate lives in `e2e/ui/fixtures/snapshot.ts` (`visualSnapshot`).
-- **Fonts** are **embedded** in `index.html` (self-hosted `@font-face`, `woff2`
-  as `data:` URIs), so there is no font load-timing / offline nondeterminism.
+- **Fonts** are **embedded and self-hosted** (`woff2` files under `static/fonts`,
+  served same-origin from `/fonts/` and preloaded — ADR-0035), so there is no
+  external request and no font load-timing / offline nondeterminism.
   Even so, baselines are generated and compared **in Playwright's pinned Docker
   container** (`mcr.microsoft.com/playwright:v1.61.1-noble`, matching
   `@playwright/test` in the lockfile) to fix OS-level font rasterisation.
