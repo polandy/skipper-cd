@@ -52,6 +52,33 @@ stacks: []
 	}
 }
 
+func TestLoad_UIEnabledDefaultsTrue(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.UIEnabled == nil || !*cfg.UIEnabled {
+		t.Errorf("expected ui_enabled to default to true, got %v", cfg.UIEnabled)
+	}
+}
+
+func TestLoad_UIEnabledExplicitFalse(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+ui_enabled: false
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.UIEnabled == nil || *cfg.UIEnabled {
+		t.Errorf("expected explicit ui_enabled: false to stick, got %v", cfg.UIEnabled)
+	}
+}
+
 func TestLoad_DefaultTimeoutAndBranch(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git

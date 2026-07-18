@@ -114,8 +114,12 @@ type Config struct {
 	WebhookSecret string  `yaml:"webhook_secret"`
 	Port          int     `yaml:"port"`
 	MetricsPort   int     `yaml:"metrics_port"`
-	UIEnabled     bool    `yaml:"ui_enabled"`
 	Stacks        []Stack `yaml:"stacks"`
+
+	// UIEnabled serves the web UI (dashboard, event history, UI API) on the
+	// webhook port. nil (omitted) defaults to true; set an explicit false to
+	// run headless. Load normalizes it, so it is never nil after Load.
+	UIEnabled *bool `yaml:"ui_enabled"`
 
 	// Autosync is the global default for whether detected changes deploy
 	// automatically. nil means true (on). A per-stack Autosync overrides it.
@@ -380,6 +384,10 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.UITheme == "" {
 		cfg.UITheme = ui.ThemeCatppuccin
+	}
+	if cfg.UIEnabled == nil {
+		d := true
+		cfg.UIEnabled = &d
 	}
 	if cfg.HealthPollIntervalSeconds == nil {
 		d := defaultHealthPollIntervalSeconds
