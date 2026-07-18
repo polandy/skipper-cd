@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,6 +50,36 @@ stacks: []
 	}
 	if cfg.MetricsPort != 9120 {
 		t.Errorf("expected default metrics_port 9120, got %d", cfg.MetricsPort)
+	}
+}
+
+func TestLoad_RejectsPortOutOfRange(t *testing.T) {
+	for _, port := range []int{0, -1, 65536, 99999} {
+		if _, err := loadStringToConfig(t, minimalConfig+fmt.Sprintf("port: %d\n", port)); err == nil {
+			t.Errorf("port %d: expected an out-of-range error, got nil", port)
+		}
+	}
+}
+
+func TestLoad_RejectsMetricsPortOutOfRange(t *testing.T) {
+	for _, port := range []int{0, -1, 65536} {
+		if _, err := loadStringToConfig(t, minimalConfig+fmt.Sprintf("metrics_port: %d\n", port)); err == nil {
+			t.Errorf("metrics_port %d: expected an out-of-range error, got nil", port)
+		}
+	}
+}
+
+func TestLoad_RejectsPortEqualToMetricsPort(t *testing.T) {
+	_, err := loadStringToConfig(t, minimalConfig+"port: 8080\nmetrics_port: 8080\n")
+	if err == nil {
+		t.Fatal("expected an error when port equals metrics_port")
+	}
+}
+
+func TestLoad_RejectsNegativeCommandTimeout(t *testing.T) {
+	_, err := loadStringToConfig(t, minimalConfig+"command_timeout_seconds: -1\n")
+	if err == nil {
+		t.Fatal("expected an error for a negative command_timeout_seconds")
 	}
 }
 
