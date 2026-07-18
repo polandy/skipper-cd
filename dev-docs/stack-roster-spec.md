@@ -113,10 +113,11 @@ Only what is specific to the roster is listed here.
 
 - `internal/roster`: table tests — merge/sort, never-deployed (no record),
   disabled ordering + parking, empty set.
-- Frontend: Playwright Maske Q (`uq-roster.spec.ts`) — view switch + deployed/
-  disabled rows + aligned column header (UQ1), click-a-row → containers +
-  history (UQ2), search incl. the mobile popover entry (UQ3/UQ4). Behaviour-
-  only; the "never deployed" state is covered by the roster unit test (in
+- Frontend: Playwright Maske R (`ur-roster.spec.ts`) — view switch + deployed/
+  disabled rows + aligned column header (UR1), click-a-row → containers +
+  history (UR2), search incl. the mobile popover entry (UR3/UR4), and the shared
+  time-mode toggle (UR5). Behaviour-only; the "never deployed" state is covered
+  by the roster unit test (in
   discovery mode the first sync deploys every stack, so it isn't
   deterministically seedable in e2e) and shares its `.roster-flag` rendering
   with the disabled row.
