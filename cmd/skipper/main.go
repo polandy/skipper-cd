@@ -123,7 +123,7 @@ func main() {
 	// process output) into an in-memory ring served live at /api/logs.
 	var logRing *logbuf.Log
 	logHandler := newLogHandler(cfg.LogFormat, os.Stderr)
-	if cfg.UIEnabled {
+	if *cfg.UIEnabled {
 		logRing = logbuf.New(logbuf.DefaultCapacity)
 		logHandler = logbuf.NewHandler(logHandler, logRing)
 	}
@@ -166,7 +166,7 @@ func main() {
 	// The deploy event sink is composed from whatever consumers are configured;
 	// each is independent, so notifications work with the UI off (ADR-0020).
 	var eventSinks []func(events.DeployEvent)
-	if cfg.UIEnabled {
+	if *cfg.UIEnabled {
 		history = events.NewHistory(stateDir)
 		broadcaster = events.NewBroadcaster()
 		stateB = events.NewStateBroadcaster()
@@ -272,7 +272,7 @@ func main() {
 	// watchdog set AlwaysPoll so it still runs headless on an unattended host
 	// (ADR-0029, ADR-0031). Config validation guarantees a positive interval
 	// whenever self-heal or the watchdog is active.
-	if interval := *cfg.HealthPollIntervalSeconds; interval > 0 && (cfg.UIEnabled || selfHealActive || healthWatcher != nil) {
+	if interval := *cfg.HealthPollIntervalSeconds; interval > 0 && (*cfg.UIEnabled || selfHealActive || healthWatcher != nil) {
 		healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 		hpCfg := health.Config{
 			Outputter:  command.NewShellRunner(healthTimeout),
