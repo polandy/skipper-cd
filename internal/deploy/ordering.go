@@ -142,20 +142,19 @@ func (d *Deployer) deployStackGated(ctx context.Context, stack config.Stack, bas
 // the pending registry — which also pins the diff/rollback base until the chain
 // clears — and leaves hashes unrecorded so the stack retries on the next sync.
 func (d *Deployer) deferForDependency(ctx context.Context, stack config.Stack, changed []string, state *persistedState, gate gateDecision) depOutcome {
-	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
-	commits := d.collectCommits(ctx, changed, state.LastDeployedCommit)
+	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
 
 	if gate.outcome == depBlocked {
 		d.markPending(stack.Name, changed, "blocked by "+gate.depName)
 		metrics.DeploysBlocked.WithLabelValues(stack.Name).Inc()
-		d.emit(events.StatusBlocked, stack.Name, 0, "dependency "+gate.depName+" failed this run", changed, diffs, commits)
+		d.emit(events.StatusBlocked, stack.Name, 0, "dependency "+gate.depName+" failed this run", cs)
 		slog.Warn("deploy blocked by failed dependency", "stack", stack.Name, "dependency", gate.depName, "changed_files", changed)
 		return depBlocked
 	}
 
 	d.markPending(stack.Name, changed, "waiting for dependency "+gate.depName)
 	metrics.DeploysQueued.WithLabelValues(stack.Name).Inc()
-	d.emit(events.StatusQueued, stack.Name, 0, "", changed, diffs, commits)
+	d.emit(events.StatusQueued, stack.Name, 0, "", cs)
 	slog.Info("deploy deferred: waiting for queued dependency", "stack", stack.Name, "dependency", gate.depName, "changed_files", changed)
 	return depQueued
 }

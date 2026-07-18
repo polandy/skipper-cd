@@ -154,14 +154,20 @@ func main() {
 	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch, timeout, sink)
 	repoReader := git.NewRepoReader(repoSync.RepoDir(), timeout, sink)
 	stateDir := filepath.Dir(repoSync.RepoDir())
-	deployer := deploy.NewDeployerWithCommitReader(repoReader, repoSync, repoSync.RepoDir(), stateDir, timeout, sink)
-	deployer.SetShutdownContext(signalCtx)
+
+	// The deployer is constructed below via deploy.New once all its
+	// collaborators are built — deploy.Config wires everything at construction.
+	// Closures built earlier (e.g. the self-heal healer) capture this variable;
+	// they only run once the background loops start, after the construction.
+	var deployer *deploy.Deployer
 
 	var (
 		broadcaster  *events.Broadcaster[events.DeployEvent]
 		stateB       *events.Broadcaster[events.StateEvent]
 		history      *events.History
 		healthPoller *health.Poller
+		startEventID int64
+		runPlanSink  func(deploy.RunPlan)
 	)
 	// The deploy event sink is composed from whatever consumers are configured;
 	// each is independent, so notifications work with the UI off (ADR-0020).
@@ -170,7 +176,7 @@ func main() {
 		history = events.NewHistory(stateDir)
 		broadcaster = events.NewBroadcaster()
 		stateB = events.NewStateBroadcaster()
-		deployer.InitEventID(history.MaxEventID())
+		startEventID = history.MaxEventID()
 		eventSinks = append(eventSinks, func(e events.DeployEvent) {
 			if e.Status != events.StatusSkipped {
 				history.Add(e)
@@ -179,9 +185,9 @@ func main() {
 		})
 		// Look-ahead: publish the run plan (what deploys next) over the same SSE
 		// stream. Installing the sink is what enables the upfront planning pass.
-		deployer.SetRunPlanSink(func(p deploy.RunPlan) {
+		runPlanSink = func(p deploy.RunPlan) {
 			stateB.Publish(events.StateEvent{Name: "upcoming", Data: p})
-		})
+		}
 		slog.Info("web UI enabled")
 	}
 
@@ -213,19 +219,23 @@ func main() {
 	var selfHealEngine *selfheal.Engine
 	if selfHealActive {
 		selfHealEngine = selfheal.New(selfheal.Config{
-			Healer:            deployHealer{deployer, cfg},
+			// Both closures capture the deployer variable; they only run from
+			// the health poller, which starts after the deployer is constructed.
+			Healer: healerFunc(func(ctx context.Context, stack string, drift []events.DriftedService) (bool, error) {
+				return deployer.HealStack(ctx, cfg, stack, drift)
+			}),
 			Enabled:           cfg.SelfHealEnabled,
 			MinUnhealthyPolls: cfg.SelfHealMinUnhealthyPolls,
 			MaxAttempts:       cfg.SelfHealMaxAttempts,
-			Cooldown:          time.Duration(cfg.SelfHealCooldownSeconds) * time.Second,
-			OnExhausted:       deployer.EmitHealExhausted,
+			Cooldown:          time.Duration(*cfg.SelfHealCooldownSeconds) * time.Second,
+			OnExhausted:       func(stack string) { deployer.EmitHealExhausted(stack) },
 		})
 		eventSinks = append(eventSinks, func(e events.DeployEvent) {
 			if e.Status == events.StatusDeploying {
 				selfHealEngine.Reset(e.Stack)
 			}
 		})
-		slog.Info("self-heal enabled", "min_unhealthy_polls", cfg.SelfHealMinUnhealthyPolls, "max_attempts", cfg.SelfHealMaxAttempts, "cooldown_seconds", cfg.SelfHealCooldownSeconds)
+		slog.Info("self-heal enabled", "min_unhealthy_polls", cfg.SelfHealMinUnhealthyPolls, "max_attempts", cfg.SelfHealMaxAttempts, "cooldown_seconds", *cfg.SelfHealCooldownSeconds)
 	}
 
 	// Own-stack health watchdog (ADR-0031): detects per-service health
@@ -299,22 +309,22 @@ func main() {
 			}
 		}
 		healthPoller = health.New(hpCfg)
-		go healthPoller.Run(signalCtx)
 		slog.Info("stack health polling enabled", "interval_seconds", interval, "self_heal", selfHealActive, "health_watch", healthWatcher != nil)
 	}
 
+	// The deploy event sink fans out to all configured consumers.
+	var eventSink func(events.DeployEvent)
 	if len(eventSinks) > 0 {
-		deployer.SetEventSink(func(e events.DeployEvent) {
+		eventSink = func(e events.DeployEvent) {
 			for _, s := range eventSinks {
 				s(e)
 			}
-		})
+		}
 	}
 
 	// Autosync is active regardless of the UI so config-as-code pauses apply.
 	autosyncCtrl := autosync.NewController(cfg.Autosync, stackAutosyncConfig(cfg))
 	autosyncQueue := autosync.NewQueue()
-	deployer.SetAutosync(autosyncCtrl, autosyncQueue)
 	order := func() []string { return deployOrder(cfg) }
 	publishAutosync := func() {
 		snap := autosyncCtrl.Snapshot(order())
@@ -328,12 +338,31 @@ func main() {
 			stateB.Publish(events.StateEvent{Name: "queue", Data: autosyncQueue.View(order())})
 		}
 	}
-	deployer.SetPostRunHook(func() {
-		publishAutosync()
-		if healthPoller != nil {
-			healthPoller.Poll() // refresh health right after a deploy run
-		}
+	deployer = deploy.New(deploy.Config{
+		Runner:       command.NewShellRunnerWithSink(timeout, sink),
+		CommitReader: repoReader,
+		Syncer:       repoSync,
+		RepoDir:      repoSync.RepoDir(),
+		StateDir:     stateDir,
+		ShutdownCtx:  signalCtx,
+		EventSink:    eventSink,
+		StartEventID: startEventID,
+		Autosync:     autosyncCtrl,
+		Queue:        autosyncQueue,
+		PostRunHook: func() {
+			publishAutosync()
+			if healthPoller != nil {
+				healthPoller.Poll() // refresh health right after a deploy run
+			}
+		},
+		RunPlanSink: runPlanSink,
 	})
+
+	// Start the health poller only now that the deployer exists: its snapshot
+	// feed may drive a self-heal, which redeploys through the deployer.
+	if healthPoller != nil {
+		go healthPoller.Run(signalCtx)
+	}
 	publishAutosync() // initialize the gauges
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
@@ -423,16 +452,13 @@ func (r deployReconciler) Reconcile(ctx context.Context) bool {
 	return r.deployer.TrySyncAndDeployAll(ctx, r.cfg)
 }
 
-// deployHealer adapts the deployer to selfheal.Healer, binding the process
-// config so each heal restores the named stack via HealStack. It keeps the
-// selfheal package free of any deploy or config dependency.
-type deployHealer struct {
-	deployer *deploy.Deployer
-	cfg      *config.Config
-}
+// healerFunc adapts a plain function to selfheal.Healer, so main can wire the
+// deployer's HealStack (with the process config bound) without the selfheal
+// package knowing about deploy or config.
+type healerFunc func(ctx context.Context, stack string, drift []events.DriftedService) (bool, error)
 
-func (h deployHealer) Heal(ctx context.Context, stack string, drift []events.DriftedService) (bool, error) {
-	return h.deployer.HealStack(ctx, h.cfg, stack, drift)
+func (f healerFunc) Heal(ctx context.Context, stack string, drift []events.DriftedService) (bool, error) {
+	return f(ctx, stack, drift)
 }
 
 // stackAutosyncConfig maps each configured stack to its config-as-code autosync
@@ -537,14 +563,12 @@ func stackLocator(cfg *config.Config) icons.StackLocator {
 		if name == deploy.NixosStateKey {
 			return icons.Request{Name: "nixos"}, true
 		}
-		for _, s := range cfg.Stacks {
-			if s.Name == name {
-				return icons.Request{
-					Name: s.Name,
-					Slug: s.Icon,
-					Dir:  filepath.Join(cfg.StacksBaseDir, s.Name),
-				}, true
-			}
+		if s, ok := cfg.StackByName(name); ok {
+			return icons.Request{
+				Name: s.Name,
+				Slug: s.Icon,
+				Dir:  filepath.Join(cfg.StacksBaseDir, s.Name),
+			}, true
 		}
 		return icons.Request{}, false
 	}

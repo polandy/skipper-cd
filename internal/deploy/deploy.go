@@ -17,11 +17,9 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/autosync"
-	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/metrics"
-	"github.com/polandy/skipper-cd/internal/nixos"
 )
 
 // CommitReader retrieves git commit information from the repository.
@@ -40,40 +38,89 @@ type RepoSyncer interface {
 	Sync(ctx context.Context) error
 }
 
-// ErrRolledBack marks a failed deploy whose stack was successfully rolled
-// back to the previous compose file version. DeployAllStacks checks it with
-// errors.Is to emit a rolled_back (instead of failed) event.
-var ErrRolledBack = errors.New("rolled back to previous version")
+// Config wires a Deployer. Runner is the only required field; every other
+// nil/zero field disables the corresponding feature, as documented per field.
+// All wiring happens at construction — a built Deployer is immutable apart
+// from its run state, so there is no setup-before-first-deploy ordering to
+// get wrong.
+type Config struct {
+	// Runner executes docker/git/nixos commands; tests inject a fake.
+	Runner Runner
 
-// ErrRollbackUnhealthy marks a failed deploy whose rollback ran, but whose
-// restored version also failed the health gate: the stack is back on the old
-// compose file yet not verified healthy. Only possible with a health_check
-// configured (the rollback then reruns the same gate). DeployAllStacks checks
-// it with errors.Is to emit a rolled_back_unhealthy event.
-var ErrRollbackUnhealthy = errors.New("rolled back but still unhealthy")
+	// CommitReader enables diff/commit logging and compose-file rollback;
+	// nil disables both.
+	CommitReader CommitReader
 
-// Deployer orchestrates deployments for all configured stacks.
-// Inject a custom Runner to replace real docker/git calls in tests.
-// Optionally inject a CommitReader to enable diff logging on deploy.
+	// Syncer syncs the repo clone at the start of SyncAndDeployAll; nil when
+	// using DeployAllStacks directly.
+	Syncer RepoSyncer
+
+	// RepoDir is the repo clone directory, used to skip diffs for files
+	// outside the repo and to shorten event paths to repo-relative.
+	RepoDir string
+
+	// StateDir is the directory for state.yaml persistence; "" uses
+	// /var/lib/skipper.
+	StateDir string
+
+	// ShutdownCtx is the process shutdown context. When it fires while a
+	// nixos-rebuild is in flight, the deployer stops waiting for the rebuild —
+	// the rebuild itself keeps running in its transient systemd unit — so a
+	// switch that restarts the skipper service cannot deadlock against the
+	// graceful shutdown (ADR-0014). nil means rebuild waits are never
+	// abandoned.
+	ShutdownCtx context.Context
+
+	// EventSink is invoked on every deploy status change; nil disables event
+	// tracking.
+	EventSink func(events.DeployEvent)
+
+	// StartEventID seeds the event ID counter (e.g. from persisted history).
+	StartEventID int64
+
+	// Autosync and Queue install the autosync controller and the pending
+	// registry. A nil Autosync means autosync is always on; a nil Queue
+	// disables pending tracking. See docs/autosync.md.
+	Autosync *autosync.Controller
+	Queue    *autosync.Queue
+
+	// PostRunHook runs once at the end of every deploy run (after state is
+	// saved), e.g. to publish autosync/queue snapshots and refresh gauges.
+	PostRunHook func()
+
+	// RunPlanSink receives the run plan whenever it changes: as each stack
+	// begins deploying (carrying the stacks still to come) and once more with
+	// an empty plan when the run ends. nil disables run-plan tracking, so the
+	// upfront planning pass is skipped entirely when the UI is off.
+	RunPlanSink func(RunPlan)
+}
+
+// Deployer orchestrates deployments for all configured stacks. Construct it
+// with New; the Config doc comments describe each collaborator.
 type Deployer struct {
+	// Collaborators fixed at construction, read-only afterwards (see Config).
 	runner       Runner
-	commitReader CommitReader    // nil disables diff logging
-	syncer       RepoSyncer      // nil when using DeployAllStacks directly
-	repoDir      string          // used to skip diff for files outside the repo
-	stateDir     string          // directory for state.yaml persistence
-	shutdownCtx  context.Context // nil = rebuild waits are never abandoned
-	mu           sync.Mutex
-	eventSink    func(events.DeployEvent) // nil = no event tracking
-	nextEventID  atomic.Int64
-	lastSyncErr  atomic.Pointer[syncOutcome] // nil until the first run
-	autosync     *autosync.Controller        // nil = autosync always on
-	queue        *autosync.Queue             // nil = no pending tracking
-	postRunHook  func()                      // nil = none; runs after each deploy run
-	prober       *httpHealthProber           // nil = lazily built real prober
+	commitReader CommitReader
+	syncer       RepoSyncer
+	repoDir      string
+	stateDir     string
+	shutdownCtx  context.Context
+	eventSink    func(events.DeployEvent)
+	autosync     *autosync.Controller
+	queue        *autosync.Queue
+	postRunHook  func()
+	runPlanSink  func(RunPlan)
 
-	runPlanSink    func(RunPlan)           // nil = no run-plan tracking (UI off)
-	currentRunPlan atomic.Pointer[RunPlan] // latest published plan, for late joiners
-	plan           []string                // stacks planned to deploy this run, in order
+	// mu serializes deploy runs (Invariant 7); the fields below it are only
+	// touched while it is held.
+	mu     sync.Mutex
+	plan   []string          // stacks planned to deploy this run, in order
+	prober *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
+
+	// Read/written from any goroutine without holding mu.
+	nextEventID    atomic.Int64
+	lastSyncErr    atomic.Pointer[syncOutcome] // nil until the first run
+	currentRunPlan atomic.Pointer[RunPlan]     // latest published plan, for late joiners
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -83,57 +130,69 @@ type syncOutcome struct {
 
 const defaultStateDir = "/var/lib/skipper"
 
-// NixosStateKey is the reserved stack key used for the NixOS rebuild in the
-// persisted state, deploy events, and metrics. It is exported so the UI wiring
-// can recognize the pseudo-stack (e.g. to resolve its icon).
-const NixosStateKey = "_nixos"
-
-func NewDeployer() *Deployer {
-	return &Deployer{runner: ShellRunner{}, stateDir: defaultStateDir}
-}
-
-// NewDeployerWithCommitReader returns a Deployer running docker (and
-// nixos-rebuild) with the given per-command timeout. A non-nil sink
-// additionally receives the child processes' output line by line.
-func NewDeployerWithCommitReader(commitReader CommitReader, syncer RepoSyncer, repoDir, stateDir string, commandTimeout time.Duration, sink command.LineSink) *Deployer {
+// New builds a Deployer from cfg.
+func New(cfg Config) *Deployer {
+	stateDir := cfg.StateDir
 	if stateDir == "" {
 		stateDir = defaultStateDir
 	}
-	return &Deployer{runner: command.NewShellRunnerWithSink(commandTimeout, sink), commitReader: commitReader, syncer: syncer, repoDir: repoDir, stateDir: stateDir}
+	d := &Deployer{
+		runner:       cfg.Runner,
+		commitReader: cfg.CommitReader,
+		syncer:       cfg.Syncer,
+		repoDir:      cfg.RepoDir,
+		stateDir:     stateDir,
+		shutdownCtx:  cfg.ShutdownCtx,
+		eventSink:    cfg.EventSink,
+		autosync:     cfg.Autosync,
+		queue:        cfg.Queue,
+		postRunHook:  cfg.PostRunHook,
+		runPlanSink:  cfg.RunPlanSink,
+	}
+	d.nextEventID.Store(cfg.StartEventID)
+	return d
 }
 
-func newDeployerWithRunner(r Runner) *Deployer {
-	return &Deployer{runner: r, stateDir: defaultStateDir}
+// stackRun bundles the per-stack values resolved once at the start of a
+// stack's deploy (or heal) and threaded through every docker compose
+// invocation, so they travel together instead of as parallel parameters.
+type stackRun struct {
+	stack       config.Stack
+	composePath string   // compose file, always from the repo clone
+	projectDir  string   // --project-directory; "" = compose file's own dir
+	baseEnv     []string // os.Environ() + vars_file (env_files are added per call)
 }
 
-// SetShutdownContext installs the process shutdown context. When it fires
-// while a nixos-rebuild is in flight, the deployer stops waiting for the
-// rebuild — the rebuild itself keeps running in its transient systemd unit —
-// so a switch that restarts the skipper service cannot deadlock against the
-// graceful shutdown (ADR-0014). Must be called before any deployments start.
-func (d *Deployer) SetShutdownContext(ctx context.Context) {
-	d.shutdownCtx = ctx
+// newStackRun resolves the run values for a stack: the compose file from the
+// repo clone (Invariant 1) and working_dir as the compose project directory.
+func newStackRun(stack config.Stack, baseDir string, baseEnv []string) stackRun {
+	return stackRun{
+		stack:       stack,
+		composePath: filepath.Join(baseDir, stack.Name, "docker-compose.yml"),
+		projectDir:  stack.WorkingDir,
+		baseEnv:     baseEnv,
+	}
 }
 
-// SetEventSink configures an optional callback invoked on every deploy
-// status change. Must be called before any deployments start.
-func (d *Deployer) SetEventSink(fn func(events.DeployEvent)) {
-	d.eventSink = fn
+// changeSet carries what a deploy is applying: the changed tracked files and
+// their git context (diffs and commits since the last deployed commit). The
+// zero value means "no change context" (e.g. a skipped stack).
+type changeSet struct {
+	files   []string
+	diffs   map[string]string
+	commits []events.CommitInfo
 }
 
-// SetAutosync installs the autosync controller and pending queue. When unset,
-// autosync is always on and every changed stack deploys. Must be called before
-// any deployments start.
-func (d *Deployer) SetAutosync(c *autosync.Controller, q *autosync.Queue) {
-	d.autosync = c
-	d.queue = q
-}
-
-// SetPostRunHook installs a callback invoked once at the end of every deploy
-// run (after state is saved). It is used to publish autosync/queue snapshots
-// and refresh gauges. Must be called before any deployments start.
-func (d *Deployer) SetPostRunHook(fn func()) {
-	d.postRunHook = fn
+// collectChange gathers the full change context for the given changed files:
+// their diffs and the commits that produced them, both against
+// lastDeployedCommit. Diffs and commits are nil when no CommitReader is
+// configured or no previous commit is known.
+func (d *Deployer) collectChange(ctx context.Context, changedFiles []string, lastDeployedCommit string) changeSet {
+	return changeSet{
+		files:   changedFiles,
+		diffs:   d.collectDiffs(ctx, changedFiles, lastDeployedCommit),
+		commits: d.collectCommits(ctx, changedFiles, lastDeployedCommit),
+	}
 }
 
 // isPaused reports whether autosync is currently not effective for the stack.
@@ -142,7 +201,9 @@ func (d *Deployer) isPaused(stack string) bool {
 	return d.autosync != nil && !d.autosync.Effective(stack)
 }
 
-// markQueued records a deferred deploy in the pending registry (when installed).
+// markQueued records a deferred deploy in the pending registry (when
+// installed). It is only reachable after isPaused reported true, which
+// implies d.autosync is non-nil — hence the asymmetric nil-handling.
 func (d *Deployer) markQueued(stack string, changed []string) string {
 	reason := d.autosync.Reason(stack)
 	if d.queue != nil {
@@ -158,15 +219,10 @@ func (d *Deployer) clearQueued(stack string) {
 	}
 }
 
-// InitEventID sets the starting event ID counter (e.g. from persisted history).
-func (d *Deployer) InitEventID(startID int64) {
-	d.nextEventID.Store(startID)
-}
-
 // emit sends a deploy event to the sink and returns its ID (0 when no
 // sink is configured). The ID lets log lines reference the event, e.g.
 // for diff lookups via /api/events/{id}/diffs.
-func (d *Deployer) emit(status events.Status, stack string, duration time.Duration, errMsg string, changedFiles []string, diffs map[string]string, commits []events.CommitInfo) int64 {
+func (d *Deployer) emit(status events.Status, stack string, duration time.Duration, errMsg string, cs changeSet) int64 {
 	if d.eventSink == nil {
 		return 0
 	}
@@ -178,9 +234,9 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		Status:       status,
 		DurationMs:   duration.Milliseconds(),
 		Error:        errMsg,
-		ChangedFiles: d.repoRelativePaths(changedFiles),
-		Diffs:        d.repoRelativeDiffs(diffs),
-		Commits:      commits,
+		ChangedFiles: d.repoRelativePaths(cs.files),
+		Diffs:        d.repoRelativeDiffs(cs.diffs),
+		Commits:      cs.commits,
 	})
 	return id
 }
@@ -188,22 +244,47 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 // emitDeployFailure counts the error and emits the terminal event that matches
 // how the deploy ended: rolled_back_unhealthy when the restored version also
 // failed its health gate, rolled_back when the rollback recovered, else a plain
-// failed. It carries the same changed files / diffs / commits a success does, so
-// the UI can show what the failed deploy was applying and render its diff — not
-// just the file paths left over from the deploying row.
-func (d *Deployer) emitDeployFailure(stack string, duration time.Duration, err error, changedFiles []string, diffs map[string]string, commits []events.CommitInfo) {
+// failed. It carries the same change set a success does, so the UI can show
+// what the failed deploy was applying and render its diff — not just the file
+// paths left over from the deploying row.
+func (d *Deployer) emitDeployFailure(stack string, duration time.Duration, err error, cs changeSet) {
 	metrics.DeployErrors.WithLabelValues(stack).Inc()
 	switch {
 	case errors.Is(err, ErrRollbackUnhealthy):
 		slog.Error("deploy failed, rollback ran but stack is still unhealthy", "stack", stack, "err", err)
-		d.emit(events.StatusRolledBackUnhealthy, stack, duration, err.Error(), changedFiles, diffs, commits)
+		d.emit(events.StatusRolledBackUnhealthy, stack, duration, err.Error(), cs)
 	case errors.Is(err, ErrRolledBack):
 		slog.Warn("deploy failed but rolled back", "stack", stack, "err", err)
-		d.emit(events.StatusRolledBack, stack, duration, err.Error(), changedFiles, diffs, commits)
+		d.emit(events.StatusRolledBack, stack, duration, err.Error(), cs)
 	default:
 		slog.Error("deploy failed", "stack", stack, "err", err)
-		d.emit(events.StatusFailed, stack, duration, err.Error(), changedFiles, diffs, commits)
+		d.emit(events.StatusFailed, stack, duration, err.Error(), cs)
 	}
+}
+
+// relToRepo returns path relative to repoDir and whether it lies inside it.
+// An empty repoDir never matches.
+func relToRepo(repoDir, path string) (string, bool) {
+	if repoDir == "" {
+		return "", false
+	}
+	rel, err := filepath.Rel(repoDir, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
+}
+
+// insideRepo reports whether path lies inside the repo clone, for excluding
+// out-of-repo files (e.g. env files under /etc) from git diff/log lookups.
+// With no repo dir configured every path counts as inside — there is nothing
+// to exclude against.
+func (d *Deployer) insideRepo(path string) bool {
+	if d.repoDir == "" {
+		return true
+	}
+	_, inside := relToRepo(d.repoDir, path)
+	return inside
 }
 
 // repoRelative shortens an absolute path under the repo clone to a repo-relative
@@ -211,14 +292,10 @@ func (d *Deployer) emitDeployFailure(stack string, duration time.Duration, err e
 // paths, but the UI has no notion of the repo dir. Paths outside the repo (or
 // when the repo dir is unknown) are returned unchanged.
 func (d *Deployer) repoRelative(path string) string {
-	if d.repoDir == "" {
-		return path
+	if rel, inside := relToRepo(d.repoDir, path); inside {
+		return rel
 	}
-	rel, err := filepath.Rel(d.repoDir, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return path
-	}
-	return rel
+	return path
 }
 
 // repoRelativePaths returns a copy of files with each path shortened to
@@ -296,27 +373,21 @@ func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName 
 	}
 	defer d.mu.Unlock()
 
-	stack, ok := stackByName(cfg, stackName)
+	stack, ok := cfg.StackByName(stackName)
 	if !ok {
 		return true, fmt.Errorf("self-heal: unknown stack %q", stackName)
 	}
 
-	composePath := filepath.Join(cfg.StacksBaseDir, stack.Name, "docker-compose.yml")
-	projectDir := stack.WorkingDir
-
-	baseEnv := os.Environ()
-	if cfg.VarsFile != "" {
-		varsEnv, verr := parseEnvFile(cfg.VarsFile)
-		if verr != nil {
-			return true, fmt.Errorf("self-heal: load vars_file: %w", verr)
-		}
-		baseEnv = append(baseEnv, varsEnv...)
+	baseEnv, err := buildBaseEnv(cfg.VarsFile)
+	if err != nil {
+		return true, fmt.Errorf("self-heal: %w", err)
 	}
+	run := newStackRun(stack, cfg.StacksBaseDir, baseEnv)
 
 	start := time.Now()
 	slog.Info("self-heal: restoring stack to its deployed running state", "stack", stack.Name)
 	// A plain up — no --wait/health gate, no rollback (see the doc comment).
-	if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "up", "-d", "--remove-orphans"); err != nil {
+	if err := d.runDockerCompose(ctx, run, "up", "-d", "--remove-orphans"); err != nil {
 		return true, fmt.Errorf("self-heal up %q: %w", stack.Name, err)
 	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
@@ -351,17 +422,22 @@ func (d *Deployer) emitHealed(stack string, duration time.Duration, drift []even
 // metrics/alerting.
 func (d *Deployer) EmitHealExhausted(stack string) {
 	metrics.DeployErrors.WithLabelValues(stack).Inc()
-	d.emit(events.StatusHealExhausted, stack, 0, "self-heal exhausted: still unhealthy after repeated corrective redeploys", nil, nil, nil)
+	d.emit(events.StatusHealExhausted, stack, 0, "self-heal exhausted: still unhealthy after repeated corrective redeploys", changeSet{})
 }
 
-// stackByName returns the configured stack with the given name.
-func stackByName(cfg *config.Config, name string) (config.Stack, bool) {
-	for _, s := range cfg.Stacks {
-		if s.Name == name {
-			return s, true
-		}
+// buildBaseEnv returns the process environment extended with the entries of
+// the optional global vars_file (Invariant 6: env_files > vars_file > environ,
+// with env_files appended later per compose call).
+func buildBaseEnv(varsFile string) ([]string, error) {
+	baseEnv := os.Environ()
+	if varsFile == "" {
+		return baseEnv, nil
 	}
-	return config.Stack{}, false
+	varsEnv, err := parseEnvFile(varsFile)
+	if err != nil {
+		return nil, fmt.Errorf("load vars_file: %w", err)
+	}
+	return append(baseEnv, varsEnv...), nil
 }
 
 // syncAndDeployLocked syncs the repository and deploys all stacks. The caller
@@ -400,14 +476,10 @@ func (d *Deployer) WaitIdle() {
 func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
 
-	baseEnv := os.Environ()
-	if cfg.VarsFile != "" {
-		varsEnv, err := parseEnvFile(cfg.VarsFile)
-		if err != nil {
-			slog.Error("could not load vars_file, aborting", "err", err)
-			return
-		}
-		baseEnv = append(baseEnv, varsEnv...)
+	baseEnv, err := buildBaseEnv(cfg.VarsFile)
+	if err != nil {
+		slog.Error("could not load vars_file, aborting", "err", err)
+		return
 	}
 
 	state, err := loadPersistedDeployState(d.stateDir)
@@ -473,146 +545,15 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	}
 }
 
-// rebuildNixOSIfChanged hashes the repo's nix files and runs nixos-rebuild
-// when any of them changed. The new hashes are persisted to state *before*
-// the rebuild, because the rebuild may restart the skipper-cd service
-// (killing this process); pre-saving avoids a redundant rebuild on restart.
-// Returns false when the rebuild failed and all stack deploys must abort.
-func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config, state *persistedState) bool {
-	startTime := time.Now()
-
-	currentNixHashes, _ := nixos.HashFiles(d.repoDir)
-	changed := nixos.DiffHashes(currentNixHashes, state.hashesFor(NixosStateKey))
-
-	// Reconcile a rebuild that a self-restart (the switch restarting skipper-cd)
-	// interrupted before its outcome was recorded: the in-flight marker survived
-	// the restart, the rebuild kept running in its transient unit and applied (we
-	// are back up from the new system), so emit the _nixos success the interrupted
-	// run could not — the persisted success supersedes the missing outcome so the
-	// UI stops showing a stale failure — then clear the marker (ADR-0025).
-	if len(state.NixOSRebuildInFlight) > 0 {
-		reconciled := state.NixOSRebuildInFlight
-		state.clearNixOSRebuildInFlight()
-		_ = saveDeployState(d.stateDir, state)
-		metrics.DeploysTriggered.WithLabelValues(NixosStateKey).Inc()
-		metrics.LastDeployTimestamp.WithLabelValues(NixosStateKey).Set(float64(time.Now().Unix()))
-		// The interrupted run never advanced LastDeployedCommit, so it still points
-		// at the pre-rebuild baseline: diff the reconciled files against it so the UI
-		// shows what changed, exactly like a normal rebuild success (ADR-0025).
-		reconciledDiffs := d.collectDiffs(ctx, reconciled, state.LastDeployedCommit)
-		reconciledCommits := d.collectCommits(ctx, reconciled, state.LastDeployedCommit)
-		d.emit(events.StatusSuccess, NixosStateKey, 0, "", reconciled, reconciledDiffs, reconciledCommits)
-		slog.Info("reconciled nixos-rebuild interrupted by a self-restart", "changed_files", reconciled)
-		// Nothing changed since the interrupted rebuild → done. A nix change that
-		// arrived afterwards still falls through to a fresh rebuild below.
-		if len(changed) == 0 {
-			d.clearQueued(NixosStateKey)
-			return true
-		}
-	}
-
-	if len(changed) == 0 {
-		d.clearQueued(NixosStateKey) // nothing pending anymore
-		metrics.DeploysSkipped.WithLabelValues(NixosStateKey).Inc()
-		d.emit(events.StatusSkipped, NixosStateKey, 0, "", nil, nil, nil)
-		return true
-	}
-
-	// Diff the changed nix files against the last deployed commit so the UI can
-	// show *what* changed, not just which files did (LastDeployedCommit is only
-	// advanced at the end of the run, so it still points at the previous state).
-	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
-	commits := d.collectCommits(ctx, changed, state.LastDeployedCommit)
-
-	// Autosync gate: when _nixos is paused, defer the rebuild. Keep the previous
-	// nix hashes (do not pre-save) so the change stays pending, and return true
-	// so Docker stack deploys still run this pass (docs/autosync.md).
-	if d.isPaused(NixosStateKey) {
-		reason := d.markQueued(NixosStateKey, changed)
-		metrics.DeploysQueued.WithLabelValues(NixosStateKey).Inc()
-		d.emit(events.StatusQueued, NixosStateKey, 0, "", changed, diffs, commits)
-		slog.Info("nixos-rebuild deferred: autosync paused", "reason", reason, "changed_files", changed)
-		return true
-	}
-	// Not paused: the rebuild runs now, so drop it from the pending queue.
-	d.clearQueued(NixosStateKey)
-
-	// Persist the new hashes before the rebuild: the switch may restart this
-	// very service, and pre-saving avoids a redundant rebuild on restart
-	// (ADR-0005). Keep the previous snapshot so a surviving failure can undo it.
-	previousNixHashes := state.hashesFor(NixosStateKey)
-	state.recordStack(NixosStateKey, currentNixHashes)
-	// Mark the rebuild in flight (persisted with the hashes): if the switch
-	// restarts skipper before the outcome is recorded, the next startup reconciles
-	// this into a success rather than leaving a stale failure (ADR-0025).
-	state.markNixOSRebuildInFlight(changed)
-	_ = saveDeployState(d.stateDir, state)
-
-	if err := d.runNixOSRebuild(ctx, cfg.NixOSRebuild.Flake); err != nil {
-		if d.shutdownRequested() {
-			// The switch is restarting skipper; the rebuild keeps running in its
-			// transient unit and will apply. Keep the pre-saved hashes AND the
-			// in-flight marker so the startup sync does not rebuild again and can
-			// reconcile the interrupted run into a success (ADR-0005, ADR-0014,
-			// ADR-0025). This is a normal outcome — do not emit a failure or count
-			// an error; the canceled wait is not a rebuild failure.
-			slog.Warn("shutdown during nixos-rebuild: the rebuild keeps running in its transient unit; stack deploys abort and reconcile on the next sync", "err", err)
-			return false
-		}
-		// A genuine rebuild failure while skipper is still alive: revert the
-		// pre-saved hashes so the next sync retries, instead of silently recording
-		// a rebuild that never applied as done, and clear the in-flight marker so
-		// no spurious reconciliation fires (ADR-0015, ADR-0025).
-		slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", err)
-		state.revertStack(NixosStateKey, previousNixHashes)
-		state.clearNixOSRebuildInFlight()
-		_ = saveDeployState(d.stateDir, state)
-		metrics.DeployErrors.WithLabelValues(NixosStateKey).Inc()
-		d.emit(events.StatusFailed, NixosStateKey, time.Since(startTime), err.Error(), changed, diffs, commits)
-		return false
-	}
-
-	// The rebuild completed without restarting skipper: clear the in-flight
-	// marker (persisted by the run's end-of-run save) so no reconciliation fires.
-	state.clearNixOSRebuildInFlight()
-	metrics.DeploysTriggered.WithLabelValues(NixosStateKey).Inc()
-	metrics.LastDeployTimestamp.WithLabelValues(NixosStateKey).Set(float64(time.Now().Unix()))
-	d.emit(events.StatusSuccess, NixosStateKey, time.Since(startTime), "", changed, diffs, commits)
-	slog.Info("nixos-rebuild complete", "changed_files", changed)
-	return true
-}
-
-// runNixOSRebuild waits for the rebuild with a context that additionally
-// cancels on shutdown: the switch may be restarting this very service, and
-// blocking on the rebuild would deadlock the stop (ADR-0014).
-func (d *Deployer) runNixOSRebuild(ctx context.Context, flake string) error {
-	if d.shutdownCtx != nil {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithCancel(ctx)
-		defer cancel()
-		defer context.AfterFunc(d.shutdownCtx, cancel)()
-	}
-	return nixos.New(d.runner).Rebuild(ctx, d.repoDir, flake)
-}
-
-func (d *Deployer) shutdownRequested() bool {
-	return d.shutdownCtx != nil && d.shutdownCtx.Err() != nil
-}
-
 func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) (err error) {
 	// Change detection always uses the repo clone so that merged PRs are detected.
-	repoDir := filepath.Join(baseDir, stack.Name)
-	composePath := filepath.Join(repoDir, "docker-compose.yml")
-
-	// When working_dir is set, use it as --project-directory for Docker Compose
-	// project identity (container labels, .env loading) while the compose file
-	// is always read from the repo clone via -f.
-	projectDir := stack.WorkingDir
+	run := newStackRun(stack, baseDir, baseEnv)
+	repoDir := filepath.Dir(run.composePath)
 
 	// Parse the compose file once; images, pullable services and Dockerfile
 	// paths are all derived from this single parse. When parsing fails, the
 	// deploy degrades gracefully: no build tracking and pull everything.
-	compose, err := parseComposeFile(composePath)
+	compose, err := parseComposeFile(run.composePath)
 	if err != nil {
 		slog.Warn("could not parse compose file, pulling all services and skipping build tracking", "stack", stack.Name, "err", err)
 	}
@@ -625,7 +566,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
 	if err != nil {
 		err = fmt.Errorf("compute per-file hashes: %w", err)
-		d.emitDeployFailure(stack.Name, 0, err, nil, nil, nil)
+		d.emitDeployFailure(stack.Name, 0, err, changeSet{})
 		return err
 	}
 
@@ -634,7 +575,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		d.clearQueued(stack.Name) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
-		d.emit(events.StatusSkipped, stack.Name, 0, "", nil, nil, nil)
+		d.emit(events.StatusSkipped, stack.Name, 0, "", changeSet{})
 		return nil
 	}
 
@@ -646,9 +587,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		metrics.DeploysQueued.WithLabelValues(stack.Name).Inc()
 		// Carry the diff of what is waiting so the paused row can show the
 		// effective change, not just the file paths.
-		diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
-		commits := d.collectCommits(ctx, changed, state.LastDeployedCommit)
-		d.emit(events.StatusQueued, stack.Name, 0, "", changed, diffs, commits)
+		d.emit(events.StatusQueued, stack.Name, 0, "", d.collectChange(ctx, changed, state.LastDeployedCommit))
 		slog.Info("deploy deferred: autosync paused", "stack", stack.Name, "reason", reason, "changed_files", changed)
 		return nil
 	}
@@ -657,18 +596,17 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.clearQueued(stack.Name)
 
 	deployStart := time.Now()
-	d.emit(events.StatusDeploying, stack.Name, 0, "", changed, nil, nil)
+	d.emit(events.StatusDeploying, stack.Name, 0, "", changeSet{files: changed})
 	// This stack is now the active deploy: surface the ones still to come.
 	d.publishUpcomingAfter(stack.Name)
-	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", projectDir, "changed_files", changed)
-	diffs := d.collectDiffs(ctx, changed, state.LastDeployedCommit)
-	commits := d.collectCommits(ctx, changed, state.LastDeployedCommit)
+	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", run.projectDir, "changed_files", changed)
+	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
 	// From here the stack is actually deploying: any error returned below emits
 	// the matching terminal event with the change context gathered above. The
 	// success path emits StatusSuccess and returns nil, so this never double-fires.
 	defer func() {
 		if err != nil {
-			d.emitDeployFailure(stack.Name, time.Since(deployStart), err, changed, diffs, commits)
+			d.emitDeployFailure(stack.Name, time.Since(deployStart), err, cs)
 		}
 	}()
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
@@ -678,13 +616,13 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		currentImages = compose.images()
 	}
 
-	if err := d.pullIfImagesChanged(ctx, stack, composePath, projectDir, baseEnv, compose, currentImages, state.imagesFor(stack.Name)); err != nil {
+	if err := d.pullIfImagesChanged(ctx, run, compose, currentImages, state.imagesFor(stack.Name)); err != nil {
 		return fmt.Errorf("docker compose pull: %w", err)
 	}
 
 	if len(dockerfilePaths) > 0 {
 		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", dockerfilePaths)
-		if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "build", "--pull"); err != nil {
+		if err := d.runDockerCompose(ctx, run, "build", "--pull"); err != nil {
 			return fmt.Errorf("docker compose build: %w", err)
 		}
 	}
@@ -696,8 +634,8 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		// compose healthchecks do not turn healthy in time (ADR-0022).
 		upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
 	}
-	if err := d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, upArgs...); err != nil {
-		return d.rollBackFailedDeploy(ctx, composePath, projectDir, baseEnv, stack, state, "docker compose up", err)
+	if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
+		return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
 	}
 
 	// Second health gate: the optional HTTP probe verifies the stack from the
@@ -705,7 +643,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	if hc := stack.HealthCheck; hc != nil && hc.URL != "" {
 		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
 		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
-			return d.rollBackFailedDeploy(ctx, composePath, projectDir, baseEnv, stack, state, "health check", err)
+			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
 		}
 	}
 
@@ -721,7 +659,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		state.recordImages(stack.Name, currentImages)
 	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
-	eventID := d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", changed, diffs, commits)
+	eventID := d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", cs)
 	if eventID != 0 {
 		// The event ID lets the log view fetch this deploy's diffs.
 		slog.Info("deploy complete", "stack", stack.Name, "event_id", eventID)
@@ -735,23 +673,23 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 // changed since the last deploy. build:-only services are excluded from the
 // pull; when the compose file could not be parsed (compose == nil), every
 // service is pulled as a safe fallback.
-func (d *Deployer) pullIfImagesChanged(ctx context.Context, stack config.Stack, composePath, projectDir string, baseEnv []string, compose *composeFile, currentImages, previousImages serviceImageByName) error {
+func (d *Deployer) pullIfImagesChanged(ctx context.Context, run stackRun, compose *composeFile, currentImages, previousImages serviceImageByName) error {
 	if currentImages != nil && !hasAnyImageChanged(currentImages, previousImages) {
-		slog.Info("skipping pull, no image changes", "stack", stack.Name)
+		slog.Info("skipping pull, no image changes", "stack", run.stack.Name)
 		return nil
 	}
 
 	if compose == nil {
-		return d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, "pull", "--quiet")
+		return d.runDockerCompose(ctx, run, "pull", "--quiet")
 	}
 
 	pullable := compose.pullableServices()
 	if len(pullable) == 0 {
-		slog.Info("skipping pull, all services use locally-built images", "stack", stack.Name)
+		slog.Info("skipping pull, all services use locally-built images", "stack", run.stack.Name)
 		return nil
 	}
 	pullArgs := append([]string{"pull", "--quiet"}, pullable...)
-	return d.runDockerCompose(ctx, composePath, projectDir, baseEnv, stack.EnvFiles, pullArgs...)
+	return d.runDockerCompose(ctx, run, pullArgs...)
 }
 
 const (
@@ -759,9 +697,10 @@ const (
 	maxDiffTotal   = 50 * 1024 // 50 KB total per event
 )
 
-// collectDiffs collects git diffs for each changed file and returns them
-// as a map of file path to diff content. Large diffs are truncated.
-// Returns nil when no CommitReader is configured or no previous commit is known.
+// collectDiffs collects git diffs for each changed file inside the repo and
+// returns them as a map of file path to diff content. Large diffs are
+// truncated. Returns nil when no CommitReader is configured or no previous
+// commit is known.
 func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, lastDeployedCommit string) map[string]string {
 	if d.commitReader == nil || lastDeployedCommit == "" {
 		return nil
@@ -769,7 +708,7 @@ func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, 
 	result := make(map[string]string)
 	totalSize := 0
 	for _, filePath := range changedFilePaths {
-		if d.repoDir != "" && !strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(d.repoDir)) {
+		if !d.insideRepo(filePath) {
 			continue
 		}
 		diff, err := d.commitReader.DiffSinceCommit(ctx, lastDeployedCommit, filePath)
@@ -813,7 +752,7 @@ func (d *Deployer) collectCommits(ctx context.Context, changedFilePaths []string
 	}
 	repoFiles := make([]string, 0, len(changedFilePaths))
 	for _, filePath := range changedFilePaths {
-		if d.repoDir != "" && !strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(d.repoDir)) {
+		if !d.insideRepo(filePath) {
 			continue
 		}
 		repoFiles = append(repoFiles, filePath)
@@ -829,16 +768,16 @@ func (d *Deployer) collectCommits(ctx context.Context, changedFilePaths []string
 	return commits
 }
 
-// runDockerCompose executes a docker compose command.
+// runDockerCompose executes a docker compose command for the given stack run.
 //
-// composePath is the absolute path to the docker-compose.yml file (always from the repo clone).
-// projectDir, when non-empty, is passed as --project-directory so Docker Compose uses it for
-// project identity (container labels) and .env loading. When empty, docker compose runs from the
-// directory containing composePath.
-func (d *Deployer) runDockerCompose(ctx context.Context, composePath, projectDir string, baseEnv []string, envFiles []string, args ...string) error {
-	env := make([]string, len(baseEnv))
-	copy(env, baseEnv)
-	for _, envFile := range envFiles {
+// run.composePath is the compose file (always from the repo clone). A
+// non-empty run.projectDir is passed as --project-directory so Docker Compose
+// uses it for project identity (container labels) and .env loading; when
+// empty, docker compose runs from the directory containing the compose file.
+func (d *Deployer) runDockerCompose(ctx context.Context, run stackRun, args ...string) error {
+	env := make([]string, len(run.baseEnv))
+	copy(env, run.baseEnv)
+	for _, envFile := range run.stack.EnvFiles {
 		envVars, err := parseEnvFile(envFile)
 		if err != nil {
 			return fmt.Errorf("read env file %s: %w", envFile, err)
@@ -847,89 +786,12 @@ func (d *Deployer) runDockerCompose(ctx context.Context, composePath, projectDir
 	}
 
 	composeArgs := []string{"compose"}
-	runDir := filepath.Dir(composePath)
-	if projectDir != "" {
-		composeArgs = append(composeArgs, "-f", composePath, "--project-directory", projectDir)
-		runDir = projectDir
+	runDir := filepath.Dir(run.composePath)
+	if run.projectDir != "" {
+		composeArgs = append(composeArgs, "-f", run.composePath, "--project-directory", run.projectDir)
+		runDir = run.projectDir
 	}
 	composeArgs = append(composeArgs, args...)
 
 	return d.runner.Run(ctx, runDir, env, "docker", composeArgs...)
-}
-
-// rollBackFailedDeploy handles a deploy that failed at the given stage ("docker
-// compose up" or "health check"): it attempts a rollback and wraps the outcome
-// so DeployAllStacks emits rolled_back on success, rolled_back_unhealthy when
-// the restored version also fails the health gate, and failed otherwise
-// (errors.Is on ErrRolledBack / ErrRollbackUnhealthy).
-func (d *Deployer) rollBackFailedDeploy(ctx context.Context, composePath, projectDir string, baseEnv []string, stack config.Stack, state *persistedState, stage string, cause error) error {
-	slog.Error(stage+" failed, attempting rollback", "stack", stack.Name, "err", cause)
-
-	if rbErr := d.rollbackStack(ctx, composePath, projectDir, baseEnv, stack, state); rbErr != nil {
-		if errors.Is(rbErr, ErrRollbackUnhealthy) {
-			slog.Error("rollback ran but the restored version is still unhealthy", "stack", stack.Name, "err", rbErr)
-			return fmt.Errorf("%s: %w (%w)", stage, cause, rbErr)
-		}
-		slog.Error("rollback failed", "stack", stack.Name, "err", rbErr)
-		return fmt.Errorf("%s: %w (rollback also failed: %v)", stage, cause, rbErr)
-	}
-	slog.Info("rollback successful, old containers restored", "stack", stack.Name)
-	metrics.DeployRollbacks.WithLabelValues(stack.Name).Inc()
-	return fmt.Errorf("%s: %w (%w)", stage, cause, ErrRolledBack)
-}
-
-// rollbackStack restores containers to the previous compose file version after
-// a failed docker compose up. It retrieves the old compose file from git and
-// runs docker compose up with it. With a health_check configured the rollback
-// reruns the same gate (--wait plus the optional HTTP probe) so a restored
-// version that stays unhealthy is reported, not assumed good; those failures
-// wrap ErrRollbackUnhealthy.
-func (d *Deployer) rollbackStack(ctx context.Context, composePath, projectDir string, baseEnv []string, stack config.Stack, state *persistedState) error {
-	if d.commitReader == nil || state.LastDeployedCommit == "" {
-		return fmt.Errorf("no previous commit available for rollback")
-	}
-
-	oldContent, err := d.commitReader.FileAtCommit(ctx, state.LastDeployedCommit, composePath)
-	if err != nil {
-		return fmt.Errorf("retrieve old compose file: %w", err)
-	}
-
-	tmpFile, err := os.CreateTemp("", "skipper-rollback-*.yml")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write(oldContent); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("write temp file: %w", err)
-	}
-	tmpFile.Close()
-
-	// When projectDir is empty, runDockerCompose uses filepath.Dir(composePath)
-	// as the working directory. Since composePath here is a temp file in /tmp/,
-	// we must explicitly set projectDir to the original compose file's directory.
-	rbProjectDir := projectDir
-	if rbProjectDir == "" {
-		rbProjectDir = filepath.Dir(composePath)
-	}
-
-	slog.Info("rolling back with previous compose file", "stack", stack.Name, "commit", state.LastDeployedCommit)
-	upArgs := []string{"up", "-d"}
-	if hc := stack.HealthCheck; hc != nil {
-		upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
-	}
-	if err := d.runDockerCompose(ctx, tmpFile.Name(), rbProjectDir, baseEnv, stack.EnvFiles, upArgs...); err != nil {
-		if stack.HealthCheck != nil {
-			return fmt.Errorf("restored version did not come up healthy: %v (%w)", err, ErrRollbackUnhealthy)
-		}
-		return err
-	}
-	if hc := stack.HealthCheck; hc != nil && hc.URL != "" {
-		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
-		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
-			return fmt.Errorf("restored version failed the health probe: %v (%w)", err, ErrRollbackUnhealthy)
-		}
-	}
-	return nil
 }

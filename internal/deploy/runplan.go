@@ -13,15 +13,6 @@ type RunPlan struct {
 	Upcoming []string `json:"upcoming"`
 }
 
-// SetRunPlanSink installs a callback invoked whenever the run plan changes: as
-// each stack begins deploying (carrying the stacks still to come) and once more
-// with an empty plan when the run ends. nil disables run-plan tracking, so the
-// upfront planning pass is skipped entirely when the UI is off. Must be called
-// before any deployments start.
-func (d *Deployer) SetRunPlanSink(fn func(RunPlan)) {
-	d.runPlanSink = fn
-}
-
 // CurrentRunPlan returns the latest published run plan so a UI client connecting
 // mid-run sees what is coming next without waiting for the next stack to start.
 // Safe for concurrent use.

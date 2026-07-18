@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
-	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/webhook"
 )
 
@@ -29,7 +28,7 @@ func TestHandler_RejectsNonPostRequests(t *testing.T) {
 	// Method enforcement happens at the mux level ("POST /webhook"),
 	// mirroring the production route registration in main.go.
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /webhook", webhook.Handler(newTestConfig(t, ""), deploy.NewDeployer()))
+	mux.HandleFunc("POST /webhook", webhook.Handler(newTestConfig(t, ""), newFakeTrigger()))
 
 	req := httptest.NewRequest(http.MethodGet, "/webhook", nil)
 	rec := httptest.NewRecorder()
@@ -41,7 +40,7 @@ func TestHandler_RejectsNonPostRequests(t *testing.T) {
 }
 
 func TestHandler_RejectsOversizedBody(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, ""), deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, ""), newFakeTrigger())
 
 	body := bytes.NewReader(make([]byte, webhook.MaxBodyBytes+1))
 	req := httptest.NewRequest(http.MethodPost, "/webhook", body)
@@ -54,7 +53,7 @@ func TestHandler_RejectsOversizedBody(t *testing.T) {
 }
 
 func TestHandler_AcceptsRequestWithoutSecret(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, ""), deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, ""), newFakeTrigger())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
 	rec := httptest.NewRecorder()
@@ -69,7 +68,7 @@ func TestHandler_AcceptsRequestWithValidSignature(t *testing.T) {
 	secret := "supersecret"
 	body := []byte(`{"ref":"refs/heads/master"}`)
 
-	handler := webhook.Handler(newTestConfig(t, secret), deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, secret), newFakeTrigger())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBuffer(body))
 	req.Header.Set("X-Gitea-Signature", computeSignature(body, secret))
@@ -85,7 +84,7 @@ func TestHandler_AcceptsRequestWithHubSignature256(t *testing.T) {
 	secret := "supersecret"
 	body := []byte(`{"ref":"refs/heads/master"}`)
 
-	handler := webhook.Handler(newTestConfig(t, secret), deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, secret), newFakeTrigger())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBuffer(body))
 	req.Header.Set("X-Hub-Signature-256", "sha256="+computeSignature(body, secret))
@@ -98,7 +97,7 @@ func TestHandler_AcceptsRequestWithHubSignature256(t *testing.T) {
 }
 
 func TestHandler_RejectsRequestWithInvalidSignature(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, "supersecret"), deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, "supersecret"), newFakeTrigger())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
 	req.Header.Set("X-Gitea-Signature", "invalidsignature")
@@ -111,7 +110,7 @@ func TestHandler_RejectsRequestWithInvalidSignature(t *testing.T) {
 }
 
 func TestHandler_RejectsMissingSignatureWhenSecretIsConfigured(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, "supersecret"), deploy.NewDeployer())
+	handler := webhook.Handler(newTestConfig(t, "supersecret"), newFakeTrigger())
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
 	rec := httptest.NewRecorder()

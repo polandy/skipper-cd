@@ -92,7 +92,7 @@ func TestNewLogHandler_TextFormatEmitsLogfmt(t *testing.T) {
 }
 
 func TestHealthzHandler_OKWhileNoSyncRan(t *testing.T) {
-	deployer := deploy.NewDeployer()
+	deployer := deploy.New(deploy.Config{})
 
 	rec := httptest.NewRecorder()
 	healthzHandler(deployer)(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
@@ -108,7 +108,7 @@ type failingSyncer struct{}
 func (failingSyncer) Sync(context.Context) error { return errors.New("remote unreachable") }
 
 func TestHealthzHandler_ServiceUnavailableAfterFailedSync(t *testing.T) {
-	deployer := deploy.NewDeployerWithCommitReader(nil, failingSyncer{}, "", t.TempDir(), 0, nil)
+	deployer := deploy.New(deploy.Config{Syncer: failingSyncer{}, StateDir: t.TempDir()})
 	deployer.SyncAndDeployAll(context.Background(), &config.Config{})
 
 	rec := httptest.NewRecorder()

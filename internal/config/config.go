@@ -202,9 +202,10 @@ type Config struct {
 	SelfHealMaxAttempts int `yaml:"self_heal_max_attempts"`
 
 	// SelfHealCooldownSeconds is the minimum gap between corrective redeploys of
-	// the same stack. Defaults to 60; must be >= 0. An explicit 0 falls back to
-	// the default (ADR-0029).
-	SelfHealCooldownSeconds int `yaml:"self_heal_cooldown_seconds"`
+	// the same stack (ADR-0029). nil (omitted) defaults to 60; an explicit 0
+	// disables the cooldown; must be >= 0 — the same omitted-vs-explicit-0
+	// convention as the other interval fields.
+	SelfHealCooldownSeconds *int `yaml:"self_heal_cooldown_seconds"`
 
 	// HealthWatch configures the own-stack health watchdog: it detects
 	// per-service health transitions and alerts on newly-failed and recovered
@@ -421,8 +422,11 @@ func Load(path string) (*Config, error) {
 	if cfg.SelfHealMaxAttempts == 0 {
 		cfg.SelfHealMaxAttempts = defaultSelfHealMaxAttempts
 	}
-	if cfg.SelfHealCooldownSeconds == 0 {
-		cfg.SelfHealCooldownSeconds = defaultSelfHealCooldownSeconds
+	if cfg.SelfHealCooldownSeconds == nil {
+		// Only an omitted field takes the default — an explicit 0 disables
+		// the cooldown.
+		d := defaultSelfHealCooldownSeconds
+		cfg.SelfHealCooldownSeconds = &d
 	}
 	if hw := cfg.HealthWatch; hw != nil {
 		if hw.DebouncePolls == 0 {
@@ -484,7 +488,7 @@ const defaultHealthPollIntervalSeconds = 30
 const defaultReconcileIntervalSeconds = 300
 
 // Defaults for the self-heal pacing constants, applied when the corresponding
-// field is omitted or 0 (ADR-0029). Self-heal itself is off unless self_heal is
+// field is omitted (ADR-0029). Self-heal itself is off unless self_heal is
 // set true globally or per stack.
 const (
 	defaultSelfHealMinUnhealthyPolls = 3
@@ -557,8 +561,8 @@ func validateConfig(cfg *Config) error {
 	if cfg.SelfHealMaxAttempts < 1 {
 		return fmt.Errorf("self_heal_max_attempts must be >= 1, got %d", cfg.SelfHealMaxAttempts)
 	}
-	if cfg.SelfHealCooldownSeconds < 0 {
-		return fmt.Errorf("self_heal_cooldown_seconds must be >= 0, got %d", cfg.SelfHealCooldownSeconds)
+	if *cfg.SelfHealCooldownSeconds < 0 {
+		return fmt.Errorf("self_heal_cooldown_seconds must be >= 0, got %d", *cfg.SelfHealCooldownSeconds)
 	}
 	// Self-heal rides the health poll cadence and runs headless, so it needs a
 	// positive poll interval even with the UI off (ADR-0029).

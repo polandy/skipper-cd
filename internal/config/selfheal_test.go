@@ -19,8 +19,25 @@ func TestLoad_SelfHealDefaultsOffWithPacingDefaults(t *testing.T) {
 	if cfg.SelfHealMaxAttempts != 3 {
 		t.Errorf("max_attempts default: want 3, got %d", cfg.SelfHealMaxAttempts)
 	}
-	if cfg.SelfHealCooldownSeconds != 60 {
-		t.Errorf("cooldown default: want 60, got %d", cfg.SelfHealCooldownSeconds)
+	if *cfg.SelfHealCooldownSeconds != 60 {
+		t.Errorf("cooldown default: want 60, got %d", *cfg.SelfHealCooldownSeconds)
+	}
+}
+
+// An explicit 0 disables the cooldown instead of falling back to the default —
+// the same omitted-vs-explicit-0 convention as health_poll_interval_seconds,
+// reconcile_interval_seconds, and alert_cooldown_seconds.
+func TestLoad_SelfHealCooldownExplicitZeroDisables(t *testing.T) {
+	cfg, err := loadStringToConfig(t, `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+self_heal_cooldown_seconds: 0
+`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if *cfg.SelfHealCooldownSeconds != 0 {
+		t.Errorf("explicit 0 must disable the cooldown, got %d", *cfg.SelfHealCooldownSeconds)
 	}
 }
 

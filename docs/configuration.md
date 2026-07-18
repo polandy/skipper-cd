@@ -71,7 +71,7 @@ nixos_rebuild:
 | `self_heal` | bool | no | `false` | Global default for whether a stack the health poller finds degraded is automatically restored to its running state by a corrective redeploy (see [Self-heal](#self-heal)). A per-stack `self_heal` overrides it. Requires `health_poll_interval_seconds` > 0. |
 | `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce). Must be ≥ 1. |
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
-| `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0. |
+| `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0; an explicit `0` disables the cooldown. |
 | `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `health_poll_interval_seconds` > 0. |
 
 ## Stack Fields
@@ -381,7 +381,7 @@ Self-heal is **opt-in and off by default**. Enable it globally with `self_heal: 
 Guardrails keep it from fighting a genuinely broken stack:
 
 - **Debounce** — a stack must read degraded for `self_heal_min_unhealthy_polls` consecutive polls (default 3) before the first redeploy, so a transient blip or Docker's own restart wins the race first.
-- **Cooldown** — at least `self_heal_cooldown_seconds` (default 60) between redeploys of the same stack.
+- **Cooldown** — at least `self_heal_cooldown_seconds` (default 60, explicit `0` disables) between redeploys of the same stack.
 - **Circuit breaker** — after `self_heal_max_attempts` (default 3) redeploys that don't restore the stack, skipper gives up, leaves it reported `unhealthy`, and emits a single `heal_exhausted` event (a `heal_exhausted` [notification](#notifications) fires by default — the "a stack is down and I couldn't fix it" alarm). The counter resets when the stack recovers or a real git deploy of it runs.
 
 Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `health_poll_interval_seconds` > 0 even with the UI off. A successful redeploy shows as a `healed` event in the deploy log. See [ADR-0029](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0029-runtime-drift-self-heal.md).
