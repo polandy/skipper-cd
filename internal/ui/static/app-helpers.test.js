@@ -121,7 +121,15 @@ test('reasonFromSnap', () => {
 
 test('orphanMeta: state-only vs container count with pluralization', () => {
   assert.equal(h.orphanMeta({ state_only: true }), 'state only');
-  assert.equal(h.orphanMeta({ containers: 1 }), '1 container');
-  assert.equal(h.orphanMeta({ containers: 3 }), '3 containers');
+  assert.equal(h.orphanMeta({ containers: [{ name: 'a' }] }), '1 container');
+  assert.equal(h.orphanMeta({ containers: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] }), '3 containers');
   assert.equal(h.orphanMeta({}), '0 containers');
+});
+
+test('orphanStateClass maps docker state to the dot vocabulary', () => {
+  assert.equal(h.orphanStateClass('running'), 'healthy');
+  assert.equal(h.orphanStateClass('restarting'), 'unhealthy');
+  assert.equal(h.orphanStateClass('dead'), 'unhealthy');
+  assert.equal(h.orphanStateClass('exited'), 'stopped');
+  assert.equal(h.orphanStateClass('created'), 'stopped');
 });

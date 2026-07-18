@@ -24,16 +24,21 @@ func (f *fakeOutputter) Output(_ context.Context, _ string, name string, args ..
 	return f.out, f.err
 }
 
-func TestParseProjects_GroupsContainersByProject(t *testing.T) {
+func TestParseProjects_GroupsContainersByProjectWithDetail(t *testing.T) {
 	out := []byte(
-		"web\t/repo/stacks/web\n" +
-			"web\t/repo/stacks/web\n" +
-			"media\t/repo/stacks/media\n")
+		"web\t/repo/stacks/web\tweb-1\tweb\tnginx:1.25\trunning\tUp 3 days\n" +
+			"web\t/repo/stacks/web\tweb-db-1\tdb\tpostgres:16\texited\tExited (0) 1h ago\n" +
+			"media\t/repo/stacks/media\tmedia-1\tmedia\tjellyfin:10\trunning\tUp 2 hours\n")
 	got := parseProjects(out)
 
 	want := []Project{
-		{Name: "web", WorkingDir: "/repo/stacks/web", Containers: 2},
-		{Name: "media", WorkingDir: "/repo/stacks/media", Containers: 1},
+		{Name: "web", WorkingDir: "/repo/stacks/web", Containers: []Container{
+			{Name: "web-1", Service: "web", Image: "nginx:1.25", State: "running", Status: "Up 3 days"},
+			{Name: "web-db-1", Service: "db", Image: "postgres:16", State: "exited", Status: "Exited (0) 1h ago"},
+		}},
+		{Name: "media", WorkingDir: "/repo/stacks/media", Containers: []Container{
+			{Name: "media-1", Service: "media", Image: "jellyfin:10", State: "running", Status: "Up 2 hours"},
+		}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
@@ -41,10 +46,24 @@ func TestParseProjects_GroupsContainersByProject(t *testing.T) {
 }
 
 func TestParseProjects_SkipsBlankAndUnlabeledLines(t *testing.T) {
-	out := []byte("\n\t/orphan/dir\nweb\t/repo/stacks/web\n\n")
+	out := []byte("\n\t/orphan/dir\tc1\t\t\t\t\nweb\t/repo/stacks/web\tweb-1\tweb\tnginx\trunning\tUp\n\n")
 	got := parseProjects(out)
 
-	want := []Project{{Name: "web", WorkingDir: "/repo/stacks/web", Containers: 1}}
+	want := []Project{{Name: "web", WorkingDir: "/repo/stacks/web", Containers: []Container{
+		{Name: "web-1", Service: "web", Image: "nginx", State: "running", Status: "Up"},
+	}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestParseProjects_ToleratesShortLinesFromOlderDocker(t *testing.T) {
+	// A docker without some template field yields fewer columns; the missing
+	// fields are empty, not a panic.
+	out := []byte("web\t/repo/stacks/web\tweb-1\n")
+	got := parseProjects(out)
+
+	want := []Project{{Name: "web", WorkingDir: "/repo/stacks/web", Containers: []Container{{Name: "web-1"}}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}

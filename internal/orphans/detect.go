@@ -13,15 +13,27 @@ type Outputter interface {
 	Output(ctx context.Context, dir string, name string, args ...string) ([]byte, error)
 }
 
-// psArgs lists every compose-managed container with its project name and
-// working_dir label, tab-separated. Matching on the working_dir label (not the
-// compose file path) is what makes a rollback's temp /tmp compose file
-// irrelevant to identity (Invariant 3). One line per container lets Detect
-// count a project's containers.
+// psColumns are the tab-separated fields psArgs emits per container, in order.
+// Matching on the working_dir label (not the compose file path) is what makes a
+// rollback's temp /tmp compose file irrelevant to identity (Invariant 3); the
+// remaining columns populate the UI's per-orphan container expansion. Status is
+// last because it is free human text (it never contains a tab).
+var psColumns = []string{
+	`{{.Label "com.docker.compose.project"}}`,
+	`{{.Label "com.docker.compose.project.working_dir"}}`,
+	`{{.Names}}`,
+	`{{.Label "com.docker.compose.service"}}`,
+	`{{.Image}}`,
+	`{{.State}}`,
+	`{{.Status}}`,
+}
+
+// psArgs lists every compose-managed container, one line per container so Detect
+// can group them into projects with their full container detail.
 var psArgs = []string{
 	"ps", "-a",
 	"--filter", "label=com.docker.compose.project",
-	"--format", `{{.Label "com.docker.compose.project"}}` + "\t" + `{{.Label "com.docker.compose.project.working_dir"}}`,
+	"--format", strings.Join(psColumns, "\t"),
 }
 
 // Config wires a Detector. Managed supplies skipper's current expected set on
@@ -75,10 +87,10 @@ func (d *Detector) Current() Snapshot {
 	return Snapshot{}
 }
 
-// parseProjects folds the tab-separated docker ps output (project<TAB>dir, one
-// line per container) into one Project per compose project: container count is
-// the line count, working_dir is the first non-empty label seen. Lines without
-// a project label are skipped.
+// parseProjects folds the tab-separated docker ps output (one line per
+// container, columns per psColumns) into one Project per compose project: its
+// working_dir is the first non-empty label seen and its Containers the lines
+// that belong to it. Lines without a project label are skipped.
 func parseProjects(out []byte) []Project {
 	byName := map[string]*Project{}
 	var order []string
@@ -87,24 +99,40 @@ func parseProjects(out []byte) []Project {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		name, dir, _ := strings.Cut(line, "\t")
-		if name == "" {
+		f := strings.SplitN(line, "\t", len(psColumns))
+		if f[0] == "" {
 			continue
 		}
+		name, dir := f[0], field(f, 1)
 		p, ok := byName[name]
 		if !ok {
 			p = &Project{Name: name}
 			byName[name] = p
 			order = append(order, name)
 		}
-		p.Containers++
 		if p.WorkingDir == "" {
 			p.WorkingDir = dir
 		}
+		p.Containers = append(p.Containers, Container{
+			Name:    field(f, 2),
+			Service: field(f, 3),
+			Image:   field(f, 4),
+			State:   field(f, 5),
+			Status:  field(f, 6),
+		})
 	}
 	projects := make([]Project, 0, len(order))
 	for _, name := range order {
 		projects = append(projects, *byName[name])
 	}
 	return projects
+}
+
+// field returns column i of a split line, or "" when the line had fewer columns
+// (an older docker without some template field).
+func field(f []string, i int) string {
+	if i < len(f) {
+		return f[i]
+	}
+	return ""
 }

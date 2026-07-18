@@ -42,9 +42,12 @@ the durable identity. Every successful deploy records that dir in state
 
 The proposal named `docker compose ls`, which does not carry the working_dir
 label — it would need a second per-project query. Instead a single
-`docker ps -a --filter label=com.docker.compose.project --format '{{project}}\t{{workdir}}'`
-yields project name, working_dir, and (one line per container) the container
-count in one call. Simpler, one process, no JSON label-string parsing.
+`docker ps -a --filter label=com.docker.compose.project` with a tab-separated
+`--format` yields, one line per container, the project name, working_dir,
+container name, service, image, state and status. That is enough to group into
+projects *and* populate the UI's per-orphan container expansion (which
+containers an orphan owns, running or stopped) in one call — no JSON
+label-string parsing, no second query.
 
 ### Classification
 

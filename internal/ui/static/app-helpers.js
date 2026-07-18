@@ -130,8 +130,17 @@ function reasonFromSnap(s) {
 // function of the orphan object, so the unit layer covers the pluralization.
 function orphanMeta(o) {
   if (o.state_only) return 'state only';
-  var n = o.containers || 0;
+  var n = (o.containers || []).length;
   return n + (n === 1 ? ' container' : ' containers');
+}
+
+// orphanStateClass maps a container's docker State to the same dot vocabulary
+// the health pills use (healthy / unhealthy / stopped), so the orphan expansion
+// reuses one set of colours.
+function orphanStateClass(state) {
+  if (state === 'running') return 'healthy';
+  if (state === 'restarting' || state === 'dead') return 'unhealthy';
+  return 'stopped';
 }
 
 // Dual-use export: in the browser this file loads as a plain <script>, so the
@@ -142,6 +151,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     formatDuration, formatTime, fullTime, classifyDiffLine, shortSHA,
     statusText, auditStatusLabel, phaseDuration, phaseSince, healthClass,
-    levelClass, logTime, reasonFromSnap, orphanMeta,
+    levelClass, logTime, reasonFromSnap, orphanMeta, orphanStateClass,
   };
 }

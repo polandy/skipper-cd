@@ -173,17 +173,20 @@ setHealth('api', [{ Service: 'api', Name: 'api-1', State: 'running', Health: 'he
 setHealth('worker', [{ Service: 'worker', Name: 'worker-1', State: 'restarting', Health: 'unhealthy' }]);
 setHealth('database', [{ Service: 'database', Name: 'db-1', State: 'exited', ExitCode: 0 }]);
 
-// Orphan detection listing (project<TAB>working_dir, one line per container):
-// the four active stacks (matched + filtered as managed), a removed stack still
-// running under stacks_base_dir (orphaned + prunable, 2 containers), and a
-// hand-started project outside it (unmanaged, never prunable).
+// Orphan detection listing (one line per container, columns:
+// project, working_dir, name, service, image, state, status): the four active
+// stacks (matched + filtered as managed), a removed stack still running under
+// stacks_base_dir (orphaned + prunable, 2 containers — one running, one exited),
+// and a hand-started project outside it (unmanaged, never prunable).
+const orphanRow = (proj, dir, name, svc, image, state, status) =>
+  [proj, dir, name, svc, image, state, status].join('\t');
 writeFileSync(
   join(healthDir, 'orphans.txt'),
   [
-    ...stacks.map((n) => `${n}\t${join(repoDir, n)}`),
-    `legacy-cache\t${join(repoDir, 'legacy-cache')}`,
-    `legacy-cache\t${join(repoDir, 'legacy-cache')}`,
-    `portainer\t/opt/portainer`,
+    ...stacks.map((n) => orphanRow(n, join(repoDir, n), `${n}-1`, n, 'nginx:1.25', 'running', 'Up 4 minutes')),
+    orphanRow('legacy-cache', join(repoDir, 'legacy-cache'), 'legacy-cache-redis-1', 'redis', 'redis:7', 'running', 'Up 5 days'),
+    orphanRow('legacy-cache', join(repoDir, 'legacy-cache'), 'legacy-cache-worker-1', 'worker', 'redis:7', 'exited', 'Exited (0) 2 days ago'),
+    orphanRow('portainer', '/opt/portainer', 'portainer', 'portainer', 'portainer/portainer-ce:2.19', 'running', 'Up 3 weeks'),
   ].join('\n') + '\n',
 );
 

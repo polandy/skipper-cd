@@ -24,6 +24,16 @@ const (
 	Unmanaged Class = "unmanaged"
 )
 
+// Container is one container of a compose project, for the UI's per-orphan
+// expansion — so a user can see exactly which containers an orphan owns.
+type Container struct {
+	Name    string `json:"name"`
+	Service string `json:"service,omitempty"`
+	Image   string `json:"image,omitempty"`
+	State   string `json:"state,omitempty"`  // running, exited, …
+	Status  string `json:"status,omitempty"` // human text, e.g. "Up 5 days"
+}
+
 // Project is a running docker compose project observed on the host, identified
 // by its com.docker.compose.project.working_dir label — the stable identity a
 // rollback (temp compose file in /tmp, --project-directory unchanged) preserves
@@ -31,16 +41,16 @@ const (
 type Project struct {
 	Name       string
 	WorkingDir string
-	Containers int
+	Containers []Container
 }
 
 // Orphan is one non-managed project (or stale state entry) surfaced to the UI.
 type Orphan struct {
-	Project    string `json:"project"`
-	Class      Class  `json:"class"`
-	WorkingDir string `json:"working_dir,omitempty"`
-	Containers int    `json:"containers"`
-	Prunable   bool   `json:"prunable"`
+	Project    string      `json:"project"`
+	Class      Class       `json:"class"`
+	WorkingDir string      `json:"working_dir,omitempty"`
+	Containers []Container `json:"containers,omitempty"`
+	Prunable   bool        `json:"prunable"`
 	// StateOnly marks an orphan that has no running containers, surfaced purely
 	// from a stale state.yaml entry (a removed stack skipper last deployed).
 	StateOnly bool `json:"state_only,omitempty"`

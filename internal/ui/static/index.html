@@ -1936,12 +1936,19 @@
   }
   .orphans-body { display: none; margin-top: 6px; flex-direction: column; gap: 4px; }
   .orphans.open .orphans-body { display: flex; }
+  .orphan-item { display: flex; flex-direction: column; }
   .orphan-row {
-    display: grid; grid-template-columns: auto minmax(0, auto) 1fr auto;
+    display: grid; grid-template-columns: 12px auto minmax(0, auto) 1fr auto;
     align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px;
     background: color-mix(in srgb, var(--overlay2) 5%, transparent);
-    font-family: var(--font-mono); font-size: 12px;
+    font-family: var(--font-mono); font-size: 12px; width: 100%; text-align: left;
+    border: 0; color: inherit;
   }
+  button.orphan-row { cursor: pointer; }
+  button.orphan-row:hover { background: color-mix(in srgb, var(--overlay2) 10%, transparent); }
+  .orphan-caret { font-size: 8px; color: var(--text-muted); transition: transform 0.15s; }
+  .orphan-item.open .orphan-caret { transform: rotate(90deg); }
+  .orphan-caret.blank { visibility: hidden; }
   .orphan-tag {
     font-size: 9px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
     padding: 1px 7px; border-radius: 4px; white-space: nowrap;
@@ -1954,6 +1961,21 @@
   .orphan-name { color: var(--text); font-weight: 500; white-space: nowrap; }
   .orphan-dir { color: var(--text-muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .orphan-meta { color: var(--text-muted); font-size: 10.5px; white-space: nowrap; }
+
+  /* Per-container expansion of one orphan row. */
+  .orphan-detail { display: none; flex-direction: column; gap: 2px; padding: 4px 8px 6px 30px; }
+  .orphan-item.open .orphan-detail { display: flex; }
+  .orphan-cont {
+    display: grid; grid-template-columns: 8px minmax(0, auto) 1fr auto; align-items: center;
+    gap: 8px; padding: 3px 0; font-family: var(--font-mono); font-size: 11px;
+  }
+  .oc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+  .oc-dot.healthy { background: var(--h-healthy); }
+  .oc-dot.unhealthy { background: var(--h-unhealthy); }
+  .oc-dot.stopped { background: var(--text-muted); }
+  .oc-name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .oc-image { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .oc-status { color: var(--text-muted); white-space: nowrap; }
   body.view-logs #orphans { display: none !important; }
 
   .stack-row {
@@ -2413,6 +2435,26 @@
   // section below the table; hidden when empty.
   let orphansSnap = [];
 
+  function orphanContainerRow(c) {
+    var row = document.createElement('div');
+    row.className = 'orphan-cont';
+    var dot = document.createElement('span');
+    dot.className = 'oc-dot ' + orphanStateClass(c.state);
+    dot.title = c.state || '';
+    var name = document.createElement('span');
+    name.className = 'oc-name';
+    name.textContent = c.name || (c.service || '');
+    var image = document.createElement('span');
+    image.className = 'oc-image';
+    image.textContent = c.image || '';
+    image.title = c.image || '';
+    var status = document.createElement('span');
+    status.className = 'oc-status';
+    status.textContent = c.status || c.state || '';
+    row.append(dot, name, image, status);
+    return row;
+  }
+
   function renderOrphans() {
     var wrap = document.getElementById('orphans');
     var body = document.getElementById('orphans-body');
@@ -2421,8 +2463,16 @@
     count.textContent = String(orphansSnap.length);
     if (!orphansSnap.length) { wrap.classList.remove('shown'); return; }
     orphansSnap.forEach(function(o) {
-      var row = document.createElement('div');
+      var conts = o.containers || [];
+      var item = document.createElement('div');
+      item.className = 'orphan-item';
+
+      var row = document.createElement(conts.length ? 'button' : 'div');
       row.className = 'orphan-row';
+      var caret = document.createElement('span');
+      caret.className = 'orphan-caret' + (conts.length ? '' : ' blank');
+      caret.textContent = '▶';
+      caret.setAttribute('aria-hidden', 'true');
       var tag = document.createElement('span');
       tag.className = 'orphan-tag ' + (o.class === 'orphaned' ? 'orphaned' : 'unmanaged');
       tag.textContent = o.class;
@@ -2436,8 +2486,22 @@
       var meta = document.createElement('span');
       meta.className = 'orphan-meta';
       meta.textContent = orphanMeta(o);
-      row.append(tag, name, dir, meta);
-      body.appendChild(row);
+      row.append(caret, tag, name, dir, meta);
+
+      var detail = document.createElement('div');
+      detail.className = 'orphan-detail';
+      conts.forEach(function(c) { detail.appendChild(orphanContainerRow(c)); });
+
+      if (conts.length) {
+        row.setAttribute('aria-expanded', 'false');
+        row.addEventListener('click', function() {
+          var open = item.classList.toggle('open');
+          row.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+      }
+
+      item.append(row, detail);
+      body.appendChild(item);
     });
     wrap.classList.add('shown');
   }
