@@ -122,8 +122,14 @@ func TestHealthzHandler_ServiceUnavailableAfterFailedSync(t *testing.T) {
 	}
 }
 
+// staticStacks adapts a fixed stack list to the stack-source func the locator
+// takes (main wires stacksNow here).
+func staticStacks(stacks []config.Stack) func() []config.Stack {
+	return func() []config.Stack { return stacks }
+}
+
 func TestStackLocator_ResolvesNixosPseudoStackToNixosSlug(t *testing.T) {
-	locate := stackLocator(&config.Config{})
+	locate := stackLocator(&config.Config{}, staticStacks(nil))
 
 	req, ok := locate(deploy.NixosStateKey)
 	if !ok {
@@ -139,7 +145,7 @@ func TestStackLocator_ResolvesConfiguredStack(t *testing.T) {
 		StacksBaseDir: "/srv/stacks",
 		Stacks:        []config.Stack{{Name: "gitea", Icon: "forgejo"}},
 	}
-	locate := stackLocator(cfg)
+	locate := stackLocator(cfg, staticStacks(cfg.Stacks))
 
 	req, ok := locate("gitea")
 	if !ok {
@@ -152,7 +158,7 @@ func TestStackLocator_ResolvesConfiguredStack(t *testing.T) {
 }
 
 func TestStackLocator_UnknownStackIsNotFound(t *testing.T) {
-	locate := stackLocator(&config.Config{Stacks: []config.Stack{{Name: "gitea"}}})
+	locate := stackLocator(&config.Config{}, staticStacks([]config.Stack{{Name: "gitea"}}))
 
 	if _, ok := locate("nope"); ok {
 		t.Error("expected unknown stack to be not found")

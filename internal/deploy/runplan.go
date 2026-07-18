@@ -37,7 +37,7 @@ func (d *Deployer) computeRunPlan(cfg *config.Config, state *persistedState) []s
 		if d.isPaused(stack.Name) {
 			continue
 		}
-		if _, changed := pendingChanges(stack, cfg.StacksBaseDir, cfg.VarsFile, state); changed {
+		if _, changed := d.pendingChanges(stack, cfg.StacksBaseDir, cfg.VarsFile, state); changed {
 			plan = append(plan, stack.Name)
 		}
 	}

@@ -65,6 +65,13 @@ type Stack struct {
 	// next sync) and a queued dependency queues it. Entries must name other
 	// configured stacks and the graph must be acyclic. See ADR-0032.
 	DependsOn []string `yaml:"depends_on,omitempty"`
+
+	// ConfigHash is the hash of the stack's deploy-shaping config, set only by
+	// LoadRepoStacks in stack-discovery mode (ADR-0034). It participates in
+	// change detection so a repo skipper.yaml edit redeploys exactly the
+	// affected stack. Empty in legacy (host stacks list) mode. Never read from
+	// YAML.
+	ConfigHash string `yaml:"-"`
 }
 
 // HealthCheck configures the optional post-deploy health gate of a stack.
@@ -126,8 +133,16 @@ type Config struct {
 	// MetricsPort is the Prometheus /metrics HTTP port. Defaults to 9120.
 	MetricsPort int `yaml:"metrics_port"`
 
-	// Stacks lists the Docker Compose projects to deploy.
+	// Stacks lists the Docker Compose projects to deploy. Mutually exclusive
+	// with StackDiscovery.
 	Stacks []Stack `yaml:"stacks"`
+
+	// StackDiscovery discovers the stack set from the deploy repo on every
+	// sync instead of this file (ADR-0034): every direct subdirectory of
+	// stacks_base_dir containing a docker-compose.yml is a stack, and the
+	// optional repo-root skipper.yaml holds per-stack overrides. Mutually
+	// exclusive with a non-empty Stacks list; requires stacks_base_dir.
+	StackDiscovery bool `yaml:"stack_discovery"`
 
 	// UIEnabled serves the web UI (dashboard, event history, UI API) on the
 	// webhook port. nil (omitted) defaults to true; set an explicit false to
@@ -228,16 +243,34 @@ func (c *Config) StackByName(name string) (Stack, bool) {
 // the per-stack override when set, otherwise the global default (off when
 // unset). An unknown name falls back to the global default.
 func (c *Config) SelfHealEnabled(name string) bool {
-	if s, ok := c.StackByName(name); ok && s.SelfHeal != nil {
-		return *s.SelfHeal
+	return c.EffectiveSelfHeal(c.Stacks, name)
+}
+
+// EffectiveSelfHeal is SelfHealEnabled over an explicit stack set — the
+// discovered stacks in stack-discovery mode, where c.Stacks is empty
+// (ADR-0034).
+func (c *Config) EffectiveSelfHeal(stacks []Stack, name string) bool {
+	for _, s := range stacks {
+		if s.Name == name {
+			if s.SelfHeal != nil {
+				return *s.SelfHeal
+			}
+			break
+		}
 	}
 	return c.SelfHeal != nil && *c.SelfHeal
 }
 
 // SelfHealActive reports whether self-heal is effective for at least one stack.
 // When true the health poller must run headless (not UI/subscriber-gated) so
-// self-heal sees degradation on an unattended host (ADR-0029).
+// self-heal sees degradation on an unattended host (ADR-0029). In
+// stack-discovery mode the stack set is unknown at startup, so activation
+// follows the global flag alone; a per-stack self_heal: true with the global
+// off is not supported there (documented in docs/configuration.md).
 func (c *Config) SelfHealActive() bool {
+	if c.StackDiscovery {
+		return c.SelfHeal != nil && *c.SelfHeal
+	}
 	for _, s := range c.Stacks {
 		if c.SelfHealEnabled(s.Name) {
 			return true
@@ -473,6 +506,10 @@ const (
 // hashes and must not collide with a configured stack.
 const reservedStackName = "_nixos"
 
+// reservedConfigStackName is the event key for repo stack-config failures in
+// stack-discovery mode (ADR-0034) and must not collide with a configured stack.
+const reservedConfigStackName = "_config"
+
 // defaultHealthCheckTimeoutSeconds is applied when a health_check section is
 // present without an explicit timeout_seconds.
 const defaultHealthCheckTimeoutSeconds = 60
@@ -509,13 +546,22 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("repo_url is required")
 	}
 
+	if cfg.StackDiscovery {
+		if len(cfg.Stacks) > 0 {
+			return fmt.Errorf("stacks must be empty when stack_discovery is enabled — per-stack config moves to the repo-root %s (ADR-0034)", RepoConfigFileName)
+		}
+		if cfg.StacksBaseDir == "" {
+			return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
+		}
+	}
+
 	seen := make(map[string]struct{}, len(cfg.Stacks))
 	for _, s := range cfg.Stacks {
 		if s.Name == "" {
 			return fmt.Errorf("every stack needs a name")
 		}
-		if s.Name == reservedStackName {
-			return fmt.Errorf("stack name %q is reserved", reservedStackName)
+		if s.Name == reservedStackName || s.Name == reservedConfigStackName {
+			return fmt.Errorf("stack name %q is reserved", s.Name)
 		}
 		if _, dup := seen[s.Name]; dup {
 			return fmt.Errorf("duplicate stack name %q", s.Name)

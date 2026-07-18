@@ -60,7 +60,8 @@ nixos_rebuild:
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. |
 | `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
 | `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
-| `stacks` | list | yes | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). |
+| `stacks` | list | unless `stack_discovery` | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). Mutually exclusive with `stack_discovery`. |
+| `stack_discovery` | bool | no | `false` | Discover the stack set from the deploy repo instead of this file: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack, with optional per-stack overrides in a repo-root `skipper.yaml` (see [Stack discovery](#stack-discovery)). Requires `stacks_base_dir`; mutually exclusive with `stacks`. |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
 | `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
@@ -90,6 +91,38 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `health_check` | section | no | — | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic (both checked at startup). See [Deploy ordering](#deploy-ordering). |
+
+## Stack discovery
+
+With `stack_discovery: true` the deploy repo declares the stacks — adding, changing, or removing a stack is a single git push, no host-config edit:
+
+```
+deploy-repo/
+├── skipper.yaml          # optional per-stack overrides
+└── stacks/               # = stacks_base_dir
+    ├── gitea/docker-compose.yml
+    ├── traefik/docker-compose.yml
+    └── wip/docker-compose.yml
+```
+
+- Every directory under `stacks_base_dir` containing a `docker-compose.yml` is a stack; name = directory name, deploy order alphabetical (plus `depends_on`). Defaults apply — a bare directory is a fully functional stack.
+- The optional repo-root `skipper.yaml` holds only the exceptions, keyed by stack name:
+
+```yaml
+# skipper.yaml (repo root)
+stacks:
+  traefik:
+    depends_on: [gitea]
+    health_check: { url: http://localhost:8080/ping }
+  wip:
+    disabled: true      # in the repo, deliberately not deployed
+```
+
+- Available per-stack fields: the [Stack Fields](#stack-fields) above except `name` and `autosync`, plus `disabled`. Relative `env_files`/`watch_dirs` paths resolve against the repo root. A per-stack `autosync` override is not available in discovery mode (global autosync and the UI overrides work as usual).
+- `disabled: true` means hands-off: not deployed, not health-polled. A running stack that becomes disabled keeps running.
+- Each stack's effective config is hash-tracked: a `skipper.yaml` edit redeploys exactly the affected stacks (shown as a `skipper.yaml` change with its git diff). Enabling discovery therefore redeploys every stack once.
+- Failure containment, evaluated on every sync: an unparseable `skipper.yaml` fails the run under the reserved `_config` name and deploys nothing; an invalid single entry (typo'd name, unknown `depends_on` reference, cycle) fails only that stack — dependents are `blocked`, everything else deploys.
+- Self-heal in discovery mode: activation follows the global `self_heal` flag (the stack set is unknown at startup); per-stack `self_heal: false` still opts a stack out.
 
 ## Health-check-gated rollback
 

@@ -118,9 +118,10 @@ type Deployer struct {
 	prober *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
 
 	// Read/written from any goroutine without holding mu.
-	nextEventID    atomic.Int64
-	lastSyncErr    atomic.Pointer[syncOutcome] // nil until the first run
-	currentRunPlan atomic.Pointer[RunPlan]     // latest published plan, for late joiners
+	nextEventID      atomic.Int64
+	lastSyncErr      atomic.Pointer[syncOutcome]    // nil until the first run
+	currentRunPlan   atomic.Pointer[RunPlan]        // latest published plan, for late joiners
+	discoveredStacks atomic.Pointer[[]config.Stack] // stack-discovery result, nil in legacy mode
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -373,7 +374,7 @@ func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName 
 	}
 	defer d.mu.Unlock()
 
-	stack, ok := cfg.StackByName(stackName)
+	stack, ok := d.effectiveStack(cfg, stackName)
 	if !ok {
 		return true, fmt.Errorf("self-heal: unknown stack %q", stackName)
 	}
@@ -474,8 +475,6 @@ func (d *Deployer) WaitIdle() {
 }
 
 func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
-	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
-
 	baseEnv, err := buildBaseEnv(cfg.VarsFile)
 	if err != nil {
 		slog.Error("could not load vars_file, aborting", "err", err)
@@ -491,6 +490,29 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	if cfg.NixOSRebuild.IsEnabled() && !d.rebuildNixOSIfChanged(ctx, cfg, state) {
 		return
 	}
+
+	// Stack discovery (ADR-0034): the repo declares the stack set. A file-level
+	// error (unparseable skipper.yaml, unreadable base dir) aborts the stack
+	// phase — nothing about the set can be trusted, so nothing deploys or is
+	// touched; the nixos phase above is host-config-driven and already ran.
+	// Entry-level errors fail only the affected stacks, seeded into the
+	// dependency gate below so their dependents block.
+	var stackErrs []config.StackError
+	if cfg.StackDiscovery {
+		stacks, errs, err := config.LoadRepoStacks(d.repoDir, cfg.StacksBaseDir)
+		if err != nil {
+			slog.Error("stack discovery failed, no stacks deploy this run", "err", err)
+			d.emitDeployFailure(ConfigStateKey, 0, err, changeSet{})
+			return
+		}
+		d.discoveredStacks.Store(&stacks)
+		stackErrs = errs
+		effective := *cfg
+		effective.Stacks = stacks
+		cfg = &effective
+	}
+
+	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
 
 	// Deploy in dependency order (ADR-0032): a stable topological sort that keeps
 	// config order among stacks not otherwise constrained.
@@ -512,6 +534,10 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// or (via emitDeployFailure) failed / rolled_back / rolled_back_unhealthy —
 	// so each carries its change context; we only track the outcome here.
 	gate := newDepGate()
+	for _, se := range stackErrs {
+		d.emitDeployFailure(se.Stack, 0, se.Err, changeSet{})
+		gate.record(se.Stack, depBlocked)
+	}
 	for _, stack := range ordered {
 		outcome := d.deployStackGated(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state, gate.decide(stack.DependsOn))
 		gate.record(stack.Name, outcome)
@@ -569,6 +595,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		d.emitDeployFailure(stack.Name, 0, err, changeSet{})
 		return err
 	}
+	d.addStackConfigHash(currentHashes, stack)
 
 	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
 	if len(changed) == 0 {
