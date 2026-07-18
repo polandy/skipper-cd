@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.15.0](https://github.com/polandy/skipper-cd/compare/v0.14.0...v0.15.0) (2026-07-18)
+
+
+### Features
+
+* **config:** anchor discovery skipper.yaml at stacks_base_dir ([#113](https://github.com/polandy/skipper-cd/issues/113)) ([b5c9dff](https://github.com/polandy/skipper-cd/commit/b5c9dff30b0634b9ea7674ddc739a30a905b51bc))
+* **config:** show the offending skipper.yaml excerpt in discovery errors ([2c677ee](https://github.com/polandy/skipper-cd/commit/2c677ee9f971d2841f41bb90e81bb853a49afe6c))
+* stack discovery from the deploy repo (ADR-0034) ([#109](https://github.com/polandy/skipper-cd/issues/109)) ([858d57e](https://github.com/polandy/skipper-cd/commit/858d57e986a9e5c167d1c8dfe63c0d9a6da5e803))
+* **ui:** stack-discovery UI surface with skipper.yaml error excerpts ([#111](https://github.com/polandy/skipper-cd/issues/111)) ([2c677ee](https://github.com/polandy/skipper-cd/commit/2c677ee9f971d2841f41bb90e81bb853a49afe6c))
+
+
+### Bug Fixes
+
+* **ui:** panel lifecycle, pending-tag escaping + refresh, keyboard health pill ([#112](https://github.com/polandy/skipper-cd/issues/112)) ([617d87c](https://github.com/polandy/skipper-cd/commit/617d87c32ff4c076f675c64a499c9a02bf2846c8))
+
 ## [0.14.0](https://github.com/polandy/skipper-cd/compare/v0.13.0...v0.14.0) (2026-07-18)
 
 
