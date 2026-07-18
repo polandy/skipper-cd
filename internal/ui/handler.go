@@ -97,7 +97,10 @@ func (b BuildInfo) CacheID() string {
 // placeholder) so a new build changes the served bytes and the browser adopts
 // a fresh worker. Served no-cache so worker updates always propagate.
 func ServiceWorkerHandler(b BuildInfo) http.Handler {
-	data, _ := staticFS.ReadFile("static/sw.js")
+	data, err := staticFS.ReadFile("static/sw.js")
+	if err != nil {
+		panic(err) // staticFS embeds static/sw.js at compile time, so this cannot fail.
+	}
 	body := []byte(strings.ReplaceAll(string(data), "__VERSION__", b.CacheID()))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
@@ -107,14 +110,16 @@ func ServiceWorkerHandler(b BuildInfo) http.Handler {
 }
 
 // IconsHandler serves the embedded PWA icons under /icons/ (used by the manifest
-// and the apple-touch-icon link). Content types follow the file extension.
+// and the apple-touch-icon link). Content types follow the file extension. The
+// file server is scoped to static/icons and mounted with StripPrefix so it can
+// only ever serve icons — it cannot reach the app-shell files (index.html,
+// sw.js, the manifest) regardless of how it is routed.
 func IconsHandler() http.Handler {
-	sub, err := fs.Sub(staticFS, "static")
+	sub, err := fs.Sub(staticFS, "static/icons")
 	if err != nil {
-		// staticFS embeds static/ at compile time, so this cannot fail.
-		panic(err)
+		panic(err) // staticFS embeds static/icons at compile time, so this cannot fail.
 	}
-	return http.FileServerFS(sub)
+	return http.StripPrefix("/icons/", http.FileServerFS(sub))
 }
 
 // SSEHandler returns an HTTP handler that streams deploy events via
