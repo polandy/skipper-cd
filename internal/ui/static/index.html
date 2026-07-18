@@ -1708,6 +1708,9 @@
     border-top: 3px solid currentColor;
     opacity: 0.55;
   }
+  /* Stacks has no desktop options (its only popover entry is the mobile-only
+     "Search stacks"), so it carries no caret there; restored ≤ 700 px below. */
+  .view-toggle button[data-view="stacks"].active::after { content: none; }
 
   /* ─── VIEW OPTIONS POPOVER ─── */
   /* View-specific toggles (deploys: time mode; logs: sort + auto-scroll) live
@@ -2133,6 +2136,8 @@
        view-options popover carries a "Search stacks" entry that reveals and
        focuses the filter (hidden on desktop, where type-to-search covers it). */
     body:not(.view-logs) .view-options .vo-search { display: flex; }
+    /* On mobile the Stacks popover carries "Search stacks", so its caret returns. */
+    .view-toggle button[data-view="stacks"].active::after { content: ""; }
 
     .event-row {
       grid-template-columns: 1fr auto;
@@ -4065,10 +4070,15 @@
   viewButtons.forEach(function(btn) {
     btn.addEventListener('click', function() {
       if (btn.dataset.view === activeView) {
-        // Only the views with an options group toggle the popover; Stacks has none.
-        if (document.querySelector(`.vo-group[data-view="${activeView}"]`)) {
-          setViewOptions(!viewOptions.classList.contains('open'));
-        }
+        // Toggle the popover only if the active view has a *visible* option —
+        // Stacks' sole entry ("Search stacks") is mobile-only, so on desktop it
+        // has none and must not open an empty box. getComputedStyle reports the
+        // child's own display even while the closed popover is display:none.
+        const group = document.querySelector(`.vo-group[data-view="${activeView}"]`);
+        const hasOption = group && Array.prototype.some.call(group.children, function(c) {
+          return getComputedStyle(c).display !== 'none';
+        });
+        if (hasOption) setViewOptions(!viewOptions.classList.contains('open'));
         return;
       }
       activeView = btn.dataset.view;

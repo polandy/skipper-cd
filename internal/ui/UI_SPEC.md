@@ -48,7 +48,7 @@ The view-specific toggles live in a small popover anchored under the view toggle
 
 - **Deploys** → **Time mode** — switches the Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). `localStorage` key `timeMode`. On **mobile only**, the group is preceded by a **"Search stacks"** action row that reveals and focuses the [Deploys filter](#deploys-filter) (the touch entry point for type-to-search).
 - **Logs** → **Sort** — reverses log order; default inactive (newest first), active flips to oldest-first (terminal semantics). `localStorage` key `logSort` (`desc` / `asc`); flipping resets the visible window to one page. And **Auto-scroll (Follow)** — auto-scrolls the log pane to the newest line on every append; default active. `localStorage` key `followLogs`.
-- **Stacks** → on **mobile only**, a **"Search stacks"** action row that reveals and focuses the [Stacks filter](#stacks-view) (the touch entry point for its type-to-search). Desktop has no Stacks options, so its active-button `▾` does not open an empty popover.
+- **Stacks** → on **mobile only**, a **"Search stacks"** action row that reveals and focuses the [Stacks filter](#stacks-view) (the touch entry point for its type-to-search). Desktop has no Stacks options, so the active Stacks button carries no caret and opens no popover there (type-to-search covers desktop search).
 
 ### Theme override
 
