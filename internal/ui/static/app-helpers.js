@@ -130,7 +130,7 @@ function reasonFromSnap(s) {
 // function of the orphan object, so the unit layer covers the pluralization.
 function orphanMeta(o) {
   if (o.state_only) return 'state only';
-  var n = (o.containers || []).length;
+  const n = (o.containers || []).length;
   return n + (n === 1 ? ' container' : ' containers');
 }
 
@@ -158,7 +158,7 @@ function containerMatchesQuery(c, q) {
 // containers. Drives search-expansion of the orphan section.
 function orphanMatchesQuery(o, q) {
   if (!q) return false;
-  var fields = [o.project, o.working_dir, o.config_file].concat(o.volumes || []);
+  const fields = [o.project, o.working_dir, o.config_file].concat(o.volumes || []);
   if (fields.some(function (v) { return (v || '').toLowerCase().indexOf(q) !== -1; })) return true;
   return (o.containers || []).some(function (c) { return containerMatchesQuery(c, q); });
 }

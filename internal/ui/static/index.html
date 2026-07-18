@@ -2449,27 +2449,27 @@
   let orphansSectionOpen = false; // the user's manual toggle of the section header
 
   function orphanContainerRow(c) {
-    var row = document.createElement('div');
+    const row = document.createElement('div');
     row.className = 'orphan-cont';
     row.setAttribute('data-testid', 'orphan-cont');
-    var dot = document.createElement('span');
+    const dot = document.createElement('span');
     dot.className = 'oc-dot ' + orphanStateClass(c.state);
     dot.title = c.state || '';
-    var name = document.createElement('span');
+    const name = document.createElement('span');
     name.className = 'oc-name';
     name.textContent = c.name || (c.service || '');
-    var image = document.createElement('span');
+    const image = document.createElement('span');
     image.className = 'oc-image';
     image.textContent = c.image || '';
     image.title = c.image || '';
     row.append(dot, name, image);
     if (c.ports) {
-      var ports = document.createElement('span');
+      const ports = document.createElement('span');
       ports.className = 'oc-ports';
       ports.textContent = c.ports;
       row.appendChild(ports);
     }
-    var status = document.createElement('span');
+    const status = document.createElement('span');
     status.className = 'oc-status';
     status.textContent = c.status || c.state || '';
     row.appendChild(status);
@@ -2478,17 +2478,17 @@
 
   // orphanFactRow builds one project-level fact line (config file, volumes).
   function orphanFactRow(key, val, note) {
-    var line = document.createElement('div');
+    const line = document.createElement('div');
     line.className = 'of-line';
-    var k = document.createElement('span');
+    const k = document.createElement('span');
     k.className = 'of-key';
     k.textContent = key;
-    var v = document.createElement('span');
+    const v = document.createElement('span');
     v.className = 'of-val';
     v.textContent = val;
     line.append(k, v);
     if (note) {
-      var n = document.createElement('span');
+      const n = document.createElement('span');
       n.className = 'of-note';
       n.textContent = note;
       line.appendChild(n);
@@ -2497,51 +2497,51 @@
   }
 
   function renderOrphans() {
-    var wrap = document.getElementById('orphans');
-    var body = document.getElementById('orphans-body');
-    var count = document.getElementById('orphans-count');
+    const wrap = document.getElementById('orphans');
+    const body = document.getElementById('orphans-body');
+    const count = document.getElementById('orphans-count');
     body.textContent = '';
     // With an active search the count badge shows matching orphans (0 when
     // none), otherwise the total.
-    var q = (deployFilter.value || '').trim().toLowerCase();
+    const q = (deployFilter.value || '').trim().toLowerCase();
     count.textContent = String(q
       ? orphansSnap.filter(function(o) { return orphanMatchesQuery(o, q); }).length
       : orphansSnap.length);
     if (!orphansSnap.length) { wrap.classList.remove('shown'); return; }
     orphansSnap.forEach(function(o) {
-      var conts = o.containers || [];
-      var item = document.createElement('div');
+      const conts = o.containers || [];
+      const item = document.createElement('div');
       item.className = 'orphan-item';
       item.setAttribute('data-testid', 'orphan-item');
       item.setAttribute('data-project', o.project);
       item.setAttribute('data-class', o.class);
 
-      var row = document.createElement(conts.length ? 'button' : 'div');
+      const row = document.createElement(conts.length ? 'button' : 'div');
       row.className = 'orphan-row';
-      var caret = document.createElement('span');
+      const caret = document.createElement('span');
       caret.className = 'orphan-caret' + (conts.length ? '' : ' blank');
       caret.textContent = '▶';
       caret.setAttribute('aria-hidden', 'true');
-      var tag = document.createElement('span');
+      const tag = document.createElement('span');
       tag.className = 'orphan-tag ' + (o.class === 'orphaned' ? 'orphaned' : 'unmanaged');
       tag.textContent = o.class;
-      var name = document.createElement('span');
+      const name = document.createElement('span');
       name.className = 'orphan-name';
       name.textContent = o.project;
-      var dir = document.createElement('span');
+      const dir = document.createElement('span');
       dir.className = 'orphan-dir';
       dir.textContent = o.working_dir || '';
       dir.title = o.working_dir || '';
-      var meta = document.createElement('span');
+      const meta = document.createElement('span');
       meta.className = 'orphan-meta';
       meta.textContent = orphanMeta(o);
       row.append(caret, tag, name, dir, meta);
 
-      var detail = document.createElement('div');
+      const detail = document.createElement('div');
       detail.className = 'orphan-detail';
-      var vols = o.volumes || [];
+      const vols = o.volumes || [];
       if (o.config_file || vols.length) {
-        var facts = document.createElement('div');
+        const facts = document.createElement('div');
         facts.className = 'orphan-facts';
         if (o.config_file) facts.appendChild(orphanFactRow('config', o.config_file));
         if (vols.length) facts.appendChild(orphanFactRow('volumes', vols.join(', '), 'kept on prune'));
@@ -2551,24 +2551,24 @@
       // orphans. A container match hides the non-matching containers so the hit
       // stands out; an orphan that matches (project fields or any container) is
       // auto-expanded on top of any manual expansion.
-      var anyContMatch = q && conts.some(function(c) { return containerMatchesQuery(c, q); });
+      const anyContMatch = q && conts.some(function(c) { return containerMatchesQuery(c, q); });
       conts.forEach(function(c) {
-        var crow = orphanContainerRow(c);
+        const crow = orphanContainerRow(c);
         if (anyContMatch && !containerMatchesQuery(c, q)) crow.classList.add('filtered-out');
         detail.appendChild(crow);
       });
 
-      var orphanMatch = !q || orphanMatchesQuery(o, q);
+      const orphanMatch = !q || orphanMatchesQuery(o, q);
       // During an active search, an orphan that does not match is hidden (like
       // the deploy table filters its rows), not merely left collapsed.
       item.classList.toggle('filtered-out', !orphanMatch);
 
       if (conts.length) {
-        var startOpen = orphansOpen.has(o.project) || (!!q && orphanMatch);
+        const startOpen = orphansOpen.has(o.project) || (!!q && orphanMatch);
         item.classList.toggle('open', startOpen);
         row.setAttribute('aria-expanded', startOpen ? 'true' : 'false');
         row.addEventListener('click', function() {
-          var open = item.classList.toggle('open');
+          const open = item.classList.toggle('open');
           row.setAttribute('aria-expanded', open ? 'true' : 'false');
           if (open) { orphansOpen.add(o.project); } else { orphansOpen.delete(o.project); }
         });
@@ -2585,9 +2585,9 @@
   // matches an orphan (so search hits are actually visible, not hidden behind a
   // collapsed section).
   function applyOrphansSectionOpen() {
-    var q = (deployFilter.value || '').trim().toLowerCase();
-    var searchOpen = !!q && orphansSnap.some(function(o) { return orphanMatchesQuery(o, q); });
-    var open = orphansSectionOpen || searchOpen;
+    const q = (deployFilter.value || '').trim().toLowerCase();
+    const searchOpen = !!q && orphansSnap.some(function(o) { return orphanMatchesQuery(o, q); });
+    const open = orphansSectionOpen || searchOpen;
     document.getElementById('orphans').classList.toggle('open', open);
     document.getElementById('orphans-head').setAttribute('aria-expanded', open ? 'true' : 'false');
   }
@@ -3403,7 +3403,7 @@
     });
 
     es.addEventListener('orphans', function(e) {
-      var d = JSON.parse(e.data);
+      const d = JSON.parse(e.data);
       orphansSnap = (d && d.orphans) || [];
       // Under an active search, re-run the filter so new orphan data obeys the
       // query (hide non-matching, refresh hits/total); otherwise a plain render.
@@ -3481,7 +3481,7 @@
     // orphans among the searchable elements so hits/total reflects them too.
     renderOrphans();
     if (q) {
-      for (var j = 0; j < orphansSnap.length; j++) {
+      for (let j = 0; j < orphansSnap.length; j++) {
         total++;
         if (orphanMatchesQuery(orphansSnap[j], q)) shown++;
       }
