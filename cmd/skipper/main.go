@@ -449,7 +449,20 @@ func main() {
 	}
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, stacksNow, deployer, healthPoller, healthWatcher, orphanDetector, broadcaster, history, auditLog, logRing, as, build))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(webhookDeps{
+		cfg:            cfg,
+		stacks:         stacksNow,
+		deployer:       deployer,
+		healthPoller:   healthPoller,
+		healthWatcher:  healthWatcher,
+		orphanDetector: orphanDetector,
+		broadcaster:    broadcaster,
+		history:        history,
+		auditLog:       auditLog,
+		logRing:        logRing,
+		autosync:       as,
+		build:          build,
+	}))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -517,6 +530,24 @@ type autosyncDeps struct {
 	order   func() []string
 	publish func() // publish snapshots + refresh gauges
 	trigger func() // start a deploy run (drains the queue)
+}
+
+// webhookDeps bundles everything the webhook + UI mux wires together, so the
+// route table is built from one cohesive value instead of a long positional
+// argument list.
+type webhookDeps struct {
+	cfg            *config.Config
+	stacks         func() []config.Stack
+	deployer       *deploy.Deployer
+	healthPoller   *health.Poller
+	healthWatcher  *healthwatch.Watcher
+	orphanDetector *orphans.Detector
+	broadcaster    *events.Broadcaster[events.DeployEvent]
+	history        *events.History
+	auditLog       *audit.Log
+	logRing        *logbuf.Log
+	autosync       *autosyncDeps
+	build          ui.BuildInfo
 }
 
 // deployReconciler adapts the deployer to reconcile.Reconciler, binding the
@@ -597,12 +628,13 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *deploy.Deployer, healthPoller *health.Poller, healthWatcher *healthwatch.Watcher, orphanDetector *orphans.Detector, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
+func webhookMux(d webhookDeps) *http.ServeMux {
+	cfg, deployer, as := d.cfg, d.deployer, d.autosync
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
 
-	if broadcaster != nil {
+	if d.broadcaster != nil {
 		initialState := func() []events.StateEvent {
 			state := []events.StateEvent{
 				{Name: events.StateAutosync, Data: as.ctrl.Snapshot(as.order())},
@@ -610,15 +642,15 @@ func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *depl
 				{Name: events.StateUpcoming, Data: deployer.CurrentRunPlan()},
 				{Name: events.StateStacks, Data: buildStacksState(stacks(), deployer.CurrentDisabledStacks(), auditLog)},
 			}
-			if healthPoller != nil {
-				state = append(state, events.StateEvent{Name: events.StateHealth, Data: healthPoller.Current()})
-				healthPoller.Poll() // a client just connected — refresh now (also refreshes orphans)
+			if d.healthPoller != nil {
+				state = append(state, events.StateEvent{Name: events.StateHealth, Data: d.healthPoller.Current()})
+				d.healthPoller.Poll() // a client just connected — refresh now (also refreshes orphans)
 			}
-			if healthWatcher != nil {
-				state = append(state, events.StateEvent{Name: events.StateHealthWatch, Data: healthWatcher.Current()})
+			if d.healthWatcher != nil {
+				state = append(state, events.StateEvent{Name: events.StateHealthWatch, Data: d.healthWatcher.Current()})
 			}
-			if orphanDetector != nil {
-				state = append(state, events.StateEvent{Name: events.StateOrphans, Data: orphanDetector.Current()})
+			if d.orphanDetector != nil {
+				state = append(state, events.StateEvent{Name: events.StateOrphans, Data: d.orphanDetector.Current()})
 			}
 			return state
 		}
@@ -626,20 +658,20 @@ func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *depl
 
 		mux.Handle("GET /{$}", ui.IndexHandler(cfg.UITheme, cfg.UIThemeSwitcher))
 		mux.Handle("GET /manifest.webmanifest", ui.ManifestHandler(cfg.UITheme))
-		mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(build))
+		mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(d.build))
 		mux.Handle("GET /app-helpers.js", ui.AppHelpersHandler())
 		mux.Handle("GET /app.css", ui.AppCSSHandler())
 		mux.Handle("GET /icons/", ui.IconsHandler())
 		mux.Handle("GET /fonts/", ui.FontsHandler())
-		mux.Handle("GET /api/version", ui.VersionHandler(build))
-		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, as.stateB, history, initialState))
-		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
-		mux.Handle("GET /api/audit", ui.AuditHandler(auditLog))
-		mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
+		mux.Handle("GET /api/version", ui.VersionHandler(d.build))
+		mux.Handle("GET /api/events", ui.SSEHandler(d.broadcaster, as.stateB, d.history, initialState))
+		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(d.history))
+		mux.Handle("GET /api/audit", ui.AuditHandler(d.auditLog))
+		mux.Handle("GET /api/logs", ui.LogsSSEHandler(d.logRing))
 
 		iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 		iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
-		mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg, stacks)))
+		mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg, d.stacks)))
 		mux.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
 
 		mux.Handle("GET /api/autosync", autosyncH)
