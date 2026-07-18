@@ -19,6 +19,12 @@ RUN VERSION=$(sed -n 's/.*"\.":[[:space:]]*"\([^"]*\)".*/\1/p' .release-please-m
     && go build -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.branch=${BRANCH}" -o /skipper ./cmd/skipper
 
 # Stage 2: Runtime
+#
+# Alpine, not distroless: skipper shells out to real git/docker-cli binaries
+# (internal/command, deliberately not a Go git library — it catches real argv
+# mistakes fakes can't). Distroless has no package manager to add those back,
+# and hand-copying them in would hit a musl/glibc ABI mismatch against
+# distroless/base plus git's runtime helper files under /usr/share/git-core.
 FROM alpine:3.24
 
 # UID/GID 1000: fixed so a volume from a previous (root-only) image version can
