@@ -15,7 +15,10 @@ import (
 )
 
 // RepoConfigFileName is the optional per-stack override file at the root of
-// the deploy repo in stack-discovery mode (ADR-0034).
+// the watched stacks directory (stacks_base_dir) in stack-discovery mode
+// (ADR-0034). Keeping it next to the stacks it configures lets one deploy repo
+// serve several hosts that each watch a different subtree, each with its own
+// skipper.yaml (ADR-0034 amendment).
 const RepoConfigFileName = "skipper.yaml"
 
 // StackError reports an entry-level failure of a single discovered stack (an
@@ -28,7 +31,7 @@ type StackError struct {
 
 func (e StackError) Error() string { return fmt.Sprintf("stack %q: %v", e.Stack, e.Err) }
 
-// repoStackOverride is one stack's entry in the repo-root skipper.yaml. Every
+// repoStackOverride is one stack's entry in the skipper.yaml. Every
 // field is optional — a discovered stack without an entry runs on defaults.
 // It mirrors the per-stack fields of the host config; autosync is deliberately
 // absent for now (the autosync controller's config baseline is fixed at
@@ -65,18 +68,19 @@ type RepoStacks struct {
 // LoadRepoStacks discovers the stack set from the deploy-repo clone
 // (ADR-0034): every direct subdirectory of stacksBaseDir containing a
 // docker-compose.yml is a stack (name = directory name, alphabetical order),
-// with optional per-stack overrides from <repoDir>/skipper.yaml.
+// with optional per-stack overrides from <stacksBaseDir>/skipper.yaml. Relative
+// override paths resolve against stacksBaseDir, next to the stacks they configure.
 //
 // The error return is file-level (unreadable base dir, unparseable or
 // unknown-field skipper.yaml): nothing can be trusted, the caller must not
 // deploy anything. StackErrors are entry-level: those stacks are excluded and
 // reported, the returned stacks are fine to deploy.
-func LoadRepoStacks(repoDir, stacksBaseDir string) (RepoStacks, []StackError, error) {
+func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 	discovered, err := discoverStackDirs(stacksBaseDir)
 	if err != nil {
 		return RepoStacks{}, nil, err
 	}
-	ovf, err := loadRepoOverrides(filepath.Join(repoDir, RepoConfigFileName))
+	ovf, err := loadRepoOverrides(filepath.Join(stacksBaseDir, RepoConfigFileName))
 	if err != nil {
 		return RepoStacks{}, nil, err
 	}
@@ -114,8 +118,8 @@ func LoadRepoStacks(repoDir, stacksBaseDir string) (RepoStacks, []StackError, er
 		stack := Stack{
 			Name:               name,
 			WorkingDir:         ov.WorkingDir,
-			EnvFiles:           resolveRepoPaths(repoDir, ov.EnvFiles),
-			WatchDirs:          resolveRepoPaths(repoDir, ov.WatchDirs),
+			EnvFiles:           resolveRepoPaths(stacksBaseDir, ov.EnvFiles),
+			WatchDirs:          resolveRepoPaths(stacksBaseDir, ov.WatchDirs),
 			OnDemandContainers: ov.OnDemandContainers,
 			Icon:               ov.Icon,
 			HealthCheck:        ov.HealthCheck,

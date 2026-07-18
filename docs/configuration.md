@@ -61,7 +61,7 @@ nixos_rebuild:
 | `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
 | `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
 | `stacks` | list | unless `stack_discovery` | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). Mutually exclusive with `stack_discovery`. |
-| `stack_discovery` | bool | no | `false` | Discover the stack set from the deploy repo instead of this file: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack, with optional per-stack overrides in a repo-root `skipper.yaml` (see [Stack discovery](#stack-discovery)). Requires `stacks_base_dir`; mutually exclusive with `stacks`. |
+| `stack_discovery` | bool | no | `false` | Discover the stack set from the deploy repo instead of this file: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack, with optional per-stack overrides in a `skipper.yaml` at the `stacks_base_dir` root (see [Stack discovery](#stack-discovery)). Requires `stacks_base_dir`; mutually exclusive with `stacks`. |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
 | `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
@@ -98,18 +98,18 @@ With `stack_discovery: true` the deploy repo declares the stacks — adding, cha
 
 ```
 deploy-repo/
-├── skipper.yaml          # optional per-stack overrides
 └── stacks/               # = stacks_base_dir
+    ├── skipper.yaml      # optional per-stack overrides
     ├── gitea/docker-compose.yml
     ├── traefik/docker-compose.yml
     └── wip/docker-compose.yml
 ```
 
 - Every directory under `stacks_base_dir` containing a `docker-compose.yml` is a stack; name = directory name, deploy order alphabetical (plus `depends_on`). Defaults apply — a bare directory is a fully functional stack.
-- The optional repo-root `skipper.yaml` holds only the exceptions, keyed by stack name:
+- The optional `skipper.yaml` at the `stacks_base_dir` root holds only the exceptions, keyed by stack name:
 
 ```yaml
-# skipper.yaml (repo root)
+# skipper.yaml (in stacks_base_dir)
 stacks:
   traefik:
     depends_on: [gitea]
@@ -118,7 +118,7 @@ stacks:
     disabled: true      # in the repo, deliberately not deployed
 ```
 
-- **Fields** — the [Stack Fields](#stack-fields) above except `name` and `autosync`, plus `disabled`. Relative `env_files`/`watch_dirs` paths resolve against the repo root.
+- **Fields** — the [Stack Fields](#stack-fields) above except `name` and `autosync`, plus `disabled`. Relative `env_files`/`watch_dirs` paths resolve against `stacks_base_dir`.
 - **`disabled: true`** — parked: not deployed, not health-checked; a running stack keeps running. The web UI lists parked names in a `disabled` line below the deploy table.
 - **Config edits redeploy** — a `skipper.yaml` edit redeploys the affected stacks (shown as a `skipper.yaml` change). Enabling discovery redeploys every stack once.
 - **Broken config fails visibly** — an unparseable `skipper.yaml` shows as a failed `_config` row and deploys nothing; a single bad entry fails only that stack. Running containers are never touched.

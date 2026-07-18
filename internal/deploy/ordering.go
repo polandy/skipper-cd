@@ -201,7 +201,7 @@ func (d *Deployer) pendingChanges(stack config.Stack, baseDir, varsFile string, 
 	if err != nil {
 		return nil, false
 	}
-	d.addStackConfigHash(currentHashes, stack)
+	d.addStackConfigHash(currentHashes, stack, baseDir)
 	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
 	return changed, len(changed) > 0
 }

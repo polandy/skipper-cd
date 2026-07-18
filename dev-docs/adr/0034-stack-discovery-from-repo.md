@@ -30,8 +30,9 @@ small files; no single place that describes the host.
 
 **A. Auto-discovery + central overrides file.** Every direct subdirectory of
 `stacks_base_dir` containing a `docker-compose.yml` *is* a stack (name =
-directory name, defaults apply). An optional `skipper.yaml` at the repo root
-holds only the exceptions: `depends_on`, `env_files`, `health_check`,
+directory name, defaults apply). An optional `skipper.yaml` at the root of
+`stacks_base_dir` (see the 2026-07-18 amendment) holds only the exceptions:
+`depends_on`, `env_files`, `health_check`,
 `disabled: true`, … Membership truth is the directory tree.
 
 - Strongest argument for: the explicit-list failure mode disappears — with a
@@ -53,8 +54,8 @@ host; undeclared WIP directories are legitimate.
 
 ## Decision
 
-**Variant A**: stacks are auto-discovered from the repo; the repo-root
-`skipper.yaml` carries only per-stack overrides and the `disabled: true`
+**Variant A**: stacks are auto-discovered from the repo; a `skipper.yaml` at
+the `stacks_base_dir` root carries only per-stack overrides and the `disabled: true`
 opt-out. Decided 2026-07-18 — marking the exception ("in the repo but must
 not run") is more honest than repeating the rule ("in the repo, should run")
 for every stack, and the silent-miss failure mode of a list outweighs its
@@ -80,8 +81,8 @@ mode is unchanged). Design details in `dev-docs/stack-discovery-spec.md`.
   the offending `skipper.yaml` lines in their message, so the failed row's
   error panel shows the config, not just its name.
 - The per-stack effective config becomes a hashed input (invariant 2 grows
-  one entry), keyed by the repo `skipper.yaml` path so the UI attributes the
-  change to that file and shows its real git diff. Only deploy-shaping
+  one entry), keyed by the `skipper.yaml` path (at `stacks_base_dir`) so the UI
+  attributes the change to that file and shows its real git diff. Only deploy-shaping
   fields are hashed (`working_dir`, `env_files`, `watch_dirs`,
   `on_demand_containers`, `health_check`) — display-only (`icon`),
   runtime-only (`self_heal`), and ordering-only (`depends_on`) fields never
@@ -99,3 +100,19 @@ mode is unchanged). Design details in `dev-docs/stack-discovery-spec.md`.
 - skipper's trust boundary shifts: a repo push can now change health gates,
   env wiring, and ordering — acceptable for the single-admin homelab this
   targets, and no different from ArgoCD's model.
+
+## Amendment (2026-07-18): override file lives at `stacks_base_dir`, not the repo root
+
+The override file is read from `<stacks_base_dir>/skipper.yaml`, not the repo
+root as originally shipped. Relative `env_files`/`watch_dirs` paths resolve
+against `stacks_base_dir` too, next to the stacks they configure.
+
+Motivation: one deploy repo can serve several hosts that each watch a
+*different* subtree (in the homelab, `/etc/nixos` is the deploy repo; the main
+host watches `modules/`, a second host watches `system/<host>/modules/`). A
+single repo-root `skipper.yaml` is shared by all of them, and an override entry
+for a stack a host does not discover is an entry-level error ("no stack
+directory …"). Anchoring the file at `stacks_base_dir` gives each watched
+subtree its own `skipper.yaml`, so the per-host stack sets — and their
+overrides — stay disjoint. Discovery is not yet enabled anywhere, so there is
+no compatibility cost.

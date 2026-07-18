@@ -499,7 +499,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// dependency gate below so their dependents block.
 	var stackErrs []config.StackError
 	if cfg.StackDiscovery {
-		repo, errs, err := config.LoadRepoStacks(d.repoDir, cfg.StacksBaseDir)
+		repo, errs, err := config.LoadRepoStacks(cfg.StacksBaseDir)
 		if err != nil {
 			slog.Error("stack discovery failed, no stacks deploy this run", "err", err)
 			d.emitDeployFailure(ConfigStateKey, 0, err, changeSet{})
@@ -595,7 +595,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		d.emitDeployFailure(stack.Name, 0, err, changeSet{})
 		return err
 	}
-	d.addStackConfigHash(currentHashes, stack)
+	d.addStackConfigHash(currentHashes, stack, baseDir)
 
 	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
 	if len(changed) == 0 {
