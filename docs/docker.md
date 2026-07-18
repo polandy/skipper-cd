@@ -6,13 +6,12 @@ skipper-cd can run as a Docker container instead of a [NixOS service](nixos.md).
 
 ## Running as a Container
 
-> **Note:** Running skipper-cd as a Docker container has not been tested yet. If you try it, feedback and bug reports are welcome via [GitHub Issues](https://github.com/polandy/skipper-cd/issues).
-
 ```yaml
 services:
   skipper:
     image: ghcr.io/polandy/skipper-cd:latest
     restart: unless-stopped
+    stop_grace_period: 15m   # let an in-flight deploy finish on shutdown
     ports:
       - "8080:8080"   # webhook
       - "9120:9120"   # metrics
@@ -27,7 +26,22 @@ volumes:
 
 The Docker socket mount is required — skipper-cd uses it to manage compose stacks. The `skipper-data` volume persists the cloned repository and deploy state across restarts.
 
-> **Note:** [Notification](configuration.md#notifications) `url`s are resolved from inside skipper-cd's container, so `localhost` is the container itself — point them at an address reachable from the container.
+Container notes:
+
+- **Mount referenced paths at identical paths.** skipper-cd drives the *host's* Docker daemon through the socket, so every path the config references — [`working_dir`](configuration.md#stack-fields), `vars_file`, `env_files` — must be mounted (read-only) at the same path inside the container as on the host.
+- **`nixos_rebuild` cannot run in a container** — leave it out of the config.
+- **Shutdown:** skipper-cd exits gracefully on SIGTERM and waits for an in-flight deploy; give it room with `stop_grace_period` (Docker's default is 10 s).
+- **`localhost` URLs** ([notifications](configuration.md#notifications), [health-check](configuration.md#health-check-gated-rollback) probes) resolve inside the container. Use an address reachable from the container, or `network_mode: host` (then drop `ports:`).
+
+## Migrating from the NixOS module
+
+The switch itself never redeploys anything: bind-mount the host's `/var/lib/skipper` at the same path so `state.yaml` and the deploy history carry over, and the startup run skips every unchanged stack.
+
+1. Copy the effective `skipper.yml` and remove the `nixos_rebuild` block.
+2. `systemctl stop skipper-cd` (plus any timer that would restart it).
+3. Start the container with the mounts above; `network_mode: host` keeps ports and `localhost` URLs unchanged.
+
+Going back is the reverse: remove the container, start the service again. Nix changes pushed in between are applied on the module's first sync.
 
 ## Locally Built Images
 
