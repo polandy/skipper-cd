@@ -678,6 +678,39 @@ hand-started project outside it (unmanaged). Behaviour-only (no snapshot).
   but the expansion is tracked client-side (`orphansOpen`), so a scripted status
   change re-renders the row and it stays open.
 
+### 4.19 UI — Maske R: Stacks roster view (stack-roster-spec)
+
+The third top-level view: an inventory of the full stack set skipper owns (stack
+discovery, ADR-0034) with each stack's last outcome — as opposed to the deploy
+table's event log — rendered as an aligned table that reuses the deploy table's
+row/column/expand language (`dev-docs/ui-design-concept.md`). Boots in discovery
+mode with `stacks: ['api', 'web', 'wip']`, a repo-root `skipper.yaml` parking
+`wip` (`disabled: true`), and `healthPoll` + `initialHealth` for api/web so the
+containers panel is populated. Behaviour-only (no new snapshot; the default
+deploy view is unchanged, so the full-page `ud-chrome` baselines still hold).
+The `never deployed` state is unit-tested (`internal/roster`) — in discovery mode
+the first sync deploys every stack, so it is not deterministically seedable in
+e2e — and shares its `.roster-flag` rendering with the disabled row.
+
+- **UR1 — Aligned inventory table.** The stacks view shows an aligned column
+  header (`Stack · Status · Last deploy · Commit`, no count/title line) and one
+  row per declared stack (api, web deployed → success badge; wip parked →
+  `.disabled` row with the `disabled` flag and no badge), enabled sorted before
+  disabled; the deploy table is hidden and restored on switching back.
+- **UR2 — Click a row for containers + history.** Clicking a row expands the
+  stack into its containers panel (`health-panel` with a `health-service`, from
+  the health snapshot) above its deploy-history panel (`data-audit-for` = stack);
+  clicking again closes both, and opening another row closes the first (one stack
+  at a time).
+- **UR3 — Search.** A printable key reveals the filter and seeds it; a substring
+  match narrows the rows with a `shown/total` count; a no-match query shows the
+  empty note; first `Esc` clears, second folds the bar away.
+- **UR4 — Mobile search entry.** On a narrow viewport the stacks view-options
+  popover carries a desktop-hidden "Search stacks" row that reveals and focuses
+  the filter, which then narrows the rows the same way.
+- **UR5 — Shared time mode.** The stacks popover's `Absolute time` toggle (the
+  shared `timeMode`) switches the roster's relative times to absolute.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -780,6 +813,12 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Deploys search: type-to-reveal + filter + Esc fold | **UG1** |
 | Deploys search: no-match empty note | **UG2** |
 | Deploys search: mobile popover entry (desktop-hidden) | **UG3** |
+| Stacks roster: aligned inventory table (deployed/disabled rows + column header) | **UR1** |
+| Stacks roster: click a row for its containers + deploy-history panels | **UR2** |
+| Stacks roster: search (type-to-reveal, filter, empty note, Esc fold) | **UR3** |
+| Stacks roster: mobile popover search entry | **UR4** |
+| Stacks roster: shared time-mode toggle (relative → absolute) | **UR5** |
+| Stacks roster: never-deployed synthetic state | Unit `roster` — not e2e-seedable |
 | Stack health: rolled-up pill per stack (healthy/unhealthy/stopped) | **UH1** |
 | Stack health: per-service panel toggle | **UH2** |
 | Stack health: pill on the newest row per stack | **UH3** |

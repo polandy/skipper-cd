@@ -122,6 +122,17 @@ for (const n of stacks) {
   writeFileSync(join(origin, n, 'docker-compose.yml'), `services:\n  ${n}:\n    image: nginx:1.25\n`);
   writeFileSync(join(origin, n, 'icon.svg'), icon);
 }
+// A parked stack: a real compose directory kept out of deploys via
+// disabled: true in the repo skipper.yaml — so the roster shows a disabled row.
+mkdirSync(join(origin, 'experiments'), { recursive: true });
+writeFileSync(join(origin, 'experiments', 'docker-compose.yml'), `services:\n  experiments:\n    image: nginx:1.25\n`);
+writeFileSync(join(origin, 'experiments', 'icon.svg'), icon);
+// Stack-discovery overrides (ADR-0034), at the stacks_base_dir root: api keeps
+// its health-check gate; experiments is parked.
+writeFileSync(
+  join(origin, 'skipper.yaml'),
+  `stacks:\n  api:\n    health_check:\n      timeout_seconds: 1\n  experiments:\n    disabled: true\n`,
+);
 git(origin, 'add', '.');
 git(origin, 'commit', '-m', 'initial');
 
@@ -142,10 +153,10 @@ const cfg =
   // Dead source_url → auto-match icon fetches fail fast; committed icon.svg
   // overrides still resolve, so the preview stays fully offline.
   `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
-  `stacks:\n` +
-  stacks
-    .map((n) => `  - name: ${JSON.stringify(n)}\n` + (n === 'api' ? `    health_check:\n      timeout_seconds: 1\n` : ''))
-    .join('');
+  // Stack discovery (ADR-0034): the stack set + per-stack config come from the
+  // repo (stacks_base_dir root skipper.yaml), matching production. worker and
+  // database are discovered but never pushed → they show as "never deployed".
+  `stack_discovery: true\n`;
 const cfgPath = join(base, 'skipper.yml');
 writeFileSync(cfgPath, cfg);
 

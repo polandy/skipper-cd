@@ -34,6 +34,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/orphans"
 	"github.com/polandy/skipper-cd/internal/reconcile"
+	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/safego"
 	"github.com/polandy/skipper-cd/internal/selfheal"
 	"github.com/polandy/skipper-cd/internal/ui"
@@ -385,7 +386,7 @@ func main() {
 		if stateB != nil {
 			stateB.Publish(events.StateEvent{Name: events.StateAutosync, Data: snap})
 			stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: autosyncQueue.View(order())})
-			stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: stacksState{Disabled: deployer.CurrentDisabledStacks()}})
+			stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), auditLog)})
 		}
 	}
 	deployer = deploy.New(deploy.Config{
@@ -480,11 +481,29 @@ func metricsMux() *http.ServeMux {
 }
 
 // stacksState is the `stacks` SSE snapshot: stack-set facts that are not
-// deploy events. Today only the names parked via disabled: true in
-// stack-discovery mode (ADR-0034), driving the UI's disabled line; empty in
-// legacy mode.
+// deploy events. Disabled carries the names parked via disabled: true in
+// stack-discovery mode (ADR-0034), driving the Deploys view's disabled line
+// (empty in legacy mode). Roster is the full inventory for the Stacks view —
+// every declared stack with its last outcome (dev-docs/stack-roster-spec.md).
 type stacksState struct {
-	Disabled []string `json:"disabled"`
+	Disabled []string       `json:"disabled"`
+	Roster   []roster.Entry `json:"roster"`
+}
+
+// buildStacksState assembles the `stacks` snapshot from the effective stack
+// set, the parked (disabled) names, and each stack's newest audit record.
+func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.Log) stacksState {
+	last := func(name string) (audit.Record, bool) {
+		recs := auditLog.Stack(name, 1)
+		if len(recs) == 0 {
+			return audit.Record{}, false
+		}
+		return recs[0], true
+	}
+	return stacksState{
+		Disabled: disabled,
+		Roster:   roster.Build(stacks, disabled, last),
+	}
 }
 
 // autosyncDeps bundles the autosync wiring the UI handlers need.
@@ -586,7 +605,7 @@ func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *depl
 				{Name: events.StateAutosync, Data: as.ctrl.Snapshot(as.order())},
 				{Name: events.StateQueue, Data: as.queue.View(as.order())},
 				{Name: events.StateUpcoming, Data: deployer.CurrentRunPlan()},
-				{Name: events.StateStacks, Data: stacksState{Disabled: deployer.CurrentDisabledStacks()}},
+				{Name: events.StateStacks, Data: buildStacksState(stacks(), deployer.CurrentDisabledStacks(), auditLog)},
 			}
 			if healthPoller != nil {
 				state = append(state, events.StateEvent{Name: events.StateHealth, Data: healthPoller.Current()})

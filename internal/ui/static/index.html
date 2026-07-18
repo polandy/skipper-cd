@@ -855,7 +855,9 @@
   .health-panel {
     padding: 9px 14px 12px;
     background: color-mix(in srgb, var(--hc) 6%, var(--bg-sunken));
+    border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
+    border-radius: var(--radius); /* top corners squared where bound (below) */
     box-shadow: inset 3px 0 0 var(--hc);
   }
   .health-panel .health-panel-head {
@@ -951,16 +953,18 @@
     background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
   .history-btn svg { width: 12px; height: 12px; }
-  /* The history panel is not one status — it lists many — so it binds to its row
-     with the neutral accent bar rather than a status colour. */
-  .event-row.audit-open {
+  /* History lists many statuses, so the open row uses the neutral accent bar,
+     not a status colour. Shared with the roster's open row. */
+  .event-row.audit-open, .roster-row.audit-open {
     background: color-mix(in srgb, var(--accent) 7%, transparent);
     box-shadow: inset 3px 0 0 var(--accent);
   }
   .audit-panel {
     padding: 9px 14px 12px;
     background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+    border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
+    border-radius: var(--radius); /* top corners squared where bound (below) */
     box-shadow: inset 3px 0 0 var(--accent);
     animation: slidein 0.18s ease;
   }
@@ -968,9 +972,7 @@
     display: flex; align-items: center; gap: 8px; padding: 0 0 8px;
     font-family: var(--font-mono); font-size: 11px;
   }
-  .audit-panel .ap-head-label { color: var(--text-muted); letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; }
-  .audit-panel .ap-head-who { color: var(--text-primary); font-size: 12.5px; font-weight: 600; }
-  .audit-panel .ap-count { color: var(--text-muted); margin-left: auto; }
+  .audit-panel .ap-count { color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
   .audit-panel .ap-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
   .audit-row {
     display: grid;
@@ -1289,7 +1291,8 @@
      square the adjoining corners and close the .event-list 2px inter-row gap, so
      an open row and all its bound trailers read as one card with an unbroken left
      bar. Applies to the health panel too — it shares the same binding. */
-  .event-row.health-open, .event-row.diff-open, .event-row.audit-open {
+  .event-row.health-open, .event-row.diff-open, .event-row.audit-open,
+  .roster-row.audit-open {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
@@ -1301,7 +1304,8 @@
   /* A bound panel with the error detail stacked below it is mid-stack, not the
      last card: square its bottom too so the bar runs straight into the error box. */
   .diff-panel.bound:has(+ .error-detail),
-  .files-list.bound:has(+ .error-detail) {
+  .files-list.bound:has(+ .error-detail),
+  .health-panel:has(+ .audit-panel) {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
@@ -1732,8 +1736,9 @@
   }
   .view-options.open { display: block; animation: theme-notice-in 0.16s ease; }
   .vo-group { display: none; }
-  body:not(.view-logs) .view-options .vo-group[data-view="deploys"] { display: block; }
+  body:not(.view-logs):not(.view-stacks) .view-options .vo-group[data-view="deploys"] { display: block; }
   body.view-logs .view-options .vo-group[data-view="logs"] { display: block; }
+  body.view-stacks .view-options .vo-group[data-view="stacks"] { display: block; }
 
   /* Filter toggles are glyph-only in the header, but inside the popover there is
      room for the full label + switch track (like the autosync drawer rows). */
@@ -2051,6 +2056,73 @@
   /* time-mode / log-sort / follow-logs now live in the view-options popover,
      shown per active view via .vo-group (see VIEW OPTIONS POPOVER). */
 
+  /* ─── STACKS VIEW (roster / inventory, dev-docs/stack-roster-spec.md) ─── */
+  /* The full set of stacks skipper owns (stack discovery, ADR-0034), each with
+     its last outcome — inventory, not an event log. A third top-level view. */
+  #stacks-view { display: none; }
+  body.view-stacks #stacks-view { display: block; }
+  body.view-stacks #deploy-table, body.view-stacks #empty-state,
+  body.view-stacks #disabled-stacks, body.view-stacks #orphans,
+  body.view-stacks #log-view { display: none !important; }
+
+  /* Roster rows reuse the deploy row frame minus the status left bar (status is
+     the badge); open-state + panel binding are shared with .event-row.audit-open.
+     Header + rows share one fixed grid so columns align, like the deploy table. */
+  .roster-list { display: flex; flex-direction: column; gap: 2px; }
+  .roster-list-header, .roster-row {
+    display: grid;
+    grid-template-columns: 1fr 130px 160px 90px;
+    gap: 12px;
+    align-items: center;
+  }
+  .roster-list-header {
+    padding: 0 20px 10px;
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  /* Empty set: drop the lone column header. */
+  .roster-list-header:has(+ .roster-list:empty) { display: none; }
+  .roster-row {
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .roster-row:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
+  .roster-row.disabled { opacity: 0.55; }
+  .roster-list .filtered-out { display: none !important; }
+  .roster-stack {
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+    font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    color: var(--text-primary); letter-spacing: -0.3px;
+  }
+  .roster-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .roster-when, .roster-sha {
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--text-muted); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .roster-flag {
+    font-size: 11px; color: var(--text-muted);
+    padding: 2px 9px; border: 1px dashed var(--border); border-radius: 999px;
+    white-space: nowrap;
+  }
+  .roster-empty { display: none; color: var(--text-muted); text-align: center; padding: 28px 12px; }
+  .roster-list:empty ~ .roster-empty { display: block; }
+  /* Containers panel stacks above history: force its frame to the accent (not
+     its health colour) so the expanded stack is one card; per-service dots keep
+     the real colours. Head drops the redundant stack name (the row names it). */
+  .roster-list .health-panel {
+    background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .roster-list .health-panel .hp-head-who { display: none; }
+
   .log-pane {
     background: var(--bg-sunken);
     border: 1px solid var(--border);
@@ -2165,6 +2237,29 @@
     .cell-duration { grid-column: 2; grid-row: 2; text-align: right; }
     .col-files { display: none; }
     .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
+
+    /* Roster collapses to the deploy-row 2×2: stack/status on top, time/commit below. */
+    .roster-list-header { display: none; }
+    .roster-row {
+      grid-template-columns: 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 4px 12px;
+      padding: 10px 14px;
+    }
+    .roster-stack  { grid-column: 1; grid-row: 1; }
+    .roster-status { grid-column: 2; grid-row: 1; justify-self: end; }
+    .roster-when   { grid-column: 1; grid-row: 2; font-size: 11px; }
+    .roster-sha    { grid-column: 2; grid-row: 2; justify-self: end; }
+
+    /* Deploy-history rows on one line: the desktop's fixed columns overflow a
+       phone, so use content-width tracks and drop the file count (like the table). */
+    .audit-row {
+      grid-template-columns: auto auto auto 1fr;
+      gap: 10px;
+    }
+    .audit-row .ar-sha   { justify-self: end; text-align: right; }
+    .audit-row .ar-files { display: none; }
+    .audit-row .ar-err   { grid-column: 1 / -1; }
   }
 
   /* Portrait phones keep the build identity next to the logo. It clips with an
@@ -2215,6 +2310,9 @@
         <button data-view="deploys" class="active" title="Deploys" aria-label="Deploys" aria-haspopup="true" aria-expanded="false">
           <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3.5 9.5h17M9 9.5V19" stroke="currentColor" stroke-width="2"/></svg>
         </button>
+        <button data-view="stacks" title="Stacks" aria-label="Stacks" aria-haspopup="true" aria-expanded="false">
+          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l8 4-8 4-8-4 8-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 12l8 4 8-4M4 16.5l8 4 8-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <button data-view="logs" title="Logs" aria-label="Logs" aria-haspopup="true" aria-expanded="false">
           <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="2"/><path d="M7 9.5l3 2.5-3 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 15H17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
@@ -2226,6 +2324,17 @@
             <span>Search stacks</span>
           </button>
           <button class="filter-toggle" id="time-mode" data-testid="time-mode" title="Switch to absolute time">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Absolute time</span>
+          </button>
+        </div>
+        <div class="vo-group" data-view="stacks">
+          <button class="filter-toggle vo-search" id="roster-search-open" data-testid="roster-search" type="button" title="Search stacks">
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Search stacks</span>
+          </button>
+          <button class="filter-toggle" id="roster-time-mode" data-testid="roster-time-mode" title="Switch to absolute time">
             <div class="toggle-track"><div class="toggle-thumb"></div></div>
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>Absolute time</span>
@@ -2357,6 +2466,24 @@
     <span class="dis-list" id="disabled-list" style="display:contents"></span>
   </div>
 
+  <div id="stacks-view" data-testid="stacks-view">
+    <div class="stack-filter-wrap deploy-filter" id="roster-filter-wrap" data-testid="roster-filter-wrap">
+      <svg class="fi" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input class="stack-filter" id="roster-filter" data-testid="roster-filter" type="text" placeholder="Filter stacks…" autocomplete="off" spellcheck="false" aria-label="Filter stacks by name">
+      <span class="stack-filter-count" id="roster-filter-count" data-testid="roster-filter-count"></span>
+      <button class="stack-filter-clear" id="roster-filter-clear" data-testid="roster-filter-clear" type="button" aria-label="Clear filter">&times;</button>
+    </div>
+    <div class="roster-list-header">
+      <span>Stack</span>
+      <span>Status</span>
+      <span>Last deploy</span>
+      <span>Commit</span>
+    </div>
+    <div class="roster-list" id="roster-list" data-testid="roster-list"></div>
+    <div class="filter-empty" id="roster-filter-empty" data-testid="roster-filter-empty">No stack matches &ldquo;<span id="roster-filter-empty-q"></span>&rdquo;.</div>
+    <div class="roster-empty" id="roster-empty" data-testid="roster-empty">No stacks to show.</div>
+  </div>
+
   <div class="orphans" id="orphans" data-testid="orphans">
     <button class="orphans-head" id="orphans-head" data-testid="orphans-head" aria-expanded="false" title="Running compose projects the discovered stack set no longer accounts for.">
       <span class="orphans-caret" aria-hidden="true">▶</span>
@@ -2437,6 +2564,48 @@
       list.appendChild(chip);
     });
     wrap.classList.add('shown');
+  }
+
+  // The Stacks view roster: the full stack set (stack discovery, ADR-0034, or
+  // the host list in legacy mode) with each stack's last outcome, from the
+  // 'stacks' SSE snapshot. Inventory, not an event log — every declared stack
+  // appears, including never-deployed and disabled ones. See
+  // dev-docs/stack-roster-spec.md.
+  let rosterSnap = [];
+
+  // rosterStatusHTML picks the row's status: a live in-flight deploy wins, then
+  // the parked/never-deployed synthetic flags, else the last terminal badge.
+  function rosterStatusHTML(entry) {
+    if (deployingRows[entry.name]) return badgeHTML('deploying');
+    if (entry.disabled) return `<span class="roster-flag">disabled</span>`;
+    if (!entry.last_status) return `<span class="roster-flag">never deployed</span>`;
+    return badgeHTML(entry.last_status);
+  }
+
+  function renderRoster() {
+    const list = document.getElementById('roster-list');
+    list.textContent = '';
+    rosterSnap.forEach(function(entry) {
+      const deploying = !!deployingRows[entry.name];
+      // Time + commit only apply to a real past deploy.
+      const showMeta = !entry.disabled && !deploying && !!entry.last_status;
+      // Shared time mode; title carries the opposite (relative <-> absolute).
+      const when = showMeta && entry.last_at ? (absoluteTime ? fullTime(entry.last_at) : formatTime(entry.last_at)) : '';
+      const whenTitle = showMeta && entry.last_at ? (absoluteTime ? formatTime(entry.last_at) : fullTime(entry.last_at)) : '';
+      const sha = showMeta && entry.last_commit ? shortSHA(entry.last_commit) : '';
+      const row = document.createElement('div');
+      row.className = entry.disabled ? 'roster-row disabled' : 'roster-row';
+      row.dataset.testid = 'roster-row';
+      row.dataset.stack = entry.name;
+      row.innerHTML =
+        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span></span>` +
+        `<span class="roster-status">${rosterStatusHTML(entry)}</span>` +
+        `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
+        `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
+      populateIcon(row.querySelector('.stack-icon'), entry.name);
+      list.appendChild(row);
+    });
+    refilterRoster(); // a re-render drops open panels and rows; re-apply any active filter
   }
 
   // Orphans (ADR-0036): compose projects the discovered stack set no longer
@@ -2991,10 +3160,9 @@
     el.className = 'audit-panel';
     el.dataset.testid = 'audit-panel';
     el.dataset.auditFor = stack;
+    // No heading — the deploy count is the only header text.
     el.innerHTML =
-      `<div class="ap-head"><span class="ap-head-label">deploy history</span>` +
-      `<span class="ap-head-who">${escapeHtml(stack)}</span>` +
-      `<span class="ap-count"></span></div>` +
+      `<div class="ap-head"><span class="ap-count"></span></div>` +
       `<div class="ap-empty">Loading history…</div>`;
     fetchAudit(stack, function(records) {
       if (!el.parentNode) return; // closed (or replaced) while loading
@@ -3354,6 +3522,7 @@
       handleEvent(evt, false);
       refilterDeploys();
       updateStackAffordances(); // a new/mutated row may change which row is newest
+      if (activeView === 'stacks') refreshRosterRow(evt.stack); // reflect in-flight/settled state live
     });
 
     es.addEventListener('autosync', function(e) {
@@ -3394,7 +3563,9 @@
     es.addEventListener('stacks', function(e) {
       const d = JSON.parse(e.data);
       disabledSnap = (d && d.disabled) || [];
+      rosterSnap = (d && d.roster) || [];
       renderDisabledStacks();
+      renderRoster();
     });
 
     es.addEventListener('orphans', function(e) {
@@ -3418,17 +3589,16 @@
     };
   }
 
-  // Time mode toggle (default: relative)
-  const timeModeBtn = document.getElementById('time-mode');
+  // Time mode (default: relative). One shared mode; a toggle in both the Deploys
+  // and Stacks popovers flips it and updates both views.
+  const timeModeBtns = [document.getElementById('time-mode'), document.getElementById('roster-time-mode')];
 
   function applyTimeMode() {
-    if (absoluteTime) {
-      timeModeBtn.classList.add('active');
-      timeModeBtn.title = 'Switch to relative time';
-    } else {
-      timeModeBtn.classList.remove('active');
-      timeModeBtn.title = 'Switch to absolute time';
-    }
+    timeModeBtns.forEach(function(btn) {
+      if (!btn) return;
+      btn.classList.toggle('active', absoluteTime);
+      btn.title = absoluteTime ? 'Switch to relative time' : 'Switch to absolute time';
+    });
     tbody.querySelectorAll('.cell-time').forEach(function(cell) {
       const ts = cell.dataset.ts;
       if (!ts) return;
@@ -3437,10 +3607,16 @@
     });
   }
 
-  timeModeBtn.addEventListener('click', function() {
-    absoluteTime = !absoluteTime;
-    localStorage.setItem('timeMode', absoluteTime ? 'absolute' : 'relative');
-    applyTimeMode();
+  timeModeBtns.forEach(function(btn) {
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      absoluteTime = !absoluteTime;
+      localStorage.setItem('timeMode', absoluteTime ? 'absolute' : 'relative');
+      applyTimeMode();
+      // Kept out of applyTimeMode: its setup-time call runs before the roster
+      // block is initialized (would TDZ). Reached only on a click here.
+      if (activeView === 'stacks') renderRoster();
+    });
   });
 
   applyTimeMode();
@@ -3523,13 +3699,13 @@
   });
 
   // Type-to-search: a printable key while viewing deploys reveals the bar and
-  // seeds it. Ignored while typing in any field, in the logs view, or before any
-  // row exists (nothing to filter).
+  // seeds it. Ignored while typing in any field, off the deploys view, or before
+  // any row exists (nothing to filter).
   document.addEventListener('keydown', function(e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     const tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
-    if (document.body.classList.contains('view-logs') || !hasRows) return;
+    if (activeView !== 'deploys' || !hasRows) return;
     if (e.key === 'Escape') {
       if (deployFilterWrap.classList.contains('revealed')) clearDeployFilter(true);
       return;
@@ -3542,6 +3718,122 @@
       e.preventDefault();
     }
   });
+
+  // ── Stacks view: click-a-row-for-history + search (mirrors the deploys filter) ──
+  const rosterList = document.getElementById('roster-list');
+  const rosterFilterWrap = document.getElementById('roster-filter-wrap');
+  const rosterFilter = document.getElementById('roster-filter');
+  const rosterFilterClear = document.getElementById('roster-filter-clear');
+  const rosterFilterCount = document.getElementById('roster-filter-count');
+  const rosterFilterEmpty = document.getElementById('roster-filter-empty');
+  const rosterFilterEmptyQ = document.getElementById('roster-filter-empty-q');
+
+  // Toggle a stack's deploy-history panel (ADR-0033), reusing the deploy table's
+  // audit panel. One open at a time; the panel trails its row as a sibling, so
+  // clicks inside it don't re-trigger the row.
+  function closeRosterPanels() {
+    rosterList.querySelectorAll('.audit-panel, .health-panel').forEach(function(p) { p.remove(); });
+    rosterList.querySelectorAll('.roster-row.audit-open').forEach(function(r) { r.classList.remove('audit-open'); });
+  }
+  rosterList.addEventListener('click', function(e) {
+    const row = e.target.closest('.roster-row');
+    if (!row || !rosterList.contains(row)) return;
+    const next = row.nextElementSibling;
+    const isOpen = next && (next.classList.contains('audit-panel') || next.classList.contains('health-panel'));
+    closeRosterPanels();
+    if (!isOpen) {
+      row.classList.add('audit-open');
+      const stack = row.dataset.stack;
+      // Containers (health, if known) above deploy history, bound as one card.
+      let anchor = row;
+      const h = healthSnap[stack];
+      if (h && h.services && h.services.length) {
+        const health = createHealthPanel(stack);
+        anchor.after(health);
+        anchor = health;
+      }
+      anchor.after(createAuditPanel(stack));
+      refilterRoster(); // freshly opened panels obey an active filter
+    }
+  });
+
+  function applyRosterFilter() {
+    const q = (rosterFilter.value || '').trim().toLowerCase();
+    rosterFilterWrap.classList.toggle('has-value', q.length > 0);
+    let total = 0, shown = 0, visible = false;
+    const kids = rosterList.children;
+    for (let i = 0; i < kids.length; i++) {
+      const el = kids[i];
+      if (el.dataset && el.dataset.testid === 'roster-row') {
+        total++;
+        visible = el.dataset.stack.toLowerCase().indexOf(q) !== -1;
+        if (visible) shown++;
+      }
+      // A trailing history panel shares its row's visibility.
+      el.classList.toggle('filtered-out', !visible);
+    }
+    rosterFilterCount.textContent = q ? (shown + '/' + total) : '';
+    rosterFilterEmpty.classList.toggle('show', q.length > 0 && total > 0 && shown === 0);
+    rosterFilterEmptyQ.textContent = q;
+  }
+  // Re-run after the roster re-renders (a new snapshot) so new stacks obey it too.
+  function refilterRoster() {
+    if (rosterFilterWrap.classList.contains('has-value')) applyRosterFilter();
+  }
+  function revealRosterFilter(on) { rosterFilterWrap.classList.toggle('revealed', on); }
+  function clearRosterFilter(hide) {
+    rosterFilter.value = '';
+    applyRosterFilter();
+    if (hide) { revealRosterFilter(false); rosterFilter.blur(); }
+  }
+  rosterFilter.addEventListener('input', applyRosterFilter);
+  rosterFilter.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      if (rosterFilter.value) clearRosterFilter(false); // first Esc clears
+      else { revealRosterFilter(false); rosterFilter.blur(); } // second Esc folds away
+    }
+  });
+  rosterFilter.addEventListener('blur', function() {
+    if (!rosterFilter.value) revealRosterFilter(false);
+  });
+  rosterFilterClear.addEventListener('click', function() { clearRosterFilter(false); rosterFilter.focus(); });
+
+  // Mobile entry point: the "Search stacks" row in the stacks view-options popover.
+  document.getElementById('roster-search-open').addEventListener('click', function() {
+    setViewOptions(false);
+    revealRosterFilter(true);
+    rosterFilter.focus();
+  });
+
+  // Type-to-search on the stacks view, matching the deploys behaviour.
+  document.addEventListener('keydown', function(e) {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+    if (activeView !== 'stacks' || !rosterSnap.length) return;
+    if (e.key === 'Escape') {
+      if (rosterFilterWrap.classList.contains('revealed')) clearRosterFilter(true);
+      return;
+    }
+    if (e.key.length === 1 && e.key !== ' ') {
+      revealRosterFilter(true);
+      rosterFilter.focus();
+      rosterFilter.value += e.key;
+      applyRosterFilter();
+      e.preventDefault();
+    }
+  });
+
+  // Live update of a single roster row's status (in-flight → settled) without a
+  // full re-render, so an open history panel survives a deploy event.
+  function refreshRosterRow(name) {
+    const row = rosterList.querySelector(`.roster-row[data-stack="${(window.CSS && CSS.escape) ? CSS.escape(name) : name}"]`);
+    if (!row) return;
+    const entry = rosterSnap.find(function(x) { return x.name === name; });
+    const cell = row.querySelector('.roster-status');
+    if (entry && cell) cell.innerHTML = rosterStatusHTML(entry);
+  }
 
   // Colour-scheme toggle (dark is the default; light is opt-in per browser).
   // Which palette (Catppuccin/Nord/Solarized/Gruvbox/Rosé Pine) is configured
@@ -3828,7 +4120,8 @@
   let logVisible = logPageSize;   // number of newest entries currently rendered
   let logDescending = localStorage.getItem('logSort') !== 'asc'; // default: newest first
   let followLogs = localStorage.getItem('followLogs') !== 'false';
-  let activeView = localStorage.getItem('activeView') === 'logs' ? 'logs' : 'deploys';
+  const savedView = localStorage.getItem('activeView');
+  let activeView = (savedView === 'logs' || savedView === 'stacks') ? savedView : 'deploys';
   let logSource = null;
 
   function renderLogLine(entry) {
@@ -4051,6 +4344,7 @@
 
   function applyView() {
     document.body.classList.toggle('view-logs', activeView === 'logs');
+    document.body.classList.toggle('view-stacks', activeView === 'stacks');
     viewButtons.forEach(function(btn) {
       btn.classList.toggle('active', btn.dataset.view === activeView);
     });
@@ -4058,6 +4352,7 @@
       connectLogs();
       renderLogWindow();
     }
+    if (activeView === 'stacks') renderRoster();
   }
 
   // View-specific options (time mode / sort / follow) live in a popover behind
@@ -4078,7 +4373,10 @@
   viewButtons.forEach(function(btn) {
     btn.addEventListener('click', function() {
       if (btn.dataset.view === activeView) {
-        setViewOptions(!viewOptions.classList.contains('open'));
+        // Active button toggles its options popover.
+        if (document.querySelector(`.vo-group[data-view="${activeView}"]`)) {
+          setViewOptions(!viewOptions.classList.contains('open'));
+        }
         return;
       }
       activeView = btn.dataset.view;
