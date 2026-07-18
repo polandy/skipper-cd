@@ -449,7 +449,20 @@ func main() {
 	}
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, stacksNow, deployer, healthPoller, healthWatcher, orphanDetector, broadcaster, history, auditLog, logRing, as, build))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(webhookDeps{
+		cfg:            cfg,
+		stacks:         stacksNow,
+		deployer:       deployer,
+		healthPoller:   healthPoller,
+		healthWatcher:  healthWatcher,
+		orphanDetector: orphanDetector,
+		broadcaster:    broadcaster,
+		history:        history,
+		auditLog:       auditLog,
+		logRing:        logRing,
+		autosync:       as,
+		build:          build,
+	}))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -517,6 +530,24 @@ type autosyncDeps struct {
 	order   func() []string
 	publish func() // publish snapshots + refresh gauges
 	trigger func() // start a deploy run (drains the queue)
+}
+
+// webhookDeps bundles everything the webhook + UI mux wires together, so the
+// route table is built from one cohesive value instead of a long positional
+// argument list.
+type webhookDeps struct {
+	cfg            *config.Config
+	stacks         func() []config.Stack
+	deployer       *deploy.Deployer
+	healthPoller   *health.Poller
+	healthWatcher  *healthwatch.Watcher
+	orphanDetector *orphans.Detector
+	broadcaster    *events.Broadcaster[events.DeployEvent]
+	history        *events.History
+	auditLog       *audit.Log
+	logRing        *logbuf.Log
+	autosync       *autosyncDeps
+	build          ui.BuildInfo
 }
 
 // deployReconciler adapts the deployer to reconcile.Reconciler, binding the
@@ -597,56 +628,111 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *deploy.Deployer, healthPoller *health.Poller, healthWatcher *healthwatch.Watcher, orphanDetector *orphans.Detector, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
+// webhookMux builds the routes served on the main port: the headless core
+// endpoints always, and — when a broadcaster is present (UI enabled) — the app
+// shell, live data surface, icons and autosync controls. Each concern is wired
+// by its own registrar, so this function only distributes dependencies.
+func webhookMux(d webhookDeps) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
-	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
+	registerCoreRoutes(mux, d.cfg, d.deployer)
 
-	if broadcaster != nil {
-		initialState := func() []events.StateEvent {
-			state := []events.StateEvent{
-				{Name: events.StateAutosync, Data: as.ctrl.Snapshot(as.order())},
-				{Name: events.StateQueue, Data: as.queue.View(as.order())},
-				{Name: events.StateUpcoming, Data: deployer.CurrentRunPlan()},
-				{Name: events.StateStacks, Data: buildStacksState(stacks(), deployer.CurrentDisabledStacks(), auditLog)},
-			}
-			if healthPoller != nil {
-				state = append(state, events.StateEvent{Name: events.StateHealth, Data: healthPoller.Current()})
-				healthPoller.Poll() // a client just connected — refresh now (also refreshes orphans)
-			}
-			if healthWatcher != nil {
-				state = append(state, events.StateEvent{Name: events.StateHealthWatch, Data: healthWatcher.Current()})
-			}
-			if orphanDetector != nil {
-				state = append(state, events.StateEvent{Name: events.StateOrphans, Data: orphanDetector.Current()})
-			}
-			return state
+	if d.broadcaster != nil {
+		snap := stateSnapshot{
+			stacks:         d.stacks,
+			deployer:       d.deployer,
+			healthPoller:   d.healthPoller,
+			healthWatcher:  d.healthWatcher,
+			orphanDetector: d.orphanDetector,
+			auditLog:       d.auditLog,
+			autosync:       d.autosync,
 		}
-		autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)
-
-		mux.Handle("GET /{$}", ui.IndexHandler(cfg.UITheme, cfg.UIThemeSwitcher))
-		mux.Handle("GET /manifest.webmanifest", ui.ManifestHandler(cfg.UITheme))
-		mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(build))
-		mux.Handle("GET /app-helpers.js", ui.AppHelpersHandler())
-		mux.Handle("GET /app.css", ui.AppCSSHandler())
-		mux.Handle("GET /icons/", ui.IconsHandler())
-		mux.Handle("GET /fonts/", ui.FontsHandler())
-		mux.Handle("GET /api/version", ui.VersionHandler(build))
-		mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, as.stateB, history, initialState))
-		mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
-		mux.Handle("GET /api/audit", ui.AuditHandler(auditLog))
-		mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
-
-		iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
-		iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
-		mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg, stacks)))
-		mux.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
-
-		mux.Handle("GET /api/autosync", autosyncH)
-		mux.Handle("POST /api/autosync", autosyncH)
-		mux.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
+		registerAppRoutes(mux, d.cfg, d.build)
+		registerEventRoutes(mux, d.broadcaster, d.history, d.auditLog, d.logRing, snap)
+		registerIconRoutes(mux, d.cfg, d.stacks)
+		registerAutosyncRoutes(mux, d.autosync)
 	}
 	return mux
+}
+
+// registerCoreRoutes wires the headless endpoints that exist regardless of the
+// UI: the push webhook and the health probe.
+func registerCoreRoutes(mux *http.ServeMux, cfg *config.Config, deployer *deploy.Deployer) {
+	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
+	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
+}
+
+// registerAppRoutes wires the static app shell: the PWA document, service
+// worker, manifest, fonts, static icons, helper script and version endpoint.
+func registerAppRoutes(mux *http.ServeMux, cfg *config.Config, build ui.BuildInfo) {
+	mux.Handle("GET /{$}", ui.IndexHandler(cfg.UITheme, cfg.UIThemeSwitcher))
+	mux.Handle("GET /manifest.webmanifest", ui.ManifestHandler(cfg.UITheme))
+	mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(build))
+	mux.Handle("GET /app-helpers.js", ui.AppHelpersHandler())
+	mux.Handle("GET /app.css", ui.AppCSSHandler())
+	mux.Handle("GET /icons/", ui.IconsHandler())
+	mux.Handle("GET /fonts/", ui.FontsHandler())
+	mux.Handle("GET /api/version", ui.VersionHandler(build))
+}
+
+// registerEventRoutes wires the live data surface: the SSE stream (seeded with
+// snap's initial state burst) plus the diff, audit and log endpoints.
+func registerEventRoutes(mux *http.ServeMux, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, snap stateSnapshot) {
+	mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, snap.autosync.stateB, history, snap.collect))
+	mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
+	mux.Handle("GET /api/audit", ui.AuditHandler(auditLog))
+	mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
+}
+
+// registerIconRoutes wires per-stack icon resolution and the cache-refresh hook.
+func registerIconRoutes(mux *http.ServeMux, cfg *config.Config, stacks func() []config.Stack) {
+	iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
+	iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
+	mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg, stacks)))
+	mux.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
+}
+
+// registerAutosyncRoutes wires the autosync toggle and the deploy-queue view.
+func registerAutosyncRoutes(mux *http.ServeMux, as *autosyncDeps) {
+	autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)
+	mux.Handle("GET /api/autosync", autosyncH)
+	mux.Handle("POST /api/autosync", autosyncH)
+	mux.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
+}
+
+// stateSnapshot gathers the current state of every subsystem the UI mirrors,
+// producing the initial SSE state burst a newly connected client receives.
+type stateSnapshot struct {
+	stacks         func() []config.Stack
+	deployer       *deploy.Deployer
+	healthPoller   *health.Poller
+	healthWatcher  *healthwatch.Watcher
+	orphanDetector *orphans.Detector
+	auditLog       *audit.Log
+	autosync       *autosyncDeps
+}
+
+// collect returns the current state events. As a side effect it polls the
+// health poller so a just-connected client sees fresh data (which also refreshes
+// orphans). Optional subsystems are skipped when their component is absent.
+func (s stateSnapshot) collect() []events.StateEvent {
+	as := s.autosync
+	state := []events.StateEvent{
+		{Name: events.StateAutosync, Data: as.ctrl.Snapshot(as.order())},
+		{Name: events.StateQueue, Data: as.queue.View(as.order())},
+		{Name: events.StateUpcoming, Data: s.deployer.CurrentRunPlan()},
+		{Name: events.StateStacks, Data: buildStacksState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog)},
+	}
+	if s.healthPoller != nil {
+		state = append(state, events.StateEvent{Name: events.StateHealth, Data: s.healthPoller.Current()})
+		s.healthPoller.Poll() // a client just connected — refresh now (also refreshes orphans)
+	}
+	if s.healthWatcher != nil {
+		state = append(state, events.StateEvent{Name: events.StateHealthWatch, Data: s.healthWatcher.Current()})
+	}
+	if s.orphanDetector != nil {
+		state = append(state, events.StateEvent{Name: events.StateOrphans, Data: s.orphanDetector.Current()})
+	}
+	return state
 }
 
 // stackLocator maps a stack name to its icon-resolution inputs from the
