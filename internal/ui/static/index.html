@@ -2380,33 +2380,31 @@
   }
 
   function badgeHTML(status) {
-    var cls = 'badge badge-' + status;
-    if (status === 'deploying') return '<span class="' + cls + '" data-testid="status-badge"><span class="spinner"></span>deploying</span>';
+    const cls = `badge badge-${status}`;
+    if (status === 'deploying') return `<span class="${cls}" data-testid="status-badge"><span class="spinner"></span>deploying</span>`;
     if (status === 'rolled_back_unhealthy') {
       // Two stacked lines at a reduced size: the full wording must stay
       // recognizable but overflows the status column on one line. Spans
       // instead of <br> because the badge is a flex container (column).
-      return '<span class="' + cls + '" data-testid="status-badge"><span>rolled back</span><span>unhealthy</span></span>';
+      return `<span class="${cls}" data-testid="status-badge"><span>rolled back</span><span>unhealthy</span></span>`;
     }
     if (status === 'heal_exhausted') {
       // Same stacked treatment as rolled_back_unhealthy — the wording overflows
       // one line (ADR-0029).
-      return '<span class="' + cls + '" data-testid="status-badge"><span>self-heal</span><span>failed</span></span>';
+      return `<span class="${cls}" data-testid="status-badge"><span>self-heal</span><span>failed</span></span>`;
     }
-    var label = status === 'rolled_back' ? 'rolled back' : status;
-    return '<span class="' + cls + '" data-testid="status-badge">' + label + '</span>';
+    const label = status === 'rolled_back' ? 'rolled back' : status;
+    return `<span class="${cls}" data-testid="status-badge">${label}</span>`;
   }
 
   function filesHTML(files) {
     if (!files || files.length === 0) return '<span class="cell-duration">\u2014</span>';
     // escapeAttr also encodes quotes - JSON is full of them and this lands
     // inside a double-quoted attribute.
-    var encoded = escapeAttr(JSON.stringify(files));
-    var html = '<button class="files-pill" data-testid="files-pill" data-files="' + encoded + '">';
-    html += '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h5l2 2h5v7H2z"/></svg>';
-    html += files.length + ' file' + (files.length > 1 ? 's' : '');
-    html += '</button>';
-    return html;
+    const encoded = escapeAttr(JSON.stringify(files));
+    return `<button class="files-pill" data-testid="files-pill" data-files="${encoded}">` +
+      `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h5l2 2h5v7H2z"/></svg>` +
+      `${files.length} file${files.length > 1 ? 's' : ''}</button>`;
   }
 
   // healPillHTML renders the self-heal "badge" that stands in for the files pill
@@ -2414,12 +2412,10 @@
   // explaining the corrective redeploy and listing the services that had
   // drifted (ADR-0029). The drift rides the event, so it is stashed on the pill.
   function healPillHTML(drift) {
-    var encoded = escapeAttr(JSON.stringify(drift || []));
-    var html = '<button class="heal-pill" data-testid="heal-pill" data-drift="' + encoded + '">';
-    html += '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>';
-    html += 'self-heal';
-    html += '</button>';
-    return html;
+    const encoded = escapeAttr(JSON.stringify(drift || []));
+    return `<button class="heal-pill" data-testid="heal-pill" data-drift="${encoded}">` +
+      `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>` +
+      `self-heal</button>`;
   }
 
   // createHealPanel builds the expandable detail for a healed row: a one-line
@@ -2434,13 +2430,13 @@
       el.classList.add('bound');
       el.dataset.status = meta.status;
     }
-    var html = '<div class="heal-summary">Self-heal restored this stack to its deployed running state — a corrective <code>docker compose up -d</code>. Nothing in git changed, so there is no diff.</div>';
+    let html = '<div class="heal-summary">Self-heal restored this stack to its deployed running state — a corrective <code>docker compose up -d</code>. Nothing in git changed, so there is no diff.</div>';
     if (drift && drift.length > 0) {
       html += '<div class="heal-drift-label">Drifted when it ran</div>';
-      html += '<ul class="heal-drift-list">' + drift.map(function(d) {
-        return '<li><span class="hd-name">' + escapeHtml(d.name) + '</span>' +
-          '<span class="hd-status hd-' + escapeAttr(d.status) + '">' + escapeHtml(d.status) + '</span></li>';
-      }).join('') + '</ul>';
+      html += `<ul class="heal-drift-list">` + drift.map(function(d) {
+        return `<li><span class="hd-name">${escapeHtml(d.name)}</span>` +
+          `<span class="hd-status hd-${escapeAttr(d.status)}">${escapeHtml(d.status)}</span></li>`;
+      }).join('') + `</ul>`;
     }
     el.innerHTML = html;
     return el;
@@ -2458,7 +2454,7 @@
       el.dataset.status = meta.status;
     }
     el.innerHTML = files.map(function(f) {
-      return '<span class="file-path">' + escapeHtml(f) + '</span>';
+      return `<span class="file-path">${escapeHtml(f)}</span>`;
     }).join('<br>');
     return el;
   }
@@ -2473,8 +2469,8 @@
 
   function renderDiffContent(diff) {
     return diff.split('\n').map(function(line) {
-      var cls = classifyDiffLine(line);
-      return '<span class="diff-line' + (cls ? ' ' + cls : '') + '">' + escapeHtml(line) + '</span>';
+      const cls = classifyDiffLine(line);
+      return `<span class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line)}</span>`;
     }).join('\n');
   }
 
@@ -2498,49 +2494,46 @@
   // plus a collapsible list for a multi-commit range. Returns '' when there is
   // nothing to show.
   function renderCommitHead(commits, meta) {
-    var hasEcho = !!(meta && meta.stack);
-    var hasCommits = !!(commits && commits.length);
+    const hasEcho = !!(meta && meta.stack);
+    const hasCommits = !!(commits && commits.length);
     if (!hasEcho && !hasCommits) return '';
-    var html = '<div class="diff-head" data-testid="diff-head">';
+    let html = '<div class="diff-head" data-testid="diff-head">';
     if (hasEcho) {
-      html += '<div class="diff-head-echo">' +
-        '<span class="dh-who">' + escapeHtml(meta.stack) + '</span>' +
-        '<span class="dh-label">deploy diff</span>' +
-        '<span class="dh-pill"><span class="hdot"></span>' + escapeHtml(statusText(meta.status)) + '</span>' +
-        '</div>';
+      html += `<div class="diff-head-echo">` +
+        `<span class="dh-who">${escapeHtml(meta.stack)}</span>` +
+        `<span class="dh-label">deploy diff</span>` +
+        `<span class="dh-pill"><span class="hdot"></span>${escapeHtml(statusText(meta.status))}</span>` +
+        `</div>`;
     }
     if (hasCommits) {
-      var head = commits[0];
-      var multi = commits.length > 1;
-      html += '<div class="diff-commit">' +
-        '<svg class="commit-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21"/></svg>' +
-        '<span class="dh-subject">' + escapeHtml(head.subject || '') + '</span></div>';
-      var line = '<div class="diff-meta-line">';
+      const head = commits[0];
+      const multi = commits.length > 1;
+      html += `<div class="diff-commit">` +
+        `<svg class="commit-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21"/></svg>` +
+        `<span class="dh-subject">${escapeHtml(head.subject || '')}</span></div>`;
+      let line = '<div class="diff-meta-line">';
       if (multi) {
-        var oldest = commits[commits.length - 1];
-        line += '<span class="m-range"><span class="m-sha">' + escapeHtml(shortSHA(oldest.sha)) +
-          '</span><span class="m-arr">→</span><span class="m-sha">' + escapeHtml(shortSHA(head.sha)) + '</span></span>' +
-          '<span class="m-sep">·</span>' +
-          '<button class="commits-pill" data-testid="commits-pill">' + commits.length + ' commits</button>' +
-          '<span class="m-sep">·</span>';
+        const oldest = commits[commits.length - 1];
+        line += `<span class="m-range"><span class="m-sha">${escapeHtml(shortSHA(oldest.sha))}</span><span class="m-arr">→</span><span class="m-sha">${escapeHtml(shortSHA(head.sha))}</span></span>` +
+          `<span class="m-sep">·</span>` +
+          `<button class="commits-pill" data-testid="commits-pill">${commits.length} commits</button>` +
+          `<span class="m-sep">·</span>`;
       }
-      line += '<span class="m-item">' + personGlyph + escapeHtml(head.author || '') + '</span>';
+      line += `<span class="m-item">${personGlyph}${escapeHtml(head.author || '')}</span>`;
       if (head.date) {
-        line += '<span class="m-sep">·</span><span class="m-item" data-testid="commit-time" title="' + escapeAttr(fullTime(head.date)) + '">' +
-          clockGlyph + escapeHtml(formatTime(head.date)) + '</span>';
+        line += `<span class="m-sep">·</span><span class="m-item" data-testid="commit-time" title="${escapeAttr(fullTime(head.date))}">${clockGlyph}${escapeHtml(formatTime(head.date))}</span>`;
       }
       if (!multi) {
-        line += '<span class="m-sep">·</span><span class="m-sha" data-testid="commit-sha">' + escapeHtml(shortSHA(head.sha)) + '</span>';
+        line += `<span class="m-sep">·</span><span class="m-sha" data-testid="commit-sha">${escapeHtml(shortSHA(head.sha))}</span>`;
       }
       line += '</div>';
       html += line;
       if (multi) {
-        html += '<ul class="diff-commit-list" data-testid="diff-commit-list">' + commits.map(function(c) {
-          return '<li><span class="m-sha">' + escapeHtml(shortSHA(c.sha)) + '</span><span>' +
-            '<span class="cl-subject">' + escapeHtml(c.subject || '') + '</span> ' +
-            '<span class="cl-meta">— ' + escapeHtml(c.author || '') +
-            (c.date ? ', ' + escapeHtml(formatTime(c.date)) : '') + '</span></span></li>';
-        }).join('') + '</ul>';
+        html += `<ul class="diff-commit-list" data-testid="diff-commit-list">` + commits.map(function(c) {
+          return `<li><span class="m-sha">${escapeHtml(shortSHA(c.sha))}</span><span>` +
+            `<span class="cl-subject">${escapeHtml(c.subject || '')}</span> ` +
+            `<span class="cl-meta">— ${escapeHtml(c.author || '')}${c.date ? ', ' + escapeHtml(formatTime(c.date)) : ''}</span></span></li>`;
+        }).join('') + `</ul>`;
       }
     }
     html += '</div>';
@@ -2559,16 +2552,16 @@
       el.classList.add('bound');
       el.dataset.status = meta.status;
     }
-    var files = Object.keys(diffs);
-    var singleFile = files.length === 1;
+    const files = Object.keys(diffs);
+    const singleFile = files.length === 1;
     el.innerHTML = renderCommitHead(commits, meta) + files.map(function(f) {
-      var name = f.split('/').pop() || f;
-      return '<div class="diff-file-section">' +
-        '<div class="diff-file-header' + (singleFile ? ' expanded' : '') + '">' +
-        '<svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>' +
-        '<span>' + escapeHtml(name) + '</span></div>' +
-        '<div class="diff-content">' + renderDiffContent(diffs[f]) + '</div>' +
-        '</div>';
+      const name = f.split('/').pop() || f;
+      return `<div class="diff-file-section">` +
+        `<div class="diff-file-header${singleFile ? ' expanded' : ''}">` +
+        `<svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>` +
+        `<span>${escapeHtml(name)}</span></div>` +
+        `<div class="diff-content">${renderDiffContent(diffs[f])}</div>` +
+        `</div>`;
     }).join('');
     return el;
   }
@@ -2649,12 +2642,12 @@
   // reason embeds a stack name — repo-controlled in stack-discovery mode
   // (ADR-0034) — so it must render as text, never as markup.
   function pendingTagHTML(evt) {
-    var item = queueByStack[evt.stack];
-    var reason = item && item.reason;
+    const item = queueByStack[evt.stack];
+    const reason = item && item.reason;
     if (evt.status === 'blocked') {
-      return '<span class="paused-tag">' + escapeHtml(reason || 'blocked') + '</span>';
+      return `<span class="paused-tag">${escapeHtml(reason || 'blocked')}</span>`;
     }
-    return '<span class="paused-tag">' + (reason ? 'paused: ' + escapeHtml(reason) : 'paused') + '</span>';
+    return `<span class="paused-tag">${reason ? 'paused: ' + escapeHtml(reason) : 'paused'}</span>`;
   }
 
   function createRow(evt, isHistory) {
@@ -2666,18 +2659,18 @@
     row.dataset.eventId = evt.id;
     if (evt.has_diffs) row.dataset.hasDiffs = '1';
 
-    var absTs = fullTime(evt.timestamp);
-    var relTs = formatTime(evt.timestamp);
-    var pausedTag = (evt.status === 'queued' || evt.status === 'blocked') ? pendingTagHTML(evt) : '';
+    const absTs = fullTime(evt.timestamp);
+    const relTs = formatTime(evt.timestamp);
+    const pausedTag = (evt.status === 'queued' || evt.status === 'blocked') ? pendingTagHTML(evt) : '';
     // A healed row has no changed files; its files cell instead carries the
     // self-heal badge, which expands the corrective-redeploy detail (ADR-0029).
-    var filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
+    const filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
     row.innerHTML =
-      '<span class="cell-time" data-testid="time-cell" data-ts="' + escapeAttr(evt.timestamp) + '" title="' + escapeAttr(absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
-      '<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' + escapeHtml(evt.stack) + '</span>' + pausedTag + '</span>' +
-      '<span class="status-cell">' + badgeHTML(evt.status) + '</span>' +
-      '<span class="cell-duration" data-testid="duration-cell">' + formatDuration(evt.duration_ms) + '</span>' +
-      '<span class="col-files">' + filesCell + '</span>';
+      `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
+      `<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${pausedTag}</span>` +
+      `<span class="status-cell">${badgeHTML(evt.status)}</span>` +
+      `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
+      `<span class="col-files">${filesCell}</span>`;
 
     populateIcon(row.querySelector('.stack-icon'), evt.stack);
     return row;
@@ -2795,10 +2788,10 @@
     el.dataset.testid = 'audit-panel';
     el.dataset.auditFor = stack;
     el.innerHTML =
-      '<div class="ap-head"><span class="ap-head-label">deploy history</span>' +
-      '<span class="ap-head-who">' + escapeHtml(stack) + '</span>' +
-      '<span class="ap-count"></span></div>' +
-      '<div class="ap-empty">Loading history…</div>';
+      `<div class="ap-head"><span class="ap-head-label">deploy history</span>` +
+      `<span class="ap-head-who">${escapeHtml(stack)}</span>` +
+      `<span class="ap-count"></span></div>` +
+      `<div class="ap-empty">Loading history…</div>`;
     fetchAudit(stack, function(records) {
       if (!el.parentNode) return; // closed (or replaced) while loading
       renderAuditRecords(el, stack, records);
@@ -2807,31 +2800,31 @@
   }
 
   function renderAuditRecords(el, stack, records) {
-    var count = el.querySelector('.ap-count');
+    const count = el.querySelector('.ap-count');
     if (count) count.textContent = records.length ? records.length + (records.length === 1 ? ' deploy' : ' deploys') : '';
     if (!records.length) {
-      var empty = el.querySelector('.ap-empty');
+      const empty = el.querySelector('.ap-empty');
       if (empty) empty.textContent = 'No recorded deploys for this stack yet.';
       return;
     }
-    var body = records.map(function(r) {
-      var abs = fullTime(r.timestamp), rel = formatTime(r.timestamp);
-      var sha = r.commit_sha ? '<span class="ar-sha" title="' + escapeAttr(r.commit_sha) + '">' + escapeHtml(shortSHA(r.commit_sha)) + '</span>' : '<span class="ar-sha">—</span>';
-      var files = r.changed_files ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : '')) : '—';
-      var err = r.error
-        ? '<span class="ar-err" title="' + escapeAttr(r.error) + '">' + escapeHtml(r.error) + '</span>'
+    const body = records.map(function(r) {
+      const abs = fullTime(r.timestamp), rel = formatTime(r.timestamp);
+      const sha = r.commit_sha ? `<span class="ar-sha" title="${escapeAttr(r.commit_sha)}">${escapeHtml(shortSHA(r.commit_sha))}</span>` : '<span class="ar-sha">—</span>';
+      const files = r.changed_files ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : '')) : '—';
+      const err = r.error
+        ? `<span class="ar-err" title="${escapeAttr(r.error)}">${escapeHtml(r.error)}</span>`
         : '';
-      return '<div class="audit-row" data-testid="audit-row" data-status="' + escapeAttr(r.status) + '">' +
-        '<span class="ar-time" data-ts="' + escapeAttr(r.timestamp) + '" title="' + escapeAttr(absoluteTime ? rel : abs) + '">' + escapeHtml(absoluteTime ? abs : rel) + '</span>' +
-        '<span class="ar-status"><span class="adot"></span>' + escapeHtml(auditStatusLabel(r.status)) + '</span>' +
-        '<span class="ar-dur">' + escapeHtml(formatDuration(r.duration_ms)) + '</span>' +
+      return `<div class="audit-row" data-testid="audit-row" data-status="${escapeAttr(r.status)}">` +
+        `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absoluteTime ? rel : abs)}">${escapeHtml(absoluteTime ? abs : rel)}</span>` +
+        `<span class="ar-status"><span class="adot"></span>${escapeHtml(auditStatusLabel(r.status))}</span>` +
+        `<span class="ar-dur">${escapeHtml(formatDuration(r.duration_ms))}</span>` +
         sha +
-        '<span class="ar-files">' + files + '</span>' +
+        `<span class="ar-files">${files}</span>` +
         err +
-        '</div>';
+        `</div>`;
     }).join('');
     // Replace the loading line with the rows (keep the head).
-    var head = el.querySelector('.ap-head');
+    const head = el.querySelector('.ap-head');
     el.innerHTML = '';
     if (head) el.appendChild(head);
     el.insertAdjacentHTML('beforeend', body);
@@ -2876,22 +2869,22 @@
   // when the watchdog is off — and for a service with only its baseline phase,
   // where a one-line timeline would just repeat the inline age.
   function healthHistoryHTML(stack, svc) {
-    var phases = (healthwatchSnap[stack] || {})[svc];
+    const phases = (healthwatchSnap[stack] || {})[svc];
     if (!phases || phases.length < 2) return '';
-    var html = '<div class="hp-history" data-testid="health-history">';
-    for (var i = 0; i < phases.length; i++) {
-      var p = phases[i];
-      var end = i === 0 ? Date.now() : new Date(phases[i - 1].since).getTime();
-      var dur = phaseDuration(end - new Date(p.since).getTime());
-      html += '<div class="hp-phase" data-testid="health-phase" data-health="' + escapeAttr(p.status) + '">' +
-        '<span class="hdot"></span>' +
-        '<span class="hp-pstatus">' + escapeHtml(p.status) + '</span>' +
-        '<span>' + escapeHtml(phaseSince(p.since)) + '</span>' +
-        '<span>' + escapeHtml(i === 0 ? 'for ' + dur : dur) + '</span>' +
+    let html = '<div class="hp-history" data-testid="health-history">';
+    for (let i = 0; i < phases.length; i++) {
+      const p = phases[i];
+      const end = i === 0 ? Date.now() : new Date(phases[i - 1].since).getTime();
+      const dur = phaseDuration(end - new Date(p.since).getTime());
+      html += `<div class="hp-phase" data-testid="health-phase" data-health="${escapeAttr(p.status)}">` +
+        `<span class="hdot"></span>` +
+        `<span class="hp-pstatus">${escapeHtml(p.status)}</span>` +
+        `<span>${escapeHtml(phaseSince(p.since))}</span>` +
+        `<span>${escapeHtml(i === 0 ? 'for ' + dur : dur)}</span>` +
         (p.deploy_correlated && p.commit
-          ? '<span class="hp-commit" data-testid="health-phase-commit" title="deployed just before this phase began">' + escapeHtml(shortSHA(p.commit)) + '</span>'
+          ? `<span class="hp-commit" data-testid="health-phase-commit" title="deployed just before this phase began">${escapeHtml(shortSHA(p.commit))}</span>`
           : '') +
-        '</div>';
+        `</div>`;
     }
     return html + '</div>';
   }
@@ -2901,16 +2894,16 @@
     el.className = 'health-panel';
     el.dataset.testid = 'health-panel';
     el.dataset.healthFor = stack;
-    var h = healthSnap[stack];
-    var status = (h && h.status) || 'unknown';
+    const h = healthSnap[stack];
+    const status = (h && h.status) || 'unknown';
     el.dataset.health = status; // drives the shared --hc colour (variant A)
     // Header echoes the stack + status so the panel names its own row.
-    var head = '<div class="health-panel-head">' +
-      '<span class="hp-head-label">health</span>' +
-      '<span class="hp-head-who">' + escapeHtml(stack) + '</span>' +
-      '<span class="hp-head-pill"><span class="hdot"></span>' + escapeHtml(status) + '</span>' +
-      '</div>';
-    var svcs = (h && h.services) || [];
+    const head = `<div class="health-panel-head">` +
+      `<span class="hp-head-label">health</span>` +
+      `<span class="hp-head-who">${escapeHtml(stack)}</span>` +
+      `<span class="hp-head-pill"><span class="hdot"></span>${escapeHtml(status)}</span>` +
+      `</div>`;
+    const svcs = (h && h.services) || [];
     if (!svcs.length) {
       el.innerHTML = head + '<div class="hp-empty">No services reported for this stack.</div>';
       return el;
@@ -2921,25 +2914,25 @@
       // never shown — with a healthcheck it always equals the classified status,
       // so spelling it out only duplicated the coloured status. The state text
       // keeps the container fact the status doesn't carry (running/exited/…).
-      var st = s.status || healthClass(s);
+      const st = s.status || healthClass(s);
       // With the health watch on, the service line carries the current
       // phase's age and a status timeline below it (ADR-0031).
-      var phases = (healthwatchSnap[stack] || {})[s.name];
-      var age = phases && phases.length
-        ? ' <span class="hp-for">· ' + escapeHtml(phaseDuration(Date.now() - new Date(phases[0].since).getTime())) + '</span>'
+      const phases = (healthwatchSnap[stack] || {})[s.name];
+      const age = phases && phases.length
+        ? ` <span class="hp-for">· ${escapeHtml(phaseDuration(Date.now() - new Date(phases[0].since).getTime()))}</span>`
         : '';
       // An on-demand service is labelled so its stopped state reads as the
       // intended idle (skipper stops it after the deploy; the scheduler starts
       // it on request), not as something to worry about.
-      var state = s.on_demand ? s.state + ' · on-demand' : s.state;
-      var svcTitle = s.on_demand
+      const state = s.on_demand ? s.state + ' · on-demand' : s.state;
+      const svcTitle = s.on_demand
         ? ' title="on-demand container: stopped by skipper after the deploy, started by the scheduler on request"'
         : '';
-      return '<div class="hp-svc" data-testid="health-service"' + svcTitle + '>' +
-        '<span class="hp-name">' + escapeHtml(s.name) + '</span>' +
-        '<span class="hp-state">' + escapeHtml(state) + '</span>' +
-        '<span class="hp-status" data-health="' + escapeAttr(st) + '"><span class="hdot"></span>' + escapeHtml(st) + age + '</span>' +
-        '</div>' + healthHistoryHTML(stack, s.name);
+      return `<div class="hp-svc" data-testid="health-service"${svcTitle}>` +
+        `<span class="hp-name">${escapeHtml(s.name)}</span>` +
+        `<span class="hp-state">${escapeHtml(state)}</span>` +
+        `<span class="hp-status" data-health="${escapeAttr(st)}"><span class="hdot"></span>${escapeHtml(st)}${age}</span>` +
+        `</div>` + healthHistoryHTML(stack, s.name);
     }).join('');
     return el;
   }
@@ -2981,14 +2974,14 @@
   // nextTrailHTML renders the look-ahead trail "→ a · b · +N", capping the names
   // shown so a long run does not widen the header without bound.
   function nextTrailHTML(up) {
-    var MAX = 3;
-    var shown = up.slice(0, MAX);
-    var html = '<span class="arrow">→</span>' + shown.map(function(n, i) {
-      return '<span class="up' + (i > 0 ? ' more' : '') + '">' + escapeHtml(n) + '</span>';
+    const MAX = 3;
+    const shown = up.slice(0, MAX);
+    let html = '<span class="arrow">→</span>' + shown.map(function(n, i) {
+      return `<span class="up${i > 0 ? ' more' : ''}">${escapeHtml(n)}</span>`;
     }).join('<span class="sep">·</span>');
-    var extra = up.length - shown.length;
+    const extra = up.length - shown.length;
     if (extra > 0) {
-      html += '<span class="sep">·</span><span class="up more">+' + extra + '</span>';
+      html += `<span class="sep">·</span><span class="up more">+${extra}</span>`;
     }
     return html;
   }
@@ -2997,19 +2990,19 @@
   // upcoming snapshot: the active stack leads (ship badge), the rest follow in
   // deploy order. Read-only — no switches.
   function renderRunPanel() {
-    var active = Object.keys(deployingRows);
-    var up = upcomingSnap;
+    const active = Object.keys(deployingRows);
+    const up = upcomingSnap;
     if (active.length === 0 && up.length === 0) {
       runSub.textContent = 'Nothing deploying.';
     } else if (active.length > 0) {
-      runSub.innerHTML = '<b>' + escapeHtml(active.join(', ')) + '</b> deploying' +
+      runSub.innerHTML = `<b>${escapeHtml(active.join(', '))}</b> deploying` +
         (up.length ? ' · ' + up.length + ' more this run' : ' · last in this run');
     } else {
       runSub.textContent = up.length + ' stack' + (up.length === 1 ? '' : 's') + ' upcoming';
     }
-    var total = active.length + up.length;
+    const total = active.length + up.length;
     runCount.textContent = total ? total : '';
-    var rows = active.map(function(n) { return runRowHTML(n, SHIP_SVG, 'deploying now', true); });
+    let rows = active.map(function(n) { return runRowHTML(n, SHIP_SVG, 'deploying now', true); });
     rows = rows.concat(up.map(function(n, i) {
       return runRowHTML(n, String(i + 1), i === 0 ? 'next' : 'then', false);
     }));
@@ -3017,11 +3010,11 @@
   }
 
   function runRowHTML(name, badge, detail, isActive) {
-    return '<div class="run-row' + (isActive ? ' active' : '') + '" data-stack="' + escapeAttr(name) + '">' +
-        '<span class="run-badge' + (isActive ? ' ship' : '') + '">' + badge + '</span>' +
-        '<div><div class="run-name">' + escapeHtml(name) + '</div>' +
-          '<div class="run-detail">' + detail + '</div></div>' +
-      '</div>';
+    return `<div class="run-row${isActive ? ' active' : ''}" data-stack="${escapeAttr(name)}">` +
+        `<span class="run-badge${isActive ? ' ship' : ''}">${badge}</span>` +
+        `<div><div class="run-name">${escapeHtml(name)}</div>` +
+          `<div class="run-detail">${detail}</div></div>` +
+      `</div>`;
   }
 
   // setRunDrawer opens/closes the run panel. It is mutually exclusive with the
@@ -3503,55 +3496,55 @@
 
   function stackDetail(s, item) {
     if (item) {
-      var n = item.changed_files ? item.changed_files.length : 0;
-      return '<span class="warn">' + n + ' file' + (n === 1 ? '' : 's') + '</span> · waiting <span data-testid="wait-cell">' + waited(item.since) + '</span>';
+      const n = item.changed_files ? item.changed_files.length : 0;
+      return `<span class="warn">${n} file${n === 1 ? '' : 's'}</span> · waiting <span data-testid="wait-cell">${waited(item.since)}</span>`;
     }
     if (!s.effective) return 'paused · no changes';
     return 'synced';
   }
 
   function stackRowHTML(s, pos) {
-    var item = queueByStack[s.name];
-    var queued = !!item;
+    const item = queueByStack[s.name];
+    const queued = !!item;
     // pos is a number only in the queue list; the all-stacks list passes null.
-    var inQueue = pos !== null;
-    var posCell = inQueue
-      ? '<div class="qpos">' + pos + '</div>'
-      : '<div class="qpos blank">' + (queued ? '●' : '') + '</div>';
-    var reason = item ? item.reason : reasonFromSnap(s);
-    var chip = (!s.effective && reason) ? '<span class="reason reason-' + reason + '">' + reason + '</span>' : '';
-    var rowTestid = inQueue ? 'queue-item' : 'stack-item';
+    const inQueue = pos !== null;
+    const posCell = inQueue
+      ? `<div class="qpos">${pos}</div>`
+      : `<div class="qpos blank">${queued ? '●' : ''}</div>`;
+    const reason = item ? item.reason : reasonFromSnap(s);
+    const chip = (!s.effective && reason) ? `<span class="reason reason-${reason}">${reason}</span>` : '';
+    const rowTestid = inQueue ? 'queue-item' : 'stack-item';
     // The stack switch is the interactive control the tests toggle; only tag it
     // in the all-stacks list so a queued stack does not expose two of them.
-    var swTestid = inQueue ? '' : ' data-testid="stack-switch"';
-    return '<div class="stack-row" data-testid="' + rowTestid + '" data-stack="' + escapeAttr(s.name) + '">' +
+    const swTestid = inQueue ? '' : ' data-testid="stack-switch"';
+    return `<div class="stack-row" data-testid="${rowTestid}" data-stack="${escapeAttr(s.name)}">` +
         posCell +
-        '<div class="stack-meta">' +
-          '<div class="stack-name">' + escapeHtml(s.name) + chip + '</div>' +
-          '<div class="stack-detail">' + stackDetail(s, item) + '</div>' +
-        '</div>' +
-        '<div class="sw' + (s.effective ? ' on' : '') + '"' + swTestid + ' role="switch" aria-checked="' + s.effective +
-          '" tabindex="0" data-stack="' + escapeAttr(s.name) + '" title="' + (s.effective ? 'Pause' : 'Resume') + ' autosync"></div>' +
-      '</div>';
+        `<div class="stack-meta">` +
+          `<div class="stack-name">${escapeHtml(s.name)}${chip}</div>` +
+          `<div class="stack-detail">${stackDetail(s, item)}</div>` +
+        `</div>` +
+        `<div class="sw${s.effective ? ' on' : ''}"${swTestid} role="switch" aria-checked="${s.effective}"` +
+          ` tabindex="0" data-stack="${escapeAttr(s.name)}" title="${s.effective ? 'Pause' : 'Resume'} autosync"></div>` +
+      `</div>`;
   }
 
   function renderAutosyncBtn() {
-    var count = queueSnap.count || 0;
+    const count = queueSnap.count || 0;
     asBtn.classList.toggle('has-pending', count > 0);
     asBtn.classList.toggle('paused', anyPaused());
     if (autosyncSnap) asBtn.dataset.global = String(autosyncSnap.global);
     asCountEl.textContent = count;
     asBtn.title = count > 0
-      ? count + ' stack' + (count === 1 ? '' : 's') + ' queued — autosync paused'
+      ? `${count} stack${count === 1 ? '' : 's'} queued — autosync paused`
       : 'Autosync — all in sync';
   }
 
   function renderSub() {
-    var paused = autosyncStacks().filter(function(s) { return !s.effective; }).length;
-    var q = queueSnap.count || 0;
+    const paused = autosyncStacks().filter(function(s) { return !s.effective; }).length;
+    const q = queueSnap.count || 0;
     if (q === 0 && paused === 0) asSub.textContent = 'All stacks in sync.';
-    else if (q === 0) asSub.textContent = paused + ' stack' + (paused === 1 ? '' : 's') + ' paused · nothing waiting.';
-    else asSub.innerHTML = '<b>' + q + '</b> update' + (q === 1 ? '' : 's') + ' waiting · ' + paused + ' stack' + (paused === 1 ? '' : 's') + ' paused.';
+    else if (q === 0) asSub.textContent = `${paused} stack${paused === 1 ? '' : 's'} paused · nothing waiting.`;
+    else asSub.innerHTML = `<b>${q}</b> update${q === 1 ? '' : 's'} waiting · ${paused} stack${paused === 1 ? '' : 's'} paused.`;
   }
 
   function renderGlobal() {
@@ -3564,26 +3557,26 @@
   }
 
   function renderQueueList() {
-    var pending = queueSnap.pending || [];
-    asQCount.textContent = pending.length ? '(' + pending.length + ')' : '';
+    const pending = queueSnap.pending || [];
+    asQCount.textContent = pending.length ? `(${pending.length})` : '';
     if (pending.length === 0) {
       asQueueList.innerHTML = '<div class="qempty">Nothing queued — resumed deploys apply immediately.</div>';
       return;
     }
     asQueueList.innerHTML = pending.map(function(it) {
-      var s = stackByName(it.stack) || { name: it.stack, effective: false, overridden: false, config: null };
+      const s = stackByName(it.stack) || { name: it.stack, effective: false, overridden: false, config: null };
       return stackRowHTML(s, it.position);
     }).join('');
   }
 
   function renderStackList() {
-    var query = (asFilter.value || '').trim().toLowerCase();
+    const query = (asFilter.value || '').trim().toLowerCase();
     asFilterWrap.classList.toggle('has-value', query.length > 0);
-    var stacks = autosyncStacks();
-    var list = stacks.filter(function(s) { return s.name.toLowerCase().indexOf(query) !== -1; });
+    const stacks = autosyncStacks();
+    const list = stacks.filter(function(s) { return s.name.toLowerCase().indexOf(query) !== -1; });
     if (list.length === 0) {
-      asStackList.innerHTML = '<div class="qempty">' +
-        (stacks.length ? 'No stack matches “' + escapeHtml(query) + '”.' : 'No stacks.') + '</div>';
+      asStackList.innerHTML = `<div class="qempty">` +
+        (stacks.length ? `No stack matches “${escapeHtml(query)}”.` : 'No stacks.') + `</div>`;
       return;
     }
     asStackList.innerHTML = list.map(function(s) { return stackRowHTML(s, null); }).join('');
@@ -3685,33 +3678,33 @@
     var line = document.createElement('div');
     line.className = 'log-line';
     line.dataset.testid = 'log-line';
-    var attrs = entry.attrs || {};
-    var html = '<span class="log-time" title="' + escapeAttr(new Date(entry.time).toLocaleString()) + '">' + escapeHtml(logTime(entry.time)) + '</span>';
+    const attrs = entry.attrs || {};
+    let html = `<span class="log-time" title="${escapeAttr(new Date(entry.time).toLocaleString())}">${escapeHtml(logTime(entry.time))}</span>`;
     if (attrs.cmd && attrs.stream) {
       // Child process output: slate [cmd] prefix instead of a level badge.
       line.dataset.level = 'cmd';
-      html += '<span class="log-cmd" data-testid="cmd-prefix">[' + escapeHtml(attrs.cmd) + ']</span>';
-      html += '<span class="log-msg">' + escapeHtml(entry.msg) + '</span>';
+      html += `<span class="log-cmd" data-testid="cmd-prefix">[${escapeHtml(attrs.cmd)}]</span>`;
+      html += `<span class="log-msg">${escapeHtml(entry.msg)}</span>`;
     } else {
       line.dataset.level = entry.level;
-      html += '<span class="log-level ' + levelClass(entry.level) + '" data-testid="level-badge">' + escapeHtml(entry.level) + '</span>';
+      html += `<span class="log-level ${levelClass(entry.level)}" data-testid="level-badge">${escapeHtml(entry.level)}</span>`;
       // The stack attr says which stack a deploy line belongs to — render
       // it as a prominent prefix instead of burying it in the attrs blob.
       if (attrs.stack) {
-        html += '<span class="log-stack" data-testid="stack-prefix">[' + escapeHtml(attrs.stack) + ']</span>';
+        html += `<span class="log-stack" data-testid="stack-prefix">[${escapeHtml(attrs.stack)}]</span>`;
       }
-      html += '<span class="log-msg">' + escapeHtml(entry.msg) + '</span>';
+      html += `<span class="log-msg">${escapeHtml(entry.msg)}</span>`;
       // Deploy completion lines carry the deploy event's ID — render a
       // pill that loads the deploy's diff below the line on demand.
       if (attrs.event_id) {
-        html += '<button class="files-pill log-diff-pill" data-testid="diff-pill" data-event-id="' + escapeAttr(attrs.event_id) + '">diff</button>';
+        html += `<button class="files-pill log-diff-pill" data-testid="diff-pill" data-event-id="${escapeAttr(attrs.event_id)}">diff</button>`;
       }
-      var pairs = Object.keys(attrs).filter(function(k) {
+      const pairs = Object.keys(attrs).filter(function(k) {
         return k !== 'stack' && k !== 'event_id';
       }).map(function(k) {
-        return escapeHtml(k) + '=' + escapeHtml(attrs[k]);
+        return `${escapeHtml(k)}=${escapeHtml(attrs[k])}`;
       });
-      if (pairs.length > 0) html += '<span class="log-attrs">' + pairs.join(' ') + '</span>';
+      if (pairs.length > 0) html += `<span class="log-attrs">${pairs.join(' ')}</span>`;
     }
     line.innerHTML = html;
     return line;
