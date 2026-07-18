@@ -1915,6 +1915,78 @@
   .filter-empty.show { display: block; }
   .event-list .filtered-out { display: none !important; }
 
+  /* Orphans (ADR-0036): compose projects running on the host that the discovered
+     stack set no longer accounts for — a collapsed inventory section below the
+     table, hidden entirely when none are found. Read-only: pruning is
+     config-driven, not a UI action. */
+  .orphans { display: none; margin-top: 14px; padding: 0 14px; }
+  .orphans.shown { display: block; }
+  .orphans-head {
+    display: flex; align-items: center; gap: 7px; width: 100%;
+    background: none; border: 0; padding: 4px 0; cursor: pointer;
+    font-family: var(--font-mono); color: var(--text-muted); font-size: 10px;
+    font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  .orphans-caret { font-size: 9px; transition: transform 0.15s; }
+  .orphans.open .orphans-caret { transform: rotate(90deg); }
+  .orphans-count {
+    background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+    color: var(--text-muted); border-radius: 9px; padding: 0 7px;
+    font-size: 10px; line-height: 16px;
+  }
+  .orphans-body { display: none; margin-top: 6px; flex-direction: column; gap: 4px; }
+  .orphans.open .orphans-body { display: flex; }
+  .orphan-item { display: flex; flex-direction: column; }
+  .orphan-row {
+    display: grid; grid-template-columns: 12px auto minmax(0, auto) 1fr auto;
+    align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px;
+    background: color-mix(in srgb, var(--overlay2) 5%, transparent);
+    font-family: var(--font-mono); font-size: 12px; width: 100%; text-align: left;
+    border: 0; color: inherit;
+  }
+  button.orphan-row { cursor: pointer; }
+  button.orphan-row:hover { background: color-mix(in srgb, var(--overlay2) 10%, transparent); }
+  .orphan-caret { font-size: 8px; color: var(--text-muted); transition: transform 0.15s; }
+  .orphan-item.open .orphan-caret { transform: rotate(90deg); }
+  .orphan-caret.blank { visibility: hidden; }
+  .orphan-tag {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+    padding: 1px 7px; border-radius: 4px; white-space: nowrap;
+  }
+  .orphan-tag.orphaned { color: var(--rollback); background: color-mix(in srgb, var(--rollback) 14%, transparent); }
+  .orphan-tag.unmanaged {
+    color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--text-muted) 30%, transparent);
+  }
+  .orphan-name { color: var(--text); font-weight: 500; white-space: nowrap; }
+  .orphan-dir { color: var(--text-muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .orphan-meta { color: var(--text-muted); font-size: 10.5px; white-space: nowrap; }
+
+  /* Per-container expansion of one orphan row. */
+  .orphan-detail { display: none; flex-direction: column; gap: 2px; padding: 4px 8px 8px 30px; }
+  .orphan-item.open .orphan-detail { display: flex; }
+  /* Project-level facts (config file, volumes) above the container list. */
+  .orphan-facts { display: flex; flex-direction: column; gap: 2px; margin-bottom: 5px; }
+  .of-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-family: var(--font-mono); font-size: 10.5px; }
+  .of-key { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; font-weight: 600; min-width: 52px; }
+  .of-val { color: var(--text-secondary); word-break: break-all; }
+  .of-note { color: var(--text-muted); font-style: italic; }
+  .orphan-cont {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 3px 0; font-family: var(--font-mono); font-size: 11px;
+  }
+  .oc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex: none; }
+  .oc-dot.healthy { background: var(--h-healthy); }
+  .oc-dot.unhealthy { background: var(--h-unhealthy); }
+  .oc-dot.stopped { background: var(--text-muted); }
+  .oc-name { color: var(--text); }
+  .oc-image { color: var(--text-muted); }
+  .oc-ports { color: var(--text-muted); font-size: 10px; }
+  .oc-status { color: var(--text-muted); margin-left: auto; white-space: nowrap; }
+  .orphan-cont.filtered-out { display: none !important; }
+  .orphan-item.filtered-out { display: none !important; }
+  body.view-logs #orphans { display: none !important; }
+
   .stack-row {
     display: grid;
     grid-template-columns: 22px 1fr auto;
@@ -2285,6 +2357,15 @@
     <span class="dis-list" id="disabled-list" style="display:contents"></span>
   </div>
 
+  <div class="orphans" id="orphans" data-testid="orphans">
+    <button class="orphans-head" id="orphans-head" data-testid="orphans-head" aria-expanded="false" title="Running compose projects the discovered stack set no longer accounts for.">
+      <span class="orphans-caret" aria-hidden="true">▶</span>
+      <span>Orphans</span>
+      <span class="orphans-count" id="orphans-count" data-testid="orphans-count">0</span>
+    </button>
+    <div class="orphans-body" id="orphans-body"></div>
+  </div>
+
   <div id="log-view">
     <div class="log-pane" id="log-pane">
       <div class="log-empty" id="log-empty">Awaiting log output...</div>
@@ -2357,6 +2438,161 @@
     });
     wrap.classList.add('shown');
   }
+
+  // Orphans (ADR-0036): compose projects the discovered stack set no longer
+  // accounts for, from the 'orphans' SSE snapshot — a collapsed section below
+  // the table, hidden when empty. orphansOpen remembers expanded rows so the
+  // per-poll re-render does not collapse them.
+  let orphansSnap = [];
+  let orphansOpen = new Set();
+  let orphansSectionOpen = false; // the user's manual toggle of the section header
+
+  function orphanContainerRow(c) {
+    const row = document.createElement('div');
+    row.className = 'orphan-cont';
+    row.setAttribute('data-testid', 'orphan-cont');
+    const dot = document.createElement('span');
+    dot.className = 'oc-dot ' + orphanStateClass(c.state);
+    dot.title = c.state || '';
+    const name = document.createElement('span');
+    name.className = 'oc-name';
+    name.textContent = c.name || (c.service || '');
+    const image = document.createElement('span');
+    image.className = 'oc-image';
+    image.textContent = c.image || '';
+    image.title = c.image || '';
+    row.append(dot, name, image);
+    if (c.ports) {
+      const ports = document.createElement('span');
+      ports.className = 'oc-ports';
+      ports.textContent = c.ports;
+      row.appendChild(ports);
+    }
+    const status = document.createElement('span');
+    status.className = 'oc-status';
+    status.textContent = c.status || c.state || '';
+    row.appendChild(status);
+    return row;
+  }
+
+  // orphanFactRow builds one project-level fact line (config file, volumes).
+  function orphanFactRow(key, val, note) {
+    const line = document.createElement('div');
+    line.className = 'of-line';
+    const k = document.createElement('span');
+    k.className = 'of-key';
+    k.textContent = key;
+    const v = document.createElement('span');
+    v.className = 'of-val';
+    v.textContent = val;
+    line.append(k, v);
+    if (note) {
+      const n = document.createElement('span');
+      n.className = 'of-note';
+      n.textContent = note;
+      line.appendChild(n);
+    }
+    return line;
+  }
+
+  function renderOrphans() {
+    const wrap = document.getElementById('orphans');
+    const body = document.getElementById('orphans-body');
+    const count = document.getElementById('orphans-count');
+    body.textContent = '';
+    // The badge shows matching orphans during a search, else the total.
+    const q = (deployFilter.value || '').trim().toLowerCase();
+    count.textContent = String(q
+      ? orphansSnap.filter(function(o) { return orphanMatchesQuery(o, q); }).length
+      : orphansSnap.length);
+    if (!orphansSnap.length) { wrap.classList.remove('shown'); return; }
+    orphansSnap.forEach(function(o) {
+      const conts = o.containers || [];
+      const item = document.createElement('div');
+      item.className = 'orphan-item';
+      item.setAttribute('data-testid', 'orphan-item');
+      item.setAttribute('data-project', o.project);
+      item.setAttribute('data-class', o.class);
+
+      const row = document.createElement(conts.length ? 'button' : 'div');
+      row.className = 'orphan-row';
+      const caret = document.createElement('span');
+      caret.className = 'orphan-caret' + (conts.length ? '' : ' blank');
+      caret.textContent = '▶';
+      caret.setAttribute('aria-hidden', 'true');
+      const tag = document.createElement('span');
+      tag.className = 'orphan-tag ' + (o.class === 'orphaned' ? 'orphaned' : 'unmanaged');
+      tag.textContent = o.class;
+      const name = document.createElement('span');
+      name.className = 'orphan-name';
+      name.textContent = o.project;
+      const dir = document.createElement('span');
+      dir.className = 'orphan-dir';
+      dir.textContent = o.working_dir || '';
+      dir.title = o.working_dir || '';
+      const meta = document.createElement('span');
+      meta.className = 'orphan-meta';
+      meta.textContent = orphanMeta(o);
+      row.append(caret, tag, name, dir, meta);
+
+      const detail = document.createElement('div');
+      detail.className = 'orphan-detail';
+      const vols = o.volumes || [];
+      if (o.config_file || vols.length) {
+        const facts = document.createElement('div');
+        facts.className = 'orphan-facts';
+        if (o.config_file) facts.appendChild(orphanFactRow('config', o.config_file));
+        if (vols.length) facts.appendChild(orphanFactRow('volumes', vols.join(', '), 'kept on prune'));
+        detail.appendChild(facts);
+      }
+      // Search: on a container match, hide the non-matching containers so the
+      // hit stands out.
+      const anyContMatch = q && conts.some(function(c) { return containerMatchesQuery(c, q); });
+      conts.forEach(function(c) {
+        const crow = orphanContainerRow(c);
+        if (anyContMatch && !containerMatchesQuery(c, q)) crow.classList.add('filtered-out');
+        detail.appendChild(crow);
+      });
+
+      // A non-matching orphan is hidden during search, not just left collapsed;
+      // a matching one auto-expands on top of any manual expansion.
+      const orphanMatch = !q || orphanMatchesQuery(o, q);
+      item.classList.toggle('filtered-out', !orphanMatch);
+
+      if (conts.length) {
+        const startOpen = orphansOpen.has(o.project) || (!!q && orphanMatch);
+        item.classList.toggle('open', startOpen);
+        row.setAttribute('aria-expanded', startOpen ? 'true' : 'false');
+        row.addEventListener('click', function() {
+          const open = item.classList.toggle('open');
+          row.setAttribute('aria-expanded', open ? 'true' : 'false');
+          if (open) { orphansOpen.add(o.project); } else { orphansOpen.delete(o.project); }
+        });
+      }
+
+      item.append(row, detail);
+      body.appendChild(item);
+    });
+    wrap.classList.add('shown');
+    applyOrphansSectionOpen();
+  }
+
+  // Open the section when the user opened it, or when a search matches an orphan
+  // (so the hit isn't hidden behind a collapsed section).
+  function applyOrphansSectionOpen() {
+    const q = (deployFilter.value || '').trim().toLowerCase();
+    const searchOpen = !!q && orphansSnap.some(function(o) { return orphanMatchesQuery(o, q); });
+    const open = orphansSectionOpen || searchOpen;
+    document.getElementById('orphans').classList.toggle('open', open);
+    document.getElementById('orphans-head').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  (function() {
+    document.getElementById('orphans-head').addEventListener('click', function() {
+      orphansSectionOpen = !orphansSectionOpen;
+      applyOrphansSectionOpen();
+    });
+  })();
 
   function showTable() {
     if (!hasRows) {
@@ -3161,6 +3397,15 @@
       renderDisabledStacks();
     });
 
+    es.addEventListener('orphans', function(e) {
+      const d = JSON.parse(e.data);
+      orphansSnap = (d && d.orphans) || [];
+      // Under an active search, re-run the filter so new data obeys the query;
+      // otherwise a plain render.
+      if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
+      else renderOrphans();
+    });
+
     es.onerror = function() {
       connDot.className = 'indicator-dot err';
       connText.textContent = 'reconnecting';
@@ -3226,6 +3471,15 @@
       }
       // A panel (files/diff/error) trails its row and shares its visibility.
       el.classList.toggle('filtered-out', !visible);
+    }
+    // The same query drives orphan search; re-render, and count orphans into
+    // hits/total.
+    renderOrphans();
+    if (q) {
+      for (let j = 0; j < orphansSnap.length; j++) {
+        total++;
+        if (orphanMatchesQuery(orphansSnap[j], q)) shown++;
+      }
     }
     deployFilterCount.textContent = q ? (shown + '/' + total) : '';
     deployFilterEmpty.classList.toggle('show', q.length > 0 && total > 0 && shown === 0);

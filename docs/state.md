@@ -12,6 +12,8 @@ stacks:
     /run/secrets/rendered/skipper/compose.env: 11223344...
 ```
 
+A `project_dirs` map records each stack's compose project directory (its `working_dir`, or the compose file's own directory) from its last successful deploy. It lets skipper recognise a stack's running compose project by the `com.docker.compose.project.working_dir` label even after the stack is removed from the repo — the basis for [orphan detection](#orphaned-stacks).
+
 If the state file is absent or cannot be parsed (e.g. after a fresh install or corruption), all stacks are redeployed on the next run.
 
 NixOS rebuild state (when [configured](nixos.md#nixos-rebuild)) is tracked under the reserved stack key `_nixos`. State is written atomically (temp file + rename).
@@ -27,3 +29,12 @@ When the [health watch](configuration.md#health-watch) is enabled, it keeps its 
 When the [web UI](configuration.md) is enabled, skipper keeps a durable per-stack deploy audit log at `deploy-audit.jsonl` in the same directory — the "what happened to this stack, and when" trail behind the UI's [deploy-history panel](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md). It is separate from the bounded, in-memory live event feed: one **append-only** JSON record per line, so it survives restarts and is not evicted when older events roll off the live window.
 
 Each record holds the metadata of one **terminal** deploy outcome — `stack`, `timestamp`, `status`, `duration_ms`, `commit_sha`, `changed_files` (a count), and `error` — with no diffs (the commit SHA identifies the change). Only `success`, `failed`, `rolled_back`, `rolled_back_unhealthy`, `healed`, and `heal_exhausted` are recorded; in-progress, skipped and deferred (`queued`/`blocked`) statuses are not. The log keeps the most recent 200 records **per stack** (so a busy stack never evicts a quiet one's history) and is compacted in place — atomically, temp file + rename — to stay bounded; a torn trailing line from a crash mid-append is skipped on load rather than failing the whole file.
+
+## Orphaned stacks
+
+With the [web UI](configuration.md) enabled, skipper shows compose projects running on the host that its current stack set no longer accounts for — for example a stack whose directory was removed from the deploy repo but that is still running. On the health-poll cadence it lists running compose projects and matches each to a stack by its `com.docker.compose.project.working_dir` label:
+
+- **orphaned** — a project skipper once deployed (its directory is under `stacks_base_dir`, or is recorded in `project_dirs`) that no stack now covers. Safe to remove.
+- **unmanaged** — a project skipper never deployed (a manually started stack, another tool's containers). Never touched.
+
+Expand a row to see its containers (name, image, state, ports) and any named volumes it holds. Disabled stacks are hands-off and are not flagged. Detection is read-only; removing an orphan is a manual `docker compose down` for now.

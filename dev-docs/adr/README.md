@@ -39,3 +39,5 @@ One file per decision, numbered sequentially (see
 | [0032](0032-stack-deploy-ordering-via-depends-on.md) | Stack deploy ordering via depends_on (block on failed dependency, queue-aware) |
 | [0033](0033-durable-per-stack-deploy-audit-log.md) | Durable per-stack deploy audit log (append-only NDJSON, terminal outcomes) |
 | [0034](0034-stack-discovery-from-repo.md) | Stack definitions come from the deploy repo (auto-discovery + central overrides) |
+| [0035](0035-ui-assets-same-origin-from-embed.md) | UI assets served same-origin from embed.FS (self-contained UI) |
+| [0036](0036-orphan-detection-and-prune.md) | Orphan detection and optional prune (working_dir identity, health-poll cadence) |

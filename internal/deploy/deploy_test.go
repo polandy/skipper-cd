@@ -339,6 +339,50 @@ func TestDeployStack_StoresImagesInStateAfterDeploy(t *testing.T) {
 	}
 }
 
+func TestDeployStack_RecordsComposeDirAsProjectDirWhenNoWorkingDir(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "db")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("postgres:16-alpine"))
+
+	d := newDeployerWithRunner(&recordingRunner{})
+	state := newEmptyState()
+
+	if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "db"}, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// With no working_dir, the project dir is the compose file's own directory.
+	if got := state.ProjectDirs["db"]; got != stackDir {
+		t.Errorf("expected project dir %q, got %q", stackDir, got)
+	}
+}
+
+func TestDeployStack_RecordsWorkingDirAsProjectDir(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "db")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("postgres:16-alpine"))
+
+	d := newDeployerWithRunner(&recordingRunner{})
+	state := newEmptyState()
+	workingDir := t.TempDir()
+
+	stack := config.Stack{Name: "db", WorkingDir: workingDir}
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// working_dir (--project-directory) is the project's working_dir label.
+	if got := state.ProjectDirs["db"]; got != workingDir {
+		t.Errorf("expected project dir %q, got %q", workingDir, got)
+	}
+}
+
 func TestDeployStack_StopsOnDemandContainersAfterDeploy(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "monica")
