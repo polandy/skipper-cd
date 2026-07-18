@@ -19,6 +19,7 @@ stacks_base_dir: /var/lib/skipper/repo/modules
 webhook_secret: "your-secret-here"
 port: 8080
 metrics_port: 9120
+ui_enabled: true                        # optional, default: true (live web UI on the webhook port)
 autosync: true                          # optional, default: true (pause deploys globally)
 
 stacks:
@@ -57,6 +58,7 @@ nixos_rebuild:
 | `webhook_secret` | string | no | — | HMAC-SHA256 secret used to validate incoming webhook payloads (supports Gitea and GitHub/Forgejo signatures). When empty, signature validation is skipped (not recommended for production). |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. |
+| `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
 | `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
 | `stacks` | list | yes | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
@@ -276,7 +278,7 @@ Five palettes ship, each with a dark and light variant (the header's dark/light 
 <figure class="tp light" data-theme="rose-pine"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
 </div>
 
-Every palette drives the whole UI, including the PWA install identity (favicon, browser theme colour, app splash screen) — see [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#design) for the full token design and [PWA](pwa.md#33-theme) for the installed-app behaviour.
+Every palette drives the whole UI, including the PWA install identity (favicon, browser theme colour, app splash screen) — see [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#design) for the full token design and [PWA](pwa.md) for the installed-app behaviour.
 
 ### Theme switcher
 
@@ -327,16 +329,12 @@ health_watch:                      # cadence = health_poll_interval_seconds
 |---|---|---|---|---|
 | `debounce_polls` | int | no | `2` | How many consecutive health polls a new status must persist before it is accepted. Absorbs transient blips; a service flapping every poll never alerts. |
 | `attribution_window_seconds` | int | no | `300` | A transition beginning within this window after a stack's deploy is reported as *deploy-correlated* (with the deploy's newest commit). Later transitions still carry the commit as context, without the correlation. |
-| `alert_cooldown_seconds` | int | no | `1800` | Minimum gap between delivered alerts of the same service and direction (failure / recovery) — a rate limit against a *slow flapper* that flips slower than the debounce window and would otherwise page on every cycle. A single failure and its recovery are never delayed. Suppressed transitions are still logged and recorded; if the service still sits in an unreported state once the cooldown expires, the withheld alert is delivered late — a flap can end in a delayed page, never a missing one. Set an explicit `0` to disable and deliver every alert-worthy transition. |
+| `alert_cooldown_seconds` | int | no | `1800` | Minimum gap between repeat alerts of the same service and direction (failure / recovery) — rate-limits a flapping service. A first failure and its recovery are never delayed, and a suppressed alert is delivered late if the state still holds when the cooldown expires (delayed, never missing). `0` disables the cooldown. |
 | `targets` | list | no | — | Alert sinks in the same shape as [notification targets](#target-fields), except `on:` is not valid here (a health target receives all alert-worthy transitions). With no targets, transitions are still logged and recorded. |
 
 A new failure reads `🚨 stack health: <stack>/<service> healthy → unhealthy (was healthy 2h13m) — after deploy of a1b2c3d`; the recovery reads `✅ stack health recovered: <stack>/<service> after 4m12s`. The `generic` format posts the structured alert as JSON with a `"type": "health"` marker so a receiver shared with deploy notifications can tell the payloads apart.
 
-Every accepted transition is also written to the log and persisted (per service, the last 10 status phases with their start times) in `healthwatch.yaml` next to the [state file](state.md) — so the watchdog survives a restart without re-alerting known failures, and a failure that happened *while skipper was down* is still detected and alerted on the first polls after startup. A probe failure (`unknown`) holds the last known status rather than alerting.
-
-With the web UI enabled, that history is also visible in the [Stack health](#stack-health) per-service panel: each service shows how long its current status has held, plus a timeline of its last 10 status phases — with the deploy's short commit on phases that began right after a deploy. With the watchdog off the panel simply shows the live status, as before.
-
-This watches **only skipper's own stacks** — it is not a host-wide container watchdog. Design details in [ADR-0031](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0031-notify-on-own-stack-health-change.md).
+Transitions are persisted across restarts (no re-alerting of known failures; a failure that happened while skipper was down is alerted after startup), and with the web UI enabled each service's [Stack health](#stack-health) panel shows a timeline of its recent status phases. This watches **only skipper's own stacks** — it is not a host-wide container watchdog. Design details in [ADR-0031](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0031-notify-on-own-stack-health-change.md).
 
 ## Deploy ordering
 

@@ -85,5 +85,5 @@ which remains a hard off.
 - A paused stack whose files change and then revert before resume deploys
   nothing (hashes match again) — correct "back in sync" behaviour.
 - Full behaviour and the API contract live in
-  [`docs/autosync.md`](../../docs/autosync.md); the UI surface in
+  [`dev-docs/autosync-spec.md`](../autosync-spec.md); the UI surface in
   [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md).
