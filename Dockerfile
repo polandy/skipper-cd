@@ -19,13 +19,26 @@ RUN VERSION=$(sed -n 's/.*"\.":[[:space:]]*"\([^"]*\)".*/\1/p' .release-please-m
     && go build -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.branch=${BRANCH}" -o /skipper ./cmd/skipper
 
 # Stage 2: Runtime
+#
+# Alpine, not distroless: skipper shells out to real git/docker-cli binaries
+# (internal/command, deliberately not a Go git library — it catches real argv
+# mistakes fakes can't). Distroless has no package manager to add those back,
+# and hand-copying them in would hit a musl/glibc ABI mismatch against
+# distroless/base plus git's runtime helper files under /usr/share/git-core.
 FROM alpine:3.24
 
-RUN apk add --no-cache git docker-cli docker-cli-compose
+# UID/GID 1000: fixed so a volume from a previous (root-only) image version can
+# be re-chowned to a known target during upgrade (see docs/docker.md). The
+# docker-cli talks to the socket over HTTP, not Linux capabilities, so running
+# as this unprivileged user doesn't affect docker.sock access — that's gated
+# entirely by group membership (docs/docker.md's `group_add`).
+RUN apk add --no-cache git docker-cli docker-cli-compose \
+    && addgroup -g 1000 skipper \
+    && adduser -D -u 1000 -G skipper -h /var/lib/skipper skipper \
+    && mkdir -p /var/lib/skipper /etc/skipper \
+    && chown -R skipper:skipper /var/lib/skipper /etc/skipper
 
 COPY --from=build /skipper /usr/local/bin/skipper
-
-RUN mkdir -p /var/lib/skipper /etc/skipper
 
 EXPOSE 8080 9120
 
@@ -34,4 +47,5 @@ EXPOSE 8080 9120
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
 
+USER skipper
 ENTRYPOINT ["skipper", "-config", "/etc/skipper/skipper.yml"]
