@@ -93,7 +93,7 @@ type Config struct {
 	// Defaults to /var/lib/skipper/repo when left empty.
 	RepoDir string `yaml:"repo_dir"`
 
-	// Branch is the Git branch to track. Defaults to "master".
+	// Branch is the Git branch to track. Defaults to "main".
 	Branch string `yaml:"branch"`
 
 	// VarsFile is an optional path to a KEY=VALUE env file whose entries are
@@ -110,11 +110,24 @@ type Config struct {
 	// or "json" for structured logs (e.g. for Loki ingestion).
 	LogFormat string `yaml:"log_format"`
 
-	StacksBaseDir string  `yaml:"stacks_base_dir"`
-	WebhookSecret string  `yaml:"webhook_secret"`
-	Port          int     `yaml:"port"`
-	MetricsPort   int     `yaml:"metrics_port"`
-	Stacks        []Stack `yaml:"stacks"`
+	// StacksBaseDir is the directory inside the repo clone that holds one
+	// subdirectory per stack (<stacks_base_dir>/<name>/docker-compose.yml).
+	// Change detection and the compose file always come from here.
+	StacksBaseDir string `yaml:"stacks_base_dir"`
+
+	// WebhookSecret is the shared HMAC-SHA256 secret push webhooks are signed
+	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Empty
+	// disables signature verification.
+	WebhookSecret string `yaml:"webhook_secret"`
+
+	// Port is the webhook/UI HTTP port. Defaults to 8080.
+	Port int `yaml:"port"`
+
+	// MetricsPort is the Prometheus /metrics HTTP port. Defaults to 9120.
+	MetricsPort int `yaml:"metrics_port"`
+
+	// Stacks lists the Docker Compose projects to deploy.
+	Stacks []Stack `yaml:"stacks"`
 
 	// UIEnabled serves the web UI (dashboard, event history, UI API) on the
 	// webhook port. nil (omitted) defaults to true; set an explicit false to
@@ -200,17 +213,22 @@ type Config struct {
 	HealthWatch *HealthWatch `yaml:"health_watch"`
 }
 
+// StackByName returns the configured stack with the given name.
+func (c *Config) StackByName(name string) (Stack, bool) {
+	for _, s := range c.Stacks {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return Stack{}, false
+}
+
 // SelfHealEnabled reports whether self-heal is effective for the named stack:
 // the per-stack override when set, otherwise the global default (off when
 // unset). An unknown name falls back to the global default.
 func (c *Config) SelfHealEnabled(name string) bool {
-	for _, s := range c.Stacks {
-		if s.Name == name {
-			if s.SelfHeal != nil {
-				return *s.SelfHeal
-			}
-			break
-		}
+	if s, ok := c.StackByName(name); ok && s.SelfHeal != nil {
+		return *s.SelfHeal
 	}
 	return c.SelfHeal != nil && *c.SelfHeal
 }

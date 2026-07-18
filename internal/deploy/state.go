@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/polandy/skipper-cd/internal/fsatomic"
 )
 
 const stateFileName = "state.yaml"
@@ -119,29 +121,5 @@ func saveDeployState(stateDir string, state *persistedState) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(filepath.Join(stateDir, stateFileName), data, 0o644)
-}
-
-// writeFileAtomic writes data via a temp file + rename so that a crash
-// mid-write (e.g. nixos-rebuild restarting the service) can never leave a
-// truncated state file behind.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name()) // no-op after a successful rename
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return fsatomic.WriteFile(filepath.Join(stateDir, stateFileName), data, 0o644)
 }

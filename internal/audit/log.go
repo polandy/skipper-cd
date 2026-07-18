@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/events"
+	"github.com/polandy/skipper-cd/internal/fsatomic"
 )
 
 const (
@@ -195,7 +196,7 @@ func (l *Log) compact() {
 		buf.Write(line)
 		buf.WriteByte('\n')
 	}
-	if err := writeFileAtomic(l.filePath, buf.Bytes(), 0o644); err != nil {
+	if err := fsatomic.WriteFile(l.filePath, buf.Bytes(), 0o644); err != nil {
 		return
 	}
 	l.diskLines = len(all)
@@ -234,27 +235,4 @@ func (l *Log) totalLocked() int {
 		n += len(recs)
 	}
 	return n
-}
-
-// writeFileAtomic writes via a temp file + rename so a crash mid-write can never
-// leave a truncated audit log behind.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name()) // no-op after a successful rename
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
 }
