@@ -102,7 +102,7 @@ func (n *Notifier) Run(ctx context.Context) {
 			n.drain()
 			return
 		case ev := <-n.queue:
-			n.handle(context.Background(), ev)
+			n.handle(ctx, ev)
 		}
 	}
 }
