@@ -8,8 +8,10 @@ import (
 
 // ConfigStateKey is the reserved event key for repo stack-config failures in
 // stack-discovery mode (ADR-0034), mirroring NixosStateKey. It is exported so
-// the UI wiring can recognize the pseudo-stack.
-const ConfigStateKey = "_config"
+// the UI wiring can recognize the pseudo-stack. Aliases
+// config.ReservedConfigStackName, the single source of truth for the reserved
+// value.
+const ConfigStateKey = config.ReservedConfigStackName
 
 // CurrentStacks returns the most recently discovered stack set (stack
 // discovery, ADR-0034): nil before the first successful discovery and in

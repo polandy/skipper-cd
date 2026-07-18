@@ -65,11 +65,11 @@ func parsePS(out []byte) ([]psLine, error) {
 // on-demand container (restarting, unhealthy) classifies as usual.
 func serviceStatus(l psLine) Status {
 	switch l.Health {
-	case "healthy":
+	case string(Healthy):
 		return Healthy
-	case "unhealthy":
+	case string(Unhealthy):
 		return Unhealthy
-	case "starting":
+	case string(Starting):
 		return Starting
 	}
 

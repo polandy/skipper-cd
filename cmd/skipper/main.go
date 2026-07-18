@@ -199,7 +199,7 @@ func main() {
 		// Look-ahead: publish the run plan (what deploys next) over the same SSE
 		// stream. Installing the sink is what enables the upfront planning pass.
 		runPlanSink = func(p deploy.RunPlan) {
-			stateB.Publish(events.StateEvent{Name: "upcoming", Data: p})
+			stateB.Publish(events.StateEvent{Name: events.StateUpcoming, Data: p})
 		}
 		slog.Info("web UI enabled")
 	}
@@ -278,7 +278,7 @@ func main() {
 		if stateB != nil {
 			// The per-service panel's since/history/commit feed (ADR-0031 UI
 			// surface): every accepted change pushes the fresh view to UI clients.
-			hwCfg.Publish = func(v healthwatch.View) { stateB.Publish(events.StateEvent{Name: "healthwatch", Data: v}) }
+			hwCfg.Publish = func(v healthwatch.View) { stateB.Publish(events.StateEvent{Name: events.StateHealthWatch, Data: v}) }
 		}
 		healthWatcher = healthwatch.New(hwCfg)
 		eventSinks = append(eventSinks, healthWatcher.ObserveDeploy)
@@ -304,7 +304,7 @@ func main() {
 			AlwaysPoll: selfHealActive || healthWatcher != nil,
 		}
 		if stateB != nil {
-			hpCfg.Publish = func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: "health", Data: s}) }
+			hpCfg.Publish = func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateHealth, Data: s}) }
 			hpCfg.HasSubscribers = stateB.HasSubscribers
 		}
 		var snapshotSinks []func(health.Snapshot)
@@ -347,9 +347,9 @@ func main() {
 		}
 		metrics.AutosyncPending.Set(float64(autosyncQueue.Count()))
 		if stateB != nil {
-			stateB.Publish(events.StateEvent{Name: "autosync", Data: snap})
-			stateB.Publish(events.StateEvent{Name: "queue", Data: autosyncQueue.View(order())})
-			stateB.Publish(events.StateEvent{Name: "stacks", Data: stacksState{Disabled: deployer.CurrentDisabledStacks()}})
+			stateB.Publish(events.StateEvent{Name: events.StateAutosync, Data: snap})
+			stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: autosyncQueue.View(order())})
+			stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: stacksState{Disabled: deployer.CurrentDisabledStacks()}})
 		}
 	}
 	deployer = deploy.New(deploy.Config{
@@ -514,7 +514,7 @@ func healthStacks(cfg *config.Config, stacks []config.Stack) []health.StackRef {
 func deployOrder(cfg *config.Config, stacks []config.Stack) []string {
 	order := make([]string, 0, len(stacks)+1)
 	if cfg.NixOSRebuild.IsEnabled() {
-		order = append(order, "_nixos")
+		order = append(order, deploy.NixosStateKey)
 	}
 	for _, s := range stacks {
 		order = append(order, s.Name)
@@ -537,17 +537,17 @@ func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *depl
 	if broadcaster != nil {
 		initialState := func() []events.StateEvent {
 			state := []events.StateEvent{
-				{Name: "autosync", Data: as.ctrl.Snapshot(as.order())},
-				{Name: "queue", Data: as.queue.View(as.order())},
-				{Name: "upcoming", Data: deployer.CurrentRunPlan()},
-				{Name: "stacks", Data: stacksState{Disabled: deployer.CurrentDisabledStacks()}},
+				{Name: events.StateAutosync, Data: as.ctrl.Snapshot(as.order())},
+				{Name: events.StateQueue, Data: as.queue.View(as.order())},
+				{Name: events.StateUpcoming, Data: deployer.CurrentRunPlan()},
+				{Name: events.StateStacks, Data: stacksState{Disabled: deployer.CurrentDisabledStacks()}},
 			}
 			if healthPoller != nil {
-				state = append(state, events.StateEvent{Name: "health", Data: healthPoller.Current()})
+				state = append(state, events.StateEvent{Name: events.StateHealth, Data: healthPoller.Current()})
 				healthPoller.Poll() // a client just connected — refresh now
 			}
 			if healthWatcher != nil {
-				state = append(state, events.StateEvent{Name: "healthwatch", Data: healthWatcher.Current()})
+				state = append(state, events.StateEvent{Name: events.StateHealthWatch, Data: healthWatcher.Current()})
 			}
 			return state
 		}
