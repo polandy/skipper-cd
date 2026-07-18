@@ -2183,7 +2183,10 @@
   // newest one — first in DOM order — is the landing target; the stacks view
   // has exactly one row per stack (it's inventory). Silently does nothing
   // past the view switch when the stack has no row in the target view (e.g.
-  // "never deployed").
+  // "never deployed"). Clears the target view's own search filter first: a
+  // leftover query from before the jump could otherwise leave the landing row
+  // `.filtered-out` (display: none) — switched to, but invisible and with no
+  // indication why.
   function jumpToStack(targetView, stack) {
     if (targetView !== activeView) {
       activeView = targetView;
@@ -2191,6 +2194,8 @@
       setViewOptions(false);
       applyView();
     }
+    if (targetView === 'stacks') clearRosterFilter(true);
+    else clearDeployFilter(true);
     const escaped = (window.CSS && CSS.escape) ? CSS.escape(stack) : stack;
     const target = targetView === 'stacks'
       ? rosterList.querySelector(`.roster-row[data-stack="${escaped}"]`)

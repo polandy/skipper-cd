@@ -740,6 +740,11 @@ snapshot, but the jump-btn's footprint on every row required regenerating
   row and a jump button, but no deploy row (it has never deployed). Jumping
   from it still switches to the Deploys view; there is simply nothing to land
   on or flash.
+- **US5 — A leftover filter in the target view doesn't hide the landing row.**
+  Checked in both directions: filter the target view down to a *different*
+  stack, leave it filtered, switch views by hand (not by jumping), then jump
+  to the filtered-out stack from the other view. The jump clears the stale
+  filter so the landing row is actually visible, not `.filtered-out`.
 
 ## 5. Visual snapshot strategy
 
@@ -853,6 +858,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Cross-view jump: Stacks → Deploys lands on the newest row | **US2** |
 | Cross-view jump: pre-empts the row's own panel-open click | **US3** |
 | Cross-view jump: no landing target (never-deployed stack) | **US4** |
+| Cross-view jump: clears a leftover filter that would hide the landing row | **US5** |
 | Stack health: rolled-up pill per stack (healthy/unhealthy/stopped) | **UH1** |
 | Stack health: per-service panel toggle | **UH2** |
 | Stack health: pill on the newest row per stack | **UH3** |

@@ -82,6 +82,43 @@ test.describe('cross-view jump', () => {
     await expect(rosterRow(page, 'api')).not.toHaveClass(/audit-open/);
     await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(0);
   });
+
+  // US5 — a leftover search filter in the target view must not leave the
+  // landing row `.filtered-out` (hidden): the jump switched views, but the
+  // stack it promised to show would be invisible with no indication why.
+  // Checked in both directions.
+  test('US5: a leftover filter in the target view does not hide the landing row', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // Stacks -> Deploys: filter Deploys down to "web" (api hidden), then leave
+    // it filtered and switch to Stacks via the view toggle (not a jump).
+    await page.keyboard.type('web');
+    await expect(deployRows(page, 'api').first()).toBeHidden();
+    await stacksBtn(page).click();
+
+    // Jumping from api's roster row must clear that stale Deploys filter so
+    // its landing row is actually visible.
+    await jumpBtnIn(rosterRow(page, 'api')).click();
+    await expect(deployRows(page, 'api').first()).toBeVisible();
+    await expect(deployRows(page, 'api').first()).toHaveClass(/jump-target/);
+    await expect(page.locator('[data-testid="deploy-filter"]')).toHaveValue('');
+
+    // Deploys -> Stacks: filter Stacks down to "web" (api hidden), leave it
+    // filtered and switch back to Deploys via the toggle.
+    await stacksBtn(page).click();
+    await page.keyboard.type('web');
+    await expect(rosterRow(page, 'api')).toBeHidden();
+    await deploysBtn(page).click();
+
+    // Jumping from api's deploy row must clear that stale Stacks filter.
+    await jumpBtnIn(deployRows(page, 'api').first()).click();
+    await expect(rosterRow(page, 'api')).toBeVisible();
+    await expect(rosterRow(page, 'api')).toHaveClass(/jump-target/);
+    await expect(page.locator('[data-testid="roster-filter"]')).toHaveValue('');
+  });
 });
 
 // US4 — a stack the Deploys view has no row for yet (parked, never deployed)
