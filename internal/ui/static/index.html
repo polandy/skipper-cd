@@ -798,6 +798,10 @@
 
   /* ─── STACK HEALTH (ADR-0027) ─── */
   .health-pill {
+    /* Rendered as a <button> (keyboard-operable); neutralize UA button styles
+       so it stays pixel-identical to the old inline chip. */
+    appearance: none;
+    margin: 0;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -2641,14 +2645,16 @@
 
   // pendingTagHTML renders the tag on a pending deploy row. Queued rows show
   // "paused[: reason]"; blocked rows (ADR-0032) show the dependency reason
-  // ("blocked by <dep>") directly, both drawn from the queue snapshot.
+  // ("blocked by <dep>") directly, both drawn from the queue snapshot. The
+  // reason embeds a stack name — repo-controlled in stack-discovery mode
+  // (ADR-0034) — so it must render as text, never as markup.
   function pendingTagHTML(evt) {
     var item = queueByStack[evt.stack];
     var reason = item && item.reason;
     if (evt.status === 'blocked') {
-      return '<span class="paused-tag">' + (reason || 'blocked') + '</span>';
+      return '<span class="paused-tag">' + escapeHtml(reason || 'blocked') + '</span>';
     }
-    return '<span class="paused-tag">' + (reason ? 'paused: ' + reason : 'paused') + '</span>';
+    return '<span class="paused-tag">' + (reason ? 'paused: ' + escapeHtml(reason) : 'paused') + '</span>';
   }
 
   function createRow(evt, isHistory) {
@@ -2667,8 +2673,8 @@
     // self-heal badge, which expands the corrective-redeploy detail (ADR-0029).
     var filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
     row.innerHTML =
-      '<span class="cell-time" data-testid="time-cell" data-ts="' + evt.timestamp + '" title="' + (absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
-      '<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon" data-name="' + escapeHtml(evt.stack) + '"></span><span class="stack-name">' + escapeHtml(evt.stack) + '</span>' + pausedTag + '</span>' +
+      '<span class="cell-time" data-testid="time-cell" data-ts="' + escapeAttr(evt.timestamp) + '" title="' + escapeAttr(absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
+      '<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' + escapeHtml(evt.stack) + '</span>' + pausedTag + '</span>' +
       '<span class="status-cell">' + badgeHTML(evt.status) + '</span>' +
       '<span class="cell-duration" data-testid="duration-cell">' + formatDuration(evt.duration_ms) + '</span>' +
       '<span class="col-files">' + filesCell + '</span>';
@@ -2710,7 +2716,10 @@
       var h = newest ? healthSnap[stack] : null;
       if (h && h.status) {
         if (!pill) {
-          pill = document.createElement('span');
+          // A real <button> like the files pill and history button, so the
+          // panel is keyboard-reachable (Tab + Enter/Space fire the click).
+          pill = document.createElement('button');
+          pill.type = 'button';
           pill.className = 'health-pill';
           pill.dataset.testid = 'health-pill';
           pill.innerHTML = '<span class="hdot"></span><span class="hlabel"></span>';
@@ -3037,15 +3046,30 @@
     setRunDrawer(false);
   });
 
+  // refreshPendingTags re-renders the paused/blocked tag on every live pending
+  // row. The pending deploy event and the queue snapshot (which carries the
+  // authoritative reason) are not ordered — the snapshot is published after the
+  // run's events, and after the history replay on connect — so a row can render
+  // before its reason is known. This re-render makes the tag deterministic once
+  // the snapshot lands.
+  function refreshPendingTags() {
+    Object.keys(queuedRows).forEach(function(stack) {
+      var row = queuedRows[stack];
+      var tag = row.querySelector('.paused-tag');
+      if (tag) tag.outerHTML = pendingTagHTML({ stack: stack, status: row.dataset.status });
+    });
+  }
+
   // removeQueuedRow drops a stack's pending (queued) row and any panel opened
-  // below it. No-op when the stack has no queued row.
+  // below it. The close helpers cover every panel type a queued row can carry
+  // (files/diff, health, deploy history), so a drained row never strands a
+  // panel in the table. No-op when the stack has no queued row.
   function removeQueuedRow(stack) {
     var row = queuedRows[stack];
     if (!row) return;
-    var sib = row.nextElementSibling;
-    if (sib && (sib.classList.contains('files-list') || sib.classList.contains('diff-panel') || sib.classList.contains('health-panel'))) {
-      sib.remove();
-    }
+    closeDiffPanel(row);
+    closeHealthPanel(row);
+    closeAuditPanel(row);
     row.remove();
     delete queuedRows[stack];
   }
@@ -3155,6 +3179,7 @@
       Object.keys(queuedRows).forEach(function(stack) {
         if (!queueByStack[stack]) removeQueuedRow(stack);
       });
+      refreshPendingTags();
       renderAutosync();
     });
 

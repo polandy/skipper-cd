@@ -88,3 +88,31 @@ test.describe('UM3: history and diff panels are mutually exclusive', () => {
     await expect(newest).not.toHaveClass(/diff-open/);
   });
 });
+
+// UM4 — a queued row is replaced when its stack deploys; an open history panel
+// must go with it instead of being left orphaned in the table (a queued row is
+// the newest row of its stack, so it carries the history button).
+test.describe('UM4: history panel does not outlive a queued row', () => {
+  test('draining a queued row removes its open history panel', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // Pause autosync, push a change → a queued row for web, newest of its stack.
+    expect(await skipper.postAutosync('', false)).toBe(200);
+    skipper.setStackImage('web', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+    const queuedRow = page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="queued"]');
+    await expect(queuedRow).toHaveCount(1);
+
+    await queuedRow.locator('[data-testid="history-btn"]').click();
+    await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(1);
+
+    // Resume: the queued row is superseded by the real deploy — the panel it
+    // anchored must be removed with it, not survive as a sibling of the new row.
+    expect(await skipper.postAutosync('', true)).toBe(200);
+    await expect(queuedRow).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]').first(),
+    ).toBeVisible();
+    await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(0);
+  });
+});

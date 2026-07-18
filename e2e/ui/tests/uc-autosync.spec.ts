@@ -325,11 +325,11 @@ test.describe('UC9: queued row + tag', () => {
     await expect(webDeployRow(page, 'queued').locator('[data-testid="status-badge"]')).toHaveText(
       'queued',
     );
-    // The row carries the `paused` tag. Its reason suffix (": global") is
-    // best-effort — it depends on the `queue` snapshot having populated before
-    // the `queued` deploy event rendered the row, which is not ordered — so we
-    // assert only the tag itself, which is always present.
-    await expect(webDeployRow(page, 'queued')).toContainText('paused');
+    // The row carries the `paused: global` tag. The reason arrives with the
+    // `queue` snapshot, which is not ordered against the `queued` deploy event —
+    // the UI refreshes the tag when the snapshot lands, so the full wording is
+    // deterministic (the web-first assertion polls through the refresh).
+    await expect(webDeployRow(page, 'queued').locator('.paused-tag')).toHaveText('paused: global');
 
     // Resume → the stack deploys and the queued row is superseded by success.
     expect(await skipper.postAutosync('', true)).toBe(200);
