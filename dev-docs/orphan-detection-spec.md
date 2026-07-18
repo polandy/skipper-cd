@@ -1,6 +1,7 @@
 # Feature Spec: Orphan Detection & Optional Prune
 
-Status: detection layer implemented (ADR-0036); prune layer accepted, follows.
+Status: detection layer implemented (ADR-0036). Prune layer **discarded
+2026-07-19** (not needed); the design below is kept for the record only.
 Assumes stack discovery (ADR-0034, `stack-discovery-spec.md`) — the discovered
 set is the authoritative "managed" set, which is what makes this spec simple.
 Date: 2026-07-18 (rewritten for discovery mode; updated for implementation)
@@ -61,7 +62,11 @@ running) are also surfaced as orphans ("state only") and cleaned up by prune.
   with class tag, project name, working_dir, and container count (or "state
   only"). Hidden when empty. See `internal/ui/UI_SPEC.md` §4.15.
 
-## Prune behavior (opt-in, follows)
+## Prune behavior (opt-in) — DISCARDED 2026-07-19
+
+> Not built. The prune layer was scoped but dropped as unneeded — detection
+> alone covers the homelab case. The design below is retained for reference in
+> case it is revisited.
 
 ```yaml
 # host skipper.yml

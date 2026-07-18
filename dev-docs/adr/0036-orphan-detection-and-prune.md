@@ -1,6 +1,6 @@
 # ADR-0036: Orphan detection and optional prune
 
-Status: accepted
+Status: accepted (detection). Prune layer discarded 2026-07-19 — see amendment.
 Date: 2026-07-18
 
 ## Context
@@ -80,7 +80,13 @@ spam). A docker failure leaves the last snapshot in place rather than blanking
 the section. Headless prune (the follow-up) is instead carried by the reconcile
 loop, since it must run unattended.
 
-### Prune (follow-up, opt-in)
+### Prune (follow-up, opt-in) — discarded 2026-07-19
+
+The detection layer shipped and covers the homelab need (a removed stack no
+longer runs silently unnoticed). The prune layer described below was scoped but
+dropped as unneeded — automatic `compose down` of a removed stack was judged not
+worth the added config surface and teardown risk. Kept here for the record; a
+future revisit would start from this design.
 
 Global `prune: true` (default false) with a per-stack `*bool` override in the
 repo `skipper.yaml`. Only the **orphaned** class is pruned — never unmanaged,
