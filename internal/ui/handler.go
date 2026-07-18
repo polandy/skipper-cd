@@ -17,7 +17,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-//go:embed static/index.html static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
+//go:embed static/index.html static/app.css static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
 
 // sseKeepaliveInterval is how often an idle SSE stream (deploy events, state
@@ -126,6 +126,23 @@ func AppHelpersHandler() http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(data)
+	})
+}
+
+// AppCSSHandler serves GET /app.css — the app shell's stylesheet, extracted
+// from index.html (ADR-0035 amendment) so the markup and script stay readable
+// and diffs of styling changes don't interleave with unrelated ones. Served
+// no-cache so it stays in lockstep with the shell it styles; the service
+// worker caches it in the app shell for offline use.
+func AppCSSHandler() http.Handler {
+	data, err := staticFS.ReadFile("static/app.css")
+	if err != nil {
+		panic(err) // staticFS embeds static/app.css at compile time, so this cannot fail.
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(data)
 	})

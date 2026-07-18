@@ -625,6 +625,7 @@ func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *depl
 		mux.Handle("GET /manifest.webmanifest", ui.ManifestHandler(cfg.UITheme))
 		mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(build))
 		mux.Handle("GET /app-helpers.js", ui.AppHelpersHandler())
+		mux.Handle("GET /app.css", ui.AppCSSHandler())
 		mux.Handle("GET /icons/", ui.IconsHandler())
 		mux.Handle("GET /fonts/", ui.FontsHandler())
 		mux.Handle("GET /api/version", ui.VersionHandler(build))

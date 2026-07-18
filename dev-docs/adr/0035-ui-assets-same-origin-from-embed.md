@@ -81,3 +81,24 @@ extracts the pure JS helpers into an embedded, same-origin JS file.
   new font is added by dropping a `woff2` in `static/fonts` and referencing it.
 - The literal "ONE embedded file" wording in `CLAUDE.md` and `internal/ui/UI_SPEC.md`
   is updated to the self-contained definition above.
+
+## Amendment (2026-07-19): extract the stylesheet into `static/app.css`
+
+`index.html` had grown to ~4700 lines, roughly half of it (~2200 lines) a single
+`<style>` block — CSS diffs dominated the file's history the same way the font
+blobs once did, and reviews of a markup or script change had to scroll past
+unrelated styling.
+
+Applying the relaxation this ADR already established (self-contained, not
+literally one file), the CSS moves to `internal/ui/static/app.css`, embedded via
+the same `//go:embed` directive and served same-origin by a new `AppCSSHandler`
+(`GET /app.css`), mirroring `AppHelpersHandler`: no-cache, `text/css`, added to
+the service worker's `SHELL` for offline use. `index.html` keeps a single
+`<link rel="stylesheet" href="/app.css">` in the `<head>` in place of the two
+inline `<style>` blocks (the small `@font-face` block and the main stylesheet);
+nothing else about the app shell changes — no build step, still same-origin,
+still fully offline-capable.
+
+`index.html` drops to ~2440 lines (markup + the main app script); `app.css`
+holds the ~2225 lines of CSS on its own, readable and diffable independent of
+markup/script changes.
