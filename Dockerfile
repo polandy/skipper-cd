@@ -21,11 +21,18 @@ RUN VERSION=$(sed -n 's/.*"\.":[[:space:]]*"\([^"]*\)".*/\1/p' .release-please-m
 # Stage 2: Runtime
 FROM alpine:3.24
 
-RUN apk add --no-cache git docker-cli docker-cli-compose
+# UID/GID 1000: fixed so a volume from a previous (root-only) image version can
+# be re-chowned to a known target during upgrade (see docs/docker.md). The
+# docker-cli talks to the socket over HTTP, not Linux capabilities, so running
+# as this unprivileged user doesn't affect docker.sock access — that's gated
+# entirely by group membership (docs/docker.md's `group_add`).
+RUN apk add --no-cache git docker-cli docker-cli-compose \
+    && addgroup -g 1000 skipper \
+    && adduser -D -u 1000 -G skipper -h /var/lib/skipper skipper \
+    && mkdir -p /var/lib/skipper /etc/skipper \
+    && chown -R skipper:skipper /var/lib/skipper /etc/skipper
 
 COPY --from=build /skipper /usr/local/bin/skipper
-
-RUN mkdir -p /var/lib/skipper /etc/skipper
 
 EXPOSE 8080 9120
 
@@ -34,4 +41,5 @@ EXPOSE 8080 9120
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
 
+USER skipper
 ENTRYPOINT ["skipper", "-config", "/etc/skipper/skipper.yml"]

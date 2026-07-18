@@ -12,6 +12,12 @@ services:
     image: ghcr.io/polandy/skipper-cd:latest
     restart: unless-stopped
     stop_grace_period: 15m   # let an in-flight deploy finish on shutdown
+    group_add:
+      - "999"   # host's docker group GID — `getent group docker | cut -d: -f3`
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp    # rollback writes the restored compose file here
     ports:
       - "8080:8080"   # webhook
       - "9120:9120"   # metrics
@@ -32,6 +38,14 @@ Container notes:
 - **`nixos_rebuild` cannot run in a container** — leave it out of the config.
 - **Shutdown:** skipper-cd exits gracefully on SIGTERM and waits for an in-flight deploy; give it room with `stop_grace_period` (Docker's default is 10 s).
 - **`localhost` URLs** ([notifications](configuration.md#notifications), [health-check](configuration.md#health-check-gated-rollback) probes) resolve inside the container. Use an address reachable from the container, or `network_mode: host` (then drop `ports:`).
+
+### Running as non-root
+
+The image runs as a fixed non-root user (`skipper`, UID/GID 1000):
+
+- **Docker socket access** is granted via `group_add`, not the container's own user — add the host's docker group GID (`getent group docker | cut -d: -f3`, commonly `999` or `998`) as shown above. This works alongside `/var/run/docker.sock` being root:docker-owned on the host; the container process joins that GID as a supplementary group.
+- **`./skipper.yml` must be readable by UID/GID 1000** (or world-readable) — it's bind-mounted read-only, so the *host* file's permissions apply inside the container. `chmod 640` plus `chown root:1000` on the host (matching the container's fixed GID) works without making it world-readable, since it holds `webhook_secret`.
+- **Upgrading an existing deployment**: a `skipper-data` volume created by an image version that ran as root will have root-owned files. `docker run --rm -v skipper-data:/data alpine chown -R 1000:1000 /data` before the next start, or the container fails to write `state.yaml` and the deploy history.
 
 ## Migrating from the NixOS module
 
