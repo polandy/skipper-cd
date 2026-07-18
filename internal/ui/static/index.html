@@ -1915,6 +1915,47 @@
   .filter-empty.show { display: block; }
   .event-list .filtered-out { display: none !important; }
 
+  /* Orphans (ADR-0036): compose projects running on the host that the discovered
+     stack set no longer accounts for — a collapsed inventory section below the
+     table, hidden entirely when none are found. Read-only: pruning is
+     config-driven, not a UI action. */
+  .orphans { display: none; margin-top: 14px; padding: 0 14px; }
+  .orphans.shown { display: block; }
+  .orphans-head {
+    display: flex; align-items: center; gap: 7px; width: 100%;
+    background: none; border: 0; padding: 4px 0; cursor: pointer;
+    font-family: var(--font-mono); color: var(--text-muted); font-size: 10px;
+    font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  .orphans-caret { font-size: 9px; transition: transform 0.15s; }
+  .orphans.open .orphans-caret { transform: rotate(90deg); }
+  .orphans-count {
+    background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+    color: var(--text-muted); border-radius: 9px; padding: 0 7px;
+    font-size: 10px; line-height: 16px;
+  }
+  .orphans-body { display: none; margin-top: 6px; flex-direction: column; gap: 4px; }
+  .orphans.open .orphans-body { display: flex; }
+  .orphan-row {
+    display: grid; grid-template-columns: auto minmax(0, auto) 1fr auto;
+    align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px;
+    background: color-mix(in srgb, var(--overlay2) 5%, transparent);
+    font-family: var(--font-mono); font-size: 12px;
+  }
+  .orphan-tag {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+    padding: 1px 7px; border-radius: 4px; white-space: nowrap;
+  }
+  .orphan-tag.orphaned { color: var(--rollback); background: color-mix(in srgb, var(--rollback) 14%, transparent); }
+  .orphan-tag.unmanaged {
+    color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--text-muted) 30%, transparent);
+  }
+  .orphan-name { color: var(--text); font-weight: 500; white-space: nowrap; }
+  .orphan-dir { color: var(--text-muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .orphan-meta { color: var(--text-muted); font-size: 10.5px; white-space: nowrap; }
+  body.view-logs #orphans { display: none !important; }
+
   .stack-row {
     display: grid;
     grid-template-columns: 22px 1fr auto;
@@ -2285,6 +2326,15 @@
     <span class="dis-list" id="disabled-list" style="display:contents"></span>
   </div>
 
+  <div class="orphans" id="orphans" data-testid="orphans">
+    <button class="orphans-head" id="orphans-head" aria-expanded="false" title="Running compose projects the discovered stack set no longer accounts for.">
+      <span class="orphans-caret" aria-hidden="true">▶</span>
+      <span>Orphans</span>
+      <span class="orphans-count" id="orphans-count">0</span>
+    </button>
+    <div class="orphans-body" id="orphans-body"></div>
+  </div>
+
   <div id="log-view">
     <div class="log-pane" id="log-pane">
       <div class="log-empty" id="log-empty">Awaiting log output...</div>
@@ -2357,6 +2407,49 @@
     });
     wrap.classList.add('shown');
   }
+
+  // Orphans (ADR-0036): compose projects the discovered stack set no longer
+  // accounts for, from the 'orphans' SSE snapshot. Rendered as a collapsed
+  // section below the table; hidden when empty.
+  let orphansSnap = [];
+
+  function renderOrphans() {
+    var wrap = document.getElementById('orphans');
+    var body = document.getElementById('orphans-body');
+    var count = document.getElementById('orphans-count');
+    body.textContent = '';
+    count.textContent = String(orphansSnap.length);
+    if (!orphansSnap.length) { wrap.classList.remove('shown'); return; }
+    orphansSnap.forEach(function(o) {
+      var row = document.createElement('div');
+      row.className = 'orphan-row';
+      var tag = document.createElement('span');
+      tag.className = 'orphan-tag ' + (o.class === 'orphaned' ? 'orphaned' : 'unmanaged');
+      tag.textContent = o.class;
+      var name = document.createElement('span');
+      name.className = 'orphan-name';
+      name.textContent = o.project;
+      var dir = document.createElement('span');
+      dir.className = 'orphan-dir';
+      dir.textContent = o.working_dir || '';
+      dir.title = o.working_dir || '';
+      var meta = document.createElement('span');
+      meta.className = 'orphan-meta';
+      meta.textContent = orphanMeta(o);
+      row.append(tag, name, dir, meta);
+      body.appendChild(row);
+    });
+    wrap.classList.add('shown');
+  }
+
+  (function() {
+    var head = document.getElementById('orphans-head');
+    head.addEventListener('click', function() {
+      var wrap = document.getElementById('orphans');
+      var open = wrap.classList.toggle('open');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  })();
 
   function showTable() {
     if (!hasRows) {
@@ -3159,6 +3252,12 @@
       const d = JSON.parse(e.data);
       disabledSnap = (d && d.disabled) || [];
       renderDisabledStacks();
+    });
+
+    es.addEventListener('orphans', function(e) {
+      var d = JSON.parse(e.data);
+      orphansSnap = (d && d.orphans) || [];
+      renderOrphans();
     });
 
     es.onerror = function() {

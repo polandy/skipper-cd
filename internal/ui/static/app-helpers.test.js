@@ -118,3 +118,10 @@ test('reasonFromSnap', () => {
   assert.equal(h.reasonFromSnap({ effective: false, config: false }), 'stack');
   assert.equal(h.reasonFromSnap({ effective: false }), 'global');
 });
+
+test('orphanMeta: state-only vs container count with pluralization', () => {
+  assert.equal(h.orphanMeta({ state_only: true }), 'state only');
+  assert.equal(h.orphanMeta({ containers: 1 }), '1 container');
+  assert.equal(h.orphanMeta({ containers: 3 }), '3 containers');
+  assert.equal(h.orphanMeta({}), '0 containers');
+});

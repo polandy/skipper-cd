@@ -125,6 +125,15 @@ function reasonFromSnap(s) {
   return 'global';
 }
 
+// orphanMeta is the right-hand note on an orphan row (ADR-0036): a state-only
+// orphan has nothing running, otherwise it shows the container count. Purely a
+// function of the orphan object, so the unit layer covers the pluralization.
+function orphanMeta(o) {
+  if (o.state_only) return 'state only';
+  var n = o.containers || 0;
+  return n + (n === 1 ? ' container' : ' containers');
+}
+
 // Dual-use export: in the browser this file loads as a plain <script>, so the
 // functions above are already globals and `module` is undefined — the export is
 // skipped. Under `node --test` `module` exists, so the helpers are exported for
@@ -133,6 +142,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     formatDuration, formatTime, fullTime, classifyDiffLine, shortSHA,
     statusText, auditStatusLabel, phaseDuration, phaseSince, healthClass,
-    levelClass, logTime, reasonFromSnap,
+    levelClass, logTime, reasonFromSnap, orphanMeta,
   };
 }

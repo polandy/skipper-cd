@@ -28,6 +28,13 @@ type persistedState struct {
 	// Used to determine whether docker compose pull is necessary.
 	Images map[string]serviceImageByName `yaml:"images,omitempty"`
 
+	// ProjectDirs maps each stack to the compose project directory of its last
+	// successful deploy — its working_dir (--project-directory) when set, else
+	// the compose file's own directory. It is the working_dir label a running
+	// project carries, so orphan detection (ADR-0036) can recognize a removed
+	// stack's project even when its working_dir pointed outside stacks_base_dir.
+	ProjectDirs map[string]string `yaml:"project_dirs,omitempty"`
+
 	// NixOSRebuildInFlight holds the changed nix files of a rebuild that was
 	// started but whose outcome was not yet recorded. It is set (and persisted)
 	// just before a rebuild whose switch may restart skipper-cd, and cleared once
@@ -40,8 +47,9 @@ type persistedState struct {
 
 func newEmptyState() *persistedState {
 	return &persistedState{
-		Stacks: map[string]stackFileHashes{},
-		Images: map[string]serviceImageByName{},
+		Stacks:      map[string]stackFileHashes{},
+		Images:      map[string]serviceImageByName{},
+		ProjectDirs: map[string]string{},
 	}
 }
 
@@ -89,6 +97,26 @@ func (s *persistedState) recordImages(stack string, images serviceImageByName) {
 	s.Images[stack] = images
 }
 
+// recordProjectDir stores the compose project directory of a successfully
+// deployed stack, so orphan detection can match its running project by
+// working_dir even after the stack is removed from the repo.
+func (s *persistedState) recordProjectDir(stack, projectDir string) {
+	if s.ProjectDirs == nil {
+		s.ProjectDirs = map[string]string{}
+	}
+	s.ProjectDirs[stack] = projectDir
+}
+
+// projectDirs returns a copy of the recorded stack→project-dir map, for
+// out-of-run consumers (orphan detection). Never nil.
+func (s *persistedState) projectDirs() map[string]string {
+	out := make(map[string]string, len(s.ProjectDirs))
+	for k, v := range s.ProjectDirs {
+		out[k] = v
+	}
+	return out
+}
+
 func loadPersistedDeployState(stateDir string) (*persistedState, error) {
 	data, err := os.ReadFile(filepath.Join(stateDir, stateFileName))
 	if os.IsNotExist(err) {
@@ -109,6 +137,9 @@ func loadPersistedDeployState(stateDir string) (*persistedState, error) {
 	}
 	if state.Images == nil {
 		state.Images = map[string]serviceImageByName{}
+	}
+	if state.ProjectDirs == nil {
+		state.ProjectDirs = map[string]string{}
 	}
 	return state, nil
 }

@@ -29,14 +29,18 @@ const PORT = Number(process.env.PORT || 3000);
 const SECRET = 'ui-preview-secret';
 const stacks = ['web', 'api', 'worker', 'database'];
 
-// Stub docker: records nothing, succeeds at everything, and answers
-// `compose ps --format json` from a per-stack file so the health poller has
-// something to report. Mirrors the harness's stub (minus the test hooks).
+// Stub docker: records nothing, succeeds at everything, and answers two reads —
+// `compose ps --format json` per stack for the health poller, and bare
+// `docker ps -a` (orphan detection, ADR-0036) from a shared listing. Mirrors
+// the harness's stub (minus the test hooks).
 const stubDocker = `#!/bin/sh
 case " $* " in
-  *" ps "*)
+  *" compose "*" ps "*)
     f="$STUB_PS_DIR/$(basename "$(pwd)").json"
     [ -f "$f" ] && cat "$f"
+    exit 0 ;;
+  *" ps "*)
+    [ -f "$STUB_PS_DIR/orphans.txt" ] && cat "$STUB_PS_DIR/orphans.txt"
     exit 0 ;;
 esac
 exit 0
@@ -168,6 +172,20 @@ setHealth('web', [{ Service: 'web', Name: 'web-1', State: 'running', Health: 'he
 setHealth('api', [{ Service: 'api', Name: 'api-1', State: 'running', Health: 'healthy' }]);
 setHealth('worker', [{ Service: 'worker', Name: 'worker-1', State: 'restarting', Health: 'unhealthy' }]);
 setHealth('database', [{ Service: 'database', Name: 'db-1', State: 'exited', ExitCode: 0 }]);
+
+// Orphan detection listing (project<TAB>working_dir, one line per container):
+// the four active stacks (matched + filtered as managed), a removed stack still
+// running under stacks_base_dir (orphaned + prunable, 2 containers), and a
+// hand-started project outside it (unmanaged, never prunable).
+writeFileSync(
+  join(healthDir, 'orphans.txt'),
+  [
+    ...stacks.map((n) => `${n}\t${join(repoDir, n)}`),
+    `legacy-cache\t${join(repoDir, 'legacy-cache')}`,
+    `legacy-cache\t${join(repoDir, 'legacy-cache')}`,
+    `portainer\t/opt/portainer`,
+  ].join('\n') + '\n',
+);
 
 // A pushed change → a deploy row carrying a real git diff + commit metadata.
 const bump = (n, tag, msg) => {
