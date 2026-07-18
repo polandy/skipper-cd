@@ -37,4 +37,4 @@ With the [web UI](configuration.md) enabled, skipper shows compose projects runn
 - **orphaned** — a project skipper once deployed (its directory is under `stacks_base_dir`, or is recorded in `project_dirs`) that no stack now covers. Safe to remove.
 - **unmanaged** — a project skipper never deployed (a manually started stack, another tool's containers). Never touched.
 
-Disabled stacks are hands-off and are not flagged. Detection is read-only; removing an orphan is a manual `docker compose down` for now.
+Expand a row to see its containers (name, image, state, ports) and any named volumes it holds. Disabled stacks are hands-off and are not flagged. Detection is read-only; removing an orphan is a manual `docker compose down` for now.

@@ -35,6 +35,7 @@ New here? The **[Getting Started walkthrough](getting-started.md)** covers the w
 - **NixOS rebuilds** — optionally run `nixos-rebuild switch` before stack deploys when `.nix` files change, so one webhook updates both the host and its containers.
 - **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([details](autosync.md)).
 - **Periodic reconcile** — re-syncs and redeploys on a timer (default every 5 minutes) so a missed webhook can't leave the host drifted ([details](configuration.md#periodic-reconcile)).
+- **Orphan detection** — surfaces compose projects still running on the host that your current stack set no longer covers, e.g. a stack directory removed from the repo ([details](state.md#orphaned-stacks)).
 - **Web UI** — a single embedded page with live deploy status, service icons, an event log, and installable as a PWA.
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
