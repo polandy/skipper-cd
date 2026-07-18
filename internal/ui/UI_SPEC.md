@@ -35,11 +35,11 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
 **Header — right.** The controls are **icon/glyph-only** on every viewport (no text labels or switch tracks in the header row). Each glyph follows the theme via `currentColor`, is muted by default, and only takes on colour to signal a real state. Pointer users get the native `title` tooltip on hover; since touch never shows `title` tooltips, a tap on any header control flashes its label in a small **tap-reveal bubble** (the control's action still fires). In order:
 
-- **Deploy indicator** — an **anchor** glyph (muted) at rest, swapping to a **ship** (accent, pulsing) while deploying. The glyph leads; to its right comes the active stack name(s) and then a dimmed **look-ahead trail** — `→ a · b · +N` — naming the stacks that will deploy *next in the same run*, capped at three names plus a `+N` overflow. The trail's source is the [`upcoming`](#event-lifecycle-sse) SSE event (distinct from the autosync pending queue: this is the *active run's* remaining work). `idle` / `deploying <stacks> · next <stacks>` is mirrored into `title` + `aria-label`. While a run is active the indicator is a **button** (`role="button"`, `Enter`/`Space`): it toggles the [Run panel](#run-panel). Visible in both views.
-- **View toggle** — segmented control of two icons: a rows/table glyph (`deploys`) and a terminal glyph (`logs`). Default: `deploys`. State persisted in `localStorage` key `activeView`. The **active** button carries a small `▾` and opens the [View-options popover](#view-options-popover); the other button switches views.
-- **Autosync control** — a single sync-arrows glyph showing global autosync state; **muted by default**, turning `--queued` (amber) when paused and `--accent` while its drawer is open. When deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in both views.
-- **Theme picker** — a palette glyph over a transparent native `<select>` of the five built-in palettes (see [Theme override](#theme-override)); clicking opens the native option list. **Opt-in**: present only when `ui_theme_switcher: true` (see [`docs/configuration.md`](../../docs/configuration.md#web-ui-theme)); off by default, so the deployed theme is fixed. Desktop only (hidden ≤ 700 px). Visible in both views.
-- **Theme toggle** — a moon (dark, default) / sun (light) glyph switching between the configured theme's dark and light variant. State persisted in `localStorage` key `colorScheme` (`dark` / `light`). Visible in both views.
+- **Deploy indicator** — an **anchor** glyph (muted) at rest, swapping to a **ship** (accent, pulsing) while deploying. The glyph leads; to its right comes the active stack name(s) and then a dimmed **look-ahead trail** — `→ a · b · +N` — naming the stacks that will deploy *next in the same run*, capped at three names plus a `+N` overflow. The trail's source is the [`upcoming`](#event-lifecycle-sse) SSE event (distinct from the autosync pending queue: this is the *active run's* remaining work). `idle` / `deploying <stacks> · next <stacks>` is mirrored into `title` + `aria-label`. While a run is active the indicator is a **button** (`role="button"`, `Enter`/`Space`): it toggles the [Run panel](#run-panel). Visible in all views.
+- **View toggle** — segmented control of three icons: a rows/table glyph (`deploys`), a layers glyph (`stacks`, the [Stacks view](#stacks-view)) and a terminal glyph (`logs`). Default: `deploys`. State persisted in `localStorage` key `activeView`. The **active** button carries a small `▾` and opens the [View-options popover](#view-options-popover); the other buttons switch views.
+- **Autosync control** — a single sync-arrows glyph showing global autosync state; **muted by default**, turning `--queued` (amber) when paused and `--accent` while its drawer is open. When deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in all views.
+- **Theme picker** — a palette glyph over a transparent native `<select>` of the five built-in palettes (see [Theme override](#theme-override)); clicking opens the native option list. **Opt-in**: present only when `ui_theme_switcher: true` (see [`docs/configuration.md`](../../docs/configuration.md#web-ui-theme)); off by default, so the deployed theme is fixed. Desktop only (hidden ≤ 700 px). Visible in all views.
+- **Theme toggle** — a moon (dark, default) / sun (light) glyph switching between the configured theme's dark and light variant. State persisted in `localStorage` key `colorScheme` (`dark` / `light`). Visible in all views.
 - **Connection indicator** — a **chain-link** glyph: a closed link in `--success` when `connected`, a closed link pulsing `--accent` while `connecting`, and a **broken link** pulsing `--danger` while `reconnecting`. State is on `data-state`. Bound to `/api/events`; the log stream has no own indicator. `reconnecting` recovers on its own from *both* a transient drop (the browser's built-in retry) and a fatal stream error — a non-2xx response or bad content-type, which closes `EventSource` for good — via a capped-backoff retry the page runs itself.
 
 ### View-options popover
@@ -48,6 +48,7 @@ The view-specific toggles live in a small popover anchored under the view toggle
 
 - **Deploys** → **Time mode** — switches the Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). `localStorage` key `timeMode`. On **mobile only**, the group is preceded by a **"Search stacks"** action row that reveals and focuses the [Deploys filter](#deploys-filter) (the touch entry point for type-to-search).
 - **Logs** → **Sort** — reverses log order; default inactive (newest first), active flips to oldest-first (terminal semantics). `localStorage` key `logSort` (`desc` / `asc`); flipping resets the visible window to one page. And **Auto-scroll (Follow)** — auto-scrolls the log pane to the newest line on every append; default active. `localStorage` key `followLogs`.
+- **Stacks** → on **mobile only**, a **"Search stacks"** action row that reveals and focuses the [Stacks filter](#stacks-view) (the touch entry point for its type-to-search). Desktop has no Stacks options, so its active-button `▾` does not open an empty popover.
 
 ### Theme override
 
@@ -153,6 +154,19 @@ A **type-to-search** filter over the deploy rows by stack name, reusing the [Aut
 
 ---
 
+## Stacks view
+
+A third top-level view (`data-testid="stacks-view"`, [View toggle](#layout) `stacks`) that lists the **full set of stacks skipper owns** — the discovered set in [stack-discovery mode](../../docs/configuration.md#stack-discovery) (ADR-0034), the host `stacks:` list in legacy mode — each with its **last deploy outcome**. Where the [deploy table](#deploy-table) is an event log (only stacks with recent events, disabled stacks deliberately absent), this is **inventory**: every declared stack appears, including ones that have never deployed and ones parked with `disabled: true`. It is read-only; deploys are still git-driven. See [`dev-docs/stack-roster-spec.md`](../../dev-docs/stack-roster-spec.md). Switching to it hides the deploy table, its disabled line, and the log pane (and vice versa).
+
+- **Header** — a `N stacks` count (`data-testid="roster-count"`) and, in discovery mode, a quiet `discovery` hint (`data-testid="roster-source"`, empty in legacy mode).
+- **Rows** (`data-testid="roster-row"`, one per stack, `data-stack` = name) — icon (resolved from the name via `/api/icons/<name>`, same as the table) · name · **status** · relative time · short commit SHA. Enabled stacks sort first (alphabetical), then disabled (alphabetical), so the list reads live-then-parked. **Status** reuses the deploy [status badge](#status-badges) (`data-testid="status-badge"`) for a stack's last terminal outcome, with two synthetic flags (`.roster-flag`): **never deployed** (no audit record) and **disabled** (parked; muted `.disabled` row, no badge). A live `deploying` event refreshes just that row.
+- **Deploy history** — clicking a row toggles its per-stack [deploy-history panel](#deploy-history) (`data-testid="audit-panel"`) below it, the same audit panel the table's history button opens (from `GET /api/audit`). One open at a time; the panel trails and visually connects to its row.
+- **Filter** — the same behaviour as the [Deploys filter](#deploys-filter): a bar (`data-testid="roster-filter-wrap"`) hidden until type-to-search (a printable key while on the Stacks view with rows) or, on mobile, the popover's **"Search stacks"** entry (`data-testid="roster-search"`). Case-insensitive substring on the name; `shown/total` count (`data-testid="roster-filter-count"`); non-matching rows and their trailing history panel hidden (`filtered-out`); an all-hidden result shows a **"No stack matches …"** note (`data-testid="roster-filter-empty"`); `Esc` clears then folds.
+
+Driven by the [`stacks`](#event-lifecycle-sse) SSE snapshot (published on connect and after every run), which carries the roster and a `discovery` flag alongside the existing `disabled` list.
+
+---
+
 ## Event lifecycle (SSE)
 
 On connect, history is replayed as `deploy` events, then live events stream in.
@@ -170,7 +184,7 @@ Besides `deploy` events, the stream carries named **state snapshots** — `autos
 
 - **`upcoming`** `{ "upcoming": ["grafana", "loki"] }` — the stacks that will deploy *after* the one currently deploying, in deploy order. The backend hashes every stack once upfront (after the git sync) to know which will actually deploy this run, then publishes the shrinking list as each stack starts; an empty list is published when the run ends. Drives the [Deploy indicator](#header--right) look-ahead trail and the [Run panel](#run-panel). Distinct from the autosync pending `queue` (deferred, paused stacks). `_nixos` is excluded — the rebuild has no per-stack deploying state.
 - **`health`** `{ "stacks": { "gitea": { "status": "healthy", "services": [{ "name": "gitea", "state": "running", "health": "healthy" }] }, … } }` — the current runtime health of skipper-cd's own stacks, driving the [Stack health](#stack-health) pill. The backend polls `docker compose ps` for each stack (only while the UI is on **and** a client is subscribed), rolls each stack up to `healthy`/`unhealthy`/`starting`/`stopped`/`unknown`, and republishes the snapshot on its interval, on connect, and after each deploy run. `_nixos` carries no health (it is not a compose project). See [ADR-0027](../../dev-docs/adr/0027-live-stack-health-in-ui.md).
-- **`stacks`** `{ "disabled": ["experiments"] }` — stack-set facts that are not deploy events: today the names parked via `disabled: true` in stack-discovery mode (ADR-0034), driving the [Disabled stacks](#disabled-stacks) line. `disabled` is empty/null in legacy mode. Published on connect and after every deploy run.
+- **`stacks`** `{ "disabled": ["experiments"], "roster": [ { "name": "traefik", "disabled": false, "last_status": "success", "last_at": "…", "last_commit": "a1b2c3d" }, … ], "discovery": true }` — stack-set facts that are not deploy events. `disabled` lists the names parked via `disabled: true` in stack-discovery mode (ADR-0034), driving the [Disabled stacks](#disabled-stacks) line (empty/null in legacy mode). `roster` is the full inventory driving the [Stacks view](#stacks-view) — every declared stack with its last outcome (`last_status` empty = never deployed; disabled entries carry no outcome). `discovery` is true in stack-discovery mode. Published on connect and after every deploy run.
 - **`healthwatch`** `{ "stacks": { "vaultwarden": { "vaultwarden": [{ "status": "unhealthy", "since": "2026-07-16T15:47:05Z", "commit": "a1b2c3d…", "deploy_correlated": true }, …] } } }` — the health watchdog's per-service status history (≤ 10 accepted phases per service, newest first), driving the [Status history](#stack-health) in the per-service panel. Only present when `health_watch` is configured; published on every accepted change and once on connect. `deploy_correlated` is derived by the backend from the attribution window — the UI never computes it. See [ADR-0031](../../dev-docs/adr/0031-notify-on-own-stack-health-change.md).
 
 ---
@@ -282,7 +296,7 @@ assert on.
 |---|---|---|
 | `brand-name` | Header `skipper-cd` wordmark | Stacked over the version label; hidden ≤ 700 px (logo alone carries the brand) |
 | `brand-version` | Header version label | `v<semver> · <commit>` / branch; `dev` local; empty until `/api/version` resolves; full string in `title`; shown in portrait ≤ 700 px |
-| `view-toggle` | Deploys/Logs segmented icon control | Active button (`.active`) opens the view-options popover |
+| `view-toggle` | Deploys/Stacks/Logs segmented icon control | Active button (`.active`) opens the view-options popover (Stacks has none on desktop) |
 | `deploy-indicator` | Deploy indicator (anchor/ship glyph) | `idle`/`deploying <stacks> · next <stacks>` in `title` + `aria-label`; `role="button"`, opens the run panel while active |
 | `deploy-next` | Look-ahead trail beside the active stack | Empty when nothing follows; hidden ≤ 700 px |
 | `deploy-count` | Mobile `+N` count chip (upcoming) | Shown only ≤ 700 px; empty when nothing follows |
@@ -317,7 +331,13 @@ assert on.
 | `deploy-filter` | Deploys type-to-search input | Hidden until the user types (desktop) or taps `deploy-search` (mobile); folds down above the table |
 | `deploy-filter-clear` | Deploys filter clear (`×`) button | Shown only when the field is non-empty |
 | `deploy-filter-empty` | "No stack matches …" note | Shown when the query hides every row |
-| `disabled-stacks` | Disabled-stacks chip line below the table | `.shown` when non-empty; hidden in legacy mode and in the logs view |
+| `disabled-stacks` | Disabled-stacks chip line below the table | `.shown` when non-empty; hidden in legacy mode and outside the deploys view |
+| `stacks-view` | Stacks roster view container | Shown only when `activeView === 'stacks'` |
+| `roster-count` / `roster-source` | Stacks-view header count / `discovery` hint | Source empty (hidden) in legacy mode |
+| `roster-row` | One stack's inventory row | `data-stack` = name; `.disabled` when parked; `.audit-open` when its history panel is open |
+| `roster-filter-wrap` / `roster-filter` | Stacks filter bar / input | Same reveal + type-to-search behaviour as `deploy-filter` |
+| `roster-filter-count` / `roster-filter-clear` / `roster-filter-empty` | Stacks filter `shown/total` / clear / no-match note | Mirror the deploys-filter counterparts |
+| `roster-search` | "Search stacks" row in the stacks view-options popover | Mobile-only entry point; reveals + focuses `roster-filter` |
 | `log-line` | A log line | `data-level` = level (or `cmd` for child output) |
 | `level-badge` | Log level badge | |
 | `stack-prefix` | `[stack]` prefix on a deploy log line | |

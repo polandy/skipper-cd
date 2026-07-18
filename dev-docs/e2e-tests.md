@@ -651,6 +651,32 @@ fails the dependency's redeploy after the two startup deploys. Behaviour-only
   and the dependency's own row shows the hostile name verbatim in its stack
   cell.
 
+### 4.18 UI — Maske Q: Stacks roster view (stack-roster-spec)
+
+The third top-level view: an inventory of the full stack set skipper owns (stack
+discovery, ADR-0034) with each stack's last outcome — as opposed to the deploy
+table's event log. Boots in discovery mode with `stacks: ['api', 'web', 'wip']`
+and a repo-root `skipper.yaml` parking `wip` (`disabled: true`). Behaviour-only
+(no new snapshot; the third view control regenerates the full-page `ud-chrome`
+baselines). The `never deployed` state is unit-tested (`internal/roster`) — in
+discovery mode the first sync deploys every stack, so it is not deterministically
+seedable in e2e — and shares its `.roster-flag` rendering with the disabled row.
+
+- **UQ1 — Inventory + discovery hint.** The stacks tab shows one row per
+  declared stack (api, web deployed → success badge; wip parked → `.disabled`
+  row with the `disabled` flag and no badge), enabled sorted before disabled,
+  the `3 stacks` count and the `discovery` hint; the deploy table is hidden and
+  restored on switching back.
+- **UQ2 — Click a row for history.** Clicking a row toggles its deploy-history
+  audit panel (`data-audit-for` = stack) below it; clicking again closes it, and
+  opening another row's history closes the first (one panel at a time).
+- **UQ3 — Search.** A printable key reveals the filter and seeds it; a substring
+  match narrows the rows with a `shown/total` count; a no-match query shows the
+  empty note; first `Esc` clears, second folds the bar away.
+- **UQ4 — Mobile search entry.** On a narrow viewport the stacks view-options
+  popover carries a desktop-hidden "Search stacks" row that reveals and focuses
+  the filter, which then narrows the rows the same way.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -753,6 +779,11 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Deploys search: type-to-reveal + filter + Esc fold | **UG1** |
 | Deploys search: no-match empty note | **UG2** |
 | Deploys search: mobile popover entry (desktop-hidden) | **UG3** |
+| Stacks roster: inventory rows (deployed/disabled) + count + discovery hint | **UQ1** |
+| Stacks roster: click a row for its deploy-history panel | **UQ2** |
+| Stacks roster: search (type-to-reveal, filter, empty note, Esc fold) | **UQ3** |
+| Stacks roster: mobile popover search entry | **UQ4** |
+| Stacks roster: never-deployed synthetic state | Unit `roster` — not e2e-seedable |
 | Stack health: rolled-up pill per stack (healthy/unhealthy/stopped) | **UH1** |
 | Stack health: per-service panel toggle | **UH2** |
 | Stack health: pill on the newest row per stack | **UH3** |
