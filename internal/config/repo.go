@@ -115,11 +115,13 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 			disabled = append(disabled, name)
 			continue
 		}
+		envFiles, envErr := resolveRepoPaths(stacksBaseDir, ov.EnvFiles)
+		watchDirs, watchErr := resolveRepoPaths(stacksBaseDir, ov.WatchDirs)
 		stack := Stack{
 			Name:               name,
 			WorkingDir:         ov.WorkingDir,
-			EnvFiles:           resolveRepoPaths(stacksBaseDir, ov.EnvFiles),
-			WatchDirs:          resolveRepoPaths(stacksBaseDir, ov.WatchDirs),
+			EnvFiles:           envFiles,
+			WatchDirs:          watchDirs,
 			OnDemandContainers: ov.OnDemandContainers,
 			Icon:               ov.Icon,
 			HealthCheck:        ov.HealthCheck,
@@ -135,6 +137,10 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 		switch {
 		case strings.HasPrefix(name, "_"):
 			failAt(name, "", "stack names starting with _ are reserved")
+		case envErr != nil:
+			failAt(name, "env_files", "%v", envErr)
+		case watchErr != nil:
+			failAt(name, "watch_dirs", "%v", watchErr)
 		case hcErr != nil:
 			failAt(name, "health_check", "health_check: %v", hcErr)
 		case depErr != nil:
@@ -236,20 +242,29 @@ func loadRepoOverrides(path string) (repoOverridesFile, error) {
 
 // resolveRepoPaths resolves relative paths against the repo clone root, so
 // repo-config entries like stacks/web/secrets.env point into the clone.
-// Absolute paths stay as-is.
-func resolveRepoPaths(repoDir string, paths []string) []string {
+// Absolute paths stay as-is — a documented escape hatch for host-level
+// secrets outside the repo (e.g. a sops-decrypted file), same as host-config
+// mode. A relative path is rejected if it escapes stacksBaseDir via "../":
+// unlike an absolute path, that's not a documented capability, just an
+// unintentional traversal a repo push could otherwise exploit.
+func resolveRepoPaths(stacksBaseDir string, paths []string) ([]string, error) {
 	if len(paths) == 0 {
-		return nil
+		return nil, nil
 	}
 	out := make([]string, len(paths))
 	for i, p := range paths {
 		if filepath.IsAbs(p) {
 			out[i] = p
-		} else {
-			out[i] = filepath.Join(repoDir, p)
+			continue
 		}
+		resolved := filepath.Join(stacksBaseDir, p)
+		rel, err := filepath.Rel(stacksBaseDir, resolved)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("path %q escapes stacks_base_dir", p)
+		}
+		out[i] = resolved
 	}
-	return out
+	return out, nil
 }
 
 // invalidDependency reports the first broken depends_on edge of a stack: a

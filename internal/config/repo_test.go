@@ -224,6 +224,40 @@ func TestLoadRepoStacks_ReservedDirNameReported(t *testing.T) {
 	}
 }
 
+func TestLoadRepoStacks_EnvFileEscapingStacksBaseDirReported(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/bad/docker-compose.yml": minimalCompose,
+		"stacks/ok/docker-compose.yml":  minimalCompose,
+		"stacks/skipper.yaml":           "stacks:\n  bad:\n    env_files:\n      - ../../etc/passwd\n",
+	})
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("LoadRepoStacks: %v", err)
+	}
+	if got := errorStacks(stackErrs); strings.Join(got, ",") != "bad" {
+		t.Fatalf("error stacks = %v, want [bad]", got)
+	}
+	if got := stackNames(repo.Stacks); strings.Join(got, ",") != "ok" {
+		t.Errorf("stacks = %v, want [ok]", got)
+	}
+}
+
+func TestLoadRepoStacks_WatchDirEscapingStacksBaseDirReported(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/bad/docker-compose.yml": minimalCompose,
+		"stacks/skipper.yaml":           "stacks:\n  bad:\n    watch_dirs:\n      - ../outside\n",
+	})
+
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("LoadRepoStacks: %v", err)
+	}
+	if got := errorStacks(stackErrs); strings.Join(got, ",") != "bad" {
+		t.Fatalf("error stacks = %v, want [bad]", got)
+	}
+}
+
 func TestLoadRepoStacks_InvalidHealthCheckReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/bad/docker-compose.yml": minimalCompose,
