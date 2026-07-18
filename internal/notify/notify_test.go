@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -207,4 +208,35 @@ func TestNotifier_EmptyIsDisabled(t *testing.T) {
 	}
 	// Notify on a disabled notifier is a no-op, not a panic.
 	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusFailed})
+}
+
+// ctxProbeKey tags a context so a fakeDoer can assert a delivered request's
+// context derives from a specific ctx value, not an unrelated context.Background().
+type ctxProbeKey struct{}
+
+func TestNotifier_RunThreadsRunCtxIntoLiveDelivery(t *testing.T) {
+	doer := &fakeDoer{}
+	n := mustNew(t, []config.NotificationTarget{genericTarget(config.NotifyOnFailed)}, doer)
+
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxProbeKey{}, "run-ctx"))
+	done := make(chan struct{})
+	go func() { n.Run(ctx); close(done) }()
+
+	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusFailed})
+	deadline := time.After(2 * time.Second)
+	for doer.count() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("notification was not delivered")
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	cancel()
+	<-done
+
+	got := doer.reqs[0].Context().Value(ctxProbeKey{})
+	if got != "run-ctx" {
+		t.Errorf("live delivery request context = %v, want it to derive from Run's ctx (\"run-ctx\")", got)
+	}
 }

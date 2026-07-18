@@ -17,6 +17,7 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/metrics"
+	"github.com/polandy/skipper-cd/internal/safego"
 )
 
 // MaxBodyBytes caps the webhook request body size. Push payloads are small,
@@ -79,7 +80,7 @@ func Handler(cfg *config.Config, deployer deployTrigger) http.HandlerFunc {
 
 		// No run-wide deadline: each shell command is bounded individually
 		// by the deployer's per-command timeout.
-		go deployer.SyncAndDeployAll(context.Background(), cfg)
+		safego.Go("webhook-deploy", func() { deployer.SyncAndDeployAll(context.Background(), cfg) })
 
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = fmt.Fprintln(w, "deploy triggered")

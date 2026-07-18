@@ -33,6 +33,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/metrics"
 	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/reconcile"
+	"github.com/polandy/skipper-cd/internal/safego"
 	"github.com/polandy/skipper-cd/internal/selfheal"
 	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
@@ -219,7 +220,7 @@ func main() {
 		os.Exit(1)
 	}
 	if notifier.Enabled() {
-		go notifier.Run(signalCtx)
+		safego.Go("notifier", func() { notifier.Run(signalCtx) })
 		eventSinks = append(eventSinks, notifier.Notify)
 		slog.Info("notifications enabled", "targets", len(cfg.Notifications))
 	}
@@ -265,7 +266,7 @@ func main() {
 		}
 		var alertSink healthwatch.Alerter
 		if alerter.Enabled() {
-			go alerter.Run(signalCtx)
+			safego.Go("health-alerter", func() { alerter.Run(signalCtx) })
 			alertSink = alerter
 		}
 		hwCfg := healthwatch.Config{
@@ -375,12 +376,12 @@ func main() {
 	// Start the health poller only now that the deployer exists: its snapshot
 	// feed may drive a self-heal, which redeploys through the deployer.
 	if healthPoller != nil {
-		go healthPoller.Run(signalCtx)
+		safego.Go("health-poller", func() { healthPoller.Run(signalCtx) })
 	}
 	publishAutosync() // initialize the gauges
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
-	go deployer.SyncAndDeployAll(context.Background(), cfg)
+	safego.Go("startup-sync", func() { deployer.SyncAndDeployAll(context.Background(), cfg) })
 
 	// Periodic reconcile: re-run sync + deploy on a timer so a missed or lost
 	// webhook cannot leave the host drifted from the deploy repo indefinitely
@@ -388,7 +389,7 @@ func main() {
 	// headless. A tick is skipped while a deploy is already in flight.
 	if interval := *cfg.ReconcileIntervalSeconds; interval > 0 {
 		loop := reconcile.New(time.Duration(interval)*time.Second, deployReconciler{deployer, cfg})
-		go loop.Run(signalCtx)
+		safego.Go("reconcile", func() { loop.Run(signalCtx) })
 		slog.Info("periodic reconcile enabled", "interval_seconds", interval)
 	}
 
@@ -398,7 +399,7 @@ func main() {
 		stateB:  stateB,
 		order:   order,
 		publish: publishAutosync,
-		trigger: func() { go deployer.SyncAndDeployAll(context.Background(), cfg) },
+		trigger: func() { safego.Go("autosync-trigger", func() { deployer.SyncAndDeployAll(context.Background(), cfg) }) },
 	}
 
 	bi, ok := debug.ReadBuildInfo()

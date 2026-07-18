@@ -91,7 +91,7 @@ func (a *HealthAlerter) Run(ctx context.Context) {
 			a.drain()
 			return
 		case al := <-a.queue:
-			a.handle(context.Background(), al)
+			a.handle(ctx, al)
 		}
 	}
 }
