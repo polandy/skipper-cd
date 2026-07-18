@@ -1,0 +1,120 @@
+// Unit layer for the pure UI helpers (app-helpers.js). Runs with the Node
+// built-in test runner — `node --test` (or `make ui-unit`), no build step, no
+// dependencies. Co-located with the source; it is neither embedded (the go:embed
+// directive names app-helpers.js specifically) nor served (the handler serves
+// only that file), so it never ships in the binary.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const h = require('./app-helpers.js');
+
+test('formatDuration', () => {
+  assert.equal(h.formatDuration(0), '—');
+  assert.equal(h.formatDuration(-5), '—');
+  assert.equal(h.formatDuration(undefined), '—');
+  assert.equal(h.formatDuration(1), '0s'); // sub-second rounds down
+  assert.equal(h.formatDuration(5000), '5s');
+  assert.equal(h.formatDuration(59000), '59s');
+  assert.equal(h.formatDuration(60000), '1m 0s');
+  assert.equal(h.formatDuration(90500), '1m 30s');
+  assert.equal(h.formatDuration(3661000), '61m 1s'); // no hour rollover, by design
+});
+
+test('formatTime relative boundaries', () => {
+  const now = Date.now();
+  assert.equal(h.formatTime(now), 'just now');
+  assert.equal(h.formatTime(now - 3000), 'just now'); // < 5s
+  assert.equal(h.formatTime(now - 10000), '10s ago');
+  assert.equal(h.formatTime(now - 5 * 60000), '5m ago');
+  assert.equal(h.formatTime(now - 3 * 3600000), '3h ago');
+  assert.equal(h.formatTime(now - 2 * 86400000), '2d ago');
+});
+
+test('fullTime is a non-empty locale string', () => {
+  assert.equal(typeof h.fullTime(Date.now()), 'string');
+  assert.ok(h.fullTime(Date.now()).length > 0);
+});
+
+test('classifyDiffLine', () => {
+  assert.equal(h.classifyDiffLine('+++ b/file'), 'diff-meta');
+  assert.equal(h.classifyDiffLine('--- a/file'), 'diff-meta');
+  assert.equal(h.classifyDiffLine('diff --git a b'), 'diff-meta');
+  assert.equal(h.classifyDiffLine('index abc..def'), 'diff-meta');
+  assert.equal(h.classifyDiffLine('@@ -1,2 +1,2 @@'), 'diff-hunk');
+  assert.equal(h.classifyDiffLine('+added'), 'diff-add');
+  assert.equal(h.classifyDiffLine('-removed'), 'diff-del');
+  assert.equal(h.classifyDiffLine(' context'), '');
+  // Precedence: the +++/--- meta check must win over the +/- add/del check.
+  assert.equal(h.classifyDiffLine('+++ x'), 'diff-meta');
+});
+
+test('shortSHA', () => {
+  assert.equal(h.shortSHA('0123456789abcdef'), '0123456');
+  assert.equal(h.shortSHA('abc'), 'abc');
+  assert.equal(h.shortSHA(''), '');
+  assert.equal(h.shortSHA(null), '');
+  assert.equal(h.shortSHA(undefined), '');
+});
+
+test('statusText flattens the stacked statuses', () => {
+  assert.equal(h.statusText('rolled_back'), 'rolled back');
+  assert.equal(h.statusText('rolled_back_unhealthy'), 'rolled back · unhealthy');
+  assert.equal(h.statusText('heal_exhausted'), 'self-heal · failed');
+  assert.equal(h.statusText('success'), 'success');
+  assert.equal(h.statusText(''), '');
+  assert.equal(h.statusText(undefined), '');
+});
+
+test('auditStatusLabel', () => {
+  assert.equal(h.auditStatusLabel('rolled_back'), 'rolled back');
+  assert.equal(h.auditStatusLabel('rolled_back_unhealthy'), 'rolled back · unhealthy');
+  assert.equal(h.auditStatusLabel('heal_exhausted'), 'self-heal failed'); // no middot, unlike statusText
+  assert.equal(h.auditStatusLabel('success'), 'success');
+});
+
+test('phaseDuration coarse units', () => {
+  assert.equal(h.phaseDuration(0), '0s');
+  assert.equal(h.phaseDuration(500), '0s'); // < 1s
+  assert.equal(h.phaseDuration(5000), '5s');
+  assert.equal(h.phaseDuration(5 * 60000), '5m');
+  assert.equal(h.phaseDuration(6 * 3600000 + 12 * 60000), '6h12m');
+  assert.equal(h.phaseDuration(3 * 3600000), '3h'); // exact hour, no trailing minutes
+  assert.equal(h.phaseDuration(3 * 86400000 + 4 * 3600000), '3d4h');
+  assert.equal(h.phaseDuration(2 * 86400000), '2d'); // exact day, no trailing hours
+});
+
+test('healthClass maps state/health to the rollup vocabulary', () => {
+  assert.equal(h.healthClass({ health: 'unhealthy' }), 'unhealthy');
+  assert.equal(h.healthClass({ state: 'restarting' }), 'unhealthy');
+  assert.equal(h.healthClass({ state: 'dead' }), 'unhealthy');
+  assert.equal(h.healthClass({ health: 'starting' }), 'starting');
+  assert.equal(h.healthClass({ state: 'created' }), 'starting');
+  assert.equal(h.healthClass({ health: 'healthy' }), 'healthy');
+  assert.equal(h.healthClass({ state: 'running' }), 'healthy');
+  assert.equal(h.healthClass({ state: 'exited' }), 'stopped');
+  assert.equal(h.healthClass({}), 'stopped');
+  // unhealthy takes precedence over a running state.
+  assert.equal(h.healthClass({ health: 'unhealthy', state: 'running' }), 'unhealthy');
+});
+
+test('levelClass clamps unknown levels to INFO', () => {
+  for (const lvl of ['DEBUG', 'INFO', 'WARN', 'ERROR']) assert.equal(h.levelClass(lvl), lvl);
+  assert.equal(h.levelClass('TRACE'), 'INFO');
+  assert.equal(h.levelClass(''), 'INFO');
+  assert.equal(h.levelClass(undefined), 'INFO');
+});
+
+test('logTime: same-day is time-only, other-day carries a date prefix', () => {
+  const now = new Date();
+  const sameDay = h.logTime(now.getTime());
+  const otherDay = h.logTime(now.getTime() - 3 * 86400000);
+  assert.equal(typeof sameDay, 'string');
+  // The other-day form is strictly longer — it prepends the date to the time.
+  assert.ok(otherDay.length > sameDay.length, `expected date prefix: ${otherDay}`);
+});
+
+test('reasonFromSnap', () => {
+  assert.equal(h.reasonFromSnap({ effective: true }), '');
+  assert.equal(h.reasonFromSnap({ effective: false, overridden: true }), 'stack');
+  assert.equal(h.reasonFromSnap({ effective: false, config: false }), 'stack');
+  assert.equal(h.reasonFromSnap({ effective: false }), 'global');
+});

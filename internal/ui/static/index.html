@@ -2292,6 +2292,10 @@
   </div>
 </main>
 
+<!-- Pure, DOM-free helpers, extracted so a node --test unit layer can import
+     them without a build step (ADR-0035). Loaded first, so the app script below
+     calls them as globals by bare name. See internal/ui/static/app-helpers.js. -->
+<script src="/app-helpers.js"></script>
 <script>
 (function() {
   const tbody = document.getElementById('tbody');
@@ -2360,30 +2364,6 @@
       table.style.display = '';
       emptyState.style.display = 'none';
     }
-  }
-
-  function formatDuration(ms) {
-    if (!ms || ms <= 0) return '\u2014';
-    const s = Math.floor(ms / 1000);
-    if (s < 60) return s + 's';
-    const m = Math.floor(s / 60);
-    const rem = s % 60;
-    return m + 'm ' + rem + 's';
-  }
-
-  function formatTime(ts) {
-    const d = new Date(ts);
-    const now = new Date();
-    const diffS = Math.floor((now - d) / 1000);
-    if (diffS < 5) return 'just now';
-    if (diffS < 60) return diffS + 's ago';
-    if (diffS < 3600) return Math.floor(diffS / 60) + 'm ago';
-    if (diffS < 86400) return Math.floor(diffS / 3600) + 'h ago';
-    return Math.floor(diffS / 86400) + 'd ago';
-  }
-
-  function fullTime(ts) {
-    return new Date(ts).toLocaleString();
   }
 
   function badgeHTML(status) {
@@ -2466,30 +2446,11 @@
     return el;
   }
 
-  function classifyDiffLine(line) {
-    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ')) return 'diff-meta';
-    if (line.startsWith('@@')) return 'diff-hunk';
-    if (line.startsWith('+')) return 'diff-add';
-    if (line.startsWith('-')) return 'diff-del';
-    return '';
-  }
-
   function renderDiffContent(diff) {
     return diff.split('\n').map(function(line) {
       const cls = classifyDiffLine(line);
       return `<span class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line)}</span>`;
     }).join('\n');
-  }
-
-  function shortSHA(sha) { return (sha || '').slice(0, 7); }
-
-  // statusText renders a deploy status as the short label shown on the diff
-  // panel's echo pill (mirrors badge wording without the stacked layout).
-  function statusText(status) {
-    if (status === 'rolled_back') return 'rolled back';
-    if (status === 'rolled_back_unhealthy') return 'rolled back · unhealthy';
-    if (status === 'heal_exhausted') return 'self-heal · failed';
-    return status || '';
   }
 
   var personGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
@@ -2837,39 +2798,6 @@
     el.insertAdjacentHTML('beforeend', body);
   }
 
-  // auditStatusLabel spells the two stacked-badge statuses on one line — the
-  // history rows are compact, so the two-line badge wording is flattened here.
-  function auditStatusLabel(status) {
-    if (status === 'rolled_back') return 'rolled back';
-    if (status === 'rolled_back_unhealthy') return 'rolled back · unhealthy';
-    if (status === 'heal_exhausted') return 'self-heal failed';
-    return status;
-  }
-
-  // phaseDuration renders a millisecond span the way the health timeline needs
-  // it: compact, coarse ("6h12m", "5m", "3d4h"), never seconds-precise beyond
-  // the first minute.
-  function phaseDuration(ms) {
-    if (!ms || ms < 1000) return '0s';
-    var s = Math.floor(ms / 1000);
-    if (s < 60) return s + 's';
-    var m = Math.floor(s / 60);
-    if (m < 60) return m + 'm';
-    var h = Math.floor(m / 60);
-    if (h < 24) return h + 'h' + (m % 60 ? (m % 60) + 'm' : '');
-    var d = Math.floor(h / 24);
-    return d + 'd' + (h % 24 ? (h % 24) + 'h' : '');
-  }
-
-  // phaseSince renders a phase start compactly in local time: time-of-day for
-  // today, day+month plus time otherwise.
-  function phaseSince(ts) {
-    var d = new Date(ts);
-    var time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (d.toDateString() === new Date().toDateString()) return time;
-    return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + time;
-  }
-
   // healthHistoryHTML renders one service's status timeline from the
   // healthwatch snapshot (ADR-0031): newest first, each accepted phase with its
   // start, how long it held, and the deploy commit when correlated. Returns ''
@@ -2942,15 +2870,6 @@
         `</div>` + healthHistoryHTML(stack, s.name);
     }).join('');
     return el;
-  }
-
-  // healthClass maps one service to the same status vocabulary as the rollup, so
-  // the per-service dot colour matches the pill's tier.
-  function healthClass(s) {
-    if (s.health === 'unhealthy' || s.state === 'restarting' || s.state === 'dead') return 'unhealthy';
-    if (s.health === 'starting' || s.state === 'created') return 'starting';
-    if (s.health === 'healthy' || s.state === 'running') return 'healthy';
-    return 'stopped';
   }
 
   function updateDeployingIndicator() {
@@ -3485,14 +3404,6 @@
       .catch(function() {});
   }
 
-  // reasonFromSnap derives why a paused stack is paused when it is not in the
-  // queue (the queue item carries an authoritative reason of its own).
-  function reasonFromSnap(s) {
-    if (s.effective) return '';
-    if (s.overridden || s.config === false) return 'stack';
-    return 'global';
-  }
-
   function waited(since) {
     var diffS = Math.floor((Date.now() - new Date(since).getTime()) / 1000);
     if (diffS < 60) return diffS + 's';
@@ -3665,21 +3576,6 @@
   let followLogs = localStorage.getItem('followLogs') !== 'false';
   let activeView = localStorage.getItem('activeView') === 'logs' ? 'logs' : 'deploys';
   let logSource = null;
-
-  function levelClass(level) {
-    return ['DEBUG', 'INFO', 'WARN', 'ERROR'].indexOf(level) >= 0 ? level : 'INFO';
-  }
-
-  // logTime shows the time of day; lines from another day get a date
-  // prefix. The full timestamp is always in the tooltip.
-  function logTime(ts) {
-    var d = new Date(ts);
-    var t = d.toLocaleTimeString();
-    if (d.toDateString() !== new Date().toDateString()) {
-      return d.toLocaleDateString() + ' ' + t;
-    }
-    return t;
-  }
 
   function renderLogLine(entry) {
     var line = document.createElement('div');

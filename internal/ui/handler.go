@@ -17,7 +17,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-//go:embed static/index.html static/manifest.webmanifest static/sw.js static/icons static/fonts
+//go:embed static/index.html static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
 
 // IndexHandler serves the embedded UI HTML page, with the configured theme
@@ -106,6 +106,23 @@ func ServiceWorkerHandler(b BuildInfo) http.Handler {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(body)
+	})
+}
+
+// AppHelpersHandler serves GET /app-helpers.js — the pure, DOM-free UI helper
+// functions extracted from the app shell (ADR-0035) so a node --test unit layer
+// can import them without a build step. The app shell loads this first and calls
+// the helpers as globals. Served no-cache so it stays in lockstep with the shell
+// it supports; the service worker caches it in the app shell for offline use.
+func AppHelpersHandler() http.Handler {
+	data, err := staticFS.ReadFile("static/app-helpers.js")
+	if err != nil {
+		panic(err) // staticFS embeds static/app-helpers.js at compile time, so this cannot fail.
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(data)
 	})
 }
 
