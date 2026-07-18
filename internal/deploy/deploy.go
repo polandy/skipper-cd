@@ -122,6 +122,7 @@ type Deployer struct {
 	lastSyncErr      atomic.Pointer[syncOutcome]       // nil until the first run
 	currentRunPlan   atomic.Pointer[RunPlan]           // latest published plan, for late joiners
 	discoveredStacks atomic.Pointer[config.RepoStacks] // stack-discovery result, nil in legacy mode
+	projectDirs      atomic.Pointer[map[string]string] // recorded stack→project-dir, for orphan detection
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -162,6 +163,16 @@ type stackRun struct {
 	composePath string   // compose file, always from the repo clone
 	projectDir  string   // --project-directory; "" = compose file's own dir
 	baseEnv     []string // os.Environ() + vars_file (env_files are added per call)
+}
+
+// effectiveProjectDir returns the directory docker compose uses as the project's
+// working_dir label: --project-directory when set, else the compose file's dir
+// (Invariant 1). It is what orphan detection matches against.
+func (r stackRun) effectiveProjectDir() string {
+	if r.projectDir != "" {
+		return r.projectDir
+	}
+	return filepath.Dir(r.composePath)
 }
 
 // newStackRun resolves the run values for a stack: the compose file from the
@@ -568,6 +579,10 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		slog.Error("could not save deploy state", "err", err)
 	}
 
+	// Publish the recorded project dirs for out-of-run orphan detection.
+	dirs := state.projectDirs()
+	d.projectDirs.Store(&dirs)
+
 	// After the run, let the wiring publish autosync/queue snapshots and refresh
 	// gauges (queue depth may have changed via defer/clear this run).
 	if d.postRunHook != nil {
@@ -689,6 +704,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	if currentImages != nil {
 		state.recordImages(stack.Name, currentImages)
 	}
+	state.recordProjectDir(stack.Name, run.effectiveProjectDir())
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
 	eventID := d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", cs)
 	if eventID != 0 {

@@ -125,6 +125,40 @@ function reasonFromSnap(s) {
   return 'global';
 }
 
+// orphanMeta is the right-hand note on an orphan row: "state only" when nothing
+// runs, otherwise the container count.
+function orphanMeta(o) {
+  if (o.state_only) return 'state only';
+  const n = (o.containers || []).length;
+  return n + (n === 1 ? ' container' : ' containers');
+}
+
+// orphanStateClass maps a container's docker State to the health-pill dot
+// vocabulary (healthy / unhealthy / stopped).
+function orphanStateClass(state) {
+  if (state === 'running') return 'healthy';
+  if (state === 'restarting' || state === 'dead') return 'unhealthy';
+  return 'stopped';
+}
+
+// containerMatchesQuery reports whether a container matches the lowercased query
+// across its fields. Empty query never matches.
+function containerMatchesQuery(c, q) {
+  if (!q) return false;
+  return [c.name, c.service, c.image, c.ports, c.status].some(function (v) {
+    return (v || '').toLowerCase().indexOf(q) !== -1;
+  });
+}
+
+// orphanMatchesQuery reports whether an orphan matches the query — its project
+// fields (name, working_dir, config file, volumes) or any of its containers.
+function orphanMatchesQuery(o, q) {
+  if (!q) return false;
+  const fields = [o.project, o.working_dir, o.config_file].concat(o.volumes || []);
+  if (fields.some(function (v) { return (v || '').toLowerCase().indexOf(q) !== -1; })) return true;
+  return (o.containers || []).some(function (c) { return containerMatchesQuery(c, q); });
+}
+
 // Dual-use export: in the browser this file loads as a plain <script>, so the
 // functions above are already globals and `module` is undefined — the export is
 // skipped. Under `node --test` `module` exists, so the helpers are exported for
@@ -133,6 +167,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     formatDuration, formatTime, fullTime, classifyDiffLine, shortSHA,
     statusText, auditStatusLabel, phaseDuration, phaseSince, healthClass,
-    levelClass, logTime, reasonFromSnap,
+    levelClass, logTime, reasonFromSnap, orphanMeta, orphanStateClass,
+    containerMatchesQuery, orphanMatchesQuery,
   };
 }

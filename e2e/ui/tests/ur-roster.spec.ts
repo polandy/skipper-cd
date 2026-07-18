@@ -1,16 +1,16 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske Q: Stacks roster view (dev-docs/stack-roster-spec.md, shared design in
-// dev-docs/ui-design-concept.md). See dev-docs/e2e-tests.md §4.18.
+// Maske R: Stacks roster view (dev-docs/stack-roster-spec.md, shared design in
+// dev-docs/ui-design-concept.md). See dev-docs/e2e-tests.md §4.19.
 //
 // A third top-level view listing the full stack set skipper owns (stack
 // discovery, ADR-0034) with each stack's last outcome — inventory, not an event
 // log, rendered as an aligned table that reuses the deploy table's row/column/
 // expand language. Covers the view switch + deployed/disabled rows + aligned
-// column header (UQ1), click-a-row → containers + deploy history (UQ2), the
-// search filter incl. the mobile popover entry (UQ3/UQ4), and the shared
-// time-mode toggle (UQ5). The "never deployed" synthetic state is unit-tested
+// column header (UR1), click-a-row → containers + deploy history (UR2), the
+// search filter incl. the mobile popover entry (UR3/UR4), and the shared
+// time-mode toggle (UR5). The "never deployed" synthetic state is unit-tested
 // (internal/roster) and shares its .roster-flag rendering with the disabled row
 // asserted here. Behaviour-only (no snapshot).
 
@@ -27,7 +27,7 @@ test.use({
   startOptions: {
     stacks: ['api', 'web', 'wip'],
     discovery: { repoConfig: 'stacks:\n  wip:\n    disabled: true\n', disabled: ['wip'] },
-    // Health on, so expanding a stack shows its containers panel (UQ2).
+    // Health on, so expanding a stack shows its containers panel (UR2).
     healthPoll: 1,
     initialHealth: {
       api: [{ Service: 'api', State: 'running', Health: 'healthy' }],
@@ -36,9 +36,9 @@ test.use({
   },
 });
 
-// UQ1 — the roster lists the whole set as an aligned table (column header, no
+// UR1 — the roster lists the whole set as an aligned table (column header, no
 // count/title line) and the view replaces the deploy table.
-test('UQ1: lists the full set as an aligned table and replaces the deploy table', async ({ page, skipper }) => {
+test('UR1: lists the full set as an aligned table and replaces the deploy table', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   await stacksBtn(page).click();
 
@@ -72,9 +72,9 @@ test('UQ1: lists the full set as an aligned table and replaces the deploy table'
   await expect(page.locator('[data-testid="deploys-table"]')).toBeVisible();
 });
 
-// UQ2 — clicking a row expands the stack into its containers (health) panel
+// UR2 — clicking a row expands the stack into its containers (health) panel
 // above its deploy-history panel; one stack open at a time.
-test('UQ2: clicking a row shows the stack containers and deploy history', async ({ page, skipper }) => {
+test('UR2: clicking a row shows the stack containers and deploy history', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   // Wait until the health snapshot has landed (the deploy table shows a pill),
   // so the containers panel is populated once we expand a roster row.
@@ -107,9 +107,9 @@ test('UQ2: clicking a row shows the stack containers and deploy history', async 
   await expect(page.locator('[data-testid="health-panel"]')).toHaveCount(1);
 });
 
-// UQ3 — desktop type-to-search: a printable key reveals the bar, seeds it, and
+// UR3 — desktop type-to-search: a printable key reveals the bar, seeds it, and
 // filters by stack name; the empty note echoes a no-match query.
-test('UQ3: typing filters the roster and shows the empty note on no match', async ({ page, skipper }) => {
+test('UR3: typing filters the roster and shows the empty note on no match', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   await stacksBtn(page).click();
   await expect(rows(page)).toHaveCount(3);
@@ -139,9 +139,9 @@ test('UQ3: typing filters the roster and shows the empty note on no match', asyn
   await expect(wrap(page)).toBeHidden();
 });
 
-// UQ4 — mobile entry point: touch has no keyboard, so the stacks view-options
+// UR4 — mobile entry point: touch has no keyboard, so the stacks view-options
 // popover carries a desktop-hidden "Search stacks" row that reveals the filter.
-test('UQ4: the mobile popover "Search stacks" row reveals and focuses the filter', async ({ page, skipper }) => {
+test('UR4: the mobile popover "Search stacks" row reveals and focuses the filter', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   await stacksBtn(page).click();
   await expect(rows(page)).toHaveCount(3);
@@ -166,9 +166,9 @@ test('UQ4: the mobile popover "Search stacks" row reveals and focuses the filter
   await expect(row(page, 'web')).toBeHidden();
 });
 
-// UQ5 — the shared time-mode toggle in the stacks popover switches the roster's
+// UR5 — the shared time-mode toggle in the stacks popover switches the roster's
 // times from relative to absolute (one mode, shared with the deploys toggle).
-test('UQ5: the time-mode toggle switches roster times to absolute', async ({ page, skipper }) => {
+test('UR5: the time-mode toggle switches roster times to absolute', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   await stacksBtn(page).click();
 

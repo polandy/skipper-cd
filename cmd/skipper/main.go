@@ -32,6 +32,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/logbuf"
 	"github.com/polandy/skipper-cd/internal/metrics"
 	"github.com/polandy/skipper-cd/internal/notify"
+	"github.com/polandy/skipper-cd/internal/orphans"
 	"github.com/polandy/skipper-cd/internal/reconcile"
 	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/safego"
@@ -176,13 +177,32 @@ func main() {
 		return cfg.Stacks
 	}
 
+	// managedNow builds the expected set for orphan detection (ADR-0036) from the
+	// effective stacks, the disabled set, and the recorded project dirs.
+	managedNow := func() orphans.Managed {
+		m := orphans.Managed{
+			BaseDir:      cfg.StacksBaseDir,
+			ActiveDirs:   map[string]bool{},
+			DisabledDirs: map[string]bool{},
+			StateDirs:    deployer.CurrentProjectDirs(),
+		}
+		for _, s := range stacksNow() {
+			m.ActiveDirs[stackProjectDir(cfg, s)] = true
+		}
+		for _, name := range deployer.CurrentDisabledStacks() {
+			m.DisabledDirs[filepath.Join(cfg.StacksBaseDir, name)] = true
+		}
+		return m
+	}
+
 	var (
-		broadcaster  *events.Broadcaster[events.DeployEvent]
-		stateB       *events.Broadcaster[events.StateEvent]
-		history      *events.History
-		healthPoller *health.Poller
-		startEventID int64
-		runPlanSink  func(deploy.RunPlan)
+		broadcaster    *events.Broadcaster[events.DeployEvent]
+		stateB         *events.Broadcaster[events.StateEvent]
+		history        *events.History
+		healthPoller   *health.Poller
+		orphanDetector *orphans.Detector
+		startEventID   int64
+		runPlanSink    func(deploy.RunPlan)
 	)
 	// The deploy event sink is composed from whatever consumers are configured;
 	// each is independent, so notifications work with the UI off (ADR-0020).
@@ -316,6 +336,21 @@ func main() {
 		if healthWatcher != nil {
 			snapshotSinks = append(snapshotSinks, healthWatcher.Observe)
 		}
+		// Orphan detection (ADR-0036) rides the health-poll cadence (no second
+		// timer) and is UI-gated: HasSubscribers skips the headless AlwaysPoll ticks
+		// self-heal/healthwatch drive.
+		if stateB != nil {
+			orphanDetector = orphans.New(orphans.Config{
+				Outputter: command.NewShellRunner(healthTimeout),
+				Managed:   managedNow,
+				Publish:   func(s orphans.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateOrphans, Data: s}) },
+			})
+			snapshotSinks = append(snapshotSinks, func(health.Snapshot) {
+				if stateB.HasSubscribers() {
+					orphanDetector.Detect(context.Background())
+				}
+			})
+		}
 		if len(snapshotSinks) > 0 {
 			hpCfg.OnSnapshot = func(s health.Snapshot) {
 				for _, sink := range snapshotSinks {
@@ -411,7 +446,7 @@ func main() {
 	}
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, stacksNow, deployer, healthPoller, healthWatcher, broadcaster, history, auditLog, logRing, as, build))
+	webhookServer := startServer("webhook", cfg.Port, webhookMux(cfg, stacksNow, deployer, healthPoller, healthWatcher, orphanDetector, broadcaster, history, auditLog, logRing, as, build))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
 	// requests, then let an in-flight deploy finish so docker compose is not
@@ -529,6 +564,16 @@ func healthStacks(cfg *config.Config, stacks []config.Stack) []health.StackRef {
 	return refs
 }
 
+// stackProjectDir returns the compose project directory of a stack — its
+// working_dir when set, else stacks_base_dir/<name> — matching the working_dir
+// label a running project carries, for orphan detection (ADR-0036).
+func stackProjectDir(cfg *config.Config, s config.Stack) string {
+	if s.WorkingDir != "" {
+		return s.WorkingDir
+	}
+	return filepath.Join(cfg.StacksBaseDir, s.Name)
+}
+
 // deployOrder returns stack names in the order DeployAllStacks processes them:
 // _nixos first (when the rebuild is enabled), then the effective stacks.
 func deployOrder(cfg *config.Config, stacks []config.Stack) []string {
@@ -549,7 +594,7 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *deploy.Deployer, healthPoller *health.Poller, healthWatcher *healthwatch.Watcher, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
+func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *deploy.Deployer, healthPoller *health.Poller, healthWatcher *healthwatch.Watcher, orphanDetector *orphans.Detector, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, as *autosyncDeps, build ui.BuildInfo) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /webhook", webhook.Handler(cfg, deployer))
 	mux.HandleFunc("GET /healthz", healthzHandler(deployer))
@@ -564,10 +609,13 @@ func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *depl
 			}
 			if healthPoller != nil {
 				state = append(state, events.StateEvent{Name: events.StateHealth, Data: healthPoller.Current()})
-				healthPoller.Poll() // a client just connected — refresh now
+				healthPoller.Poll() // a client just connected — refresh now (also refreshes orphans)
 			}
 			if healthWatcher != nil {
 				state = append(state, events.StateEvent{Name: events.StateHealthWatch, Data: healthWatcher.Current()})
+			}
+			if orphanDetector != nil {
+				state = append(state, events.StateEvent{Name: events.StateOrphans, Data: orphanDetector.Current()})
 			}
 			return state
 		}

@@ -30,3 +30,26 @@ func TestSaveDeployState_RoundTripsAndLeavesNoTempFiles(t *testing.T) {
 		t.Errorf("expected round-tripped state, got %+v", loaded)
 	}
 }
+
+func TestSaveDeployState_RoundTripsProjectDirs(t *testing.T) {
+	dir := t.TempDir()
+	state := newEmptyState()
+	state.recordProjectDir("web", "/repo/stacks/web")
+
+	if err := saveDeployState(dir, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	loaded, err := loadPersistedDeployState(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := loaded.ProjectDirs["web"]; got != "/repo/stacks/web" {
+		t.Errorf("expected round-tripped project dir, got %q", got)
+	}
+	// projectDirs() returns a defensive copy.
+	copyOut := loaded.projectDirs()
+	copyOut["web"] = "mutated"
+	if loaded.ProjectDirs["web"] == "mutated" {
+		t.Error("projectDirs() must return a copy, not the backing map")
+	}
+}

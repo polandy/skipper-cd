@@ -18,6 +18,20 @@ const stubDockerScript = `#!/bin/sh
 dir=$(pwd)
 printf '%s\\t%s\\n' "$dir" "$*" >> "$DOCKER_LOG"
 
+# Orphan detection (ADR-0036): \`volume ls\` / \`ps -a\` answered from a shared
+# listing (setOrphans/setVolumes). Matched before the health \`ps\` case: \`ps -a\`
+# also contains " ps ", but health's \`ps --format json --all\` never does.
+case " $* " in
+  *" volume "*)
+    [ -n "$STUB_DOCKER_ORPHANS_DIR" ] && [ -f "$STUB_DOCKER_ORPHANS_DIR/volumes.txt" ] && cat "$STUB_DOCKER_ORPHANS_DIR/volumes.txt"
+    exit 0
+    ;;
+  *" ps -a "*)
+    [ -n "$STUB_DOCKER_ORPHANS_DIR" ] && [ -f "$STUB_DOCKER_ORPHANS_DIR/orphans.txt" ] && cat "$STUB_DOCKER_ORPHANS_DIR/orphans.txt"
+    exit 0
+    ;;
+esac
+
 # Health poll: emit the scripted \`compose ps --format json\` output for this
 # stack (keyed by the project dir's basename), else nothing (-> stopped).
 case " $* " in
@@ -189,11 +203,65 @@ export interface StartOptions {
   dependsOn?: Record<string, string[]>;
 }
 
+/** OrphanContainer is one line of the stub's `docker ps -a` listing — a single
+ *  compose-managed container. Several sharing a `project` group into one orphan.
+ *  Mirrors the columns the detector reads (orphans/detect.go psColumns). */
+export interface OrphanContainer {
+  project: string;
+  workingDir: string;
+  /** Defaults to `<workingDir>/docker-compose.yml`. */
+  configFile?: string;
+  name: string;
+  service?: string;
+  image?: string;
+  /** docker State: running | exited | restarting | dead | created (default running). */
+  state?: string;
+  status?: string;
+  ports?: string;
+}
+
+/** OrphanVolume maps a compose-created named volume to its owning project. */
+export interface OrphanVolume {
+  project: string;
+  volume: string;
+}
+
+/** orphansListing renders container specs into the tab-separated form the stub's
+ *  `docker ps -a` emits (columns per orphans/detect.go psColumns). */
+function orphansListing(rows: OrphanContainer[]): string {
+  return (
+    rows
+      .map((r) =>
+        [
+          r.project,
+          r.workingDir,
+          r.configFile ?? join(r.workingDir, 'docker-compose.yml'),
+          r.name,
+          r.service ?? '',
+          r.image ?? '',
+          r.state ?? 'running',
+          r.status ?? '',
+          r.ports ?? '',
+        ].join('\t'),
+      )
+      .join('\n') + '\n'
+  );
+}
+
+/** volumesListing renders volume specs into `project<TAB>volume` lines. */
+function volumesListing(vols: OrphanVolume[]): string {
+  return vols.map((v) => `${v.project}\t${v.volume}`).join('\n') + '\n';
+}
+
 /** Skipper is a running skipper binary under test with its origin, stub docker,
  *  and derived paths — the Node twin of the Go `skipper` struct. */
 export class Skipper {
   readonly baseURL: string;
   readonly metricsURL: string;
+  /** stacksBaseDir is the repo clone dir (== stacks_base_dir); a stack `foo`
+   *  deploys with working_dir `<stacksBaseDir>/foo`. Orphan tests build a
+   *  container's working_dir under it to classify as orphaned. */
+  readonly stacksBaseDir: string;
   private readonly origin: string;
   private readonly stateDir: string;
   private readonly dockerLog: string;
@@ -201,6 +269,7 @@ export class Skipper {
   private readonly stacks: string[];
   private readonly cfgPath: string;
   private readonly healthDir: string;
+  private readonly orphansDir: string;
   private readonly spawnEnv: NodeJS.ProcessEnv;
   private proc: ChildProcess;
   private out = '';
@@ -208,6 +277,7 @@ export class Skipper {
   private constructor(init: {
     baseURL: string;
     metricsURL: string;
+    stacksBaseDir: string;
     origin: string;
     stateDir: string;
     dockerLog: string;
@@ -215,11 +285,13 @@ export class Skipper {
     stacks: string[];
     cfgPath: string;
     healthDir: string;
+    orphansDir: string;
     spawnEnv: NodeJS.ProcessEnv;
     proc: ChildProcess;
   }) {
     this.baseURL = init.baseURL;
     this.metricsURL = init.metricsURL;
+    this.stacksBaseDir = init.stacksBaseDir;
     this.origin = init.origin;
     this.stateDir = init.stateDir;
     this.dockerLog = init.dockerLog;
@@ -227,6 +299,7 @@ export class Skipper {
     this.stacks = init.stacks;
     this.cfgPath = init.cfgPath;
     this.healthDir = init.healthDir;
+    this.orphansDir = init.orphansDir;
     this.spawnEnv = init.spawnEnv;
     this.attach(init.proc);
   }
@@ -287,6 +360,11 @@ export class Skipper {
     for (const [name, services] of Object.entries(opts.initialHealth ?? {})) {
       writeFileSync(join(healthDir, `${name}.json`), JSON.stringify(services));
     }
+
+    // Where setOrphans/setVolumes write the stub's `docker ps -a` / `volume ls`
+    // listing (ADR-0036), consulted by orphan detection on the health-poll cadence.
+    const orphansDir = join(base, 'orphans');
+    mkdirSync(orphansDir, { recursive: true });
 
     const [port, metricsPort] = await freePorts(2);
     const baseURL = `http://127.0.0.1:${port}`;
@@ -349,6 +427,7 @@ export class Skipper {
       DOCKER_LOG: dockerLog,
       STUB_DOCKER_HOLD_UP: holdFile,
       STUB_DOCKER_PS_DIR: healthDir,
+      STUB_DOCKER_ORPHANS_DIR: orphansDir,
       ...opts.stubEnv,
     };
     const proc = spawn(skipperBinPath(), ['-config', cfgPath], {
@@ -359,6 +438,7 @@ export class Skipper {
     const s = new Skipper({
       baseURL,
       metricsURL,
+      stacksBaseDir: repoDir,
       origin,
       stateDir,
       dockerLog,
@@ -366,6 +446,7 @@ export class Skipper {
       stacks,
       cfgPath,
       healthDir,
+      orphansDir,
       spawnEnv,
       proc,
     });
@@ -411,6 +492,19 @@ export class Skipper {
     services: Array<{ Service: string; Name?: string; State: string; Health?: string; ExitCode?: number }>,
   ): void {
     writeFileSync(join(this.healthDir, `${stack}.json`), JSON.stringify(services));
+  }
+
+  /** setOrphans rewrites the stub's `docker ps -a` listing (ADR-0036), so the
+   *  next orphan detection (health-poll cadence, UI-gated) sees exactly these
+   *  compose containers. Passing [] clears it (nothing running). */
+  setOrphans(rows: OrphanContainer[]): void {
+    writeFileSync(join(this.orphansDir, 'orphans.txt'), orphansListing(rows));
+  }
+
+  /** setVolumes rewrites the stub's `docker volume ls` listing — the named
+   *  volumes an orphan holds, surfaced as its data-safety note. */
+  setVolumes(vols: OrphanVolume[]): void {
+    writeFileSync(join(this.orphansDir, 'volumes.txt'), volumesListing(vols));
   }
 
   /** setRepoConfig rewrites the repo-root skipper.yaml (stack discovery,

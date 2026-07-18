@@ -118,3 +118,42 @@ test('reasonFromSnap', () => {
   assert.equal(h.reasonFromSnap({ effective: false, config: false }), 'stack');
   assert.equal(h.reasonFromSnap({ effective: false }), 'global');
 });
+
+test('orphanMeta: state-only vs container count with pluralization', () => {
+  assert.equal(h.orphanMeta({ state_only: true }), 'state only');
+  assert.equal(h.orphanMeta({ containers: [{ name: 'a' }] }), '1 container');
+  assert.equal(h.orphanMeta({ containers: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] }), '3 containers');
+  assert.equal(h.orphanMeta({}), '0 containers');
+});
+
+test('orphanStateClass maps docker state to the dot vocabulary', () => {
+  assert.equal(h.orphanStateClass('running'), 'healthy');
+  assert.equal(h.orphanStateClass('restarting'), 'unhealthy');
+  assert.equal(h.orphanStateClass('dead'), 'unhealthy');
+  assert.equal(h.orphanStateClass('exited'), 'stopped');
+  assert.equal(h.orphanStateClass('created'), 'stopped');
+});
+
+test('containerMatchesQuery scans a container across its fields', () => {
+  const c = { name: 'legacy-redis-1', service: 'redis', image: 'redis:7', ports: '6379', status: 'Up 5 days' };
+  assert.equal(h.containerMatchesQuery(c, 'redis'), true);
+  assert.equal(h.containerMatchesQuery(c, '6379'), true);
+  assert.equal(h.containerMatchesQuery(c, 'up 5'), true);
+  assert.equal(h.containerMatchesQuery(c, 'nginx'), false);
+  assert.equal(h.containerMatchesQuery(c, ''), false); // inactive search never matches
+});
+
+test('orphanMatchesQuery scans project fields and containers', () => {
+  const o = {
+    project: 'legacy-cache',
+    working_dir: '/repo/stacks/legacy-cache',
+    config_file: '/repo/stacks/legacy-cache/docker-compose.yml',
+    volumes: ['legacy_data'],
+    containers: [{ name: 'legacy-redis-1', image: 'redis:7' }],
+  };
+  assert.equal(h.orphanMatchesQuery(o, 'legacy'), true); // project name
+  assert.equal(h.orphanMatchesQuery(o, 'legacy_data'), true); // volume
+  assert.equal(h.orphanMatchesQuery(o, 'redis'), true); // container
+  assert.equal(h.orphanMatchesQuery(o, 'nginx'), false);
+  assert.equal(h.orphanMatchesQuery(o, ''), false);
+});
