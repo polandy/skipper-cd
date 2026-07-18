@@ -651,6 +651,33 @@ fails the dependency's redeploy after the two startup deploys. Behaviour-only
   and the dependency's own row shows the hostile name verbatim in its stack
   cell.
 
+### 4.18 UI — Maske Q: orphan detection (ADR-0036)
+
+The UI coverage of the Orphans section. The instance boots in discovery mode
+(`web` + `api` are the stack set) with the health poll on, since detection rides
+that cadence and is UI-gated (`HasSubscribers`). The stub's `docker ps -a` /
+`docker volume ls` listing is scripted with the new `setOrphans`/`setVolumes`
+harness helpers, keyed off `skipper.stacksBaseDir` so the working_dir
+classification is deterministic: the two active stacks (managed), a removed
+stack still running under `stacks_base_dir` (orphaned, two containers), and a
+hand-started project outside it (unmanaged). Behaviour-only (no snapshot).
+
+- **UQ1 — Detection lists orphaned + unmanaged, expandable.** The section
+  appears with a count of 2 — the managed `web`/`api` are matched by working_dir
+  and excluded. Opening it shows the two items with the right `data-class`;
+  expanding the orphaned row reveals its two containers and the data-safety facts
+  (compose path, named volumes tagged `kept on prune`).
+- **UQ2 — The deploy search scans orphans.** A term only an orphan *container*
+  carries (the redis image) auto-opens the section, auto-expands the matching
+  orphan with the hit, and hides the non-matching one; the count badge shows `1`
+  and the search's hits/total counts orphans among the searchable elements
+  (`1/4`). Switching the query to the unmanaged project's name flips the match;
+  a term nothing matches drops the badge to `0`.
+- **UQ3 — Expansion survives a refresh.** A manually expanded orphan is not
+  re-collapsed when fresh orphan data lands: the section re-renders every poll,
+  but the expansion is tracked client-side (`orphansOpen`), so a scripted status
+  change re-renders the row and it stays open.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
