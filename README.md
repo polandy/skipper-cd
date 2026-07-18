@@ -89,3 +89,7 @@ Concurrent webhook requests and the startup deploy are serialized by a deploymen
 ## Releases
 
 Releases are automated with [release-please](https://github.com/googleapis/release-please) based on the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) history (see [ADR-0011](dev-docs/adr/0011-release-automation-via-conventional-commits.md)). Every push to `main` updates a release PR that collects the pending changes; merging it creates the GitHub release, the `v*` tag, the CHANGELOG entry, and triggers the Docker image build.
+
+## AI-Assisted Development
+
+Much of this codebase was written with AI assistance ([Claude Code](https://claude.com/claude-code)), reviewed and maintained by the author. Every change goes through the same gate as any other: tests first, `go vet`/`gofmt`/`go test -race` in CI, and a human review before it lands on `main`.
