@@ -28,8 +28,9 @@ asserting **behaviour + visual snapshots**.
 > (log lines + INFO/WARN/ERROR level badges), **UB3** (sort toggle
 > newest↔oldest + persistence), **UB4** (follow toggle autoscroll +
 > persistence), **UB5** (stack-prefix on deploy lines + `[docker]`
-> cmd-prefix on captured child output), and **UB6** (diff pill on `deploy
-> complete` lines expanding the diff panel below the line) passing, plus **UC1**
+> cmd-prefix on captured child output), **UB6** (diff pill on `deploy
+> complete` lines expanding the diff panel below the line), and **UB7** (log
+> stream recovers from a fatal error via the page's own backoff retry) passing, plus **UC1**
 > (header autosync control mirrors global state live from the `autosync` SSE
 > event) and **UC2** (pending pill). Mask C is now complete — **UC3**
 > (drawer open/close), **UC4** (global switch → POST + live header mirror),
@@ -290,6 +291,14 @@ UI suite reuses.
   with a prior commit to diff against, so its `deploy complete` line — the newest,
   hence topmost under the default descending sort — is the one whose pill expands a
   populated panel (`nginx:1.26`), not the plain "No diff recorded" note.
+- **UB7 — Fatal-stream recovery.** The `/api/logs` stream has no connection
+  indicator, so a fatal error must recover silently. A `page.route` fulfils
+  `/api/logs` with a 503 so the reconnect closes `EventSource` for good; after a
+  kill/relaunch the pane resumes only if the page's own capped-backoff retry
+  re-opens the stream. Proven by the WARN-line count *growing* past the pre-drop
+  line (the persisted old line alone would pass a mere presence check). Fails
+  without the manual retry — the browser never comes back from CLOSED. The events
+  twin is UD10.
 
 ### 4.4 UI — Maske C: Autosync-Drawer
 
@@ -712,6 +721,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Follow toggle + persistence | **UB4** |
 | Stack prefix / child `[docker]` prefix | **UB5** |
 | Diff pill on `deploy complete` line | **UB6** |
+| Log stream recovers from a fatal error | **UB7** |
 | Header autosync control reflects server state | **UC1** |
 | Pending count pill appears/hides | **UC2** |
 | Drawer open/close (click/Esc/outside) | **UC3** |

@@ -342,3 +342,40 @@ test.describe('UB6: diff pill in logs', () => {
     await expect(diffPanel(page)).toHaveCount(0);
   });
 });
+
+// UB7 — Log stream recovers from a fatal error. The /api/logs stream has no
+// connection indicator, so a fatal error (non-2xx / bad content-type, which
+// closes EventSource for good) must recover silently or the pane freezes with
+// nothing on screen to explain it. We force the fatal path with a 503 route,
+// then lift it and relaunch: the page's own backoff reconnect must re-open the
+// stream so live lines flow again. Fails without the manual retry (the browser
+// never comes back from CLOSED, so no further lines ever arrive).
+test('UB7: log stream reconnects after a fatal error and resumes live lines', async ({
+  page,
+  skipper,
+}) => {
+  const warnLines = page.locator('[data-testid="log-line"][data-level="WARN"]');
+
+  await page.goto(`${skipper.baseURL}/`);
+  await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+
+  // The stream is live: a bad-signature webhook logs a WARN line that streams in.
+  expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
+  await expect(warnLines).toHaveCount(1);
+
+  // Make every *new* /api/logs request fail fatally, then drop the live stream:
+  // the browser auto-reconnects, hits the 503, and lands in CLOSED for good.
+  await page.route('**/api/logs', (route) => route.fulfill({ status: 503 }));
+  await skipper.stop();
+
+  // Lift the fault, bring the backend back, and log another WARN. The pre-drop
+  // line stays in the DOM, so recovery is proven only by the count *growing* —
+  // a second WARN can arrive only if the stream reconnected, which the browser
+  // will not do (it gave up at CLOSED); the page's own backoff retry must.
+  await page.unroute('**/api/logs');
+  await skipper.relaunch();
+  expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
+  await expect(async () => {
+    expect(await warnLines.count()).toBeGreaterThan(1);
+  }).toPass({ timeout: 20000 });
+});
