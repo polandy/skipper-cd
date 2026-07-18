@@ -85,6 +85,16 @@ Two severity levels, evaluated on every sync:
    gate as blocked, so their dependents get the existing `blocked` handling;
    every other stack deploys normally.
 
+Every error with a known file location carries a numbered, `>`-marked
+excerpt (±2 lines) of the repo `skipper.yaml` in its message: parse and
+unknown-field errors take the line from the yaml.v3 error text; entry-level
+errors are located via a `yaml.Node` line index — the entry key for unknown
+entries, the `health_check`/`depends_on` field line for field errors and
+cycle members. Errors with no location (e.g. a reserved directory name with
+no `skipper.yaml` entry) stay clean. The excerpt travels in the plain error
+string, so the UI error panel (monospace), notifications, and the audit log
+carry it with no schema change.
+
 ## Change detection (invariant 2 grows one input)
 
 - Each stack's **deploy-shaping** config — `working_dir`, `env_files`,
@@ -110,10 +120,18 @@ Two severity levels, evaluated on every sync:
   host config): the stack set is unknown at startup, so a per-stack-only
   activation is not possible; per-stack `self_heal: false` still opts a
   stack out at heal time.
-- **No UI surface yet** for disabled stacks or a nicer `_config` row — the
-  `_config` failure renders through the ordinary failed-event path; disabled
-  stacks simply do not appear. A UI iteration follows separately (manual
-  eyeball first, per the UI workflow).
+## UI surface
+
+- **Disabled line** — the `stacks` SSE snapshot (`{"disabled": [...]}`,
+  published on connect and after every deploy run) drives a quiet chip line
+  below the deploy table (`data-testid="disabled-stacks"`); hidden when
+  empty and in the logs view. Deliberately not table rows — the table is an
+  event log, a disabled stack has no events.
+- **`_config` row** — file-level failures render through the ordinary
+  failed-event path (error panel shows the message incl. the marked
+  excerpt); the pseudo-stack resolves the `git` icon, like `_nixos` resolves
+  `nixos`. Details in `internal/ui/UI_SPEC.md`; e2e coverage is Maske O
+  (`dev-docs/e2e-tests.md` §4.16).
 
 ## Interactions
 

@@ -140,6 +140,18 @@ func TestStackLocator_ResolvesNixosPseudoStackToNixosSlug(t *testing.T) {
 	}
 }
 
+func TestStackLocator_ResolvesConfigPseudoStackToGitSlug(t *testing.T) {
+	locate := stackLocator(&config.Config{}, staticStacks(nil))
+
+	req, ok := locate(deploy.ConfigStateKey)
+	if !ok {
+		t.Fatalf("expected the reserved %q stack to resolve an icon", deploy.ConfigStateKey)
+	}
+	if req.Name != "git" {
+		t.Errorf("expected icon request name %q, got %q", "git", req.Name)
+	}
+}
+
 func TestStackLocator_ResolvesConfiguredStack(t *testing.T) {
 	cfg := &config.Config{
 		StacksBaseDir: "/srv/stacks",

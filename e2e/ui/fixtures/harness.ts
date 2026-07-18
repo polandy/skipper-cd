@@ -178,6 +178,11 @@ export interface StartOptions {
     string,
     Array<{ Service: string; Name?: string; State: string; Health?: string; ExitCode?: number }>
   >;
+  /** Stack discovery (ADR-0034): boot with `stack_discovery: true` instead of a
+   *  `stacks:` list — the origin's stack dirs are the stack set. `repoConfig`
+   *  (when set) is committed as the repo-root skipper.yaml; names in `disabled`
+   *  are parked there and not awaited at startup. Maske O opts in. */
+  discovery?: { repoConfig?: string; disabled?: string[] };
 }
 
 /** Skipper is a running skipper binary under test with its origin, stub docker,
@@ -260,6 +265,9 @@ export class Skipper {
     if (stacks.length === 0) {
       writeFileSync(join(origin, '.keep'), '');
     }
+    if (opts.discovery?.repoConfig !== undefined) {
+      writeFileSync(join(origin, 'skipper.yaml'), opts.discovery.repoConfig);
+    }
     git(origin, 'add', '.');
     git(origin, 'commit', '-m', 'initial');
 
@@ -309,20 +317,22 @@ export class Skipper {
       // fast and deterministically (connection refused → 404 → monogram), keeping
       // the whole UI suite offline. Repo icon.svg overrides still resolve.
       `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
-      `stacks:\n` +
-      stacks
-        .map(
-          (n) =>
-            `  - name: ${JSON.stringify(n)}\n` +
-            ((opts.healthCheck ?? []).includes(n)
-              ? `    health_check:\n      timeout_seconds: 1\n`
-              : '') +
-            ((opts.onDemand?.[n] ?? []).length
-              ? `    on_demand_containers:\n` +
-                (opts.onDemand?.[n] ?? []).map((c) => `      - ${JSON.stringify(c)}\n`).join('')
-              : ''),
-        )
-        .join('');
+      (opts.discovery
+        ? `stack_discovery: true\n`
+        : `stacks:\n` +
+          stacks
+            .map(
+              (n) =>
+                `  - name: ${JSON.stringify(n)}\n` +
+                ((opts.healthCheck ?? []).includes(n)
+                  ? `    health_check:\n      timeout_seconds: 1\n`
+                  : '') +
+                ((opts.onDemand?.[n] ?? []).length
+                  ? `    on_demand_containers:\n` +
+                    (opts.onDemand?.[n] ?? []).map((c) => `      - ${JSON.stringify(c)}\n`).join('')
+                  : ''),
+            )
+            .join(''));
     const cfgPath = join(base, 'skipper.yml');
     writeFileSync(cfgPath, cfg);
 
@@ -356,7 +366,9 @@ export class Skipper {
       await s.waitListening();
     } else {
       await s.waitHealthy();
+      const parked = new Set(opts.discovery?.disabled ?? []);
       for (const name of stacks) {
+        if (parked.has(name)) continue; // disabled: never deploys, never in state
         await s.waitFor(`startup deploy of ${name}`, () => s.stateHasStack(name));
       }
     }
@@ -392,6 +404,14 @@ export class Skipper {
     services: Array<{ Service: string; Name?: string; State: string; Health?: string; ExitCode?: number }>,
   ): void {
     writeFileSync(join(this.healthDir, `${stack}.json`), JSON.stringify(services));
+  }
+
+  /** setRepoConfig rewrites the repo-root skipper.yaml (stack discovery,
+   *  ADR-0034) and commits it, simulating a pushed config change. */
+  setRepoConfig(content: string): void {
+    writeFileSync(join(this.origin, 'skipper.yaml'), content);
+    git(this.origin, 'add', 'skipper.yaml');
+    git(this.origin, 'commit', '-m', 'update skipper.yaml');
   }
 
   /** sendWebhook posts a correctly signed push payload for ref, returning the status. */

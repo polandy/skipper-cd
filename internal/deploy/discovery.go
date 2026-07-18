@@ -18,7 +18,17 @@ const ConfigStateKey = "_config"
 // concurrent use.
 func (d *Deployer) CurrentStacks() []config.Stack {
 	if p := d.discoveredStacks.Load(); p != nil {
-		return *p
+		return p.Stacks
+	}
+	return nil
+}
+
+// CurrentDisabledStacks returns the names parked via disabled: true in the
+// most recently discovered set, for the UI's disabled line. nil before the
+// first discovery and in legacy mode. Safe for concurrent use.
+func (d *Deployer) CurrentDisabledStacks() []string {
+	if p := d.discoveredStacks.Load(); p != nil {
+		return p.Disabled
 	}
 	return nil
 }

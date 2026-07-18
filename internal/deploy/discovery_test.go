@@ -189,6 +189,10 @@ func TestDeployAllStacks_DiscoveryDisabledStackNotDeployed(t *testing.T) {
 			t.Errorf("disabled stack must emit no events, got %v", e)
 		}
 	}
+	// The parked name is published so the UI's disabled line can show it.
+	if got := d.CurrentDisabledStacks(); len(got) != 1 || got[0] != "wip" {
+		t.Errorf("CurrentDisabledStacks = %v, want [wip]", got)
+	}
 }
 
 func TestHealStack_DiscoveryUsesDiscoveredStacks(t *testing.T) {

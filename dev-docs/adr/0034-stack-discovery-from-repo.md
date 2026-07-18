@@ -76,7 +76,9 @@ mode is unchanged). Design details in `dev-docs/stack-discovery-spec.md`.
   deploys; the nixos phase is host-config-driven and unaffected); *semantic*
   errors (unknown override entry, broken `depends_on` edge, cycle, invalid
   field) fail only the affected stacks — their dependents `block`, the rest
-  deploy.
+  deploy. Errors with a known file location carry a `>`-marked excerpt of
+  the offending `skipper.yaml` lines in their message, so the failed row's
+  error panel shows the config, not just its name.
 - The per-stack effective config becomes a hashed input (invariant 2 grows
   one entry), keyed by the repo `skipper.yaml` path so the UI attributes the
   change to that file and shows its real git diff. Only deploy-shaping

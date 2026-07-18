@@ -589,6 +589,22 @@ service is listed. Behaviour-only (no snapshot).
   clicking the self-heal badge swaps in the heal panel — the health panel is
   gone, never two panels under one row (the rule of Maske L).
 
+### 4.16 UI — Maske O: stack discovery surface (ADR-0034)
+
+The harness boots in discovery mode (`discovery` start option): the origin's
+stack dirs are the stack set, `stack_discovery: true` replaces the `stacks:`
+list, and the repo-root `skipper.yaml` (committed via the option's
+`repoConfig`, mutated later with `setRepoConfig`) carries the per-stack
+overrides. Behaviour-only (no snapshot) — the disabled line is hidden when
+empty, so the existing visual baselines are untouched.
+
+- **UO1 — Disabled line.** With `wip` parked via `disabled: true`, the deploys
+  view shows no `wip` row but a `disabled-stacks` line with one `wip` chip;
+  the line is hidden in the logs view and returns with the deploys view.
+- **UO2 — Broken repo config.** Pushing a `skipper.yaml` with a syntax error on
+  line 3 produces a `failed` row for the reserved `_config` stack whose error
+  panel carries the parse error plus the marked excerpt (`> 3 |`).
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

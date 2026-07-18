@@ -1869,6 +1869,38 @@
   .stack-filter-count { position: absolute; right: 28px; top: 50%; transform: translateY(-50%);
     font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); pointer-events: none; }
   .filter-empty { display: none; text-align: center; padding: 28px 0; color: var(--text-muted); font-size: 13px; }
+
+  /* Disabled stacks (stack discovery): a quiet inventory line below the table
+     for stacks parked with disabled: true — present in the repo, deliberately
+     not deployed. Hidden entirely when the set is empty. */
+  .disabled-stacks {
+    display: none;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 0 14px;
+  }
+  .disabled-stacks.shown { display: flex; }
+  .dis-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-right: 2px;
+  }
+  .dis-chip {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    background: color-mix(in srgb, var(--text-muted) 9%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--text-muted) 35%, transparent);
+    padding: 1px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
   .filter-empty.show { display: block; }
   .event-list .filtered-out { display: none !important; }
 
@@ -1932,7 +1964,7 @@
      !important wins over the inline display set by showTable(). */
   #log-view { display: none; }
   body.view-logs #log-view { display: block; }
-  body.view-logs #deploy-table, body.view-logs #empty-state { display: none !important; }
+  body.view-logs #deploy-table, body.view-logs #empty-state, body.view-logs #disabled-stacks { display: none !important; }
   /* time-mode / log-sort / follow-logs now live in the view-options popover,
      shown per active view via .vo-group (see VIEW OPTIONS POPOVER). */
 
@@ -2237,6 +2269,11 @@
     <div class="filter-empty" id="deploy-filter-empty" data-testid="deploy-filter-empty">No stack matches &ldquo;<span id="deploy-filter-empty-q"></span>&rdquo;.</div>
   </div>
 
+  <div class="disabled-stacks" id="disabled-stacks" data-testid="disabled-stacks" title="Parked with disabled: true in the repo skipper.yaml — not deployed, not health-checked.">
+    <span class="dis-label">disabled</span>
+    <span class="dis-list" id="disabled-list" style="display:contents"></span>
+  </div>
+
   <div id="log-view">
     <div class="log-pane" id="log-pane">
       <div class="log-empty" id="log-empty">Awaiting log output...</div>
@@ -2286,6 +2323,25 @@
   // service -> phases (newest first, <= 10). Empty when the watchdog is off —
   // the health panel then renders without age/timeline (ADR-0031).
   let healthwatchSnap = {};
+
+  // Names parked with disabled: true, from the 'stacks' SSE snapshot (stack
+  // discovery, ADR-0034). Rendered as a quiet chip line below the deploy table;
+  // empty (and the line hidden) in legacy mode.
+  let disabledSnap = [];
+
+  function renderDisabledStacks() {
+    var wrap = document.getElementById('disabled-stacks');
+    var list = document.getElementById('disabled-list');
+    list.textContent = '';
+    if (!disabledSnap.length) { wrap.classList.remove('shown'); return; }
+    disabledSnap.forEach(function(name) {
+      var chip = document.createElement('span');
+      chip.className = 'dis-chip';
+      chip.textContent = name;
+      list.appendChild(chip);
+    });
+    wrap.classList.add('shown');
+  }
 
   function showTable() {
     if (!hasRows) {
@@ -3117,6 +3173,12 @@
     es.addEventListener('healthwatch', function(e) {
       var d = JSON.parse(e.data);
       healthwatchSnap = (d && d.stacks) || {};
+    });
+
+    es.addEventListener('stacks', function(e) {
+      var d = JSON.parse(e.data);
+      disabledSnap = (d && d.disabled) || [];
+      renderDisabledStacks();
     });
 
     es.onerror = function() {
