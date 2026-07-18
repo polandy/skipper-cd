@@ -56,8 +56,10 @@
               # Go pinned to go.mod's minor (what CI's setup-go installs), so
               # `go test`/govulncheck see the same stdlib as the pipeline — a
               # newer toolchain flags stdlib CVEs CI doesn't. The nix *build*
-              # (packages.default) tracks pkgs.go separately.
-              pkgs.go_1_25
+              # (packages.default) tracks pkgs.go separately. This nixpkgs pin
+              # only has go_1_26 at 1.26.4, one patch behind go.mod's 1.26.5
+              # (GO-2026-5856 fix) — closing that gap needs a nixpkgs bump.
+              pkgs.go_1_26
               pkgs.gopls
               pkgs.gotools
               pkgs.gcc # cgo — required by `go test -race`
