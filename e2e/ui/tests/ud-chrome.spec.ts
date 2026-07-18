@@ -344,6 +344,38 @@ test('UD2: connection indicator tracks connected→reconnecting→connected', as
   await expect(conn).toHaveAttribute('data-state', 'connected', { timeout: 15000 });
 });
 
+// UD10 — Fatal-stream recovery. UD2 covers the *transient* drop (the browser's
+// own auto-reconnect brings the indicator back). This covers the *fatal* case:
+// a non-2xx reconnect response puts EventSource in CLOSED, so the browser never
+// retries on its own. The page must retry itself and recover, rather than
+// sitting on `reconnecting` forever. We force the fatal response by intercepting
+// the reconnect with a 503, then lift it so the page's own backoff reconnect
+// re-establishes against the live server.
+test('UD10: indicator recovers after a fatal (non-200) stream error the browser will not retry', async ({
+  page,
+  skipper,
+}) => {
+  const conn = page.locator('[data-testid="conn-indicator"]');
+
+  await page.goto(`${skipper.baseURL}/`);
+  await expect(conn).toHaveAttribute('data-state', 'connected');
+
+  // Make every *new* /api/events request fail fatally (the already-open stream is
+  // untouched). A 503 is a non-200, so EventSource closes for good on the retry.
+  await page.route('**/api/events', (route) => route.fulfill({ status: 503 }));
+
+  // Drop the live stream: the browser auto-reconnects, hits the 503, and lands in
+  // CLOSED — where without the page's own retry it would stay forever.
+  await skipper.stop();
+  await expect(conn).toHaveAttribute('data-state', 'reconnecting');
+
+  // Lift the fault and bring the backend back: the page's backoff reconnect must
+  // re-open the stream on its own (the browser will not, having given up).
+  await page.unroute('**/api/events');
+  await skipper.relaunch();
+  await expect(conn).toHaveAttribute('data-state', 'connected', { timeout: 15000 });
+});
+
 // UD3 — Deploy indicator. `deploy-indicator` names the actively deploying
 // stack(s) while a deploy is in flight and reads `idle` otherwise. The state is
 // mirrored into `aria-label` (so it survives the span being hidden on mobile),

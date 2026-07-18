@@ -43,7 +43,8 @@ asserting **behaviour + visual snapshots**.
 > mismatch notice, switcher on) and **UD7** (switcher off by default: picker
 > hidden, saved override ignored), **UD2** (connection indicator
 > connected→reconnecting→connected, driven by a kill/relaunch of the binary on
-> the same port), **UD3** (deploy indicator names the active stack while held),
+> the same port), **UD10** (recovery from a *fatal* stream error the browser
+> won't retry), **UD3** (deploy indicator names the active stack while held),
 > **UD4** (responsive ≤700px), **UD5** (build identity label), **UD8** (view-options popover), **UD9** (theme glyph). All four masks' behaviour is landed, **and the visual-snapshot
 > baselines (§5) too**: a lean set of six baselines (deploys table, diff panel,
 > autosync drawer, both themes, mobile layout) generated and compared in
@@ -364,6 +365,13 @@ UI suite reuses.
   notice appears, so a locked-down deployment keeps its at-a-glance colour.
 - **UD2 — Connection indicator.** `conn-indicator` shows `connecting`→
   `connected`; killing/restarting the binary drives `reconnecting`→`connected`.
+- **UD10 — Fatal-stream recovery.** Where UD2 exercises the browser's built-in
+  retry after a transient drop, this covers a *fatal* stream error: a
+  `page.route` fulfils `/api/events` with a 503 so the reconnect closes
+  `EventSource` for good (the browser stops retrying). The indicator holds
+  `reconnecting`; lifting the route and relaunching the binary must let the
+  page's own capped-backoff retry re-open the stream → `connected`. Fails
+  without the manual retry (the browser never comes back from CLOSED).
 - **UD3 — Deploy indicator.** Shows the active stack name(s) while a deploy is
   held, `idle` otherwise.
 - **UD4 — Responsive ≤700px.** At a 390px viewport the **compact header**
@@ -721,6 +729,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Mismatch notice auto-hide (virtual clock) | **UD6b** |
 | Theme switcher off (default): picker hidden, override ignored | **UD7** |
 | Connection indicator states | **UD2** |
+| Connection indicator recovers from a fatal stream error | **UD10** |
 | Deploy indicator active/idle | **UD3** |
 | Upcoming look-ahead trail (active + next) | **UF1** |
 | Run panel (open on click, ordered run, close on end) | **UF2** |
