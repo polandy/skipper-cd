@@ -55,6 +55,28 @@ func TestWriteFile_MissingDirReturnsError(t *testing.T) {
 	}
 }
 
+func TestWriteFile_RenameFailureLeavesNoTempFileBehind(t *testing.T) {
+	dir := t.TempDir()
+	// path names an existing non-empty directory, so the final os.Rename onto
+	// it fails (a directory can only be replaced by another empty directory).
+	path := filepath.Join(dir, "state.yaml")
+	if err := os.MkdirAll(filepath.Join(path, "occupied"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fsatomic.WriteFile(path, []byte("x"), 0o644); err == nil {
+		t.Fatal("expected an error when the target is an existing non-empty directory")
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "state.yaml" {
+		t.Errorf("expected the deferred cleanup to remove the temp file, got %v", entries)
+	}
+}
+
 func TestWriteFile_LeavesNoTempFileBehind(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.yaml")
