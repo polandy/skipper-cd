@@ -160,3 +160,30 @@ func TestHealthAlerter_RunDeliversFiredAlerts(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestHealthAlerter_RunThreadsRunCtxIntoLiveDelivery(t *testing.T) {
+	doer := &fakeDoer{}
+	a := mustNewHealthAlerter(t, []config.NotificationTarget{signalHealthTarget("")}, doer)
+
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxProbeKey{}, "run-ctx"))
+	done := make(chan struct{})
+	go func() { a.Run(ctx); close(done) }()
+
+	a.Fire(unhealthyAlert())
+	deadline := time.After(2 * time.Second)
+	for doer.count() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("alert was not delivered")
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	cancel()
+	<-done
+
+	got := doer.reqs[0].Context().Value(ctxProbeKey{})
+	if got != "run-ctx" {
+		t.Errorf("live delivery request context = %v, want it to derive from Run's ctx (\"run-ctx\")", got)
+	}
+}

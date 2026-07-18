@@ -34,6 +34,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/reconcile"
 	"github.com/polandy/skipper-cd/internal/roster"
+	"github.com/polandy/skipper-cd/internal/safego"
 	"github.com/polandy/skipper-cd/internal/selfheal"
 	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
@@ -200,7 +201,7 @@ func main() {
 		// Look-ahead: publish the run plan (what deploys next) over the same SSE
 		// stream. Installing the sink is what enables the upfront planning pass.
 		runPlanSink = func(p deploy.RunPlan) {
-			stateB.Publish(events.StateEvent{Name: "upcoming", Data: p})
+			stateB.Publish(events.StateEvent{Name: events.StateUpcoming, Data: p})
 		}
 		slog.Info("web UI enabled")
 	}
@@ -220,7 +221,7 @@ func main() {
 		os.Exit(1)
 	}
 	if notifier.Enabled() {
-		go notifier.Run(signalCtx)
+		safego.Go("notifier", func() { notifier.Run(signalCtx) })
 		eventSinks = append(eventSinks, notifier.Notify)
 		slog.Info("notifications enabled", "targets", len(cfg.Notifications))
 	}
@@ -266,7 +267,7 @@ func main() {
 		}
 		var alertSink healthwatch.Alerter
 		if alerter.Enabled() {
-			go alerter.Run(signalCtx)
+			safego.Go("health-alerter", func() { alerter.Run(signalCtx) })
 			alertSink = alerter
 		}
 		hwCfg := healthwatch.Config{
@@ -279,7 +280,7 @@ func main() {
 		if stateB != nil {
 			// The per-service panel's since/history/commit feed (ADR-0031 UI
 			// surface): every accepted change pushes the fresh view to UI clients.
-			hwCfg.Publish = func(v healthwatch.View) { stateB.Publish(events.StateEvent{Name: "healthwatch", Data: v}) }
+			hwCfg.Publish = func(v healthwatch.View) { stateB.Publish(events.StateEvent{Name: events.StateHealthWatch, Data: v}) }
 		}
 		healthWatcher = healthwatch.New(hwCfg)
 		eventSinks = append(eventSinks, healthWatcher.ObserveDeploy)
@@ -305,7 +306,7 @@ func main() {
 			AlwaysPoll: selfHealActive || healthWatcher != nil,
 		}
 		if stateB != nil {
-			hpCfg.Publish = func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: "health", Data: s}) }
+			hpCfg.Publish = func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateHealth, Data: s}) }
 			hpCfg.HasSubscribers = stateB.HasSubscribers
 		}
 		var snapshotSinks []func(health.Snapshot)
@@ -348,9 +349,9 @@ func main() {
 		}
 		metrics.AutosyncPending.Set(float64(autosyncQueue.Count()))
 		if stateB != nil {
-			stateB.Publish(events.StateEvent{Name: "autosync", Data: snap})
-			stateB.Publish(events.StateEvent{Name: "queue", Data: autosyncQueue.View(order())})
-			stateB.Publish(events.StateEvent{Name: "stacks", Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), auditLog)})
+			stateB.Publish(events.StateEvent{Name: events.StateAutosync, Data: snap})
+			stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: autosyncQueue.View(order())})
+			stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), auditLog)})
 		}
 	}
 	deployer = deploy.New(deploy.Config{
@@ -376,12 +377,12 @@ func main() {
 	// Start the health poller only now that the deployer exists: its snapshot
 	// feed may drive a self-heal, which redeploys through the deployer.
 	if healthPoller != nil {
-		go healthPoller.Run(signalCtx)
+		safego.Go("health-poller", func() { healthPoller.Run(signalCtx) })
 	}
 	publishAutosync() // initialize the gauges
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
-	go deployer.SyncAndDeployAll(context.Background(), cfg)
+	safego.Go("startup-sync", func() { deployer.SyncAndDeployAll(context.Background(), cfg) })
 
 	// Periodic reconcile: re-run sync + deploy on a timer so a missed or lost
 	// webhook cannot leave the host drifted from the deploy repo indefinitely
@@ -389,7 +390,7 @@ func main() {
 	// headless. A tick is skipped while a deploy is already in flight.
 	if interval := *cfg.ReconcileIntervalSeconds; interval > 0 {
 		loop := reconcile.New(time.Duration(interval)*time.Second, deployReconciler{deployer, cfg})
-		go loop.Run(signalCtx)
+		safego.Go("reconcile", func() { loop.Run(signalCtx) })
 		slog.Info("periodic reconcile enabled", "interval_seconds", interval)
 	}
 
@@ -399,7 +400,7 @@ func main() {
 		stateB:  stateB,
 		order:   order,
 		publish: publishAutosync,
-		trigger: func() { go deployer.SyncAndDeployAll(context.Background(), cfg) },
+		trigger: func() { safego.Go("autosync-trigger", func() { deployer.SyncAndDeployAll(context.Background(), cfg) }) },
 	}
 
 	bi, ok := debug.ReadBuildInfo()
@@ -533,7 +534,7 @@ func healthStacks(cfg *config.Config, stacks []config.Stack) []health.StackRef {
 func deployOrder(cfg *config.Config, stacks []config.Stack) []string {
 	order := make([]string, 0, len(stacks)+1)
 	if cfg.NixOSRebuild.IsEnabled() {
-		order = append(order, "_nixos")
+		order = append(order, deploy.NixosStateKey)
 	}
 	for _, s := range stacks {
 		order = append(order, s.Name)
@@ -556,17 +557,17 @@ func webhookMux(cfg *config.Config, stacks func() []config.Stack, deployer *depl
 	if broadcaster != nil {
 		initialState := func() []events.StateEvent {
 			state := []events.StateEvent{
-				{Name: "autosync", Data: as.ctrl.Snapshot(as.order())},
-				{Name: "queue", Data: as.queue.View(as.order())},
-				{Name: "upcoming", Data: deployer.CurrentRunPlan()},
-				{Name: "stacks", Data: buildStacksState(stacks(), deployer.CurrentDisabledStacks(), auditLog)},
+				{Name: events.StateAutosync, Data: as.ctrl.Snapshot(as.order())},
+				{Name: events.StateQueue, Data: as.queue.View(as.order())},
+				{Name: events.StateUpcoming, Data: deployer.CurrentRunPlan()},
+				{Name: events.StateStacks, Data: buildStacksState(stacks(), deployer.CurrentDisabledStacks(), auditLog)},
 			}
 			if healthPoller != nil {
-				state = append(state, events.StateEvent{Name: "health", Data: healthPoller.Current()})
+				state = append(state, events.StateEvent{Name: events.StateHealth, Data: healthPoller.Current()})
 				healthPoller.Poll() // a client just connected — refresh now
 			}
 			if healthWatcher != nil {
-				state = append(state, events.StateEvent{Name: "healthwatch", Data: healthWatcher.Current()})
+				state = append(state, events.StateEvent{Name: events.StateHealthWatch, Data: healthWatcher.Current()})
 			}
 			return state
 		}

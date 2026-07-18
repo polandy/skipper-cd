@@ -51,7 +51,7 @@ func LogsSSEHandler(log *logbuf.Log) http.Handler {
 		}
 		flusher.Flush()
 
-		keepalive := time.NewTicker(30 * time.Second)
+		keepalive := time.NewTicker(sseKeepaliveInterval)
 		defer keepalive.Stop()
 
 		ctx := r.Context()

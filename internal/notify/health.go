@@ -53,7 +53,7 @@ func NewHealthAlerter(cfgTargets []config.NotificationTarget, doer Doer, timeout
 		doer = http.DefaultClient
 	}
 	if timeout <= 0 {
-		timeout = 10 * time.Second
+		timeout = defaultRequestTimeout
 	}
 	return &HealthAlerter{
 		targets: targets,
@@ -91,7 +91,7 @@ func (a *HealthAlerter) Run(ctx context.Context) {
 			a.drain()
 			return
 		case al := <-a.queue:
-			a.handle(context.Background(), al)
+			a.handle(ctx, al)
 		}
 	}
 }

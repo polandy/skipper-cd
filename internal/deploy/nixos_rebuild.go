@@ -13,8 +13,9 @@ import (
 
 // NixosStateKey is the reserved stack key used for the NixOS rebuild in the
 // persisted state, deploy events, and metrics. It is exported so the UI wiring
-// can recognize the pseudo-stack (e.g. to resolve its icon).
-const NixosStateKey = "_nixos"
+// can recognize the pseudo-stack (e.g. to resolve its icon). Aliases
+// config.ReservedStackName, the single source of truth for the reserved value.
+const NixosStateKey = config.ReservedStackName
 
 // rebuildNixOSIfChanged hashes the repo's nix files and runs nixos-rebuild
 // when any of them changed. The new hashes are persisted to state *before*
@@ -36,7 +37,9 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	if len(state.NixOSRebuildInFlight) > 0 {
 		reconciled := state.NixOSRebuildInFlight
 		state.clearNixOSRebuildInFlight()
-		_ = saveDeployState(d.stateDir, state)
+		if err := saveDeployState(d.stateDir, state); err != nil {
+			slog.Error("could not save deploy state", "err", err)
+		}
 		metrics.DeploysTriggered.WithLabelValues(NixosStateKey).Inc()
 		metrics.LastDeployTimestamp.WithLabelValues(NixosStateKey).Set(float64(time.Now().Unix()))
 		// The interrupted run never advanced LastDeployedCommit, so it still points
@@ -86,7 +89,9 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	// restarts skipper before the outcome is recorded, the next startup reconciles
 	// this into a success rather than leaving a stale failure (ADR-0025).
 	state.markNixOSRebuildInFlight(changed)
-	_ = saveDeployState(d.stateDir, state)
+	if err := saveDeployState(d.stateDir, state); err != nil {
+		slog.Error("could not save deploy state", "err", err)
+	}
 
 	if err := d.runNixOSRebuild(ctx, cfg.NixOSRebuild.Flake); err != nil {
 		if d.shutdownRequested() {
@@ -106,7 +111,9 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		slog.Error("nixos-rebuild failed, aborting all stack deploys", "err", err)
 		state.revertStack(NixosStateKey, previousNixHashes)
 		state.clearNixOSRebuildInFlight()
-		_ = saveDeployState(d.stateDir, state)
+		if err := saveDeployState(d.stateDir, state); err != nil {
+			slog.Error("could not save deploy state", "err", err)
+		}
 		metrics.DeployErrors.WithLabelValues(NixosStateKey).Inc()
 		d.emit(events.StatusFailed, NixosStateKey, time.Since(startTime), err.Error(), cs)
 		return false

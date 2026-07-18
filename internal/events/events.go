@@ -95,9 +95,20 @@ func (e DeployEvent) SSEPayload() DeployEvent {
 // StateEvent is a non-deploy SSE message — an autosync or queue snapshot pushed
 // to UI clients over the same /api/events stream under its own event name.
 type StateEvent struct {
-	Name string // SSE event name, e.g. "autosync" or "queue"
+	Name string // SSE event name, one of the State* constants below
 	Data any    // JSON-serializable payload
 }
+
+// StateEvent.Name values. Each names a UI-facing SSE stream published both on
+// change and in the initial-state snapshot sent to new subscribers.
+const (
+	StateAutosync    = "autosync"
+	StateQueue       = "queue"
+	StateStacks      = "stacks"
+	StateUpcoming    = "upcoming"
+	StateHealth      = "health"
+	StateHealthWatch = "healthwatch"
+)
 
 // Broadcaster fans out values of type T to all connected subscribers.
 // Sends are non-blocking: slow subscribers have values dropped.

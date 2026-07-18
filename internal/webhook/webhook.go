@@ -17,11 +17,18 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/metrics"
+	"github.com/polandy/skipper-cd/internal/safego"
 )
 
 // MaxBodyBytes caps the webhook request body size. Push payloads are small,
 // so anything larger is rejected with 413.
 const MaxBodyBytes = 1 << 20 // 1 MiB
+
+// Reasons a webhook is rejected, reported on metrics.WebhooksRejected.
+const (
+	rejectReasonTooLarge  = "too_large"
+	rejectReasonSignature = "signature"
+)
 
 // deployTrigger starts a full sync+deploy run. It is implemented by
 // *deploy.Deployer and faked in tests.
@@ -42,6 +49,7 @@ func Handler(cfg *config.Config, deployer deployTrigger) http.HandlerFunc {
 		if err != nil {
 			var maxBytesErr *http.MaxBytesError
 			if errors.As(err, &maxBytesErr) {
+				metrics.WebhooksRejected.WithLabelValues(rejectReasonTooLarge).Inc()
 				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 				return
 			}
@@ -52,6 +60,7 @@ func Handler(cfg *config.Config, deployer deployTrigger) http.HandlerFunc {
 		if cfg.WebhookSecret != "" {
 			signature := extractSignature(r)
 			if err := verifyHMACSignature(body, signature, cfg.WebhookSecret); err != nil {
+				metrics.WebhooksRejected.WithLabelValues(rejectReasonSignature).Inc()
 				slog.Warn("webhook rejected: invalid signature", "err", err)
 				http.Error(w, "invalid signature", http.StatusUnauthorized)
 				return
@@ -71,7 +80,7 @@ func Handler(cfg *config.Config, deployer deployTrigger) http.HandlerFunc {
 
 		// No run-wide deadline: each shell command is bounded individually
 		// by the deployer's per-command timeout.
-		go deployer.SyncAndDeployAll(context.Background(), cfg)
+		safego.Go("webhook-deploy", func() { deployer.SyncAndDeployAll(context.Background(), cfg) })
 
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = fmt.Fprintln(w, "deploy triggered")

@@ -20,6 +20,11 @@ import (
 //go:embed static/index.html static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
 
+// sseKeepaliveInterval is how often an idle SSE stream (deploy events, state
+// events, logs) sends a keepalive so intermediary proxies don't time out the
+// connection.
+const sseKeepaliveInterval = 30 * time.Second
+
 // IndexHandler serves the embedded UI HTML page, with the configured theme
 // (see internal/ui/theme.go) baked into the data-theme attribute, favicon and
 // PWA meta colours once at construction time — the same __PLACEHOLDER__
@@ -215,7 +220,7 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 		}
 
 		// Keepalive ticker.
-		keepalive := time.NewTicker(30 * time.Second)
+		keepalive := time.NewTicker(sseKeepaliveInterval)
 		defer keepalive.Stop()
 
 		ctx := r.Context()

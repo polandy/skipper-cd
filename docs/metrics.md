@@ -5,6 +5,7 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 | Metric | Type | Description |
 |---|---|---|
 | `skipper_webhooks_received_total` | counter | Total number of webhook requests received and accepted. |
+| `skipper_webhooks_rejected_total` | counter | Webhook requests rejected before deploy, labelled by `reason` (`signature`\|`too_large`). |
 | `skipper_deploys_triggered_total` | counter | Total number of stack deploys triggered, labelled by `stack`. |
 | `skipper_deploys_skipped_total` | counter | Total number of stack deploys skipped (no changes), labelled by `stack`. |
 | `skipper_deploy_errors_total` | counter | Total number of failed deploys, labelled by `stack`. |
