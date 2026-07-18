@@ -365,6 +365,27 @@ func TestAppHelpersHandler_ServesJS(t *testing.T) {
 	}
 }
 
+func TestAppCSSHandler_ServesCSS(t *testing.T) {
+	handler := AppCSSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app.css", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/css") {
+		t.Errorf("content type = %q, want text/css", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("cache-control = %q, want no-cache (lockstep with the app shell)", cc)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "@font-face") {
+		t.Error("body does not contain the extracted stylesheet")
+	}
+}
+
 func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")
