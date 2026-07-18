@@ -287,6 +287,25 @@ func TestIconsHandler_ServesPNG(t *testing.T) {
 	}
 }
 
+// TestIconsHandler_DoesNotServeAppShell locks in the encapsulation guarantee:
+// the icons file server is scoped to static/icons, so it cannot serve app-shell
+// files (index.html, sw.js, the manifest) even for a path that reaches it. This
+// must not rely on the router restricting it to /icons/ — the handler owns its
+// own boundary.
+func TestIconsHandler_DoesNotServeAppShell(t *testing.T) {
+	handler := IconsHandler()
+	for _, path := range []string{"/index.html", "/sw.js", "/manifest.webmanifest"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404 (icons handler must not serve app-shell files)", path, rec.Code)
+		}
+	}
+}
+
 func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")
