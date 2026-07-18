@@ -118,7 +118,7 @@ stacks:
     disabled: true      # in the repo, deliberately not deployed
 ```
 
-- **Fields** — the [Stack Fields](#stack-fields) above except `name` and `autosync`, plus `disabled`. Relative `env_files`/`watch_dirs` paths resolve against `stacks_base_dir`.
+- **Fields** — the [Stack Fields](#stack-fields) above except `name` and `autosync`, plus `disabled`. Relative `env_files`/`watch_dirs` paths resolve against `stacks_base_dir`; a relative path that escapes it via `../` fails that stack entry (absolute paths are unrestricted, same as [Stack Fields](#stack-fields)).
 - **`disabled: true`** — parked: not deployed, not health-checked; a running stack keeps running. The web UI lists parked names in a `disabled` line below the deploy table.
 - **Config edits redeploy** — a `skipper.yaml` edit redeploys the affected stacks (shown as a `skipper.yaml` change). Enabling discovery redeploys every stack once.
 - **Broken config fails visibly** — an unparseable `skipper.yaml` shows as a failed `_config` row and deploys nothing; a single bad entry fails only that stack. Running containers are never touched.

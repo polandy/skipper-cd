@@ -2,7 +2,10 @@ package deploy
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/polandy/skipper-cd/internal/fsatomic"
 )
 
 func TestSaveDeployState_RoundTripsAndLeavesNoTempFiles(t *testing.T) {
@@ -20,6 +23,14 @@ func TestSaveDeployState_RoundTripsAndLeavesNoTempFiles(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != stateFileName {
 		t.Errorf("expected only %s in state dir, got %v", stateFileName, entries)
+	}
+
+	info, err := os.Stat(filepath.Join(dir, stateFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != fsatomic.PrivateFileMode {
+		t.Errorf("perm = %v, want %v", info.Mode().Perm(), fsatomic.PrivateFileMode)
 	}
 
 	loaded, err := loadPersistedDeployState(dir)
