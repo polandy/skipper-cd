@@ -91,6 +91,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `health_check` | section | no | — | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic (both checked at startup). See [Deploy ordering](#deploy-ordering). |
+| `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
 
 ## Stack discovery
 
@@ -171,6 +172,28 @@ The rollback itself is verified through the same gate: its `up` also runs with `
 | `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
 
 > **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Don't enable `health_check` on stacks with deliberate one-shot containers, or model those as [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependencies.
+
+## Deploy hooks
+
+Run a shell command around a stack's deploy — most often a **backup before it updates**:
+
+```yaml
+stacks:
+  - name: paperless
+    hooks:
+      pre_deploy:
+        - "docker exec paperless-db pg_dump -U paperless | zstd > /backup/paperless-$(date +%F-%H%M).sql.zst"
+      post_deploy:
+        - "curl -fsS http://localhost:8000/api/health/"
+      timeout_seconds: 120   # optional; per-hook, capped by command_timeout_seconds
+```
+
+- Each entry is one `sh -c` command line, run in order. Env = the stack's deploy environment plus `SKIPPER_STACK` and `SKIPPER_HOOK` (`pre_deploy`/`post_deploy`); working directory = the stack's project directory.
+- `pre_deploy` runs **before any container is touched** — the old version is still up, so a `docker exec … pg_dump` backs up the running old version. A failing `pre_deploy` hook aborts the deploy before pull/up, with no rollback (nothing changed); the next sync retries. On a stack's first-ever deploy there is nothing to back up yet — guard the command if that matters.
+- `post_deploy` runs after a successful `up` (and health gate). A failing `post_deploy` hook **rolls the deploy back** to the previous version, exactly like a `health_check` failure — even without a `health_check` set.
+- Hooks are **not** hash-tracked: editing a hook does not trigger a redeploy; it takes effect on the stack's next deploy. (A hook that runs a script under a `watch_dirs` entry still redeploys when that script changes.)
+- Hooks run only when the stack actually deploys — never on a skip, a self-heal, or a rollback.
+- `timeout_seconds` bounds each hook; `command_timeout_seconds` is the hard ceiling (a larger value has no effect). For a backup slower than that, raise `command_timeout_seconds`.
 
 ## `vars_file`
 

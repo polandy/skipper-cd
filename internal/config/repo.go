@@ -45,6 +45,7 @@ type repoStackOverride struct {
 	HealthCheck        *HealthCheck `yaml:"health_check"`
 	SelfHeal           *bool        `yaml:"self_heal"`
 	DependsOn          []string     `yaml:"depends_on"`
+	Hooks              Hooks        `yaml:"hooks"`
 
 	// Disabled excludes the stack entirely: not deployed, not health-polled.
 	// A running stack that becomes disabled keeps running — skipper hands it
@@ -127,12 +128,14 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 			HealthCheck:        ov.HealthCheck,
 			SelfHeal:           ov.SelfHeal,
 			DependsOn:          ov.DependsOn,
+			Hooks:              ov.Hooks,
 		}
 		if hc := stack.HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
 			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
 		}
 
 		hcErr := validateHealthCheck(stack.HealthCheck)
+		hookErr := validateHooks(stack.Hooks)
 		depErr := invalidDependency(stack, known)
 		switch {
 		case strings.HasPrefix(name, "_"):
@@ -143,6 +146,8 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 			failAt(name, "watch_dirs", "%v", watchErr)
 		case hcErr != nil:
 			failAt(name, "health_check", "health_check: %v", hcErr)
+		case hookErr != nil:
+			failAt(name, "hooks", "hooks: %v", hookErr)
 		case depErr != nil:
 			failAt(name, "depends_on", "%v", depErr)
 		default:

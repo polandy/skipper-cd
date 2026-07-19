@@ -66,12 +66,46 @@ type Stack struct {
 	// configured stacks and the graph must be acyclic. See ADR-0032.
 	DependsOn []string `yaml:"depends_on,omitempty"`
 
+	// Hooks optionally runs shell commands around this stack's deploy: a backup
+	// before it updates (pre_deploy) and a smoke test after (post_deploy). See
+	// ADR-0037. Purely a deploy-time side effect — never hashed, so editing a
+	// hook does not itself redeploy.
+	Hooks Hooks `yaml:"hooks,omitempty"`
+
 	// ConfigHash is the hash of the stack's deploy-shaping config, set only by
 	// LoadRepoStacks in stack-discovery mode (ADR-0034). It participates in
 	// change detection so a repo skipper.yaml edit redeploys exactly the
 	// affected stack. Empty in legacy (host stacks list) mode. Never read from
 	// YAML.
 	ConfigHash string `yaml:"-"`
+}
+
+// Hooks configures optional shell commands run around a stack's deploy
+// (ADR-0037). Both lists are optional; the zero value runs nothing. Each entry
+// is one `sh -c` command line, run sequentially in list order.
+type Hooks struct {
+	// PreDeploy runs before any container is touched — the point at which the
+	// stack's previous version is still running, so a backup command can dump
+	// it. A failing pre_deploy hook aborts the deploy before pull/up, with no
+	// rollback (nothing changed yet).
+	PreDeploy []string `yaml:"pre_deploy"`
+
+	// PostDeploy runs after a successful up and health gate, before on-demand
+	// containers are stopped. A failing post_deploy hook triggers the same
+	// rollback path as a health-check failure (ADR-0022, ADR-0037), even when no
+	// health_check is configured.
+	PostDeploy []string `yaml:"post_deploy"`
+
+	// TimeoutSeconds bounds each individual hook command. 0 (the default) leaves
+	// each hook bounded only by the global command_timeout_seconds, which is
+	// also the hard ceiling: a larger value here cannot exceed it (raise
+	// command_timeout_seconds for a backup slower than that).
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+}
+
+// IsEmpty reports whether the stack defines no hooks at all.
+func (h Hooks) IsEmpty() bool {
+	return len(h.PreDeploy) == 0 && len(h.PostDeploy) == 0
 }
 
 // HealthCheck configures the optional post-deploy health gate of a stack.
@@ -600,6 +634,10 @@ func validateConfig(cfg *Config) error {
 		if err := validateHealthCheck(s.HealthCheck); err != nil {
 			return fmt.Errorf("stack %q: health_check: %w", s.Name, err)
 		}
+
+		if err := validateHooks(s.Hooks); err != nil {
+			return fmt.Errorf("stack %q: hooks: %w", s.Name, err)
+		}
 	}
 
 	if err := validateStackDependencies(cfg.Stacks); err != nil {
@@ -755,6 +793,26 @@ func validateHealthCheck(hc *HealthCheck) error {
 	if hc.URL != "" {
 		if u, err := url.ParseRequestURI(hc.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 			return fmt.Errorf("url %q must be a valid http(s) URL", hc.URL)
+		}
+	}
+	return nil
+}
+
+// validateHooks checks a stack's optional hooks section: no blank command
+// lines (a whitespace-only entry is almost certainly a mistake) and a
+// non-negative timeout.
+func validateHooks(h Hooks) error {
+	if h.TimeoutSeconds < 0 {
+		return fmt.Errorf("timeout_seconds must not be negative, got %d", h.TimeoutSeconds)
+	}
+	for _, phase := range []struct {
+		name string
+		cmds []string
+	}{{"pre_deploy", h.PreDeploy}, {"post_deploy", h.PostDeploy}} {
+		for i, cmd := range phase.cmds {
+			if strings.TrimSpace(cmd) == "" {
+				return fmt.Errorf("%s[%d] is empty", phase.name, i)
+			}
 		}
 	}
 	return nil
