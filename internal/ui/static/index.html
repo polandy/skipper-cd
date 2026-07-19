@@ -844,7 +844,7 @@
     const phase = document.createElement('span');
     phase.className = 'hook-phase';
     phase.dataset.testid = 'hook-phase';
-    phase.innerHTML = `<span class="hk-dot"></span>${escapeHtml(hr.phase)} hook${n}<button class="clog-btn hook-log-btn" type="button" data-hook-log="${escapeAttr(hr.stack)}" title="View this hook's output in the log" aria-label="View hook log">${CLOG_ICON}</button>`;
+    phase.innerHTML = `<span class="hk-dot"></span>${escapeHtml(hr.phase)} hook${n}<button class="clog-btn hook-log-btn" type="button" data-testid="clog-btn" data-hook-log="${escapeAttr(hr.stack)}" title="View this hook's output in the log" aria-label="View hook log">${CLOG_ICON}</button>`;
     return phase;
   }
 
