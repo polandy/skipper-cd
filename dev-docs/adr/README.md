@@ -43,3 +43,4 @@ One file per decision, numbered sequentially (see
 | [0036](0036-orphan-detection-and-prune.md) | Orphan detection and optional prune (working_dir identity, health-poll cadence) |
 | [0037](0037-container-logs-in-ui.md) | Container logs in the UI (live-streamed via SSE, one follow-child per viewer) |
 | [0038](0038-pre-post-deploy-hooks.md) | Pre-/post-deploy hooks (backup-before-update) |
+| [0039](0039-read-only-http-json-api.md) | Read-only HTTP JSON API (snapshot + stream; proposed) |
