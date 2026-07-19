@@ -110,27 +110,6 @@
             <span>Absolute time</span>
           </button>
         </div>
-        <div class="vo-group" data-view="logs">
-          <button class="filter-toggle vo-search" id="log-search-open" data-testid="log-search" type="button" title="Search in log">
-            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <span>Search log</span>
-          </button>
-          <button class="filter-toggle" id="follow-logs" data-testid="follow-logs" title="Auto-scroll to newest log lines">
-            <div class="toggle-track"><div class="toggle-thumb"></div></div>
-            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <span>Auto-scroll</span>
-          </button>
-          <button class="filter-toggle" id="log-wrap" data-testid="log-wrap" title="Wrap long lines">
-            <div class="toggle-track"><div class="toggle-thumb"></div></div>
-            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 18h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 12h13a3 3 0 0 1 0 6h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 15l-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span>Wrap lines</span>
-          </button>
-          <button class="filter-toggle" id="log-fs" data-testid="log-fs" title="Fullscreen">
-            <div class="toggle-track"><div class="toggle-thumb"></div></div>
-            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span>Fullscreen</span>
-          </button>
-        </div>
       </div>
     </div>
     <div class="autosync-btn" id="autosync-btn" data-testid="autosync-btn" role="button" tabindex="0" aria-expanded="false" title="Autosync">
@@ -272,16 +251,36 @@
     <div class="orphans-body" id="orphans-body"></div>
   </div>
 
-  <div id="log-view">
-    <div class="stack-filter-wrap deploy-filter" id="log-filter-wrap" data-testid="log-filter-wrap">
-      <svg class="fi" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      <input class="stack-filter" id="log-filter" data-testid="log-filter" type="text" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log">
-      <span class="stack-filter-count" id="log-filter-count"></span>
-      <button class="stack-filter-clear" id="log-filter-clear" data-testid="log-filter-clear" type="button" aria-label="Clear search">&times;</button>
+  <div id="log-view" class="clog-panel" data-testid="logs-panel">
+    <div class="clog-head">
+      <span class="clog-title">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="2"/><path d="M7 9.5l3 2.5-3 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 15H17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        skipper logs
+      </span>
+      <span class="clog-live" id="logs-live" data-testid="logs-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>
+      <span class="clog-grow"></span>
+      <button class="clog-tool" id="log-search-open" data-testid="log-search" type="button" title="Search in log">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="clog-tool" id="log-wrap" data-testid="log-wrap" type="button" title="Wrap long lines">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 18h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 12h13a3 3 0 0 1 0 6h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 15l-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="clog-tool on" id="follow-logs" data-testid="follow-logs" type="button" title="Auto-scroll to newest log lines">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="clog-tool" id="log-fs" data-testid="log-fs" type="button" title="Fullscreen">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
     </div>
-    <div class="log-pane" id="log-pane">
+    <div class="clog-search" id="log-filter-wrap" data-testid="log-filter-wrap">
+      <span class="clog-sic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+      <input type="text" id="log-filter" data-testid="log-filter" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log">
+      <span class="clog-hits" id="log-filter-count" data-testid="log-filter-count"></span>
+    </div>
+    <div class="clog-body" id="log-pane" data-testid="log-pane">
       <div class="log-empty" id="log-empty">Awaiting log output...</div>
     </div>
+    <div class="clog-foot"><span class="clog-stat" id="logs-stat" data-testid="logs-stat">live · streaming</span></div>
   </div>
 </main>
 
@@ -2636,10 +2635,31 @@
     logEntries.push(entry);
     const overflow = logEntries.length - maxLogBuffer;
     if (overflow > 0) logEntries.splice(0, overflow);
-    // While the logs view is hidden we only buffer; the pane is rebuilt from
-    // the buffer when the view is next activated.
-    if (activeView === 'logs') appendNewestToDom(entry);
+    // While the logs view is hidden, or its live pill is paused, we only
+    // buffer; the pane is rebuilt from the buffer on reactivation or unpause.
+    if (activeView === 'logs' && !logsPaused) appendNewestToDom(entry);
   }
+
+  // Live/pause pill (clog-live), matching the container-log panel's: pausing
+  // freezes the pane without dropping anything — pushLog keeps buffering, and
+  // unpausing rebuilds the window to catch up in one go.
+  const logsLive = document.getElementById('logs-live');
+  const logsStat = document.getElementById('logs-stat');
+  let logsPaused = false;
+
+  function setLogsStat(text, cls) {
+    logsStat.textContent = text;
+    logsStat.className = 'clog-stat' + (cls ? ' ' + cls : '');
+  }
+
+  logsLive.addEventListener('click', function() {
+    logsPaused = !logsPaused;
+    logsLive.classList.toggle('paused', logsPaused);
+    logsLive.querySelector('.clog-ltxt').textContent = logsPaused ? 'paused' : 'live';
+    if (logsPaused) { setLogsStat('paused', 'paused'); return; }
+    setLogsStat('live · streaming');
+    renderLogWindow(); // catch up everything buffered while paused
+  });
 
   logPane.addEventListener('scroll', function() {
     const nearOlderEdge = logDescending
@@ -2674,6 +2694,7 @@
     });
     logSource.onopen = function() {
       logReconnectDelay = 1000; // a good connection resets the backoff
+      setLogsStat(logsPaused ? 'paused' : 'live · streaming', logsPaused ? 'paused' : '');
     };
     logSource.onerror = function() {
       // CONNECTING: the browser is retrying itself (Last-Event-ID replays the
@@ -2681,6 +2702,7 @@
       // retry ourselves with a capped backoff.
       if (logSource.readyState === EventSource.CLOSED) {
         logSource = null;
+        setLogsStat('reconnecting…', 'err');
         scheduleLogReconnect();
       }
     };
@@ -2769,7 +2791,7 @@
   });
 
   function applyFollow() {
-    followBtn.classList.toggle('active', followLogs);
+    followBtn.classList.toggle('on', followLogs);
     if (followLogs) scrollToNewest();
   }
 
@@ -3067,19 +3089,21 @@
     }).catch(function() {});
   }
 
-  // ── skipper Logs view controls (ADR-0037): search + wrap + fullscreen live in
-  // the view-options popover like the deploys/stacks views. Search reveals the
-  // same filter bar those use (seeded by type-to-search on desktop). Fullscreen
-  // fills below the header so the popover stays reachable to toggle it off.
+  // ── skipper Logs view controls: the view is styled as one big clog-panel
+  // (like the Stacks/Deploys container-log panel, just page-sized), so its
+  // search/wrap/auto-scroll/fullscreen tools live inline in its own header —
+  // not in the view-options popover, which no longer carries a logs group.
+  // Search reveals the same filter bar the deploys/stacks views use (seeded by
+  // type-to-search on desktop). Fullscreen fills below the header so it stays
+  // reachable to toggle back off.
   (function() {
     const view = document.getElementById('log-view');
     const wrapBtn = document.getElementById('log-wrap');
     const fsBtn = document.getElementById('log-fs');
-    const searchOpen = document.getElementById('log-search-open');
+    const searchBtn = document.getElementById('log-search-open');
     const wrap = document.getElementById('log-filter-wrap');
     const input = document.getElementById('log-filter');
     const count = document.getElementById('log-filter-count');
-    const clearBtn = document.getElementById('log-filter-clear');
 
     function highlightLine(line, q) {
       const ql = q.toLowerCase();
@@ -3111,7 +3135,10 @@
       });
       count.textContent = q ? (n + (n === 1 ? ' hit' : ' hits')) : '';
     }
-    function revealLogFilter(on) { wrap.classList.toggle('revealed', on); }
+    function revealLogFilter(on) {
+      wrap.classList.toggle('revealed', on);
+      searchBtn.classList.toggle('on', on);
+    }
     function clearLogFilter(hide) {
       input.value = ''; applyLogSearch();
       if (hide) { revealLogFilter(false); input.blur(); }
@@ -3126,14 +3153,18 @@
       if (input.value) clearLogFilter(false); else { revealLogFilter(false); input.blur(); }
     });
     input.addEventListener('blur', function() { if (!input.value) revealLogFilter(false); });
-    clearBtn.addEventListener('click', function() { clearLogFilter(false); input.focus(); });
-    searchOpen.addEventListener('click', function() { setViewOptions(false); revealLogFilter(true); input.focus(); });
+    // Clicking the tool again closes it (and clears the query), matching the
+    // container-log panel's search tool.
+    searchBtn.addEventListener('click', function() {
+      if (wrap.classList.contains('revealed')) { clearLogFilter(true); return; }
+      revealLogFilter(true); input.focus();
+    });
 
-    wrapBtn.addEventListener('click', function() { wrapBtn.classList.toggle('active', logPane.classList.toggle('wrap')); });
+    wrapBtn.addEventListener('click', function() { wrapBtn.classList.toggle('on', logPane.classList.toggle('wrap')); });
 
     function setLogFullscreen(on) {
       view.classList.toggle('clog-fullscreen', on);
-      fsBtn.classList.toggle('active', on);
+      fsBtn.classList.toggle('on', on);
     }
     fsBtn.addEventListener('click', function() { setLogFullscreen(!view.classList.contains('clog-fullscreen')); });
 

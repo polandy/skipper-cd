@@ -1726,9 +1726,10 @@
     display: none;
   }
   .view-options.open { display: block; animation: theme-notice-in 0.16s ease; }
+  /* No .vo-group for "logs": its controls live inline in the log panel's own
+     header now (see LOG VIEW below), not in this popover. */
   .vo-group { display: none; }
   body:not(.view-logs):not(.view-stacks) .view-options .vo-group[data-view="deploys"] { display: block; }
-  body.view-logs .view-options .vo-group[data-view="logs"] { display: block; }
   body.view-stacks .view-options .vo-group[data-view="stacks"] { display: block; }
 
   /* Filter toggles are glyph-only in the header, but inside the popover there is
@@ -2040,12 +2041,20 @@
 
   /* ─── LOG VIEW ─── */
   /* body.view-logs switches between the deploy table and the log pane;
-     !important wins over the inline display set by showTable(). */
+     !important wins over the inline display set by showTable(). The view is
+     styled as one big clog-panel (same header/search/body/footer chrome as
+     the Stacks/Deploys container-log panel — see CONTAINER LOGS below), just
+     page-sized, so live/search/wrap/auto-scroll/fullscreen live inline in its
+     own header instead of the view-options popover. */
   #log-view { display: none; }
-  body.view-logs #log-view { display: block; }
+  body.view-logs #log-view { display: flex; flex-direction: column; margin: 0; }
+  #log-view:not(.clog-fullscreen) { height: calc(100vh - 150px); }
   body.view-logs #deploy-table, body.view-logs #empty-state, body.view-logs #disabled-stacks { display: none !important; }
-  /* time-mode / log-sort / follow-logs now live in the view-options popover,
-     shown per active view via .vo-group (see VIEW OPTIONS POPOVER). */
+  /* Revealed by the search tool or type-to-search, like .clog-search's
+     .clog-hide toggle in the container-log panel — just the opposite polarity
+     (shown on .revealed, matching the deploys/stacks filter bars' own class). */
+  #log-filter-wrap { display: none; }
+  #log-filter-wrap.revealed { display: flex; }
 
   /* ─── STACKS VIEW (roster / inventory, dev-docs/stack-roster-spec.md) ─── */
   /* The full set of stacks skipper owns (stack discovery, ADR-0034), each with
@@ -2114,16 +2123,16 @@
   }
   .roster-list .health-panel .hp-head-who { display: none; }
 
-  .log-pane {
-    background: var(--bg-sunken);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-family: var(--font-mono);
-    font-size: 11.5px;
-    line-height: 1.7;
+  /* #log-pane is the panel's .clog-body (chrome comes from the .clog-panel
+     wrapper); override the small popup panel's capped height so it fills the
+     page, and its preformatted whitespace — .log-line lays each entry out as
+     a flex row of its own spans, unlike the raw preformatted .clog-ln text. */
+  #log-pane.clog-body {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
     padding: 10px 0;
-    height: calc(100vh - 150px);
-    overflow-y: auto;
+    white-space: normal;
   }
 
   .log-empty {
@@ -2461,11 +2470,12 @@
   @media (prefers-reduced-motion: reduce) { .clog-live .clog-dot { animation: none; } .clog-body { scroll-behavior: auto; } }
 
   /* skipper Logs view fullscreen fills the viewport below the sticky header, so
-     the header + view-options popover stay reachable to toggle it back off. */
+     the header stays reachable to toggle it back off (unlike a trailing
+     clog-panel, which fills the whole viewport — see .clog-panel.clog-fullscreen
+     above). */
   #log-view.clog-fullscreen { position: fixed; inset: var(--app-header-h) 0 0 0; z-index: 80;
-     background: var(--crust); display: flex; flex-direction: column; padding: 10px 14px; }
-  #log-view.clog-fullscreen .log-pane { max-height: none; flex: 1; }
-  .log-pane.wrap .log-msg, .log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+     background: var(--crust); display: flex; flex-direction: column; }
+  #log-pane.wrap .log-msg, #log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .log-line.clog-out { display: none; }
 
   .health-panel .hp-svc { grid-template-columns: 1fr auto auto auto; }

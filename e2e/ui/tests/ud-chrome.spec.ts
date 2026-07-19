@@ -87,37 +87,32 @@ test.describe('UD4: responsive ≤700px', () => {
 
 });
 
-// UD8 — View-options popover. The view-specific toggles (deploys: time mode;
-// logs: auto-scroll + wrap + fullscreen) live in a popover opened from the
-// *active* view button, not the header row, so switching views never makes a
-// header control appear or disappear. They stay hidden until the popover opens,
-// which surfaces only the active view's group; Esc / outside-click dismiss it.
+// UD8 — View-options popover. The view-specific toggles (currently: deploys'
+// time mode) live in a popover opened from the *active* view button, not the
+// header row, so switching views never makes a header control appear or
+// disappear. Logs carries no group — its search/wrap/auto-scroll/fullscreen
+// tools live inline in its own panel header instead (see UB8), so clicking
+// the active logs button is a no-op here.
 test('UD8: view-specific options live in a popover opened from the active view button', async ({
   page,
   skipper,
 }) => {
   const options = page.locator('[data-testid="view-options"]');
   const timeMode = page.locator('[data-testid="time-mode"]');
-  const logWrap = page.locator('[data-testid="log-wrap"]');
-  const followLogs = page.locator('[data-testid="follow-logs"]');
   const deploysBtn = page.locator('[data-testid="view-toggle"] button[data-view="deploys"]');
   const logsBtn = page.locator('[data-testid="view-toggle"] button[data-view="logs"]');
 
   await page.goto(`${skipper.baseURL}/`);
 
-  // Closed by default: none of the view-specific toggles sit in the header.
+  // Closed by default: no view-specific toggle sits in the header.
   await expect(options).toBeHidden();
   await expect(timeMode).toBeHidden();
-  await expect(logWrap).toBeHidden();
-  await expect(followLogs).toBeHidden();
 
-  // Deploys is active: clicking its button opens the popover showing only the
-  // deploys group (time mode); the logs group stays hidden.
+  // Deploys is active: clicking its button opens the popover showing the
+  // deploys group (time mode).
   await deploysBtn.click();
   await expect(options).toBeVisible();
   await expect(timeMode).toBeVisible();
-  await expect(logWrap).toBeHidden();
-  await expect(followLogs).toBeHidden();
 
   // The toggle works from inside the popover, and Esc closes it.
   await expect(timeMode).not.toHaveClass(/\bactive\b/);
@@ -126,19 +121,18 @@ test('UD8: view-specific options live in a popover opened from the active view b
   await page.keyboard.press('Escape');
   await expect(options).toBeHidden();
 
-  // Switching to logs surfaces no header control; the options move to the logs
-  // group, reached the same way — click the now-active logs button.
+  // Switching to logs surfaces no header control and opens no popover; a
+  // second click on the now-active logs button stays a no-op, since the view
+  // carries no vo-group.
   await logsBtn.click(); // deploys → logs (popover stays closed)
   await expect(options).toBeHidden();
-  await expect(timeMode).toBeHidden();
-  await expect(logWrap).toBeHidden();
-  await logsBtn.click(); // open the popover for the logs view
-  await expect(options).toBeVisible();
-  await expect(logWrap).toBeVisible();
-  await expect(followLogs).toBeVisible();
-  await expect(timeMode).toBeHidden();
+  await logsBtn.click(); // active-button click, but nothing to open
+  await expect(options).toBeHidden();
 
-  // Clicking outside (the brand) closes it.
+  // Back on deploys, clicking outside (the brand) closes an open popover.
+  await deploysBtn.click();
+  await deploysBtn.click();
+  await expect(options).toBeVisible();
   await page.locator('header .brand').click();
   await expect(options).toBeHidden();
 });
