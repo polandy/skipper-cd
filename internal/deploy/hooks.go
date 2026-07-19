@@ -13,37 +13,22 @@ const (
 	hookPhasePost = "post_deploy"
 )
 
-// stackEnv builds the environment for a stack command: the base env
-// (os.Environ + vars_file) plus the stack's env_files (Invariant 6 precedence),
-// with any extra KEY=VALUE entries appended last so they win. It is shared by
-// docker compose invocations and deploy hooks.
-func (d *Deployer) stackEnv(run stackRun, extra ...string) ([]string, error) {
-	env := make([]string, len(run.baseEnv))
-	copy(env, run.baseEnv)
-	for _, envFile := range run.stack.EnvFiles {
-		envVars, err := parseEnvFile(envFile)
-		if err != nil {
-			return nil, fmt.Errorf("read env file %s: %w", envFile, err)
-		}
-		env = append(env, envVars...)
-	}
-	return append(env, extra...), nil
-}
-
 // runHooks runs the given hook commands sequentially via `sh -c`, stopping at
-// the first failure (ADR-0037). Each command runs in the stack's project
-// directory with the stack's deploy environment plus SKIPPER_STACK and
-// SKIPPER_HOOK. A per-hook timeout_seconds > 0 bounds each command via the
-// context; the runner's global command_timeout_seconds remains the hard ceiling
-// either way, so 0 means "bounded only by that global".
+// the first failure (ADR-0038). Each command runs in the stack's project
+// directory with the stack's deploy environment (resolveEnv, Invariant 6) plus
+// SKIPPER_STACK and SKIPPER_HOOK appended last. A per-hook timeout_seconds > 0
+// bounds each command via the context; the runner's global
+// command_timeout_seconds remains the hard ceiling either way, so 0 means
+// "bounded only by that global".
 func (d *Deployer) runHooks(ctx context.Context, run stackRun, phase string, cmds []string) error {
 	if len(cmds) == 0 {
 		return nil
 	}
-	env, err := d.stackEnv(run, "SKIPPER_STACK="+run.stack.Name, "SKIPPER_HOOK="+phase)
+	env, err := run.resolveEnv()
 	if err != nil {
 		return err
 	}
+	env = append(env, "SKIPPER_STACK="+run.stack.Name, "SKIPPER_HOOK="+phase)
 	timeout := time.Duration(run.stack.Hooks.TimeoutSeconds) * time.Second
 	for i, cmd := range cmds {
 		slog.Info("running deploy hook", "stack", run.stack.Name, "phase", phase, "index", i)

@@ -19,7 +19,7 @@ hook ordering across stacks (`depends_on` already orders stacks), retry
 policies, SyncFail-style compensation hooks, and automatic restore-on-rollback
 (explicitly dropped — see Decisions #2).
 
-See ADR-0037 for the accepted decision record.
+See ADR-0038 for the accepted decision record.
 
 ## User model
 
@@ -119,11 +119,11 @@ test can still reach a service that is about to be stopped.
 - `internal/deploy/hooks.go`: `runHooks(ctx, run stackRun, phase string, cmds
   []string) error` — called at the two points in the sequence (timeout is read
   from `run.stack.Hooks`). No new package; hooks are meaningless outside a
-  deploy. It builds the env via a shared `stackEnv` helper (base env + env_files
-  + `SKIPPER_STACK` + `SKIPPER_HOOK`; `runDockerCompose` reuses the same helper)
-  and shells each command via `runner.Run(ctx, run.effectiveProjectDir(), env,
-  "sh", "-c", cmd)`, stopping at the first non-nil error and wrapping it with the
-  phase and command index.
+  deploy. It builds the env via the shared `stackRun.resolveEnv` (base env +
+  env_files, Invariant 6) then appends `SKIPPER_STACK` + `SKIPPER_HOOK`, and
+  shells each command via `runner.Run(ctx, run.effectiveProjectDir(), env, "sh",
+  "-c", cmd)`, stopping at the first non-nil error and wrapping it with the phase
+  and command index.
 
 ## Testing
 

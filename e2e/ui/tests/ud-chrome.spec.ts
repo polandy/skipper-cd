@@ -88,17 +88,17 @@ test.describe('UD4: responsive ≤700px', () => {
 });
 
 // UD8 — View-options popover. The view-specific toggles (deploys: time mode;
-// logs: sort + auto-scroll) live in a popover opened from the *active* view
-// button, not the header row, so switching views never makes a header control
-// appear or disappear. They stay hidden until the popover opens, which surfaces
-// only the active view's group; Esc / outside-click dismiss it.
+// logs: auto-scroll + wrap + fullscreen) live in a popover opened from the
+// *active* view button, not the header row, so switching views never makes a
+// header control appear or disappear. They stay hidden until the popover opens,
+// which surfaces only the active view's group; Esc / outside-click dismiss it.
 test('UD8: view-specific options live in a popover opened from the active view button', async ({
   page,
   skipper,
 }) => {
   const options = page.locator('[data-testid="view-options"]');
   const timeMode = page.locator('[data-testid="time-mode"]');
-  const logSort = page.locator('[data-testid="log-sort"]');
+  const logWrap = page.locator('[data-testid="log-wrap"]');
   const followLogs = page.locator('[data-testid="follow-logs"]');
   const deploysBtn = page.locator('[data-testid="view-toggle"] button[data-view="deploys"]');
   const logsBtn = page.locator('[data-testid="view-toggle"] button[data-view="logs"]');
@@ -108,7 +108,7 @@ test('UD8: view-specific options live in a popover opened from the active view b
   // Closed by default: none of the view-specific toggles sit in the header.
   await expect(options).toBeHidden();
   await expect(timeMode).toBeHidden();
-  await expect(logSort).toBeHidden();
+  await expect(logWrap).toBeHidden();
   await expect(followLogs).toBeHidden();
 
   // Deploys is active: clicking its button opens the popover showing only the
@@ -116,7 +116,7 @@ test('UD8: view-specific options live in a popover opened from the active view b
   await deploysBtn.click();
   await expect(options).toBeVisible();
   await expect(timeMode).toBeVisible();
-  await expect(logSort).toBeHidden();
+  await expect(logWrap).toBeHidden();
   await expect(followLogs).toBeHidden();
 
   // The toggle works from inside the popover, and Esc closes it.
@@ -131,10 +131,10 @@ test('UD8: view-specific options live in a popover opened from the active view b
   await logsBtn.click(); // deploys → logs (popover stays closed)
   await expect(options).toBeHidden();
   await expect(timeMode).toBeHidden();
-  await expect(logSort).toBeHidden();
+  await expect(logWrap).toBeHidden();
   await logsBtn.click(); // open the popover for the logs view
   await expect(options).toBeVisible();
-  await expect(logSort).toBeVisible();
+  await expect(logWrap).toBeVisible();
   await expect(followLogs).toBeVisible();
   await expect(timeMode).toBeHidden();
 

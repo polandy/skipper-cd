@@ -186,6 +186,36 @@ func newStackRun(stack config.Stack, baseDir string, baseEnv []string) stackRun 
 	}
 }
 
+// composeInvocation returns the working directory and the leading `compose …`
+// args (project selection) shared by every docker compose call for this stack.
+// A non-empty projectDir is passed as --project-directory so compose uses it
+// for project identity and .env loading; when empty, compose runs from the
+// compose file's directory and discovers it there.
+func (r stackRun) composeInvocation() (dir string, args []string) {
+	dir = filepath.Dir(r.composePath)
+	args = []string{"compose"}
+	if r.projectDir != "" {
+		args = append(args, "-f", r.composePath, "--project-directory", r.projectDir)
+		dir = r.projectDir
+	}
+	return dir, args
+}
+
+// resolveEnv returns baseEnv extended with this stack's env_files (Invariant 6:
+// env_files win over vars_file and os.Environ, which baseEnv already holds).
+func (r stackRun) resolveEnv() ([]string, error) {
+	env := make([]string, len(r.baseEnv))
+	copy(env, r.baseEnv)
+	for _, envFile := range r.stack.EnvFiles {
+		envVars, err := parseEnvFile(envFile)
+		if err != nil {
+			return nil, fmt.Errorf("read env file %s: %w", envFile, err)
+		}
+		env = append(env, envVars...)
+	}
+	return env, nil
+}
+
 // changeSet carries what a deploy is applying: the changed tracked files and
 // their git context (diffs and commits since the last deployed commit). The
 // zero value means "no change context" (e.g. a skipped stack).
@@ -658,7 +688,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
 	// pre_deploy hooks run before any container is touched — the point at which
-	// the old version is still up, so a backup can dump it (ADR-0037). A failure
+	// the old version is still up, so a backup can dump it (ADR-0038). A failure
 	// here aborts before pull/up with no rollback (nothing changed): the deferred
 	// emitDeployFailure sees a plain error and emits `failed`.
 	if err := d.runHooks(ctx, run, hookPhasePre, stack.Hooks.PreDeploy); err != nil {
@@ -703,7 +733,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	// post_deploy hooks validate the new version from outside compose (a smoke
 	// test, a migration). A failure takes the same rollback path as a health
-	// probe failure, even without a health_check (ADR-0037): the hook is itself a
+	// probe failure, even without a health_check (ADR-0038): the hook is itself a
 	// user-authored health gate.
 	if err := d.runHooks(ctx, run, hookPhasePost, stack.Hooks.PostDeploy); err != nil {
 		return d.rollBackFailedDeploy(ctx, run, state, "post_deploy hook", err)
@@ -838,17 +868,11 @@ func (d *Deployer) collectCommits(ctx context.Context, changedFilePaths []string
 // uses it for project identity (container labels) and .env loading; when
 // empty, docker compose runs from the directory containing the compose file.
 func (d *Deployer) runDockerCompose(ctx context.Context, run stackRun, args ...string) error {
-	env, err := d.stackEnv(run)
+	env, err := run.resolveEnv()
 	if err != nil {
 		return err
 	}
-
-	composeArgs := []string{"compose"}
-	runDir := filepath.Dir(run.composePath)
-	if run.projectDir != "" {
-		composeArgs = append(composeArgs, "-f", run.composePath, "--project-directory", run.projectDir)
-		runDir = run.projectDir
-	}
+	runDir, composeArgs := run.composeInvocation()
 	composeArgs = append(composeArgs, args...)
 
 	return d.runner.Run(ctx, runDir, env, "docker", composeArgs...)

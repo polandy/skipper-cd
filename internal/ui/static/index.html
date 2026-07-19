@@ -111,15 +111,24 @@
           </button>
         </div>
         <div class="vo-group" data-view="logs">
-          <button class="filter-toggle" id="log-sort" data-testid="log-sort" title="Show oldest log lines first">
-            <div class="toggle-track"><div class="toggle-thumb"></div></div>
-            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 5v14M3 16l3 3 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 6h9M12 11h6M12 16h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <span>Oldest first</span>
+          <button class="filter-toggle vo-search" id="log-search-open" data-testid="log-search" type="button" title="Search in log">
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Search log</span>
           </button>
           <button class="filter-toggle" id="follow-logs" data-testid="follow-logs" title="Auto-scroll to newest log lines">
             <div class="toggle-track"><div class="toggle-thumb"></div></div>
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span>Auto-scroll</span>
+          </button>
+          <button class="filter-toggle" id="log-wrap" data-testid="log-wrap" title="Wrap long lines">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 18h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 12h13a3 3 0 0 1 0 6h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 15l-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Wrap lines</span>
+          </button>
+          <button class="filter-toggle" id="log-fs" data-testid="log-fs" title="Fullscreen">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Fullscreen</span>
           </button>
         </div>
       </div>
@@ -264,6 +273,12 @@
   </div>
 
   <div id="log-view">
+    <div class="stack-filter-wrap deploy-filter" id="log-filter-wrap" data-testid="log-filter-wrap">
+      <svg class="fi" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input class="stack-filter" id="log-filter" data-testid="log-filter" type="text" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log">
+      <span class="stack-filter-count" id="log-filter-count"></span>
+      <button class="stack-filter-clear" id="log-filter-clear" data-testid="log-filter-clear" type="button" aria-label="Clear search">&times;</button>
+    </div>
     <div class="log-pane" id="log-pane">
       <div class="log-empty" id="log-empty">Awaiting log output...</div>
     </div>
@@ -368,7 +383,7 @@
       row.dataset.testid = 'roster-row';
       row.dataset.stack = entry.name;
       row.innerHTML =
-        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span></span>` +
+        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}</span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
@@ -741,6 +756,274 @@
     return escapeHtml(s).replace(/"/g, '&quot;');
   }
 
+  // ── Container logs (ADR-0037) ──────────────────────────────────────────────
+  // A live `docker compose logs` panel opened from a console icon, per stack
+  // (merged services) and per container. One log open at a time; the panel
+  // streams from /api/container-logs via EventSource and trails the row/line it
+  // was opened from. Controls: live/pause, auto-scroll, wrap, in-log search,
+  // fullscreen.
+  const CLOG_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15H17"/></svg>';
+  const CLOG_ICONS = {
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>',
+    wrap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h13a3 3 0 0 1 0 6h-4"/><path d="M16 15l-3 3 3 3"/><path d="M4 18h6"/></svg>',
+    scroll: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>',
+    fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+  };
+
+  // clogBtnHTML/clogButton build the console icon that opens a log — a string
+  // for template use (health-panel lines, roster rows) and a DOM node for the
+  // deploy row's action cell.
+  function clogBtnHTML(stack, service) {
+    const label = service ? ('logs for ' + stack + ' / ' + service) : ('logs for ' + stack + ' (all services)');
+    return `<button class="clog-btn" type="button" data-testid="clog-btn" data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
+  }
+  function clogButton(stack, service) {
+    const tmp = document.createElement('template');
+    tmp.innerHTML = clogBtnHTML(stack, service);
+    return tmp.content.firstElementChild;
+  }
+
+  const clog = (function() {
+    let panel = null, es = null, btn = null, body = null, key = null;
+    let curService = '', curStack = '';
+    let follow = true, paused = false, query = '', tail = 200;
+    let fsHolder = null; // marks the panel's row spot while it is fullscreen in <body>
+
+    function toBottom() { if (body) body.scrollTop = body.scrollHeight; }
+    function setStat(text, cls) {
+      const s = panel && panel.querySelector('.clog-stat');
+      if (s) { s.textContent = text; s.className = 'clog-stat' + (cls ? ' ' + cls : ''); }
+    }
+
+    // decorate splits a compose log line into service prefix (merged view),
+    // leading RFC3339 timestamp (--timestamps) and message, colouring each and
+    // tinting error/warn lines. Everything is escaped — no HTML from the child.
+    function decorate(data) {
+      let svc = '', rest = data;
+      if (!curService) {
+        const m = rest.match(/^([^|]{1,60}?)\s+\|\s?(.*)$/);
+        if (m) { svc = m[1]; rest = m[2]; }
+      }
+      let ts = '';
+      const t = rest.match(/^(\S+)\s([\s\S]*)$/);
+      if (t && /^\d{4}-\d\d-\d\dT[\d:.]+/.test(t[1])) { ts = t[1]; rest = t[2]; }
+      let cls = '';
+      if (/error|fatal|panic|\bfail/i.test(rest)) cls = 'clog-err';
+      else if (/warn/i.test(rest)) cls = 'clog-warn';
+      let html = '';
+      if (svc) html += '<span class="clog-svc">' + escapeHtml(svc) + ' |</span> ';
+      if (ts) html += '<span class="clog-ts">' + escapeHtml(ts) + '</span> ';
+      html += cls ? '<span class="' + cls + '">' + escapeHtml(rest) + '</span>' : escapeHtml(rest);
+      return html;
+    }
+
+    function highlight(root, q) {
+      const ql = q.toLowerCase();
+      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), ns = [];
+      while (w.nextNode()) ns.push(w.currentNode);
+      ns.forEach(function(n) {
+        const text = n.nodeValue, low = text.toLowerCase();
+        let idx = low.indexOf(ql); if (idx < 0) return;
+        const frag = document.createDocumentFragment(); let pos = 0;
+        while (idx >= 0) {
+          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+          const mk = document.createElement('mark'); mk.textContent = text.slice(idx, idx + q.length);
+          frag.appendChild(mk); pos = idx + q.length; idx = low.indexOf(ql, pos);
+        }
+        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+        n.parentNode.replaceChild(frag, n);
+      });
+    }
+    function filterLine(ln) {
+      if (ln.dataset.orig == null) ln.dataset.orig = ln.innerHTML;
+      ln.innerHTML = ln.dataset.orig;
+      ln.classList.remove('clog-out', 'clog-hit');
+      if (!logLineVisible(ln.textContent, query)) { ln.classList.add('clog-out'); return; }
+      if (query) { ln.classList.add('clog-hit'); highlight(ln, query); }
+    }
+    function applySearch(q) {
+      query = q;
+      let n = 0;
+      body.querySelectorAll('.clog-ln').forEach(function(ln) { filterLine(ln); if (q && !ln.classList.contains('clog-out')) n++; });
+      const hits = panel.querySelector('.clog-hits');
+      if (hits) hits.textContent = q ? (n + (n === 1 ? ' hit' : ' hits')) : '';
+      if (follow) toBottom();
+    }
+
+    function appendLine(data) {
+      if (paused) return;
+      const ln = document.createElement('span');
+      ln.className = 'clog-ln';
+      ln.innerHTML = decorate(data);
+      if (query) filterLine(ln);
+      body.appendChild(ln);
+      while (body.children.length > 3000) body.removeChild(body.firstChild);
+      if (query) {
+        const hits = panel.querySelector('.clog-hits');
+        if (hits) hits.textContent = body.querySelectorAll('.clog-ln.clog-hit').length + ' hits';
+      }
+      if (follow) toBottom();
+    }
+
+    function connect() {
+      if (es) { es.close(); es = null; }
+      let url = '/api/container-logs/' + encodeURIComponent(curStack);
+      if (curService) url += '/' + encodeURIComponent(curService);
+      url += '?tail=' + tail;
+      es = new EventSource(url);
+      setStat('live · streaming', paused ? 'paused' : '');
+      es.onmessage = function(ev) {
+        if (!panel || !panel.isConnected) { close(); return; } // dropped by a re-render
+        appendLine(ev.data);
+      };
+      es.onerror = function() { if (panel) setStat('reconnecting…', 'err'); };
+      es.onopen = function() { if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : ''); };
+    }
+
+    function buildPanel(scope) {
+      const el = document.createElement('div');
+      el.className = 'clog-panel';
+      el.dataset.testid = 'clog-panel';
+      el.innerHTML =
+        '<div class="clog-head">' +
+          '<span class="clog-title">' + CLOG_ICON + ' logs <span class="clog-scope">· ' + escapeHtml(scope) + '</span></span>' +
+          '<span class="clog-live" data-testid="clog-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>' +
+          '<span class="clog-grow"></span>' +
+          '<button class="clog-tool" data-clog="search" type="button" title="Search in log">' + CLOG_ICONS.search + '</button>' +
+          '<button class="clog-tool" data-clog="wrap" type="button" title="Wrap long lines">' + CLOG_ICONS.wrap + '</button>' +
+          '<button class="clog-tool on" data-clog="scroll" type="button" title="Auto-scroll — follow the tail">' + CLOG_ICONS.scroll + '</button>' +
+          '<span class="clog-tail" data-testid="clog-tail">' +
+            '<button data-tail="50" type="button">50</button>' +
+            '<button data-tail="200" class="active" type="button">200</button>' +
+            '<button data-tail="1000" type="button">1000</button>' +
+          '</span>' +
+          '<button class="clog-tool" data-clog="fs" type="button" title="Fullscreen">' + CLOG_ICONS.fs + '</button>' +
+        '</div>' +
+        '<div class="clog-search clog-hide" data-testid="clog-search"><span class="clog-sic">' + CLOG_ICONS.search + '</span>' +
+          '<input type="text" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log"><span class="clog-hits"></span></div>' +
+        '<div class="clog-body" data-testid="clog-body"></div>' +
+        '<div class="clog-foot"><span class="clog-stat">live · streaming</span></div>';
+      return el;
+    }
+
+    function wire() {
+      panel.querySelector('.clog-live').addEventListener('click', function() {
+        paused = !paused;
+        this.classList.toggle('paused', paused);
+        this.querySelector('.clog-ltxt').textContent = paused ? 'paused' : 'live';
+        setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : '');
+      });
+      panel.querySelectorAll('.clog-tool[data-clog]').forEach(function(b) {
+        b.addEventListener('click', function() {
+          const k = b.dataset.clog;
+          if (k === 'wrap') { b.classList.toggle('on', body.classList.toggle('wrap')); }
+          else if (k === 'scroll') { follow = b.classList.toggle('on'); if (follow) toBottom(); }
+          else if (k === 'fs') { fullscreen(!panel.classList.contains('clog-fullscreen')); }
+          else if (k === 'search') {
+            const box = panel.querySelector('.clog-search');
+            const show = box.classList.toggle('clog-hide') === false;
+            b.classList.toggle('on', show);
+            const inp = box.querySelector('input');
+            if (show) inp.focus(); else { inp.value = ''; applySearch(''); }
+          }
+        });
+      });
+      panel.querySelector('.clog-search input').addEventListener('input', function() { applySearch(this.value.trim()); });
+      panel.querySelectorAll('.clog-tail button').forEach(function(b) {
+        b.addEventListener('click', function() {
+          panel.querySelectorAll('.clog-tail button').forEach(function(x) { x.classList.remove('active'); });
+          b.classList.add('active');
+          tail = parseInt(b.dataset.tail, 10) || 200;
+          body.innerHTML = ''; connect(); // re-pull the backlog at the new size
+        });
+      });
+    }
+
+    // The panel lives inside <main>, which has its own stacking context
+    // (z-index:1), so a high z-index alone can't lift a fullscreen overlay above
+    // the sticky header. Reparent it to <body> for the duration, leaving a
+    // comment where it belongs so exit can restore it.
+    function fullscreen(on) {
+      const b = panel.querySelector('.clog-tool[data-clog="fs"]');
+      if (on) {
+        if (!fsHolder) {
+          fsHolder = document.createComment('clog-fs');
+          panel.before(fsHolder);
+          document.body.appendChild(panel);
+        }
+        panel.classList.add('clog-fullscreen');
+        if (b) b.classList.add('on');
+        toBottom();
+        return;
+      }
+      panel.classList.remove('clog-fullscreen');
+      if (b) b.classList.remove('on');
+      if (fsHolder && fsHolder.parentNode) {
+        fsHolder.replaceWith(panel); // back to its row
+        fsHolder = null;
+      } else if (fsHolder) {
+        fsHolder = null;
+        close(); // the row was re-rendered away while fullscreen → tear down
+      }
+    }
+
+    function open(button, stack, service) {
+      const newKey = stack + '\n' + (service || '');
+      if (key === newKey) { close(); return; } // same icon → toggle closed
+      close();
+      btn = button; key = newKey; curStack = stack; curService = service || '';
+      follow = true; paused = false; query = '';
+      btn.classList.add('on');
+      const scope = service ? (stack + ' / ' + service) : (stack + ' · all services');
+      panel = buildPanel(scope);
+      const anchor = button.closest('.hp-svc') || button.closest('.event-row') || button.closest('.roster-row') || button;
+      anchor.after(panel);
+      body = panel.querySelector('.clog-body');
+      wire();
+      connect();
+    }
+
+    function close() {
+      if (es) { es.close(); es = null; }
+      if (fsHolder) { if (fsHolder.parentNode) fsHolder.remove(); fsHolder = null; }
+      if (panel) { panel.remove(); panel = null; }
+      if (btn) { btn.classList.remove('on'); btn = null; }
+      body = null; key = null; query = '';
+    }
+
+    // Type-to-search: while a log is open, a printable key routes into the
+    // in-log search, overriding the deploys/stacks type-to-search. Capture phase
+    // + stopImmediatePropagation so it wins over those document keydown listeners.
+    document.addEventListener('keydown', function(e) {
+      if (!panel) return;                                   // no log open → leave default search
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const input = panel.querySelector('.clog-search input');
+      if (e.target === input) return;                       // already in the log search → native typing
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+      if (e.key === 'Escape' || e.key.length !== 1 || e.key === ' ') return;
+      const box = panel.querySelector('.clog-search');
+      const searchBtn = panel.querySelector('.clog-tool[data-clog="search"]');
+      if (box.classList.contains('clog-hide')) { box.classList.remove('clog-hide'); if (searchBtn) searchBtn.classList.add('on'); }
+      input.focus();
+      input.value += e.key; // focus mid-keydown doesn't reliably route the char
+      applySearch(input.value.trim());
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+
+    return {
+      toggle: function(button) { open(button, button.dataset.clogStack, button.dataset.clogService || ''); },
+      close: close,
+      escape: function() {
+        if (panel && panel.classList.contains('clog-fullscreen')) { fullscreen(false); return true; }
+        if (panel) { close(); return true; }
+        return false;
+      },
+    };
+  })();
+
+
   function rowClass(status, isHistory) {
     let cls = 'event-row';
     if (status === 'deploying') cls += ' deploying-row';
@@ -779,6 +1062,19 @@
     chip.textContent = (stack || '?').charAt(0);
   }
 
+  // jumpBtnHTML renders the cross-view navigation affordance next to a stack
+  // name: a small button that switches to targetView and scrolls to that
+  // stack's row there (see jumpToStack). Always rendered — whether a landing
+  // row actually exists depends on live data (e.g. a stack with no deploy
+  // history yet has no Deploys-view row), so jumpToStack degrades to a plain
+  // view switch when it finds nothing to land on.
+  function jumpBtnHTML(targetView, stack) {
+    const label = targetView === 'stacks' ? 'View in Stacks' : 'View in Deploys';
+    return `<button type="button" class="jump-btn" data-testid="jump-btn" data-jump-view="${targetView}" data-jump-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label + ': ' + stack)}">` +
+      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>' +
+      '</button>';
+  }
+
   // pendingTagHTML renders the tag on a pending deploy row. Queued rows show
   // "paused[: reason]"; blocked rows (ADR-0032) show the dependency reason
   // ("blocked by <dep>") directly, both drawn from the queue snapshot. The
@@ -810,7 +1106,7 @@
     const filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
-      `<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${pausedTag}</span>` +
+      `<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="status-cell">${badgeHTML(evt.status)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
       `<span class="col-files">${filesCell}</span>`;
@@ -883,6 +1179,14 @@
       } else if (!newest && hist) {
         hist.remove();
         closeAuditPanel(row);
+      }
+
+      // Container-logs button — per stack, on the newest row (ADR-0037).
+      let clogBtn = cell.querySelector('.clog-btn');
+      if (newest && !clogBtn) {
+        cell.appendChild(clogButton(stack, ''));
+      } else if (!newest && clogBtn) {
+        clogBtn.remove();
       }
     });
   }
@@ -1041,6 +1345,7 @@
         `<span class="hp-name">${escapeHtml(s.name)}</span>` +
         `<span class="hp-state">${escapeHtml(state)}</span>` +
         `<span class="hp-status" data-health="${escapeAttr(st)}"><span class="hdot"></span>${escapeHtml(st)}${age}</span>` +
+        clogBtnHTML(stack, s.name) +
         `</div>` + healthHistoryHTML(stack, s.name);
     }).join('');
     return el;
@@ -1506,6 +1811,17 @@
     rosterList.querySelectorAll('.roster-row.audit-open').forEach(function(r) { r.classList.remove('audit-open'); });
   }
   rosterList.addEventListener('click', function(e) {
+    // Cross-view jump button: hand off to Deploys. Handled before the row's
+    // own click (which opens its history panel) so a tap never opens both.
+    const jumpBtn = e.target.closest('.jump-btn');
+    if (jumpBtn) {
+      jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
+      return;
+    }
+    // Container-logs button (ADR-0037) — per stack on the row, per container on a
+    // health-panel service line. Handled first so it never toggles the history panel.
+    const clogB = e.target.closest('.clog-btn');
+    if (clogB) { clog.toggle(clogB); return; }
     const row = e.target.closest('.roster-row');
     if (!row || !rosterList.contains(row)) return;
     const next = row.nextElementSibling;
@@ -1876,7 +2192,6 @@
   // the connection indicator remains bound to /api/events.
   const logPane = document.getElementById('log-pane');
   const followBtn = document.getElementById('follow-logs');
-  const sortBtn = document.getElementById('log-sort');
   const viewButtons = document.querySelectorAll('#view-toggle button');
 
   // The log view keeps a bounded client-side buffer (the backend replays at
@@ -1888,11 +2203,16 @@
   const maxLogBuffer = 2000;
   const logEntries = [];            // chronological, oldest → newest
   let logVisible = logPageSize;   // number of newest entries currently rendered
-  let logDescending = localStorage.getItem('logSort') !== 'asc'; // default: newest first
+  // Fixed newest-first order; the oldest-first toggle was removed — auto-scroll
+  // (follow) covers keeping the newest line in view.
+  const logDescending = true;
   let followLogs = localStorage.getItem('followLogs') !== 'false';
   const savedView = localStorage.getItem('activeView');
   let activeView = (savedView === 'logs' || savedView === 'stacks') ? savedView : 'deploys';
   let logSource = null;
+  // Re-applies the Logs-view in-log filter after a re-render; set by the logs
+  // toolbar wiring (ADR-0037), a no-op until then and when no search is active.
+  let logSearchApply = function() {};
 
   function renderLogLine(entry) {
     const line = document.createElement('div');
@@ -2021,6 +2341,7 @@
     slice.forEach(function(e) { frag.appendChild(renderLogLine(e)); });
     logPane.appendChild(frag);
     scrollToNewest();
+    logSearchApply();
   }
 
   // Reveal another page of older entries at the older edge, preserving the
@@ -2055,6 +2376,7 @@
       logPane.appendChild(node);
     }
     trimLogDom();
+    logSearchApply(); // a fresh line obeys an active in-log filter
     if (followLogs) scrollToNewest();
   }
 
@@ -2113,6 +2435,7 @@
   }
 
   function applyView() {
+    clog.close(); // a container-log panel belongs to its row; drop it on a view switch
     document.body.classList.toggle('view-logs', activeView === 'logs');
     document.body.classList.toggle('view-stacks', activeView === 'stacks');
     viewButtons.forEach(function(btn) {
@@ -2156,6 +2479,37 @@
     });
   });
 
+  // jumpToStack drives the cross-view jump-btn (deploys <-> stacks): switch to
+  // targetView, then scroll to and briefly flash that stack's row there. In
+  // the deploys view a stack can have many rows (it's an event log), so the
+  // newest one — first in DOM order — is the landing target; the stacks view
+  // has exactly one row per stack (it's inventory). Silently does nothing
+  // past the view switch when the stack has no row in the target view (e.g.
+  // "never deployed"). Clears the target view's own search filter first: a
+  // leftover query from before the jump could otherwise leave the landing row
+  // `.filtered-out` (display: none) — switched to, but invisible and with no
+  // indication why.
+  function jumpToStack(targetView, stack) {
+    if (targetView !== activeView) {
+      activeView = targetView;
+      localStorage.setItem('activeView', activeView);
+      setViewOptions(false);
+      applyView();
+    }
+    if (targetView === 'stacks') clearRosterFilter(true);
+    else clearDeployFilter(true);
+    const escaped = (window.CSS && CSS.escape) ? CSS.escape(stack) : stack;
+    const target = targetView === 'stacks'
+      ? rosterList.querySelector(`.roster-row[data-stack="${escaped}"]`)
+      : tbody.querySelector(`.event-row[data-stack="${escaped}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.remove('jump-target');
+    void target.offsetWidth; // restart the animation if it's already landed once
+    target.classList.add('jump-target');
+    setTimeout(function() { target.classList.remove('jump-target'); }, 1800);
+  }
+
   registerSurface({
     isOpen: function() { return viewOptions.classList.contains('open'); },
     close: function() { setViewOptions(false); },
@@ -2173,19 +2527,6 @@
     applyFollow();
   });
 
-  // Sort toggle: active = oldest-first (ascending). Flipping restarts the
-  // window at one page in the new order.
-  sortBtn.addEventListener('click', function() {
-    logDescending = !logDescending;
-    localStorage.setItem('logSort', logDescending ? 'desc' : 'asc');
-    sortBtn.classList.toggle('active', !logDescending);
-    sortBtn.title = logDescending ? 'Show oldest log lines first' : 'Show newest log lines first';
-    logVisible = logPageSize;
-    renderLogWindow();
-  });
-
-  sortBtn.classList.toggle('active', !logDescending);
-  sortBtn.title = logDescending ? 'Show oldest log lines first' : 'Show newest log lines first';
   applyFollow();
   applyView();
 
@@ -2194,6 +2535,18 @@
   tbody.addEventListener('click', function(e) {
     // Diff panel collapse/expand controls (per-file header, multi-commit pill).
     if (handleDiffToggle(e.target)) return;
+
+    // Cross-view jump button: hand off to Stacks. Handled before the files
+    // logic so a tap never opens the row's diff panel.
+    const jumpBtn = e.target.closest('.jump-btn');
+    if (jumpBtn) {
+      jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
+      return;
+    }
+    // Container-logs button (ADR-0037): toggle the live log panel. Handled first
+    // so a tap never also opens the row's diff/health/audit panel.
+    const clogB = e.target.closest('.clog-btn');
+    if (clogB) { clog.toggle(clogB); return; }
 
     // History button: toggle the per-stack deploy-history panel (ADR-0033).
     // Handled before the files logic so a tap never opens the row's diff panel.
@@ -2435,6 +2788,99 @@
       });
     }).catch(function() {});
   }
+
+  // ── skipper Logs view controls (ADR-0037): search + wrap + fullscreen live in
+  // the view-options popover like the deploys/stacks views. Search reveals the
+  // same filter bar those use (seeded by type-to-search on desktop). Fullscreen
+  // fills below the header so the popover stays reachable to toggle it off.
+  (function() {
+    const view = document.getElementById('log-view');
+    const wrapBtn = document.getElementById('log-wrap');
+    const fsBtn = document.getElementById('log-fs');
+    const searchOpen = document.getElementById('log-search-open');
+    const wrap = document.getElementById('log-filter-wrap');
+    const input = document.getElementById('log-filter');
+    const count = document.getElementById('log-filter-count');
+    const clearBtn = document.getElementById('log-filter-clear');
+
+    function highlightLine(line, q) {
+      const ql = q.toLowerCase();
+      const w = document.createTreeWalker(line, NodeFilter.SHOW_TEXT, null), ns = [];
+      while (w.nextNode()) ns.push(w.currentNode);
+      ns.forEach(function(n) {
+        const text = n.nodeValue, low = text.toLowerCase();
+        let idx = low.indexOf(ql); if (idx < 0) return;
+        const frag = document.createDocumentFragment(); let pos = 0;
+        while (idx >= 0) {
+          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+          const mk = document.createElement('mark'); mk.textContent = text.slice(idx, idx + q.length);
+          frag.appendChild(mk); pos = idx + q.length; idx = low.indexOf(ql, pos);
+        }
+        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+        n.parentNode.replaceChild(frag, n);
+      });
+    }
+    function applyLogSearch() {
+      const q = input.value.trim();
+      wrap.classList.toggle('has-value', q.length > 0);
+      let n = 0;
+      logPane.querySelectorAll('.log-line').forEach(function(line) {
+        if (line.dataset.origHtml == null) line.dataset.origHtml = line.innerHTML;
+        line.innerHTML = line.dataset.origHtml;
+        line.classList.remove('clog-out');
+        if (!logLineVisible(line.textContent, q)) { line.classList.add('clog-out'); return; }
+        if (q) { n++; highlightLine(line, q); }
+      });
+      count.textContent = q ? (n + (n === 1 ? ' hit' : ' hits')) : '';
+    }
+    function revealLogFilter(on) { wrap.classList.toggle('revealed', on); }
+    function clearLogFilter(hide) {
+      input.value = ''; applyLogSearch();
+      if (hide) { revealLogFilter(false); input.blur(); }
+    }
+    // Re-apply after the log window re-renders (new lines) so they obey the filter.
+    logSearchApply = function() { if (wrap.classList.contains('revealed') && input.value.trim()) applyLogSearch(); };
+
+    input.addEventListener('input', applyLogSearch);
+    input.addEventListener('keydown', function(e) {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (input.value) clearLogFilter(false); else { revealLogFilter(false); input.blur(); }
+    });
+    input.addEventListener('blur', function() { if (!input.value) revealLogFilter(false); });
+    clearBtn.addEventListener('click', function() { clearLogFilter(false); input.focus(); });
+    searchOpen.addEventListener('click', function() { setViewOptions(false); revealLogFilter(true); input.focus(); });
+
+    wrapBtn.addEventListener('click', function() { wrapBtn.classList.toggle('active', logPane.classList.toggle('wrap')); });
+
+    function setLogFullscreen(on) {
+      view.classList.toggle('clog-fullscreen', on);
+      fsBtn.classList.toggle('active', on);
+    }
+    fsBtn.addEventListener('click', function() { setLogFullscreen(!view.classList.contains('clog-fullscreen')); });
+
+    // Type-to-search: a printable key while viewing logs reveals the filter and
+    // seeds it (mirrors the deploys/stacks type-to-search); Esc exits fullscreen
+    // then the filter.
+    document.addEventListener('keydown', function(e) {
+      if (activeView !== 'logs' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target === input) return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+      if (e.key === 'Escape') {
+        if (view.classList.contains('clog-fullscreen')) setLogFullscreen(false);
+        else if (wrap.classList.contains('revealed')) clearLogFilter(true);
+        return;
+      }
+      if (e.key.length === 1 && e.key !== ' ') {
+        revealLogFilter(true); input.focus(); input.value += e.key; applyLogSearch(); e.preventDefault();
+      }
+    });
+  })();
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') clog.escape();
+  });
 })();
 </script>
 </body>

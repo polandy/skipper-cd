@@ -383,7 +383,7 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	if withIcon := hashFor(t, "stacks:\n  web:\n    icon: nginx\n    self_heal: true\n"); withIcon != base {
 		t.Error("ConfigHash must ignore icon and self_heal")
 	}
-	// hooks must not redeploy (ADR-0037): editing a backup command changes no
+	// hooks must not redeploy (ADR-0038): editing a backup command changes no
 	// hashed input, so the ConfigHash stays put.
 	if withHooks := hashFor(t, "stacks:\n  web:\n    hooks:\n      pre_deploy: [\"pg_dump > /backup/x.sql\"]\n"); withHooks != base {
 		t.Error("ConfigHash must ignore hooks")

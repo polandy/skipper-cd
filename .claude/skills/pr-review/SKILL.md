@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Thorough quality review of a pull request — docs/ADR sync, implementation quality, test coverage, UI docs + e2e tests, CI status (fix failures), and updating the branch (rebase or merge) if behind the target branch. Use when asked to review a PR by number or branch.
+description: Thorough quality review of a pull request — docs/ADR sync, implementation quality, test coverage, UI docs + e2e tests, CI status (fix failures), and updating the branch (rebase or merge) if behind the target branch. Posts the verdict as a PR comment when done. Use when asked to review a PR by number or branch.
 argument-hint: <PR number or branch>
 ---
 
@@ -50,6 +50,7 @@ If the PR touches `internal/ui/static/index.html` or UI behavior:
 - **`internal/ui/UI_SPEC.md` must be updated** in the same PR to describe the new surface.
 - User docs (`docs/`) must mention user-visible UI features where relevant.
 - **e2e tests**: a new UI behavior needs a corresponding Playwright e2e test (the "Maske" units under the e2e suite — one unit per PR). Check that behavior assertions exist; visual snapshots only where the established baselines pattern applies. Do **not** run Playwright locally — push and let the `e2e-ui` CI job verify.
+- **Mask-letter uniqueness**: the "Maske" letter (the `us-`/`ut-` file prefix, the `Uxn` test IDs, the `dev-docs/e2e-tests.md` §/heading) must be unique on the *target* branch. A PR that sat open can collide with a letter a concurrently-merged PR already claimed — `ls e2e/ui/tests/` on the updated branch and, if collided, rename yours to the next free letter across all three places (file, test IDs, spec section).
 - Remember: manual-test-first — if Andy hasn't eyeballed the rendered UI yet, flag that as a gate before finalizing e2e tests, don't silently skip it.
 
 ## 6. CI status — fix failures
@@ -66,6 +67,9 @@ If the PR touches `internal/ui/static/index.html` or UI behavior:
 
   Prefer the merge when a rebase would be painful (many commits, repeated conflicts) or when you want to avoid a force-push. Resolve any conflicts faithfully to both sides' intent.
 - **After updating, re-run the entire checklist above** (sections 1–6): the update may have pulled in doc moves, new ADRs, or code the PR now conflicts with semantically even if git merged cleanly. Wait for CI to go green again.
+- **Two things bite specifically after a merge when both PRs touch the UI** (git won't flag either — one is semantic, one is binary):
+  - **Mask-letter collision** — the concurrently-merged PR may have taken your e2e "Maske" letter (§5). Rename yours to the next free letter (file + `Uxn` test IDs + `e2e-tests.md` section) so two masks don't share a letter.
+  - **Shared visual snapshots** — both PRs likely regenerated the same baselines (`ua-deploys.spec.ts/deploys-table.png`, the `ud-chrome` full-page `theme-*`/`mobile-layout` ones), so those show up as **binary merge conflicts**. Never take one side: regenerate them **once with both changes present** (the pinned-container recipe, `reference-e2e-snapshot-regen`) and `git add` the result, so the baseline reflects the merged UI.
 
 ## 8. Verdict
 
@@ -75,3 +79,16 @@ End with a concise report:
 2. **Findings** — per section above: ✅ ok / ⚠️ issue (with file:line) / 🔧 fixed by me (with commit).
 3. **Blockers** — anything that must change before merge and that you could not fix yourself (e.g. missing manual UI check by Andy, design questions).
 4. **Merge readiness** — ready / not ready. Do **not** merge; Andy merges via squash with a crafted Conventional Commit message on his own command.
+
+## 9. Post the verdict as a PR comment
+
+Once the review is complete, post the verdict (the report from section 8) as a comment on the PR so the outcome is recorded there:
+
+```
+gh pr comment <PR> --body '<the verdict report, GitHub-flavored markdown>'
+```
+
+- Write the comment in **English** (docs/PRs are English-only), using the same Summary / Findings / Blockers / Merge readiness structure as the terminal report.
+- Prefix it with a marker like `## 🤖 PR quality review` so it's clearly the automated review.
+- If you fixed things and pushed commits, reference them so the comment reflects the final state, not the pre-fix state — post it **after** the last push and after CI has been re-triggered.
+- If a prior automated-review comment from a previous run of this skill already exists on the PR, edit/replace that one instead of stacking duplicates (`gh pr comment --edit-last`, or delete the stale one), so the PR keeps a single up-to-date review comment.

@@ -114,6 +114,14 @@ Next to the [health pill](#stack-health), the **newest row per stack** also carr
 - **No diffs.** Records are metadata only; the short SHA identifies the commit, and the live [diff panel](#expandable-panels) still serves diffs for events still in the ring. The history answers *when / result / how long / which commit / how many files*, not "show me the code change".
 - **One panel per row.** The history panel shares the [health panel](#stack-health)'s binding: opening it closes an open health or files/diff panel on the row (and vice versa), and it tints the row with a neutral **accent** bar (not a status colour — the panel is many statuses, not one).
 
+### Cross-view stack jump
+
+Every stack name — in a deploy row and in a [Stacks view](#stacks-view) roster row alike — carries a small compass **jump button** (`data-testid="jump-btn"`) that switches to the other view and lands on that same stack there, so the two views (event log vs. inventory) read as one connected surface instead of two disconnected tabs. It sits beside the name, a distinct affordance from the [history button](#deploy-history) (same frame, different glyph) so a tap can't be mistaken for opening a panel; it stops the click from reaching the row's own click handler (which would otherwise also open that row's diff/history panel).
+
+Landing behaviour is direction-dependent: **Deploys → Stacks** always lands on *the* roster row (the Stacks view has exactly one row per stack — inventory, not a log); **Stacks → Deploys** lands on the stack's *newest* row (first in DOM order — the deploy table is a log with one row per deploy). The landing row scrolls into view (`scrollIntoView({block:'center'})`) and flashes an accent tint + left bar for ~1.8s (`.jump-target`, `@media (prefers-reduced-motion: reduce)` skips the animation but keeps the tint) — a temporary highlight, not a persisted state like `diff-open`/`health-open`/`audit-open`. The button always renders; when the target view has no row for that stack (e.g. jumping to a stack that has never deployed), the jump degrades to a plain view switch with nothing to land on.
+
+The jump also **clears the target view's own [search filter](#deploys-filter)** before landing: a leftover query from before the jump could otherwise leave the landing row `.filtered-out` (hidden), switched to but invisible with no indication why.
+
 ### Disabled stacks
 
 In [stack-discovery mode](../../docs/configuration.md#stack-discovery) a stack can be parked with `disabled: true` — present in the repo, deliberately not deployed. Those names render as a quiet **chip line below the deploy table** (`data-testid="disabled-stacks"`): a muted `disabled` label followed by one dashed-border chip per name, with an explanatory `title` on the line. Driven by the [`stacks`](#event-lifecycle-sse) SSE snapshot; the line is hidden entirely when the set is empty (always, in legacy mode) and in the logs view. Deliberately **not** table rows: the table is an event log and a disabled stack has no events — the line is inventory, not history.
@@ -171,6 +179,7 @@ A third top-level view (`data-testid="stacks-view"`, [View toggle](#layout) `sta
 - **Expand → containers + history** — clicking a row stacks two bound panels below it as one accent card (see [design concept](../../dev-docs/ui-design-concept.md#expand--bound-panels)): the **containers** panel (`data-testid="health-panel"`, the stack's live [service health](#stack-health), shown only when health data exists) then the per-stack **deploy-history** panel (`data-testid="audit-panel"`, from `GET /api/audit`). The same two panels the deploy table opens via its health pill / history button; here they carry the neutral accent bar. One stack open at a time.
 - **Time mode** — the Stacks options popover carries the shared **Absolute time** toggle (`data-testid="roster-time-mode"`); default relative, hover reveals the absolute time (mouse).
 - **Filter** — the same behaviour as the [Deploys filter](#deploys-filter): a bar (`data-testid="roster-filter-wrap"`) hidden until type-to-search (a printable key while on the Stacks view with rows) or, on mobile, the popover's **"Search stacks"** entry (`data-testid="roster-search"`). Case-insensitive substring on the name; `shown/total` count (`data-testid="roster-filter-count"`); non-matching rows and their trailing panels hidden (`filtered-out`); an all-hidden result shows a **"No stack matches …"** note (`data-testid="roster-filter-empty"`); `Esc` clears then folds.
+- **Jump to Deploys** — every row's name carries the [cross-view jump button](#cross-view-stack-jump), landing on that stack's newest row back in the Deploys view.
 
 Driven by the [`stacks`](#event-lifecycle-sse) SSE snapshot (published on connect and after every run), which carries the `roster` alongside the existing `disabled` list.
 
@@ -234,7 +243,9 @@ A read-only panel listing the **current deploy run** in deploy order, opened by 
 
 ## Log view
 
-Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output. Default order is **newest-first** (newest line at the top); the header **Sort toggle** flips to oldest-first (newest at the bottom, terminal semantics). Each line: muted timestamp, level badge, optional stack prefix, message, then dim `key=value` attrs.
+Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output, **newest-first** (newest line at the top; there is no sort toggle — auto-scroll keeps the newest line in view). Each line: muted timestamp, level badge, optional stack prefix, message, then dim `key=value` attrs.
+
+The view's controls live in the **view-options popover** behind the view buttons (like the deploys/stacks views), not in the pane: **Auto-scroll** (follow the newest line), **Search log**, **Wrap lines**, and **Fullscreen**. Search reveals the same filter bar the deploys/stacks views use (seeded by type-to-search on desktop, a `Search log` popover entry on mobile) — non-matching lines are hidden, matches highlighted, and a hit count shown. Wrap soft-wraps long lines. Fullscreen fills the viewport below the sticky header (so the popover stays reachable to toggle it back off; Esc also exits).
 
 Timestamps show the time of day; lines from another day get a date prefix, and the full `toLocaleString()` timestamp is always in the tooltip.
 
@@ -242,7 +253,20 @@ Level colours: `ERROR` → red, `WARN` → yellow, `DEBUG` → muted, `INFO` →
 
 `deploy complete` lines carry the deploy event's ID as an `event_id` attr (logged only when an event sink is configured, i.e. `ui_enabled`). The log view renders it as a **diff pill** instead of a plain attr: clicking fetches the deploy's diff from `GET /api/events/{id}/diffs` and inserts the same collapsible diff panel used by the deploy table directly below the line (click again to close; a notice appears when no diff was recorded, e.g. the event fell out of the bounded history).
 
-Received lines are held in a bounded client-side buffer (2000 entries, oldest dropped on overflow) and the pane renders a sliding window of it. The window starts at **500 lines** (the newest 500) and grows by **500** each time the user scrolls to the older edge (the bottom when newest-first, the top when oldest-first); a scroll that reveals older lines preserves the reading position. Live lines are added incrementally at the newest edge, and the rendered window is trimmed back to its size from the older edge — trimmed entries stay in the buffer, so scrolling back reveals them again. Toggling sort rebuilds the pane and resets the window to one page. The `EventSource` for `/api/logs` is created lazily on first activation of the view and kept open afterwards; while the view is hidden, lines are buffered and the pane is rebuilt from the buffer on re-activation. It recovers from a fatal stream error (a non-2xx response or bad content-type, which closes `EventSource` for good) via the same capped-backoff retry the connection indicator uses — necessary because the log stream has no indicator of its own, so a silent stop would otherwise leave the pane frozen with no on-screen cue.
+Received lines are held in a bounded client-side buffer (2000 entries, oldest dropped on overflow) and the pane renders a sliding window of it. The window starts at **500 lines** (the newest 500) and grows by **500** each time the user scrolls to the older (bottom) edge; a scroll that reveals older lines preserves the reading position. Live lines are added incrementally at the newest edge, and the rendered window is trimmed back to its size from the older edge — trimmed entries stay in the buffer, so scrolling back reveals them again. An active in-log search re-applies to freshly rendered lines. The `EventSource` for `/api/logs` is created lazily on first activation of the view and kept open afterwards; while the view is hidden, lines are buffered and the pane is rebuilt from the buffer on re-activation. It recovers from a fatal stream error (a non-2xx response or bad content-type, which closes `EventSource` for good) via the same capped-backoff retry the connection indicator uses — necessary because the log stream has no indicator of its own, so a silent stop would otherwise leave the pane frozen with no on-screen cue.
+
+---
+
+## Container logs
+
+A **console icon** (`clog-btn`) opens a live `docker compose logs` panel for a stack or a single service ([ADR-0037](../../dev-docs/adr/0037-container-logs-in-ui.md)). It appears in both views:
+
+- **Deploys view** — on the newest row of each stack (per stack, services merged) and on each service line of the [health panel](#stack-health) (per container).
+- **Stacks view** — on each roster row (per stack) and, when the row is expanded, on each container line of its health panel (per container).
+
+Clicking it opens a panel (`clog-panel`) that trails the row/line it was opened from and streams from `/api/container-logs`: an initial backlog then a live follow. **Only one log is open at a time** — opening another closes the previous one (and stops its stream), so a viewer holds at most one follow stream.
+
+The panel header carries: a **live/pause** pill (`clog-live`; pause freezes the stream), **auto-scroll** (follow the tail), **line-wrap**, **in-log search**, a **backlog selector** (`clog-tail`: 50/200/1000, default 200), and **fullscreen** (`clog-fullscreen`; the panel reparents to `<body>` to overlay above the sticky header, restoring its place on exit; Esc exits). The body (`clog-body`) renders each line with a dimmed timestamp; the whole-stack view prefixes each line with its compose service, tinting `warn`/`error` lines. While a log is open, **typing routes into its search** (overriding the deploys/stacks type-to-search): matching lines highlight, the rest hide, and a hit count shows.
 
 ---
 
@@ -255,6 +279,12 @@ Received lines are held in a bounded client-side buffer (2000 entries, oldest dr
 ```
 
 On connect the in-memory backlog (bounded ring, 1000 entries, no persistence across restarts) is replayed — filtered by `Last-Event-ID` on reconnect — then live entries stream in. Entry IDs are seeded from the process start time so they stay monotonic across restarts. Slow consumers have lines dropped rather than blocking the logger. Same trust level as `/api/events` (unauthenticated); child-process output (`docker compose`, `git`, `nixos-rebuild`) is included — see ADR-0013.
+
+---
+
+## Container logs API
+
+`GET /api/container-logs/{stack}` (whole stack, services merged) and `GET /api/container-logs/{stack}/{service}` (one service) — SSE stream where each `data:` frame is one `docker compose logs` line: the backlog (`?tail=N`, default 200, clamped `[1,1000]`) then a live follow. `?since=<RFC3339>` resumes after a reconnect (server passes `--since`, skipping the backlog). UI-only (present only with `ui_enabled: true`). `{stack}` must be in the current stack set and `{service}` must appear in the stack's health snapshot, else `404`. The compose invocation reuses the deploy path's project selection so a read targets exactly the deployed project ([ADR-0037](../../dev-docs/adr/0037-container-logs-in-ui.md)); a client disconnect cancels the request context and kills the `logs --follow` child. Same trust level as `/api/logs`.
 
 ---
 
@@ -313,8 +343,8 @@ assert on.
 | `run-drawer` | The run panel (this run's stacks) | `.open` when shown |
 | `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |
 | `pending-pill` | Amber pending-count pill | Hidden at zero |
-| `view-options` | View-options popover (opened from the active view button) | `.open` when shown; holds `time-mode` / `log-sort` / `follow-logs` |
-| `time-mode`, `log-sort`, `follow-logs` | View-specific toggle buttons | Inside `view-options`; hidden until the popover opens |
+| `view-options` | View-options popover (opened from the active view button) | `.open` when shown; holds each view's controls (`time-mode`; `follow-logs` / `log-wrap` / `log-fs`; the mobile `*-search` entries) |
+| `time-mode`, `follow-logs`, `log-wrap`, `log-fs` | View-specific toggle buttons | Inside `view-options`; hidden until the popover opens; `.active` when on |
 | `theme-toggle` | Header theme (dark/light) toggle | Glyph-only; moon in dark, sun in light |
 | `theme-select` | Header theme picker (`<select>`) | Present only when `ui_theme_switcher` is enabled; transparent over a palette glyph. See [Theme override](#theme-override) |
 | `theme-notice` | Theme mismatch notice | Shown when `themeOverride` differs from `data-server-theme` |
@@ -329,6 +359,7 @@ assert on.
 | `health-panel` | Per-service health breakdown panel below the row | Sibling of the row, like `files-panel`; leads with a stack + status header; carries `data-health` (drives the shared left bar/tint); the open row gets `health-open` + `data-health` |
 | `health-service` | A service row inside `health-panel` | `data-health` per service |
 | `history-btn` | Deploy-history button in the stack cell | Newest row per stack only; opens `audit-panel` |
+| `jump-btn` | Cross-view jump button in the stack cell | On every row, both views; `data-jump-view`/`data-jump-stack` name the target; switches view and flashes `.jump-target` on the landing row |
 | `audit-panel` | Per-stack deploy-history panel below the row | Sibling of the row; fetched from `/api/audit`; opens exclusively with health/diff panels; the open row gets `audit-open` |
 | `audit-row` | A past-deploy row inside `audit-panel` | `data-status` = the terminal deploy status |
 | `time-cell`, `duration-cell` | Time / duration cells | Masked in snapshots (dynamic) |
@@ -355,6 +386,15 @@ assert on.
 | `stack-prefix` | `[stack]` prefix on a deploy log line | |
 | `cmd-prefix` | `[cmd]` prefix on child-process output | |
 | `diff-pill` | Diff pill on a `deploy complete` log line | |
+| `clog-btn` | Console icon that opens a container log (ADR-0037) | On the newest deploy row, each `health-service` line, and each roster row; `data-clog-stack` / `data-clog-service` |
+| `clog-panel` | The live container-log panel | Trails the row/line; only one open at a time; gets `clog-fullscreen` in fullscreen |
+| `clog-body` | The streamed log lines | `.clog-ln` per line; `.clog-hit` / `.clog-out` under an active in-log search |
+| `clog-live` | Live/pause pill in the panel header | `.paused` when paused |
+| `clog-search` | In-log search row inside the panel | Revealed by the search tool or by typing; holds the input + `.clog-hits` count |
+| `clog-tail` | Backlog-size selector (50/200/1000) | |
+| `log-search` | "Search log" row in the logs view-options popover | Mobile-only entry point; reveals + focuses `log-filter` |
+| `log-filter-wrap` / `log-filter` | Logs in-view search bar / input | Same reveal + type-to-search behaviour as `deploy-filter` |
+| `log-filter-count` / `log-filter-clear` | Logs search hit count / clear (`×`) button | |
 | `autosync-drawer` | The autosync drawer | |
 | `global-switch` | Global autosync switch | |
 | `stack-item` | A row in the "All stacks" list | `data-stack` |

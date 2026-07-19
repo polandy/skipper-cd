@@ -68,7 +68,7 @@ type Stack struct {
 
 	// Hooks optionally runs shell commands around this stack's deploy: a backup
 	// before it updates (pre_deploy) and a smoke test after (post_deploy). See
-	// ADR-0037. Purely a deploy-time side effect — never hashed, so editing a
+	// ADR-0038. Purely a deploy-time side effect — never hashed, so editing a
 	// hook does not itself redeploy.
 	Hooks Hooks `yaml:"hooks,omitempty"`
 
@@ -81,7 +81,7 @@ type Stack struct {
 }
 
 // Hooks configures optional shell commands run around a stack's deploy
-// (ADR-0037). Both lists are optional; the zero value runs nothing. Each entry
+// (ADR-0038). Both lists are optional; the zero value runs nothing. Each entry
 // is one `sh -c` command line, run sequentially in list order.
 type Hooks struct {
 	// PreDeploy runs before any container is touched — the point at which the
@@ -92,7 +92,7 @@ type Hooks struct {
 
 	// PostDeploy runs after a successful up and health gate, before on-demand
 	// containers are stopped. A failing post_deploy hook triggers the same
-	// rollback path as a health-check failure (ADR-0022, ADR-0037), even when no
+	// rollback path as a health-check failure (ADR-0022, ADR-0038), even when no
 	// health_check is configured.
 	PostDeploy []string `yaml:"post_deploy"`
 

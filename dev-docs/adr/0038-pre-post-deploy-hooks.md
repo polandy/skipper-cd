@@ -1,4 +1,4 @@
-# ADR-0037: Pre-/post-deploy hooks
+# ADR-0038: Pre-/post-deploy hooks
 
 Status: accepted
 Date: 2026-07-19

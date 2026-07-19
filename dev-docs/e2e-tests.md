@@ -270,11 +270,6 @@ UI suite reuses.
   webhook adds a WARN. DEBUG is out of scope — the default slog handler filters
   below INFO and skipper has no log-level toggle, so it can never reach the ring.
   (No snapshot — real log output is nondeterministic; see §5.)
-- **UB3 — Sort toggle.** The `log-sort` toggle flips the rendered order
-  newest-first↔oldest-first and persists it (`localStorage logSort`). Driven
-  against real replayed log output: the rendered `log-line` sequence is
-  fingerprinted and the toggle must reverse it exactly, with a reload preserving
-  the chosen order.
 - **UB4 — Follow toggle.** Following (the default) pins the pane to the newest
   edge when a fresh line streams in; unfollowing leaves the scroll position
   alone. Driven against the real backend: the ring is filled so the pane
@@ -294,7 +289,7 @@ UI suite reuses.
   line, and clicking again collapses it — the log-view twin of UA8. Driven against
   the real backend: a second deploy (webhook bumping the compose image) is the first
   with a prior commit to diff against, so its `deploy complete` line — the newest,
-  hence topmost under the default descending sort — is the one whose pill expands a
+  hence topmost in the fixed newest-first order — is the one whose pill expands a
   populated panel (`nginx:1.26`), not the plain "No diff recorded" note.
 - **UB7 — Fatal-stream recovery.** The `/api/logs` stream has no connection
   indicator, so a fatal error must recover silently. A `page.route` fulfils
@@ -711,6 +706,68 @@ e2e — and shares its `.roster-flag` rendering with the disabled row.
 - **UR5 — Shared time mode.** The stacks popover's `Absolute time` toggle (the
   shared `timeMode`) switches the roster's relative times to absolute.
 
+### 4.20 UI — Maske S: cross-view stack jump
+
+The compass jump button beside every stack name — deploy row and roster row
+alike — that switches between the Deploys and Stacks views and lands on that
+stack's row there (`internal/ui/UI_SPEC.md#cross-view-stack-jump`). Two
+`test.describe` blocks: the default two-stack boot (`api`, `web`) for the
+landing/regression cases, and a discovery+disabled boot (mirroring Maske O/R's
+`wip` fixture) for the no-landing-target case. Behaviour-only — no new
+snapshot, but the jump-btn's footprint on every row required regenerating
+`deploys-table.png` and the full-page `theme-dark`/`theme-light`/
+`mobile-layout` baselines (§5).
+
+- **US1 — Deploys → Stacks.** Clicking a deploy row's jump button switches to
+  the Stacks view and its (sole) roster row for that stack is visible and
+  briefly carries `.jump-target`, which clears again on its own.
+- **US2 — Stacks → Deploys lands on the newest row.** With two deploys of the
+  same stack (two rows, newest first), jumping from the roster flashes
+  `.jump-target` on the first (newest) row only — never the older one.
+  Where the roster view is *inventory* (one row per stack), the deploy table
+  is a *log*, so "the stack's row" is ambiguous there and the newest wins.
+- **US3 — The jump doesn't also open the row it sits on.** A regression guard:
+  the jump button and the row's own click-to-open-panel handler are on the
+  same delegated listener, so the jump must pre-empt it. Neither `diff-open`
+  (deploy row) nor `audit-open` + a rendered `audit-panel` (roster row) appear
+  after a jump click.
+- **US4 — No landing target.** A parked (`disabled: true`) stack has a roster
+  row and a jump button, but no deploy row (it has never deployed). Jumping
+  from it still switches to the Deploys view; there is simply nothing to land
+  on or flash.
+- **US5 — A leftover filter in the target view doesn't hide the landing row.**
+  Checked in both directions: filter the target view down to a *different*
+  stack, leave it filtered, switch views by hand (not by jumping), then jump
+  to the filtered-out stack from the other view. The jump clears the stale
+  filter so the landing row is actually visible, not `.filtered-out`.
+
+### 4.21 UI — Maske T: Container logs (ADR-0037)
+
+A live `docker compose logs` panel opened from a console icon, per stack (merged)
+and per container. Boots with `healthPoll: 1` and `setStackHealth` so the
+per-container icons appear on the health-panel service lines and the `{service}`
+segment validates; the stub `docker` answers `compose … logs` with a fixed
+backlog (a single service drops the compose prefix, the whole stack keeps
+`<stack>-1  | `). Behaviour-only (no new snapshot beyond the shared deploy-table
+baselines the row icon already shifts).
+
+- **UT1 — Per-stack panel.** The row's `clog-btn` opens a `clog-panel` that
+  streams the backlog (the merged view keeps the `web-1` service prefix) and
+  shows the `clog-live` pill; clicking the icon again closes it.
+- **UT2 — Per-container panel.** Opening the `health-panel` (health pill) and
+  clicking a `health-service` line's `clog-btn` opens that one service's log
+  (scope `web / app`, no compose prefix).
+- **UT3 — Single log open.** Opening a second log (another stack's row icon)
+  closes the first — at most one `clog-panel` exists at a time.
+- **UT4 — In-log type-to-search.** With a log open, typing routes into its search
+  (the `deploy-filter` is *not* revealed): the matching line highlights
+  (`.clog-hit`), the rest hide, and the hit count shows.
+- **UT5 — Logs-view controls in the popover.** The Logs view carries
+  `log-search` / `log-wrap` / `log-fs` in the view-options popover; typing
+  reveals the `log-filter` bar (like the deploys/stacks views).
+- **UT6 — Logs-view wrap + fullscreen.** `log-wrap` and `log-fs` are popover
+  toggles that light (`.active`) when engaged.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -819,6 +876,11 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stacks roster: mobile popover search entry | **UR4** |
 | Stacks roster: shared time-mode toggle (relative → absolute) | **UR5** |
 | Stacks roster: never-deployed synthetic state | Unit `roster` — not e2e-seedable |
+| Cross-view jump: Deploys → Stacks lands on the roster row | **US1** |
+| Cross-view jump: Stacks → Deploys lands on the newest row | **US2** |
+| Cross-view jump: pre-empts the row's own panel-open click | **US3** |
+| Cross-view jump: no landing target (never-deployed stack) | **US4** |
+| Cross-view jump: clears a leftover filter that would hide the landing row | **US5** |
 | Stack health: rolled-up pill per stack (healthy/unhealthy/stopped) | **UH1** |
 | Stack health: per-service panel toggle | **UH2** |
 | Stack health: pill on the newest row per stack | **UH3** |

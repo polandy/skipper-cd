@@ -157,3 +157,11 @@ test('orphanMatchesQuery scans project fields and containers', () => {
   assert.equal(h.orphanMatchesQuery(o, 'nginx'), false);
   assert.equal(h.orphanMatchesQuery(o, ''), false);
 });
+
+test('logLineVisible: empty query shows all, else case-insensitive contains', () => {
+  assert.equal(h.logLineVisible('GET /api/health 200', ''), true);   // no filter
+  assert.equal(h.logLineVisible('GET /api/health 200', 'api'), true);
+  assert.equal(h.logLineVisible('GET /api/health 200', 'API'), true); // case-insensitive
+  assert.equal(h.logLineVisible('GET /api/health 200', 'wget'), false);
+  assert.equal(h.logLineVisible('', 'x'), false);
+});
