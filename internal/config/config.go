@@ -74,12 +74,11 @@ type Stack struct {
 
 	// Rollout optionally deploys named services with a zero-downtime cutover
 	// instead of an in-place recreate: start the new container alongside the old,
-	// wait for it to become healthy, then drain the old. Requires Traefik (or an
-	// equivalent health-aware, drain-on-stop reverse proxy) in front of the rolled
-	// services — skipper does nothing Traefik-specific, it relies on the proxy to
-	// shift traffic to the new container. nil disables it (plain recreate). See
-	// ADR-0040. Like hooks it shapes how a deploy applies, not what deploys, so it
-	// is never hashed — switching a service to/from rollout does not itself redeploy.
+	// wait for it to become healthy, then drain the old. Needs a reverse proxy in
+	// front of the rolled services to shift traffic to the new container and stop
+	// using the old one (only Traefik is tested). nil disables it (plain recreate).
+	// See ADR-0040. Like hooks it shapes how a deploy applies, not what deploys, so
+	// it is never hashed — switching a service to/from rollout does not itself redeploy.
 	Rollout *Rollout `yaml:"rollout,omitempty"`
 
 	// ConfigHash is the hash of the stack's deploy-shaping config, set only by
@@ -113,14 +112,14 @@ type Hooks struct {
 	TimeoutSeconds int `yaml:"timeout_seconds"`
 }
 
-// Rollout configures Traefik zero-downtime deployment for named services of a
-// stack (ADR-0040). It requires Traefik (or an equivalent health-aware,
-// drain-on-stop reverse proxy) in front of the rolled services. Only the listed
-// services roll; every other service in the stack recreates in place as usual
-// (correct for databases and anything that cannot run two replicas). Each rolled
-// service must be reachable purely through the proxy (no published host ports)
-// and define a compose healthcheck (the readiness signal); both are verified
-// against the compose file at deploy time.
+// Rollout configures zero-downtime deployment for named services of a stack
+// (ADR-0040). It needs a reverse proxy in front of the rolled services that
+// shifts traffic to the new container and stops using the old one (only Traefik
+// is tested). Only the listed services roll; every other service in the stack
+// recreates in place as usual (correct for databases and anything that cannot
+// run two replicas). Each rolled service must be reachable purely through the
+// proxy (no published host ports) and define a compose healthcheck (the
+// readiness signal); both are verified against the compose file at deploy time.
 type Rollout struct {
 	// Services is the allowlist of compose service names to roll. Required and
 	// non-empty; a name that is not a service, publishes host ports, or lacks a
