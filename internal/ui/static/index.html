@@ -111,11 +111,6 @@
           </button>
         </div>
         <div class="vo-group" data-view="logs">
-          <button class="filter-toggle" id="log-sort" data-testid="log-sort" title="Show oldest log lines first">
-            <div class="toggle-track"><div class="toggle-thumb"></div></div>
-            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 5v14M3 16l3 3 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 6h9M12 11h6M12 16h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <span>Oldest first</span>
-          </button>
           <button class="filter-toggle" id="follow-logs" data-testid="follow-logs" title="Auto-scroll to newest log lines">
             <div class="toggle-track"><div class="toggle-thumb"></div></div>
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -2130,7 +2125,6 @@
   // the connection indicator remains bound to /api/events.
   const logPane = document.getElementById('log-pane');
   const followBtn = document.getElementById('follow-logs');
-  const sortBtn = document.getElementById('log-sort');
   const viewButtons = document.querySelectorAll('#view-toggle button');
 
   // The log view keeps a bounded client-side buffer (the backend replays at
@@ -2142,7 +2136,9 @@
   const maxLogBuffer = 2000;
   const logEntries = [];            // chronological, oldest → newest
   let logVisible = logPageSize;   // number of newest entries currently rendered
-  let logDescending = localStorage.getItem('logSort') !== 'asc'; // default: newest first
+  // Fixed newest-first order; the oldest-first toggle was removed — auto-scroll
+  // (follow) covers keeping the newest line in view.
+  const logDescending = true;
   let followLogs = localStorage.getItem('followLogs') !== 'false';
   const savedView = localStorage.getItem('activeView');
   let activeView = (savedView === 'logs' || savedView === 'stacks') ? savedView : 'deploys';
@@ -2433,19 +2429,6 @@
     applyFollow();
   });
 
-  // Sort toggle: active = oldest-first (ascending). Flipping restarts the
-  // window at one page in the new order.
-  sortBtn.addEventListener('click', function() {
-    logDescending = !logDescending;
-    localStorage.setItem('logSort', logDescending ? 'desc' : 'asc');
-    sortBtn.classList.toggle('active', !logDescending);
-    sortBtn.title = logDescending ? 'Show oldest log lines first' : 'Show newest log lines first';
-    logVisible = logPageSize;
-    renderLogWindow();
-  });
-
-  sortBtn.classList.toggle('active', !logDescending);
-  sortBtn.title = logDescending ? 'Show oldest log lines first' : 'Show newest log lines first';
   applyFollow();
   applyView();
 
