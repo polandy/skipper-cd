@@ -390,7 +390,7 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	}
 	// rollout is a deploy-mechanism knob (ADR-0040): switching a service to/from
 	// rollout must not by itself redeploy an unchanged stack.
-	if withRollout := hashFor(t, "stacks:\n  web:\n    rollout:\n      services: [web]\n"); withRollout != base {
+	if withRollout := hashFor(t, "stacks:\n  web:\n    rollout:\n      services: [app]\n"); withRollout != base {
 		t.Error("ConfigHash must ignore rollout")
 	}
 }
@@ -427,11 +427,11 @@ func TestLoadRepoStacks_AppliesHookOverrides(t *testing.T) {
 
 func TestLoadRepoStacks_AppliesRolloutOverride(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
-		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/web/docker-compose.yml": minimalCompose, // defines service "app"
 		"stacks/skipper.yaml": `stacks:
   web:
     rollout:
-      services: [web]
+      services: [app]
       health_timeout_seconds: 30
 `,
 	})
@@ -441,7 +441,7 @@ func TestLoadRepoStacks_AppliesRolloutOverride(t *testing.T) {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
 	r := repo.Stacks[0].Rollout
-	if r == nil || len(r.Services) != 1 || r.Services[0] != "web" || r.HealthTimeoutSeconds != 30 {
+	if r == nil || len(r.Services) != 1 || r.Services[0] != "app" || r.HealthTimeoutSeconds != 30 {
 		t.Errorf("rollout override = %+v", r)
 	}
 }
@@ -462,6 +462,73 @@ func TestLoadRepoStacks_InvalidRolloutReported(t *testing.T) {
 	}
 	if len(stackErrs) != 1 || !strings.Contains(stackErrs[0].Err.Error(), "rollout") {
 		t.Fatalf("expected a rollout stack error, got %v", stackErrs)
+	}
+}
+
+func TestLoadRepoStacks_RolloutUnknownServiceReported(t *testing.T) {
+	// A rollout naming a service that is not in the stack's docker-compose.yml
+	// is a typo we must catch at discovery: rollout config is excluded from
+	// change detection (ADR-0040), so the mistake would otherwise stay latent
+	// until an unrelated change happens to redeploy the stack.
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose, // defines service "app"
+		"stacks/skipper.yaml": `stacks:
+  web:
+    rollout:
+      services: [nope]
+`,
+	})
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("file-level error unexpected: %v", err)
+	}
+	if len(repo.Stacks) != 0 {
+		t.Errorf("stack with an unknown rollout service must be excluded, got %v", stackNames(repo.Stacks))
+	}
+	if len(stackErrs) != 1 || stackErrs[0].Stack != "web" {
+		t.Fatalf("expected one entry-level error for web, got %v", stackErrs)
+	}
+	msg := stackErrs[0].Err.Error()
+	if !strings.Contains(msg, "rollout") || !strings.Contains(msg, "nope") {
+		t.Errorf("error should name the rollout and the missing service, got: %v", msg)
+	}
+}
+
+func TestLoadRepoStacks_RolloutOneOfManyServicesUnknownReported(t *testing.T) {
+	// The missing service must be named even when others are valid.
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose, // defines service "app"
+		"stacks/skipper.yaml": `stacks:
+  web:
+    rollout:
+      services: [app, ghost]
+`,
+	})
+
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("file-level error unexpected: %v", err)
+	}
+	if len(stackErrs) != 1 || !strings.Contains(stackErrs[0].Err.Error(), "ghost") {
+		t.Fatalf("expected an error naming the missing service ghost, got %v", stackErrs)
+	}
+}
+
+func TestLoadRepoStacks_RolloutKnownServiceAccepted(t *testing.T) {
+	// A rollout naming a service that exists in the compose file passes.
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose, // defines service "app"
+		"stacks/skipper.yaml": `stacks:
+  web:
+    rollout:
+      services: [app]
+`,
+	})
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
+		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
 }
 

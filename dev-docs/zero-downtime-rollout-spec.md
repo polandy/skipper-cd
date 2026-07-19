@@ -154,6 +154,18 @@ These are deploy-time (not config-load) checks because the compose file lives in
 the repo clone, not next to `skipper.yaml`. They fail fast with a `failed` event
 before any container is touched — same shape as a `pre_deploy` hook failure.
 
+In **stack-discovery mode** the **exists** check additionally runs at discovery
+time (`LoadRepoStacks`): the compose file is already present in the clone there,
+and discovery guarantees it (a directory is only a stack if it has one). An
+unknown service name becomes an entry-level `StackError` for that stack, surfaced
+on every sync in the Stacks view — not just when the stack next redeploys. This
+matters because `rollout` is excluded from change detection, so editing it never
+triggers the redeploy that the deploy-time check would ride on. The
+deploy-time check stays regardless (defence in depth: the compose file can change
+between discovery and the deploy). The ports/`container_name`/`healthcheck`
+checks remain deploy-time only, to avoid duplicating the deploy package's full
+compose model in `internal/config`.
+
 ## Change detection
 
 `rollout` is **excluded from hashing** (Invariant 2). It is not a hashed input,

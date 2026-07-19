@@ -21,6 +21,11 @@ import (
 // skipper.yaml (ADR-0034 amendment).
 const RepoConfigFileName = "skipper.yaml"
 
+// composeFileName is the per-stack compose file. A subdirectory of
+// stacks_base_dir qualifies as a stack only if it contains this file, and it is
+// the file rollout service names are validated against.
+const composeFileName = "docker-compose.yml"
+
 // StackError reports an entry-level failure of a single discovered stack (an
 // invalid override, a broken depends_on edge). The stack is excluded from the
 // returned set; every other stack deploys normally.
@@ -139,6 +144,9 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 		hcErr := validateHealthCheck(stack.HealthCheck)
 		hookErr := validateHooks(stack.Hooks)
 		rolloutErr := validateRollout(stack.Rollout)
+		if rolloutErr == nil {
+			rolloutErr = validateRolloutServicesExist(stack.Rollout, filepath.Join(stacksBaseDir, name, composeFileName))
+		}
 		depErr := invalidDependency(stack, known)
 		switch {
 		case strings.HasPrefix(name, "_"):
@@ -188,10 +196,51 @@ func discoverStackDirs(stacksBaseDir string) ([]string, error) {
 		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(stacksBaseDir, entry.Name(), "docker-compose.yml")); err != nil {
+		if _, err := os.Stat(filepath.Join(stacksBaseDir, entry.Name(), composeFileName)); err != nil {
 			continue
 		}
 		names = append(names, entry.Name())
+	}
+	return names, nil
+}
+
+// validateRolloutServicesExist checks that every service in the stack's rollout
+// allowlist is defined in its docker-compose.yml, catching a typo at discovery.
+// The deploy path re-checks (see internal/deploy); this early copy matters
+// because rollout config is not hash-tracked, so an edit alone never redeploys.
+func validateRolloutServicesExist(rollout *Rollout, composePath string) error {
+	if rollout == nil {
+		return nil
+	}
+	defined, err := composeServiceNames(composePath)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", composeFileName, err)
+	}
+	for _, svc := range rollout.Services {
+		if !defined[svc] {
+			return fmt.Errorf("service %q is not defined in %s", svc, composeFileName)
+		}
+	}
+	return nil
+}
+
+// composeServiceNames reads just the service names from a docker-compose.yml,
+// ignoring every other field so config stays decoupled from the deploy
+// package's full compose model.
+func composeServiceNames(path string) (map[string]bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cf struct {
+		Services map[string]yaml.Node `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(data, &cf); err != nil {
+		return nil, err
+	}
+	names := make(map[string]bool, len(cf.Services))
+	for name := range cf.Services {
+		names[name] = true
 	}
 	return names, nil
 }
