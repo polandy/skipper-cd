@@ -38,10 +38,9 @@ type RepoSyncer interface {
 	Sync(ctx context.Context) error
 }
 
-// Outputter runs a command and returns its captured stdout. The plain Runner is
-// fire-and-forget; rollout needs command output to read container IDs and health
-// from `docker compose ps --format json` (ADR-0040). command.ShellRunner
-// implements it; tests inject a fake. nil disables rollout.
+// Outputter runs a command and returns its captured stdout — rollout uses it to
+// read `docker compose ps` (the plain Runner is fire-and-forget). command.ShellRunner
+// implements it; nil disables rollout.
 type Outputter interface {
 	Output(ctx context.Context, dir string, name string, args ...string) ([]byte, error)
 }
@@ -55,9 +54,8 @@ type Config struct {
 	// Runner executes docker/git/nixos commands; tests inject a fake.
 	Runner Runner
 
-	// Outputter captures command stdout for rollout's `docker compose ps` reads
-	// (ADR-0040); nil disables rollout (a stack with a rollout section then fails
-	// its deploy with a clear error). Wire it to the same command.ShellRunner.
+	// Outputter captures command stdout for rollout's `docker compose ps` reads;
+	// nil disables rollout. Wire it to a command.ShellRunner.
 	Outputter Outputter
 
 	// CommitReader enables diff/commit logging and compose-file rollback;

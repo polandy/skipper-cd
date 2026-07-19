@@ -73,12 +73,8 @@ type Stack struct {
 	Hooks Hooks `yaml:"hooks,omitempty"`
 
 	// Rollout optionally deploys named services with a zero-downtime cutover
-	// instead of an in-place recreate: start the new container alongside the old,
-	// wait for it to become healthy, then drain the old. Needs a reverse proxy in
-	// front of the rolled services to shift traffic to the new container and stop
-	// using the old one (only Traefik is tested). nil disables it (plain recreate).
-	// See ADR-0040. Like hooks it shapes how a deploy applies, not what deploys, so
-	// it is never hashed — switching a service to/from rollout does not itself redeploy.
+	// instead of an in-place recreate (ADR-0040); nil disables it. Never hashed —
+	// toggling it does not itself redeploy.
 	Rollout *Rollout `yaml:"rollout,omitempty"`
 
 	// ConfigHash is the hash of the stack's deploy-shaping config, set only by
@@ -112,31 +108,20 @@ type Hooks struct {
 	TimeoutSeconds int `yaml:"timeout_seconds"`
 }
 
-// Rollout configures zero-downtime deployment for named services of a stack
-// (ADR-0040). It needs a reverse proxy in front of the rolled services that
-// shifts traffic to the new container and stops using the old one (only Traefik
-// is tested). Only the listed services roll; every other service in the stack
-// recreates in place as usual (correct for databases and anything that cannot
-// run two replicas). Each rolled service must be reachable purely through the
-// proxy (no published host ports) and define a compose healthcheck (the
-// readiness signal); both are verified against the compose file at deploy time.
+// Rollout configures zero-downtime deployment for a stack's services (ADR-0040).
+// Only the listed services roll (needs a reverse proxy in front; only Traefik is
+// tested); every other service recreates in place. Per-service eligibility is
+// verified against the compose file at deploy time.
 type Rollout struct {
-	// Services is the allowlist of compose service names to roll. Required and
-	// non-empty; a name that is not a service, publishes host ports, or lacks a
-	// healthcheck fails the deploy.
+	// Services is the allowlist of compose service names to roll (required, non-empty).
 	Services []string `yaml:"services"`
 
-	// HealthTimeoutSeconds bounds how long skipper waits for a canary container
-	// to turn healthy before treating the rollout as failed. 0 (the default)
+	// HealthTimeoutSeconds is the canary health-wait deadline. 0 (the default)
 	// falls back to the stack's health_check timeout, else 60.
 	HealthTimeoutSeconds int `yaml:"health_timeout_seconds"`
 
-	// DrainSeconds is how long to wait after the canary is healthy before
-	// draining the old container — the window the reverse proxy needs to
-	// discover the new container and route to it while the old one is still up
-	// (docker-rollout's --wait-after-healthy). Without it the old container can
-	// be removed before the proxy has switched over, causing a brief blip.
-	// 0 (the default) drains immediately.
+	// DrainSeconds holds the old container this long after the canary is healthy,
+	// so the proxy can switch over before it is removed. 0 (default) drains at once.
 	DrainSeconds int `yaml:"drain_seconds"`
 }
 
@@ -854,11 +839,8 @@ func validateHooks(h Hooks) error {
 	return nil
 }
 
-// validateRollout checks a stack's optional rollout section. Compose-dependent
-// checks (service exists, no published ports, has a healthcheck) happen at
-// deploy time against the parsed compose file, since it lives in the repo clone,
-// not next to skipper.yaml (ADR-0040); here we only validate what the config
-// alone can decide.
+// validateRollout checks what the config alone can decide; compose-dependent
+// checks (service exists, ports, healthcheck, container_name) run at deploy time.
 func validateRollout(r *Rollout) error {
 	if r == nil {
 		return nil

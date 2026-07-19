@@ -23,30 +23,24 @@ type composeService struct {
 	Image    string `yaml:"image"`
 	BuildRaw any    `yaml:"build"`
 	// Ports, Healthcheck and ContainerName are read only for rollout eligibility
-	// (ADR-0040): a rolled service must publish no host ports (two replicas would
-	// collide), define a healthcheck (the readiness signal), and set no fixed
-	// container_name (compose refuses to scale a named container). Captured as raw
-	// YAML — only presence/value matters here.
+	// (ADR-0040); only their presence/value matters.
 	Ports         []any  `yaml:"ports"`
 	Healthcheck   any    `yaml:"healthcheck"`
 	ContainerName string `yaml:"container_name"`
 }
 
-// publishesPorts reports whether the service publishes any host port. A rolled
-// service must not, since two replicas cannot bind the same host port.
+// publishesPorts reports whether the service publishes any host port.
 func (s composeService) publishesPorts() bool {
 	return len(s.Ports) > 0
 }
 
-// hasHealthcheck reports whether the service defines a compose healthcheck, the
-// readiness signal a rollout waits on before draining the old container.
+// hasHealthcheck reports whether the service defines a compose healthcheck.
 func (s composeService) hasHealthcheck() bool {
 	return s.Healthcheck != nil
 }
 
-// hasContainerName reports whether the service pins a fixed container_name.
-// Compose cannot scale such a service (the name must be unique), so it is
-// ineligible for rollout.
+// hasContainerName reports whether the service pins a container_name (which
+// compose cannot scale).
 func (s composeService) hasContainerName() bool {
 	return s.ContainerName != ""
 }
@@ -77,9 +71,8 @@ func (cf *composeFile) images() serviceImageByName {
 	return images
 }
 
-// servicesExcept returns the names of all compose services not in the given
-// set, sorted for a deterministic command line. It selects the services that a
-// rollout deploys in place (everything not being rolled).
+// servicesExcept returns the compose service names not in the set, sorted — the
+// services a rollout deploys in place.
 func (cf *composeFile) servicesExcept(exclude map[string]bool) []string {
 	var names []string
 	for name := range cf.Services {

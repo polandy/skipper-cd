@@ -16,28 +16,21 @@ import (
 	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
-// errCanaryUnhealthy marks a rollout that failed because a canary container did
-// not become healthy in time. It is distinct from a docker/compose command
-// error: on this failure the old container was never touched (it is still
-// serving), so the rollout cleans up the canary and reports rolled_back without
-// a git-restore. rollout() checks it with errors.Is.
+// errCanaryUnhealthy marks a rollout where the canary never turned healthy: the
+// old container is untouched, so it is reported as rolled_back without a git-restore.
 var errCanaryUnhealthy = errors.New("canary did not become healthy")
 
-// defaultRolloutTimeoutSeconds bounds the canary health wait when neither
-// rollout.health_timeout_seconds nor the stack's health_check timeout is set.
+// defaultRolloutTimeoutSeconds is the canary health-wait deadline when no timeout
+// is configured.
 const defaultRolloutTimeoutSeconds = 60
 
-// defaultRolloutPollInterval is the pause between two `docker compose ps` polls
-// while waiting for a canary to turn healthy. Tests override d.rolloutPollInterval.
+// defaultRolloutPollInterval is the pause between `docker compose ps` polls while
+// waiting for a canary to turn healthy (tests override d.rolloutPollInterval).
 const defaultRolloutPollInterval = 2 * time.Second
 
-// rollout deploys a stack's services with a zero-downtime cutover for the
-// services named in its rollout section (ADR-0040), while every other service
-// recreates in place. It replaces the plain `up` step in deployStackIfChanged
-// and handles its own rollback: a canary that never turns healthy is cleaned up
-// (old version keeps serving) and reported as rolled_back; a docker/compose
-// error mid-cutover falls through to the git-restore rollback for a defined
-// state. The compose file must have parsed (rollout needs to inspect services).
+// rollout performs the zero-downtime cutover for the stack's rollout services and
+// recreates the rest in place, replacing the plain `up` (ADR-0040). It owns its
+// rollback. compose must have parsed.
 func (d *Deployer) rollout(ctx context.Context, run stackRun, compose *composeFile, state *persistedState) error {
 	rc := run.stack.Rollout
 	if d.outputter == nil {
@@ -47,8 +40,7 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, compose *composeFi
 		return fmt.Errorf("rollout: compose file could not be parsed")
 	}
 	if err := validateRolloutServices(compose, rc.Services); err != nil {
-		// Nothing has been touched yet: a plain error emits `failed`, no rollback.
-		return err
+		return err // nothing touched yet → plain failed, no rollback
 	}
 
 	rolled := make(map[string]bool, len(rc.Services))
@@ -56,8 +48,8 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, compose *composeFi
 		rolled[s] = true
 	}
 
-	// Bring up the non-rolled services in place first (as the plain path does),
-	// so a rolled service's dependencies are running before its canary starts.
+	// Non-rolled services first, so a rolled service's dependencies are up before
+	// its canary starts.
 	if nonRolled := compose.servicesExcept(rolled); len(nonRolled) > 0 {
 		upArgs := []string{"up", "-d", "--remove-orphans"}
 		if hc := run.stack.HealthCheck; hc != nil {
@@ -73,25 +65,20 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, compose *composeFi
 	for _, service := range rc.Services {
 		if err := d.rollService(ctx, run, service, timeout); err != nil {
 			if errors.Is(err, errCanaryUnhealthy) {
-				// The canary was cleaned up and the old version never stopped
-				// serving: same outcome as a rollback (stack on the old version),
-				// with zero downtime. Report it as such — no git restore needed.
+				// Old version never stopped serving → rolled_back, no git-restore.
 				metrics.DeployRollbacks.WithLabelValues(run.stack.Name).Inc()
 				return fmt.Errorf("rollout %q: %w (%w)", service, err, ErrRolledBack)
 			}
-			// A docker/compose error mid-cutover may leave the service in an
-			// unknown state; fall back to the git-restore rollback for a defined one.
+			// Unknown state mid-cutover → git-restore rollback for a defined one.
 			return d.rollBackFailedDeploy(ctx, run, state, "rollout "+service, err)
 		}
 	}
 	return nil
 }
 
-// rollService cuts one service over to its new version with no serving gap:
-// start a canary container alongside the running one, wait for it to become
-// healthy, then drain the old one. If no container is running yet (first
-// deploy), a plain up suffices. A canary that never turns healthy is removed and
-// the error wraps errCanaryUnhealthy so the old version keeps serving.
+// rollService cuts one service to its new version with no serving gap: a canary
+// alongside the old, wait healthy, drain the old. First deploy (nothing running)
+// is a plain up; an unhealthy canary is removed and wraps errCanaryUnhealthy.
 func (d *Deployer) rollService(ctx context.Context, run stackRun, service string, timeout time.Duration) error {
 	old, err := d.serviceContainers(ctx, run, service)
 	if err != nil {
@@ -119,12 +106,9 @@ func (d *Deployer) rollService(ctx context.Context, run stackRun, service string
 		return fmt.Errorf("%q: %w: %w", service, err, errCanaryUnhealthy)
 	}
 
-	// Give the reverse proxy time to discover the new (healthy) container and
-	// route to it before the old one is removed — "canary healthy" (docker
-	// healthcheck) is not yet "proxy is serving the new container". Without this
-	// window the old container can be removed while the proxy still points at it,
-	// causing a brief blip (docker-rollout's --wait-after-healthy). The wait is
-	// interruptible; on shutdown we proceed to drain (the new version is healthy).
+	// Let the proxy start routing to the new container before removing the old —
+	// a healthy canary is not yet a proxy that serves it. Interruptible; on
+	// shutdown we proceed to drain.
 	if delay := d.drainDelay(run.stack); delay > 0 {
 		slog.Info("rollout: canary healthy, waiting before draining old version", "stack", run.stack.Name, "service", service, "drain", delay)
 		select {
@@ -199,8 +183,7 @@ func (d *Deployer) serviceContainers(ctx context.Context, run stackRun, service 
 	if err != nil {
 		return nil, fmt.Errorf("parse compose ps output: %w", err)
 	}
-	// Defensive: compose already filters by the service arg, but keep only this
-	// service's containers in case a version emits more.
+	// Defensive: compose already filters by the service arg.
 	out2 := make([]containerLine, 0, len(lines))
 	for _, l := range lines {
 		if l.Service == "" || l.Service == service {
@@ -210,9 +193,8 @@ func (d *Deployer) serviceContainers(ctx context.Context, run stackRun, service 
 	return out2, nil
 }
 
-// removeContainers stops and removes the given container IDs, best-effort:
-// failures are logged, not returned, since a stray container is a cleanup
-// nuisance, not a reason to fail an otherwise-complete cutover.
+// removeContainers stops and removes the given containers, best-effort: a
+// failure is logged, not fatal to the cutover.
 func (d *Deployer) removeContainers(ctx context.Context, run stackRun, ids []string) {
 	for _, id := range ids {
 		if id == "" {
@@ -227,10 +209,8 @@ func (d *Deployer) removeContainers(ctx context.Context, run stackRun, ids []str
 	}
 }
 
-// validateRolloutServices checks each rolled service against the parsed compose
-// file: it must exist, publish no host ports (two replicas would collide), and
-// define a healthcheck (the readiness signal). These run before any container is
-// touched, so a violation fails the deploy cleanly (ADR-0040).
+// validateRolloutServices rejects services compose cannot cut over, before any
+// container is touched (ADR-0040). The error messages carry the reason.
 func validateRolloutServices(compose *composeFile, services []string) error {
 	for _, name := range services {
 		svc, ok := compose.Services[name]
@@ -250,9 +230,8 @@ func validateRolloutServices(compose *composeFile, services []string) error {
 	return nil
 }
 
-// drainDelay is how long to wait after the canary is healthy before draining
-// the old container. A non-zero d.rolloutDrainOverride wins (tests use a small
-// value so the wait does not run for real seconds).
+// drainDelay is the wait after the canary is healthy before draining the old
+// container (rollout.drain_seconds; a test override wins).
 func (d *Deployer) drainDelay(stack config.Stack) time.Duration {
 	if d.rolloutDrainOverride > 0 {
 		return d.rolloutDrainOverride
@@ -260,10 +239,8 @@ func (d *Deployer) drainDelay(stack config.Stack) time.Duration {
 	return time.Duration(stack.Rollout.DrainSeconds) * time.Second
 }
 
-// rolloutTimeout is how long to wait for a canary to turn healthy:
-// rollout.health_timeout_seconds if set, else the stack's health_check timeout,
-// else the default. A non-zero d.rolloutTimeoutOverride wins (tests set a short
-// value so the canary wait does not run for real seconds).
+// rolloutTimeout is the canary health-wait deadline: rollout.health_timeout_seconds,
+// else the stack's health_check timeout, else the default (a test override wins).
 func (d *Deployer) rolloutTimeout(stack config.Stack) time.Duration {
 	if d.rolloutTimeoutOverride > 0 {
 		return d.rolloutTimeoutOverride
@@ -279,9 +256,7 @@ func (d *Deployer) rolloutTimeout(stack config.Stack) time.Duration {
 	return time.Duration(secs) * time.Second
 }
 
-// containerLine is the subset of `docker compose ps --format json` fields
-// rollout needs: the ID/Name to stop, the Service to filter, and Health to gate
-// the cutover.
+// containerLine is the subset of `docker compose ps --format json` rollout uses.
 type containerLine struct {
 	ID      string `json:"ID"`
 	Name    string `json:"Name"`
