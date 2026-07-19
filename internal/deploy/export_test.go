@@ -2,7 +2,6 @@ package deploy
 
 import (
 	"context"
-	"time"
 
 	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/events"
@@ -30,10 +29,3 @@ func (d *Deployer) SetShutdownContext(ctx context.Context) { d.shutdownCtx = ctx
 func (d *Deployer) SetRunPlanSink(fn func(RunPlan)) { d.runPlanSink = fn }
 
 func (d *Deployer) InitEventID(startID int64) { d.nextEventID.Store(startID) }
-
-// SetOutputter wires the command outputter rollout uses to read `docker compose ps`.
-func (d *Deployer) SetOutputter(o Outputter) { d.outputter = o }
-
-// SetRolloutPollInterval shortens the canary health-wait poll so rollout tests
-// do not sleep the production default between polls.
-func (d *Deployer) SetRolloutPollInterval(iv time.Duration) { d.rolloutPollInterval = iv }
