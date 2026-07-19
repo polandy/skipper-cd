@@ -40,7 +40,7 @@ New here? The **[Getting Started walkthrough](https://polandy.github.io/skipper-
 - **Automatic rollback** — if `docker compose up` fails, or an optional post-deploy health check (compose `--wait` and/or an HTTP probe) doesn't pass, skipper-cd restores the previous compose file from the last deployed Git commit ([docs](docs/configuration.md#health-check-gated-rollback)).
 - **NixOS rebuilds** — optionally run `nixos-rebuild switch` before stack deploys when `.nix` files change, so one webhook updates both the host and its containers.
 - **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([docs](docs/autosync.md)).
-- **Web UI** — a single embedded page with live deploy status, service icons, an event log, and installable as a PWA.
+- **Web UI** — a single embedded page with live deploy status, live container logs, service icons, an event log, and installable as a PWA.
 - **Orphan detection** — surfaces compose projects still running on the host that your current stack set no longer covers, e.g. a stack directory removed from the repo ([docs](docs/state.md#orphaned-stacks)).
 - **Deploy notifications** — POST a message to Signal (via `signal-cli-rest-api`) or any HTTP endpoint (ntfy, Gotify, custom) on terminal deploy outcomes ([docs](docs/configuration.md#notifications)).
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
