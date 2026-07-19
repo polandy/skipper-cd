@@ -687,6 +687,14 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}()
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
+	// pre_deploy hooks run before any container is touched — the point at which
+	// the old version is still up, so a backup can dump it (ADR-0038). A failure
+	// here aborts before pull/up with no rollback (nothing changed): the deferred
+	// emitDeployFailure sees a plain error and emits `failed`.
+	if err := d.runHooks(ctx, run, hookPhasePre, stack.Hooks.PreDeploy); err != nil {
+		return err
+	}
+
 	var currentImages serviceImageByName
 	if compose != nil {
 		currentImages = compose.images()
@@ -721,6 +729,14 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
 		}
+	}
+
+	// post_deploy hooks validate the new version from outside compose (a smoke
+	// test, a migration). A failure takes the same rollback path as a health
+	// probe failure, even without a health_check (ADR-0038): the hook is itself a
+	// user-authored health gate.
+	if err := d.runHooks(ctx, run, hookPhasePost, stack.Hooks.PostDeploy); err != nil {
+		return d.rollBackFailedDeploy(ctx, run, state, "post_deploy hook", err)
 	}
 
 	if len(stack.OnDemandContainers) > 0 {

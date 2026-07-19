@@ -26,13 +26,14 @@ type runCall struct {
 	dir  string
 	name string
 	args []string
+	env  []string
 }
 
-func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
+func (r *recordingRunner) Run(_ context.Context, dir string, env []string, name string, args ...string) error {
 	if r.delay > 0 {
 		time.Sleep(r.delay)
 	}
-	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
+	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args, env: env})
 	// The nixos-rebuild runs fire-and-forget and is polled via `systemctl
 	// is-active`/`is-failed` exit codes (see internal/nixos.Rebuild). Model the
 	// unit as already finished successfully so the poll returns at once: not

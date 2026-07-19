@@ -383,4 +383,62 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	if withIcon := hashFor(t, "stacks:\n  web:\n    icon: nginx\n    self_heal: true\n"); withIcon != base {
 		t.Error("ConfigHash must ignore icon and self_heal")
 	}
+	// hooks must not redeploy (ADR-0038): editing a backup command changes no
+	// hashed input, so the ConfigHash stays put.
+	if withHooks := hashFor(t, "stacks:\n  web:\n    hooks:\n      pre_deploy: [\"pg_dump > /backup/x.sql\"]\n"); withHooks != base {
+		t.Error("ConfigHash must ignore hooks")
+	}
+}
+
+func TestLoadRepoStacks_AppliesHookOverrides(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/skipper.yaml": `stacks:
+  web:
+    hooks:
+      pre_deploy:
+        - "pg_dump > /backup/web.sql"
+      post_deploy:
+        - "curl -fsS http://localhost/health"
+      timeout_seconds: 90
+`,
+	})
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
+		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
+	}
+	h := repo.Stacks[0].Hooks
+	if len(h.PreDeploy) != 1 || h.PreDeploy[0] != "pg_dump > /backup/web.sql" {
+		t.Errorf("pre_deploy = %v", h.PreDeploy)
+	}
+	if len(h.PostDeploy) != 1 || h.PostDeploy[0] != "curl -fsS http://localhost/health" {
+		t.Errorf("post_deploy = %v", h.PostDeploy)
+	}
+	if h.TimeoutSeconds != 90 {
+		t.Errorf("timeout_seconds = %d, want 90", h.TimeoutSeconds)
+	}
+}
+
+func TestLoadRepoStacks_InvalidHookReported(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/skipper.yaml": `stacks:
+  web:
+    hooks:
+      pre_deploy:
+        - "  "
+`,
+	})
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("LoadRepoStacks: %v", err)
+	}
+	if len(repo.Stacks) != 0 {
+		t.Errorf("stack with an invalid hook must be excluded, got %v", stackNames(repo.Stacks))
+	}
+	if errorStacks(stackErrs) == nil || stackErrs[0].Stack != "web" {
+		t.Fatalf("expected an entry-level error for web, got %v", stackErrs)
+	}
 }

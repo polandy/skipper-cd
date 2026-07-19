@@ -42,3 +42,4 @@ One file per decision, numbered sequentially (see
 | [0035](0035-ui-assets-same-origin-from-embed.md) | UI assets served same-origin from embed.FS (self-contained UI) |
 | [0036](0036-orphan-detection-and-prune.md) | Orphan detection and optional prune (working_dir identity, health-poll cadence) |
 | [0037](0037-container-logs-in-ui.md) | Container logs in the UI (live-streamed via SSE, one follow-child per viewer) |
+| [0038](0038-pre-post-deploy-hooks.md) | Pre-/post-deploy hooks (backup-before-update) |
