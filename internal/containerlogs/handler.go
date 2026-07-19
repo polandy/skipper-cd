@@ -5,6 +5,7 @@
 package containerlogs
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -78,12 +79,20 @@ func Handler(streamer LogStreamer, resolver Resolver) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		flusher.Flush()
 
+		// A failed frame write means the client went away; cancel so the streamer
+		// stops reading (and its docker child is killed) instead of writing on.
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+
 		// Headers are already sent, so an error here can't change the status;
 		// log it unless it is the expected cancellation on client disconnect.
-		if err := streamer.Stream(r.Context(), inv.Dir, inv.Env, dockerBin, args, func(line string) {
-			fmt.Fprintf(w, "data: %s\n\n", line)
+		if err := streamer.Stream(ctx, inv.Dir, inv.Env, dockerBin, args, func(line string) {
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", line); err != nil {
+				cancel()
+				return
+			}
 			flusher.Flush()
-		}); err != nil && r.Context().Err() == nil {
+		}); err != nil && ctx.Err() == nil {
 			slog.Warn("container logs stream ended with error", "stack", stack, "service", service, "err", err)
 		}
 	})
