@@ -164,8 +164,9 @@ type Config struct {
 	// before being killed. Defaults to 300 (5 minutes).
 	CommandTimeoutSeconds int `yaml:"command_timeout_seconds"`
 
-	// LogFormat selects the log output format: "text" (logfmt, the default)
-	// or "json" for structured logs (e.g. for Loki ingestion).
+	// LogFormat selects the log output format: "pretty" (colored, icon-led
+	// console output, the default), "text" (logfmt) or "json" for structured
+	// logs (e.g. for Loki ingestion).
 	LogFormat string `yaml:"log_format"`
 
 	// StacksBaseDir is the directory inside the repo clone that holds one
@@ -468,7 +469,7 @@ func Load(path string) (*Config, error) {
 		cfg.Branch = "main"
 	}
 	if cfg.LogFormat == "" {
-		cfg.LogFormat = LogFormatText
+		cfg.LogFormat = LogFormatPretty
 	}
 	if cfg.Icons.CacheDir == "" {
 		cfg.Icons.CacheDir = defaultIconCacheDir
@@ -542,8 +543,9 @@ func Load(path string) (*Config, error) {
 
 // Valid values for the log_format config field.
 const (
-	LogFormatText = "text"
-	LogFormatJSON = "json"
+	LogFormatPretty = "pretty"
+	LogFormatText   = "text"
+	LogFormatJSON   = "json"
 )
 
 // Defaults for the icons section. SourceURL is the icon-set root; icons are
@@ -673,8 +675,8 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("ui_theme must be one of %s, got %q", strings.Join(ui.ValidThemes, ", "), cfg.UITheme)
 	}
 
-	if cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {
-		return fmt.Errorf("log_format must be %q or %q, got %q", LogFormatText, LogFormatJSON, cfg.LogFormat)
+	if cfg.LogFormat != LogFormatPretty && cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {
+		return fmt.Errorf("log_format must be %q, %q or %q, got %q", LogFormatPretty, LogFormatText, LogFormatJSON, cfg.LogFormat)
 	}
 
 	if cfg.HealthPollIntervalSeconds != nil && *cfg.HealthPollIntervalSeconds < 0 {

@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,6 +36,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/metrics"
 	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/orphans"
+	"github.com/polandy/skipper-cd/internal/prettylog"
 	"github.com/polandy/skipper-cd/internal/reconcile"
 	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/safego"
@@ -155,6 +157,20 @@ func main() {
 		slog.Warn("webhook_secret is empty: /webhook accepts unsigned requests from anyone who can reach this port, and a malformed payload still triggers a deploy")
 	}
 
+	// Log the effective stack set (name, hooks, watch dirs) once so an
+	// operator can see what skipper is watching without waiting for a deploy
+	// event. A static host `stacks:` list is known now; stack-discovery mode
+	// (ADR-0034) only learns it once the first sync resolves it, so the
+	// PostRunHook wiring below calls this again on every run — sync.Once makes
+	// every call after the first a no-op.
+	var rosterOnce sync.Once
+	logRosterOnce := func(stacks []config.Stack, disabled []string) {
+		rosterOnce.Do(func() { logStackRoster(stacks, disabled) })
+	}
+	if !cfg.StackDiscovery {
+		logRosterOnce(cfg.Stacks, nil)
+	}
+
 	// Cancels on SIGINT/SIGTERM. The deployer abandons a pending
 	// nixos-rebuild wait when it fires (ADR-0014).
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -226,6 +242,10 @@ func main() {
 	// The deploy event sink is composed from whatever consumers are configured;
 	// each is independent, so notifications work with the UI off (ADR-0020).
 	var eventSinks []func(events.DeployEvent)
+	// Tallies every run's per-stack outcomes for the "run complete" summary
+	// PostRunHook logs below; independent of the UI so it works headless too.
+	tally := newRunTally()
+	eventSinks = append(eventSinks, tally.observe)
 	if *cfg.UIEnabled {
 		history = events.NewHistory(stateDir)
 		broadcaster = events.NewBroadcaster()
@@ -439,6 +459,11 @@ func main() {
 		Autosync:     autosyncCtrl,
 		Queue:        autosyncQueue,
 		PostRunHook: func() {
+			logRunSummary(tally.flush())
+			// In stack-discovery mode the set is only known once the first run
+			// resolves it; a static host list already logged this at startup, so
+			// every call after the first is a no-op (sync.Once).
+			logRosterOnce(stacksNow(), deployer.CurrentDisabledStacks())
 			publishAutosync()
 			if healthPoller != nil {
 				healthPoller.Poll() // refresh health right after a deploy run
@@ -518,13 +543,18 @@ func main() {
 	slog.Info("skipper-cd stopped")
 }
 
-// newLogHandler returns the slog handler for the configured log_format:
-// a JSON handler for "json", a logfmt text handler otherwise.
+// newLogHandler returns the slog handler for the configured log_format: a
+// JSON handler for "json", a logfmt text handler for "text", and prettylog's
+// colored console handler otherwise (the default, "pretty").
 func newLogHandler(format string, w io.Writer) slog.Handler {
-	if format == config.LogFormatJSON {
+	switch format {
+	case config.LogFormatJSON:
 		return slog.NewJSONHandler(w, nil)
+	case config.LogFormatText:
+		return slog.NewTextHandler(w, nil)
+	default:
+		return prettylog.New(w)
 	}
-	return slog.NewTextHandler(w, nil)
 }
 
 func metricsMux() *http.ServeMux {

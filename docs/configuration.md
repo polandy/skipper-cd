@@ -14,7 +14,7 @@ repo_dir: /var/lib/skipper/repo        # optional, this is the default
 branch: main                            # optional, default: main
 vars_file: /etc/skipper/vars.env        # optional
 command_timeout_seconds: 300            # optional, default: 300
-log_format: text                        # optional, default: text ("json" for structured logs)
+log_format: pretty                      # optional, default: pretty (colored console); "text" or "json" for machine-readable logs
 stacks_base_dir: /var/lib/skipper/repo/modules
 webhook_secret: "your-secret-here"
 port: 8080
@@ -53,7 +53,7 @@ nixos_rebuild:
 | `branch` | string | no | `main` | Git branch to track. Used for `git clone --branch` and `git reset --hard origin/<branch>`. |
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. |
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |
-| `log_format` | string | no | `text` | Log output format: `text` (logfmt) or `json` (structured logs, e.g. for Loki ingestion). |
+| `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
 | `stacks_base_dir` | string | no | — | Base directory prepended to a stack's `name` to derive its working directory when `working_dir` is not set. Avoids repeating long paths across stacks. |
 | `webhook_secret` | string | no | — | HMAC-SHA256 secret used to validate incoming webhook payloads (supports Gitea and GitHub/Forgejo signatures). When empty, signature validation is skipped (not recommended for production). |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
@@ -74,6 +74,24 @@ nixos_rebuild:
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
 | `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0; an explicit `0` disables the cooldown. |
 | `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `health_poll_interval_seconds` > 0. |
+
+## Pretty console output
+
+With the default `log_format: pretty`, startup logs the effective stack set (name, hook counts, watch dirs), and every sync-and-deploy run is narrated with icons and color, mirroring the web UI's Deploys view:
+
+```
+14:32:07  ▣ stacks  · 4 discovered
+14:32:07  ◆ nextcloud  hooks pre_deploy·1 post_deploy·1   watch ./nextcloud
+14:32:08  ⇢ run starting  · 4 stacks
+14:32:08  ▸ nextcloud  changed · 2 files
+14:32:08    ↳ pre_deploy [1]
+14:32:20  ✓ nextcloud  deployed
+14:32:41  ↺ arr-stack  rolled back  — health check failed: GET /ping: context deadline exceeded
+14:32:41  ▪ monitoring  unchanged, skipped
+14:32:41  ✗ run complete  1 deployed · 1 rolled back · 1 skipped
+```
+
+Color auto-disables when stdout is not a terminal (e.g. redirected to a file) or `NO_COLOR` is set; icons still render. Use `log_format: text` or `log_format: json` for a log shipper (Loki, journald) or any other machine consumer.
 
 ## Stack Fields
 
