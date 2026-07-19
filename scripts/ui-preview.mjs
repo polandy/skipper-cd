@@ -29,14 +29,16 @@ const PORT = Number(process.env.PORT || 3000);
 const SECRET = 'ui-preview-secret';
 const stacks = ['web', 'api', 'worker', 'database'];
 
-// Stub docker: records nothing, succeeds at everything, and answers two reads —
-// `compose ps --format json` per stack for the health poller, and bare
-// `docker ps -a` (orphan detection, ADR-0036) from a shared listing. Mirrors
-// the harness's stub (minus the test hooks).
+// Stub docker: records nothing, succeeds at everything, and answers four
+// reads — `compose ps --format json` per stack for the health poller, bare
+// `docker ps -a` (orphan detection, ADR-0036), bare `docker ps` without `-a`
+// (app-link detection, ADR-0041) and `docker inspect` (its label lookup) —
+// from shared listings. Mirrors the harness's stub (minus the test hooks).
 // A single `case` per subcommand is nested under a `compose` check: matching
 // " compose " and (e.g.) " ps " as separate single-segment globs avoids the
 // overlapping-space trap where `*" compose "*" ps "*` fails to match the
-// adjacent "compose ps".
+// adjacent "compose ps". `docker ps -a` (orphans) and `docker ps` without
+// `-a` (app-link) share the outer "ps" match, so `-a` distinguishes them.
 const stubDocker = `#!/bin/sh
 case " $* " in
   *" compose "*)
@@ -71,8 +73,25 @@ case " $* " in
   *" volume "*)
     [ -f "$STUB_PS_DIR/volumes.txt" ] && cat "$STUB_PS_DIR/volumes.txt"
     exit 0 ;;
+  *" inspect "*)
+    shift 3 2>/dev/null # drop "inspect" "--format" "{{json .Config.Labels}}"
+    for id in "$@"; do
+      f="$STUB_PS_DIR/labels-$id.json"
+      # A trailing newline per entry: real docker inspect emits one templated
+      # line per container, but the seeded label files (no trailing newline)
+      # would otherwise glue two containers' JSON onto a single invalid line.
+      if [ -f "$f" ]; then cat "$f"; echo; else echo null; fi
+    done
+    exit 0 ;;
   *" ps "*)
-    [ -f "$STUB_PS_DIR/orphans.txt" ] && cat "$STUB_PS_DIR/orphans.txt"
+    case " $* " in
+      *" -a "*)
+        [ -f "$STUB_PS_DIR/orphans.txt" ] && cat "$STUB_PS_DIR/orphans.txt"
+        ;;
+      *)
+        [ -f "$STUB_PS_DIR/applink-ps.txt" ] && cat "$STUB_PS_DIR/applink-ps.txt"
+        ;;
+    esac
     exit 0 ;;
 esac
 exit 0
@@ -249,6 +268,25 @@ writeFileSync(
 writeFileSync(
   join(healthDir, 'volumes.txt'),
   ['legacy-cache\tlegacy-cache_redis-data', 'legacy-cache\tlegacy-cache_backups', 'web\tweb_data'].join('\n') + '\n',
+);
+
+// App-link detection (ADR-0041): web gets a single discovered host (icon = a
+// plain link), api gets two via one variadic Host() call (icon = a popover) —
+// worker/database carry no Traefik labels, so they show no icon at all.
+writeFileSync(
+  join(healthDir, 'applink-ps.txt'),
+  [`web-c1\t${join(repoDir, 'web')}`, `api-c1\t${join(repoDir, 'api')}`].join('\n') + '\n',
+);
+writeFileSync(
+  join(healthDir, 'labels-web-c1.json'),
+  JSON.stringify({ 'traefik.enable': 'true', 'traefik.http.routers.web.rule': 'Host(`web.example.com`)' }),
+);
+writeFileSync(
+  join(healthDir, 'labels-api-c1.json'),
+  JSON.stringify({
+    'traefik.enable': 'true',
+    'traefik.http.routers.api.rule': 'Host(`api.example.com`,`api-internal.example.com`)',
+  }),
 );
 
 // A pushed change → a deploy row carrying a real git diff + commit metadata.

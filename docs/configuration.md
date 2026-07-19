@@ -240,6 +240,25 @@ icons:
 
 > **Note:** A repo `icon.svg`/`icon.png` is **not** hash-tracked, so adding or changing an icon never triggers a redeploy. The one exception: if you list a stack's own directory under `watch_dirs`, its icon files would be hashed along with everything else — keep icons out of watched directories.
 
+## Traefik app links
+
+skipper-cd has no Traefik configuration of its own — there is nothing to set in `skipper.yml`. Instead, when the web UI is enabled, it reads the [Traefik](https://doc.traefik.io/traefik/) routing labels your stack's `docker-compose.yml` *already* declares and, when it finds one, shows a link icon in the Stacks view that opens the app directly. This section documents how skipper-cd interprets **your** Traefik setup, not a feature you configure here.
+
+```yaml
+services:
+  app:
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.app.rule: "Host(`app.example.com`)"
+```
+
+- Detection requires `traefik.enable: "true"` on the container — Traefik's own opt-in convention (skipper-cd honours the same gate Traefik itself does; a container Traefik wouldn't route to gets no icon either).
+- The hostname is read from the container's **live** labels (`docker inspect`), not the compose file text, so `${DOMAIN}`-style variables resolve to their real, running value.
+- A stack with several routers/hosts shows a popover to pick from; one with no matching label shows no icon — there is nothing to turn on or off.
+- Links always open over `https://`.
+
+> **Docker labels only.** This only sees routing declared via Traefik's **Docker provider** (the `labels:` shown above). A stack whose Traefik routes are instead defined through the file/dynamic provider, a Kubernetes Ingress, or any non-Docker provider carries no container labels for skipper-cd to read, so it gets no icon — even though Traefik is actively routing to it. That's not a bug to work around; it's just outside what this reads.
+
 ## Notifications
 
 skipper-cd can POST a message to one or more targets whenever a deploy reaches a **terminal** outcome. This works independently of the web UI — notifications need neither `ui_enabled` nor an open browser.
