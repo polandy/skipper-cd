@@ -140,6 +140,7 @@
     --font-display: 'DM Sans', sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
     --radius: 8px;
+    --app-header-h: 56px; /* the sticky header height; the Logs fullscreen fills below it */
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2147,6 +2148,7 @@
   /* ─── RESPONSIVE ─── */
   @media (max-width: 700px) {
     header { padding: 0 12px; height: 48px; }
+    :root { --app-header-h: 48px; }
     .status-area { gap: 10px; }
     /* Wordmark is dropped — the ship logo alone carries the brand on mobile so
        the control row fits without horizontal scroll. The version is kept in
@@ -2169,10 +2171,10 @@
 
     .event-list-header { display: none; }
 
-    /* Touch has no keyboard to trigger type-to-search, so on mobile the deploys
-       view-options popover carries a "Search stacks" entry that reveals and
-       focuses the filter (hidden on desktop, where type-to-search covers it). */
-    body:not(.view-logs) .view-options .vo-search { display: flex; }
+    /* Touch has no keyboard to trigger type-to-search, so on mobile the
+       view-options popover carries a "Search" entry that reveals and focuses the
+       filter (hidden on desktop, where type-to-search covers it). */
+    .view-options .vo-search { display: flex; }
 
     .event-row {
       grid-template-columns: 1fr auto;
@@ -2313,11 +2315,10 @@
   .clog-foot .clog-stat.err::before { color: var(--h-unhealthy); }
   @media (prefers-reduced-motion: reduce) { .clog-live .clog-dot { animation: none; } .clog-body { scroll-behavior: auto; } }
 
-  /* skipper Logs view: an inline toolbar carries wrap + search + fullscreen so
-     the exit stays reachable while fullscreen covers the viewport. */
-  .clog-logbar { display: flex; align-items: center; gap: 6px; padding: 6px 2px 8px; }
-  #log-view.clog-fullscreen { position: fixed; inset: 0; z-index: 300; background: var(--crust);
-    display: flex; flex-direction: column; padding: 10px 14px; }
+  /* skipper Logs view fullscreen fills the viewport below the sticky header, so
+     the header + view-options popover stay reachable to toggle it back off. */
+  #log-view.clog-fullscreen { position: fixed; inset: var(--app-header-h) 0 0 0; z-index: 80;
+     background: var(--crust); display: flex; flex-direction: column; padding: 10px 14px; }
   #log-view.clog-fullscreen .log-pane { max-height: none; flex: 1; }
   .log-pane.wrap .log-msg, .log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .log-line.clog-out { display: none; }

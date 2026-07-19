@@ -111,10 +111,24 @@
           </button>
         </div>
         <div class="vo-group" data-view="logs">
+          <button class="filter-toggle vo-search" id="log-search-open" data-testid="log-search" type="button" title="Search in log">
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Search log</span>
+          </button>
           <button class="filter-toggle" id="follow-logs" data-testid="follow-logs" title="Auto-scroll to newest log lines">
             <div class="toggle-track"><div class="toggle-thumb"></div></div>
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span>Auto-scroll</span>
+          </button>
+          <button class="filter-toggle" id="log-wrap" data-testid="log-wrap" title="Wrap long lines">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 18h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 12h13a3 3 0 0 1 0 6h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 15l-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Wrap lines</span>
+          </button>
+          <button class="filter-toggle" id="log-fs" data-testid="log-fs" title="Fullscreen">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Fullscreen</span>
           </button>
         </div>
       </div>
@@ -259,22 +273,11 @@
   </div>
 
   <div id="log-view">
-    <div class="clog-logbar" id="log-toolbar">
-      <button class="clog-tool" id="log-search-btn" data-testid="log-search-btn" type="button" title="Search in log" aria-label="Search in log">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
-      </button>
-      <button class="clog-tool" id="log-wrap-btn" data-testid="log-wrap-btn" type="button" title="Wrap long lines" aria-label="Wrap long lines">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h13a3 3 0 0 1 0 6h-4"/><path d="M16 15l-3 3 3 3"/><path d="M4 18h6"/></svg>
-      </button>
-      <span class="clog-grow"></span>
-      <button class="clog-tool" id="log-fs-btn" data-testid="log-fs-btn" type="button" title="Fullscreen" aria-label="Fullscreen">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-      </button>
-    </div>
-    <div class="clog-search clog-hide" id="log-search-row">
-      <span class="clog-sic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></span>
-      <input type="text" id="log-search-input" data-testid="log-search-input" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log">
-      <span class="clog-hits" id="log-search-hits"></span>
+    <div class="stack-filter-wrap deploy-filter" id="log-filter-wrap" data-testid="log-filter-wrap">
+      <svg class="fi" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input class="stack-filter" id="log-filter" data-testid="log-filter" type="text" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log">
+      <span class="stack-filter-count" id="log-filter-count"></span>
+      <button class="stack-filter-clear" id="log-filter-clear" data-testid="log-filter-clear" type="button" aria-label="Clear search">&times;</button>
     </div>
     <div class="log-pane" id="log-pane">
       <div class="log-empty" id="log-empty">Awaiting log output...</div>
@@ -2728,18 +2731,19 @@
     }).catch(function() {});
   }
 
-  // ── skipper Logs view: wrap + search + fullscreen (ADR-0037) ────────────────
-  // The existing follow + oldest-first toggles live in the header popover; these
-  // three sit in an inline toolbar that stays reachable while fullscreen covers
-  // the viewport.
+  // ── skipper Logs view controls (ADR-0037): search + wrap + fullscreen live in
+  // the view-options popover like the deploys/stacks views. Search reveals the
+  // same filter bar those use (seeded by type-to-search on desktop). Fullscreen
+  // fills below the header so the popover stays reachable to toggle it off.
   (function() {
     const view = document.getElementById('log-view');
-    const searchBtn = document.getElementById('log-search-btn');
-    const wrapBtn = document.getElementById('log-wrap-btn');
-    const fsBtn = document.getElementById('log-fs-btn');
-    const searchRow = document.getElementById('log-search-row');
-    const searchInput = document.getElementById('log-search-input');
-    const hits = document.getElementById('log-search-hits');
+    const wrapBtn = document.getElementById('log-wrap');
+    const fsBtn = document.getElementById('log-fs');
+    const searchOpen = document.getElementById('log-search-open');
+    const wrap = document.getElementById('log-filter-wrap');
+    const input = document.getElementById('log-filter');
+    const count = document.getElementById('log-filter-count');
+    const clearBtn = document.getElementById('log-filter-clear');
 
     function highlightLine(line, q) {
       const ql = q.toLowerCase();
@@ -2759,7 +2763,8 @@
       });
     }
     function applyLogSearch() {
-      const q = searchInput.value.trim();
+      const q = input.value.trim();
+      wrap.classList.toggle('has-value', q.length > 0);
       let n = 0;
       logPane.querySelectorAll('.log-line').forEach(function(line) {
         if (line.dataset.origHtml == null) line.dataset.origHtml = line.innerHTML;
@@ -2768,41 +2773,50 @@
         if (!logLineVisible(line.textContent, q)) { line.classList.add('clog-out'); return; }
         if (q) { n++; highlightLine(line, q); }
       });
-      hits.textContent = q ? (n + (n === 1 ? ' hit' : ' hits')) : '';
+      count.textContent = q ? (n + (n === 1 ? ' hit' : ' hits')) : '';
     }
-    // Re-apply the filter after the log window re-renders (new lines, sort flip).
-    logSearchApply = function() { if (!searchRow.classList.contains('clog-hide') && searchInput.value.trim()) applyLogSearch(); };
+    function revealLogFilter(on) { wrap.classList.toggle('revealed', on); }
+    function clearLogFilter(hide) {
+      input.value = ''; applyLogSearch();
+      if (hide) { revealLogFilter(false); input.blur(); }
+    }
+    // Re-apply after the log window re-renders (new lines) so they obey the filter.
+    logSearchApply = function() { if (wrap.classList.contains('revealed') && input.value.trim()) applyLogSearch(); };
 
-    searchBtn.addEventListener('click', function() {
-      const show = searchRow.classList.toggle('clog-hide') === false;
-      searchBtn.classList.toggle('on', show);
-      if (show) searchInput.focus();
-      else { searchInput.value = ''; applyLogSearch(); }
+    input.addEventListener('input', applyLogSearch);
+    input.addEventListener('keydown', function(e) {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (input.value) clearLogFilter(false); else { revealLogFilter(false); input.blur(); }
     });
-    searchInput.addEventListener('input', applyLogSearch);
-    wrapBtn.addEventListener('click', function() { wrapBtn.classList.toggle('on', logPane.classList.toggle('wrap')); });
+    input.addEventListener('blur', function() { if (!input.value) revealLogFilter(false); });
+    clearBtn.addEventListener('click', function() { clearLogFilter(false); input.focus(); });
+    searchOpen.addEventListener('click', function() { setViewOptions(false); revealLogFilter(true); input.focus(); });
 
-    // Reparent #log-view to <body> for fullscreen so it escapes <main>'s
-    // stacking context (z-index:1) and sits above the sticky header.
-    let logFsHolder = null;
+    wrapBtn.addEventListener('click', function() { wrapBtn.classList.toggle('active', logPane.classList.toggle('wrap')); });
+
     function setLogFullscreen(on) {
-      if (on) {
-        if (!logFsHolder) {
-          logFsHolder = document.createComment('log-fs');
-          view.before(logFsHolder);
-          document.body.appendChild(view);
-        }
-        view.classList.add('clog-fullscreen');
-        fsBtn.classList.add('on');
-      } else {
-        view.classList.remove('clog-fullscreen');
-        fsBtn.classList.remove('on');
-        if (logFsHolder && logFsHolder.parentNode) { logFsHolder.replaceWith(view); logFsHolder = null; }
-      }
+      view.classList.toggle('clog-fullscreen', on);
+      fsBtn.classList.toggle('active', on);
     }
     fsBtn.addEventListener('click', function() { setLogFullscreen(!view.classList.contains('clog-fullscreen')); });
+
+    // Type-to-search: a printable key while viewing logs reveals the filter and
+    // seeds it (mirrors the deploys/stacks type-to-search); Esc exits fullscreen
+    // then the filter.
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && view.classList.contains('clog-fullscreen')) setLogFullscreen(false);
+      if (activeView !== 'logs' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target === input) return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+      if (e.key === 'Escape') {
+        if (view.classList.contains('clog-fullscreen')) setLogFullscreen(false);
+        else if (wrap.classList.contains('revealed')) clearLogFilter(true);
+        return;
+      }
+      if (e.key.length === 1 && e.key !== ' ') {
+        revealLogFilter(true); input.focus(); input.value += e.key; applyLogSearch(); e.preventDefault();
+      }
     });
   })();
 
