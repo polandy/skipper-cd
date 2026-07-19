@@ -116,3 +116,23 @@ directory …"). Anchoring the file at `stacks_base_dir` gives each watched
 subtree its own `skipper.yaml`, so the per-host stack sets — and their
 overrides — stay disjoint. Discovery is not yet enabled anywhere, so there is
 no compatibility cost.
+
+## Amendment (2026-07-20): each stack validated against its compose file at discovery
+
+Because discovery runs against the repo clone every sync, `LoadRepoStacks` now
+validates each discovered stack up front instead of leaving it to the deploy:
+its `docker-compose.yml` must parse, any relative (in-repo) `env_files`/
+`watch_dirs` must exist, and any `rollout` service must be present and eligible
+(no host ports, no `container_name`, has a `healthcheck`). Each failure is an
+entry-level `StackError` — only that stack is excluded, and it shows on the
+stack's row every sync.
+
+Motivation: these previously surfaced only when the stack next deployed. Since
+`rollout` is excluded from change detection (ADR-0040), editing it never
+triggers the redeploy that the deploy-time check would ride on, so a mistake
+could stay latent. Validating at discovery closes that gap. The deploy-time
+checks stay as defence in depth (and remain the only check in legacy host-config
+mode, where the clone does not exist at config-load). The rollout eligibility
+rules live once in `config.ValidateRolloutServices`; compose parsing is shared
+via `internal/compose`. Absolute `env_files`/`watch_dirs` paths are not
+existence-checked — they are the documented host-secret escape hatch.

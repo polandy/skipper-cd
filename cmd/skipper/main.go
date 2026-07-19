@@ -23,6 +23,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/audit"
 	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/command"
+	"github.com/polandy/skipper-cd/internal/compose"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/containerlogs"
 	"github.com/polandy/skipper-cd/internal/deploy"
@@ -660,7 +661,7 @@ func healthStacks(cfg *config.Config, stacks []config.Stack) []health.StackRef {
 	for _, s := range stacks {
 		refs = append(refs, health.StackRef{
 			Name:        s.Name,
-			ComposePath: filepath.Join(cfg.StacksBaseDir, s.Name, "docker-compose.yml"),
+			ComposePath: filepath.Join(cfg.StacksBaseDir, s.Name, compose.FileName),
 			ProjectDir:  s.WorkingDir,
 			OnDemand:    s.OnDemandContainers,
 		})

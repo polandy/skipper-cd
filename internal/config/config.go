@@ -849,7 +849,7 @@ func ValidateRolloutServices(services []string, cf *compose.File) error {
 	for _, name := range services {
 		svc, ok := cf.Services[name]
 		if !ok {
-			return fmt.Errorf("service %q is not defined in %s", name, composeFileName)
+			return fmt.Errorf("service %q is not defined in %s", name, compose.FileName)
 		}
 		if svc.PublishesPorts() {
 			return fmt.Errorf("service %q publishes host ports; cannot run two replicas — route it via the proxy instead", name)

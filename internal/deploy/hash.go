@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/polandy/skipper-cd/internal/compose"
 )
 
 // computePerFileHashes returns a SHA-256 hash for each tracked file in the stack.
@@ -13,7 +15,7 @@ import (
 // When varsFile is non-empty, it is included in the hash set so that changes
 // to global variables also trigger redeployment.
 func computePerFileHashes(workDir string, envFiles []string, watchDirs []string, varsFile string, extraFiles []string) (stackFileHashes, error) {
-	filePaths := append([]string{filepath.Join(workDir, "docker-compose.yml")}, envFiles...)
+	filePaths := append([]string{filepath.Join(workDir, compose.FileName)}, envFiles...)
 	if varsFile != "" {
 		filePaths = append(filePaths, varsFile)
 	}

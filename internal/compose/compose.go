@@ -11,6 +11,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// FileName is the compose file skipper reads per stack.
+const FileName = "docker-compose.yml"
+
 // File is a parsed docker-compose.yml.
 type File struct {
 	Services map[string]Service `yaml:"services"`
