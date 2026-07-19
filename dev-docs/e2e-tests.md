@@ -778,8 +778,9 @@ stack), plus a `sleep` for the running-hook cases so the phase is observable.
 The running-hook masks use `readiness: 'listening'` so the page loads while the
 deploy is still in the hook (a deterministic window; the `sleep` is well under
 the 30s command timeout). No real docker — hooks run via real `sh -c`.
-Behaviour-only (the badge shifts the shared deploy-table baseline, so no new
-snapshot).
+Behaviour-only: the visual-snapshot masks configure no hooks, so the badge/phase
+never appear in a baseline (and the status cell only stacks `:has(.hook-phase)`),
+so no baseline shifts and no new snapshot is added.
 
 - **UU1 — Badge + panel.** `web`'s `hooks-badge` shows the split `2+1` count and
   a `pre-deploy hook: 2` title; `api` (no hooks) has none. Clicking opens the
