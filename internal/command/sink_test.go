@@ -14,13 +14,13 @@ type recordingSink struct {
 }
 
 type sinkLine struct {
-	cmd, stream, line string
+	cmd, stream, line, stack string
 }
 
-func (s *recordingSink) ChildLine(cmd, stream, line string) {
+func (s *recordingSink) ChildLine(cmd, stream, line, stack string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.lines = append(s.lines, sinkLine{cmd, stream, line})
+	s.lines = append(s.lines, sinkLine{cmd, stream, line, stack})
 }
 
 func (s *recordingSink) all() []sinkLine {
@@ -41,7 +41,7 @@ func TestLineWriter_SplitsWritesIntoLines(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("expected 2 lines, got %d: %+v", len(got), got)
 	}
-	if got[0] != (sinkLine{"docker", "stdout", "one"}) || got[1] != (sinkLine{"docker", "stdout", "two"}) {
+	if got[0] != (sinkLine{"docker", "stdout", "one", ""}) || got[1] != (sinkLine{"docker", "stdout", "two", ""}) {
 		t.Errorf("unexpected lines: %+v", got)
 	}
 }

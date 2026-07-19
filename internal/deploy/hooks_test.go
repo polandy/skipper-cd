@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -170,6 +171,36 @@ func TestDeployStack_PostDeployFailureRollsBack(t *testing.T) {
 	}
 	if hookRuns != 1 {
 		t.Errorf("post_deploy hook ran %d times, want 1 (not re-run on the rollback leg)", hookRuns)
+	}
+}
+
+// The running-hook indicator publishes {stack,phase,index,total} as each hook
+// starts and clears to the zero value when a phase's hooks finish (ADR-0038).
+func TestRunHooks_PublishesHookRunPhases(t *testing.T) {
+	baseDir, _ := hookStackDir(t, "web")
+	var runs []HookRun
+	d := New(Config{Runner: &recordingRunner{}, HookRunSink: func(h HookRun) { runs = append(runs, h) }})
+
+	stack := config.Stack{Name: "web", Hooks: config.Hooks{
+		PreDeploy:  []string{"a", "b"},
+		PostDeploy: []string{"c"},
+	}}
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []HookRun{
+		{Stack: "web", Phase: "pre_deploy", Index: 1, Total: 2},
+		{Stack: "web", Phase: "pre_deploy", Index: 2, Total: 2},
+		{}, // pre-phase hooks finished → cleared
+		{Stack: "web", Phase: "post_deploy", Index: 1, Total: 1},
+		{}, // post-phase hooks finished → cleared
+	}
+	if !reflect.DeepEqual(runs, want) {
+		t.Errorf("hookrun sequence:\n got %+v\nwant %+v", runs, want)
+	}
+	if d.CurrentHookRun() != (HookRun{}) {
+		t.Errorf("running-hook state must be cleared after the deploy, got %+v", d.CurrentHookRun())
 	}
 }
 

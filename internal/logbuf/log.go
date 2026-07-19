@@ -76,8 +76,15 @@ func (l *Log) Append(t time.Time, level, msg string, attrs map[string]string) {
 
 // ChildLine records one line of child-process output at level INFO with
 // cmd and stream attrs. It implements command.LineSink.
-func (l *Log) ChildLine(cmd, stream, line string) {
-	l.Append(time.Now(), "INFO", line, map[string]string{"cmd": cmd, "stream": stream})
+func (l *Log) ChildLine(cmd, stream, line, stack string) {
+	attrs := map[string]string{"cmd": cmd, "stream": stream}
+	// Deploy hooks attribute their output to a stack (ADR-0038); the log view
+	// then renders it as a [stack] prefix and the stack filter matches it.
+	// docker/git output leaves stack empty and stays unattributed.
+	if stack != "" {
+		attrs["stack"] = stack
+	}
+	l.Append(time.Now(), "INFO", line, attrs)
 }
 
 // Entries returns a copy of the buffered entries, oldest first.

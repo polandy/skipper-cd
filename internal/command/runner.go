@@ -16,6 +16,24 @@ type Runner interface {
 	Run(ctx context.Context, dir string, env []string, name string, args ...string) error
 }
 
+// stackContextKey carries the deploy stack a command runs for, so the runner
+// can attribute the command's line output to it in the log (deploy hooks set
+// it; ADR-0038). Unexported so only WithStack can set it.
+type stackContextKey struct{}
+
+// WithStack returns a context that attributes a command's child-process output
+// to the given deploy stack in the log sink. Callers that know which stack a
+// command runs for (deploy hooks) set it; docker/git commands leave it unset.
+func WithStack(ctx context.Context, stack string) context.Context {
+	return context.WithValue(ctx, stackContextKey{}, stack)
+}
+
+// stackFromContext returns the stack set by WithStack, or "" if none.
+func stackFromContext(ctx context.Context) string {
+	s, _ := ctx.Value(stackContextKey{}).(string)
+	return s
+}
+
 // defaultWaitDelay bounds how long cmd.Wait keeps blocking on a command's I/O
 // pipes after the process itself has exited or been killed. A grandchild that
 // inherits and holds the stdout pipe open (e.g. a backgrounded process a
@@ -62,8 +80,9 @@ func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name str
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if r.sink != nil {
-		ow := &lineWriter{sink: r.sink, cmd: name, stream: "stdout"}
-		ew := &lineWriter{sink: r.sink, cmd: name, stream: "stderr"}
+		stack := stackFromContext(ctx)
+		ow := &lineWriter{sink: r.sink, cmd: name, stream: "stdout", stack: stack}
+		ew := &lineWriter{sink: r.sink, cmd: name, stream: "stderr", stack: stack}
 		defer func() {
 			_ = ow.Close()
 			_ = ew.Close()

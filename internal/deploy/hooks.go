@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/polandy/skipper-cd/internal/command"
 )
 
 // Hook phase names: injected as SKIPPER_HOOK and used in error/log messages.
@@ -29,8 +31,15 @@ func (d *Deployer) runHooks(ctx context.Context, run stackRun, phase string, cmd
 		return err
 	}
 	env = append(env, "SKIPPER_STACK="+run.stack.Name, "SKIPPER_HOOK="+phase)
+	// Attribute the hook's child output to the stack so the log view prefixes it
+	// [stack] and the stack filter matches it (ADR-0038).
+	ctx = command.WithStack(ctx, run.stack.Name)
 	timeout := time.Duration(run.stack.Hooks.TimeoutSeconds) * time.Second
+	// Clear the running-hook indicator when this phase's hooks finish, success or
+	// failure — the UI drops the phase sub-label and stops pulsing the badge.
+	defer d.publishHookRun(HookRun{})
 	for i, cmd := range cmds {
+		d.publishHookRun(HookRun{Stack: run.stack.Name, Phase: phase, Index: i + 1, Total: len(cmds)})
 		slog.Info("running deploy hook", "stack", run.stack.Name, "phase", phase, "index", i)
 		if err := d.runHook(ctx, run.effectiveProjectDir(), env, timeout, cmd); err != nil {
 			return fmt.Errorf("%s hook %d (%q): %w", phase, i+1, cmd, err)

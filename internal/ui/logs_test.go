@@ -55,7 +55,7 @@ func TestLogsSSEHandler_StreamsLiveEntries(t *testing.T) {
 	handler := LogsSSEHandler(log)
 	req := httptest.NewRequest(http.MethodGet, "/api/logs", nil)
 	rec := serveSSE(t, handler, req, func() {
-		log.ChildLine("docker", "stdout", "Container gitea Started")
+		log.ChildLine("docker", "stdout", "Container gitea Started", "")
 	})
 
 	body := rec.Body.String()
