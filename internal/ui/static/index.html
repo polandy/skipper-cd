@@ -368,7 +368,7 @@
       row.dataset.testid = 'roster-row';
       row.dataset.stack = entry.name;
       row.innerHTML =
-        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span></span>` +
+        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}</span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
@@ -779,6 +779,19 @@
     chip.textContent = (stack || '?').charAt(0);
   }
 
+  // jumpBtnHTML renders the cross-view navigation affordance next to a stack
+  // name: a small button that switches to targetView and scrolls to that
+  // stack's row there (see jumpToStack). Always rendered — whether a landing
+  // row actually exists depends on live data (e.g. a stack with no deploy
+  // history yet has no Deploys-view row), so jumpToStack degrades to a plain
+  // view switch when it finds nothing to land on.
+  function jumpBtnHTML(targetView, stack) {
+    const label = targetView === 'stacks' ? 'View in Stacks' : 'View in Deploys';
+    return `<button type="button" class="jump-btn" data-testid="jump-btn" data-jump-view="${targetView}" data-jump-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label + ': ' + stack)}">` +
+      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>' +
+      '</button>';
+  }
+
   // pendingTagHTML renders the tag on a pending deploy row. Queued rows show
   // "paused[: reason]"; blocked rows (ADR-0032) show the dependency reason
   // ("blocked by <dep>") directly, both drawn from the queue snapshot. The
@@ -810,7 +823,7 @@
     const filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
-      `<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${pausedTag}</span>` +
+      `<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="status-cell">${badgeHTML(evt.status)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
       `<span class="col-files">${filesCell}</span>`;
@@ -1506,6 +1519,14 @@
     rosterList.querySelectorAll('.roster-row.audit-open').forEach(function(r) { r.classList.remove('audit-open'); });
   }
   rosterList.addEventListener('click', function(e) {
+    // Cross-view jump button: hand off to Deploys. Handled before the row's
+    // own click (which opens its history panel) so a tap never opens both.
+    const jumpBtn = e.target.closest('.jump-btn');
+    if (jumpBtn) {
+      jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
+      return;
+    }
+
     const row = e.target.closest('.roster-row');
     if (!row || !rosterList.contains(row)) return;
     const next = row.nextElementSibling;
@@ -2156,6 +2177,37 @@
     });
   });
 
+  // jumpToStack drives the cross-view jump-btn (deploys <-> stacks): switch to
+  // targetView, then scroll to and briefly flash that stack's row there. In
+  // the deploys view a stack can have many rows (it's an event log), so the
+  // newest one — first in DOM order — is the landing target; the stacks view
+  // has exactly one row per stack (it's inventory). Silently does nothing
+  // past the view switch when the stack has no row in the target view (e.g.
+  // "never deployed"). Clears the target view's own search filter first: a
+  // leftover query from before the jump could otherwise leave the landing row
+  // `.filtered-out` (display: none) — switched to, but invisible and with no
+  // indication why.
+  function jumpToStack(targetView, stack) {
+    if (targetView !== activeView) {
+      activeView = targetView;
+      localStorage.setItem('activeView', activeView);
+      setViewOptions(false);
+      applyView();
+    }
+    if (targetView === 'stacks') clearRosterFilter(true);
+    else clearDeployFilter(true);
+    const escaped = (window.CSS && CSS.escape) ? CSS.escape(stack) : stack;
+    const target = targetView === 'stacks'
+      ? rosterList.querySelector(`.roster-row[data-stack="${escaped}"]`)
+      : tbody.querySelector(`.event-row[data-stack="${escaped}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.remove('jump-target');
+    void target.offsetWidth; // restart the animation if it's already landed once
+    target.classList.add('jump-target');
+    setTimeout(function() { target.classList.remove('jump-target'); }, 1800);
+  }
+
   registerSurface({
     isOpen: function() { return viewOptions.classList.contains('open'); },
     close: function() { setViewOptions(false); },
@@ -2194,6 +2246,14 @@
   tbody.addEventListener('click', function(e) {
     // Diff panel collapse/expand controls (per-file header, multi-commit pill).
     if (handleDiffToggle(e.target)) return;
+
+    // Cross-view jump button: hand off to Stacks. Handled before the files
+    // logic so a tap never opens the row's diff panel.
+    const jumpBtn = e.target.closest('.jump-btn');
+    if (jumpBtn) {
+      jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
+      return;
+    }
 
     // History button: toggle the per-stack deploy-history panel (ADR-0033).
     // Handled before the files logic so a tap never opens the row's diff panel.

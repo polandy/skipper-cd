@@ -903,6 +903,45 @@
     background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
   .history-btn svg { width: 12px; height: 12px; }
+
+  /* ─── CROSS-VIEW JUMP (Deploys <-> Stacks) ─── */
+  /* A compass button beside every stack name, in both the deploy row and the
+     roster row: switches to the other view and lands on that stack's row
+     there (jumpToStack). Same frame as .history-btn so the two read as a
+     family of small per-stack affordances. */
+  .jump-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: transparent; color: var(--text-muted); cursor: pointer;
+  }
+  .jump-btn:hover {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .jump-btn svg { width: 12px; height: 12px; }
+
+  /* Landing flash: a temporary accent pulse on the row a jump lands on, so the
+     eye finds it immediately without leaving a permanent state change behind
+     (unlike diff-open/health-open/audit-open, which persist until closed). */
+  .event-row.jump-target, .roster-row.jump-target {
+    animation: jumpLand 1.8s ease-out;
+  }
+  @keyframes jumpLand {
+    0%, 60% {
+      background: var(--accent-dim);
+      box-shadow: inset 3px 0 0 var(--accent), 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    100% {
+      background: transparent;
+      box-shadow: inset 3px 0 0 transparent, 0 0 0 1px transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .event-row.jump-target, .roster-row.jump-target { animation: none; background: var(--accent-dim); }
+  }
+
   /* History lists many statuses, so the open row uses the neutral accent bar,
      not a status colour. Shared with the roster's open row. */
   .event-row.audit-open, .roster-row.audit-open {
