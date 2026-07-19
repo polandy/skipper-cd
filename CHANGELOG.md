@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.17.0](https://github.com/polandy/skipper-cd/compare/v0.16.0...v0.17.0) (2026-07-19)
+
+
+### Features
+
+* live container logs in the UI (ADR-0037) ([eebdc45](https://github.com/polandy/skipper-cd/commit/eebdc458e1f205c5759698f14babc8f4790aadd2))
+* **orphans:** detect orphaned & unmanaged compose projects (ADR-0036) ([e9661bd](https://github.com/polandy/skipper-cd/commit/e9661bd18503854d9a2fe906b8d0db45bb7a0f46))
+* **ui:** add Stacks roster view ([b748f27](https://github.com/polandy/skipper-cd/commit/b748f2778901e664ec8acd15eb86707412d3b80e))
+* **ui:** jump between Deploys and Stacks views per stack ([c98a5b7](https://github.com/polandy/skipper-cd/commit/c98a5b7eeb846e77c256f5fa277836edee9bad15))
+
+
+### Bug Fixes
+
+* **config:** validate ports and command timeout at load ([#136](https://github.com/polandy/skipper-cd/issues/136)) ([72eac3d](https://github.com/polandy/skipper-cd/commit/72eac3dbd60414075e8c0534b86f94f77b138a0c))
+* **docker:** run the container as non-root, harden the compose example ([56b843c](https://github.com/polandy/skipper-cd/commit/56b843ce585947281149c68ecd10a6c12efd1d1b))
+* recover panics in background goroutines, thread ctx into live notify delivery ([728c4b6](https://github.com/polandy/skipper-cd/commit/728c4b6119ffbff322cbd953c82e9e6e35426851))
+* security/deps audit round 2 (path traversal, error-wrap, file perms, Go 1.26.5) ([d836ae0](https://github.com/polandy/skipper-cd/commit/d836ae0443fd29255697aebb60f4845f6239e2f9))
+
 ## [0.16.0](https://github.com/polandy/skipper-cd/compare/v0.15.0...v0.16.0) (2026-07-18)
 
 
