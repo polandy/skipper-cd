@@ -22,12 +22,14 @@ type composeFile struct {
 type composeService struct {
 	Image    string `yaml:"image"`
 	BuildRaw any    `yaml:"build"`
-	// Ports and Healthcheck are read only for rollout eligibility (ADR-0040): a
-	// rolled service must publish no host ports (two replicas would collide) and
-	// define a healthcheck (the readiness signal). Both are captured as raw YAML
-	// — only their presence matters here.
-	Ports       []any `yaml:"ports"`
-	Healthcheck any   `yaml:"healthcheck"`
+	// Ports, Healthcheck and ContainerName are read only for rollout eligibility
+	// (ADR-0040): a rolled service must publish no host ports (two replicas would
+	// collide), define a healthcheck (the readiness signal), and set no fixed
+	// container_name (compose refuses to scale a named container). Captured as raw
+	// YAML — only presence/value matters here.
+	Ports         []any  `yaml:"ports"`
+	Healthcheck   any    `yaml:"healthcheck"`
+	ContainerName string `yaml:"container_name"`
 }
 
 // publishesPorts reports whether the service publishes any host port. A rolled
@@ -40,6 +42,13 @@ func (s composeService) publishesPorts() bool {
 // readiness signal a rollout waits on before draining the old container.
 func (s composeService) hasHealthcheck() bool {
 	return s.Healthcheck != nil
+}
+
+// hasContainerName reports whether the service pins a fixed container_name.
+// Compose cannot scale such a service (the name must be unique), so it is
+// ineligible for rollout.
+func (s composeService) hasContainerName() bool {
+	return s.ContainerName != ""
 }
 
 // parseComposeFile reads and parses a docker-compose.yml.

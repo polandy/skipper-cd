@@ -69,10 +69,11 @@ Key decisions:
 
 - **Per-service allowlist, validated at deploy time.** Eligibility is checked
   against the compose file before any container is touched: the service must
-  exist, publish **no host `ports:`** (replicas would collide), and define a
+  exist, publish **no host `ports:`** (replicas would collide), set **no
+  `container_name:`** (compose cannot scale a named container), and define a
   **`healthcheck:`** (the readiness signal). A violation fails the deploy with a
   clear message and a `failed` event — no cryptic docker error. `composeService`
-  parsing is extended to read `ports:`/`healthcheck:` presence.
+  parsing is extended to read `ports:`/`container_name:`/`healthcheck:`.
 - **skipper stays proxy-agnostic in code.** It implements only scale-up →
   wait-healthy → drain and relies on the proxy to discover the healthy canary,
   balance onto it, and deregister the drained container on its `die` event.

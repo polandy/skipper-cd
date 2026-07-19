@@ -301,6 +301,13 @@ func TestValidateRolloutServices(t *testing.T) {
   web:
     image: nginx:1.25
 `
+	withContainerName := `services:
+  web:
+    image: nginx:1.25
+    container_name: web
+    healthcheck:
+      test: ["CMD", "true"]
+`
 	ok := `services:
   web:
     image: nginx:1.25
@@ -316,6 +323,7 @@ func TestValidateRolloutServices(t *testing.T) {
 	}{
 		{"unknown service", ok, []string{"api"}, true, "unknown service"},
 		{"published ports", withPorts, []string{"web"}, true, "publishes host ports"},
+		{"container_name", withContainerName, []string{"web"}, true, "container_name"},
 		{"no healthcheck", noHealthcheck, []string{"web"}, true, "no healthcheck"},
 		{"valid", ok, []string{"web"}, false, ""},
 	}

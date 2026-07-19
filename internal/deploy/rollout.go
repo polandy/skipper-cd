@@ -226,6 +226,9 @@ func validateRolloutServices(compose *composeFile, services []string) error {
 		if svc.publishesPorts() {
 			return fmt.Errorf("rollout: service %q publishes host ports; cannot run two replicas — route it via the proxy instead", name)
 		}
+		if svc.hasContainerName() {
+			return fmt.Errorf("rollout: service %q sets container_name; compose cannot scale a named container — remove container_name to roll it", name)
+		}
 		if !svc.hasHealthcheck() {
 			return fmt.Errorf("rollout: service %q has no healthcheck; rollout needs a readiness signal", name)
 		}

@@ -211,7 +211,7 @@ stacks:
 ```
 
 - **Traefik (or an equivalent health-aware, drain-on-stop reverse proxy) is required.** Rollout relies on it discovering the healthy new container and deregistering the old one on stop — skipper only does the scale-up → wait → drain dance.
-- Each rolled service must **publish no host `ports:`** (two replicas would collide on the port — route it through the proxy) and define a compose **`healthcheck:`** (the readiness signal). Both are checked at deploy time; a violation fails the deploy.
+- Each rolled service must **publish no host `ports:`** (two replicas would collide on the port — route it through the proxy), set no fixed **`container_name:`** (compose cannot scale a named container), and define a compose **`healthcheck:`** (the readiness signal). All three are checked at deploy time; a violation fails the deploy.
 - Only listed services roll. Everything else — databases, anything with a volume lock or a published port — recreates in place as usual.
 - **Failure is zero-downtime too:** if the new container never turns healthy, skipper removes it and leaves the old one serving. The deploy is reported as `rolled_back`.
 - `rollout` is **not** hash-tracked: switching a service to/from rollout does not itself redeploy.

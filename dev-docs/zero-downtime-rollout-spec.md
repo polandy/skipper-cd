@@ -144,6 +144,8 @@ presence, then before applying:
 - each rolled service has **no published `ports:`** → else fail
   (`rollout: service %q publishes host ports; cannot run two replicas — route it
   via the proxy instead`);
+- each rolled service sets **no `container_name:`** → else fail (compose cannot
+  scale a named container);
 - each rolled service defines a **`healthcheck:`** → else fail
   (`rollout: service %q has no healthcheck; rollout needs a readiness signal`).
 
