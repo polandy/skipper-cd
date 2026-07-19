@@ -32,6 +32,28 @@ case " $* " in
     ;;
 esac
 
+# Container logs (ADR-0037): a fixed backlog then, with --follow, a periodic
+# tail. --no-log-prefix marks a single service (no prefix); otherwise merged, so
+# each line is prefixed with the service. Killed when the request context ends.
+case " $* " in
+  *" logs "*)
+    base=$(basename "$dir")
+    pfx="$base-1  | "
+    case " $* " in *" --no-log-prefix "*) pfx="" ;; esac
+    printf '%s2026-01-01T00:00:00Z starting %s\\n' "$pfx" "$base"
+    printf '%s2026-01-01T00:00:01Z listening on :8080\\n' "$pfx"
+    printf '%s2026-01-01T00:00:02Z GET /health 200 ok\\n' "$pfx"
+    printf '%s2026-01-01T00:00:03Z ERROR upstream timeout\\n' "$pfx"
+    case " $* " in
+      *" --follow "*)
+        i=0
+        while :; do i=$((i + 1)); printf '%s2026-01-01T00:01:%02dZ tick %s\\n' "$pfx" "$i" "$i"; sleep 1; done
+        ;;
+    esac
+    exit 0
+    ;;
+esac
+
 # Health poll: emit the scripted \`compose ps --format json\` output for this
 # stack (keyed by the project dir's basename), else nothing (-> stopped).
 case " $* " in
