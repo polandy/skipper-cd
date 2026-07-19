@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/autosync"
+	"github.com/polandy/skipper-cd/internal/compose"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/metrics"
@@ -203,7 +204,7 @@ func (r stackRun) effectiveProjectDir() string {
 func newStackRun(stack config.Stack, baseDir string, baseEnv []string) stackRun {
 	return stackRun{
 		stack:       stack,
-		composePath: filepath.Join(baseDir, stack.Name, "docker-compose.yml"),
+		composePath: filepath.Join(baseDir, stack.Name, compose.FileName),
 		projectDir:  stack.WorkingDir,
 		baseEnv:     baseEnv,
 	}

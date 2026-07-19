@@ -23,11 +23,6 @@ import (
 // skipper.yaml (ADR-0034 amendment).
 const RepoConfigFileName = "skipper.yaml"
 
-// composeFileName is the per-stack compose file. A subdirectory of
-// stacks_base_dir qualifies as a stack only if it contains this file, and it is
-// the file rollout service names are validated against.
-const composeFileName = "docker-compose.yml"
-
 // StackError reports an entry-level failure of a single discovered stack (an
 // invalid override, a broken depends_on edge). The stack is excluded from the
 // returned set; every other stack deploys normally.
@@ -149,7 +144,7 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 		// Parse the compose file every sync so a broken compose (or a rollout
 		// naming an unrollable/typo'd service) is caught at discovery, not only
 		// when the stack next redeploys — rollout config is not hash-tracked.
-		cf, composeErr := compose.Parse(filepath.Join(stacksBaseDir, name, composeFileName))
+		cf, composeErr := compose.Parse(filepath.Join(stacksBaseDir, name, compose.FileName))
 		if rolloutErr == nil && composeErr == nil && stack.Rollout != nil {
 			rolloutErr = ValidateRolloutServices(stack.Rollout.Services, cf)
 		}
@@ -204,7 +199,7 @@ func discoverStackDirs(stacksBaseDir string) ([]string, error) {
 		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(stacksBaseDir, entry.Name(), composeFileName)); err != nil {
+		if _, err := os.Stat(filepath.Join(stacksBaseDir, entry.Name(), compose.FileName)); err != nil {
 			continue
 		}
 		names = append(names, entry.Name())

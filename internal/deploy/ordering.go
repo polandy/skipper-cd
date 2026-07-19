@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"path/filepath"
 
+	"github.com/polandy/skipper-cd/internal/compose"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/metrics"
@@ -190,7 +191,7 @@ func (d *Deployer) markPending(stack string, changed []string, reason string) {
 // it. A hash error yields no changes; the real deploy would surface it.
 func (d *Deployer) pendingChanges(stack config.Stack, baseDir, varsFile string, state *persistedState) ([]string, bool) {
 	repoDir := filepath.Join(baseDir, stack.Name)
-	composePath := filepath.Join(repoDir, "docker-compose.yml")
+	composePath := filepath.Join(repoDir, compose.FileName)
 
 	var dockerfilePaths []string
 	if compose, err := parseComposeFile(composePath); err == nil && compose != nil {
