@@ -768,6 +768,35 @@ baselines the row icon already shifts).
 - **UT6 — Logs-view wrap + fullscreen.** `log-wrap` and `log-fs` are popover
   toggles that light (`.active`) when engaged.
 
+### 4.22 UI — Maske U: Deploy hooks (ADR-0038)
+
+The hooks UI surface: the per-stack **hooks badge** + command panel, the hook
+output attributed in the log, and the **running-hook phase** + inline hook log.
+Boots in **discovery mode** with a repo `skipper.yaml` that declares hooks for
+`web` — harmless `echo`s (they succeed and their stdout is attributed to the
+stack), plus a `sleep` for the running-hook cases so the phase is observable.
+The running-hook masks use `readiness: 'listening'` so the page loads while the
+deploy is still in the hook (a deterministic window; the `sleep` is well under
+the 30s command timeout). No real docker — hooks run via real `sh -c`.
+Behaviour-only (the badge shifts the shared deploy-table baseline, so no new
+snapshot).
+
+- **UU1 — Badge + panel.** `web`'s `hooks-badge` shows the split `2+1` count and
+  a `pre-deploy hook: 2` title; `api` (no hooks) has none. Clicking opens the
+  `hooks-panel` listing the three `hooks-cmd` lines verbatim; clicking again
+  closes it.
+- **UU2 — Log attribution.** In the Logs view, filtering to `web` shows the
+  hook's `echo` output as a `log-line` with a `[web]` `stack-prefix` — the
+  attribution that lets the hook log filter by stack.
+- **UU3 — Running phase + inline log.** With a `sleep` hook in flight, the
+  deploying `web` row shows the `hook-phase` (`pre_deploy hook …`) and a pulsing
+  `hooks-badge` (`data-hook-active`). The phase's console icon opens the
+  container-logs panel **in skipper mode** inline (the `deploys-table` stays
+  visible — no page jump), streaming the stack-filtered `/api/logs` (the
+  `clog-body` shows the hook output).
+- **UU4 — Phase in the roster.** The same running-hook phase renders on the
+  Stacks `roster-row` for `web`, identical to the Deploys view.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
