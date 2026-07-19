@@ -2225,3 +2225,101 @@
       margin-left: 0;
     }
   }
+
+  /* ── Container logs (ADR-0037): a live `docker compose logs` panel opened from
+     a console icon in the deploys/stacks views — per stack (merged services) and
+     per container. One log open at a time. The existing skipper Logs view reuses
+     the wrap/search/fullscreen affordances below. ───────────────────────────── */
+  .clog-hide { display: none !important; }
+
+  .clog-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: transparent; color: var(--text-muted); cursor: pointer;
+  }
+  .clog-btn:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .clog-btn.on { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .clog-btn svg { width: 12px; height: 12px; }
+  .roster-stack .clog-btn { margin-left: 7px; vertical-align: middle; }
+
+  .clog-panel {
+    background: var(--crust); border: 1px solid var(--border-lit); border-radius: 10px;
+    overflow: hidden; margin: 2px 4px 8px;
+  }
+  .clog-panel.clog-fullscreen {
+    position: fixed; inset: 0; z-index: 60; margin: 0; border-radius: 0;
+    display: flex; flex-direction: column;
+  }
+  .clog-head {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 6px;
+    padding: 7px 10px 7px 12px; background: var(--mantle); border-bottom: 1px solid var(--border);
+  }
+  .clog-title { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--accent);
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .clog-title svg { width: 13px; height: 13px; }
+  .clog-title .clog-scope { color: var(--text-muted); font-weight: 500; }
+  .clog-grow { margin-left: auto; }
+  .clog-live { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin-left: 8px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--h-healthy);
+    padding: 2px 9px 2px 8px; border-radius: 20px;
+    border: 1px solid color-mix(in srgb, var(--h-healthy) 30%, transparent);
+    background: color-mix(in srgb, var(--h-healthy) 10%, transparent); }
+  .clog-live .clog-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--h-healthy);
+    animation: clogpulse 1.4s ease-in-out infinite; }
+  @keyframes clogpulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+  .clog-live.paused { color: var(--text-muted); border-color: var(--border-lit); background: transparent; }
+  .clog-live.paused .clog-dot { background: var(--text-muted); animation: none; }
+
+  .clog-tool { display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent;
+    background: transparent; color: var(--text-muted); cursor: pointer; }
+  .clog-tool:hover { color: var(--accent); background: var(--accent-dim); }
+  .clog-tool.on { color: var(--accent); background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 34%, transparent); }
+  .clog-tool svg { width: 15px; height: 15px; }
+
+  .clog-tail { display: inline-flex; border: 1px solid var(--border-lit); border-radius: 7px; overflow: hidden; }
+  .clog-tail button { font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+    padding: 3px 8px; color: var(--text-muted); background: transparent; border: 0; cursor: pointer; }
+  .clog-tail button.active { background: var(--surface0); color: var(--text-primary); }
+
+  .clog-search { display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+    background: var(--base); border-bottom: 1px solid var(--border); }
+  .clog-search .clog-sic { display: inline-flex; color: var(--text-muted); }
+  .clog-search .clog-sic svg { width: 14px; height: 14px; }
+  .clog-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none;
+    color: var(--text-primary); font-family: var(--font-mono); font-size: 12px; }
+  .clog-search input::placeholder { color: var(--text-muted); }
+  .clog-search .clog-hits { font-family: var(--font-mono); font-size: 10px; color: var(--accent); white-space: nowrap; }
+
+  .clog-body { font-family: var(--font-mono); font-size: 11px; line-height: 1.6; padding: 9px 12px;
+    max-height: 240px; overflow: auto; white-space: pre; scroll-behavior: smooth; }
+  .clog-panel.clog-fullscreen .clog-body { max-height: none; flex: 1; font-size: 12px; }
+  .clog-body.wrap { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+  .clog-ln { display: block; }
+  .clog-ln.clog-out { display: none; }
+  .clog-ln.clog-hit { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 4px; }
+  .clog-body mark, .log-line mark { background: color-mix(in srgb, var(--accent) 34%, transparent);
+    color: var(--text-primary); border-radius: 3px; padding: 0 1px; }
+  .clog-ts { color: var(--text-muted); }
+  .clog-svc { color: var(--accent); }
+  .clog-warn { color: var(--h-starting); }
+  .clog-err { color: var(--h-unhealthy); }
+  .clog-foot { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    padding: 5px 12px; border-top: 1px solid var(--border); background: var(--mantle); }
+  .clog-foot .clog-stat::before { content: "● "; color: var(--h-healthy); }
+  .clog-foot .clog-stat.paused::before { color: var(--text-muted); }
+  .clog-foot .clog-stat.err::before { color: var(--h-unhealthy); }
+  @media (prefers-reduced-motion: reduce) { .clog-live .clog-dot { animation: none; } .clog-body { scroll-behavior: auto; } }
+
+  /* skipper Logs view: an inline toolbar carries wrap + search + fullscreen so
+     the exit stays reachable while fullscreen covers the viewport. */
+  .clog-logbar { display: flex; align-items: center; gap: 6px; padding: 6px 2px 8px; }
+  #log-view.clog-fullscreen { position: fixed; inset: 0; z-index: 60; background: var(--crust);
+    display: flex; flex-direction: column; padding: 10px 14px; }
+  #log-view.clog-fullscreen .log-pane { max-height: none; flex: 1; }
+  .log-pane.wrap .log-msg, .log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+  .log-line.clog-out { display: none; }
+
+  .health-panel .hp-svc { grid-template-columns: 1fr auto auto auto; }

@@ -159,6 +159,15 @@ function orphanMatchesQuery(o, q) {
   return (o.containers || []).some(function (c) { return containerMatchesQuery(c, q); });
 }
 
+// logLineVisible reports whether a log line stays visible under the in-log
+// search filter (ADR-0037): an empty query shows every line, otherwise the line
+// must contain the query (case-insensitive). A non-empty query that matches is
+// also a "hit" the caller highlights and counts.
+function logLineVisible(text, q) {
+  if (!q) return true;
+  return (text || '').toLowerCase().indexOf(q.toLowerCase()) !== -1;
+}
+
 // Dual-use export: in the browser this file loads as a plain <script>, so the
 // functions above are already globals and `module` is undefined — the export is
 // skipped. Under `node --test` `module` exists, so the helpers are exported for
@@ -168,6 +177,6 @@ if (typeof module !== 'undefined' && module.exports) {
     formatDuration, formatTime, fullTime, classifyDiffLine, shortSHA,
     statusText, auditStatusLabel, phaseDuration, phaseSince, healthClass,
     levelClass, logTime, reasonFromSnap, orphanMeta, orphanStateClass,
-    containerMatchesQuery, orphanMatchesQuery,
+    containerMatchesQuery, orphanMatchesQuery, logLineVisible,
   };
 }

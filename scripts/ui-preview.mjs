@@ -33,11 +33,40 @@ const stacks = ['web', 'api', 'worker', 'database'];
 // `compose ps --format json` per stack for the health poller, and bare
 // `docker ps -a` (orphan detection, ADR-0036) from a shared listing. Mirrors
 // the harness's stub (minus the test hooks).
+// A single `case` per subcommand is nested under a `compose` check: matching
+// " compose " and (e.g.) " ps " as separate single-segment globs avoids the
+// overlapping-space trap where `*" compose "*" ps "*` fails to match the
+// adjacent "compose ps".
 const stubDocker = `#!/bin/sh
 case " $* " in
-  *" compose "*" ps "*)
-    f="$STUB_PS_DIR/$(basename "$(pwd)").json"
-    [ -f "$f" ] && cat "$f"
+  *" compose "*)
+    case " $* " in
+      *" logs "*)
+        svc="$(basename "$(pwd)")"
+        # Merged (whole-stack) reads keep the compose service prefix; a single
+        # service is invoked with --no-log-prefix, so drop it there.
+        pfx="\${svc}-1  | "
+        case " $* " in *" --no-log-prefix "*) pfx="" ;; esac
+        ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+        echo "\${pfx}$(ts) starting \${svc} service"
+        echo "\${pfx}$(ts) \${svc} listening on :8080"
+        echo "\${pfx}$(ts) WARN slow upstream response 812ms"
+        echo "\${pfx}$(ts) GET /api/health 200 3ms"
+        case " $* " in
+          *" --follow "*)
+            i=0
+            while :; do
+              i=$((i+1))
+              echo "\${pfx}$(ts) GET /api/health 200 \${i}ms"
+              sleep 1
+            done ;;
+        esac
+        exit 0 ;;
+      *" ps "*)
+        f="$STUB_PS_DIR/$(basename "$(pwd)").json"
+        [ -f "$f" ] && cat "$f"
+        exit 0 ;;
+    esac
     exit 0 ;;
   *" volume "*)
     [ -f "$STUB_PS_DIR/volumes.txt" ] && cat "$STUB_PS_DIR/volumes.txt"
