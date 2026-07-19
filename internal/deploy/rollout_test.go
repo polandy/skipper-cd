@@ -126,6 +126,30 @@ func TestRollService_StartsCanaryThenDrainsOld(t *testing.T) {
 	}
 }
 
+func TestRollService_WaitsDrainDelayThenDrainsOld(t *testing.T) {
+	d, runner, run := rolloutSetup(t, rolloutCompose)
+	d.rolloutDrainOverride = 40 * time.Millisecond // stand in for rollout.drain_seconds
+	runner.outputFn = func(call int, _ []string) ([]byte, error) {
+		if call == 0 {
+			return psArray(cl("old1", "web", "healthy")), nil
+		}
+		return psArray(cl("old1", "web", "healthy"), cl("new1", "web", "healthy")), nil
+	}
+
+	start := time.Now()
+	if err := d.rollService(context.Background(), run, "web", time.Second); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The old container is still drained — the delay only defers it, so the proxy
+	// can switch over first.
+	if !dockerArgvContains(runner.calls, "stop", "old1") || !dockerArgvContains(runner.calls, "rm", "old1") {
+		t.Errorf("old container must still be drained after the delay; docker calls=%v", dockerArgv(runner.calls))
+	}
+	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
+		t.Errorf("expected the drain to wait ~40ms, but rollService returned after %s", elapsed)
+	}
+}
+
 func TestRollService_FirstDeployPlainUp(t *testing.T) {
 	d, runner, run := rolloutSetup(t, rolloutCompose)
 	runner.outputFn = func(int, []string) ([]byte, error) { return psArray(), nil } // nothing running yet

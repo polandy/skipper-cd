@@ -137,6 +137,7 @@ type Deployer struct {
 	prober                 *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
 	rolloutPollInterval    time.Duration     // 0 = default; tests set a small value for the canary wait
 	rolloutTimeoutOverride time.Duration     // 0 = derive from config; tests set a short canary-wait deadline
+	rolloutDrainOverride   time.Duration     // 0 = derive from config; tests set a short pre-drain wait
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64

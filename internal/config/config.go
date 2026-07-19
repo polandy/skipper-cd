@@ -128,6 +128,14 @@ type Rollout struct {
 	// to turn healthy before treating the rollout as failed. 0 (the default)
 	// falls back to the stack's health_check timeout, else 60.
 	HealthTimeoutSeconds int `yaml:"health_timeout_seconds"`
+
+	// DrainSeconds is how long to wait after the canary is healthy before
+	// draining the old container — the window the reverse proxy needs to
+	// discover the new container and route to it while the old one is still up
+	// (docker-rollout's --wait-after-healthy). Without it the old container can
+	// be removed before the proxy has switched over, causing a brief blip.
+	// 0 (the default) drains immediately.
+	DrainSeconds int `yaml:"drain_seconds"`
 }
 
 // HealthCheck configures the optional post-deploy health gate of a stack.
@@ -863,6 +871,9 @@ func validateRollout(r *Rollout) error {
 	}
 	if r.HealthTimeoutSeconds < 0 {
 		return fmt.Errorf("health_timeout_seconds must not be negative, got %d", r.HealthTimeoutSeconds)
+	}
+	if r.DrainSeconds < 0 {
+		return fmt.Errorf("drain_seconds must not be negative, got %d", r.DrainSeconds)
 	}
 	return nil
 }

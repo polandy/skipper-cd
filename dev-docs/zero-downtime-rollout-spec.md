@@ -49,6 +49,7 @@ stacks:
     rollout:
       services: [web]              # only these roll; every other service recreates normally
       health_timeout_seconds: 60   # optional; per rolled service; default = health_check timeout or 60
+      drain_seconds: 5             # optional; wait after canary healthy before draining the old container
 ```
 
 - **`rollout.services`** is an explicit allowlist of compose service names. A
@@ -166,8 +167,9 @@ list gains `rollout`.
 ## Package layout
 
 - `internal/config`: a `Rollout *Rollout` field on `Stack`
-  (`Services []string`, `HealthTimeoutSeconds int`). Load-time validation:
-  non-empty `services`, no blank/whitespace names, `health_timeout_seconds >= 0`.
+  (`Services []string`, `HealthTimeoutSeconds int`, `DrainSeconds int`). Load-time
+  validation: non-empty `services`, no blank/whitespace names,
+  `health_timeout_seconds >= 0`, `drain_seconds >= 0`.
   Mirrored in `repo.go`'s override struct for discovery mode, and **left out** of
   `stackConfigHash`'s hashed set.
 - `internal/deploy/rollout.go`: `rollout(ctx, run, compose, state)` orchestrating
@@ -264,12 +266,26 @@ visual baseline needed if the idle header is unchanged.
 
 ## Open questions
 
-1. **Stop grace / connection draining.** Relying on the container's
-   `stop_grace_period` for in-flight requests to finish is simplest. Do we need
-   an explicit pre-`stop` drain delay (let Traefik deregister before we stop) or
-   is the `die`-event deregistration fast enough in practice? Proposed: rely on
-   `stop_grace_period`; add an optional `drain_seconds` only if testing shows a
-   race.
+1. **Stop grace / connection draining. — ANSWERED (real Traefik test, argoneon
+   2026-07-19).** A real cutover behind Traefik v3.7.7 showed a brief race, so
+   `drain_seconds` was added: after the canary is healthy skipper waits
+   `rollout.drain_seconds` before removing the old container (the equivalent of
+   `docker-rollout`'s `--wait-after-healthy`), so the proxy can route to the new
+   container while the old is still up. Measured over repeated cutovers
+   (~300 req/cutover at 10 req/s):
+   - in-place recreate: ~1–2 s of `502`s (many requests);
+   - rollout, no proxy tuning: a `502` at the drain edge (Traefik still routed to
+     the stopping old container) plus a single sub-second `000`;
+   - rollout + Traefik **retry** middleware: the `502`s vanish;
+   - rollout + retry + `drain_seconds` + active LB healthcheck: a single
+     sub-second `000` per cutover remains (~0.3 %), a Traefik/Docker
+     network-reconfiguration transient when the old backend is removed — at the
+     noise floor and not eliminable from skipper's proxy-agnostic side.
+
+   Conclusion: rollout delivers **effectively-zero** downtime (one sub-second
+   blip per deploy vs. seconds of `502`s). The documented recipe is
+   `drain_seconds` + a Traefik retry middleware; a `pre_stop` hook (docker-rollout
+   has one) could later drain in-container for apps that need it.
 
 2. **`compose ps` scale race.** After `--scale=2`, compose may briefly report
    the old container as recreated depending on version. Need to confirm across

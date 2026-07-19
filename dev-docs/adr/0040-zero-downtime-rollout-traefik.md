@@ -114,6 +114,16 @@ in tests.
   orchestrator, and no change to how deploys are triggered (still git-driven).
   Failure never drops the service — a genuine improvement over the recreate
   path's git-restore rollback, which briefly does.
+- **Verified on real Traefik (v3.7.7, argoneon, 2026-07-19).** A real cutover
+  confirmed the mechanics end-to-end, and surfaced a drain-edge race: "canary
+  healthy" (docker healthcheck) precedes "proxy is routing to the new container".
+  An optional **`drain_seconds`** (docker-rollout's `--wait-after-healthy`) was
+  added — skipper holds the old container that long after the canary is healthy
+  before removing it. With `drain_seconds` + a Traefik retry middleware a cutover
+  drops from ~1–2 s of `502`s (in-place recreate) to at most a single sub-second
+  blip; the residual is a Traefik/Docker network-reconfiguration transient on
+  backend removal, at the noise floor and not eliminable from skipper's
+  proxy-agnostic side. Effectively-zero, not mathematically-zero, downtime.
 - **Traefik (or an equivalent health-aware, drain-on-stop docker-provider
   proxy) is a hard prerequisite** for rolled services, documented next to the
   config reference. A rolled service with a published host port or no

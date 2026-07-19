@@ -208,9 +208,11 @@ stacks:
     rollout:
       services: [web]              # only these roll; every other service recreates in place
       health_timeout_seconds: 60   # optional; default = health_check timeout, else 60
+      drain_seconds: 5             # optional; hold the old container this long after the new one is healthy
 ```
 
 - **Traefik (or an equivalent health-aware, drain-on-stop reverse proxy) is required.** Rollout relies on it discovering the healthy new container and deregistering the old one on stop — skipper only does the scale-up → wait → drain dance.
+- **`drain_seconds`** waits that many seconds after the new container is healthy before removing the old one, so the proxy can route to the new container while the old is still up (the equivalent of `docker-rollout`'s `--wait-after-healthy`). For the smoothest cutover behind Traefik, also add a **retry** middleware to the rolled service; in practice a cutover drops from seconds of `502`s (in-place recreate) to at most a single sub-second blip.
 - Each rolled service must **publish no host `ports:`** (two replicas would collide on the port — route it through the proxy), set no fixed **`container_name:`** (compose cannot scale a named container), and define a compose **`healthcheck:`** (the readiness signal). All three are checked at deploy time; a violation fails the deploy.
 - Only listed services roll. Everything else — databases, anything with a volume lock or a published port — recreates in place as usual.
 - **Failure is zero-downtime too:** if the new container never turns healthy, skipper removes it and leaves the old one serving. The deploy is reported as `rolled_back`.

@@ -78,3 +78,30 @@ stacks:
 		t.Fatal("expected error for negative rollout health_timeout_seconds")
 	}
 }
+
+func TestLoad_RejectsNegativeDrainSeconds(t *testing.T) {
+	_, err := loadStringToConfig(t, minimalConfig+`
+stacks:
+  - name: web
+    rollout:
+      services: [web]
+      drain_seconds: -1
+`)
+	if err == nil {
+		t.Fatal("expected error for negative rollout drain_seconds")
+	}
+}
+
+func TestLoad_RolloutDrainSecondsParsed(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig+`
+stacks:
+  - name: web
+    rollout:
+      services: [web]
+      drain_seconds: 5
+`)
+	s, _ := cfg.StackByName("web")
+	if s.Rollout == nil || s.Rollout.DrainSeconds != 5 {
+		t.Errorf("drain_seconds = %+v, want 5", s.Rollout)
+	}
+}

@@ -119,7 +119,21 @@ func (d *Deployer) rollService(ctx context.Context, run stackRun, service string
 		return fmt.Errorf("%q: %w: %w", service, err, errCanaryUnhealthy)
 	}
 
-	slog.Info("rollout: canary healthy, draining old version", "stack", run.stack.Name, "service", service)
+	// Give the reverse proxy time to discover the new (healthy) container and
+	// route to it before the old one is removed — "canary healthy" (docker
+	// healthcheck) is not yet "proxy is serving the new container". Without this
+	// window the old container can be removed while the proxy still points at it,
+	// causing a brief blip (docker-rollout's --wait-after-healthy). The wait is
+	// interruptible; on shutdown we proceed to drain (the new version is healthy).
+	if delay := d.drainDelay(run.stack); delay > 0 {
+		slog.Info("rollout: canary healthy, waiting before draining old version", "stack", run.stack.Name, "service", service, "drain", delay)
+		select {
+		case <-ctx.Done():
+		case <-time.After(delay):
+		}
+	}
+
+	slog.Info("rollout: draining old version", "stack", run.stack.Name, "service", service)
 	d.removeContainers(ctx, run, keysOf(oldIDs))
 	return nil
 }
@@ -234,6 +248,16 @@ func validateRolloutServices(compose *composeFile, services []string) error {
 		}
 	}
 	return nil
+}
+
+// drainDelay is how long to wait after the canary is healthy before draining
+// the old container. A non-zero d.rolloutDrainOverride wins (tests use a small
+// value so the wait does not run for real seconds).
+func (d *Deployer) drainDelay(stack config.Stack) time.Duration {
+	if d.rolloutDrainOverride > 0 {
+		return d.rolloutDrainOverride
+	}
+	return time.Duration(stack.Rollout.DrainSeconds) * time.Second
 }
 
 // rolloutTimeout is how long to wait for a canary to turn healthy:
