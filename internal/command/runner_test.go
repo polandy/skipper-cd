@@ -103,6 +103,31 @@ func TestShellRunner_RunSendsChildStdoutAndStderrToSink(t *testing.T) {
 	}
 }
 
+// A command run under WithStack has its output attributed to that stack in the
+// sink (deploy hooks; ADR-0038); a plain command carries no stack.
+func TestShellRunner_AttributesOutputToStackFromContext(t *testing.T) {
+	requireCommands(t, "sh")
+	sink := &recordingSink{}
+	runner := NewShellRunnerWithSink(0, sink)
+
+	ctx := WithStack(context.Background(), "nextcloud")
+	if err := runner.Run(ctx, "", nil, "sh", "-c", "echo backing up"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := sink.all()
+	if len(got) != 1 || got[0].stack != "nextcloud" {
+		t.Fatalf("expected the line attributed to nextcloud, got %+v", got)
+	}
+
+	sink.lines = nil
+	if err := runner.Run(context.Background(), "", nil, "sh", "-c", "echo plain"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := sink.all(); len(got) != 1 || got[0].stack != "" {
+		t.Errorf("a command with no WithStack must carry an empty stack, got %+v", got)
+	}
+}
+
 func TestShellRunner_RunFlushesUnterminatedLastLine(t *testing.T) {
 	requireCommands(t, "printf")
 
@@ -130,7 +155,7 @@ func TestShellRunner_OutputTeesStderrButReturnsStdoutUncaptured(t *testing.T) {
 		t.Errorf("expected stdout returned as data, got %q", string(out))
 	}
 	got := sink.all()
-	if len(got) != 1 || got[0] != (sinkLine{"sh", "stderr", "progress"}) {
+	if len(got) != 1 || got[0] != (sinkLine{"sh", "stderr", "progress", ""}) {
 		t.Errorf("expected only the stderr line in the sink, got %+v", got)
 	}
 }

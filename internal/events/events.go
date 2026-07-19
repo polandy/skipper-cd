@@ -110,6 +110,9 @@ const (
 	StateHealthWatch = "healthwatch"
 	StateOrphans     = "orphans"
 	StateAppLinks    = "app_links"
+	// StateHookRun is the hook a deploy is currently executing, zero when none
+	// (ADR-0038).
+	StateHookRun = "hookrun"
 )
 
 // Broadcaster fans out values of type T to all connected subscribers.

@@ -93,6 +93,10 @@ type Config struct {
 	// an empty plan when the run ends. nil disables run-plan tracking, so the
 	// upfront planning pass is skipped entirely when the UI is off.
 	RunPlanSink func(RunPlan)
+
+	// HookRunSink receives the currently-executing deploy hook (ADR-0038), and
+	// the zero value when a phase finishes. nil disables publishing (UI off).
+	HookRunSink func(HookRun)
 }
 
 // Deployer orchestrates deployments for all configured stacks. Construct it
@@ -110,6 +114,7 @@ type Deployer struct {
 	queue        *autosync.Queue
 	postRunHook  func()
 	runPlanSink  func(RunPlan)
+	hookRunSink  func(HookRun)
 
 	// mu serializes deploy runs (Invariant 7); the fields below it are only
 	// touched while it is held.
@@ -121,6 +126,7 @@ type Deployer struct {
 	nextEventID      atomic.Int64
 	lastSyncErr      atomic.Pointer[syncOutcome]       // nil until the first run
 	currentRunPlan   atomic.Pointer[RunPlan]           // latest published plan, for late joiners
+	currentHookRun   atomic.Pointer[HookRun]           // latest published hook-run state, for late joiners
 	discoveredStacks atomic.Pointer[config.RepoStacks] // stack-discovery result, nil in legacy mode
 	projectDirs      atomic.Pointer[map[string]string] // recorded stack→project-dir, for orphan detection
 }
@@ -150,6 +156,7 @@ func New(cfg Config) *Deployer {
 		queue:        cfg.Queue,
 		postRunHook:  cfg.PostRunHook,
 		runPlanSink:  cfg.RunPlanSink,
+		hookRunSink:  cfg.HookRunSink,
 	}
 	d.nextEventID.Store(cfg.StartEventID)
 	return d
