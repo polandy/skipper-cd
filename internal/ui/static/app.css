@@ -2248,7 +2248,7 @@
     overflow: hidden; margin: 2px 4px 8px;
   }
   .clog-panel.clog-fullscreen {
-    position: fixed; inset: 0; z-index: 60; margin: 0; border-radius: 0;
+    position: fixed; inset: 0; z-index: 300; margin: 0; border-radius: 0;
     display: flex; flex-direction: column;
   }
   .clog-head {
@@ -2316,7 +2316,7 @@
   /* skipper Logs view: an inline toolbar carries wrap + search + fullscreen so
      the exit stays reachable while fullscreen covers the viewport. */
   .clog-logbar { display: flex; align-items: center; gap: 6px; padding: 6px 2px 8px; }
-  #log-view.clog-fullscreen { position: fixed; inset: 0; z-index: 60; background: var(--crust);
+  #log-view.clog-fullscreen { position: fixed; inset: 0; z-index: 300; background: var(--crust);
     display: flex; flex-direction: column; padding: 10px 14px; }
   #log-view.clog-fullscreen .log-pane { max-height: none; flex: 1; }
   .log-pane.wrap .log-msg, .log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }

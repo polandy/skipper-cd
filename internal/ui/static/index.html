@@ -758,6 +758,230 @@
     return escapeHtml(s).replace(/"/g, '&quot;');
   }
 
+  // ── Container logs (ADR-0037) ──────────────────────────────────────────────
+  // A live `docker compose logs` panel opened from a console icon, per stack
+  // (merged services) and per container. One log open at a time; the panel
+  // streams from /api/container-logs via EventSource and trails the row/line it
+  // was opened from. Controls: live/pause, auto-scroll, wrap, in-log search,
+  // fullscreen.
+  const CLOG_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15H17"/></svg>';
+  const CLOG_ICONS = {
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>',
+    wrap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h13a3 3 0 0 1 0 6h-4"/><path d="M16 15l-3 3 3 3"/><path d="M4 18h6"/></svg>',
+    scroll: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>',
+    fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+  };
+
+  // clogBtnHTML/clogButton build the console icon that opens a log — a string
+  // for template use (health-panel lines, roster rows) and a DOM node for the
+  // deploy row's action cell.
+  function clogBtnHTML(stack, service) {
+    const label = service ? ('logs for ' + stack + ' / ' + service) : ('logs for ' + stack + ' (all services)');
+    return `<button class="clog-btn" type="button" data-testid="clog-btn" data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
+  }
+  function clogButton(stack, service) {
+    const tmp = document.createElement('template');
+    tmp.innerHTML = clogBtnHTML(stack, service);
+    return tmp.content.firstElementChild;
+  }
+
+  const clog = (function() {
+    let panel = null, es = null, btn = null, body = null, key = null;
+    let curService = '', curStack = '';
+    let follow = true, paused = false, query = '', tail = 200;
+
+    function toBottom() { if (body) body.scrollTop = body.scrollHeight; }
+    function setStat(text, cls) {
+      const s = panel && panel.querySelector('.clog-stat');
+      if (s) { s.textContent = text; s.className = 'clog-stat' + (cls ? ' ' + cls : ''); }
+    }
+
+    // decorate splits a compose log line into service prefix (merged view),
+    // leading RFC3339 timestamp (--timestamps) and message, colouring each and
+    // tinting error/warn lines. Everything is escaped — no HTML from the child.
+    function decorate(data) {
+      let svc = '', rest = data;
+      if (!curService) {
+        const m = rest.match(/^([^|]{1,60}?)\s+\|\s?(.*)$/);
+        if (m) { svc = m[1]; rest = m[2]; }
+      }
+      let ts = '';
+      const t = rest.match(/^(\S+)\s([\s\S]*)$/);
+      if (t && /^\d{4}-\d\d-\d\dT[\d:.]+/.test(t[1])) { ts = t[1]; rest = t[2]; }
+      let cls = '';
+      if (/error|fatal|panic|\bfail/i.test(rest)) cls = 'clog-err';
+      else if (/warn/i.test(rest)) cls = 'clog-warn';
+      let html = '';
+      if (svc) html += '<span class="clog-svc">' + escapeHtml(svc) + ' |</span> ';
+      if (ts) html += '<span class="clog-ts">' + escapeHtml(ts) + '</span> ';
+      html += cls ? '<span class="' + cls + '">' + escapeHtml(rest) + '</span>' : escapeHtml(rest);
+      return html;
+    }
+
+    function highlight(root, q) {
+      const ql = q.toLowerCase();
+      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), ns = [];
+      while (w.nextNode()) ns.push(w.currentNode);
+      ns.forEach(function(n) {
+        const text = n.nodeValue, low = text.toLowerCase();
+        let idx = low.indexOf(ql); if (idx < 0) return;
+        const frag = document.createDocumentFragment(); let pos = 0;
+        while (idx >= 0) {
+          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+          const mk = document.createElement('mark'); mk.textContent = text.slice(idx, idx + q.length);
+          frag.appendChild(mk); pos = idx + q.length; idx = low.indexOf(ql, pos);
+        }
+        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+        n.parentNode.replaceChild(frag, n);
+      });
+    }
+    function filterLine(ln) {
+      if (ln.dataset.orig == null) ln.dataset.orig = ln.innerHTML;
+      ln.innerHTML = ln.dataset.orig;
+      ln.classList.remove('clog-out', 'clog-hit');
+      if (!logLineVisible(ln.textContent, query)) { ln.classList.add('clog-out'); return; }
+      if (query) { ln.classList.add('clog-hit'); highlight(ln, query); }
+    }
+    function applySearch(q) {
+      query = q;
+      let n = 0;
+      body.querySelectorAll('.clog-ln').forEach(function(ln) { filterLine(ln); if (q && !ln.classList.contains('clog-out')) n++; });
+      const hits = panel.querySelector('.clog-hits');
+      if (hits) hits.textContent = q ? (n + (n === 1 ? ' hit' : ' hits')) : '';
+      if (follow) toBottom();
+    }
+
+    function appendLine(data) {
+      if (paused) return;
+      const ln = document.createElement('span');
+      ln.className = 'clog-ln';
+      ln.innerHTML = decorate(data);
+      if (query) filterLine(ln);
+      body.appendChild(ln);
+      while (body.children.length > 3000) body.removeChild(body.firstChild);
+      if (query) {
+        const hits = panel.querySelector('.clog-hits');
+        if (hits) hits.textContent = body.querySelectorAll('.clog-ln.clog-hit').length + ' hits';
+      }
+      if (follow) toBottom();
+    }
+
+    function connect() {
+      if (es) { es.close(); es = null; }
+      let url = '/api/container-logs/' + encodeURIComponent(curStack);
+      if (curService) url += '/' + encodeURIComponent(curService);
+      url += '?tail=' + tail;
+      es = new EventSource(url);
+      setStat('live · streaming', paused ? 'paused' : '');
+      es.onmessage = function(ev) {
+        if (!panel || !panel.isConnected) { close(); return; } // dropped by a re-render
+        appendLine(ev.data);
+      };
+      es.onerror = function() { if (panel) setStat('reconnecting…', 'err'); };
+      es.onopen = function() { if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : ''); };
+    }
+
+    function buildPanel(scope) {
+      const el = document.createElement('div');
+      el.className = 'clog-panel';
+      el.dataset.testid = 'clog-panel';
+      el.innerHTML =
+        '<div class="clog-head">' +
+          '<span class="clog-title">' + CLOG_ICON + ' logs <span class="clog-scope">· ' + escapeHtml(scope) + '</span></span>' +
+          '<span class="clog-live" data-testid="clog-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>' +
+          '<span class="clog-grow"></span>' +
+          '<button class="clog-tool" data-clog="search" type="button" title="Search in log">' + CLOG_ICONS.search + '</button>' +
+          '<button class="clog-tool" data-clog="wrap" type="button" title="Wrap long lines">' + CLOG_ICONS.wrap + '</button>' +
+          '<button class="clog-tool on" data-clog="scroll" type="button" title="Auto-scroll — follow the tail">' + CLOG_ICONS.scroll + '</button>' +
+          '<span class="clog-tail" data-testid="clog-tail">' +
+            '<button data-tail="50" type="button">50</button>' +
+            '<button data-tail="200" class="active" type="button">200</button>' +
+            '<button data-tail="1000" type="button">1000</button>' +
+          '</span>' +
+          '<button class="clog-tool" data-clog="fs" type="button" title="Fullscreen">' + CLOG_ICONS.fs + '</button>' +
+        '</div>' +
+        '<div class="clog-search clog-hide" data-testid="clog-search"><span class="clog-sic">' + CLOG_ICONS.search + '</span>' +
+          '<input type="text" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log"><span class="clog-hits"></span></div>' +
+        '<div class="clog-body" data-testid="clog-body"></div>' +
+        '<div class="clog-foot"><span class="clog-stat">live · streaming</span></div>';
+      return el;
+    }
+
+    function wire() {
+      panel.querySelector('.clog-live').addEventListener('click', function() {
+        paused = !paused;
+        this.classList.toggle('paused', paused);
+        this.querySelector('.clog-ltxt').textContent = paused ? 'paused' : 'live';
+        setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : '');
+      });
+      panel.querySelectorAll('.clog-tool[data-clog]').forEach(function(b) {
+        b.addEventListener('click', function() {
+          const k = b.dataset.clog;
+          if (k === 'wrap') { b.classList.toggle('on', body.classList.toggle('wrap')); }
+          else if (k === 'scroll') { follow = b.classList.toggle('on'); if (follow) toBottom(); }
+          else if (k === 'fs') { fullscreen(!panel.classList.contains('clog-fullscreen')); }
+          else if (k === 'search') {
+            const box = panel.querySelector('.clog-search');
+            const show = box.classList.toggle('clog-hide') === false;
+            b.classList.toggle('on', show);
+            const inp = box.querySelector('input');
+            if (show) inp.focus(); else { inp.value = ''; applySearch(''); }
+          }
+        });
+      });
+      panel.querySelector('.clog-search input').addEventListener('input', function() { applySearch(this.value.trim()); });
+      panel.querySelectorAll('.clog-tail button').forEach(function(b) {
+        b.addEventListener('click', function() {
+          panel.querySelectorAll('.clog-tail button').forEach(function(x) { x.classList.remove('active'); });
+          b.classList.add('active');
+          tail = parseInt(b.dataset.tail, 10) || 200;
+          body.innerHTML = ''; connect(); // re-pull the backlog at the new size
+        });
+      });
+    }
+
+    function fullscreen(on) {
+      panel.classList.toggle('clog-fullscreen', on);
+      const b = panel.querySelector('.clog-tool[data-clog="fs"]');
+      if (b) b.classList.toggle('on', on);
+      if (on) toBottom();
+    }
+
+    function open(button, stack, service) {
+      const newKey = stack + '\n' + (service || '');
+      if (key === newKey) { close(); return; } // same icon → toggle closed
+      close();
+      btn = button; key = newKey; curStack = stack; curService = service || '';
+      follow = true; paused = false; query = '';
+      btn.classList.add('on');
+      const scope = service ? (stack + ' / ' + service) : (stack + ' · all services');
+      panel = buildPanel(scope);
+      const anchor = button.closest('.hp-svc') || button.closest('.event-row') || button.closest('.roster-row') || button;
+      anchor.after(panel);
+      body = panel.querySelector('.clog-body');
+      wire();
+      connect();
+    }
+
+    function close() {
+      if (es) { es.close(); es = null; }
+      if (panel) { panel.remove(); panel = null; }
+      if (btn) { btn.classList.remove('on'); btn = null; }
+      body = null; key = null; query = '';
+    }
+
+    return {
+      toggle: function(button) { open(button, button.dataset.clogStack, button.dataset.clogService || ''); },
+      close: close,
+      escape: function() {
+        if (panel && panel.classList.contains('clog-fullscreen')) { fullscreen(false); return true; }
+        if (panel) { close(); return true; }
+        return false;
+      },
+    };
+  })();
+
+
   function rowClass(status, isHistory) {
     let cls = 'event-row';
     if (status === 'deploying') cls += ' deploying-row';
@@ -2476,229 +2700,6 @@
       });
     }).catch(function() {});
   }
-
-  // ── Container logs (ADR-0037) ──────────────────────────────────────────────
-  // A live `docker compose logs` panel opened from a console icon, per stack
-  // (merged services) and per container. One log open at a time; the panel
-  // streams from /api/container-logs via EventSource and trails the row/line it
-  // was opened from. Controls: live/pause, auto-scroll, wrap, in-log search,
-  // fullscreen.
-  const CLOG_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15H17"/></svg>';
-  const CLOG_ICONS = {
-    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>',
-    wrap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h13a3 3 0 0 1 0 6h-4"/><path d="M16 15l-3 3 3 3"/><path d="M4 18h6"/></svg>',
-    scroll: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>',
-    fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
-  };
-
-  // clogBtnHTML/clogButton build the console icon that opens a log — a string
-  // for template use (health-panel lines, roster rows) and a DOM node for the
-  // deploy row's action cell.
-  function clogBtnHTML(stack, service) {
-    const label = service ? ('logs for ' + stack + ' / ' + service) : ('logs for ' + stack + ' (all services)');
-    return `<button class="clog-btn" type="button" data-testid="clog-btn" data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
-  }
-  function clogButton(stack, service) {
-    const tmp = document.createElement('template');
-    tmp.innerHTML = clogBtnHTML(stack, service);
-    return tmp.content.firstElementChild;
-  }
-
-  const clog = (function() {
-    let panel = null, es = null, btn = null, body = null, key = null;
-    let curService = '', curStack = '';
-    let follow = true, paused = false, query = '', tail = 200;
-
-    function toBottom() { if (body) body.scrollTop = body.scrollHeight; }
-    function setStat(text, cls) {
-      const s = panel && panel.querySelector('.clog-stat');
-      if (s) { s.textContent = text; s.className = 'clog-stat' + (cls ? ' ' + cls : ''); }
-    }
-
-    // decorate splits a compose log line into service prefix (merged view),
-    // leading RFC3339 timestamp (--timestamps) and message, colouring each and
-    // tinting error/warn lines. Everything is escaped — no HTML from the child.
-    function decorate(data) {
-      let svc = '', rest = data;
-      if (!curService) {
-        const m = rest.match(/^([^|]{1,60}?)\s+\|\s?(.*)$/);
-        if (m) { svc = m[1]; rest = m[2]; }
-      }
-      let ts = '';
-      const t = rest.match(/^(\S+)\s([\s\S]*)$/);
-      if (t && /^\d{4}-\d\d-\d\dT[\d:.]+/.test(t[1])) { ts = t[1]; rest = t[2]; }
-      let cls = '';
-      if (/error|fatal|panic|\bfail/i.test(rest)) cls = 'clog-err';
-      else if (/warn/i.test(rest)) cls = 'clog-warn';
-      let html = '';
-      if (svc) html += '<span class="clog-svc">' + escapeHtml(svc) + ' |</span> ';
-      if (ts) html += '<span class="clog-ts">' + escapeHtml(ts) + '</span> ';
-      html += cls ? '<span class="' + cls + '">' + escapeHtml(rest) + '</span>' : escapeHtml(rest);
-      return html;
-    }
-
-    function highlight(root, q) {
-      const ql = q.toLowerCase();
-      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), ns = [];
-      while (w.nextNode()) ns.push(w.currentNode);
-      ns.forEach(function(n) {
-        const text = n.nodeValue, low = text.toLowerCase();
-        let idx = low.indexOf(ql); if (idx < 0) return;
-        const frag = document.createDocumentFragment(); let pos = 0;
-        while (idx >= 0) {
-          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
-          const mk = document.createElement('mark'); mk.textContent = text.slice(idx, idx + q.length);
-          frag.appendChild(mk); pos = idx + q.length; idx = low.indexOf(ql, pos);
-        }
-        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
-        n.parentNode.replaceChild(frag, n);
-      });
-    }
-    function filterLine(ln) {
-      if (ln.dataset.orig == null) ln.dataset.orig = ln.innerHTML;
-      ln.innerHTML = ln.dataset.orig;
-      ln.classList.remove('clog-out', 'clog-hit');
-      if (!logLineVisible(ln.textContent, query)) { ln.classList.add('clog-out'); return; }
-      if (query) { ln.classList.add('clog-hit'); highlight(ln, query); }
-    }
-    function applySearch(q) {
-      query = q;
-      let n = 0;
-      body.querySelectorAll('.clog-ln').forEach(function(ln) { filterLine(ln); if (q && !ln.classList.contains('clog-out')) n++; });
-      const hits = panel.querySelector('.clog-hits');
-      if (hits) hits.textContent = q ? (n + (n === 1 ? ' hit' : ' hits')) : '';
-      if (follow) toBottom();
-    }
-
-    function appendLine(data) {
-      if (paused) return;
-      const ln = document.createElement('span');
-      ln.className = 'clog-ln';
-      ln.innerHTML = decorate(data);
-      if (query) filterLine(ln);
-      body.appendChild(ln);
-      while (body.children.length > 3000) body.removeChild(body.firstChild);
-      if (query) {
-        const hits = panel.querySelector('.clog-hits');
-        if (hits) hits.textContent = body.querySelectorAll('.clog-ln.clog-hit').length + ' hits';
-      }
-      if (follow) toBottom();
-    }
-
-    function connect() {
-      if (es) { es.close(); es = null; }
-      let url = '/api/container-logs/' + encodeURIComponent(curStack);
-      if (curService) url += '/' + encodeURIComponent(curService);
-      url += '?tail=' + tail;
-      es = new EventSource(url);
-      setStat('live · streaming', paused ? 'paused' : '');
-      es.onmessage = function(ev) {
-        if (!panel || !panel.isConnected) { close(); return; } // dropped by a re-render
-        appendLine(ev.data);
-      };
-      es.onerror = function() { if (panel) setStat('reconnecting…', 'err'); };
-      es.onopen = function() { if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : ''); };
-    }
-
-    function buildPanel(scope) {
-      const el = document.createElement('div');
-      el.className = 'clog-panel';
-      el.dataset.testid = 'clog-panel';
-      el.innerHTML =
-        '<div class="clog-head">' +
-          '<span class="clog-title">' + CLOG_ICON + ' logs <span class="clog-scope">· ' + escapeHtml(scope) + '</span></span>' +
-          '<span class="clog-live" data-testid="clog-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>' +
-          '<span class="clog-grow"></span>' +
-          '<button class="clog-tool" data-clog="search" type="button" title="Search in log">' + CLOG_ICONS.search + '</button>' +
-          '<button class="clog-tool" data-clog="wrap" type="button" title="Wrap long lines">' + CLOG_ICONS.wrap + '</button>' +
-          '<button class="clog-tool on" data-clog="scroll" type="button" title="Auto-scroll — follow the tail">' + CLOG_ICONS.scroll + '</button>' +
-          '<span class="clog-tail" data-testid="clog-tail">' +
-            '<button data-tail="50" type="button">50</button>' +
-            '<button data-tail="200" class="active" type="button">200</button>' +
-            '<button data-tail="1000" type="button">1000</button>' +
-          '</span>' +
-          '<button class="clog-tool" data-clog="fs" type="button" title="Fullscreen">' + CLOG_ICONS.fs + '</button>' +
-        '</div>' +
-        '<div class="clog-search clog-hide" data-testid="clog-search"><span class="clog-sic">' + CLOG_ICONS.search + '</span>' +
-          '<input type="text" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log"><span class="clog-hits"></span></div>' +
-        '<div class="clog-body" data-testid="clog-body"></div>' +
-        '<div class="clog-foot"><span class="clog-stat">live · streaming</span></div>';
-      return el;
-    }
-
-    function wire() {
-      panel.querySelector('.clog-live').addEventListener('click', function() {
-        paused = !paused;
-        this.classList.toggle('paused', paused);
-        this.querySelector('.clog-ltxt').textContent = paused ? 'paused' : 'live';
-        setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : '');
-      });
-      panel.querySelectorAll('.clog-tool[data-clog]').forEach(function(b) {
-        b.addEventListener('click', function() {
-          const k = b.dataset.clog;
-          if (k === 'wrap') { b.classList.toggle('on', body.classList.toggle('wrap')); }
-          else if (k === 'scroll') { follow = b.classList.toggle('on'); if (follow) toBottom(); }
-          else if (k === 'fs') { fullscreen(!panel.classList.contains('clog-fullscreen')); }
-          else if (k === 'search') {
-            const box = panel.querySelector('.clog-search');
-            const show = box.classList.toggle('clog-hide') === false;
-            b.classList.toggle('on', show);
-            const inp = box.querySelector('input');
-            if (show) inp.focus(); else { inp.value = ''; applySearch(''); }
-          }
-        });
-      });
-      panel.querySelector('.clog-search input').addEventListener('input', function() { applySearch(this.value.trim()); });
-      panel.querySelectorAll('.clog-tail button').forEach(function(b) {
-        b.addEventListener('click', function() {
-          panel.querySelectorAll('.clog-tail button').forEach(function(x) { x.classList.remove('active'); });
-          b.classList.add('active');
-          tail = parseInt(b.dataset.tail, 10) || 200;
-          body.innerHTML = ''; connect(); // re-pull the backlog at the new size
-        });
-      });
-    }
-
-    function fullscreen(on) {
-      panel.classList.toggle('clog-fullscreen', on);
-      const b = panel.querySelector('.clog-tool[data-clog="fs"]');
-      if (b) b.classList.toggle('on', on);
-      if (on) toBottom();
-    }
-
-    function open(button, stack, service) {
-      const newKey = stack + '\n' + (service || '');
-      if (key === newKey) { close(); return; } // same icon → toggle closed
-      close();
-      btn = button; key = newKey; curStack = stack; curService = service || '';
-      follow = true; paused = false; query = '';
-      btn.classList.add('on');
-      const scope = service ? (stack + ' / ' + service) : (stack + ' · all services');
-      panel = buildPanel(scope);
-      const anchor = button.closest('.hp-svc') || button.closest('.event-row') || button.closest('.roster-row') || button;
-      anchor.after(panel);
-      body = panel.querySelector('.clog-body');
-      wire();
-      connect();
-    }
-
-    function close() {
-      if (es) { es.close(); es = null; }
-      if (panel) { panel.remove(); panel = null; }
-      if (btn) { btn.classList.remove('on'); btn = null; }
-      body = null; key = null; query = '';
-    }
-
-    return {
-      toggle: function(button) { open(button, button.dataset.clogStack, button.dataset.clogService || ''); },
-      close: close,
-      escape: function() {
-        if (panel && panel.classList.contains('clog-fullscreen')) { fullscreen(false); return true; }
-        if (panel) { close(); return true; }
-        return false;
-      },
-    };
-  })();
 
   // ── skipper Logs view: wrap + search + fullscreen (ADR-0037) ────────────────
   // The existing follow + oldest-first toggles live in the header popover; these
