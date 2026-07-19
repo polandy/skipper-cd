@@ -72,6 +72,15 @@ type Stack struct {
 	// hook does not itself redeploy.
 	Hooks Hooks `yaml:"hooks,omitempty"`
 
+	// Rollout optionally deploys named services with a zero-downtime cutover
+	// (start the new container alongside the old, wait for it to become healthy,
+	// then drain the old) instead of an in-place recreate. Requires a reverse
+	// proxy that load-balances across healthy containers and drains on stop
+	// (Traefik). nil disables it (plain recreate). See ADR-0040. Like hooks it
+	// shapes how a deploy applies, not what deploys, so it is never hashed —
+	// switching a service to/from rollout does not itself redeploy.
+	Rollout *Rollout `yaml:"rollout,omitempty"`
+
 	// ConfigHash is the hash of the stack's deploy-shaping config, set only by
 	// LoadRepoStacks in stack-discovery mode (ADR-0034). It participates in
 	// change detection so a repo skipper.yaml edit redeploys exactly the
@@ -101,6 +110,24 @@ type Hooks struct {
 	// also the hard ceiling: a larger value here cannot exceed it (raise
 	// command_timeout_seconds for a backup slower than that).
 	TimeoutSeconds int `yaml:"timeout_seconds"`
+}
+
+// Rollout configures zero-downtime deployment for named services of a stack
+// (ADR-0040). Only the listed services roll; every other service in the stack
+// recreates in place as usual (correct for databases and anything that cannot
+// run two replicas). Each rolled service must be reachable purely through the
+// reverse proxy (no published host ports) and define a compose healthcheck (the
+// readiness signal); both are verified against the compose file at deploy time.
+type Rollout struct {
+	// Services is the allowlist of compose service names to roll. Required and
+	// non-empty; a name that is not a service, publishes host ports, or lacks a
+	// healthcheck fails the deploy.
+	Services []string `yaml:"services"`
+
+	// HealthTimeoutSeconds bounds how long skipper waits for a canary container
+	// to turn healthy before treating the rollout as failed. 0 (the default)
+	// falls back to the stack's health_check timeout, else 60.
+	HealthTimeoutSeconds int `yaml:"health_timeout_seconds"`
 }
 
 // HealthCheck configures the optional post-deploy health gate of a stack.
@@ -633,6 +660,10 @@ func validateConfig(cfg *Config) error {
 		if err := validateHooks(s.Hooks); err != nil {
 			return fmt.Errorf("stack %q: hooks: %w", s.Name, err)
 		}
+
+		if err := validateRollout(s.Rollout); err != nil {
+			return fmt.Errorf("stack %q: rollout: %w", s.Name, err)
+		}
 	}
 
 	if err := validateStackDependencies(cfg.Stacks); err != nil {
@@ -809,6 +840,29 @@ func validateHooks(h Hooks) error {
 				return fmt.Errorf("%s[%d] is empty", phase.name, i)
 			}
 		}
+	}
+	return nil
+}
+
+// validateRollout checks a stack's optional rollout section. Compose-dependent
+// checks (service exists, no published ports, has a healthcheck) happen at
+// deploy time against the parsed compose file, since it lives in the repo clone,
+// not next to skipper.yaml (ADR-0040); here we only validate what the config
+// alone can decide.
+func validateRollout(r *Rollout) error {
+	if r == nil {
+		return nil
+	}
+	if len(r.Services) == 0 {
+		return fmt.Errorf("services must list at least one service")
+	}
+	for i, svc := range r.Services {
+		if strings.TrimSpace(svc) == "" {
+			return fmt.Errorf("services[%d] is empty", i)
+		}
+	}
+	if r.HealthTimeoutSeconds < 0 {
+		return fmt.Errorf("health_timeout_seconds must not be negative, got %d", r.HealthTimeoutSeconds)
 	}
 	return nil
 }

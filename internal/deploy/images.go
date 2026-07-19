@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -21,6 +22,24 @@ type composeFile struct {
 type composeService struct {
 	Image    string `yaml:"image"`
 	BuildRaw any    `yaml:"build"`
+	// Ports and Healthcheck are read only for rollout eligibility (ADR-0040): a
+	// rolled service must publish no host ports (two replicas would collide) and
+	// define a healthcheck (the readiness signal). Both are captured as raw YAML
+	// — only their presence matters here.
+	Ports       []any `yaml:"ports"`
+	Healthcheck any   `yaml:"healthcheck"`
+}
+
+// publishesPorts reports whether the service publishes any host port. A rolled
+// service must not, since two replicas cannot bind the same host port.
+func (s composeService) publishesPorts() bool {
+	return len(s.Ports) > 0
+}
+
+// hasHealthcheck reports whether the service defines a compose healthcheck, the
+// readiness signal a rollout waits on before draining the old container.
+func (s composeService) hasHealthcheck() bool {
+	return s.Healthcheck != nil
 }
 
 // parseComposeFile reads and parses a docker-compose.yml.
@@ -47,6 +66,20 @@ func (cf *composeFile) images() serviceImageByName {
 		}
 	}
 	return images
+}
+
+// servicesExcept returns the names of all compose services not in the given
+// set, sorted for a deterministic command line. It selects the services that a
+// rollout deploys in place (everything not being rolled).
+func (cf *composeFile) servicesExcept(exclude map[string]bool) []string {
+	var names []string
+	for name := range cf.Services {
+		if !exclude[name] {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // pullableServices returns the names of services whose images should be

@@ -92,6 +92,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic (both checked at startup). See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
+| `rollout` | section | no | — | Deploy the named services with a zero-downtime cutover (new container alongside the old, then drain) instead of an in-place recreate. Requires Traefik. Never hash-tracked. See [Zero-downtime rollout](#zero-downtime-rollout). |
 
 ## Stack discovery
 
@@ -196,6 +197,25 @@ stacks:
 - `timeout_seconds` bounds each hook; `command_timeout_seconds` is the hard ceiling (a larger value has no effect). For a backup slower than that, raise `command_timeout_seconds`.
 
 In the web UI, a stack with hooks shows a **hook badge** on its row (in both the Deploys and Stacks views) with a `pre+post` count — click it to see the configured commands. While a deploy runs a hook, the row shows which one is running (`pre_deploy hook 1/2`); the console icon there opens the hook's live output in a log panel, inline on the same page.
+
+## Zero-downtime rollout
+
+Recreating a service in place stops the old container before the new one serves — a brief gap. For a service behind **Traefik**, `rollout` closes that gap: skipper starts the new container alongside the old, waits for it to become healthy (Traefik load-balances onto it), then drains the old one.
+
+```yaml
+stacks:
+  - name: dashboard
+    rollout:
+      services: [web]              # only these roll; every other service recreates in place
+      health_timeout_seconds: 60   # optional; default = health_check timeout, else 60
+```
+
+- **Traefik (or an equivalent health-aware, drain-on-stop reverse proxy) is required.** Rollout relies on it discovering the healthy new container and deregistering the old one on stop — skipper only does the scale-up → wait → drain dance.
+- Each rolled service must **publish no host `ports:`** (two replicas would collide on the port — route it through the proxy) and define a compose **`healthcheck:`** (the readiness signal). Both are checked at deploy time; a violation fails the deploy.
+- Only listed services roll. Everything else — databases, anything with a volume lock or a published port — recreates in place as usual.
+- **Failure is zero-downtime too:** if the new container never turns healthy, skipper removes it and leaves the old one serving. The deploy is reported as `rolled_back`.
+- `rollout` is **not** hash-tracked: switching a service to/from rollout does not itself redeploy.
+- On a service's first-ever deploy (nothing running yet) there is no gap to avoid, so it comes up with a plain `up`.
 
 ## `vars_file`
 

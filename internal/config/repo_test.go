@@ -388,6 +388,11 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	if withHooks := hashFor(t, "stacks:\n  web:\n    hooks:\n      pre_deploy: [\"pg_dump > /backup/x.sql\"]\n"); withHooks != base {
 		t.Error("ConfigHash must ignore hooks")
 	}
+	// rollout is a deploy-mechanism knob (ADR-0040): switching a service to/from
+	// rollout must not by itself redeploy an unchanged stack.
+	if withRollout := hashFor(t, "stacks:\n  web:\n    rollout:\n      services: [web]\n"); withRollout != base {
+		t.Error("ConfigHash must ignore rollout")
+	}
 }
 
 func TestLoadRepoStacks_AppliesHookOverrides(t *testing.T) {
@@ -417,6 +422,46 @@ func TestLoadRepoStacks_AppliesHookOverrides(t *testing.T) {
 	}
 	if h.TimeoutSeconds != 90 {
 		t.Errorf("timeout_seconds = %d, want 90", h.TimeoutSeconds)
+	}
+}
+
+func TestLoadRepoStacks_AppliesRolloutOverride(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/skipper.yaml": `stacks:
+  web:
+    rollout:
+      services: [web]
+      health_timeout_seconds: 30
+`,
+	})
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
+		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
+	}
+	r := repo.Stacks[0].Rollout
+	if r == nil || len(r.Services) != 1 || r.Services[0] != "web" || r.HealthTimeoutSeconds != 30 {
+		t.Errorf("rollout override = %+v", r)
+	}
+}
+
+func TestLoadRepoStacks_InvalidRolloutReported(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/skipper.yaml": `stacks:
+  web:
+    rollout:
+      services: []
+`,
+	})
+
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("file-level error unexpected: %v", err)
+	}
+	if len(stackErrs) != 1 || !strings.Contains(stackErrs[0].Err.Error(), "rollout") {
+		t.Fatalf("expected a rollout stack error, got %v", stackErrs)
 	}
 }
 
