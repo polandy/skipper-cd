@@ -141,6 +141,58 @@ test can still reach a service that is about to be stopped.
 - timeout path: a hook that exceeds `timeout_seconds` is killed and counts as a
   failure (safety-critical failure path per the repo's coverage principle).
 
+## UI surface
+
+The core feature above is backend-only and shipped in #139. A follow-up
+increment makes hooks **visible** in the web UI — a stack owner should see, at a
+glance, that a stack has hooks and, while a deploy runs, that a hook is
+executing, with its output reachable. Design goal: maximum reuse of existing
+surfaces (the health-pill badge pattern, the per-row bound panels, the run
+panel, and the existing `/api/logs` log view), no new streaming machinery.
+Read-only throughout — hooks are config-driven, never triggered from the UI.
+Full surface + `data-testid`s live in `internal/ui/UI_SPEC.md` (§ Deploy hooks);
+this section is the feature-level intent.
+
+Three things surface, mapping to the request "show when a hook is defined and
+when it is running, ideally with the log":
+
+1. **Defined — a hooks badge.** A stack that declares any hook carries a small
+   hook glyph on its stack cell, on the newest deploy row (Deploys view) and the
+   roster row (Stacks view), beside the health pill / icon. Clicking it opens a
+   bound per-row panel (variant A, neutral accent bar, joining the
+   health/diff/audit one-panel-per-row exclusivity) that lists the configured
+   `pre_deploy` and `post_deploy` command lines verbatim. The badge is absent
+   when a stack has no hooks. Source: a new `hooks` field on the `stacks`
+   snapshot's roster entry (`{"pre": N, "post": N}`, omitted when none), so the
+   badge needs no extra fetch; the command text rides the same snapshot (or a
+   thin `GET /api/hooks/{stack}` — see open questions).
+
+2. **Running — a live phase on the deploying row.** While a deploy executes a
+   hook, the deploying row shows it: the `deploying` badge gains a phase
+   sub-label (`pre_deploy hook 1/2`, `post_deploy hook`), the hooks badge on that
+   row pulses "active", and the run panel's active row echoes the phase.
+   Backend: a new lightweight per-stack `hookrun` SSE snapshot
+   `{stack, phase: "pre_deploy"|"post_deploy", index, total}`, published by
+   `runHooks` as each hook starts and cleared when the phase's hooks finish —
+   modeled on the existing `upcoming` run-plan snapshot (published only with a UI
+   sink, so it costs nothing headless). The rest of the deploy (pull/up/probe)
+   keeps the plain `deploying` badge; this refines it during the hook phases
+   only, which is exactly what the user asked to see.
+
+3. **Log — reuse the existing log view.** Hook stdout/stderr already flows to
+   `/api/logs` through the log pipeline (ADR-0013). Two refinements make it
+   usable as *the hook log*: (a) `runHooks` tags its child-process lines with the
+   `stack` and a `hook` attr (it knows both — this closes the "child output
+   carries no stack attribution" gap for hooks specifically), so the log view
+   renders them as an attributed `[stack]` + hook-marked line; (b) the active
+   phase sub-label and the hooks panel's running line are a link that switches to
+   the log view and seeds its search filter with the stack name, so
+   "see the hook running" reuses the log view's existing follow / search /
+   fullscreen instead of a new panel.
+
+Not surfaced: a manual "run hook" control (hooks are deploy-driven), and hooks
+of skipped/self-heal/rollback runs (they never execute — nothing to show).
+
 ## Decisions
 
 1. **post_deploy failure rolls back even without `health_check`.** A
@@ -164,4 +216,19 @@ test can still reach a service that is about to be stopped.
 
 ## Open questions
 
-None outstanding — both original open questions are resolved in Decisions.
+The two original questions are resolved in Decisions. The UI increment adds:
+
+1. **Hook command text: snapshot vs. endpoint.** Carry the `pre_deploy`/
+   `post_deploy` command lines inline on the `stacks` snapshot (simple, no
+   fetch — but grows the snapshot for every stack with hooks), or fetch them
+   lazily on panel open via `GET /api/hooks/{stack}` (leaner stream, one request
+   per open). Proposed: inline the *counts* (`{pre,post}`) always for the badge,
+   fetch the *command text* on panel open — counts are tiny and needed for the
+   badge, command text is only needed when someone looks.
+
+2. **Hook log: link to the log view (proposed) vs. an inline live panel.** The
+   proposed design reuses the existing log view (attribute hook lines, link the
+   running indicator to a stack-filtered log). An inline hook-log panel on the
+   deploying row (mirroring the container-logs panel) would be tidier but is new
+   streaming UI for output that already exists in `/api/logs`. Ship the link-to-
+   log-view version first; revisit an inline panel if the log view proves clumsy.

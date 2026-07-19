@@ -195,6 +195,8 @@ stacks:
 - Hooks run only when the stack actually deploys — never on a skip, a self-heal, or a rollback.
 - `timeout_seconds` bounds each hook; `command_timeout_seconds` is the hard ceiling (a larger value has no effect). For a backup slower than that, raise `command_timeout_seconds`.
 
+In the web UI, a stack with hooks shows a **hook badge** on its row (click it to see the configured commands); while a deploy runs a hook, the row shows which one is running (`pre_deploy hook 1/2`), and the hook's output appears in the log view.
+
 ## `vars_file`
 
 The `vars_file` is a `KEY=VALUE` env file containing non-secret configuration values (e.g. a domain name) that should be available as environment variables during `docker compose` execution. This is useful for `${VAR}` substitutions in Docker Compose files without storing the values in a secrets manager.
