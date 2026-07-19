@@ -59,11 +59,13 @@ func (d *Deployer) effectiveStack(cfg *config.Config, name string) (config.Stack
 	return config.Stack{}, false
 }
 
-// addStackConfigHash records the stack's effective-config hash under the
-// skipper.yaml path (at the stacks base dir), so a config edit is detected as a
-// change to that file — including in the UI's changed-files and diff views (the
-// diff is the real git diff of skipper.yaml). A stack without a ConfigHash
-// (legacy mode) adds nothing, keeping legacy change detection byte-identical.
+// addStackConfigHash records the stack's effective-config hash under a synthetic
+// per-stack key, so a config edit is detected as a change and redeploys exactly
+// that stack. The key is a label, not a file that is read: as of ADR-0043 the
+// per-stack config lives in the host config, not an in-repo file, so there is no
+// git diff to show for it (the changed-files chip shows the label; the diff view
+// finds nothing to render). A stack without a ConfigHash (legacy mode) adds
+// nothing, keeping legacy change detection byte-identical.
 func (d *Deployer) addStackConfigHash(hashes stackFileHashes, stack config.Stack, stacksBaseDir string) {
 	if stack.ConfigHash == "" {
 		return

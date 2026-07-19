@@ -18,16 +18,23 @@ stack_discovery: true
 	}
 }
 
-func TestLoad_StackDiscoveryConflictsWithStacksList(t *testing.T) {
-	_, err := loadStringToConfig(t, `
+func TestLoad_StackDiscoveryAllowsStacksListAsOverrides(t *testing.T) {
+	// ADR-0043: under discovery the stacks: list is an optional per-stack
+	// override map (matched to discovered directories by name), so it no longer
+	// conflicts with stack_discovery.
+	cfg, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/deploy.git
 stacks_base_dir: /var/lib/skipper/repo/stacks
 stack_discovery: true
 stacks:
   - name: gitea
+    icon: gitea
 `)
-	if err == nil || !strings.Contains(err.Error(), "stack_discovery") {
-		t.Fatalf("expected a stack_discovery conflict error, got %v", err)
+	if err != nil {
+		t.Fatalf("stacks list under discovery should be allowed: %v", err)
+	}
+	if len(cfg.Stacks) != 1 || cfg.Stacks[0].Name != "gitea" {
+		t.Fatalf("override entry not kept: %+v", cfg.Stacks)
 	}
 }
 

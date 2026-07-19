@@ -78,6 +78,12 @@ type Stack struct {
 	// toggling it does not itself redeploy.
 	Rollout *Rollout `yaml:"rollout,omitempty"`
 
+	// Disabled excludes a discovered stack entirely (stack-discovery mode): not
+	// deployed, not health-polled. A running stack that becomes disabled keeps
+	// running — skipper hands it off, it does not tear it down. Ignored in the
+	// legacy host-stacks-list mode, where the list is the membership.
+	Disabled bool `yaml:"disabled,omitempty"`
+
 	// ConfigHash is the hash of the stack's deploy-shaping config, set only by
 	// LoadRepoStacks in stack-discovery mode (ADR-0034). It participates in
 	// change detection so a repo skipper.yaml edit redeploys exactly the
@@ -625,13 +631,11 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("port and metrics_port must differ, both are %d", cfg.Port)
 	}
 
-	if cfg.StackDiscovery {
-		if len(cfg.Stacks) > 0 {
-			return fmt.Errorf("stacks must be empty when stack_discovery is enabled — per-stack config moves to the repo-root %s (ADR-0034)", RepoConfigFileName)
-		}
-		if cfg.StacksBaseDir == "" {
-			return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
-		}
+	if cfg.StackDiscovery && cfg.StacksBaseDir == "" {
+		// ADR-0043: under discovery the stacks: list is an optional per-stack
+		// override map (matched to discovered directories by name), not the
+		// membership — so it is no longer mutually exclusive with discovery.
+		return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
 	}
 
 	seen := make(map[string]struct{}, len(cfg.Stacks))
@@ -664,8 +668,14 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	if err := validateStackDependencies(cfg.Stacks); err != nil {
-		return err
+	// In discovery mode cfg.Stacks is only the override subset, so depends_on
+	// edges are validated against the full discovered set at discovery time
+	// (LoadRepoStacks), not here — a dep on a discovered-but-unoverridden stack
+	// must not look "unknown".
+	if !cfg.StackDiscovery {
+		if err := validateStackDependencies(cfg.Stacks); err != nil {
+			return err
+		}
 	}
 
 	if cfg.NixOSRebuild.IsEnabled() && cfg.NixOSRebuild.Flake == "" {
