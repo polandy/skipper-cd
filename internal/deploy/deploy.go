@@ -671,7 +671,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
 	if len(changed) == 0 {
-		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
+		slog.Info("skipping stack, no changes detected", "stack", stack.Name)
 		d.clearQueued(stack.Name) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
 		d.emit(events.StatusSkipped, stack.Name, 0, "", changeSet{})
@@ -698,7 +698,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.emit(events.StatusDeploying, stack.Name, 0, "", changeSet{files: changed})
 	// This stack is now the active deploy: surface the ones still to come.
 	d.publishUpcomingAfter(stack.Name)
-	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", run.projectDir, "changed_files", changed)
+	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", run.projectDir, "changed_files", d.repoRelativePaths(changed))
 	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
 	// From here the stack is actually deploying: any error returned below emits
 	// the matching terminal event with the change context gathered above. The
@@ -845,7 +845,7 @@ func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, 
 		if diff == "" {
 			continue
 		}
-		slog.Info("file changed", "file", filePath)
+		slog.Info("file changed", "file", d.repoRelative(filePath))
 
 		if len(diff) > maxDiffPerFile {
 			diff = diff[:maxDiffPerFile] + "\n... (truncated)"

@@ -208,7 +208,7 @@ stacks:
 	}
 }
 
-func TestLoad_LogFormatDefaultsToText(t *testing.T) {
+func TestLoad_LogFormatDefaultsToPretty(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
@@ -216,8 +216,22 @@ stacks: []
 `
 	cfg := loadFromString(t, content)
 
+	if cfg.LogFormat != config.LogFormatPretty {
+		t.Errorf("expected default log_format %q, got %q", config.LogFormatPretty, cfg.LogFormat)
+	}
+}
+
+func TestLoad_LogFormatText(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+log_format: text
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
 	if cfg.LogFormat != config.LogFormatText {
-		t.Errorf("expected default log_format %q, got %q", config.LogFormatText, cfg.LogFormat)
+		t.Errorf("expected log_format %q, got %q", config.LogFormatText, cfg.LogFormat)
 	}
 }
 

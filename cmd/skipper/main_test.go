@@ -91,6 +91,30 @@ func TestNewLogHandler_TextFormatEmitsLogfmt(t *testing.T) {
 	}
 }
 
+func TestNewLogHandler_PrettyIsTheDefault(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(newLogHandler(config.LogFormatPretty, &buf))
+
+	logger.Info("hello", "stack", "gitea")
+
+	out := buf.String()
+	if strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Errorf("expected pretty output, got JSON: %q", out)
+	}
+	if !strings.Contains(out, "hello") || !strings.Contains(out, "stack=gitea") {
+		t.Errorf("expected the message and its attrs rendered, got %q", out)
+	}
+
+	// An unrecognized/empty format also falls back to pretty (config.Load
+	// already defaults an empty log_format to LogFormatPretty; this just
+	// confirms newLogHandler agrees rather than silently reverting to text).
+	var fallback bytes.Buffer
+	slog.New(newLogHandler("", &fallback)).Info("hello")
+	if strings.HasPrefix(strings.TrimSpace(fallback.String()), "{") {
+		t.Errorf("expected an empty format to fall back to pretty, got JSON: %q", fallback.String())
+	}
+}
+
 func TestHealthzHandler_OKWhileNoSyncRan(t *testing.T) {
 	deployer := deploy.New(deploy.Config{})
 

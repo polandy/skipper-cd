@@ -46,3 +46,4 @@ One file per decision, numbered sequentially (see
 | [0039](0039-read-only-http-json-api.md) | Read-only HTTP JSON API (snapshot + stream; proposed) |
 | [0040](0040-zero-downtime-rollout-traefik.md) | Zero-downtime rollout (Traefik), opt-in per service |
 | [0041](0041-traefik-app-link-detection.md) | Traefik app-link detection (live labels, health-poll cadence) |
+| [0042](0042-pretty-console-log.md) | Pretty console output (default `log_format`) |
