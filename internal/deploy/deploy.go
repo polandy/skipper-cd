@@ -38,6 +38,13 @@ type RepoSyncer interface {
 	Sync(ctx context.Context) error
 }
 
+// Outputter runs a command and returns its captured stdout — rollout uses it to
+// read `docker compose ps` (the plain Runner is fire-and-forget). command.ShellRunner
+// implements it; nil disables rollout.
+type Outputter interface {
+	Output(ctx context.Context, dir string, name string, args ...string) ([]byte, error)
+}
+
 // Config wires a Deployer. Runner is the only required field; every other
 // nil/zero field disables the corresponding feature, as documented per field.
 // All wiring happens at construction — a built Deployer is immutable apart
@@ -46,6 +53,10 @@ type RepoSyncer interface {
 type Config struct {
 	// Runner executes docker/git/nixos commands; tests inject a fake.
 	Runner Runner
+
+	// Outputter captures command stdout for rollout's `docker compose ps` reads;
+	// nil disables rollout. Wire it to a command.ShellRunner.
+	Outputter Outputter
 
 	// CommitReader enables diff/commit logging and compose-file rollback;
 	// nil disables both.
@@ -104,6 +115,7 @@ type Config struct {
 type Deployer struct {
 	// Collaborators fixed at construction, read-only afterwards (see Config).
 	runner       Runner
+	outputter    Outputter
 	commitReader CommitReader
 	syncer       RepoSyncer
 	repoDir      string
@@ -118,9 +130,12 @@ type Deployer struct {
 
 	// mu serializes deploy runs (Invariant 7); the fields below it are only
 	// touched while it is held.
-	mu     sync.Mutex
-	plan   []string          // stacks planned to deploy this run, in order
-	prober *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
+	mu                     sync.Mutex
+	plan                   []string          // stacks planned to deploy this run, in order
+	prober                 *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
+	rolloutPollInterval    time.Duration     // 0 = default; tests set a small value for the canary wait
+	rolloutTimeoutOverride time.Duration     // 0 = derive from config; tests set a short canary-wait deadline
+	rolloutDrainOverride   time.Duration     // 0 = derive from config; tests set a short pre-drain wait
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64
@@ -146,6 +161,7 @@ func New(cfg Config) *Deployer {
 	}
 	d := &Deployer{
 		runner:       cfg.Runner,
+		outputter:    cfg.Outputter,
 		commitReader: cfg.CommitReader,
 		syncer:       cfg.Syncer,
 		repoDir:      cfg.RepoDir,
@@ -718,15 +734,25 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		}
 	}
 
-	// --remove-orphans removes containers for services deleted from docker-compose.yml.
-	upArgs := []string{"up", "-d", "--remove-orphans"}
-	if hc := stack.HealthCheck; hc != nil {
-		// First health gate: --wait makes the up itself fail when the services'
-		// compose healthchecks do not turn healthy in time (ADR-0022).
-		upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
-	}
-	if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
-		return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
+	// Apply the new version. A rollout section cuts over its listed services with
+	// zero downtime (ADR-0040) — new container alongside old, wait healthy, drain
+	// old — while every other service recreates in place; rollout() handles its
+	// own rollback and wraps the outcome. Without it, the plain in-place recreate.
+	if stack.Rollout != nil {
+		if err := d.rollout(ctx, run, compose, state); err != nil {
+			return err
+		}
+	} else {
+		// --remove-orphans removes containers for services deleted from docker-compose.yml.
+		upArgs := []string{"up", "-d", "--remove-orphans"}
+		if hc := stack.HealthCheck; hc != nil {
+			// First health gate: --wait makes the up itself fail when the services'
+			// compose healthchecks do not turn healthy in time (ADR-0022).
+			upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
+		}
+		if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
+			return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
+		}
 	}
 
 	// Second health gate: the optional HTTP probe verifies the stack from the

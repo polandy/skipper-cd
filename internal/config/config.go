@@ -72,6 +72,11 @@ type Stack struct {
 	// hook does not itself redeploy.
 	Hooks Hooks `yaml:"hooks,omitempty"`
 
+	// Rollout optionally deploys named services with a zero-downtime cutover
+	// instead of an in-place recreate (ADR-0040); nil disables it. Never hashed —
+	// toggling it does not itself redeploy.
+	Rollout *Rollout `yaml:"rollout,omitempty"`
+
 	// ConfigHash is the hash of the stack's deploy-shaping config, set only by
 	// LoadRepoStacks in stack-discovery mode (ADR-0034). It participates in
 	// change detection so a repo skipper.yaml edit redeploys exactly the
@@ -101,6 +106,23 @@ type Hooks struct {
 	// also the hard ceiling: a larger value here cannot exceed it (raise
 	// command_timeout_seconds for a backup slower than that).
 	TimeoutSeconds int `yaml:"timeout_seconds"`
+}
+
+// Rollout configures zero-downtime deployment for a stack's services (ADR-0040).
+// Only the listed services roll (needs a reverse proxy in front; only Traefik is
+// tested); every other service recreates in place. Per-service eligibility is
+// verified against the compose file at deploy time.
+type Rollout struct {
+	// Services is the allowlist of compose service names to roll (required, non-empty).
+	Services []string `yaml:"services"`
+
+	// HealthTimeoutSeconds is the canary health-wait deadline. 0 (the default)
+	// falls back to the stack's health_check timeout, else 60.
+	HealthTimeoutSeconds int `yaml:"health_timeout_seconds"`
+
+	// DrainSeconds holds the old container this long after the canary is healthy,
+	// so the proxy can switch over before it is removed. 0 (default) drains at once.
+	DrainSeconds int `yaml:"drain_seconds"`
 }
 
 // HealthCheck configures the optional post-deploy health gate of a stack.
@@ -633,6 +655,10 @@ func validateConfig(cfg *Config) error {
 		if err := validateHooks(s.Hooks); err != nil {
 			return fmt.Errorf("stack %q: hooks: %w", s.Name, err)
 		}
+
+		if err := validateRollout(s.Rollout); err != nil {
+			return fmt.Errorf("stack %q: rollout: %w", s.Name, err)
+		}
 	}
 
 	if err := validateStackDependencies(cfg.Stacks); err != nil {
@@ -809,6 +835,29 @@ func validateHooks(h Hooks) error {
 				return fmt.Errorf("%s[%d] is empty", phase.name, i)
 			}
 		}
+	}
+	return nil
+}
+
+// validateRollout checks what the config alone can decide; compose-dependent
+// checks (service exists, ports, healthcheck, container_name) run at deploy time.
+func validateRollout(r *Rollout) error {
+	if r == nil {
+		return nil
+	}
+	if len(r.Services) == 0 {
+		return fmt.Errorf("services must list at least one service")
+	}
+	for i, svc := range r.Services {
+		if strings.TrimSpace(svc) == "" {
+			return fmt.Errorf("services[%d] is empty", i)
+		}
+	}
+	if r.HealthTimeoutSeconds < 0 {
+		return fmt.Errorf("health_timeout_seconds must not be negative, got %d", r.HealthTimeoutSeconds)
+	}
+	if r.DrainSeconds < 0 {
+		return fmt.Errorf("drain_seconds must not be negative, got %d", r.DrainSeconds)
 	}
 	return nil
 }

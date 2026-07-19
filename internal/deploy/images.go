@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -21,6 +22,27 @@ type composeFile struct {
 type composeService struct {
 	Image    string `yaml:"image"`
 	BuildRaw any    `yaml:"build"`
+	// Ports, Healthcheck and ContainerName are read only for rollout eligibility
+	// (ADR-0040); only their presence/value matters.
+	Ports         []any  `yaml:"ports"`
+	Healthcheck   any    `yaml:"healthcheck"`
+	ContainerName string `yaml:"container_name"`
+}
+
+// publishesPorts reports whether the service publishes any host port.
+func (s composeService) publishesPorts() bool {
+	return len(s.Ports) > 0
+}
+
+// hasHealthcheck reports whether the service defines a compose healthcheck.
+func (s composeService) hasHealthcheck() bool {
+	return s.Healthcheck != nil
+}
+
+// hasContainerName reports whether the service pins a container_name (which
+// compose cannot scale).
+func (s composeService) hasContainerName() bool {
+	return s.ContainerName != ""
 }
 
 // parseComposeFile reads and parses a docker-compose.yml.
@@ -47,6 +69,19 @@ func (cf *composeFile) images() serviceImageByName {
 		}
 	}
 	return images
+}
+
+// servicesExcept returns the compose service names not in the set, sorted — the
+// services a rollout deploys in place.
+func (cf *composeFile) servicesExcept(exclude map[string]bool) []string {
+	var names []string
+	for name := range cf.Services {
+		if !exclude[name] {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // pullableServices returns the names of services whose images should be

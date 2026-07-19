@@ -20,6 +20,12 @@ type recordingRunner struct {
 	errOnCommand string
 	failFn       func(dir string, args []string) error // optional per-call failure hook, e.g. to fail one stack's up
 	delay        time.Duration                         // optional delay per call for concurrency tests
+
+	// outputFn drives Output (rollout's `docker compose ps` reads): it receives
+	// the zero-based Output call index so a test can return a changing snapshot
+	// (old only, then old+canary). nil returns empty output.
+	outputFn    func(call int, args []string) ([]byte, error)
+	outputCalls []runCall
 }
 
 type runCall struct {
@@ -54,6 +60,18 @@ func (r *recordingRunner) Run(_ context.Context, dir string, env []string, name 
 		return r.failFn(dir, args)
 	}
 	return nil
+}
+
+// Output records the call and returns canned stdout via outputFn, letting
+// rollout tests serve a changing `docker compose ps` snapshot. It makes
+// recordingRunner satisfy the Outputter interface too.
+func (r *recordingRunner) Output(_ context.Context, dir string, name string, args ...string) ([]byte, error) {
+	call := len(r.outputCalls)
+	r.outputCalls = append(r.outputCalls, runCall{dir: dir, name: name, args: args})
+	if r.outputFn != nil {
+		return r.outputFn(call, args)
+	}
+	return nil, nil
 }
 
 // fakeRepoSyncer implements RepoSyncer for tests.

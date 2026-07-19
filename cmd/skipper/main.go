@@ -425,7 +425,10 @@ func main() {
 		}
 	}
 	deployer = deploy.New(deploy.Config{
-		Runner:       command.NewShellRunnerWithSink(timeout, sink),
+		Runner: command.NewShellRunnerWithSink(timeout, sink),
+		// Rollout reads container state via `docker compose ps`; a plain
+		// (non-sink) runner captures its stdout (ADR-0040).
+		Outputter:    command.NewShellRunner(timeout),
 		CommitReader: repoReader,
 		Syncer:       repoSync,
 		RepoDir:      repoSync.RepoDir(),

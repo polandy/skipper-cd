@@ -46,6 +46,7 @@ type repoStackOverride struct {
 	SelfHeal           *bool        `yaml:"self_heal"`
 	DependsOn          []string     `yaml:"depends_on"`
 	Hooks              Hooks        `yaml:"hooks"`
+	Rollout            *Rollout     `yaml:"rollout"`
 
 	// Disabled excludes the stack entirely: not deployed, not health-polled.
 	// A running stack that becomes disabled keeps running — skipper hands it
@@ -129,6 +130,7 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 			SelfHeal:           ov.SelfHeal,
 			DependsOn:          ov.DependsOn,
 			Hooks:              ov.Hooks,
+			Rollout:            ov.Rollout,
 		}
 		if hc := stack.HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
 			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
@@ -136,6 +138,7 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 
 		hcErr := validateHealthCheck(stack.HealthCheck)
 		hookErr := validateHooks(stack.Hooks)
+		rolloutErr := validateRollout(stack.Rollout)
 		depErr := invalidDependency(stack, known)
 		switch {
 		case strings.HasPrefix(name, "_"):
@@ -148,6 +151,8 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 			failAt(name, "health_check", "health_check: %v", hcErr)
 		case hookErr != nil:
 			failAt(name, "hooks", "hooks: %v", hookErr)
+		case rolloutErr != nil:
+			failAt(name, "rollout", "rollout: %v", rolloutErr)
 		case depErr != nil:
 			failAt(name, "depends_on", "%v", depErr)
 		default:
@@ -344,8 +349,9 @@ func dropDependencyCycles(stacks []Stack) ([]Stack, []StackError) {
 // stackDeployInputs are the fields of a stack's effective config that shape
 // what a deploy produces; they feed the stack's ConfigHash so a config edit
 // redeploys exactly the affected stack. Display-only (icon), runtime-only
-// (self_heal), and ordering-only (depends_on) fields are deliberately
-// excluded — editing them must never redeploy.
+// (self_heal), ordering-only (depends_on), side-effect (hooks), and
+// deploy-mechanism (rollout) fields are deliberately excluded — editing them
+// must never redeploy.
 type stackDeployInputs struct {
 	WorkingDir         string       `yaml:"working_dir"`
 	EnvFiles           []string     `yaml:"env_files"`
