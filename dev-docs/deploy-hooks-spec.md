@@ -162,10 +162,11 @@ when it is running, ideally with the log":
    bound per-row panel (variant A, neutral accent bar, joining the
    health/diff/audit one-panel-per-row exclusivity) that lists the configured
    `pre_deploy` and `post_deploy` command lines verbatim. The badge is absent
-   when a stack has no hooks. Source: a new `hooks` field on the `stacks`
-   snapshot's roster entry (`{"pre": N, "post": N}`, omitted when none), so the
-   badge needs no extra fetch; the command text rides the same snapshot (or a
-   thin `GET /api/hooks/{stack}` — see open questions).
+   when a stack has no hooks. **Source (decided): the full commands ride inline
+   on the `stacks` snapshot's roster entry** — `hooks: {pre_deploy: [...],
+   post_deploy: [...]}`, omitted when none — so both the badge and the panel need
+   no extra fetch and no endpoint. Hook command lines are tiny and static
+   (unlike logs/audit, which are lazy-fetched because they are large/unbounded).
 
 2. **Running — a live phase on the deploying row.** While a deploy executes a
    hook, the deploying row shows it: the `deploying` badge gains a phase
@@ -179,16 +180,22 @@ when it is running, ideally with the log":
    keeps the plain `deploying` badge; this refines it during the hook phases
    only, which is exactly what the user asked to see.
 
-3. **Log — reuse the existing log view.** Hook stdout/stderr already flows to
-   `/api/logs` through the log pipeline (ADR-0013). Two refinements make it
-   usable as *the hook log*: (a) `runHooks` tags its child-process lines with the
-   `stack` and a `hook` attr (it knows both — this closes the "child output
-   carries no stack attribution" gap for hooks specifically), so the log view
-   renders them as an attributed `[stack]` + hook-marked line; (b) the active
-   phase sub-label and the hooks panel's running line are a link that switches to
-   the log view and seeds its search filter with the stack name, so
-   "see the hook running" reuses the log view's existing follow / search /
-   fullscreen instead of a new panel.
+3. **Log — reuse the existing log view (decided).** Hook stdout/stderr already
+   flows to `/api/logs` through the log pipeline (ADR-0013). Two refinements make
+   it usable as *the hook log*: (a) `runHooks` tags its child-process lines with
+   the `stack` (threaded to the log sink via the command `ctx`; it knows the
+   stack — this closes the "child output carries no stack attribution" gap for
+   hooks specifically), so the log view renders them as an attributed `[stack]`
+   line and the stack filter matches them; (b) the running phase carries a
+   **console icon** — the *same* `clog-btn` glyph the container-logs feature uses
+   (ADR-0037) — that switches to the log view and seeds its search filter with
+   the stack name. So watching a running hook reuses the log view's follow /
+   search / fullscreen; no new streaming panel. **Option A (decided):** the
+   console icon lives on the running-hook phase, shown only while a hook
+   executes — so it is temporally distinct from the persistent per-row
+   container-logs `clog-btn` in the stack cell (they open different things — the
+   hook's skipper-side output vs. `docker compose logs` — and are rarely visible
+   at the same instant).
 
 Not surfaced: a manual "run hook" control (hooks are deploy-driven), and hooks
 of skipped/self-heal/rollback runs (they never execute — nothing to show).
@@ -216,19 +223,8 @@ of skipped/self-heal/rollback runs (they never execute — nothing to show).
 
 ## Open questions
 
-The two original questions are resolved in Decisions. The UI increment adds:
-
-1. **Hook command text: snapshot vs. endpoint.** Carry the `pre_deploy`/
-   `post_deploy` command lines inline on the `stacks` snapshot (simple, no
-   fetch — but grows the snapshot for every stack with hooks), or fetch them
-   lazily on panel open via `GET /api/hooks/{stack}` (leaner stream, one request
-   per open). Proposed: inline the *counts* (`{pre,post}`) always for the badge,
-   fetch the *command text* on panel open — counts are tiny and needed for the
-   badge, command text is only needed when someone looks.
-
-2. **Hook log: link to the log view (proposed) vs. an inline live panel.** The
-   proposed design reuses the existing log view (attribute hook lines, link the
-   running indicator to a stack-filtered log). An inline hook-log panel on the
-   deploying row (mirroring the container-logs panel) would be tidier but is new
-   streaming UI for output that already exists in `/api/logs`. Ship the link-to-
-   log-view version first; revisit an inline panel if the log view proves clumsy.
+None. Both UI-increment questions were decided (2026-07-19, with Andy on a
+clickable mockup): hook commands ride **inline** on the `stacks` snapshot (no
+endpoint), and the hook log **reuses the existing log view** via a console icon
+on the running phase (**Option A**), not a new inline panel. Recorded in the UI
+surface section above and ADR-0038.
