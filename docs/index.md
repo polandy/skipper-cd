@@ -36,7 +36,7 @@ New here? The **[Getting Started walkthrough](getting-started.md)** covers the w
 - **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([details](autosync.md)).
 - **Periodic reconcile** — re-syncs and redeploys on a timer (default every 5 minutes) so a missed webhook can't leave the host drifted ([details](configuration.md#periodic-reconcile)).
 - **Orphan detection** — surfaces compose projects still running on the host that your current stack set no longer covers, e.g. a stack directory removed from the repo ([details](state.md#orphaned-stacks)).
-- **Web UI** — a single embedded page with live deploy status, a **Stacks inventory** (every stack skipper owns, its last outcome and containers, one click away from any deploy row and back), service icons, an event log, and installable as a PWA.
+- **Web UI** — a single embedded page with live deploy status, a **Stacks inventory** (every stack skipper owns, its last outcome and containers, one click away from any deploy row and back), **live container logs** (per stack or per container, streamed from a console icon), service icons, an event log, and installable as a PWA.
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
 

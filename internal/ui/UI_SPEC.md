@@ -243,7 +243,9 @@ A read-only panel listing the **current deploy run** in deploy order, opened by 
 
 ## Log view
 
-Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output. Default order is **newest-first** (newest line at the top); the header **Sort toggle** flips to oldest-first (newest at the bottom, terminal semantics). Each line: muted timestamp, level badge, optional stack prefix, message, then dim `key=value` attrs.
+Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output, **newest-first** (newest line at the top; there is no sort toggle — auto-scroll keeps the newest line in view). Each line: muted timestamp, level badge, optional stack prefix, message, then dim `key=value` attrs.
+
+The view's controls live in the **view-options popover** behind the view buttons (like the deploys/stacks views), not in the pane: **Auto-scroll** (follow the newest line), **Search log**, **Wrap lines**, and **Fullscreen**. Search reveals the same filter bar the deploys/stacks views use (seeded by type-to-search on desktop, a `Search log` popover entry on mobile) — non-matching lines are hidden, matches highlighted, and a hit count shown. Wrap soft-wraps long lines. Fullscreen fills the viewport below the sticky header (so the popover stays reachable to toggle it back off; Esc also exits).
 
 Timestamps show the time of day; lines from another day get a date prefix, and the full `toLocaleString()` timestamp is always in the tooltip.
 
@@ -251,7 +253,20 @@ Level colours: `ERROR` → red, `WARN` → yellow, `DEBUG` → muted, `INFO` →
 
 `deploy complete` lines carry the deploy event's ID as an `event_id` attr (logged only when an event sink is configured, i.e. `ui_enabled`). The log view renders it as a **diff pill** instead of a plain attr: clicking fetches the deploy's diff from `GET /api/events/{id}/diffs` and inserts the same collapsible diff panel used by the deploy table directly below the line (click again to close; a notice appears when no diff was recorded, e.g. the event fell out of the bounded history).
 
-Received lines are held in a bounded client-side buffer (2000 entries, oldest dropped on overflow) and the pane renders a sliding window of it. The window starts at **500 lines** (the newest 500) and grows by **500** each time the user scrolls to the older edge (the bottom when newest-first, the top when oldest-first); a scroll that reveals older lines preserves the reading position. Live lines are added incrementally at the newest edge, and the rendered window is trimmed back to its size from the older edge — trimmed entries stay in the buffer, so scrolling back reveals them again. Toggling sort rebuilds the pane and resets the window to one page. The `EventSource` for `/api/logs` is created lazily on first activation of the view and kept open afterwards; while the view is hidden, lines are buffered and the pane is rebuilt from the buffer on re-activation. It recovers from a fatal stream error (a non-2xx response or bad content-type, which closes `EventSource` for good) via the same capped-backoff retry the connection indicator uses — necessary because the log stream has no indicator of its own, so a silent stop would otherwise leave the pane frozen with no on-screen cue.
+Received lines are held in a bounded client-side buffer (2000 entries, oldest dropped on overflow) and the pane renders a sliding window of it. The window starts at **500 lines** (the newest 500) and grows by **500** each time the user scrolls to the older (bottom) edge; a scroll that reveals older lines preserves the reading position. Live lines are added incrementally at the newest edge, and the rendered window is trimmed back to its size from the older edge — trimmed entries stay in the buffer, so scrolling back reveals them again. An active in-log search re-applies to freshly rendered lines. The `EventSource` for `/api/logs` is created lazily on first activation of the view and kept open afterwards; while the view is hidden, lines are buffered and the pane is rebuilt from the buffer on re-activation. It recovers from a fatal stream error (a non-2xx response or bad content-type, which closes `EventSource` for good) via the same capped-backoff retry the connection indicator uses — necessary because the log stream has no indicator of its own, so a silent stop would otherwise leave the pane frozen with no on-screen cue.
+
+---
+
+## Container logs
+
+A **console icon** (`clog-btn`) opens a live `docker compose logs` panel for a stack or a single service ([ADR-0037](../../dev-docs/adr/0037-container-logs-in-ui.md)). It appears in both views:
+
+- **Deploys view** — on the newest row of each stack (per stack, services merged) and on each service line of the [health panel](#stack-health) (per container).
+- **Stacks view** — on each roster row (per stack) and, when the row is expanded, on each container line of its health panel (per container).
+
+Clicking it opens a panel (`clog-panel`) that trails the row/line it was opened from and streams from `/api/container-logs`: an initial backlog then a live follow. **Only one log is open at a time** — opening another closes the previous one (and stops its stream), so a viewer holds at most one follow stream.
+
+The panel header carries: a **live/pause** pill (`clog-live`; pause freezes the stream), **auto-scroll** (follow the tail), **line-wrap**, **in-log search**, a **backlog selector** (`clog-tail`: 50/200/1000, default 200), and **fullscreen** (`clog-fullscreen`; the panel reparents to `<body>` to overlay above the sticky header, restoring its place on exit; Esc exits). The body (`clog-body`) renders each line with a dimmed timestamp; the whole-stack view prefixes each line with its compose service, tinting `warn`/`error` lines. While a log is open, **typing routes into its search** (overriding the deploys/stacks type-to-search): matching lines highlight, the rest hide, and a hit count shows.
 
 ---
 
@@ -264,6 +279,12 @@ Received lines are held in a bounded client-side buffer (2000 entries, oldest dr
 ```
 
 On connect the in-memory backlog (bounded ring, 1000 entries, no persistence across restarts) is replayed — filtered by `Last-Event-ID` on reconnect — then live entries stream in. Entry IDs are seeded from the process start time so they stay monotonic across restarts. Slow consumers have lines dropped rather than blocking the logger. Same trust level as `/api/events` (unauthenticated); child-process output (`docker compose`, `git`, `nixos-rebuild`) is included — see ADR-0013.
+
+---
+
+## Container logs API
+
+`GET /api/container-logs/{stack}` (whole stack, services merged) and `GET /api/container-logs/{stack}/{service}` (one service) — SSE stream where each `data:` frame is one `docker compose logs` line: the backlog (`?tail=N`, default 200, clamped `[1,1000]`) then a live follow. `?since=<RFC3339>` resumes after a reconnect (server passes `--since`, skipping the backlog). UI-only (present only with `ui_enabled: true`). `{stack}` must be in the current stack set and `{service}` must appear in the stack's health snapshot, else `404`. The compose invocation reuses the deploy path's project selection so a read targets exactly the deployed project ([ADR-0037](../../dev-docs/adr/0037-container-logs-in-ui.md)); a client disconnect cancels the request context and kills the `logs --follow` child. Same trust level as `/api/logs`.
 
 ---
 
@@ -322,8 +343,8 @@ assert on.
 | `run-drawer` | The run panel (this run's stacks) | `.open` when shown |
 | `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |
 | `pending-pill` | Amber pending-count pill | Hidden at zero |
-| `view-options` | View-options popover (opened from the active view button) | `.open` when shown; holds `time-mode` / `log-sort` / `follow-logs` |
-| `time-mode`, `log-sort`, `follow-logs` | View-specific toggle buttons | Inside `view-options`; hidden until the popover opens |
+| `view-options` | View-options popover (opened from the active view button) | `.open` when shown; holds each view's controls (`time-mode`; `follow-logs` / `log-wrap` / `log-fs`; the mobile `*-search` entries) |
+| `time-mode`, `follow-logs`, `log-wrap`, `log-fs` | View-specific toggle buttons | Inside `view-options`; hidden until the popover opens; `.active` when on |
 | `theme-toggle` | Header theme (dark/light) toggle | Glyph-only; moon in dark, sun in light |
 | `theme-select` | Header theme picker (`<select>`) | Present only when `ui_theme_switcher` is enabled; transparent over a palette glyph. See [Theme override](#theme-override) |
 | `theme-notice` | Theme mismatch notice | Shown when `themeOverride` differs from `data-server-theme` |
@@ -365,6 +386,15 @@ assert on.
 | `stack-prefix` | `[stack]` prefix on a deploy log line | |
 | `cmd-prefix` | `[cmd]` prefix on child-process output | |
 | `diff-pill` | Diff pill on a `deploy complete` log line | |
+| `clog-btn` | Console icon that opens a container log (ADR-0037) | On the newest deploy row, each `health-service` line, and each roster row; `data-clog-stack` / `data-clog-service` |
+| `clog-panel` | The live container-log panel | Trails the row/line; only one open at a time; gets `clog-fullscreen` in fullscreen |
+| `clog-body` | The streamed log lines | `.clog-ln` per line; `.clog-hit` / `.clog-out` under an active in-log search |
+| `clog-live` | Live/pause pill in the panel header | `.paused` when paused |
+| `clog-search` | In-log search row inside the panel | Revealed by the search tool or by typing; holds the input + `.clog-hits` count |
+| `clog-tail` | Backlog-size selector (50/200/1000) | |
+| `log-search` | "Search log" row in the logs view-options popover | Mobile-only entry point; reveals + focuses `log-filter` |
+| `log-filter-wrap` / `log-filter` | Logs in-view search bar / input | Same reveal + type-to-search behaviour as `deploy-filter` |
+| `log-filter-count` / `log-filter-clear` | Logs search hit count / clear (`×`) button | |
 | `autosync-drawer` | The autosync drawer | |
 | `global-switch` | Global autosync switch | |
 | `stack-item` | A row in the "All stacks" list | `data-stack` |

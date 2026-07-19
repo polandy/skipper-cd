@@ -270,11 +270,6 @@ UI suite reuses.
   webhook adds a WARN. DEBUG is out of scope — the default slog handler filters
   below INFO and skipper has no log-level toggle, so it can never reach the ring.
   (No snapshot — real log output is nondeterministic; see §5.)
-- **UB3 — Sort toggle.** The `log-sort` toggle flips the rendered order
-  newest-first↔oldest-first and persists it (`localStorage logSort`). Driven
-  against real replayed log output: the rendered `log-line` sequence is
-  fingerprinted and the toggle must reverse it exactly, with a reload preserving
-  the chosen order.
 - **UB4 — Follow toggle.** Following (the default) pins the pane to the newest
   edge when a fresh line streams in; unfollowing leaves the scroll position
   alone. Driven against the real backend: the ring is filled so the pane
@@ -294,7 +289,7 @@ UI suite reuses.
   line, and clicking again collapses it — the log-view twin of UA8. Driven against
   the real backend: a second deploy (webhook bumping the compose image) is the first
   with a prior commit to diff against, so its `deploy complete` line — the newest,
-  hence topmost under the default descending sort — is the one whose pill expands a
+  hence topmost in the fixed newest-first order — is the one whose pill expands a
   populated panel (`nginx:1.26`), not the plain "No diff recorded" note.
 - **UB7 — Fatal-stream recovery.** The `/api/logs` stream has no connection
   indicator, so a fatal error must recover silently. A `page.route` fulfils
@@ -745,6 +740,33 @@ snapshot, but the jump-btn's footprint on every row required regenerating
   stack, leave it filtered, switch views by hand (not by jumping), then jump
   to the filtered-out stack from the other view. The jump clears the stale
   filter so the landing row is actually visible, not `.filtered-out`.
+
+### 4.21 UI — Maske T: Container logs (ADR-0037)
+
+A live `docker compose logs` panel opened from a console icon, per stack (merged)
+and per container. Boots with `healthPoll: 1` and `setStackHealth` so the
+per-container icons appear on the health-panel service lines and the `{service}`
+segment validates; the stub `docker` answers `compose … logs` with a fixed
+backlog (a single service drops the compose prefix, the whole stack keeps
+`<stack>-1  | `). Behaviour-only (no new snapshot beyond the shared deploy-table
+baselines the row icon already shifts).
+
+- **UT1 — Per-stack panel.** The row's `clog-btn` opens a `clog-panel` that
+  streams the backlog (the merged view keeps the `web-1` service prefix) and
+  shows the `clog-live` pill; clicking the icon again closes it.
+- **UT2 — Per-container panel.** Opening the `health-panel` (health pill) and
+  clicking a `health-service` line's `clog-btn` opens that one service's log
+  (scope `web / app`, no compose prefix).
+- **UT3 — Single log open.** Opening a second log (another stack's row icon)
+  closes the first — at most one `clog-panel` exists at a time.
+- **UT4 — In-log type-to-search.** With a log open, typing routes into its search
+  (the `deploy-filter` is *not* revealed): the matching line highlights
+  (`.clog-hit`), the rest hide, and the hit count shows.
+- **UT5 — Logs-view controls in the popover.** The Logs view carries
+  `log-search` / `log-wrap` / `log-fs` in the view-options popover; typing
+  reveals the `log-filter` bar (like the deploys/stacks views).
+- **UT6 — Logs-view wrap + fullscreen.** `log-wrap` and `log-fs` are popover
+  toggles that light (`.active`) when engaged.
 
 ## 5. Visual snapshot strategy
 

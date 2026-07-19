@@ -23,6 +23,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/containerlogs"
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/git"
@@ -563,6 +564,38 @@ func (r deployReconciler) Reconcile(ctx context.Context) bool {
 	return r.deployer.TrySyncAndDeployAll(ctx, r.cfg)
 }
 
+// containerLogResolver adapts the deployer + health poller to
+// containerlogs.Resolver: the deployer supplies the compose invocation (reusing
+// the deploy path so a logs read targets the same project), the poller supplies
+// the current service names for validation.
+type containerLogResolver struct {
+	cfg      *config.Config
+	deployer *deploy.Deployer
+	health   *health.Poller
+}
+
+func (r containerLogResolver) Resolve(stack string) (containerlogs.Invocation, []string, bool, error) {
+	dir, env, args, ok, err := r.deployer.LogComposeInvocation(r.cfg, stack)
+	if err != nil || !ok {
+		return containerlogs.Invocation{}, nil, ok, err
+	}
+	return containerlogs.Invocation{Dir: dir, Env: env, Args: args}, servicesOf(r.health.Current(), stack), true, nil
+}
+
+// servicesOf returns the service names the health snapshot currently reports
+// for a stack, or nil if the stack is not (yet) in the snapshot.
+func servicesOf(snap health.Snapshot, stack string) []string {
+	sh, ok := snap.Stacks[stack]
+	if !ok {
+		return nil
+	}
+	names := make([]string, 0, len(sh.Services))
+	for _, s := range sh.Services {
+		names = append(names, s.Name)
+	}
+	return names
+}
+
 // healerFunc adapts a plain function to selfheal.Healer, so main can wire the
 // deployer's HealStack (with the process config bound) without the selfheal
 // package knowing about deploy or config.
@@ -650,6 +683,7 @@ func webhookMux(d webhookDeps) *http.ServeMux {
 		registerEventRoutes(mux, d.broadcaster, d.history, d.auditLog, d.logRing, snap)
 		registerIconRoutes(mux, d.cfg, d.stacks)
 		registerAutosyncRoutes(mux, d.autosync)
+		registerContainerLogRoutes(mux, d.cfg, d.deployer, d.healthPoller)
 	}
 	return mux
 }
@@ -697,6 +731,18 @@ func registerAutosyncRoutes(mux *http.ServeMux, as *autosyncDeps) {
 	mux.Handle("GET /api/autosync", autosyncH)
 	mux.Handle("POST /api/autosync", autosyncH)
 	mux.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
+}
+
+// registerContainerLogRoutes wires the live container-log stream, per stack and
+// per service (ADR-0037). UI-only; skipped without a health poller, whose
+// snapshot the resolver needs to validate the service segment.
+func registerContainerLogRoutes(mux *http.ServeMux, cfg *config.Config, deployer *deploy.Deployer, hp *health.Poller) {
+	if hp == nil {
+		return
+	}
+	h := containerlogs.Handler(containerlogs.ExecStreamer{}, containerLogResolver{cfg: cfg, deployer: deployer, health: hp})
+	mux.Handle("GET /api/container-logs/{stack}", h)
+	mux.Handle("GET /api/container-logs/{stack}/{service}", h)
 }
 
 // stateSnapshot gathers the current state of every subsystem the UI mirrors,

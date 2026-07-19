@@ -105,64 +105,6 @@ test.describe('UB2: log lines + level badges', () => {
   });
 });
 
-// UB3 — Sort toggle. The log pane defaults to newest-first (descending); the
-// `log-sort` toggle flips the rendered order to oldest-first and persists the
-// choice in `localStorage.logSort`, so a reload keeps the chosen order. We
-// fingerprint the rendered line order (the DOM sequence of every `log-line`)
-// and assert the toggle reverses it exactly, then that a reload preserves it —
-// selecting lines only by `data-testid` and treating localStorage as the
-// persisted source of truth rather than probing the button's active class.
-test.describe('UB3: sort toggle', () => {
-  test.use({
-    startOptions: {
-      stacks: ['web'],
-      stubEnv: { STUB_DOCKER_FAIL_ON: 'up' },
-      readiness: 'listening',
-    },
-  });
-
-  const sortBtn = (page: Page) => page.locator('[data-testid="log-sort"]');
-  const logLines = (page: Page) => page.locator('[data-testid="log-line"]');
-  const lineOrder = (page: Page) => logLines(page).allTextContents();
-  const logSort = (page: Page) =>
-    page.evaluate(() => localStorage.getItem('logSort'));
-
-  test('flips newest↔oldest order and persists across reload', async ({ page, skipper }) => {
-    await page.goto(`${skipper.baseURL}/`);
-    await openLogsOptions(page);
-
-    // Wait for the replayed backlog to settle (the terminal ERROR line is last).
-    await expect(page.locator('[data-testid="log-line"][data-level="ERROR"]').first()).toBeVisible();
-    const lineCount = await logLines(page).count();
-    expect(lineCount).toBeGreaterThan(1);
-
-    // Default order is newest-first, and no explicit choice is stored yet.
-    expect(await logSort(page)).toBeNull();
-    const descOrder = await lineOrder(page);
-
-    // Toggling flips to oldest-first: the rendered order is the exact reverse,
-    // and the choice is persisted as ascending.
-    await sortBtn(page).click();
-    await expect(logLines(page)).toHaveCount(lineCount);
-    const ascOrder = await lineOrder(page);
-    expect(ascOrder).toEqual([...descOrder].reverse());
-    expect(await logSort(page)).toBe('asc');
-
-    // A reload restores the ascending order from localStorage.
-    await page.reload();
-    await openLogsOptions(page);
-    await expect(logLines(page)).toHaveCount(lineCount);
-    expect(await lineOrder(page)).toEqual(ascOrder);
-    expect(await logSort(page)).toBe('asc');
-
-    // Toggling back returns to the original newest-first order.
-    await sortBtn(page).click();
-    await expect(logLines(page)).toHaveCount(lineCount);
-    expect(await lineOrder(page)).toEqual(descOrder);
-    expect(await logSort(page)).toBe('desc');
-  });
-});
-
 // UB4 — Follow toggle. Following (the default) pins the pane to the newest edge
 // whenever a fresh line streams in; unfollowing leaves the scroll position
 // alone. The choice persists in `localStorage.followLogs`. We fill the ring so
