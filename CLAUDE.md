@@ -15,8 +15,9 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 ## Packages
 
 - `cmd/skipper` — entrypoint; single `-config` flag (default `/etc/skipper/skipper.yml`)
-- `internal/config` — YAML config load + validation
-- `internal/deploy` — CORE: orchestration (deploy.go), change hashing (hash.go), image/pull logic (images.go), state persistence (state.go), env files (envfile.go)
+- `internal/config` — YAML config load + validation; in stack-discovery mode `LoadRepoStacks` also validates each stack against its compose file (parse, rollout eligibility, env/watch existence) every sync
+- `internal/compose` — minimal read-only `docker-compose.yml` parser (`File`/`Service` + `PublishesPorts`/`HasHealthcheck`/`HasContainerName`); shared by `deploy` (image/build/rollout) and `config` (discovery validation) so there is one parser
+- `internal/deploy` — CORE: orchestration (deploy.go), change hashing (hash.go), image/pull logic (images.go, wraps `internal/compose`), state persistence (state.go), env files (envfile.go)
 - `internal/command` — `Runner` interface over os/exec; tests inject fakes through it
 - `internal/containerlogs` — UI-only live `docker compose logs` over SSE (`/api/container-logs`, ADR-0037); own `LogStreamer` seam so the deploy path's `Runner` stays run-to-completion
 - `internal/git` — local clone management (clone, reset --hard, diff, file-at-commit)

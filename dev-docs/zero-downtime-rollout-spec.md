@@ -134,37 +134,35 @@ themselves mid-cutover (not a health timeout) that could leave the service in an
 unknown state falls through to the existing git-restore `rollBackFailedDeploy`
 path for that stack, so there is always a defined recovery.
 
-### Compose-level validation (deploy time)
+### Compose-level validation
 
-skipper already parses the compose file once per deploy (`images.go`). Rollout
-extends `composeService` to also read `ports:` presence and `healthcheck:`
-presence, then before applying:
+The rollout eligibility rules — for each name in `rollout.services`:
 
-- each name in `rollout.services` **exists** in the compose file → else fail the
-  deploy (`rollout: unknown service %q`);
-- each rolled service has **no published `ports:`** → else fail
-  (`rollout: service %q publishes host ports; cannot run two replicas — route it
-  via the proxy instead`);
-- each rolled service sets **no `container_name:`** → else fail (compose cannot
-  scale a named container);
-- each rolled service defines a **`healthcheck:`** → else fail
-  (`rollout: service %q has no healthcheck; rollout needs a readiness signal`).
+- it **exists** in the compose file → else fail (`service %q is not defined in docker-compose.yml`);
+- it has **no published `ports:`** → else fail (`publishes host ports; cannot run two replicas — route it via the proxy instead`);
+- it sets **no `container_name:`** → else fail (compose cannot scale a named container);
+- it defines a **`healthcheck:`** → else fail (`no healthcheck; rollout needs a readiness signal`).
 
-These are deploy-time (not config-load) checks because the compose file lives in
-the repo clone, not next to `skipper.yaml`. They fail fast with a `failed` event
-before any container is touched — same shape as a `pre_deploy` hook failure.
+live in one place: `config.ValidateRolloutServices(services, *compose.File)`. It
+is the single source of the rules, called from two spots:
 
-In **stack-discovery mode** the **exists** check additionally runs at discovery
-time (`LoadRepoStacks`): the compose file is already present in the clone there,
-and discovery guarantees it (a directory is only a stack if it has one). An
-unknown service name becomes an entry-level `StackError` for that stack, surfaced
-on every sync in the Stacks view — not just when the stack next redeploys. This
-matters because `rollout` is excluded from change detection, so editing it never
-triggers the redeploy that the deploy-time check would ride on. The
-deploy-time check stays regardless (defence in depth: the compose file can change
-between discovery and the deploy). The ports/`container_name`/`healthcheck`
-checks remain deploy-time only, to avoid duplicating the deploy package's full
-compose model in `internal/config`.
+- **deploy time** (`internal/deploy`, every mode): before any container is
+  touched, so a violation fails fast with a `failed` event — same shape as a
+  `pre_deploy` hook failure. In host-config mode this is the only check (the repo
+  clone does not exist at config-load, so it cannot run at startup).
+- **discovery time** (`config.LoadRepoStacks`, stack-discovery mode only): the
+  clone is present there, so each rolled stack is validated on **every sync**. A
+  violation becomes an entry-level `StackError` surfaced on the stack's row, not
+  only when it next redeploys. This matters because `rollout` is excluded from
+  change detection — editing it never triggers the redeploy the deploy-time check
+  would ride on. Discovery also parses every stack's compose (a broken one is a
+  `StackError`) and checks that relative `env_files`/`watch_dirs` exist.
+
+Both callers parse the compose via the shared **`internal/compose`** package
+(`compose.Parse` + `compose.Service` predicates), so there is one parser and one
+set of eligibility rules — no duplication between `config` and `deploy`. The
+deploy path wraps `compose.File` in its own `composeFile` for its image/build
+helpers.
 
 ## Change detection
 

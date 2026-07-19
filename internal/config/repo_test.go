@@ -26,6 +26,11 @@ func writeRepo(t *testing.T, files map[string]string) string {
 
 const minimalCompose = "services:\n  app:\n    image: nginx:1.25\n"
 
+// rolloutReadyCompose defines service "app" with a healthcheck and no host
+// ports / container_name, so it passes the discovery-time rollout eligibility
+// check (ADR-0040).
+const rolloutReadyCompose = "services:\n  app:\n    image: nginx:1.25\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n"
+
 func stackNames(stacks []Stack) []string {
 	names := make([]string, len(stacks))
 	for i, s := range stacks {
@@ -90,6 +95,8 @@ func TestLoadRepoStacks_MissingRepoConfigYieldsDefaults(t *testing.T) {
 func TestLoadRepoStacks_AppliesOverrides(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/web/secrets.env":        "SECRET=1\n", // relative in-repo paths must exist
+		"stacks/web/conf/app.conf":      "x\n",
 		"stacks/skipper.yaml": `
 stacks:
   web:
@@ -356,7 +363,7 @@ stacks:
 func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	hashFor := func(t *testing.T, repoConfig string) string {
 		t.Helper()
-		f := map[string]string{"stacks/web/docker-compose.yml": minimalCompose}
+		f := map[string]string{"stacks/web/docker-compose.yml": rolloutReadyCompose}
 		if repoConfig != "" {
 			f["stacks/skipper.yaml"] = repoConfig
 		}
@@ -427,7 +434,7 @@ func TestLoadRepoStacks_AppliesHookOverrides(t *testing.T) {
 
 func TestLoadRepoStacks_AppliesRolloutOverride(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
-		"stacks/web/docker-compose.yml": minimalCompose, // defines service "app"
+		"stacks/web/docker-compose.yml": rolloutReadyCompose, // eligible service "app"
 		"stacks/skipper.yaml": `stacks:
   web:
     rollout:
@@ -498,7 +505,7 @@ func TestLoadRepoStacks_RolloutUnknownServiceReported(t *testing.T) {
 func TestLoadRepoStacks_RolloutOneOfManyServicesUnknownReported(t *testing.T) {
 	// The missing service must be named even when others are valid.
 	repoDir := writeRepo(t, map[string]string{
-		"stacks/web/docker-compose.yml": minimalCompose, // defines service "app"
+		"stacks/web/docker-compose.yml": rolloutReadyCompose, // eligible service "app"
 		"stacks/skipper.yaml": `stacks:
   web:
     rollout:
@@ -518,7 +525,7 @@ func TestLoadRepoStacks_RolloutOneOfManyServicesUnknownReported(t *testing.T) {
 func TestLoadRepoStacks_RolloutKnownServiceAccepted(t *testing.T) {
 	// A rollout naming a service that exists in the compose file passes.
 	repoDir := writeRepo(t, map[string]string{
-		"stacks/web/docker-compose.yml": minimalCompose, // defines service "app"
+		"stacks/web/docker-compose.yml": rolloutReadyCompose, // eligible service "app"
 		"stacks/skipper.yaml": `stacks:
   web:
     rollout:
@@ -529,6 +536,138 @@ func TestLoadRepoStacks_RolloutKnownServiceAccepted(t *testing.T) {
 	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
+	}
+}
+
+func TestLoadRepoStacks_RolloutServiceMissingHealthcheckReported(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose, // service "app", no healthcheck
+		"stacks/skipper.yaml": `stacks:
+  web:
+    rollout:
+      services: [app]
+`,
+	})
+
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("file-level error unexpected: %v", err)
+	}
+	if len(stackErrs) != 1 || !strings.Contains(stackErrs[0].Err.Error(), "no healthcheck") {
+		t.Fatalf("expected a no-healthcheck rollout error, got %v", stackErrs)
+	}
+}
+
+func TestLoadRepoStacks_RolloutServicePublishesPortsReported(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": "services:\n  app:\n    image: nginx:1.25\n    ports: [\"8080:80\"]\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n",
+		"stacks/skipper.yaml": `stacks:
+  web:
+    rollout:
+      services: [app]
+`,
+	})
+
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("file-level error unexpected: %v", err)
+	}
+	if len(stackErrs) != 1 || !strings.Contains(stackErrs[0].Err.Error(), "publishes host ports") {
+		t.Fatalf("expected a published-ports rollout error, got %v", stackErrs)
+	}
+}
+
+func TestLoadRepoStacks_RolloutServiceContainerNameReported(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": "services:\n  app:\n    image: nginx:1.25\n    container_name: app\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n",
+		"stacks/skipper.yaml": `stacks:
+  web:
+    rollout:
+      services: [app]
+`,
+	})
+
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("file-level error unexpected: %v", err)
+	}
+	if len(stackErrs) != 1 || !strings.Contains(stackErrs[0].Err.Error(), "container_name") {
+		t.Fatalf("expected a container_name rollout error, got %v", stackErrs)
+	}
+}
+
+func TestLoadRepoStacks_UnparseableComposeReported(t *testing.T) {
+	// A broken docker-compose.yml is caught at discovery (parsed every sync),
+	// not only when the stack next deploys. The stack is excluded.
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": "services: [not valid",
+	})
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("file-level error unexpected: %v", err)
+	}
+	if len(repo.Stacks) != 0 {
+		t.Errorf("stack with a broken compose must be excluded, got %v", stackNames(repo.Stacks))
+	}
+	if len(stackErrs) != 1 || stackErrs[0].Stack != "web" {
+		t.Fatalf("expected one entry-level error for web, got %v", stackErrs)
+	}
+}
+
+func TestLoadRepoStacks_MissingRelativeEnvFileReported(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/skipper.yaml": `stacks:
+  web:
+    env_files:
+      - web/missing.env
+`,
+	})
+
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("file-level error unexpected: %v", err)
+	}
+	if len(stackErrs) != 1 || !strings.Contains(stackErrs[0].Err.Error(), "does not exist") {
+		t.Fatalf("expected a missing env_file error, got %v", stackErrs)
+	}
+}
+
+func TestLoadRepoStacks_MissingRelativeWatchDirReported(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/skipper.yaml": `stacks:
+  web:
+    watch_dirs:
+      - web/missing
+`,
+	})
+
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil {
+		t.Fatalf("file-level error unexpected: %v", err)
+	}
+	if len(stackErrs) != 1 || !strings.Contains(stackErrs[0].Err.Error(), "does not exist") {
+		t.Fatalf("expected a missing watch_dir error, got %v", stackErrs)
+	}
+}
+
+func TestLoadRepoStacks_AbsoluteEnvFileNotRequiredToExist(t *testing.T) {
+	// Absolute paths are the host-secret escape hatch (may be produced
+	// out-of-band), so they are not existence-checked at discovery.
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/skipper.yaml": `stacks:
+  web:
+    env_files:
+      - /etc/does-not-exist.env
+`,
+	})
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
+		t.Fatalf("absolute env_file must not be existence-checked: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
 }
 

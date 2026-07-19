@@ -1,62 +1,30 @@
 package deploy
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 
-	"gopkg.in/yaml.v3"
+	"github.com/polandy/skipper-cd/internal/compose"
 )
 
 // serviceImageByName maps each compose service name to its image reference.
 type serviceImageByName map[string]string
 
-// composeFile is a minimal parsed representation of a docker-compose.yml.
-// It is parsed once per stack deploy; all image/build lookups are methods on it.
+// composeFile wraps the shared compose parse (internal/compose) with the deploy
+// package's image/build/rollout helpers. Parsed once per stack deploy.
 type composeFile struct {
-	Services map[string]composeService `yaml:"services"`
-}
-
-type composeService struct {
-	Image    string `yaml:"image"`
-	BuildRaw any    `yaml:"build"`
-	// Ports, Healthcheck and ContainerName are read only for rollout eligibility
-	// (ADR-0040); only their presence/value matters.
-	Ports         []any  `yaml:"ports"`
-	Healthcheck   any    `yaml:"healthcheck"`
-	ContainerName string `yaml:"container_name"`
-}
-
-// publishesPorts reports whether the service publishes any host port.
-func (s composeService) publishesPorts() bool {
-	return len(s.Ports) > 0
-}
-
-// hasHealthcheck reports whether the service defines a compose healthcheck.
-func (s composeService) hasHealthcheck() bool {
-	return s.Healthcheck != nil
-}
-
-// hasContainerName reports whether the service pins a container_name (which
-// compose cannot scale).
-func (s composeService) hasContainerName() bool {
-	return s.ContainerName != ""
+	compose.File
 }
 
 // parseComposeFile reads and parses a docker-compose.yml.
 func parseComposeFile(path string) (*composeFile, error) {
-	data, err := os.ReadFile(path)
+	f, err := compose.Parse(path)
 	if err != nil {
-		return nil, fmt.Errorf("read compose file: %w", err)
+		return nil, err
 	}
-
-	var cf composeFile
-	if err := yaml.Unmarshal(data, &cf); err != nil {
-		return nil, fmt.Errorf("parse compose file: %w", err)
-	}
-	return &cf, nil
+	return &composeFile{File: *f}, nil
 }
 
 // images returns a map of service name to image reference. Services without
@@ -93,14 +61,14 @@ func (cf *composeFile) pullableServices() []string {
 	// Collect image names produced by build: services.
 	localImages := make(map[string]struct{})
 	for _, svc := range cf.Services {
-		if svc.BuildRaw != nil && svc.Image != "" {
+		if svc.Build != nil && svc.Image != "" {
 			localImages[svc.Image] = struct{}{}
 		}
 	}
 
 	var pullable []string
 	for name, svc := range cf.Services {
-		if svc.Image == "" || svc.BuildRaw != nil {
+		if svc.Image == "" || svc.Build != nil {
 			continue
 		}
 		if _, isLocal := localImages[svc.Image]; isLocal {
@@ -121,12 +89,12 @@ func (cf *composeFile) dockerfilePaths(workDir string) []string {
 	var paths []string
 
 	for name, svc := range cf.Services {
-		if svc.BuildRaw == nil {
+		if svc.Build == nil {
 			continue
 		}
 
 		var context, dockerfile string
-		switch v := svc.BuildRaw.(type) {
+		switch v := svc.Build.(type) {
 		case string:
 			context = v
 			dockerfile = "Dockerfile"

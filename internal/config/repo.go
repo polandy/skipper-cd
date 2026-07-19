@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/polandy/skipper-cd/internal/compose"
 )
 
 // RepoConfigFileName is the optional per-stack override file at the root of
@@ -144,8 +146,12 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 		hcErr := validateHealthCheck(stack.HealthCheck)
 		hookErr := validateHooks(stack.Hooks)
 		rolloutErr := validateRollout(stack.Rollout)
-		if rolloutErr == nil {
-			rolloutErr = validateRolloutServicesExist(stack.Rollout, filepath.Join(stacksBaseDir, name, composeFileName))
+		// Parse the compose file every sync so a broken compose (or a rollout
+		// naming an unrollable/typo'd service) is caught at discovery, not only
+		// when the stack next redeploys — rollout config is not hash-tracked.
+		cf, composeErr := compose.Parse(filepath.Join(stacksBaseDir, name, composeFileName))
+		if rolloutErr == nil && composeErr == nil && stack.Rollout != nil {
+			rolloutErr = ValidateRolloutServices(stack.Rollout.Services, cf)
 		}
 		depErr := invalidDependency(stack, known)
 		switch {
@@ -159,6 +165,8 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 			failAt(name, "health_check", "health_check: %v", hcErr)
 		case hookErr != nil:
 			failAt(name, "hooks", "hooks: %v", hookErr)
+		case composeErr != nil:
+			failAt(name, "", "%v", composeErr)
 		case rolloutErr != nil:
 			failAt(name, "rollout", "rollout: %v", rolloutErr)
 		case depErr != nil:
@@ -200,47 +208,6 @@ func discoverStackDirs(stacksBaseDir string) ([]string, error) {
 			continue
 		}
 		names = append(names, entry.Name())
-	}
-	return names, nil
-}
-
-// validateRolloutServicesExist checks that every service in the stack's rollout
-// allowlist is defined in its docker-compose.yml, catching a typo at discovery.
-// The deploy path re-checks (see internal/deploy); this early copy matters
-// because rollout config is not hash-tracked, so an edit alone never redeploys.
-func validateRolloutServicesExist(rollout *Rollout, composePath string) error {
-	if rollout == nil {
-		return nil
-	}
-	defined, err := composeServiceNames(composePath)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", composeFileName, err)
-	}
-	for _, svc := range rollout.Services {
-		if !defined[svc] {
-			return fmt.Errorf("service %q is not defined in %s", svc, composeFileName)
-		}
-	}
-	return nil
-}
-
-// composeServiceNames reads just the service names from a docker-compose.yml,
-// ignoring every other field so config stays decoupled from the deploy
-// package's full compose model.
-func composeServiceNames(path string) (map[string]bool, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var cf struct {
-		Services map[string]yaml.Node `yaml:"services"`
-	}
-	if err := yaml.Unmarshal(data, &cf); err != nil {
-		return nil, err
-	}
-	names := make(map[string]bool, len(cf.Services))
-	for name := range cf.Services {
-		names[name] = true
 	}
 	return names, nil
 }
@@ -306,6 +273,11 @@ func loadRepoOverrides(path string) (repoOverridesFile, error) {
 // mode. A relative path is rejected if it escapes stacksBaseDir via "../":
 // unlike an absolute path, that's not a documented capability, just an
 // unintentional traversal a repo push could otherwise exploit.
+//
+// A relative (in-repo) path must also exist: it is committed alongside the
+// stacks, so a missing one is a typo we catch at discovery rather than at the
+// deploy that would fail hashing it. Absolute paths are not stat-ed — they may
+// be produced out-of-band on the host (the secrets escape hatch).
 func resolveRepoPaths(stacksBaseDir string, paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
@@ -320,6 +292,9 @@ func resolveRepoPaths(stacksBaseDir string, paths []string) ([]string, error) {
 		rel, err := filepath.Rel(stacksBaseDir, resolved)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return nil, fmt.Errorf("path %q escapes stacks_base_dir", p)
+		}
+		if _, err := os.Stat(resolved); err != nil {
+			return nil, fmt.Errorf("path %q does not exist in the repo", p)
 		}
 		out[i] = resolved
 	}

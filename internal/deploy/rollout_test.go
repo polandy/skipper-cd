@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -312,68 +311,6 @@ func TestDeployStack_RolloutTakesCutoverPathAndSucceeds(t *testing.T) {
 }
 
 // --- validation --------------------------------------------------------------
-
-func TestValidateRolloutServices(t *testing.T) {
-	withPorts := `services:
-  web:
-    image: nginx:1.25
-    ports: ["8080:80"]
-    healthcheck:
-      test: ["CMD", "true"]
-`
-	noHealthcheck := `services:
-  web:
-    image: nginx:1.25
-`
-	withContainerName := `services:
-  web:
-    image: nginx:1.25
-    container_name: web
-    healthcheck:
-      test: ["CMD", "true"]
-`
-	ok := `services:
-  web:
-    image: nginx:1.25
-    healthcheck:
-      test: ["CMD", "true"]
-`
-	tests := []struct {
-		name       string
-		compose    string
-		services   []string
-		wantErr    bool
-		wantSubstr string
-	}{
-		{"unknown service", ok, []string{"api"}, true, "unknown service"},
-		{"published ports", withPorts, []string{"web"}, true, "publishes host ports"},
-		{"container_name", withContainerName, []string{"web"}, true, "container_name"},
-		{"no healthcheck", noHealthcheck, []string{"web"}, true, "no healthcheck"},
-		{"valid", ok, []string{"web"}, false, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			path := filepath.Join(dir, "docker-compose.yml")
-			writeFile(t, path, tt.compose)
-			compose, err := parseComposeFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			err = validateRolloutServices(compose, tt.services)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("expected an error for %s", tt.name)
-				}
-				if tt.wantSubstr != "" && !strings.Contains(err.Error(), tt.wantSubstr) {
-					t.Errorf("error %q should mention %q", err.Error(), tt.wantSubstr)
-				}
-			} else if err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-		})
-	}
-}
 
 // --- ps parsing --------------------------------------------------------------
 
