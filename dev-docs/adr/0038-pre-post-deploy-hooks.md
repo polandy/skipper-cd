@@ -112,19 +112,29 @@ rollback all run zero hooks.
 ## Amendment (2026-07-19): UI surface
 
 The initial feature (above, #139) is backend-only. A follow-up increment surfaces
-hooks in the web UI, read-only, reusing existing surfaces rather than adding
-streaming machinery. Decided with Andy on a clickable mockup (2026-07-19):
-(1) a **hooks badge** on the stack cell (newest deploy row + roster row) whose
-panel lists the configured commands — commands ride **inline** on the `stacks`
-roster snapshot, so the panel opens with no fetch and no new endpoint;
-(2) a **running-hook phase** sub-label on the deploying row, driven by a new
-lightweight `hookrun` SSE snapshot published by `runHooks` (UI-sink-gated, like
-`upcoming`); (3) **hook log** reuse — `runHooks` threads the `stack` through the
-command context so its child-process lines are attributed in the existing log
-view, and the running phase carries the **container-logs console icon** (`clog-btn`,
-ADR-0037) that opens the stack-filtered log view (**Option A**: icon on the phase,
-shown only while a hook runs, distinct from the persistent per-row container-logs
-icon). Full surface in `internal/ui/UI_SPEC.md` (§ Deploy hooks) and
+hooks in the web UI, read-only, **reusing existing components rather than adding
+new ones** (per `dev-docs/ui-design-concept.md`). Decided with Andy on a clickable
+mockup and the live `make ui-preview` (2026-07-19):
+
+1. A **hooks badge** on the stack cell (newest deploy row + roster row) — a
+   fishing-hook glyph (distinct from the container-logs console icon) showing the
+   split `pre+post` count, with a two-line tooltip and the header's touch tap-tip
+   bubble. Its bound panel lists the configured commands; commands ride **inline**
+   on the `stacks` roster snapshot, so it opens with no fetch and no new endpoint.
+2. A **running-hook phase** sub-label shown identically on the deploying row in
+   **both** the Deploys table and the Stacks roster, driven by a new lightweight
+   `hookrun` SSE snapshot published by `runHooks` (UI-sink-gated, like `upcoming`).
+3. **Hook log inline** — `runHooks` threads the `stack` through the command
+   context so its child-process lines are attributed (`[stack]`), and the running
+   phase carries the **container-logs console icon** (`clog-btn`, ADR-0037) that
+   opens **the container-logs panel component in a second "skipper" mode**: inline
+   on the same page, streaming `/api/logs` filtered to the stack instead of
+   `docker compose logs`, reusing that panel's controls and single-log rule. (A
+   first "Option A" — link/jump to the log view with a seeded filter — was built
+   and rejected on the preview; jumping pages felt wrong when a per-stack log
+   panel already exists.)
+
+Full surface in `internal/ui/UI_SPEC.md` (§ Deploy hooks) and
 `dev-docs/deploy-hooks-spec.md` (§ UI surface). No change to the deploy semantics
 above.
 

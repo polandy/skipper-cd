@@ -147,55 +147,62 @@ The core feature above is backend-only and shipped in #139. A follow-up
 increment makes hooks **visible** in the web UI — a stack owner should see, at a
 glance, that a stack has hooks and, while a deploy runs, that a hook is
 executing, with its output reachable. Design goal: maximum reuse of existing
-surfaces (the health-pill badge pattern, the per-row bound panels, the run
-panel, and the existing `/api/logs` log view), no new streaming machinery.
+surfaces (the health-pill badge pattern, the per-row bound panels, and the
+container-logs panel component), no new page and minimal new machinery.
 Read-only throughout — hooks are config-driven, never triggered from the UI.
 Full surface + `data-testid`s live in `internal/ui/UI_SPEC.md` (§ Deploy hooks);
-this section is the feature-level intent.
+this section is the feature-level intent. Every decision below was made with Andy
+on a clickable Artifact mockup and then the live `make ui-preview`.
 
 Three things surface, mapping to the request "show when a hook is defined and
 when it is running, ideally with the log":
 
 1. **Defined — a hooks badge.** A stack that declares any hook carries a small
-   hook glyph on its stack cell, on the newest deploy row (Deploys view) and the
-   roster row (Stacks view), beside the health pill / icon. Clicking it opens a
-   bound per-row panel (variant A, neutral accent bar, joining the
-   health/diff/audit one-panel-per-row exclusivity) that lists the configured
-   `pre_deploy` and `post_deploy` command lines verbatim. The badge is absent
-   when a stack has no hooks. **Source (decided): the full commands ride inline
-   on the `stacks` snapshot's roster entry** — `hooks: {pre_deploy: [...],
-   post_deploy: [...]}`, omitted when none — so both the badge and the panel need
-   no extra fetch and no endpoint. Hook command lines are tiny and static
-   (unlike logs/audit, which are lazy-fetched because they are large/unbounded).
+   **fishing-hook glyph** on its stack cell — on the newest deploy row (Deploys
+   view) and the roster row (Stacks view), beside the icon / health pill /
+   container-logs icon. The glyph is deliberately distinct from the container-logs
+   console icon so the two never read as the same thing. It shows the split
+   `pre+post` count (e.g. `2+1`), not the sum, so the shape of the hooks is
+   visible at a glance. Its tooltip is two lines (`pre-deploy hook: N` /
+   `post-deploy hook: N`); on touch it flashes the same **tap-tip bubble** the
+   header glyphs use (the UI is glyph-only, so touch has no native tooltip).
+   Clicking it opens a bound per-row panel (variant A, neutral accent bar, joining
+   the health/diff/audit one-panel-per-row exclusivity) listing the configured
+   `pre_deploy` then `post_deploy` command lines verbatim. **Source (decided): the
+   full commands ride inline on the `stacks` snapshot's roster entry** — `hooks:
+   {pre_deploy: [...], post_deploy: [...]}`, omitted when none — so both the badge
+   and the panel need no fetch and no endpoint. Hook command lines are tiny and
+   static (unlike logs/audit, which are lazy-fetched because they are
+   large/unbounded).
 
-2. **Running — a live phase on the deploying row.** While a deploy executes a
-   hook, the deploying row shows it: the `deploying` badge gains a phase
-   sub-label (`pre_deploy hook 1/2`, `post_deploy hook`), the hooks badge on that
-   row pulses "active", and the run panel's active row echoes the phase.
-   Backend: a new lightweight per-stack `hookrun` SSE snapshot
-   `{stack, phase: "pre_deploy"|"post_deploy", index, total}`, published by
-   `runHooks` as each hook starts and cleared when the phase's hooks finish —
-   modeled on the existing `upcoming` run-plan snapshot (published only with a UI
-   sink, so it costs nothing headless). The rest of the deploy (pull/up/probe)
-   keeps the plain `deploying` badge; this refines it during the hook phases
-   only, which is exactly what the user asked to see.
+2. **Running — a live phase, in both views.** While a deploy executes a hook, the
+   stack's row shows it **in the Deploys view and the Stacks roster identically**:
+   the `deploying` badge gains a phase sub-label (`pre_deploy hook 1/2`,
+   `post_deploy hook`), the hooks badge on that row pulses "active", and the phase
+   carries the console icon (below). Backend: a new lightweight per-stack
+   `hookrun` SSE snapshot `{stack, phase: "pre_deploy"|"post_deploy", index,
+   total}`, published by `runHooks` as each hook starts and cleared to the zero
+   value when the phase's hooks finish — modeled on the existing `upcoming`
+   run-plan snapshot (published only with a UI sink, so it costs nothing
+   headless). The rest of the deploy (pull/up/probe) keeps the plain `deploying`
+   badge; this refines it during the hook phases only.
 
-3. **Log — reuse the existing log view (decided).** Hook stdout/stderr already
-   flows to `/api/logs` through the log pipeline (ADR-0013). Two refinements make
-   it usable as *the hook log*: (a) `runHooks` tags its child-process lines with
-   the `stack` (threaded to the log sink via the command `ctx`; it knows the
-   stack — this closes the "child output carries no stack attribution" gap for
-   hooks specifically), so the log view renders them as an attributed `[stack]`
-   line and the stack filter matches them; (b) the running phase carries a
-   **console icon** — the *same* `clog-btn` glyph the container-logs feature uses
-   (ADR-0037) — that switches to the log view and seeds its search filter with
-   the stack name. So watching a running hook reuses the log view's follow /
-   search / fullscreen; no new streaming panel. **Option A (decided):** the
-   console icon lives on the running-hook phase, shown only while a hook
-   executes — so it is temporally distinct from the persistent per-row
-   container-logs `clog-btn` in the stack cell (they open different things — the
-   hook's skipper-side output vs. `docker compose logs` — and are rarely visible
-   at the same instant).
+3. **Log — an inline panel (decided: Option B).** Hook stdout/stderr already
+   flows to `/api/logs` through the log pipeline (ADR-0013), and `runHooks` tags
+   its child-process lines with the `stack` (threaded to the log sink via the
+   command `ctx` — it knows the stack, closing the "child output carries no stack
+   attribution" gap for hooks), so those lines carry a `[stack]` prefix. The
+   running phase carries a **console icon** — the *same* `clog-btn` glyph the
+   container-logs feature uses (ADR-0037) — but clicking it does **not** jump to
+   the log view. Instead it opens the **container-logs panel component in a second
+   "skipper" mode**, inline on the same page trailing the row: it streams
+   `/api/logs` (instead of `docker compose logs`) filtered to the stack's
+   attributed lines, rendered via the shared log-line renderer, with the panel's
+   existing live/pause/wrap/search/fullscreen controls and "only one log open at a
+   time". A first design (link-to-log-view with a seeded filter, "Option A") was
+   built and rejected on the mockup+preview — jumping pages felt wrong when a
+   per-stack log panel already exists; the inline panel reuses that component
+   rather than adding one.
 
 Not surfaced: a manual "run hook" control (hooks are deploy-driven), and hooks
 of skipped/self-heal/rollback runs (they never execute — nothing to show).
