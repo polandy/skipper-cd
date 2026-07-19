@@ -1521,6 +1521,7 @@
     font-weight: 500;
     line-height: 1.35;
     text-align: center;
+    white-space: pre-line; /* honour \n in the title so multi-line tips wrap */
     color: var(--text-primary);
     background: color-mix(in srgb, var(--bg-base) 96%, transparent);
     backdrop-filter: blur(12px) saturate(1.2);
@@ -2310,9 +2311,10 @@
   }
   @media (prefers-reduced-motion: reduce) { .hooks-badge[data-hook-active] { animation: none; } }
 
-  /* Running-hook phase sub-label under the deploying badge. The status cell
-     stacks the badge and this label. */
-  .status-cell { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+  /* Running-hook phase sub-label under the deploying badge. Both the deploy
+     table's status cell and the roster's status cell stack the badge + label so
+     a running hook looks identical in the Deploys and Stacks views. */
+  .status-cell, .roster-status { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
   .hook-phase {
     display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
     font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
