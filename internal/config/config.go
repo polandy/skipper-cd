@@ -9,6 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/polandy/skipper-cd/internal/compose"
 	"github.com/polandy/skipper-cd/internal/ui"
 )
 
@@ -841,8 +842,33 @@ func validateHooks(h Hooks) error {
 	return nil
 }
 
+// ValidateRolloutServices checks that every rolled service is present in the
+// compose file and can be cut over: no published host ports, no container_name,
+// and a healthcheck (ADR-0040). It is the single source of the rollout
+// eligibility rules — called at discovery (LoadRepoStacks) and at deploy time
+// (internal/deploy), the latter being the only check in host-config mode.
+func ValidateRolloutServices(services []string, cf *compose.File) error {
+	for _, name := range services {
+		svc, ok := cf.Services[name]
+		if !ok {
+			return fmt.Errorf("service %q is not defined in %s", name, composeFileName)
+		}
+		if svc.PublishesPorts() {
+			return fmt.Errorf("service %q publishes host ports; cannot run two replicas — route it via the proxy instead", name)
+		}
+		if svc.HasContainerName() {
+			return fmt.Errorf("service %q sets container_name; compose cannot scale a named container — remove container_name to roll it", name)
+		}
+		if !svc.HasHealthcheck() {
+			return fmt.Errorf("service %q has no healthcheck; rollout needs a readiness signal", name)
+		}
+	}
+	return nil
+}
+
 // validateRollout checks what the config alone can decide; compose-dependent
-// checks (service exists, ports, healthcheck, container_name) run at deploy time.
+// checks (service exists, ports, healthcheck, container_name) run via
+// ValidateRolloutServices at discovery and at deploy time.
 func validateRollout(r *Rollout) error {
 	if r == nil {
 		return nil

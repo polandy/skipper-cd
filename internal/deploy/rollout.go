@@ -31,16 +31,16 @@ const defaultRolloutPollInterval = 2 * time.Second
 // rollout performs the zero-downtime cutover for the stack's rollout services and
 // recreates the rest in place, replacing the plain `up` (ADR-0040). It owns its
 // rollback. compose must have parsed.
-func (d *Deployer) rollout(ctx context.Context, run stackRun, compose *composeFile, state *persistedState) error {
+func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, state *persistedState) error {
 	rc := run.stack.Rollout
 	if d.outputter == nil {
 		return fmt.Errorf("rollout: no command outputter configured (cannot read container state)")
 	}
-	if compose == nil {
+	if cf == nil {
 		return fmt.Errorf("rollout: compose file could not be parsed")
 	}
-	if err := validateRolloutServices(compose, rc.Services); err != nil {
-		return err // nothing touched yet → plain failed, no rollback
+	if err := config.ValidateRolloutServices(rc.Services, &cf.File); err != nil {
+		return fmt.Errorf("rollout: %w", err) // nothing touched yet → plain failed, no rollback
 	}
 
 	rolled := make(map[string]bool, len(rc.Services))
@@ -50,7 +50,7 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, compose *composeFi
 
 	// Non-rolled services first, so a rolled service's dependencies are up before
 	// its canary starts.
-	if nonRolled := compose.servicesExcept(rolled); len(nonRolled) > 0 {
+	if nonRolled := cf.servicesExcept(rolled); len(nonRolled) > 0 {
 		upArgs := []string{"up", "-d", "--remove-orphans"}
 		if hc := run.stack.HealthCheck; hc != nil {
 			upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
@@ -207,27 +207,6 @@ func (d *Deployer) removeContainers(ctx context.Context, run stackRun, ids []str
 			slog.Warn("rollout: could not remove container", "stack", run.stack.Name, "id", id, "err", err)
 		}
 	}
-}
-
-// validateRolloutServices rejects services compose cannot cut over, before any
-// container is touched (ADR-0040). The error messages carry the reason.
-func validateRolloutServices(compose *composeFile, services []string) error {
-	for _, name := range services {
-		svc, ok := compose.Services[name]
-		if !ok {
-			return fmt.Errorf("rollout: unknown service %q", name)
-		}
-		if svc.publishesPorts() {
-			return fmt.Errorf("rollout: service %q publishes host ports; cannot run two replicas — route it via the proxy instead", name)
-		}
-		if svc.hasContainerName() {
-			return fmt.Errorf("rollout: service %q sets container_name; compose cannot scale a named container — remove container_name to roll it", name)
-		}
-		if !svc.hasHealthcheck() {
-			return fmt.Errorf("rollout: service %q has no healthcheck; rollout needs a readiness signal", name)
-		}
-	}
-	return nil
 }
 
 // drainDelay is the wait after the canary is healthy before draining the old
