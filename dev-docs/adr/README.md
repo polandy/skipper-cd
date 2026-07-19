@@ -44,3 +44,4 @@ One file per decision, numbered sequentially (see
 | [0037](0037-container-logs-in-ui.md) | Container logs in the UI (live-streamed via SSE, one follow-child per viewer) |
 | [0038](0038-pre-post-deploy-hooks.md) | Pre-/post-deploy hooks (backup-before-update) |
 | [0039](0039-read-only-http-json-api.md) | Read-only HTTP JSON API (snapshot + stream; proposed) |
+| [0041](0041-traefik-app-link-detection.md) | Traefik app-link detection (live labels, health-poll cadence) |

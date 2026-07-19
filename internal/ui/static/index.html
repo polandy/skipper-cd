@@ -358,6 +358,52 @@
   // dev-docs/stack-roster-spec.md.
   let rosterSnap = [];
 
+  // Traefik-routed hostnames per stack, from the 'app_links' SSE snapshot
+  // (dev-docs/traefik-app-links-spec.md): stack name -> hostnames, absent
+  // when none were discovered. Feeds the roster row's link icon.
+  let appLinksSnap = {};
+  // The currently open app-link popover's wrapping element (multi-host case),
+  // or null. One open at a time; a stale reference (its row was replaced by a
+  // re-render) simply fails every future .contains() check and self-clears.
+  let openLinkWrap = null;
+
+  const LINK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M10 14L20 4M18 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>';
+
+  // linkCellHTML renders the app-link icon for a stack: nothing when no host
+  // was discovered, a plain external link for exactly one, or a button that
+  // opens a popover listing each when there are several.
+  function linkCellHTML(stack) {
+    const hosts = appLinksSnap[stack];
+    if (!hosts || !hosts.length) return '';
+    if (hosts.length === 1) {
+      const url = 'https://' + hosts[0];
+      return `<span class="link-wrap"><a class="link-btn" data-testid="app-link-btn" href="${escapeAttr(url)}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + hosts[0])}">${LINK_ICON}</a></span>`;
+    }
+    const items = hosts.map(function(h) {
+      return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
+    }).join('');
+    const label = hosts.length + ' app links';
+    return `<span class="link-wrap"><button class="link-btn" type="button" data-testid="app-link-btn" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${LINK_ICON}</button><div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
+  }
+
+  // toggleAppLinkPopover opens wrap's popover, closing whichever was open
+  // before (including wrap itself, so a second click closes it again).
+  function toggleAppLinkPopover(wrap) {
+    const wasOpen = wrap === openLinkWrap;
+    closeAppLinkPopover();
+    if (!wasOpen) { wrap.classList.add('open'); openLinkWrap = wrap; }
+  }
+  function closeAppLinkPopover() {
+    if (openLinkWrap) openLinkWrap.classList.remove('open');
+    openLinkWrap = null;
+  }
+  document.addEventListener('click', function(e) {
+    if (openLinkWrap && !openLinkWrap.contains(e.target)) closeAppLinkPopover();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeAppLinkPopover();
+  });
+
   // rosterStatusHTML picks the row's status: a live in-flight deploy wins, then
   // the parked/never-deployed synthetic flags, else the last terminal badge.
   function rosterStatusHTML(entry) {
@@ -370,6 +416,7 @@
   function renderRoster() {
     const list = document.getElementById('roster-list');
     list.textContent = '';
+    openLinkWrap = null; // rebuilt rows drop any open app-link popover too
     rosterSnap.forEach(function(entry) {
       const deploying = !!deployingRows[entry.name];
       // Time + commit only apply to a real past deploy.
@@ -383,7 +430,7 @@
       row.dataset.testid = 'roster-row';
       row.dataset.stack = entry.name;
       row.innerHTML =
-        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}</span>` +
+        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
@@ -1643,6 +1690,12 @@
       renderRoster();
     });
 
+    es.addEventListener('app_links', function(e) {
+      const d = JSON.parse(e.data);
+      appLinksSnap = (d && d.stacks) || {};
+      updateAppLinks();
+    });
+
     es.addEventListener('orphans', function(e) {
       const d = JSON.parse(e.data);
       orphansSnap = (d && d.orphans) || [];
@@ -1810,6 +1863,23 @@
     rosterList.querySelectorAll('.audit-panel, .health-panel').forEach(function(p) { p.remove(); });
     rosterList.querySelectorAll('.roster-row.audit-open').forEach(function(r) { r.classList.remove('audit-open'); });
   }
+
+  // updateAppLinks patches each already-rendered row's link icon in place from
+  // the current appLinksSnap, without a full renderRoster() rebuild — app_links
+  // updates on the health-poll cadence, far more often than the 'stacks'
+  // snapshot, and a full rebuild would drop any open audit/health panel.
+  function updateAppLinks() {
+    rosterList.querySelectorAll('.roster-row[data-stack]').forEach(function(row) {
+      const cell = row.querySelector('.roster-stack');
+      if (!cell) return;
+      const old = cell.querySelector('.link-wrap');
+      if (old) old.remove();
+      if (row.classList.contains('disabled')) return;
+      const html = linkCellHTML(row.dataset.stack);
+      if (html) cell.insertAdjacentHTML('beforeend', html);
+    });
+  }
+
   rosterList.addEventListener('click', function(e) {
     // Cross-view jump button: hand off to Deploys. Handled before the row's
     // own click (which opens its history panel) so a tap never opens both.
@@ -1822,6 +1892,17 @@
     // health-panel service line. Handled first so it never toggles the history panel.
     const clogB = e.target.closest('.clog-btn');
     if (clogB) { clog.toggle(clogB); return; }
+    // App-link icon (dev-docs/traefik-app-links-spec.md): a single-host anchor
+    // navigates on its own; a multi-host button toggles its popover. Either way
+    // it must not also toggle the row's history panel.
+    const linkPopA = e.target.closest('.link-pop a');
+    if (linkPopA) { closeAppLinkPopover(); return; }
+    const linkTrigger = e.target.closest('.link-wrap > .link-btn');
+    if (linkTrigger && linkTrigger.tagName === 'BUTTON') {
+      toggleAppLinkPopover(linkTrigger.closest('.link-wrap'));
+      return;
+    }
+    if (e.target.closest('.link-btn')) return;
     const row = e.target.closest('.roster-row');
     if (!row || !rosterList.contains(row)) return;
     const next = row.nextElementSibling;

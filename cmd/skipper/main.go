@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/applink"
 	"github.com/polandy/skipper-cd/internal/audit"
 	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/command"
@@ -199,14 +200,27 @@ func main() {
 		return m
 	}
 
+	// appLinkManaged builds the stack-name -> working_dir map app-link
+	// detection matches discovered Traefik hosts against (dev-docs/traefik-app-links-spec.md).
+	// Only active stacks: a parked (disabled) or removed stack has no icon.
+	appLinkManaged := func() map[string]string {
+		stacks := stacksNow()
+		m := make(map[string]string, len(stacks))
+		for _, s := range stacks {
+			m[s.Name] = stackProjectDir(cfg, s)
+		}
+		return m
+	}
+
 	var (
-		broadcaster    *events.Broadcaster[events.DeployEvent]
-		stateB         *events.Broadcaster[events.StateEvent]
-		history        *events.History
-		healthPoller   *health.Poller
-		orphanDetector *orphans.Detector
-		startEventID   int64
-		runPlanSink    func(deploy.RunPlan)
+		broadcaster     *events.Broadcaster[events.DeployEvent]
+		stateB          *events.Broadcaster[events.StateEvent]
+		history         *events.History
+		healthPoller    *health.Poller
+		orphanDetector  *orphans.Detector
+		appLinkDetector *applink.Detector
+		startEventID    int64
+		runPlanSink     func(deploy.RunPlan)
 	)
 	// The deploy event sink is composed from whatever consumers are configured;
 	// each is independent, so notifications work with the UI off (ADR-0020).
@@ -354,6 +368,19 @@ func main() {
 					orphanDetector.Detect(context.Background())
 				}
 			})
+			// App-link detection (dev-docs/traefik-app-links-spec.md) rides the
+			// same health-poll cadence for the same reason orphan detection does:
+			// no second timer, UI-gated via HasSubscribers.
+			appLinkDetector = applink.New(applink.Config{
+				Outputter: command.NewShellRunner(healthTimeout),
+				Managed:   appLinkManaged,
+				Publish:   func(s applink.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateAppLinks, Data: s}) },
+			})
+			snapshotSinks = append(snapshotSinks, func(health.Snapshot) {
+				if stateB.HasSubscribers() {
+					appLinkDetector.Detect(context.Background())
+				}
+			})
 		}
 		if len(snapshotSinks) > 0 {
 			hpCfg.OnSnapshot = func(s health.Snapshot) {
@@ -451,18 +478,19 @@ func main() {
 
 	startServer("metrics", cfg.MetricsPort, metricsMux())
 	webhookServer := startServer("webhook", cfg.Port, webhookMux(webhookDeps{
-		cfg:            cfg,
-		stacks:         stacksNow,
-		deployer:       deployer,
-		healthPoller:   healthPoller,
-		healthWatcher:  healthWatcher,
-		orphanDetector: orphanDetector,
-		broadcaster:    broadcaster,
-		history:        history,
-		auditLog:       auditLog,
-		logRing:        logRing,
-		autosync:       as,
-		build:          build,
+		cfg:             cfg,
+		stacks:          stacksNow,
+		deployer:        deployer,
+		healthPoller:    healthPoller,
+		healthWatcher:   healthWatcher,
+		orphanDetector:  orphanDetector,
+		appLinkDetector: appLinkDetector,
+		broadcaster:     broadcaster,
+		history:         history,
+		auditLog:        auditLog,
+		logRing:         logRing,
+		autosync:        as,
+		build:           build,
 	}))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
@@ -537,18 +565,19 @@ type autosyncDeps struct {
 // route table is built from one cohesive value instead of a long positional
 // argument list.
 type webhookDeps struct {
-	cfg            *config.Config
-	stacks         func() []config.Stack
-	deployer       *deploy.Deployer
-	healthPoller   *health.Poller
-	healthWatcher  *healthwatch.Watcher
-	orphanDetector *orphans.Detector
-	broadcaster    *events.Broadcaster[events.DeployEvent]
-	history        *events.History
-	auditLog       *audit.Log
-	logRing        *logbuf.Log
-	autosync       *autosyncDeps
-	build          ui.BuildInfo
+	cfg             *config.Config
+	stacks          func() []config.Stack
+	deployer        *deploy.Deployer
+	healthPoller    *health.Poller
+	healthWatcher   *healthwatch.Watcher
+	orphanDetector  *orphans.Detector
+	appLinkDetector *applink.Detector
+	broadcaster     *events.Broadcaster[events.DeployEvent]
+	history         *events.History
+	auditLog        *audit.Log
+	logRing         *logbuf.Log
+	autosync        *autosyncDeps
+	build           ui.BuildInfo
 }
 
 // deployReconciler adapts the deployer to reconcile.Reconciler, binding the
@@ -671,13 +700,14 @@ func webhookMux(d webhookDeps) *http.ServeMux {
 
 	if d.broadcaster != nil {
 		snap := stateSnapshot{
-			stacks:         d.stacks,
-			deployer:       d.deployer,
-			healthPoller:   d.healthPoller,
-			healthWatcher:  d.healthWatcher,
-			orphanDetector: d.orphanDetector,
-			auditLog:       d.auditLog,
-			autosync:       d.autosync,
+			stacks:          d.stacks,
+			deployer:        d.deployer,
+			healthPoller:    d.healthPoller,
+			healthWatcher:   d.healthWatcher,
+			orphanDetector:  d.orphanDetector,
+			appLinkDetector: d.appLinkDetector,
+			auditLog:        d.auditLog,
+			autosync:        d.autosync,
 		}
 		registerAppRoutes(mux, d.cfg, d.build)
 		registerEventRoutes(mux, d.broadcaster, d.history, d.auditLog, d.logRing, snap)
@@ -748,18 +778,20 @@ func registerContainerLogRoutes(mux *http.ServeMux, cfg *config.Config, deployer
 // stateSnapshot gathers the current state of every subsystem the UI mirrors,
 // producing the initial SSE state burst a newly connected client receives.
 type stateSnapshot struct {
-	stacks         func() []config.Stack
-	deployer       *deploy.Deployer
-	healthPoller   *health.Poller
-	healthWatcher  *healthwatch.Watcher
-	orphanDetector *orphans.Detector
-	auditLog       *audit.Log
-	autosync       *autosyncDeps
+	stacks          func() []config.Stack
+	deployer        *deploy.Deployer
+	healthPoller    *health.Poller
+	healthWatcher   *healthwatch.Watcher
+	orphanDetector  *orphans.Detector
+	appLinkDetector *applink.Detector
+	auditLog        *audit.Log
+	autosync        *autosyncDeps
 }
 
 // collect returns the current state events. As a side effect it polls the
-// health poller so a just-connected client sees fresh data (which also refreshes
-// orphans). Optional subsystems are skipped when their component is absent.
+// health poller so a just-connected client sees fresh data (which also
+// refreshes orphans and app links). Optional subsystems are skipped when
+// their component is absent.
 func (s stateSnapshot) collect() []events.StateEvent {
 	as := s.autosync
 	state := []events.StateEvent{
@@ -770,13 +802,16 @@ func (s stateSnapshot) collect() []events.StateEvent {
 	}
 	if s.healthPoller != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealth, Data: s.healthPoller.Current()})
-		s.healthPoller.Poll() // a client just connected — refresh now (also refreshes orphans)
+		s.healthPoller.Poll() // a client just connected — refresh now (also refreshes orphans and app links)
 	}
 	if s.healthWatcher != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealthWatch, Data: s.healthWatcher.Current()})
 	}
 	if s.orphanDetector != nil {
 		state = append(state, events.StateEvent{Name: events.StateOrphans, Data: s.orphanDetector.Current()})
+	}
+	if s.appLinkDetector != nil {
+		state = append(state, events.StateEvent{Name: events.StateAppLinks, Data: s.appLinkDetector.Current()})
 	}
 	return state
 }

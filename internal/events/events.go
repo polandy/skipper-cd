@@ -109,6 +109,7 @@ const (
 	StateHealth      = "health"
 	StateHealthWatch = "healthwatch"
 	StateOrphans     = "orphans"
+	StateAppLinks    = "app_links"
 )
 
 // Broadcaster fans out values of type T to all connected subscribers.

@@ -240,6 +240,23 @@ icons:
 
 > **Note:** A repo `icon.svg`/`icon.png` is **not** hash-tracked, so adding or changing an icon never triggers a redeploy. The one exception: if you list a stack's own directory under `watch_dirs`, its icon files would be hashed along with everything else — keep icons out of watched directories.
 
+## App links
+
+When the web UI is enabled, a stack whose running containers carry Traefik routing labels gets a small link icon in the Stacks view, opening the app directly. No configuration needed — it's discovered automatically from labels already in your `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.app.rule: "Host(`app.example.com`)"
+```
+
+- Requires `traefik.enable: "true"` on the container — Traefik's own opt-in convention.
+- The hostname is read from the container's *live* labels (`docker inspect`), so `${DOMAIN}`-style variables resolve to their real value, not the template.
+- Several routers/hosts on one stack show a popover to pick from; no matching label means no icon — nothing to configure, nothing to turn off.
+- Links always open over `https://`.
+
 ## Notifications
 
 skipper-cd can POST a message to one or more targets whenever a deploy reaches a **terminal** outcome. This works independently of the web UI — notifications need neither `ui_enabled` nor an open browser.
