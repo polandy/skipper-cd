@@ -29,14 +29,13 @@ type Entry struct {
 	LastStatus events.Status `json:"last_status,omitempty"`
 	LastAt     *time.Time    `json:"last_at,omitempty"`
 	LastCommit string        `json:"last_commit,omitempty"`
-	// Hooks carries the stack's configured deploy-hook command lines (ADR-0038)
-	// when it declares any, so the UI can show the hooks badge + panel without a
-	// fetch. nil when the stack has no hooks.
+	// Hooks carries the stack's deploy-hook command lines so the UI can show the
+	// badge + panel without a fetch (ADR-0038); nil when the stack has none.
 	Hooks *Hooks `json:"hooks,omitempty"`
 }
 
-// Hooks is the roster view of a stack's deploy hooks: just the command lines the
-// UI lists. The deploy-time timeout_seconds is omitted — the UI never shows it.
+// Hooks is the roster view of a stack's deploy hooks: just the command lines,
+// no timeout_seconds (the UI never shows it).
 type Hooks struct {
 	PreDeploy  []string `json:"pre_deploy,omitempty"`
 	PostDeploy []string `json:"post_deploy,omitempty"`

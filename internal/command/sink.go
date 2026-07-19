@@ -2,11 +2,10 @@ package command
 
 import "bytes"
 
-// LineSink receives one line of child-process output. Implementations must
-// be safe for concurrent use: a command's stdout and stderr are written
-// concurrently. stack is the deploy stack the command runs for when the caller
-// set it via WithStack (deploy hooks do, ADR-0038); it is empty for docker/git
-// output, which the runner cannot attribute to a stack.
+// LineSink receives one line of child-process output. Implementations must be
+// safe for concurrent use: a command's stdout and stderr are written
+// concurrently. stack is set when the caller used WithStack (deploy hooks;
+// ADR-0038), empty for unattributed docker/git output.
 type LineSink interface {
 	ChildLine(cmd, stream, line, stack string)
 }

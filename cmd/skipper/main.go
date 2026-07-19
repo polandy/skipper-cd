@@ -228,7 +228,6 @@ func main() {
 		runPlanSink = func(p deploy.RunPlan) {
 			stateB.Publish(events.StateEvent{Name: events.StateUpcoming, Data: p})
 		}
-		// Running-hook indicator: publish which hook a deploy is executing (ADR-0038).
 		hookRunSink = func(h deploy.HookRun) {
 			stateB.Publish(events.StateEvent{Name: events.StateHookRun, Data: h})
 		}

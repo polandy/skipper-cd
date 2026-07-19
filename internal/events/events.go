@@ -109,9 +109,8 @@ const (
 	StateHealth      = "health"
 	StateHealthWatch = "healthwatch"
 	StateOrphans     = "orphans"
-	// StateHookRun is the hook a deploy is currently executing (ADR-0038): a
-	// single {stack, phase, index, total}, cleared to the zero value when no
-	// hook runs. Deploys serialize, so at most one hook runs at a time.
+	// StateHookRun is the hook a deploy is currently executing, zero when none
+	// (ADR-0038).
 	StateHookRun = "hookrun"
 )
 

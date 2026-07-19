@@ -16,14 +16,10 @@ type Runner interface {
 	Run(ctx context.Context, dir string, env []string, name string, args ...string) error
 }
 
-// stackContextKey carries the deploy stack a command runs for, so the runner
-// can attribute the command's line output to it in the log (deploy hooks set
-// it; ADR-0038). Unexported so only WithStack can set it.
 type stackContextKey struct{}
 
-// WithStack returns a context that attributes a command's child-process output
-// to the given deploy stack in the log sink. Callers that know which stack a
-// command runs for (deploy hooks) set it; docker/git commands leave it unset.
+// WithStack attributes a command's child-process output to the given deploy
+// stack in the log sink (deploy hooks; ADR-0038). docker/git leave it unset.
 func WithStack(ctx context.Context, stack string) context.Context {
 	return context.WithValue(ctx, stackContextKey{}, stack)
 }

@@ -785,15 +785,12 @@
   }
 
   // ─── Deploy hooks (ADR-0038) ───
-  // A stack's configured pre/post-deploy hook commands ride inline on the stacks
-  // roster snapshot, so the badge + panel need no fetch. hookRunSnap is the
-  // currently-executing hook (or {} when none) from the hookrun SSE snapshot.
+  // Hook commands ride inline on the stacks snapshot (no fetch); hookRunSnap is
+  // the currently-executing hook ({} when none) from the hookrun SSE snapshot.
   let hookRunSnap = {};
-  // A fishing-hook glyph — deliberately distinct from the container-logs console
-  // icon so the two never read as the same thing side by side in the stack cell.
+  // Fishing hook — distinct from the container-logs console icon it sits beside.
   const HOOK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5v7a4 4 0 0 1-8 0"/><path d="M4.5 10.5 7 13l2.5-2.5"/></svg>';
 
-  // hooksFor returns a stack's configured hooks from the roster snapshot, or null.
   function hooksFor(stack) {
     const e = rosterSnap.find(function(r) { return r.name === stack; });
     return (e && e.hooks) ? e.hooks : null;
@@ -804,7 +801,7 @@
   function hooksBadgeHTML(stack, hooks) {
     const pre = (hooks.pre_deploy || []).length, post = (hooks.post_deploy || []).length;
     const label = `pre-deploy hook: ${pre}\npost-deploy hook: ${post}`;
-    // Show pre+post (e.g. "2+1") rather than the sum, so the split is visible.
+    // "2+1" rather than the sum, so the split is visible.
     return `<button class="hooks-badge" type="button" data-testid="hooks-badge" data-hooks-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${HOOK_ICON}<span class="hk-count">${pre}+${post}</span></button>`;
   }
   function hooksBadgeButton(stack, hooks) {
@@ -812,8 +809,7 @@
     tmp.innerHTML = hooksBadgeHTML(stack, hooks);
     return tmp.content.firstElementChild;
   }
-  // createHooksPanel builds the bound panel (variant A, accent bar) listing the
-  // configured commands, straight from the inline snapshot — no fetch.
+  // Bound panel (variant A) listing the configured commands, from the snapshot.
   function createHooksPanel(stack) {
     const hooks = hooksFor(stack) || {};
     const group = function(title, cmds) {
@@ -836,9 +832,8 @@
     row.classList.remove('hooks-open');
   }
 
-  // hookPhaseNode builds the running-hook phase sub-label (dot + "pre_deploy
-  // hook 1/2" + the console icon that opens the inline hook log). Shared by both
-  // views so the phase looks identical in Deploys and Stacks.
+  // Running-hook sub-label (dot + "pre_deploy hook 1/2" + hook-log icon), shared
+  // by both views so it looks identical in Deploys and Stacks.
   function hookPhaseNode(hr) {
     const n = hr.total > 1 ? (' ' + hr.index + '/' + hr.total) : '';
     const phase = document.createElement('span');
@@ -848,17 +843,15 @@
     return phase;
   }
 
-  // applyHookRun paints the running-hook phase + pulses the hooks badge on the
-  // stack's row in BOTH views (the newest deploy row and the roster row), so the
-  // Stacks view shows a running hook exactly like the Deploys view. Cleared when
-  // hookRunSnap has no stack.
+  // Paint the running-hook phase + pulse the badge on the stack's row in both
+  // views; clear it when hookRunSnap has no stack.
   function applyHookRun() {
     document.querySelectorAll('.hook-phase').forEach(function(n) { n.remove(); });
     document.querySelectorAll('.hooks-badge[data-hook-active]').forEach(function(b) { b.removeAttribute('data-hook-active'); });
     const hr = hookRunSnap;
     if (!hr || !hr.stack) return;
 
-    // Deploys view: the stack's newest row, while it is deploying.
+    // Deploys view: the stack's newest row while deploying.
     const drow = Array.from(tbody.querySelectorAll('.event-row[data-stack]')).find(function(r) { return r.dataset.stack === hr.stack; });
     if (drow && drow.dataset.status === 'deploying') {
       const cell = drow.querySelector('.status-cell');
@@ -867,7 +860,7 @@
       if (b) b.dataset.hookActive = '1';
     }
 
-    // Stacks view: the roster row, while it shows the live deploying state.
+    // Stacks view: the roster row while it shows the live deploying state.
     const rlist = document.getElementById('roster-list');
     if (rlist && deployingRows[hr.stack]) {
       const rrow = Array.from(rlist.querySelectorAll('.roster-row[data-stack]')).find(function(r) { return r.dataset.stack === hr.stack; });
@@ -884,8 +877,7 @@
     let panel = null, es = null, btn = null, body = null, key = null;
     let curService = '', curStack = '';
     // 'container' streams docker compose logs; 'skipper' streams /api/logs
-    // filtered to the stack — the deploy-hook output (ADR-0038), inline in the
-    // same panel component so a hook log needs no page jump.
+    // filtered to the stack — the hook output (ADR-0038), in the same panel.
     let mode = 'container';
     let follow = true, paused = false, query = '', tail = 200;
     let fsHolder = null; // marks the panel's row spot while it is fullscreen in <body>
@@ -966,8 +958,8 @@
       if (follow) toBottom();
     }
 
-    // appendSkipperLine renders one /api/logs entry (skipper mode) via the shared
-    // renderLogLine, tagged as a .clog-ln so the panel's search/wrap/scroll apply.
+    // Render one /api/logs entry (skipper mode) via the shared renderLogLine,
+    // tagged .clog-ln so the panel's search/wrap/scroll apply.
     function appendSkipperLine(entry) {
       if (paused) return;
       const ln = renderLogLine(entry);
@@ -986,8 +978,7 @@
       if (es) { es.close(); es = null; }
       setStat('live · streaming', paused ? 'paused' : '');
       if (mode === 'skipper') {
-        // The deploy-hook log: skipper's own log stream, filtered to the stack's
-        // attributed lines (hook output + this stack's deploy lifecycle).
+        // Hook log: skipper's own stream, filtered to the stack's attributed lines.
         es = new EventSource('/api/logs');
         es.addEventListener('log', function(ev) {
           if (!panel || !panel.isConnected) { close(); return; }
@@ -1115,9 +1106,8 @@
       connect();
     }
 
-    // openHookLog is the skipper-mode entry: the running-hook console icon opens
-    // this stack's deploy-hook log inline (ADR-0038), in the same panel, filtered
-    // to the stack — no page jump. Toggles closed on a second click.
+    // Open this stack's hook log inline in skipper mode (ADR-0038); toggle closed
+    // on a second click.
     function openHookLog(button, stack) {
       const newKey = `${stack}\n#hook`;
       if (key === newKey) { close(); return; }
@@ -1343,8 +1333,7 @@
         clogBtn.remove();
       }
 
-      // Hooks badge — per stack, on the newest row, when the stack declares any
-      // hook (ADR-0038). Config-driven, from the roster snapshot.
+      // Hooks badge on the newest row when the stack declares any hook (ADR-0038).
       const hooks = newest ? hooksFor(stack) : null;
       let hbadge = cell.querySelector('.hooks-badge');
       if (hooks && hookCount(hooks) > 0) {
@@ -1354,8 +1343,7 @@
         closeHooksPanel(row);
       }
     });
-    // Re-paint the running-hook phase after rows/affordances changed.
-    applyHookRun();
+    applyHookRun(); // re-paint a running hook's phase after rows/affordances changed
   }
 
   function closeHealthPanel(row) {
@@ -1995,8 +1983,7 @@
       jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
       return;
     }
-    // Running-hook log icon (ADR-0038): open the deploy-hook log inline. It is a
-    // .clog-btn, so it must be handled BEFORE the container-logs clog handler.
+    // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
     const hookLog = e.target.closest('.hook-log-btn');
     if (hookLog) { clog.openHookLog(hookLog, hookLog.dataset.hookLog); return; }
     // Container-logs button (ADR-0037) — per stack on the row, per container on a
@@ -2405,9 +2392,8 @@
     if (attrs.cmd && attrs.stream) {
       // Child process output: slate [cmd] prefix instead of a level badge.
       line.dataset.level = 'cmd';
-      // A deploy hook attributes its output to a stack (ADR-0038); show the
-      // [stack] prefix so it reads like a deploy line and the stack filter (and
-      // the running-hook log link) matches it. docker/git output has no stack.
+      // Hook output carries a stack (ADR-0038): show the [stack] prefix so it
+      // reads like a deploy line and the filter matches it. docker/git has none.
       if (attrs.stack) {
         html += `<span class="log-stack" data-testid="stack-prefix">[${escapeHtml(attrs.stack)}]</span>`;
       }
@@ -2731,15 +2717,12 @@
       jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
       return;
     }
-    // Running-hook log icon (ADR-0038): open this stack's deploy-hook log inline
-    // (skipper-mode clog panel), on the same page. It is a .clog-btn, so it must
-    // be handled BEFORE the container-logs clog handler below (which would
-    // otherwise open compose logs instead).
+    // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
     const hookLog = e.target.closest('.hook-log-btn');
     if (hookLog) { clog.openHookLog(hookLog, hookLog.dataset.hookLog); return; }
 
-    // Hooks badge (ADR-0038): toggle the configured-hooks panel. Handled before
-    // the files logic so a tap never also opens the row's diff panel.
+    // Hooks badge: toggle the panel; before the files logic so a tap never also
+    // opens the row's diff panel.
     const hbadge = e.target.closest('.hooks-badge');
     if (hbadge) {
       const hrow = hbadge.closest('.event-row');
@@ -2887,10 +2870,9 @@
     })
     .catch(function() {});
 
-  // Tap-reveal tooltips for touch: title attributes never show on touch, so a
-  // tap flashes the title in a bubble. Covers the header controls and the hooks
-  // badge (ADR-0038) — glyphs whose meaning isn't obvious on a touch device.
-  // Mouse/pen keep the native tooltip (we only handle touch), avoiding a double.
+  // Tap-reveal tooltips for touch (titles never show on touch): a tap flashes
+  // the title in a bubble. Covers the header controls and the hooks badge.
+  // Mouse/pen keep the native tooltip — we only handle touch.
   (function setupTapTips() {
     const tip = document.createElement('div');
     tip.className = 'tap-tip';

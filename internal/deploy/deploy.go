@@ -94,10 +94,8 @@ type Config struct {
 	// upfront planning pass is skipped entirely when the UI is off.
 	RunPlanSink func(RunPlan)
 
-	// HookRunSink receives the currently-executing deploy hook (ADR-0038) as
-	// each hook starts and the zero value when a phase's hooks finish, driving
-	// the UI's running-hook indicator. nil disables it, so hooks publish nothing
-	// when the UI is off.
+	// HookRunSink receives the currently-executing deploy hook (ADR-0038), and
+	// the zero value when a phase finishes. nil disables publishing (UI off).
 	HookRunSink func(HookRun)
 }
 
