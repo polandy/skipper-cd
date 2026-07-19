@@ -114,6 +114,14 @@ Next to the [health pill](#stack-health), the **newest row per stack** also carr
 - **No diffs.** Records are metadata only; the short SHA identifies the commit, and the live [diff panel](#expandable-panels) still serves diffs for events still in the ring. The history answers *when / result / how long / which commit / how many files*, not "show me the code change".
 - **One panel per row.** The history panel shares the [health panel](#stack-health)'s binding: opening it closes an open health or files/diff panel on the row (and vice versa), and it tints the row with a neutral **accent** bar (not a status colour — the panel is many statuses, not one).
 
+### Cross-view stack jump
+
+Every stack name — in a deploy row and in a [Stacks view](#stacks-view) roster row alike — carries a small compass **jump button** (`data-testid="jump-btn"`) that switches to the other view and lands on that same stack there, so the two views (event log vs. inventory) read as one connected surface instead of two disconnected tabs. It sits beside the name, a distinct affordance from the [history button](#deploy-history) (same frame, different glyph) so a tap can't be mistaken for opening a panel; it stops the click from reaching the row's own click handler (which would otherwise also open that row's diff/history panel).
+
+Landing behaviour is direction-dependent: **Deploys → Stacks** always lands on *the* roster row (the Stacks view has exactly one row per stack — inventory, not a log); **Stacks → Deploys** lands on the stack's *newest* row (first in DOM order — the deploy table is a log with one row per deploy). The landing row scrolls into view (`scrollIntoView({block:'center'})`) and flashes an accent tint + left bar for ~1.8s (`.jump-target`, `@media (prefers-reduced-motion: reduce)` skips the animation but keeps the tint) — a temporary highlight, not a persisted state like `diff-open`/`health-open`/`audit-open`. The button always renders; when the target view has no row for that stack (e.g. jumping to a stack that has never deployed), the jump degrades to a plain view switch with nothing to land on.
+
+The jump also **clears the target view's own [search filter](#deploys-filter)** before landing: a leftover query from before the jump could otherwise leave the landing row `.filtered-out` (hidden), switched to but invisible with no indication why.
+
 ### Disabled stacks
 
 In [stack-discovery mode](../../docs/configuration.md#stack-discovery) a stack can be parked with `disabled: true` — present in the repo, deliberately not deployed. Those names render as a quiet **chip line below the deploy table** (`data-testid="disabled-stacks"`): a muted `disabled` label followed by one dashed-border chip per name, with an explanatory `title` on the line. Driven by the [`stacks`](#event-lifecycle-sse) SSE snapshot; the line is hidden entirely when the set is empty (always, in legacy mode) and in the logs view. Deliberately **not** table rows: the table is an event log and a disabled stack has no events — the line is inventory, not history.
@@ -171,6 +179,7 @@ A third top-level view (`data-testid="stacks-view"`, [View toggle](#layout) `sta
 - **Expand → containers + history** — clicking a row stacks two bound panels below it as one accent card (see [design concept](../../dev-docs/ui-design-concept.md#expand--bound-panels)): the **containers** panel (`data-testid="health-panel"`, the stack's live [service health](#stack-health), shown only when health data exists) then the per-stack **deploy-history** panel (`data-testid="audit-panel"`, from `GET /api/audit`). The same two panels the deploy table opens via its health pill / history button; here they carry the neutral accent bar. One stack open at a time.
 - **Time mode** — the Stacks options popover carries the shared **Absolute time** toggle (`data-testid="roster-time-mode"`); default relative, hover reveals the absolute time (mouse).
 - **Filter** — the same behaviour as the [Deploys filter](#deploys-filter): a bar (`data-testid="roster-filter-wrap"`) hidden until type-to-search (a printable key while on the Stacks view with rows) or, on mobile, the popover's **"Search stacks"** entry (`data-testid="roster-search"`). Case-insensitive substring on the name; `shown/total` count (`data-testid="roster-filter-count"`); non-matching rows and their trailing panels hidden (`filtered-out`); an all-hidden result shows a **"No stack matches …"** note (`data-testid="roster-filter-empty"`); `Esc` clears then folds.
+- **Jump to Deploys** — every row's name carries the [cross-view jump button](#cross-view-stack-jump), landing on that stack's newest row back in the Deploys view.
 
 Driven by the [`stacks`](#event-lifecycle-sse) SSE snapshot (published on connect and after every run), which carries the `roster` alongside the existing `disabled` list.
 
@@ -350,6 +359,7 @@ assert on.
 | `health-panel` | Per-service health breakdown panel below the row | Sibling of the row, like `files-panel`; leads with a stack + status header; carries `data-health` (drives the shared left bar/tint); the open row gets `health-open` + `data-health` |
 | `health-service` | A service row inside `health-panel` | `data-health` per service |
 | `history-btn` | Deploy-history button in the stack cell | Newest row per stack only; opens `audit-panel` |
+| `jump-btn` | Cross-view jump button in the stack cell | On every row, both views; `data-jump-view`/`data-jump-stack` name the target; switches view and flashes `.jump-target` on the landing row |
 | `audit-panel` | Per-stack deploy-history panel below the row | Sibling of the row; fetched from `/api/audit`; opens exclusively with health/diff panels; the open row gets `audit-open` |
 | `audit-row` | A past-deploy row inside `audit-panel` | `data-status` = the terminal deploy status |
 | `time-cell`, `duration-cell` | Time / duration cells | Masked in snapshots (dynamic) |

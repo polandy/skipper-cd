@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske S: Container logs (ADR-0037). See dev-docs/e2e-tests.md §4.19.
+// Maske T: Container logs (ADR-0037). See dev-docs/e2e-tests.md §4.21.
 //
 // The health poller (healthPoll: 1) surfaces the per-container log icons on the
 // health panel's service lines and validates the {service} segment. The stub
@@ -12,8 +12,8 @@ import type { Page } from '@playwright/test';
 const rowLogBtn = (page: Page, stack: string) =>
   page.locator(`[data-testid="deploy-row"][data-stack="${stack}"] [data-testid="clog-btn"]`);
 
-// US1 — the row icon streams the whole stack's logs (services merged, prefixed).
-test.describe('US1: per-stack log panel', () => {
+// UT1 — the row icon streams the whole stack's logs (services merged, prefixed).
+test.describe('UT1: per-stack log panel', () => {
   test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
 
   test('opens a live panel from the row icon and streams the backlog', async ({ page, skipper }) => {
@@ -36,8 +36,8 @@ test.describe('US1: per-stack log panel', () => {
   });
 });
 
-// US2 — each health-panel service line opens that one container's logs.
-test.describe('US2: per-container log panel', () => {
+// UT2 — each health-panel service line opens that one container's logs.
+test.describe('UT2: per-container log panel', () => {
   test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
 
   test('a service line opens its single-service log', async ({ page, skipper }) => {
@@ -60,8 +60,8 @@ test.describe('US2: per-container log panel', () => {
   });
 });
 
-// US3 — only one log is open at a time; a new one replaces the old.
-test.describe('US3: single log open', () => {
+// UT3 — only one log is open at a time; a new one replaces the old.
+test.describe('UT3: single log open', () => {
   test.use({ startOptions: { stacks: ['web', 'db'], healthPoll: 1 } });
 
   test('opening a second log closes the first', async ({ page, skipper }) => {
@@ -79,9 +79,9 @@ test.describe('US3: single log open', () => {
   });
 });
 
-// US4 — typing while a log is open searches inside it (overriding the stack
+// UT4 — typing while a log is open searches inside it (overriding the stack
 // search): matching lines highlight, the rest hide, and a hit count shows.
-test.describe('US4: in-log type-to-search', () => {
+test.describe('UT4: in-log type-to-search', () => {
   test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
 
   test('typing filters the open log to matching lines', async ({ page, skipper }) => {
@@ -106,9 +106,9 @@ test.describe('US4: in-log type-to-search', () => {
   });
 });
 
-// US5 — the Logs view carries search + wrap + fullscreen in the view-options
+// UT5 — the Logs view carries search + wrap + fullscreen in the view-options
 // popover like the other views; typing reveals its filter bar.
-test.describe('US5: Logs view controls in the popover', () => {
+test.describe('UT5: Logs view controls in the popover', () => {
   test.use({ startOptions: { stacks: ['web'] } });
 
   test('type-to-search reveals the log filter; the popover carries the controls', async ({ page, skipper }) => {
@@ -125,8 +125,8 @@ test.describe('US5: Logs view controls in the popover', () => {
   });
 });
 
-// US6 — wrap and fullscreen are popover toggles that light when engaged.
-test.describe('US6: Logs view wrap + fullscreen toggles', () => {
+// UT6 — wrap and fullscreen are popover toggles that light when engaged.
+test.describe('UT6: Logs view wrap + fullscreen toggles', () => {
   test.use({ startOptions: { stacks: ['web'] } });
 
   test('wrap and fullscreen toggle their active state', async ({ page, skipper }) => {
