@@ -103,11 +103,6 @@ type Hooks struct {
 	TimeoutSeconds int `yaml:"timeout_seconds"`
 }
 
-// IsEmpty reports whether the stack defines no hooks at all.
-func (h Hooks) IsEmpty() bool {
-	return len(h.PreDeploy) == 0 && len(h.PostDeploy) == 0
-}
-
 // HealthCheck configures the optional post-deploy health gate of a stack.
 // When present, `docker compose up` runs with --wait so it fails when the
 // services' compose healthchecks do not turn healthy in time, and an optional
