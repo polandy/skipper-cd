@@ -109,6 +109,21 @@ rollback all run zero hooks.
   no other tracked change will not deploy until something else in the stack
   changes — matching how `icon`/`depends_on` edits behave.
 
+## Amendment (2026-07-19): UI surface
+
+The initial feature (above, #139) is backend-only. A follow-up increment surfaces
+hooks in the web UI, read-only, reusing existing surfaces rather than adding
+streaming machinery: (1) a **hooks badge** on the stack cell (newest deploy row +
+roster row) whose panel lists the configured commands, driven by a `hooks`
+count on the `stacks` roster snapshot + a thin `GET /api/hooks/{stack}`;
+(2) a **running-hook phase** sub-label on the deploying row, driven by a new
+lightweight `hookrun` SSE snapshot published by `runHooks` (UI-sink-gated, like
+`upcoming`); (3) **hook log** reuse — `runHooks` tags its child-process lines
+with `stack`/`hook` attrs so the existing log view attributes and filters them,
+and the running indicator links there. Full surface in `internal/ui/UI_SPEC.md`
+(§ Deploy hooks) and `dev-docs/deploy-hooks-spec.md` (§ UI surface). No change to
+the deploy semantics above.
+
 ## References
 
 - Spec: `dev-docs/deploy-hooks-spec.md`
