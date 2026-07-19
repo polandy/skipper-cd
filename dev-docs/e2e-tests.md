@@ -192,14 +192,14 @@ these, never on text/CSS. Minimum set:
 - Deploys: `deploy-row` (+ `data-stack`, `data-status`), `status-badge`,
   `files-pill`, `files-panel`, `diff-panel`, `error-panel`, `empty-state`,
   `stack-icon`, and a `time-cell`/`duration-cell` marker for snapshot masking.
-- Logs: `log-line` (+ `data-level`), `level-badge`, `stack-prefix`,
-  `cmd-prefix`, `diff-pill`.
+- Logs: `logs-panel`, `logs-live`, `logs-stat`, `log-line` (+ `data-level`),
+  `level-badge`, `stack-prefix`, `cmd-prefix`, `diff-pill`, `log-search`,
+  `log-wrap`, `follow-logs`, `log-fs`.
 - Autosync: `autosync-btn`, `pending-pill`, `autosync-drawer`, `global-switch`,
   `stack-switch` (+ `data-stack`), `queue-item` (+ `wait-cell` for masking),
   `stack-filter`.
-- Chrome: `view-toggle`, `view-options` (+ `time-mode`, `log-sort`,
-  `follow-logs`), `theme-toggle`, `conn-indicator` (+ `data-state`),
-  `deploy-indicator`.
+- Chrome: `view-toggle`, `view-options` (+ `time-mode`), `theme-toggle`,
+  `conn-indicator` (+ `data-state`), `deploy-indicator`.
 
 ## 4. Test cases (Given/When/Then)
 
@@ -299,6 +299,20 @@ UI suite reuses.
   line (the persisted old line alone would pass a mere presence check). Fails
   without the manual retry — the browser never comes back from CLOSED. The events
   twin is UD10.
+- **UB8 — Panel controls, no popover.** The view is styled as a page-sized
+  `clog-panel` (same header chrome as the Stacks/Deploys container-log popup —
+  see §4.21), so `log-search` / `log-wrap` / `log-fs` sit directly in its own
+  header and are visible without opening anything (`view-options` stays
+  hidden). Search reveals `log-filter-wrap` via type-to-search or by clicking
+  the tool; clicking the tool again closes it and clears the query (no separate
+  clear button, unlike `deploy-filter`). Wrap/fullscreen light their own `.on`
+  state on the tool itself; `Esc` exits fullscreen.
+- **UB9 — Live/pause pill.** `logs-live` freezes the pane without dropping
+  anything — unlike the container-log panel's pause, which drops lines
+  outright. Two lines are streamed in (real backend, bad-signature webhooks)
+  while paused and proven absent from the DOM (`log-line` count unchanged);
+  going live again catches both up in one render. `logs-stat` tracks
+  live/paused text in the panel footer.
 
 ### 4.4 UI — Maske C: Autosync-Drawer
 
@@ -390,12 +404,13 @@ UI suite reuses.
   tapping a row with changed files expands the panel. The 1280px control asserts
   the wordmark is visible with likewise no sideways scroll. *Snapshot: mobile
   layout.*
-- **UD8 — View-options popover.** The view-specific toggles (`time-mode` for
-  deploys; `log-sort` + `follow-logs` for logs) live in the `view-options`
-  popover opened from the *active* view button, not the header row — so
-  switching views never surfaces or hides a header control. They stay hidden
-  until the popover opens, which shows only the active view's group; the toggle
-  works from inside it, and Esc / outside-click dismiss it.
+- **UD8 — View-options popover.** The view-specific toggle (`time-mode`, shared
+  by deploys/stacks) lives in the `view-options` popover opened from the
+  *active* view button, not the header row — so switching views never surfaces
+  or hides a header control. It stays hidden until the popover opens; the
+  toggle works from inside it, and Esc / outside-click dismiss it. Logs carries
+  no group at all — its controls live inline in its own panel header instead
+  (see UB8/UB9) — so a click on the already-active logs button opens nothing.
 - **UD9 — Theme glyph.** The header `theme-toggle` is glyph-only on every
   viewport; the `.tg-moon` / `.tg-sun` glyphs reflect the mode (moon in dark →
   sun in light) and flip on toggle.
@@ -762,11 +777,9 @@ baselines the row icon already shifts).
 - **UT4 — In-log type-to-search.** With a log open, typing routes into its search
   (the `deploy-filter` is *not* revealed): the matching line highlights
   (`.clog-hit`), the rest hide, and the hit count shows.
-- **UT5 — Logs-view controls in the popover.** The Logs view carries
-  `log-search` / `log-wrap` / `log-fs` in the view-options popover; typing
-  reveals the `log-filter` bar (like the deploys/stacks views).
-- **UT6 — Logs-view wrap + fullscreen.** `log-wrap` and `log-fs` are popover
-  toggles that light (`.active`) when engaged.
+  (UT5/UT6, the Logs view's own search/wrap/fullscreen/live controls, moved to
+  §4.3 as UB8/UB9 once the view became a page-sized `clog-panel` with those
+  controls inline in its own header instead of a popover.)
 
 ### 4.22 UI — Maske U: Deploy hooks (ADR-0038)
 
@@ -875,6 +888,8 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack prefix / child `[docker]` prefix | **UB5** |
 | Diff pill on `deploy complete` line | **UB6** |
 | Log stream recovers from a fatal error | **UB7** |
+| Logs view panel controls, no popover | **UB8** |
+| Live/pause pill freezes without dropping | **UB9** |
 | Header autosync control reflects server state | **UC1** |
 | Pending count pill appears/hides | **UC2** |
 | Drawer open/close (click/Esc/outside) | **UC3** |

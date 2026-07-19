@@ -36,7 +36,7 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 **Header — right.** The controls are **icon/glyph-only** on every viewport (no text labels or switch tracks in the header row). Each glyph follows the theme via `currentColor`, is muted by default, and only takes on colour to signal a real state. Pointer users get the native `title` tooltip on hover; since touch never shows `title` tooltips, a tap on any header control flashes its label in a small **tap-reveal bubble** (the control's action still fires). In order:
 
 - **Deploy indicator** — an **anchor** glyph (muted) at rest, swapping to a **ship** (accent, pulsing) while deploying. The glyph leads; to its right comes the active stack name(s) and then a dimmed **look-ahead trail** — `→ a · b · +N` — naming the stacks that will deploy *next in the same run*, capped at three names plus a `+N` overflow. The trail's source is the [`upcoming`](#event-lifecycle-sse) SSE event (distinct from the autosync pending queue: this is the *active run's* remaining work). `idle` / `deploying <stacks> · next <stacks>` is mirrored into `title` + `aria-label`. While a run is active the indicator is a **button** (`role="button"`, `Enter`/`Space`): it toggles the [Run panel](#run-panel). Visible in all views.
-- **View toggle** — segmented control of three icons: a rows/table glyph (`deploys`), a layers glyph (`stacks`, the [Stacks view](#stacks-view)) and a terminal glyph (`logs`). Default: `deploys`. State persisted in `localStorage` key `activeView`. The **active** button carries a small `▾` and opens the [View-options popover](#view-options-popover); the other buttons switch views.
+- **View toggle** — segmented control of three icons: a rows/table glyph (`deploys`), a layers glyph (`stacks`, the [Stacks view](#stacks-view)) and a terminal glyph (`logs`, the [Log view](#log-view)). Default: `deploys`. State persisted in `localStorage` key `activeView`. On Deploys/Stacks the **active** button carries a small `▾` and opens the [View-options popover](#view-options-popover); Logs has no popover — its controls live inline in its own panel header. The other buttons switch views.
 - **Autosync control** — a single sync-arrows glyph showing global autosync state; **muted by default**, turning `--queued` (amber) when paused and `--accent` while its drawer is open. When deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in all views.
 - **Theme picker** — a palette glyph over a transparent native `<select>` of the five built-in palettes (see [Theme override](#theme-override)); clicking opens the native option list. **Opt-in**: present only when `ui_theme_switcher: true` (see [`docs/configuration.md`](../../docs/configuration.md#web-ui-theme)); off by default, so the deployed theme is fixed. Desktop only (hidden ≤ 700 px). Visible in all views.
 - **Theme toggle** — a moon (dark, default) / sun (light) glyph switching between the configured theme's dark and light variant. State persisted in `localStorage` key `colorScheme` (`dark` / `light`). Visible in all views.
@@ -44,10 +44,9 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 
 ### View-options popover
 
-The view-specific toggles live in a small popover anchored under the view toggle (styled like the [Autosync drawer](#autosync)), **not** in the header row — so switching views never makes a header control appear or disappear. It is opened by clicking the already-active view button (the `▾` hint), and dismisses on outside-click or `Esc`; it and the Autosync drawer are mutually exclusive. Inside, each option is a full row (glyph + label + switch track). Contents by active view:
+The view-specific toggles live in a small popover anchored under the view toggle (styled like the [Autosync drawer](#autosync)), **not** in the header row — so switching views never makes a header control appear or disappear. Only Deploys and Stacks carry one (Logs' controls live inline in its own panel header instead — see [Log view](#log-view)). It is opened by clicking the already-active view button (the `▾` hint), and dismisses on outside-click or `Esc`; it and the Autosync drawer are mutually exclusive. Inside, each option is a full row (glyph + label + switch track). Contents by active view:
 
 - **Deploys** → **Time mode** — switches the Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). `localStorage` key `timeMode`. On **mobile only**, the group is preceded by a **"Search stacks"** action row that reveals and focuses the [Deploys filter](#deploys-filter) (the touch entry point for type-to-search).
-- **Logs** → **Sort** — reverses log order; default inactive (newest first), active flips to oldest-first (terminal semantics). `localStorage` key `logSort` (`desc` / `asc`); flipping resets the visible window to one page. And **Auto-scroll (Follow)** — auto-scrolls the log pane to the newest line on every append; default active. `localStorage` key `followLogs`.
 - **Stacks** → **Time mode** — the same shared toggle as Deploys (one `timeMode`; flipping it re-renders both views). Plus, on **mobile only**, a **"Search stacks"** action row that reveals and focuses the [Stacks filter](#stacks-view) (the touch entry point for its type-to-search).
 
 ### Theme override
@@ -246,9 +245,9 @@ A read-only panel listing the **current deploy run** in deploy order, opened by 
 
 ## Log view
 
-Full-width monospace pane (bounded height, own scrollbar) showing all skipper-cd log output, **newest-first** (newest line at the top; there is no sort toggle — auto-scroll keeps the newest line in view). Each line: muted timestamp, level badge, optional stack prefix, message, then dim `key=value` attrs.
+Styled as one big [container-log panel](#container-logs) (`clog-panel`) — the same header/search/body/footer chrome as the `docker compose logs` popup in the Deploys/Stacks views, just page-sized — rather than a plain pane with its controls tucked behind the view buttons. Shows all skipper-cd log output, **newest-first** (newest line at the top; there is no sort toggle — auto-scroll keeps the newest line in view). Each line: muted timestamp, level badge, optional stack prefix, message, then dim `key=value` attrs.
 
-The view's controls live in the **view-options popover** behind the view buttons (like the deploys/stacks views), not in the pane: **Auto-scroll** (follow the newest line), **Search log**, **Wrap lines**, and **Fullscreen**. Search reveals the same filter bar the deploys/stacks views use (seeded by type-to-search on desktop, a `Search log` popover entry on mobile) — non-matching lines are hidden, matches highlighted, and a hit count shown. Wrap soft-wraps long lines. Fullscreen fills the viewport below the sticky header (so the popover stays reachable to toggle it back off; Esc also exits).
+The panel header (`clog-head`) carries a **live/pause** pill (`clog-live`; pause freezes the pane without dropping anything — lines keep landing in the client-side buffer below and a click on live re-renders the window to catch up in one go), then **search**, **wrap**, **auto-scroll** (`follow-logs`, on by default) and **fullscreen** tools. Unlike the container-log panel there is no backlog-size (`clog-tail`) selector — `/api/logs` always replays its own backlog, the same reason the hook-log skipper mode hides it (see [Container logs](#container-logs)). These controls are **not** in the view-options popover — the Logs view button carries no popover at all now (`view-options` has no `logs` `vo-group`), since every control already lives in the panel header. Search reveals the same filter bar the deploys/stacks views use (seeded by type-to-search on desktop) — non-matching lines are hidden, matches highlighted, and a hit count shown; clicking the search tool again closes it and clears the query. Wrap soft-wraps long lines. Fullscreen fills the viewport below the sticky header (so the header stays reachable to toggle it back off; Esc also exits).
 
 Timestamps show the time of day; lines from another day get a date prefix, and the full `toLocaleString()` timestamp is always in the tooltip.
 
@@ -367,15 +366,15 @@ assert on.
 |---|---|---|
 | `brand-name` | Header `skipper-cd` wordmark | Stacked over the version label; hidden ≤ 700 px (logo alone carries the brand) |
 | `brand-version` | Header version label | `v<semver> · <commit>` / branch; `dev` local; empty until `/api/version` resolves; full string in `title`; shown in portrait ≤ 700 px |
-| `view-toggle` | Deploys/Stacks/Logs segmented icon control | Active button (`.active`) opens the view-options popover (Stacks has none on desktop) |
+| `view-toggle` | Deploys/Stacks/Logs segmented icon control | Active button (`.active`) opens the view-options popover on Deploys/Stacks; Logs has none — its controls live in its own panel header |
 | `deploy-indicator` | Deploy indicator (anchor/ship glyph) | `idle`/`deploying <stacks> · next <stacks>` in `title` + `aria-label`; `role="button"`, opens the run panel while active |
 | `deploy-next` | Look-ahead trail beside the active stack | Empty when nothing follows; hidden ≤ 700 px |
 | `deploy-count` | Mobile `+N` count chip (upcoming) | Shown only ≤ 700 px; empty when nothing follows |
 | `run-drawer` | The run panel (this run's stacks) | `.open` when shown |
 | `autosync-btn` | Header autosync control (drawer opener) | `data-global` = `true`/`false` (global autosync state) |
 | `pending-pill` | Amber pending-count pill | Hidden at zero |
-| `view-options` | View-options popover (opened from the active view button) | `.open` when shown; holds each view's controls (`time-mode`; `follow-logs` / `log-wrap` / `log-fs`; the mobile `*-search` entries) |
-| `time-mode`, `follow-logs`, `log-wrap`, `log-fs` | View-specific toggle buttons | Inside `view-options`; hidden until the popover opens; `.active` when on |
+| `view-options` | View-options popover (opened from the active view button) | `.open` when shown; holds each view's controls (`time-mode`; the mobile `*-search` entries); no `logs` group — see [Log view](#log-view) |
+| `time-mode` | Deploys/Stacks time-mode toggle | Inside `view-options`; hidden until the popover opens; `.active` when on |
 | `theme-toggle` | Header theme (dark/light) toggle | Glyph-only; moon in dark, sun in light |
 | `theme-select` | Header theme picker (`<select>`) | Present only when `ui_theme_switcher` is enabled; transparent over a palette glyph. See [Theme override](#theme-override) |
 | `theme-notice` | Theme mismatch notice | Shown when `themeOverride` differs from `data-server-theme` |
@@ -429,9 +428,12 @@ assert on.
 | `hooks-panel` | Configured-hooks panel below the row | Bound (variant A, accent bar); commands come inline on the `stacks` snapshot (no fetch); one-panel-per-row with health/diff/audit/heal |
 | `hooks-cmd` | A configured hook command line inside `hooks-panel` | Verbatim (`$`-prefixed), rendered as literal text |
 | `hook-phase` | Phase sub-label on a `deploying` row (both views) | Present only while a hook runs (`pre_deploy hook 1/2` / `post_deploy hook`); carries a `clog-btn.hook-log-btn` console icon that opens the inline hook log (the container-logs panel in skipper mode) |
-| `log-search` | "Search log" row in the logs view-options popover | Mobile-only entry point; reveals + focuses `log-filter` |
-| `log-filter-wrap` / `log-filter` | Logs in-view search bar / input | Same reveal + type-to-search behaviour as `deploy-filter` |
-| `log-filter-count` / `log-filter-clear` | Logs search hit count / clear (`×`) button | |
+| `logs-panel` | The Log view, styled as a page-sized `clog-panel` | `#log-view`; gets `.clog-fullscreen` in fullscreen |
+| `logs-live` | Live/pause pill in the Log view's own header | `.paused` when paused; pausing freezes the pane, buffering continues |
+| `logs-stat` | Connection status text in the Log view's footer | "live · streaming" / "paused" / "reconnecting…" |
+| `log-search`, `log-wrap`, `follow-logs`, `log-fs` | Search/wrap/auto-scroll/fullscreen tools in the Log view's own header | `.clog-tool`s; `.on` when engaged; clicking `log-search` again closes it and clears the query |
+| `log-filter-wrap` / `log-filter` | Logs in-view search bar / input | Same reveal + type-to-search behaviour as `deploy-filter`; no separate clear button — closing the search tool clears it |
+| `log-filter-count` | Logs search hit count | |
 | `autosync-drawer` | The autosync drawer | |
 | `global-switch` | Global autosync switch | |
 | `stack-item` | A row in the "All stacks" list | `data-stack` |

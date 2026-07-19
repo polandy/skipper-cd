@@ -8,18 +8,13 @@ import type { Page } from '@playwright/test';
 // so it can't be mistaken for a structured/level line.
 const CHILD_LINE = 'container web-app-1 started';
 
-// The log sort/follow toggles now live in the logs view-options popover (opened
-// from the active logs view button), not the header row. This switches to the
-// logs view if needed and opens its options popover so those toggles are
-// actionable. Robust to the current view/popover state (e.g. after a reload).
-async function openLogsOptions(page: Page): Promise<void> {
+// Switches to the Logs view if it isn't already active. Its controls (follow,
+// wrap, search, fullscreen) live inline in the panel's own header (see UB8/UB9)
+// rather than behind a popover, so there is no options step to open.
+async function openLogsView(page: Page): Promise<void> {
   const logsBtn = page.locator('[data-testid="view-toggle"] button[data-view="logs"]');
-  const opts = page.locator('[data-testid="view-options"]');
   if (!(await logsBtn.evaluate((b) => b.classList.contains('active')))) {
-    await logsBtn.click(); // switch deploys → logs
-  }
-  if (!(await opts.evaluate((el) => el.classList.contains('open')))) {
-    await logsBtn.click(); // clicking the already-active button opens the popover
+    await logsBtn.click();
   }
 }
 
@@ -142,7 +137,7 @@ test.describe('UB4: follow toggle', () => {
     }
 
     await page.goto(`${skipper.baseURL}/`);
-    await openLogsOptions(page);
+    await openLogsView(page);
     await expect(logLines(page).first()).toBeVisible();
 
     // Precondition: the pane actually overflows, so scrolling is meaningful.
@@ -179,7 +174,7 @@ test.describe('UB4: follow toggle', () => {
 
     // The unfollowed choice survives a reload.
     await page.reload();
-    await openLogsOptions(page);
+    await openLogsView(page);
     expect(await followLogs(page)).toBe('false');
   });
 });
@@ -320,4 +315,117 @@ test('UB7: log stream reconnects after a fatal error and resumes live lines', as
   await expect(async () => {
     expect(await warnLines.count()).toBeGreaterThan(1);
   }).toPass({ timeout: 20000 });
+});
+
+// UB8 — Logs view panel controls. The view is styled as one big clog-panel
+// (same header chrome as the Stacks/Deploys container-log popup, just
+// page-sized — see ut-container-logs.spec.ts), so search/wrap/fullscreen live
+// inline in its own header — not behind the view-options popover, which
+// carries no `logs` group at all now (see UD8). Search reveals the same filter
+// bar via type-to-search or by clicking its tool; clicking the tool again
+// closes it and clears the query, unlike the deploys/stacks filter's own clear
+// button.
+test.describe('UB8: Logs view panel controls (no popover)', () => {
+  test.use({ startOptions: { stacks: ['web'] } });
+
+  test('search/wrap/fullscreen tools sit in the panel header and work without a popover', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await openLogsView(page);
+
+    const panel = page.locator('[data-testid="logs-panel"]');
+    const searchBtn = page.locator('[data-testid="log-search"]');
+    const wrapBtn = page.locator('[data-testid="log-wrap"]');
+    const fsBtn = page.locator('[data-testid="log-fs"]');
+    const filterWrap = page.locator('[data-testid="log-filter-wrap"]');
+    const filterInput = page.locator('[data-testid="log-filter"]');
+
+    // All three tools are visible immediately in the header — no popover to open.
+    await expect(page.locator('[data-testid="view-options"]')).toBeHidden();
+    await expect(searchBtn).toBeVisible();
+    await expect(wrapBtn).toBeVisible();
+    await expect(fsBtn).toBeVisible();
+
+    // Type-to-search reveals the filter bar, seeded with the typed text, and
+    // lights the search tool.
+    await page.keyboard.type('deploy', { delay: 25 });
+    await expect(filterWrap).toHaveClass(/revealed/);
+    await expect(filterInput).toHaveValue('deploy');
+    await expect(searchBtn).toHaveClass(/\bon\b/);
+
+    // Clicking the search tool again closes it and clears the query.
+    await searchBtn.click();
+    await expect(filterWrap).not.toHaveClass(/revealed/);
+    await expect(filterInput).toHaveValue('');
+    await expect(searchBtn).not.toHaveClass(/\bon\b/);
+
+    // Clicking it once more reopens an empty, focused filter.
+    await searchBtn.click();
+    await expect(filterWrap).toHaveClass(/revealed/);
+    await expect(filterInput).toBeFocused();
+    await page.keyboard.press('Escape'); // close it before the wrap/fullscreen checks below
+
+    // Wrap and fullscreen light their own `.on` state directly on the tool —
+    // no popover row to find them in.
+    await wrapBtn.click();
+    await expect(wrapBtn).toHaveClass(/\bon\b/);
+    await expect(page.locator('#log-pane')).toHaveClass(/wrap/);
+
+    await fsBtn.click();
+    await expect(fsBtn).toHaveClass(/\bon\b/);
+    await expect(panel).toHaveClass(/clog-fullscreen/);
+
+    // Esc exits fullscreen (the header stays reachable to toggle it back off).
+    await page.keyboard.press('Escape');
+    await expect(panel).not.toHaveClass(/clog-fullscreen/);
+    await expect(fsBtn).not.toHaveClass(/\bon\b/);
+  });
+});
+
+// UB9 — Live/pause pill. Unlike the container-log panel's pause (which simply
+// drops lines that arrive while paused), the Logs view's client-side buffer
+// keeps growing regardless — pausing only freezes what's rendered. Going live
+// again re-renders the window, so nothing seen elsewhere ever gets lost here.
+test.describe('UB9: Logs view live/pause pill', () => {
+  test.use({ startOptions: { stacks: ['web'] } });
+
+  test('pausing freezes the pane; unpausing catches up everything buffered meanwhile', async ({
+    page,
+    skipper,
+  }) => {
+    const lines = page.locator('[data-testid="log-line"]');
+    const live = page.locator('[data-testid="logs-live"]');
+    const stat = page.locator('[data-testid="logs-stat"]');
+
+    await page.goto(`${skipper.baseURL}/`);
+    await openLogsView(page);
+    await expect(lines.first()).toBeVisible();
+
+    await expect(live).not.toHaveClass(/paused/);
+    await expect(stat).toHaveText('live · streaming');
+
+    const before = await lines.count();
+
+    // Pausing flips the pill and footer immediately.
+    await live.click();
+    await expect(live).toHaveClass(/paused/);
+    await expect(live).toContainText('paused');
+    await expect(stat).toHaveText('paused');
+
+    // Two lines stream in while paused — sequential, awaited round trips, so by
+    // the time both have returned, any of the (former, buggy) immediate-render
+    // behaviour would already be visible. Neither renders while paused.
+    expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
+    expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
+    await expect(lines).toHaveCount(before);
+
+    // Going live again catches both up in one render, and the footer/pill
+    // revert.
+    await live.click();
+    await expect(live).not.toHaveClass(/paused/);
+    await expect(stat).toHaveText('live · streaming');
+    await expect(lines).toHaveCount(before + 2);
+  });
 });

@@ -106,41 +106,6 @@ test.describe('UT4: in-log type-to-search', () => {
   });
 });
 
-// UT5 — the Logs view carries search + wrap + fullscreen in the view-options
-// popover like the other views; typing reveals its filter bar.
-test.describe('UT5: Logs view controls in the popover', () => {
-  test.use({ startOptions: { stacks: ['web'] } });
-
-  test('type-to-search reveals the log filter; the popover carries the controls', async ({ page, skipper }) => {
-    await page.goto(`${skipper.baseURL}/`);
-    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
-
-    await expect(page.locator('[data-testid="log-search"]')).toHaveCount(1);
-    await expect(page.locator('[data-testid="log-wrap"]')).toHaveCount(1);
-    await expect(page.locator('[data-testid="log-fs"]')).toHaveCount(1);
-
-    await page.keyboard.type('deploy', { delay: 25 });
-    await expect(page.locator('[data-testid="log-filter-wrap"]')).toHaveClass(/revealed/);
-    await expect(page.locator('[data-testid="log-filter"]')).toHaveValue('deploy');
-  });
-});
-
-// UT6 — wrap and fullscreen are popover toggles that light when engaged.
-test.describe('UT6: Logs view wrap + fullscreen toggles', () => {
-  test.use({ startOptions: { stacks: ['web'] } });
-
-  test('wrap and fullscreen toggle their active state', async ({ page, skipper }) => {
-    await page.goto(`${skipper.baseURL}/`);
-    const logsBtn = page.locator('[data-testid="view-toggle"] button[data-view="logs"]');
-    await logsBtn.click(); // switch to the Logs view (closes the popover)
-    await logsBtn.click(); // active button reopens the options popover
-
-    const wrap = page.locator('[data-testid="log-wrap"]');
-    await wrap.click();
-    await expect(wrap).toHaveClass(/active/);
-
-    const fs = page.locator('[data-testid="log-fs"]');
-    await fs.click();
-    await expect(fs).toHaveClass(/active/);
-  });
-});
+// UT5/UT6 (the Logs view's own search/wrap/fullscreen/live controls) moved to
+// ub-logs.spec.ts as UB8/UB9 once the view became a page-sized clog-panel with
+// those controls inline in its own header instead of a popover.
