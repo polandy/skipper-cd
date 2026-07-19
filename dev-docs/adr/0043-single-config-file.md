@@ -1,6 +1,6 @@
 # ADR-0043: A single configuration file (fold per-stack overrides into the host config)
 
-Status: proposed
+Status: accepted
 Date: 2026-07-20
 
 ## Context
@@ -87,10 +87,14 @@ Concretely:
 - Delete `LoadRepoStacks`'s reading of `<stacks_base_dir>/skipper.yaml`; the
   override map comes from the already-loaded host config. Directory discovery of
   the set is unchanged.
-- Rename the default config file to `skipper.yaml`; accept `skipper.yml` as an
-  alias for one release for compatibility.
+- Rename the default config file to `skipper.yaml` (accept `skipper.yml` as an
+  alias) — **follow-up**, cosmetic and downstream-only (the NixOS module passes
+  `-config` explicitly), kept out of the mechanism change.
 - The NixOS module gains the per-stack override options under discovery (today
   they are "legacy-mode-only"); it renders them into the one config.
+- The in-repo-file error snippets (the `>`-marked excerpt ADR-0034 added) are
+  dropped: the config is host-side now, so there is no repo file to excerpt.
+  Entry-level errors still name the stack and the problem.
 - **Clean break, no deprecation fallback.** The in-repo override file is simply
   no longer read. To avoid a silent reset to defaults if the overrides are not
   moved before the upgrade, a leftover `<stacks_base_dir>/skipper.yaml` after the

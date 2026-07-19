@@ -1,6 +1,6 @@
 # ADR-0034: Stack definitions come from the deploy repo (auto-discovery + central overrides)
 
-Status: accepted
+Status: accepted (override-file mechanism partially superseded by ADR-0043)
 Date: 2026-07-18
 
 ## Context
