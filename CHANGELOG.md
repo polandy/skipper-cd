@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.18.0](https://github.com/polandy/skipper-cd/compare/v0.17.0...v0.18.0) (2026-07-19)
+
+
+### Features
+
+* **deploy:** pre-/post-deploy hooks for backup-before-update ([#139](https://github.com/polandy/skipper-cd/issues/139)) ([c3e65d7](https://github.com/polandy/skipper-cd/commit/c3e65d7f8e07ae176fd679cf30b7f4a27aa30f5b))
+* **hooks:** surface deploy hooks in the web UI ([#145](https://github.com/polandy/skipper-cd/issues/145)) ([c860ff2](https://github.com/polandy/skipper-cd/commit/c860ff28c04e0f0e204b6fd210e8336c2695755f))
+* **ui:** app-link icon for Traefik-routed stacks (ADR-0041) ([6f07c01](https://github.com/polandy/skipper-cd/commit/6f07c01060f86adf03668725641f09fe9be966cc))
+
 ## [0.17.0](https://github.com/polandy/skipper-cd/compare/v0.16.0...v0.17.0) (2026-07-19)
 
 
