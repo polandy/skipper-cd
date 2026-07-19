@@ -784,6 +784,7 @@
     let panel = null, es = null, btn = null, body = null, key = null;
     let curService = '', curStack = '';
     let follow = true, paused = false, query = '', tail = 200;
+    let fsHolder = null; // marks the panel's row spot while it is fullscreen in <body>
 
     function toBottom() { if (body) body.scrollTop = body.scrollHeight; }
     function setStat(text, cls) {
@@ -935,11 +936,32 @@
       });
     }
 
+    // The panel lives inside <main>, which has its own stacking context
+    // (z-index:1), so a high z-index alone can't lift a fullscreen overlay above
+    // the sticky header. Reparent it to <body> for the duration, leaving a
+    // comment where it belongs so exit can restore it.
     function fullscreen(on) {
-      panel.classList.toggle('clog-fullscreen', on);
       const b = panel.querySelector('.clog-tool[data-clog="fs"]');
-      if (b) b.classList.toggle('on', on);
-      if (on) toBottom();
+      if (on) {
+        if (!fsHolder) {
+          fsHolder = document.createComment('clog-fs');
+          panel.before(fsHolder);
+          document.body.appendChild(panel);
+        }
+        panel.classList.add('clog-fullscreen');
+        if (b) b.classList.add('on');
+        toBottom();
+        return;
+      }
+      panel.classList.remove('clog-fullscreen');
+      if (b) b.classList.remove('on');
+      if (fsHolder && fsHolder.parentNode) {
+        fsHolder.replaceWith(panel); // back to its row
+        fsHolder = null;
+      } else if (fsHolder) {
+        fsHolder = null;
+        close(); // the row was re-rendered away while fullscreen → tear down
+      }
     }
 
     function open(button, stack, service) {
@@ -960,6 +982,7 @@
 
     function close() {
       if (es) { es.close(); es = null; }
+      if (fsHolder) { if (fsHolder.parentNode) fsHolder.remove(); fsHolder = null; }
       if (panel) { panel.remove(); panel = null; }
       if (btn) { btn.classList.remove('on'); btn = null; }
       body = null; key = null; query = '';
@@ -2737,18 +2760,33 @@
     });
     searchInput.addEventListener('input', applyLogSearch);
     wrapBtn.addEventListener('click', function() { wrapBtn.classList.toggle('on', logPane.classList.toggle('wrap')); });
-    fsBtn.addEventListener('click', function() { fsBtn.classList.toggle('on', view.classList.toggle('clog-fullscreen')); });
+
+    // Reparent #log-view to <body> for fullscreen so it escapes <main>'s
+    // stacking context (z-index:1) and sits above the sticky header.
+    let logFsHolder = null;
+    function setLogFullscreen(on) {
+      if (on) {
+        if (!logFsHolder) {
+          logFsHolder = document.createComment('log-fs');
+          view.before(logFsHolder);
+          document.body.appendChild(view);
+        }
+        view.classList.add('clog-fullscreen');
+        fsBtn.classList.add('on');
+      } else {
+        view.classList.remove('clog-fullscreen');
+        fsBtn.classList.remove('on');
+        if (logFsHolder && logFsHolder.parentNode) { logFsHolder.replaceWith(view); logFsHolder = null; }
+      }
+    }
+    fsBtn.addEventListener('click', function() { setLogFullscreen(!view.classList.contains('clog-fullscreen')); });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && view.classList.contains('clog-fullscreen')) setLogFullscreen(false);
+    });
   })();
 
   document.addEventListener('keydown', function(e) {
-    if (e.key !== 'Escape') return;
-    const view = document.getElementById('log-view');
-    if (view && view.classList.contains('clog-fullscreen')) {
-      view.classList.remove('clog-fullscreen');
-      document.getElementById('log-fs-btn').classList.remove('on');
-      return;
-    }
-    clog.escape();
+    if (e.key === 'Escape') clog.escape();
   });
 })();
 </script>
