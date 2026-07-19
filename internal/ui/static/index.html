@@ -988,6 +988,27 @@
       body = null; key = null; query = '';
     }
 
+    // Type-to-search: while a log is open, a printable key routes into the
+    // in-log search, overriding the deploys/stacks type-to-search. Capture phase
+    // + stopImmediatePropagation so it wins over those document keydown listeners.
+    document.addEventListener('keydown', function(e) {
+      if (!panel) return;                                   // no log open → leave default search
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const input = panel.querySelector('.clog-search input');
+      if (e.target === input) return;                       // already in the log search → native typing
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+      if (e.key === 'Escape' || e.key.length !== 1 || e.key === ' ') return;
+      const box = panel.querySelector('.clog-search');
+      const searchBtn = panel.querySelector('.clog-tool[data-clog="search"]');
+      if (box.classList.contains('clog-hide')) { box.classList.remove('clog-hide'); if (searchBtn) searchBtn.classList.add('on'); }
+      input.focus();
+      input.value += e.key; // focus mid-keydown doesn't reliably route the char
+      applySearch(input.value.trim());
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+
     return {
       toggle: function(button) { open(button, button.dataset.clogStack, button.dataset.clogService || ''); },
       close: close,
