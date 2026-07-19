@@ -185,6 +185,16 @@ func TestHandler_StackDiscoveredAnchorWithoutHooksOrWatch(t *testing.T) {
 	}
 }
 
+func TestHandler_StacksDisabledAnchor(t *testing.T) {
+	var buf bytes.Buffer
+	newTestLogger(&buf, false).Info(MsgStacksDisabled, "stacks", []string{"legacy-app", "archived"})
+
+	out := buf.String()
+	if !strings.Contains(out, "▪ parked · disabled: legacy-app, archived") {
+		t.Errorf("expected the parked/disabled stack names narrated, got %q", out)
+	}
+}
+
 func TestHandler_ColorWrapsGlyphAndResets(t *testing.T) {
 	var buf bytes.Buffer
 	newTestLogger(&buf, true).Error("deploy failed", "stack", "immich", "err", "boom")

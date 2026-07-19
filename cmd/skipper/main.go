@@ -164,9 +164,11 @@ func main() {
 	// PostRunHook wiring below calls this again on every run — sync.Once makes
 	// every call after the first a no-op.
 	var rosterOnce sync.Once
-	logRosterOnce := func(stacks []config.Stack) { rosterOnce.Do(func() { logStackRoster(stacks) }) }
+	logRosterOnce := func(stacks []config.Stack, disabled []string) {
+		rosterOnce.Do(func() { logStackRoster(stacks, disabled) })
+	}
 	if !cfg.StackDiscovery {
-		logRosterOnce(cfg.Stacks)
+		logRosterOnce(cfg.Stacks, nil)
 	}
 
 	// Cancels on SIGINT/SIGTERM. The deployer abandons a pending
@@ -461,7 +463,7 @@ func main() {
 			// In stack-discovery mode the set is only known once the first run
 			// resolves it; a static host list already logged this at startup, so
 			// every call after the first is a no-op (sync.Once).
-			logRosterOnce(stacksNow())
+			logRosterOnce(stacksNow(), deployer.CurrentDisabledStacks())
 			publishAutosync()
 			if healthPoller != nil {
 				healthPoller.Poll() // refresh health right after a deploy run

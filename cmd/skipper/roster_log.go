@@ -13,7 +13,12 @@ import (
 // host `stacks:` list is known immediately at startup, but in stack-discovery
 // mode (ADR-0034, Invariant 8) the set isn't known until the first sync
 // resolves it, so it is logged from the first PostRunHook instead.
-func logStackRoster(stacks []config.Stack) {
+//
+// disabled carries the names parked via `disabled: true` (stack-discovery
+// mode only — a static host `stacks:` list has no such concept, so callers
+// pass nil there): still discovered in the repo, but deliberately excluded
+// from stacks, matching the Stacks view's roster (dev-docs/stack-roster-spec.md).
+func logStackRoster(stacks []config.Stack, disabled []string) {
 	slog.Info(prettylog.MsgStacksResolved, "stacks", len(stacks))
 	for _, s := range stacks {
 		slog.Info(prettylog.MsgStackDiscovered,
@@ -22,5 +27,8 @@ func logStackRoster(stacks []config.Stack) {
 			"post_deploy_hooks", len(s.Hooks.PostDeploy),
 			"watch_dirs", s.WatchDirs,
 		)
+	}
+	if len(disabled) > 0 {
+		slog.Info(prettylog.MsgStacksDisabled, "stacks", disabled)
 	}
 }

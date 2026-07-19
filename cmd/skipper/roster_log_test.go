@@ -28,7 +28,7 @@ func TestLogStackRoster_LogsHeaderAndPerStackDetail(t *testing.T) {
 			Hooks:     config.Hooks{PreDeploy: []string{"echo hi"}, PostDeploy: []string{"echo bye"}},
 		},
 		{Name: "arr-stack"},
-	})
+	}, nil)
 
 	out := buf.String()
 	if !strings.Contains(out, `msg="stacks resolved" stacks=2`) {
@@ -45,9 +45,30 @@ func TestLogStackRoster_LogsHeaderAndPerStackDetail(t *testing.T) {
 func TestLogStackRoster_EmptySetStillLogsHeader(t *testing.T) {
 	buf := withCapturedSlog(t)
 
-	logStackRoster(nil)
+	logStackRoster(nil, nil)
 
 	if !strings.Contains(buf.String(), `msg="stacks resolved" stacks=0`) {
 		t.Errorf("expected a header line even for an empty stack set, got %q", buf.String())
+	}
+}
+
+func TestLogStackRoster_LogsDisabledStacksWhenPresent(t *testing.T) {
+	buf := withCapturedSlog(t)
+
+	logStackRoster([]config.Stack{{Name: "nextcloud"}}, []string{"legacy-app", "archived"})
+
+	out := buf.String()
+	if !strings.Contains(out, `msg="stacks disabled" stacks="[legacy-app archived]"`) {
+		t.Errorf("expected the disabled stack names logged, got %q", out)
+	}
+}
+
+func TestLogStackRoster_NoDisabledLineWhenNoneParked(t *testing.T) {
+	buf := withCapturedSlog(t)
+
+	logStackRoster([]config.Stack{{Name: "nextcloud"}}, nil)
+
+	if strings.Contains(buf.String(), "stacks disabled") {
+		t.Errorf("expected no disabled-stacks line when none are parked, got %q", buf.String())
 	}
 }

@@ -8,6 +8,9 @@ const (
 	MsgStacksResolved = "stacks resolved"
 	// MsgStackDiscovered is logged once per stack in the roster.
 	MsgStackDiscovered = "stack discovered"
+	// MsgStacksDisabled lists stacks discovered but parked (disabled: true),
+	// logged once as part of the roster when any exist.
+	MsgStacksDisabled = "stacks disabled"
 	// MsgRunComplete summarizes one sync-and-deploy run's outcome counts.
 	MsgRunComplete = "run complete"
 )

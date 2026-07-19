@@ -64,16 +64,19 @@ redirect or `journalctl > file` never gets raw escape codes.
 
 1. **Stack roster.** `logStackRoster` (`cmd/skipper/roster_log.go`) logs one
    `"stacks resolved"` header plus one `"stack discovered"` line per stack
-   (hook counts, watch dirs) — new `prettylog.MsgStacksResolved`/
-   `MsgStackDiscovered` messages, exported as constants so the emitter
-   (`main.go`) and the matcher (`prettylog/render.go`) can't drift apart
-   (unlike the core-package anchors above, this vocabulary is owned by the
-   pretty feature itself, so sharing it costs nothing). Fired once: a static
-   host `stacks:` list is known at process start, so `main` calls it
-   immediately; in stack-discovery mode (ADR-0034, Invariant 8) the set isn't
-   known until the first sync resolves it, so a `sync.Once`-guarded call sits
-   in `PostRunHook` instead, making every call after the first a no-op in
-   both modes.
+   (hook counts, watch dirs), plus — when any exist — one `"stacks disabled"`
+   line naming the stacks parked via `disabled: true` (stack-discovery mode
+   only; a static host `stacks:` list has no such concept). These are new
+   `prettylog.Msg*` messages, exported as constants so the emitter (`main.go`)
+   and the matcher (`prettylog/render.go`) can't drift apart (unlike the
+   core-package anchors above, this vocabulary is owned by the pretty feature
+   itself, so sharing it costs nothing). Fired once: a static host `stacks:`
+   list is known at process start, so `main` calls it immediately; in
+   stack-discovery mode (ADR-0034, Invariant 8) neither the stack set nor the
+   disabled names are known until the first sync resolves them, so a
+   `sync.Once`-guarded call (fed by `deployer.CurrentStacks()` and
+   `CurrentDisabledStacks()`) sits in `PostRunHook` instead, making every call
+   after the first a no-op in both modes.
 2. **Run summary.** A new `runTally` (`cmd/skipper/runtally.go`) is wired as
    an unconditional `eventSinks` consumer (independent of `UIEnabled`, same
    reasoning as notifications/audit — ADR-0020) and counts each run's

@@ -78,6 +78,8 @@ func render(r slog.Record, attrs []attr, color bool) string {
 		return renderLine(r.Time, "▣", ansiBold, false, true, bodyStacksResolved(attrs, color), color)
 	case MsgStackDiscovered:
 		return renderLine(r.Time, "◆", ansiAccent, false, false, bodyStackDiscovered(attrs, color), color)
+	case MsgStacksDisabled:
+		return renderLine(r.Time, "▪", ansiDim, false, false, bodyStacksDisabled(attrs, color), color)
 	}
 	if st, ok := anchors[r.Message]; ok {
 		return renderLine(r.Time, st.glyph, st.color, st.indent, st.gap, st.body(attrs, color), color)
@@ -247,6 +249,11 @@ func bodyRunComplete(attrs []attr, color bool) string {
 
 func bodyStacksResolved(attrs []attr, color bool) string {
 	return colorize(color, ansiBold, "stacks") + colorize(color, ansiDim, "  · "+str(attrs, "stacks")+" discovered")
+}
+
+func bodyStacksDisabled(attrs []attr, color bool) string {
+	names := strSlice(attrs, "stacks")
+	return colorize(color, ansiDim, fmt.Sprintf("parked · disabled: %s", strings.Join(names, ", ")))
 }
 
 func bodyStackDiscovered(attrs []attr, color bool) string {
