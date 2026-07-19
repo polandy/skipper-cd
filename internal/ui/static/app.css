@@ -2126,13 +2126,17 @@
   /* #log-pane is the panel's .clog-body (chrome comes from the .clog-panel
      wrapper); override the small popup panel's capped height so it fills the
      page, and its preformatted whitespace — .log-line lays each entry out as
-     a flex row of its own spans, unlike the raw preformatted .clog-ln text. */
+     a flex row of its own spans, unlike the raw preformatted .clog-ln text.
+     Also drop .clog-body's smooth scroll-behavior: with lines streaming in
+     continuously while following, an instant jump (its pre-existing behaviour)
+     reads better here than a per-line animation. */
   #log-pane.clog-body {
     flex: 1;
     min-height: 0;
     max-height: none;
     padding: 10px 0;
     white-space: normal;
+    scroll-behavior: auto;
   }
 
   .log-empty {
