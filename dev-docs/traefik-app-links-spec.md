@@ -15,7 +15,11 @@ Non-goals: reverse-proxy configuration or editing, any proxy other than
 Traefik (nginx/Caddy labels are a different shape entirely — homelab-scoped
 like the rest of skipper), per-service icons (stack-level only, one icon per
 row), URL health-checking (a link that 404s is still shown — this is
-navigation, not a probe).
+navigation, not a probe), any Traefik provider other than Docker labels —
+routing declared via the file/dynamic provider, a Kubernetes Ingress, or any
+other non-Docker provider carries no container labels, so it is invisible to
+this detection and simply yields no icon, even though Traefik is genuinely
+routing to it.
 
 ## Detection
 
@@ -101,6 +105,46 @@ other automatic, harmless-when-absent features (icons, health pill).
   host with many stacks — currently assumed negligible, same order of
   magnitude as the existing health/orphans polling; not yet measured on a
   large host.
+
+## Future extension: Traefik file-provider support (not implemented)
+
+v1 only detects routes declared via Traefik's **Docker provider** (container
+labels) — see the non-goal above. Andy uses the file provider for a few
+services (dynamic config files under `/etc/traefik/dynamic` *inside* the
+Traefik container, no host bind-mount), which this release does not cover;
+discussed 2026-07-19 and deliberately deferred rather than built, given the
+jump in complexity below. Kept here so the design isn't re-derived from
+scratch if it's picked up later.
+
+The hard problem isn't reading the files — it's **attribution**: a
+docker-label router lives on the very container it routes to, so the stack is
+free (via `working_dir`). A file-provider router has no such anchor; a naming
+convention (router name, or file name, == stack name) is fragile and was
+explicitly rejected — "die Lösung soll generisch sein". The one piece of
+information that's *actually* required to be correct (or Traefik itself
+couldn't route) is the router's backing **service address**
+(`http.services.<name>.loadBalancer.servers[].url`) — so a generic solution
+means resolving *that* back to a container, not trusting any name:
+
+1. Locate the Traefik container (e.g. by its own `traefik.enable` label or a
+   configured container name — itself an open question).
+2. `docker exec` into it to read `/etc/traefik/dynamic/*.yml` (YAML only, per
+   Andy's setup — Traefik also accepts TOML, out of scope).
+3. Parse every `http.routers.*.rule` (reuse `extractHosts`) and resolve its
+   `service` to that service's backend server URL(s).
+4. Match the backend URL's host component against known container
+   names/compose-service names (from the existing `docker ps` listing) to
+   find the owning stack — generic, no naming convention, but only works when
+   the backend address is docker-network-resolvable (a container/service
+   name). An IP-literal or external-DNS backend simply won't match — no
+   error, just no icon, same graceful degradation as today.
+
+Scope this adds beyond the shipped v1: a new `docker exec`-based access path
+(vs. today's `ps`/`inspect` only), a Traefik dynamic-config YAML parser,
+backend-URL-to-container matching (with real edge cases: multiple servers
+per service, load-balancer weights, TCP/UDP routers to ignore), and finding
+"the Traefik container" reliably. Roughly a multiple of the v1 implementation
+size — likely its own ADR amendment and spec pass, not a quick follow-up.
 
 See [ADR-0041](adr/0041-traefik-app-link-detection.md) for the implementation
 decisions.
