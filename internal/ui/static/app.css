@@ -1521,6 +1521,7 @@
     font-weight: 500;
     line-height: 1.35;
     text-align: center;
+    white-space: pre-line; /* honour \n in the title so multi-line tips wrap */
     color: var(--text-primary);
     background: color-mix(in srgb, var(--bg-base) 96%, transparent);
     backdrop-filter: blur(12px) saturate(1.2);
@@ -2283,6 +2284,72 @@
   .clog-btn.on { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
   .clog-btn svg { width: 12px; height: 12px; }
   .roster-stack .clog-btn { margin-left: 7px; vertical-align: middle; }
+
+  /* ── Deploy hooks (ADR-0038) ── */
+  /* Hooks badge: a small accent chip in the stack cell for a stack with hooks. */
+  .hooks-badge {
+    appearance: none; display: inline-flex; align-items: center; gap: 3px;
+    margin-left: 2px; padding: 1px 6px 1px 4px; flex: none; cursor: pointer;
+    border-radius: 999px; font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    line-height: 1.4; color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 11%, transparent);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .hooks-badge:hover { background: color-mix(in srgb, var(--accent) 20%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+  .hooks-badge svg { width: 11px; height: 11px; }
+  .hooks-badge .hk-count { font-variant-numeric: tabular-nums; }
+  .roster-stack .hooks-badge { margin-left: 7px; vertical-align: middle; }
+  .event-row.hooks-open .hooks-badge,
+  .hooks-badge[data-hook-active] { background: color-mix(in srgb, var(--accent) 22%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+  .hooks-badge[data-hook-active] { animation: hookpulse 1.4s ease-in-out infinite; }
+  @keyframes hookpulse {
+    0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); }
+  }
+  @media (prefers-reduced-motion: reduce) { .hooks-badge[data-hook-active] { animation: none; } }
+
+  /* Running-hook phase sub-label. :has() stacks the cell only when a phase is
+     present, so idle rows (the snapshot baselines) keep their layout; both
+     views stack the same, so a running hook looks identical. */
+  .status-cell:has(.hook-phase),
+  .roster-status:has(.hook-phase) { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+  .hook-phase {
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
+    color: var(--accent);
+  }
+  .hook-phase .hk-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent);
+    animation: breathe 1.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .hook-phase .hk-dot { animation: none; } }
+  .hook-phase .clog-btn { width: 17px; height: 15px; }
+  .hook-phase .clog-btn svg { width: 10px; height: 10px; }
+
+  /* Bound hooks panel (variant A, accent bar) listing the configured commands. */
+  .hooks-panel {
+    margin: -2px 4px 8px; background: var(--bg-sunken);
+    border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius);
+    box-shadow: inset 3px 0 0 var(--accent); overflow: hidden;
+  }
+  .event-row.hooks-open { box-shadow: inset 3px 0 0 var(--accent); }
+  .hooks-panel .hooks-head { display: flex; align-items: center; gap: 9px; padding: 9px 16px;
+    border-bottom: 1px solid var(--border); }
+  .hooks-panel .hk-stack { font-weight: 600; font-size: 12px; }
+  .hooks-panel .hk-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 1px; }
+  .hooks-group { padding: 10px 16px; }
+  .hooks-group + .hooks-group { border-top: 1px solid var(--border); }
+  .hooks-group .hk-title { display: flex; align-items: center; gap: 8px; margin: 0 0 7px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--accent); }
+  .hooks-group .hk-num { color: var(--text-muted); font-weight: 500; }
+  .hooks-cmd { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary);
+    background: color-mix(in srgb, var(--overlay2) 7%, transparent); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; overflow-x: auto; white-space: pre; }
+  .hooks-cmd + .hooks-cmd { margin-top: 6px; }
+  .hooks-cmd .hk-prompt { color: var(--accent); user-select: none; }
 
   .clog-panel {
     background: var(--crust); border: 1px solid var(--border-lit); border-radius: 10px;

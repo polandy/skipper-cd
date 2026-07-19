@@ -207,6 +207,7 @@ func main() {
 		orphanDetector *orphans.Detector
 		startEventID   int64
 		runPlanSink    func(deploy.RunPlan)
+		hookRunSink    func(deploy.HookRun)
 	)
 	// The deploy event sink is composed from whatever consumers are configured;
 	// each is independent, so notifications work with the UI off (ADR-0020).
@@ -226,6 +227,9 @@ func main() {
 		// stream. Installing the sink is what enables the upfront planning pass.
 		runPlanSink = func(p deploy.RunPlan) {
 			stateB.Publish(events.StateEvent{Name: events.StateUpcoming, Data: p})
+		}
+		hookRunSink = func(h deploy.HookRun) {
+			stateB.Publish(events.StateEvent{Name: events.StateHookRun, Data: h})
 		}
 		slog.Info("web UI enabled")
 	}
@@ -411,6 +415,7 @@ func main() {
 			}
 		},
 		RunPlanSink: runPlanSink,
+		HookRunSink: hookRunSink,
 	})
 
 	// Start the health poller only now that the deployer exists: its snapshot
@@ -766,6 +771,7 @@ func (s stateSnapshot) collect() []events.StateEvent {
 		{Name: events.StateAutosync, Data: as.ctrl.Snapshot(as.order())},
 		{Name: events.StateQueue, Data: as.queue.View(as.order())},
 		{Name: events.StateUpcoming, Data: s.deployer.CurrentRunPlan()},
+		{Name: events.StateHookRun, Data: s.deployer.CurrentHookRun()},
 		{Name: events.StateStacks, Data: buildStacksState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog)},
 	}
 	if s.healthPoller != nil {

@@ -383,7 +383,7 @@
       row.dataset.testid = 'roster-row';
       row.dataset.stack = entry.name;
       row.innerHTML =
-        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}</span>` +
+        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}${(!entry.disabled && entry.hooks && hookCount(entry.hooks) > 0) ? hooksBadgeHTML(entry.name, entry.hooks) : ''}</span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
@@ -391,6 +391,7 @@
       list.appendChild(row);
     });
     refilterRoster(); // a re-render drops open panels and rows; re-apply any active filter
+    applyHookRun(); // re-paint a running hook's phase on the rebuilt roster rows
   }
 
   // Orphans (ADR-0036): compose projects the discovered stack set no longer
@@ -783,9 +784,101 @@
     return tmp.content.firstElementChild;
   }
 
+  // ─── Deploy hooks (ADR-0038) ───
+  // Hook commands ride inline on the stacks snapshot (no fetch); hookRunSnap is
+  // the currently-executing hook ({} when none) from the hookrun SSE snapshot.
+  let hookRunSnap = {};
+  // Fishing hook — distinct from the container-logs console icon it sits beside.
+  const HOOK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5v7a4 4 0 0 1-8 0"/><path d="M4.5 10.5 7 13l2.5-2.5"/></svg>';
+
+  function hooksFor(stack) {
+    const e = rosterSnap.find(function(r) { return r.name === stack; });
+    return (e && e.hooks) ? e.hooks : null;
+  }
+  function hookCount(hooks) {
+    return (hooks.pre_deploy || []).length + (hooks.post_deploy || []).length;
+  }
+  function hooksBadgeHTML(stack, hooks) {
+    const pre = (hooks.pre_deploy || []).length, post = (hooks.post_deploy || []).length;
+    const label = `pre-deploy hook: ${pre}\npost-deploy hook: ${post}`;
+    // "2+1" rather than the sum, so the split is visible.
+    return `<button class="hooks-badge" type="button" data-testid="hooks-badge" data-hooks-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${HOOK_ICON}<span class="hk-count">${pre}+${post}</span></button>`;
+  }
+  function hooksBadgeButton(stack, hooks) {
+    const tmp = document.createElement('template');
+    tmp.innerHTML = hooksBadgeHTML(stack, hooks);
+    return tmp.content.firstElementChild;
+  }
+  // Bound panel (variant A) listing the configured commands, from the snapshot.
+  function createHooksPanel(stack) {
+    const hooks = hooksFor(stack) || {};
+    const group = function(title, cmds) {
+      if (!cmds || !cmds.length) return '';
+      const lines = cmds.map(function(c) {
+        return `<div class="hooks-cmd" data-testid="hooks-cmd"><span class="hk-prompt">$</span> ${escapeHtml(c)}</div>`;
+      }).join('');
+      return `<div class="hooks-group"><div class="hk-title">${title}<span class="hk-num">${cmds.length}</span></div>${lines}</div>`;
+    };
+    const panel = document.createElement('div');
+    panel.className = 'hooks-panel bound';
+    panel.dataset.testid = 'hooks-panel';
+    panel.innerHTML = `<div class="hooks-head"><span class="hk-stack">${escapeHtml(stack)}</span><span class="hk-label">deploy hooks</span></div>` +
+      group('pre_deploy', hooks.pre_deploy) + group('post_deploy', hooks.post_deploy);
+    return panel;
+  }
+  function closeHooksPanel(row) {
+    const next = row.nextElementSibling;
+    if (next && next.classList.contains('hooks-panel')) next.remove();
+    row.classList.remove('hooks-open');
+  }
+
+  // Running-hook sub-label (dot + "pre_deploy hook 1/2" + hook-log icon), shared
+  // by both views so it looks identical in Deploys and Stacks.
+  function hookPhaseNode(hr) {
+    const n = hr.total > 1 ? (' ' + hr.index + '/' + hr.total) : '';
+    const phase = document.createElement('span');
+    phase.className = 'hook-phase';
+    phase.dataset.testid = 'hook-phase';
+    phase.innerHTML = `<span class="hk-dot"></span>${escapeHtml(hr.phase)} hook${n}<button class="clog-btn hook-log-btn" type="button" data-testid="clog-btn" data-hook-log="${escapeAttr(hr.stack)}" title="View this hook's output in the log" aria-label="View hook log">${CLOG_ICON}</button>`;
+    return phase;
+  }
+
+  // Paint the running-hook phase + pulse the badge on the stack's row in both
+  // views; clear it when hookRunSnap has no stack.
+  function applyHookRun() {
+    document.querySelectorAll('.hook-phase').forEach(function(n) { n.remove(); });
+    document.querySelectorAll('.hooks-badge[data-hook-active]').forEach(function(b) { b.removeAttribute('data-hook-active'); });
+    const hr = hookRunSnap;
+    if (!hr || !hr.stack) return;
+
+    // Deploys view: the stack's newest row while deploying.
+    const drow = Array.from(tbody.querySelectorAll('.event-row[data-stack]')).find(function(r) { return r.dataset.stack === hr.stack; });
+    if (drow && drow.dataset.status === 'deploying') {
+      const cell = drow.querySelector('.status-cell');
+      if (cell) cell.appendChild(hookPhaseNode(hr));
+      const b = drow.querySelector('.hooks-badge');
+      if (b) b.dataset.hookActive = '1';
+    }
+
+    // Stacks view: the roster row while it shows the live deploying state.
+    const rlist = document.getElementById('roster-list');
+    if (rlist && deployingRows[hr.stack]) {
+      const rrow = Array.from(rlist.querySelectorAll('.roster-row[data-stack]')).find(function(r) { return r.dataset.stack === hr.stack; });
+      if (rrow) {
+        const rcell = rrow.querySelector('.roster-status');
+        if (rcell) rcell.appendChild(hookPhaseNode(hr));
+        const rb = rrow.querySelector('.hooks-badge');
+        if (rb) rb.dataset.hookActive = '1';
+      }
+    }
+  }
+
   const clog = (function() {
     let panel = null, es = null, btn = null, body = null, key = null;
     let curService = '', curStack = '';
+    // 'container' streams docker compose logs; 'skipper' streams /api/logs
+    // filtered to the stack — the hook output (ADR-0038), in the same panel.
+    let mode = 'container';
     let follow = true, paused = false, query = '', tail = 200;
     let fsHolder = null; // marks the panel's row spot while it is fullscreen in <body>
 
@@ -865,13 +958,43 @@
       if (follow) toBottom();
     }
 
+    // Render one /api/logs entry (skipper mode) via the shared renderLogLine,
+    // tagged .clog-ln so the panel's search/wrap/scroll apply.
+    function appendSkipperLine(entry) {
+      if (paused) return;
+      const ln = renderLogLine(entry);
+      ln.classList.add('clog-ln');
+      if (query) filterLine(ln);
+      body.appendChild(ln);
+      while (body.children.length > 3000) body.removeChild(body.firstChild);
+      if (query) {
+        const hits = panel.querySelector('.clog-hits');
+        if (hits) hits.textContent = body.querySelectorAll('.clog-ln.clog-hit').length + ' hits';
+      }
+      if (follow) toBottom();
+    }
+
     function connect() {
       if (es) { es.close(); es = null; }
+      setStat('live · streaming', paused ? 'paused' : '');
+      if (mode === 'skipper') {
+        // Hook log: skipper's own stream, filtered to the stack's attributed lines.
+        es = new EventSource('/api/logs');
+        es.addEventListener('log', function(ev) {
+          if (!panel || !panel.isConnected) { close(); return; }
+          let entry;
+          try { entry = JSON.parse(ev.data); } catch (_) { return; }
+          if (((entry.attrs && entry.attrs.stack) || '') !== curStack) return;
+          appendSkipperLine(entry);
+        });
+        es.onerror = function() { if (panel) setStat('reconnecting…', 'err'); };
+        es.onopen = function() { if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : ''); };
+        return;
+      }
       let url = '/api/container-logs/' + encodeURIComponent(curStack);
       if (curService) url += '/' + encodeURIComponent(curService);
       url += '?tail=' + tail;
       es = new EventSource(url);
-      setStat('live · streaming', paused ? 'paused' : '');
       es.onmessage = function(ev) {
         if (!panel || !panel.isConnected) { close(); return; } // dropped by a re-render
         appendLine(ev.data);
@@ -972,7 +1095,7 @@
       if (key === newKey) { close(); return; } // same icon → toggle closed
       close();
       btn = button; key = newKey; curStack = stack; curService = service || '';
-      follow = true; paused = false; query = '';
+      mode = 'container'; follow = true; paused = false; query = '';
       btn.classList.add('on');
       const scope = service ? (stack + ' / ' + service) : (stack + ' · all services');
       panel = buildPanel(scope);
@@ -983,12 +1106,32 @@
       connect();
     }
 
+    // Open this stack's hook log inline in skipper mode (ADR-0038); toggle closed
+    // on a second click.
+    function openHookLog(button, stack) {
+      const newKey = `${stack}\n#hook`;
+      if (key === newKey) { close(); return; }
+      close();
+      btn = button; key = newKey; curStack = stack; curService = '';
+      mode = 'skipper'; follow = true; paused = false; query = '';
+      if (btn) btn.classList.add('on');
+      panel = buildPanel(`${stack} · deploy hook`);
+      const anchor = button.closest('.event-row') || button.closest('.roster-row') || button;
+      anchor.after(panel);
+      body = panel.querySelector('.clog-body');
+      wire();
+      // /api/logs replays its own backlog and has no tail param — hide the selector.
+      const tailSel = panel.querySelector('.clog-tail');
+      if (tailSel) tailSel.style.display = 'none';
+      connect();
+    }
+
     function close() {
       if (es) { es.close(); es = null; }
       if (fsHolder) { if (fsHolder.parentNode) fsHolder.remove(); fsHolder = null; }
       if (panel) { panel.remove(); panel = null; }
       if (btn) { btn.classList.remove('on'); btn = null; }
-      body = null; key = null; query = '';
+      body = null; key = null; query = ''; mode = 'container';
     }
 
     // Type-to-search: while a log is open, a printable key routes into the
@@ -1014,6 +1157,7 @@
 
     return {
       toggle: function(button) { open(button, button.dataset.clogStack, button.dataset.clogService || ''); },
+      openHookLog: function(button, stack) { openHookLog(button, stack); },
       close: close,
       escape: function() {
         if (panel && panel.classList.contains('clog-fullscreen')) { fullscreen(false); return true; }
@@ -1182,13 +1326,24 @@
       }
 
       // Container-logs button — per stack, on the newest row (ADR-0037).
-      let clogBtn = cell.querySelector('.clog-btn');
+      let clogBtn = cell.querySelector('.clog-btn:not(.hook-log-btn)');
       if (newest && !clogBtn) {
         cell.appendChild(clogButton(stack, ''));
       } else if (!newest && clogBtn) {
         clogBtn.remove();
       }
+
+      // Hooks badge on the newest row when the stack declares any hook (ADR-0038).
+      const hooks = newest ? hooksFor(stack) : null;
+      let hbadge = cell.querySelector('.hooks-badge');
+      if (hooks && hookCount(hooks) > 0) {
+        if (!hbadge) cell.appendChild(hooksBadgeButton(stack, hooks));
+      } else if (hbadge) {
+        hbadge.remove();
+        closeHooksPanel(row);
+      }
     });
+    applyHookRun(); // re-paint a running hook's phase after rows/affordances changed
   }
 
   function closeHealthPanel(row) {
@@ -1624,6 +1779,12 @@
       updateDeployingIndicator();
     });
 
+    es.addEventListener('hookrun', function(e) {
+      // The hook a deploy is currently executing (ADR-0038); {} clears it.
+      hookRunSnap = JSON.parse(e.data) || {};
+      applyHookRun();
+    });
+
     es.addEventListener('health', function(e) {
       const d = JSON.parse(e.data);
       healthSnap = (d && d.stacks) || {};
@@ -1641,7 +1802,9 @@
       rosterSnap = (d && d.roster) || [];
       renderDisabledStacks();
       renderRoster();
+      updateStackAffordances(); // roster carries the hooks — (de)show the badge
     });
+
 
     es.addEventListener('orphans', function(e) {
       const d = JSON.parse(e.data);
@@ -1810,6 +1973,8 @@
     rosterList.querySelectorAll('.audit-panel, .health-panel').forEach(function(p) { p.remove(); });
     rosterList.querySelectorAll('.roster-row.audit-open').forEach(function(r) { r.classList.remove('audit-open'); });
   }
+
+
   rosterList.addEventListener('click', function(e) {
     // Cross-view jump button: hand off to Deploys. Handled before the row's
     // own click (which opens its history panel) so a tap never opens both.
@@ -1818,6 +1983,9 @@
       jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
       return;
     }
+    // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
+    const hookLog = e.target.closest('.hook-log-btn');
+    if (hookLog) { clog.openHookLog(hookLog, hookLog.dataset.hookLog); return; }
     // Container-logs button (ADR-0037) — per stack on the row, per container on a
     // health-panel service line. Handled first so it never toggles the history panel.
     const clogB = e.target.closest('.clog-btn');
@@ -1919,6 +2087,7 @@
     const entry = rosterSnap.find(function(x) { return x.name === name; });
     const cell = row.querySelector('.roster-status');
     if (entry && cell) cell.innerHTML = rosterStatusHTML(entry);
+    applyHookRun(); // rosterStatusHTML replaces the cell — re-paint a running hook's phase
   }
 
   // Colour-scheme toggle (dark is the default; light is opt-in per browser).
@@ -2223,6 +2392,11 @@
     if (attrs.cmd && attrs.stream) {
       // Child process output: slate [cmd] prefix instead of a level badge.
       line.dataset.level = 'cmd';
+      // Hook output carries a stack (ADR-0038): show the [stack] prefix so it
+      // reads like a deploy line and the filter matches it. docker/git has none.
+      if (attrs.stack) {
+        html += `<span class="log-stack" data-testid="stack-prefix">[${escapeHtml(attrs.stack)}]</span>`;
+      }
       html += `<span class="log-cmd" data-testid="cmd-prefix">[${escapeHtml(attrs.cmd)}]</span>`;
       html += `<span class="log-msg">${escapeHtml(entry.msg)}</span>`;
     } else {
@@ -2543,6 +2717,28 @@
       jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
       return;
     }
+    // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
+    const hookLog = e.target.closest('.hook-log-btn');
+    if (hookLog) { clog.openHookLog(hookLog, hookLog.dataset.hookLog); return; }
+
+    // Hooks badge: toggle the panel; before the files logic so a tap never also
+    // opens the row's diff panel.
+    const hbadge = e.target.closest('.hooks-badge');
+    if (hbadge) {
+      const hrow = hbadge.closest('.event-row');
+      if (hrow) {
+        const hnext = hrow.nextElementSibling;
+        if (hnext && hnext.classList.contains('hooks-panel')) {
+          closeHooksPanel(hrow);
+        } else {
+          closeHealthPanel(hrow); closeDiffPanel(hrow); closeAuditPanel(hrow); // one panel per row
+          hrow.classList.add('hooks-open');
+          hrow.after(createHooksPanel(hrow.dataset.stack));
+        }
+      }
+      return;
+    }
+
     // Container-logs button (ADR-0037): toggle the live log panel. Handled first
     // so a tap never also opens the row's diff/health/audit panel.
     const clogB = e.target.closest('.clog-btn');
@@ -2558,7 +2754,7 @@
         if (anext && anext.classList.contains('audit-panel')) {
           closeAuditPanel(arow);
         } else {
-          closeHealthPanel(arow); // one panel per row
+          closeHealthPanel(arow); closeHooksPanel(arow); // one panel per row
           closeDiffPanel(arow);
           arow.classList.add('audit-open');
           arow.after(createAuditPanel(arow.dataset.stack));
@@ -2577,7 +2773,7 @@
         if (hnext && hnext.classList.contains('health-panel')) {
           closeHealthPanel(hrow);
         } else {
-          closeDiffPanel(hrow); // one panel per row: replace an open files/diff panel
+          closeDiffPanel(hrow); closeHooksPanel(hrow); // one panel per row
           closeAuditPanel(hrow);
           hrow.dataset.health = hpill.dataset.health || 'unknown'; // tint the row (variant A)
           hrow.classList.add('health-open');
@@ -2598,7 +2794,7 @@
       if (hnext && hnext.classList.contains('heal-panel')) {
         closeDiffPanel(healRow);
       } else {
-        closeHealthPanel(healRow); // one panel per row
+        closeHealthPanel(healRow); closeHooksPanel(healRow); // one panel per row
         closeAuditPanel(healRow);
         closeDiffPanel(healRow);
         healRow.classList.add('diff-open'); // shares the panel's status bar
@@ -2618,7 +2814,7 @@
       closeDiffPanel(row);
       return;
     }
-    closeHealthPanel(row); // one panel per row: replace an open health panel
+    closeHealthPanel(row); closeHooksPanel(row); // one panel per row
     closeAuditPanel(row);
 
     const eventId = row.dataset.eventId;
@@ -2674,23 +2870,17 @@
     })
     .catch(function() {});
 
-  // Tap-reveal tooltips for touch: title attributes never show on touch, so a
-  // tap on any header control flashes its title in a bubble. Mouse/pen keep the
-  // native tooltip (we only handle touch pointers), avoiding a double tooltip.
+  // Tap-reveal tooltips for touch (titles never show on touch): a tap flashes
+  // the title in a bubble. Covers the header controls and the hooks badge.
+  // Mouse/pen keep the native tooltip — we only handle touch.
   (function setupTapTips() {
-    const header = document.querySelector('header');
-    if (!header) return;
     const tip = document.createElement('div');
     tip.className = 'tap-tip';
     tip.setAttribute('aria-hidden', 'true');
     document.body.appendChild(tip);
     let hideTimer = null;
     function hide() { tip.classList.remove('show'); }
-    header.addEventListener('pointerdown', function(e) {
-      if (e.pointerType && e.pointerType !== 'touch') return; // mouse/pen: native tooltip
-      const el = e.target.closest && e.target.closest('[title]');
-      if (!el || !header.contains(el)) return;
-      if (el.closest('.view-options')) return; // popover rows already show labels
+    function flash(el) {
       const text = el.getAttribute('title');
       if (!text) return;
       tip.textContent = text;
@@ -2707,6 +2897,16 @@
       tip.style.top = (r.bottom + 6) + 'px';
       clearTimeout(hideTimer);
       hideTimer = setTimeout(hide, 1600);
+    }
+    document.addEventListener('pointerdown', function(e) {
+      if (e.pointerType && e.pointerType !== 'touch') return; // mouse/pen: native tooltip
+      const el = e.target.closest && e.target.closest('[title]');
+      if (!el) return;
+      const header = document.querySelector('header');
+      const inHeader = header && header.contains(el) && !el.closest('.view-options'); // popover rows already show labels
+      const isHookBadge = el.classList && el.classList.contains('hooks-badge');
+      if (!inHeader && !isHookBadge) return;
+      flash(el);
     }, { passive: true });
     window.addEventListener('scroll', hide, { passive: true });
   })();

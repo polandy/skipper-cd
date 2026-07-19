@@ -29,6 +29,16 @@ type Entry struct {
 	LastStatus events.Status `json:"last_status,omitempty"`
 	LastAt     *time.Time    `json:"last_at,omitempty"`
 	LastCommit string        `json:"last_commit,omitempty"`
+	// Hooks carries the stack's deploy-hook command lines so the UI can show the
+	// badge + panel without a fetch (ADR-0038); nil when the stack has none.
+	Hooks *Hooks `json:"hooks,omitempty"`
+}
+
+// Hooks is the roster view of a stack's deploy hooks: just the command lines,
+// no timeout_seconds (the UI never shows it).
+type Hooks struct {
+	PreDeploy  []string `json:"pre_deploy,omitempty"`
+	PostDeploy []string `json:"post_deploy,omitempty"`
 }
 
 // Build merges the effective stack set with per-stack last outcomes into a
@@ -46,6 +56,9 @@ func Build(stacks []config.Stack, disabled []string, last func(name string) (aud
 			e.LastStatus = rec.Status
 			e.LastAt = &ts
 			e.LastCommit = rec.CommitSHA
+		}
+		if len(s.Hooks.PreDeploy) > 0 || len(s.Hooks.PostDeploy) > 0 {
+			e.Hooks = &Hooks{PreDeploy: s.Hooks.PreDeploy, PostDeploy: s.Hooks.PostDeploy}
 		}
 		entries = append(entries, e)
 	}

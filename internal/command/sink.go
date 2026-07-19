@@ -2,11 +2,12 @@ package command
 
 import "bytes"
 
-// LineSink receives one line of child-process output. Implementations must
-// be safe for concurrent use: a command's stdout and stderr are written
-// concurrently.
+// LineSink receives one line of child-process output. Implementations must be
+// safe for concurrent use: a command's stdout and stderr are written
+// concurrently. stack is set when the caller used WithStack (deploy hooks;
+// ADR-0038), empty for unattributed docker/git output.
 type LineSink interface {
-	ChildLine(cmd, stream, line string)
+	ChildLine(cmd, stream, line, stack string)
 }
 
 // maxLineLength caps how many bytes accumulate without a newline before
@@ -22,6 +23,7 @@ type lineWriter struct {
 	sink   LineSink
 	cmd    string
 	stream string
+	stack  string // deploy stack for attribution (empty for unattributed output)
 	buf    bytes.Buffer
 }
 
@@ -55,5 +57,5 @@ func (w *lineWriter) Close() error {
 
 func (w *lineWriter) emit(line []byte) {
 	line = bytes.TrimSuffix(line, []byte("\r"))
-	w.sink.ChildLine(w.cmd, w.stream, string(line))
+	w.sink.ChildLine(w.cmd, w.stream, string(line), w.stack)
 }

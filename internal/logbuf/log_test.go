@@ -144,7 +144,7 @@ func TestLog_SlowSubscriberDropsInsteadOfBlocking(t *testing.T) {
 
 func TestLog_ChildLineRecordsCmdAndStreamAttrs(t *testing.T) {
 	l := New(10)
-	l.ChildLine("docker", "stderr", "Pulling image...")
+	l.ChildLine("docker", "stderr", "Pulling image...", "")
 
 	entries := l.Entries()
 	if len(entries) != 1 {
@@ -159,6 +159,22 @@ func TestLog_ChildLineRecordsCmdAndStreamAttrs(t *testing.T) {
 	}
 	if e.Attrs["cmd"] != "docker" || e.Attrs["stream"] != "stderr" {
 		t.Errorf("unexpected attrs: %+v", e.Attrs)
+	}
+	// Unattributed (docker/git) output carries no stack attr.
+	if _, ok := e.Attrs["stack"]; ok {
+		t.Errorf("docker output must not carry a stack attr: %+v", e.Attrs)
+	}
+}
+
+// A deploy hook's output is attributed to its stack (ADR-0038), so the log view
+// prefixes it [stack] and the stack filter matches it.
+func TestLog_ChildLineAttributesHookOutputToStack(t *testing.T) {
+	l := New(10)
+	l.ChildLine("sh", "stdout", "Backup Successful", "nextcloud")
+
+	e := l.Entries()[0]
+	if e.Attrs["stack"] != "nextcloud" {
+		t.Errorf("expected stack attr nextcloud, got %+v", e.Attrs)
 	}
 	if e.Time.IsZero() {
 		t.Error("expected a non-zero timestamp")

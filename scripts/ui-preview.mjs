@@ -160,7 +160,17 @@ writeFileSync(join(origin, 'experiments', 'icon.svg'), icon);
 // its health-check gate; experiments is parked.
 writeFileSync(
   join(origin, 'skipper.yaml'),
-  `stacks:\n  api:\n    health_check:\n      timeout_seconds: 1\n  experiments:\n    disabled: true\n`,
+  `stacks:\n` +
+    `  api:\n` +
+    `    health_check:\n      timeout_seconds: 1\n` +
+    // Deploy hooks (ADR-0038): drive the hooks badge + panel. Commands are
+    // harmless echoes so the preview's startup deploy still succeeds.
+    `    hooks:\n      pre_deploy:\n        - "echo dumping api database"\n      post_deploy:\n        - "echo smoke test ok"\n` +
+    `  web:\n` +
+    // A short sleep so the running-hook phase sub-label is visible for a few
+    // seconds during the startup deploy of web.
+    `    hooks:\n      pre_deploy:\n        - "echo starting backup"\n        - "sleep 4"\n      post_deploy:\n        - "echo verifying deploy"\n` +
+    `  experiments:\n    disabled: true\n`,
 );
 git(origin, 'add', '.');
 git(origin, 'commit', '-m', 'initial');
@@ -178,7 +188,7 @@ const cfg =
   `ui_theme_switcher: true\n` +
   `health_poll_interval_seconds: 3\n` +
   `health_watch:\n  debounce_polls: 1\n` +
-  `command_timeout_seconds: 30\n` +
+  `command_timeout_seconds: 120\n` +
   // Dead source_url → auto-match icon fetches fail fast; committed icon.svg
   // overrides still resolve, so the preview stays fully offline.
   `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +

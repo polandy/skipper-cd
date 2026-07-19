@@ -9,12 +9,26 @@ language; keep new views consistent with it. The authoritative element list
 
 ## Principle
 
-One row = one stack. The two table views differ only in **what** the columns
-say, not in **how** rows, columns, and expansions look. The single sanctioned
-difference: Deploys rows carry a **status-coloured left bar** (it is an event
-log), the Stacks roster does not (status is a badge, since it is inventory).
-Everything else — frame, hover, columns, the expand card — is identical, and
-where practical the *same CSS rules* are shared rather than duplicated.
+**One look and feel across every view.** All pages share the same design
+concept, achieved by **reusing the same components with the same CSS** rather
+than building parallel ones. A new feature that needs a "badge" uses the badge
+pattern (health pill / hooks badge), a "panel below a row" uses the variant-A
+[bound panel](#expand--bound-panels), a "log" uses the container-logs panel
+component, a touch hint uses the `.tap-tip` bubble, and colours come from the
+shared status/health [tokens](#tokens). Reach for an existing component and its
+CSS before adding anything new; duplicated-but-slightly-different styling is the
+thing this document exists to prevent. (Example: deploy hooks (ADR-0038) added a
+badge, a bound panel, and a log *without* new component CSS — the badge mirrors
+the health pill, the panel is variant A, and the log is the container-logs panel
+in a second mode.)
+
+One row = one stack. The two table views (Deploys · Stacks) differ only in
+**what** the columns say, not in **how** rows, columns, and expansions look. The
+single sanctioned difference: Deploys rows carry a **status-coloured left bar**
+(it is an event log), the Stacks roster does not (status is a badge, since it is
+inventory). Everything else — frame, hover, columns, the expand card — is
+identical, and where practical the *same CSS rules* are shared rather than
+duplicated.
 
 ## Rows
 

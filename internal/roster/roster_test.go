@@ -25,6 +25,28 @@ func stacks(names ...string) []config.Stack {
 	return out
 }
 
+func TestBuild_CarriesHookCommandsWhenDeclared(t *testing.T) {
+	withHooks := config.Stack{Name: "paperless", Hooks: config.Hooks{
+		PreDeploy:      []string{"docker exec paperless-restic backup"},
+		PostDeploy:     []string{"curl -fsS http://localhost/health"},
+		TimeoutSeconds: 120, // deploy-time only — must not leak into the roster view
+	}}
+	got := Build([]config.Stack{withHooks, {Name: "traefik"}}, nil, lastFrom(nil))
+
+	byName := map[string]Entry{}
+	for _, e := range got {
+		byName[e.Name] = e
+	}
+	if h := byName["paperless"].Hooks; h == nil {
+		t.Fatal("paperless should carry its hooks")
+	} else if len(h.PreDeploy) != 1 || h.PreDeploy[0] != "docker exec paperless-restic backup" || len(h.PostDeploy) != 1 {
+		t.Errorf("hooks view wrong: %+v", h)
+	}
+	if byName["traefik"].Hooks != nil {
+		t.Error("a stack with no hooks must carry nil Hooks (omitted from JSON)")
+	}
+}
+
 func TestBuild_MergesLastOutcomePerStack(t *testing.T) {
 	ts := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
 	got := Build(
