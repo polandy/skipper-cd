@@ -31,8 +31,10 @@ Work through **all** sections below in order. Collect findings as you go and fix
 ## 3. Implementation quality
 
 - Clean, readable, small files; names reveal behavior; no dead code left "for later".
+- **Comment verbosity**: comments cover the essentials a developer new to the project needs — the non-obvious *what* plus the one *why*. Flag comments that over-explain, narrate the change, or restate what the code already says. When the code references an ADR, the comment can stay short: the rationale lives in the ADR, so don't duplicate it inline — a pointer (`// see ADR-00xx`) beats a paragraph. Also flag comments that become unnecessary once the value or logic is extracted into a well-named variable or method — prefer the self-documenting name over the comment.
 - Encapsulation: no raw mutable maps/structs passed around where a type with methods belongs; consumer-side interfaces (`Runner`, `CommitReader` style) instead of concrete coupling.
 - Go conventions: sentinel errors + `errors.Is` (never string matching), `any` not `interface{}`, atomic writes (temp file + rename) for persisted state.
+- **Error handling**: errors are handled at the call site, not silently dropped; wrapped with context via `%w` when propagated (not string-matched); sentinel errors + `errors.Is` for classification. Handling is consistent in *style* but appropriate to context — flag copy-paste `return err` that loses context, or a genuinely fatal error that's only logged.
 - Never touch or review `vendor/`; if `go.mod` changed, verify `go mod tidy && go mod vendor` was run and `vendor/` is in sync.
 - Respect package boundaries (e.g. `internal/nixos` must stay free of docker/state/metrics/events knowledge).
 
