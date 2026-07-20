@@ -766,7 +766,7 @@ snapshot, but the jump-btn's footprint on every row required regenerating
 
 ### 4.21 UI — Maske T: Container logs (ADR-0037)
 
-A live `docker compose logs` panel opened from a console icon, per stack (merged)
+A live `docker compose logs` panel opened from a logs icon, per stack (merged)
 and per container. Boots with `healthPoll: 1` and `setStackHealth` so the
 per-container icons appear on the health-panel service lines and the `{service}`
 segment validates; the stub `docker` answers `compose … logs` with a fixed
@@ -812,7 +812,7 @@ so no baseline shifts and no new snapshot is added.
   attribution that lets the hook log filter by stack.
 - **UU3 — Running phase + inline log.** With a `sleep` hook in flight, the
   deploying `web` row shows the `hook-phase` (`pre_deploy hook …`) and a pulsing
-  `hooks-badge` (`data-hook-active`). The phase's console icon opens the
+  `hooks-badge` (`data-hook-active`). The phase's logs icon opens the
   container-logs panel **in skipper mode** inline (the `deploys-table` stays
   visible — no page jump), streaming the stack-filtered `/api/logs` (the
   `clog-body` shows the hook output).

@@ -2282,7 +2282,7 @@
   }
 
   /* ── Container logs (ADR-0037): a live `docker compose logs` panel opened from
-     a console icon in the deploys/stacks views — per stack (merged services) and
+     a logs icon in the deploys/stacks views — per stack (merged services) and
      per container. One log open at a time. The existing skipper Logs view reuses
      the wrap/search/fullscreen affordances below. ───────────────────────────── */
   .clog-hide { display: none !important; }

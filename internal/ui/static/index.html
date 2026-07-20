@@ -804,7 +804,7 @@
   }
 
   // ── Container logs (ADR-0037) ──────────────────────────────────────────────
-  // A live `docker compose logs` panel opened from a console icon, per stack
+  // A live `docker compose logs` panel opened from a logs icon, per stack
   // (merged services) and per container. One log open at a time; the panel
   // streams from /api/container-logs via EventSource and trails the row/line it
   // was opened from. Controls: live/pause, auto-scroll, wrap, in-log search,
@@ -817,7 +817,7 @@
     fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
   };
 
-  // clogBtnHTML/clogButton build the console icon that opens a log — a string
+  // clogBtnHTML/clogButton build the logs icon that opens a log — a string
   // for template use (health-panel lines, roster rows) and a DOM node for the
   // deploy row's action cell.
   function clogBtnHTML(stack, service) {
@@ -834,7 +834,7 @@
   // Hook commands ride inline on the stacks snapshot (no fetch); hookRunSnap is
   // the currently-executing hook ({} when none) from the hookrun SSE snapshot.
   let hookRunSnap = {};
-  // Fishing hook — distinct from the container-logs console icon it sits beside.
+  // Fishing hook — distinct from the container-logs icon it sits beside.
   const HOOK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5v7a4 4 0 0 1-8 0"/><path d="M4.5 10.5 7 13l2.5-2.5"/></svg>';
 
   function hooksFor(stack) {
