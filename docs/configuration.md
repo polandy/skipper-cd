@@ -2,7 +2,21 @@
 
 The configuration file is a YAML file passed via the `-config` flag (default: `/etc/skipper/skipper.yml`).
 
-For a minimal starting point see the [Quickstart](index.md#quickstart). This page is the full reference for every field.
+For a guided walkthrough see the [Quickstart](index.md#quickstart). This page is the full reference for every field.
+
+---
+
+## Minimal Example
+
+The smallest working config. Stack discovery is on by default (ADR-0043), so every `<stacks_base_dir>/<name>/docker-compose.yml` in the deploy repo is a stack — no `stacks:` list needed:
+
+```yaml
+repo_url: ssh://git@gitea.example.com/user/deploy.git
+stacks_base_dir: /var/lib/skipper/repo/stacks
+webhook_secret: "your-secret-here"
+```
+
+`port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
 
 ---
 
@@ -21,6 +35,7 @@ port: 8080
 metrics_port: 9120
 ui_enabled: true                        # optional, default: true (live web UI on the webhook port)
 autosync: true                          # optional, default: true (pause deploys globally)
+stack_discovery: false                  # this example lists stacks manually; omit it to auto-discover them (the default, ADR-0043)
 
 stacks:
   - name: traefik
