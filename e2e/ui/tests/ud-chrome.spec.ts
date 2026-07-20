@@ -396,3 +396,55 @@ test('UD3: deploy indicator names the active stack while held, idle otherwise', 
   skipper.release();
   await expect(indicator).toHaveAttribute('aria-label', 'idle');
 });
+
+// UD11 — Tap-tip opt-in on non-header controls. setupTapTips used to only
+// understand two hardcoded cases (inside <header>, or the hooks badge);
+// everything else with a title — the deploy row's container-logs icon here —
+// sat silently on touch. It now gates on a `data-taptip` opt-in instead (an
+// ancestor or the control itself), so this asserts the bubble on a leaf-level
+// opt-in, that mouse/pen still gets no bubble, and that a control inside
+// `.view-options` stays silent even though it sits under the opted-in
+// <header> (that popover's rows already show a visible label).
+test.describe('UD11: tap-tip opt-in on non-header controls', () => {
+  test.use({ startOptions: { stacks: ['web'] } });
+
+  test('a non-header glyph flashes on touch, stays silent on mouse, and auto-hides', async ({
+    page,
+    skipper,
+  }) => {
+    await page.clock.install(); // before navigation, so the bubble's own setTimeout is captured
+    await page.goto(`${skipper.baseURL}/`);
+
+    const clogBtn = page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="clog-btn"]');
+    const tip = page.locator('.tap-tip');
+    const title = await clogBtn.getAttribute('title');
+
+    await clogBtn.dispatchEvent('pointerdown', { pointerType: 'touch' });
+    await expect(tip).toHaveClass(/\bshow\b/);
+    await expect(tip).toHaveText(title!);
+
+    await page.clock.fastForward('00:02'); // past the 1600ms auto-hide timer
+    await expect(tip).not.toHaveClass(/\bshow\b/);
+
+    // Mouse/pen keep the native tooltip only — no bubble.
+    await clogBtn.dispatchEvent('pointerdown', { pointerType: 'mouse' });
+    await expect(tip).not.toHaveClass(/\bshow\b/);
+  });
+
+  test('a control inside .view-options stays silent even though <header> opts in', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // Open the popover so the excluded control is actually reachable (UD8).
+    // time-mode, not deploy-search: the search row is desktop-hidden (UG3),
+    // so it wouldn't be visible here regardless of the tap-tip exclusion.
+    await page.locator('[data-testid="view-toggle"] button[data-view="deploys"]').click();
+    const timeMode = page.locator('[data-testid="time-mode"]');
+    await expect(timeMode).toBeVisible();
+
+    await timeMode.dispatchEvent('pointerdown', { pointerType: 'touch' });
+    await expect(page.locator('.tap-tip')).not.toHaveClass(/\bshow\b/);
+  });
+});

@@ -161,11 +161,11 @@ when it is running, ideally with the log":
    **fishing-hook glyph** on its stack cell — on the newest deploy row (Deploys
    view) and the roster row (Stacks view), beside the icon / health pill /
    container-logs icon. The glyph is deliberately distinct from the container-logs
-   console icon so the two never read as the same thing. It shows the split
+   icon so the two never read as the same thing. It shows the split
    `pre+post` count (e.g. `2+1`), not the sum, so the shape of the hooks is
    visible at a glance. Its tooltip is two lines (`pre-deploy hook: N` /
-   `post-deploy hook: N`); on touch it flashes the same **tap-tip bubble** the
-   header glyphs use (the UI is glyph-only, so touch has no native tooltip).
+   `post-deploy hook: N`); on touch it flashes the shared **tap-tip bubble**
+   (the UI is glyph-only, so touch has no native tooltip).
    Clicking it opens a bound per-row panel (variant A, neutral accent bar, joining
    the health/diff/audit one-panel-per-row exclusivity) listing the configured
    `pre_deploy` then `post_deploy` command lines verbatim. **Source (decided): the
@@ -179,7 +179,7 @@ when it is running, ideally with the log":
    stack's row shows it **in the Deploys view and the Stacks roster identically**:
    the `deploying` badge gains a phase sub-label (`pre_deploy hook 1/2`,
    `post_deploy hook`), the hooks badge on that row pulses "active", and the phase
-   carries the console icon (below). Backend: a new lightweight per-stack
+   carries the logs icon (below). Backend: a new lightweight per-stack
    `hookrun` SSE snapshot `{stack, phase: "pre_deploy"|"post_deploy", index,
    total}`, published by `runHooks` as each hook starts and cleared to the zero
    value when the phase's hooks finish — modeled on the existing `upcoming`
@@ -192,7 +192,7 @@ when it is running, ideally with the log":
    its child-process lines with the `stack` (threaded to the log sink via the
    command `ctx` — it knows the stack, closing the "child output carries no stack
    attribution" gap for hooks), so those lines carry a `[stack]` prefix. The
-   running phase carries a **console icon** — the *same* `clog-btn` glyph the
+   running phase carries a **logs icon** — the *same* `clog-btn` glyph the
    container-logs feature uses (ADR-0037) — but clicking it does **not** jump to
    the log view. Instead it opens the **container-logs panel component in a second
    "skipper" mode**, inline on the same page trailing the row: it streams
@@ -232,6 +232,6 @@ of skipped/self-heal/rollback runs (they never execute — nothing to show).
 
 None. Both UI-increment questions were decided (2026-07-19, with Andy on a
 clickable mockup): hook commands ride **inline** on the `stacks` snapshot (no
-endpoint), and the hook log **reuses the existing log view** via a console icon
+endpoint), and the hook log **reuses the existing log view** via a logs icon
 on the running phase (**Option A**), not a new inline panel. Recorded in the UI
 surface section above and ADR-0038.

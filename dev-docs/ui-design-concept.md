@@ -14,7 +14,9 @@ concept, achieved by **reusing the same components with the same CSS** rather
 than building parallel ones. A new feature that needs a "badge" uses the badge
 pattern (health pill / hooks badge), a "panel below a row" uses the variant-A
 [bound panel](#expand--bound-panels), a "log" uses the container-logs panel
-component, a touch hint uses the `.tap-tip` bubble, and colours come from the
+component, a touch hint uses the `.tap-tip` bubble on any control marked
+`data-taptip` (deliberately opt-in, not every titled element — see
+`setupTapTips` in `internal/ui/static/index.html`), and colours come from the
 shared status/health [tokens](#tokens). Reach for an existing component and its
 CSS before adding anything new; duplicated-but-slightly-different styling is the
 thing this document exists to prevent. (Example: deploy hooks (ADR-0038) added a

@@ -229,7 +229,7 @@ stacks:
 - Hooks run only when the stack actually deploys — never on a skip, a self-heal, or a rollback.
 - `timeout_seconds` bounds each hook; `command_timeout_seconds` is the hard ceiling (a larger value has no effect). For a backup slower than that, raise `command_timeout_seconds`.
 
-In the web UI, a stack with hooks shows a **hook badge** on its row (in both the Deploys and Stacks views) with a `pre+post` count — click it to see the configured commands. While a deploy runs a hook, the row shows which one is running (`pre_deploy hook 1/2`); the console icon there opens the hook's live output in a log panel, inline on the same page.
+In the web UI, a stack with hooks shows a **hook badge** on its row (in both the Deploys and Stacks views) with a `pre+post` count — click it to see the configured commands. While a deploy runs a hook, the row shows which one is running (`pre_deploy hook 1/2`); the logs icon there opens the hook's live output in a log panel, inline on the same page.
 
 ## Zero-downtime rollout
 
