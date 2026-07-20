@@ -48,3 +48,4 @@ One file per decision, numbered sequentially (see
 | [0041](0041-traefik-app-link-detection.md) | Traefik app-link detection (live labels, health-poll cadence) |
 | [0042](0042-pretty-console-log.md) | Pretty console output (default `log_format`) |
 | [0043](0043-single-config-file.md) | Single configuration file (fold per-stack overrides into the host config) |
+| [0044](0044-gzip-compressed-static-assets.md) | Gzip-compressed app-shell assets, negotiated at request time |

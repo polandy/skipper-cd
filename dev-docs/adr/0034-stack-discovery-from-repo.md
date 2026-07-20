@@ -63,7 +63,7 @@ readability edge, since `ls` on `stacks_base_dir` and the UI deploy table
 provide the inventory.
 
 The host `skipper.yml` keeps host concerns only and opts in via
-`stack_discovery: true` (mutually exclusive with a `stacks:` list; legacy
+`stack_discovery: true` (mutually exclusive with a `stacks:` list; host-list
 mode is unchanged). Design details in `dev-docs/stack-discovery-spec.md`.
 
 ## Consequences
@@ -95,7 +95,7 @@ mode is unchanged). Design details in `dev-docs/stack-discovery-spec.md`.
   startup) — per-stack `self_heal: false` still opts out.
 - Orphan detection gets its authoritative managed set: discovered = managed
   (see `dev-docs/orphan-detection-spec.md`).
-- The NixOS module's per-stack options are legacy-mode-only under discovery;
+- The NixOS module's per-stack options apply only in host-list mode under discovery;
   the module keeps rendering host-level config.
 - skipper's trust boundary shifts: a repo push can now change health gates,
   env wiring, and ordering — acceptable for the single-admin homelab this
@@ -131,8 +131,8 @@ Motivation: these previously surfaced only when the stack next deployed. Since
 `rollout` is excluded from change detection (ADR-0040), editing it never
 triggers the redeploy that the deploy-time check would ride on, so a mistake
 could stay latent. Validating at discovery closes that gap. The deploy-time
-checks stay as defence in depth (and remain the only check in legacy host-config
-mode, where the clone does not exist at config-load). The rollout eligibility
+checks stay as defence in depth (and remain the only check in host-list mode,
+where the clone does not exist at config-load). The rollout eligibility
 rules live once in `config.ValidateRolloutServices`; compose parsing is shared
 via `internal/compose`. Absolute `env_files`/`watch_dirs` paths are not
 existence-checked — they are the documented host-secret escape hatch.

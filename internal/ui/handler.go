@@ -31,7 +31,8 @@ const sseKeepaliveInterval = 30 * time.Second
 // substitution ServiceWorkerHandler uses for __VERSION__. themeSwitcher gates
 // the in-UI theme picker: it is baked into data-theme-switcher, which the CSS
 // and pre-paint/picker JS read to show (or hide) the picker and honour (or
-// ignore) a saved per-browser override.
+// ignore) a saved per-browser override. Served via staticAsset, so a
+// gzip-capable client gets the pre-compressed body (see compress.go).
 func IndexHandler(theme string, themeSwitcher bool) http.Handler {
 	data, err := staticFS.ReadFile("static/index.html")
 	if err != nil {
@@ -48,11 +49,8 @@ func IndexHandler(theme string, themeSwitcher bool) http.Handler {
 	body = strings.ReplaceAll(body, "__FAVICON_URI__", faviconDataURI(theme))
 	body = strings.ReplaceAll(body, "__THEME_COLOR_DARK__", id.darkBase)
 	body = strings.ReplaceAll(body, "__THEME_COLOR_LIGHT__", id.lightBase)
-	out := []byte(body)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(out)
-	})
+	asset := newStaticAsset("text/html; charset=utf-8", []byte(body))
+	return http.HandlerFunc(asset.ServeHTTP)
 }
 
 // ManifestHandler serves GET /manifest.webmanifest — the PWA web app manifest
@@ -119,15 +117,17 @@ func ServiceWorkerHandler(b BuildInfo) http.Handler {
 // can import them without a build step. The app shell loads this first and calls
 // the helpers as globals. Served no-cache so it stays in lockstep with the shell
 // it supports; the service worker caches it in the app shell for offline use.
+// Served via staticAsset, so a gzip-capable client gets the pre-compressed
+// body (see compress.go).
 func AppHelpersHandler() http.Handler {
 	data, err := staticFS.ReadFile("static/app-helpers.js")
 	if err != nil {
 		panic(err) // staticFS embeds static/app-helpers.js at compile time, so this cannot fail.
 	}
+	asset := newStaticAsset("text/javascript; charset=utf-8", data)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write(data)
+		asset.ServeHTTP(w, r)
 	})
 }
 
@@ -135,16 +135,17 @@ func AppHelpersHandler() http.Handler {
 // from index.html (ADR-0035 amendment) so the markup and script stay readable
 // and diffs of styling changes don't interleave with unrelated ones. Served
 // no-cache so it stays in lockstep with the shell it styles; the service
-// worker caches it in the app shell for offline use.
+// worker caches it in the app shell for offline use. Served via staticAsset,
+// so a gzip-capable client gets the pre-compressed body (see compress.go).
 func AppCSSHandler() http.Handler {
 	data, err := staticFS.ReadFile("static/app.css")
 	if err != nil {
 		panic(err) // staticFS embeds static/app.css at compile time, so this cannot fail.
 	}
+	asset := newStaticAsset("text/css; charset=utf-8", data)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write(data)
+		asset.ServeHTTP(w, r)
 	})
 }
 

@@ -69,9 +69,9 @@ otherwise be an entry-level error.
 
 - New host-level bool `stack_discovery: true` (default `false`) switches the
   instance to discovery mode. Setting it **and** a non-empty `stacks:` list
-  is a startup config error — the two sources never merge. Legacy mode
-  (host `stacks:` list) keeps working unchanged; requires `stacks_base_dir`.
-- NixOS module: the per-stack module options are legacy-mode-only; under
+  is a startup config error — the two sources never merge. Host-list mode
+  (an explicit `stacks:` list) keeps working unchanged; requires `stacks_base_dir`.
+- NixOS module: the per-stack module options apply only in host-list mode; under
   discovery the module renders host-level config.
 
 ## Validation & failure containment (sync time)
