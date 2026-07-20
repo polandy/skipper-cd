@@ -437,7 +437,9 @@ export class Skipper {
           (opts.discovery.repoConfig !== undefined
             ? `stacks:\n` + repoOverridesToHostStacks(opts.discovery.repoConfig)
             : '')
-        : `stacks:\n` +
+        : // ADR-0043: discovery is the default, so explicit-list masks opt out.
+          `stack_discovery: false\n` +
+          `stacks:\n` +
           stacks
             .map(
               (n) =>

@@ -11,20 +11,16 @@ Supported webhook signatures: **Gitea** (`X-Gitea-Signature`) and **GitHub/Forge
 
 ## Quickstart
 
-Point skipper-cd at your deploy repo and list the stacks you want managed — that's the whole config:
+Point skipper-cd at your deploy repo — that's the whole config:
 
 ```yaml
 # skipper.yml
 repo_url: ssh://git@gitea.example.com/user/deploy.git
 stacks_base_dir: /var/lib/skipper/repo/modules
 webhook_secret: "your-secret-here"
-
-stacks:
-  - name: traefik
-  - name: gitea
 ```
 
-Each stack's compose file lives at `<stacks_base_dir>/<name>/docker-compose.yml`. Push to the repo, your Git host fires a webhook, and skipper-cd pulls, diffs, and redeploys only what changed.
+Every `<stacks_base_dir>/<name>/docker-compose.yml` in the repo is a stack — skipper-cd discovers them automatically. Push to the repo, your Git host fires the (HMAC-signed) webhook, and skipper-cd pulls, diffs, and redeploys only what changed. A [reconcile loop](configuration.md#periodic-reconcile) re-syncs on a timer as a safety net for any missed webhook.
 
 New here? The **[Getting Started walkthrough](getting-started.md)** covers the whole loop end to end — repo layout, running the service, and wiring up the webhook. Run it **[on NixOS](nixos.md)** as a declarative systemd service, or **[with Docker](docker.md)** as a container; the full configuration reference is in **[Configuration](configuration.md)**.
 
