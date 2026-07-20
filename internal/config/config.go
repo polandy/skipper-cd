@@ -58,10 +58,10 @@ type Stack struct {
 	// queued instead of deployed. See docs/autosync.md.
 	Autosync *bool `yaml:"autosync"`
 
-	// HealthCheck optionally gates a deploy of this stack on a post-deploy
+	// DeployHealthCheck optionally gates a deploy of this stack on a post-deploy
 	// health check; on failure the deploy is rolled back. nil disables the
 	// gate. See ADR-0022.
-	HealthCheck *HealthCheck `yaml:"health_check,omitempty"`
+	DeployHealthCheck *HealthCheck `yaml:"deploy_health_check,omitempty"`
 
 	// SelfHeal overrides the global self_heal for this stack. nil means inherit
 	// the global setting. When effective, a stack found degraded by the health
@@ -113,7 +113,7 @@ type Hooks struct {
 	// PostDeploy runs after a successful up and health gate, before on-demand
 	// containers are stopped. A failing post_deploy hook triggers the same
 	// rollback path as a health-check failure (ADR-0022, ADR-0038), even when no
-	// health_check is configured.
+	// deploy_health_check is configured.
 	PostDeploy []string `yaml:"post_deploy"`
 
 	// TimeoutSeconds bounds each individual hook command. 0 (the default) leaves
@@ -134,7 +134,7 @@ type Rollout struct {
 	Services []string `yaml:"services"`
 
 	// HealthTimeoutSeconds is the canary health-wait deadline. 0 (the default)
-	// falls back to the stack's health_check timeout, else 60.
+	// falls back to the stack's deploy_health_check timeout, else 60.
 	HealthTimeoutSeconds int `yaml:"health_timeout_seconds"`
 
 	// DrainSeconds holds the old container this long after the canary is healthy,
@@ -269,11 +269,12 @@ type Config struct {
 	// See docs/configuration.md.
 	UIThemeSwitcher bool `yaml:"ui_theme_switcher"`
 
-	// HealthPollIntervalSeconds sets how often the UI polls its stacks' runtime
-	// health (ADR-0027). nil (omitted) defaults to 30; an explicit 0 disables the
-	// health view. Only meaningful with ui_enabled; the poll additionally runs
-	// only while a UI client is connected. See docs/configuration.md.
-	HealthPollIntervalSeconds *int `yaml:"health_poll_interval_seconds"`
+	// RuntimeHealthPollIntervalSeconds sets how often skipper polls its stacks'
+	// runtime health (ADR-0027). nil (omitted) defaults to 30; an explicit 0
+	// disables the health view. Only meaningful with ui_enabled; the poll
+	// additionally runs only while a UI client is connected. See
+	// docs/configuration.md.
+	RuntimeHealthPollIntervalSeconds *int `yaml:"runtime_health_poll_interval_seconds"`
 
 	// ReconcileIntervalSeconds sets how often skipper re-runs its git sync +
 	// deploy on a timer, so a missed or lost webhook cannot leave the host
@@ -287,7 +288,7 @@ type Config struct {
 	// degraded (a stopped/removed container, an unhealthy service) is
 	// automatically restored to its deployed running state by a corrective
 	// redeploy (ADR-0029). nil means false (off). A per-stack SelfHeal overrides
-	// it. Runs headless like reconcile, so it needs health_poll_interval_seconds
+	// it. Runs headless like reconcile, so it needs runtime_health_poll_interval_seconds
 	// > 0 — which drives the detection cadence — even with the UI off.
 	SelfHeal *bool `yaml:"self_heal"`
 
@@ -372,7 +373,7 @@ func (c *Config) SelfHealActive() bool {
 }
 
 // HealthWatch configures the own-stack health watchdog (ADR-0031). It rides
-// the shared health poller's cadence (health_poll_interval_seconds), the same
+// the shared health poller's cadence (runtime_health_poll_interval_seconds), the same
 // way self-heal does — it has no poll interval of its own.
 type HealthWatch struct {
 	// DebouncePolls is how many consecutive health polls a new status must
@@ -542,9 +543,9 @@ func Load(path string) (*Config, error) {
 		d := true
 		cfg.UIEnabled = &d
 	}
-	if cfg.HealthPollIntervalSeconds == nil {
-		d := defaultHealthPollIntervalSeconds
-		cfg.HealthPollIntervalSeconds = &d
+	if cfg.RuntimeHealthPollIntervalSeconds == nil {
+		d := defaultRuntimeHealthPollIntervalSeconds
+		cfg.RuntimeHealthPollIntervalSeconds = &d
 	}
 	if cfg.ReconcileIntervalSeconds == nil {
 		d := defaultReconcileIntervalSeconds
@@ -585,7 +586,7 @@ func Load(path string) (*Config, error) {
 		if cfg.Stacks[i].ProjectDirectory == "" && cfg.ProjectDirectoryBase != "" {
 			cfg.Stacks[i].ProjectDirectory = filepath.Join(cfg.ProjectDirectoryBase, cfg.Stacks[i].Name)
 		}
-		if hc := cfg.Stacks[i].HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
+		if hc := cfg.Stacks[i].DeployHealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
 			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
 		}
 	}
@@ -655,16 +656,16 @@ const ReservedStackName = "_nixos"
 // not collide with a configured stack.
 const ReservedConfigStackName = "_config"
 
-// DefaultHealthCheckTimeoutSeconds is applied when a health_check section is
-// present without an explicit timeout_seconds, and by internal/deploy's
-// automatic gate for a stack that declares no health_check but whose compose
-// file has one (ADR-0046).
+// DefaultHealthCheckTimeoutSeconds is applied when a deploy_health_check
+// section is present without an explicit timeout_seconds, and by
+// internal/deploy's automatic gate for a stack that declares no
+// deploy_health_check but whose compose file has one (ADR-0046).
 const DefaultHealthCheckTimeoutSeconds = 60
 
-// defaultHealthPollIntervalSeconds is the UI stack-health poll cadence applied
-// when health_poll_interval_seconds is omitted (ADR-0027). An explicit 0
+// defaultRuntimeHealthPollIntervalSeconds is the UI stack-health poll cadence applied
+// when runtime_health_poll_interval_seconds is omitted (ADR-0027). An explicit 0
 // disables the health view.
-const defaultHealthPollIntervalSeconds = 30
+const defaultRuntimeHealthPollIntervalSeconds = 30
 
 // defaultReconcileIntervalSeconds is the git sync + deploy cadence applied when
 // reconcile_interval_seconds is omitted (ADR-0028). On by default so skipper
@@ -801,8 +802,8 @@ func validateConfig(cfg *Config) error {
 			}
 		}
 
-		if err := validateHealthCheck(s.HealthCheck); err != nil {
-			return fmt.Errorf("stack %q: health_check: %w", s.Name, err)
+		if err := validateHealthCheck(s.DeployHealthCheck); err != nil {
+			return fmt.Errorf("stack %q: deploy_health_check: %w", s.Name, err)
 		}
 
 		if err := validateHooks(s.Hooks); err != nil {
@@ -834,8 +835,8 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("log_format must be %q, %q or %q, got %q", LogFormatPretty, LogFormatText, LogFormatJSON, cfg.LogFormat)
 	}
 
-	if cfg.HealthPollIntervalSeconds != nil && *cfg.HealthPollIntervalSeconds < 0 {
-		return fmt.Errorf("health_poll_interval_seconds must be >= 0, got %d", *cfg.HealthPollIntervalSeconds)
+	if cfg.RuntimeHealthPollIntervalSeconds != nil && *cfg.RuntimeHealthPollIntervalSeconds < 0 {
+		return fmt.Errorf("runtime_health_poll_interval_seconds must be >= 0, got %d", *cfg.RuntimeHealthPollIntervalSeconds)
 	}
 
 	if cfg.ReconcileIntervalSeconds != nil && *cfg.ReconcileIntervalSeconds < 0 {
@@ -853,8 +854,8 @@ func validateConfig(cfg *Config) error {
 	}
 	// Self-heal rides the health poll cadence and runs headless, so it needs a
 	// positive poll interval even with the UI off (ADR-0029).
-	if cfg.SelfHealActive() && (cfg.HealthPollIntervalSeconds == nil || *cfg.HealthPollIntervalSeconds <= 0) {
-		return fmt.Errorf("self_heal requires health_poll_interval_seconds > 0 (it drives the detection cadence)")
+	if cfg.SelfHealActive() && (cfg.RuntimeHealthPollIntervalSeconds == nil || *cfg.RuntimeHealthPollIntervalSeconds <= 0) {
+		return fmt.Errorf("self_heal requires runtime_health_poll_interval_seconds > 0 (it drives the detection cadence)")
 	}
 
 	for i, t := range cfg.Notifications {
@@ -869,8 +870,8 @@ func validateConfig(cfg *Config) error {
 	// Like self-heal, the watchdog rides the health poll cadence and runs
 	// headless, so it needs a positive poll interval even with the UI off
 	// (ADR-0031).
-	if cfg.HealthWatch != nil && (cfg.HealthPollIntervalSeconds == nil || *cfg.HealthPollIntervalSeconds <= 0) {
-		return fmt.Errorf("health_watch requires health_poll_interval_seconds > 0 (it drives the watch cadence)")
+	if cfg.HealthWatch != nil && (cfg.RuntimeHealthPollIntervalSeconds == nil || *cfg.RuntimeHealthPollIntervalSeconds <= 0) {
+		return fmt.Errorf("health_watch requires runtime_health_poll_interval_seconds > 0 (it drives the watch cadence)")
 	}
 
 	return nil
@@ -959,7 +960,7 @@ func validateHealthWatch(hw *HealthWatch) error {
 	return nil
 }
 
-// validateHealthCheck checks a stack's optional health_check section.
+// validateHealthCheck checks a stack's optional deploy_health_check section.
 // TimeoutSeconds has already been defaulted in Load.
 func validateHealthCheck(hc *HealthCheck) error {
 	if hc == nil {

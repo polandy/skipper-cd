@@ -174,10 +174,10 @@ func TestDeployStack_RollbackSucceeds(t *testing.T) {
 		t.Errorf("expected error wrapping ErrRolledBack, got: %s", err.Error())
 	}
 
-	// Without health_check the rollback up must stay a plain up -d.
+	// Without deploy_health_check the rollback up must stay a plain up -d.
 	for _, c := range runner.calls {
 		if strings.Contains(strings.Join(c.args, " "), "--wait") {
-			t.Errorf("expected no --wait on any call without health_check, got %v", c.args)
+			t.Errorf("expected no --wait on any call without deploy_health_check, got %v", c.args)
 		}
 	}
 
@@ -308,7 +308,7 @@ func TestDeployAllStacks_EmitsRolledBackUnhealthyEvent(t *testing.T) {
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: baseDir,
-		Stacks:        []config.Stack{{Name: "mystack", HealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}},
+		Stacks:        []config.Stack{{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}},
 	}
 
 	state, _ := loadPersistedDeployState(d.stateDir)

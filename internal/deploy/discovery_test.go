@@ -143,7 +143,7 @@ func TestDeployAllStacks_DiscoveryEntryErrorFailsOnlyThatStack(t *testing.T) {
 
 func TestDeployAllStacks_DiscoveryInvalidStackBlocksDependents(t *testing.T) {
 	repoDir, cfg := discoveryRepo(t, []string{"app", "bad"}, []config.Stack{
-		{Name: "bad", HealthCheck: &config.HealthCheck{URL: "notaurl"}},
+		{Name: "bad", DeployHealthCheck: &config.HealthCheck{URL: "notaurl"}},
 		{Name: "app", DependsOn: []string{"bad"}},
 	})
 	d, runner, recorded := discoveryDeployer(t, repoDir)

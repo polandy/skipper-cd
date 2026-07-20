@@ -75,7 +75,7 @@ func TestP10_HealthWatchAlertsOnUnhealthyAndRecovery(t *testing.T) {
 	// The watchdog rides the shared health poller (ADR-0031), so the test sets
 	// the poll cadence itself to 1s; enabling health_watch makes that poll run
 	// headless (no SSE client is connected in this suite).
-	extraCfg := fmt.Sprintf(`health_poll_interval_seconds: 1
+	extraCfg := fmt.Sprintf(`runtime_health_poll_interval_seconds: 1
 health_watch:
   debounce_polls: 1
   targets:
@@ -132,7 +132,7 @@ func TestP11_HealthWatchCooldownSuppressesRepeatFlap(t *testing.T) {
 	psFile := filepath.Join(t.TempDir(), "ps.json")
 	writeFile(t, psFile, psHealthy)
 
-	extraCfg := fmt.Sprintf(`health_poll_interval_seconds: 1
+	extraCfg := fmt.Sprintf(`runtime_health_poll_interval_seconds: 1
 health_watch:
   debounce_polls: 1
   alert_cooldown_seconds: 3600

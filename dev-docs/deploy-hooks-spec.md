@@ -61,7 +61,7 @@ pre_deploy hooks
   → pull (if images changed)
   → build (if Dockerfiles)
   → up -d [--wait --wait-timeout]        ── health gate 1
-  → HTTP probe (if health_check.url)     ── health gate 2
+  → HTTP probe (if deploy_health_check.url)     ── health gate 2
   → post_deploy hooks
   → stop on-demand containers
   → record hashes/images + save state
@@ -81,9 +81,9 @@ test can still reach a service that is about to be stopped.
   the backup case: **if the backup fails, the update never starts.**
 - **post_deploy failure** → enters the **existing rollback path** (Invariant 3
   / ADR-0022), treated identically to a health-check probe failure. See
-  Decisions #1 for why this holds even without a `health_check`. With the old
+  Decisions #1 for why this holds even without a `deploy_health_check`. With the old
   version restored, post hooks are **not** re-run against it (they validated the
-  new version; the health gate re-runs as today when `health_check` is set).
+  new version; the health gate re-runs as today when `deploy_health_check` is set).
   Event status: `rolled_back` / `rolled_back_unhealthy` via the same sentinel
   errors — no new statuses.
 - Hooks are **not** hashed inputs (Invariant 2 untouched): editing a hook line
@@ -134,7 +134,7 @@ test can still reach a service that is about to be stopped.
   error names the hook index; a `depends_on` dependent blocks.
 - post-failure: the rollback argv sequence is identical to a probe failure;
   `errors.Is(err, ErrRolledBack)` drives the event and post hooks are absent
-  from the restore leg. Cover both `health_check` set (rollback re-runs the
+  from the restore leg. Cover both `deploy_health_check` set (rollback re-runs the
   `--wait` gate → `rolled_back_unhealthy` possible) and unset (no-`--wait`
   restore leg).
 - skip / self-heal / rollback-restore run zero hooks (guards the non-goals).
@@ -209,13 +209,13 @@ of skipped/self-heal/rollback runs (they never execute — nothing to show).
 
 ## Decisions
 
-1. **post_deploy failure rolls back even without `health_check`.** A
+1. **post_deploy failure rolls back even without `deploy_health_check`.** A
    post_deploy hook the user wrote *is* a health gate — the whole point of
    `curl -fsS …/health` after `up` is "fail the deploy if this fails." Making
-   rollback conditional on an unrelated `health_check` block would give post
+   rollback conditional on an unrelated `deploy_health_check` block would give post
    hooks two different meanings for no benefit and surprise the user who wrote a
    validation expecting it to matter. So: any post-`up` failure (probe *or*
-   post_deploy hook) takes the rollback path; without `health_check` the restore
+   post_deploy hook) takes the rollback path; without `deploy_health_check` the restore
    `up` uses the no-`--wait` leg exactly as a probe failure does today. One
    mental model: *everything after `up` that fails, rolls back.*
 

@@ -40,7 +40,7 @@ stacks:
     depends_on: [authelia, crowdsec]
   paperless:
     env_files: [paperless/secrets.env]
-    health_check: { timeout_seconds: 60 }
+    deploy_health_check: { timeout_seconds: 60 }
   experiments:
     disabled: true        # in the repo, deliberately not deployed
 ```
@@ -54,7 +54,7 @@ otherwise be an entry-level error.
 - Keyed by stack name; every key is optional. Available fields: the
   per-stack fields of the host config except `name` and `autosync`
   (`project_directory`, `env_files`, `watch_dirs`, `on_demand_containers`, `icon`,
-  `health_check`, `self_heal`, `depends_on`) plus `disabled`. Relative
+  `deploy_health_check`, `self_heal`, `depends_on`) plus `disabled`. Relative
   `env_files`/`watch_dirs` paths resolve against `stacks_base_dir`. Decoding is
   strict — an unknown field is a file-level error, so a typo fails loudly
   instead of silently deploying without the setting.
@@ -95,7 +95,7 @@ Every error with a known file location carries a numbered, `>`-marked
 excerpt (±2 lines) of the repo `skipper.yaml` in its message: parse and
 unknown-field errors take the line from the yaml.v3 error text; entry-level
 errors are located via a `yaml.Node` line index — the entry key for unknown
-entries, the `health_check`/`depends_on` field line for field errors and
+entries, the `deploy_health_check`/`depends_on` field line for field errors and
 cycle members. Errors with no location (e.g. a reserved directory name with
 no `skipper.yaml` entry) stay clean. The excerpt travels in the plain error
 string, so the UI error panel (monospace), notifications, and the audit log
@@ -104,7 +104,7 @@ carry it with no schema change.
 ## Change detection (invariant 2 grows one input)
 
 - Each stack's **deploy-shaping** config — `project_directory`, `env_files`,
-  `watch_dirs`, `on_demand_containers`, `health_check`, canonically
+  `watch_dirs`, `on_demand_containers`, `deploy_health_check`, canonically
   marshaled — is hashed into `Stack.ConfigHash` and recorded under the repo
   `skipper.yaml` path in the stack's hash map. A config edit therefore
   redeploys exactly the affected stacks, and the UI attributes the change to

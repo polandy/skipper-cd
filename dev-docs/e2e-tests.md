@@ -181,7 +181,7 @@ real backend):
 | `deploying` | `STUB_DOCKER_HOLD_UP` set → row stays `deploying` until released |
 | `failed` | first deploy of a stack, `STUB_DOCKER_FAIL_ON=up` (no prior commit → rollback unavailable → `failed`) |
 | `rolled_back` | one successful deploy first (sets `LastDeployedCommit`), then a change with `STUB_DOCKER_FAIL_NTH_UP=1` (initial `up` fails, rollback `up` succeeds) |
-| `rolled_back_unhealthy` | like `rolled_back`, but the stack has a `health_check:` section and `STUB_DOCKER_FAIL_NTH_UP` lists the deploy **and** rollback `up` (e.g. `2,3` counting the startup deploy) — the health-gated rollback `up` fails too |
+| `rolled_back_unhealthy` | like `rolled_back`, but the stack has a `deploy_health_check:` section and `STUB_DOCKER_FAIL_NTH_UP` lists the deploy **and** rollback `up` (e.g. `2,3` counting the startup deploy) — the health-gated rollback `up` fails too |
 | `queued` | pause autosync (config-as-code or `POST /api/autosync`), then commit + webhook |
 
 **Selector prerequisite (`data-testid`).** The UI has stable `id`s but no

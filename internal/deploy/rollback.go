@@ -20,7 +20,7 @@ var ErrRolledBack = errors.New("rolled back to previous version")
 
 // ErrRollbackUnhealthy marks a failed deploy whose rollback ran, but whose
 // restored version also failed the health gate: the stack is back on the old
-// compose file yet not verified healthy. Only possible with a health_check
+// compose file yet not verified healthy. Only possible with a deploy_health_check
 // configured (the rollback then reruns the same gate). DeployAllStacks checks
 // it with errors.Is to emit a rolled_back_unhealthy event.
 var ErrRollbackUnhealthy = errors.New("rolled back but still unhealthy")
@@ -48,7 +48,7 @@ func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, state
 
 // rollbackStack restores containers to the previous compose file version after
 // a failed docker compose up. It retrieves the old compose file from git and
-// runs docker compose up with it. With a health_check configured the rollback
+// runs docker compose up with it. With a deploy_health_check configured the rollback
 // reruns the same gate (--wait plus the optional HTTP probe) so a restored
 // version that stays unhealthy is reported, not assumed good; those failures
 // wrap ErrRollbackUnhealthy.
@@ -86,16 +86,16 @@ func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persi
 
 	slog.Info("rolling back with previous compose file", "stack", run.stack.Name, "commit", state.LastDeployedCommit)
 	upArgs := []string{"up", "-d"}
-	if hc := run.stack.HealthCheck; hc != nil {
+	if hc := run.stack.DeployHealthCheck; hc != nil {
 		upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
 	}
 	if err := d.runDockerCompose(ctx, rbRun, upArgs...); err != nil {
-		if run.stack.HealthCheck != nil {
+		if run.stack.DeployHealthCheck != nil {
 			return fmt.Errorf("restored version did not come up healthy: %w (%w)", err, ErrRollbackUnhealthy)
 		}
 		return err
 	}
-	if hc := run.stack.HealthCheck; hc != nil && hc.URL != "" {
+	if hc := run.stack.DeployHealthCheck; hc != nil && hc.URL != "" {
 		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
 		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
 			return fmt.Errorf("restored version failed the health probe: %w (%w)", err, ErrRollbackUnhealthy)
