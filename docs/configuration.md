@@ -114,7 +114,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 
 ## Stack discovery
 
-With `stack_discovery: true` the **stack set** is discovered from the deploy repo — every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack — so adding or removing a stack is a single git push. Per-stack **overrides** live in this one config's optional `stacks:` list (ADR-0043), matched to discovered directories by `name`:
+With `stack_discovery: true` the **stack set** is discovered from the deploy repo — every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack — so adding or removing a stack is a single git push. Per-stack **overrides** live in this one config's optional `stacks:` list, matched to discovered directories by `name`:
 
 ```
 deploy-repo/

@@ -143,7 +143,7 @@ type Deployer struct {
 	lastSyncErr      atomic.Pointer[syncOutcome]       // nil until the first run
 	currentRunPlan   atomic.Pointer[RunPlan]           // latest published plan, for late joiners
 	currentHookRun   atomic.Pointer[HookRun]           // latest published hook-run state, for late joiners
-	discoveredStacks atomic.Pointer[config.RepoStacks] // stack-discovery result, nil in legacy mode
+	discoveredStacks atomic.Pointer[config.RepoStacks] // stack-discovery result, nil when stacks are listed explicitly
 	projectDirs      atomic.Pointer[map[string]string] // recorded stack→project-dir, for orphan detection
 }
 

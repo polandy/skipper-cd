@@ -13,11 +13,9 @@ import (
 	"github.com/polandy/skipper-cd/internal/compose"
 )
 
-// RepoConfigFileName is the former in-repo per-stack override file
-// (<stacks_base_dir>/skipper.yaml). As of ADR-0043 it is no longer read —
-// per-stack overrides live in the one host config. A leftover file is rejected
-// (see LoadRepoStacks) so un-migrated config fails loudly instead of being
-// silently ignored.
+// RepoConfigFileName is the former in-repo per-stack override file. As of
+// ADR-0043 it is no longer read (overrides live in the host config); a leftover
+// one is rejected (see LoadRepoStacks).
 const RepoConfigFileName = "skipper.yaml"
 
 // StackError reports an entry-level failure of a single discovered stack (an
@@ -55,9 +53,8 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack) (RepoStacks, []Stac
 	if err != nil {
 		return RepoStacks{}, nil, err
 	}
-	// ADR-0043: the in-repo override file is no longer read. A leftover one is
-	// almost certainly un-migrated config that would otherwise be silently
-	// ignored — fail loudly so the operator moves it into the host config.
+	// A leftover in-repo override file is un-migrated config that would otherwise
+	// be silently ignored (ADR-0043) — reject it loudly.
 	repoFile := filepath.Join(stacksBaseDir, RepoConfigFileName)
 	if _, err := os.Stat(repoFile); err == nil {
 		return RepoStacks{}, nil, fmt.Errorf("%s is no longer read (ADR-0043): move its per-stack overrides into the host config's stacks: list and delete the file", repoFile)
@@ -117,9 +114,9 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack) (RepoStacks, []Stac
 		hcErr := validateHealthCheck(stack.HealthCheck)
 		hookErr := validateHooks(stack.Hooks)
 		rolloutErr := validateRollout(stack.Rollout)
-		// Parse the compose file every sync so a broken compose (or a rollout
-		// naming an unrollable/typo'd service) is caught at discovery, not only
-		// when the stack next redeploys — rollout config is not hash-tracked.
+		// Parse the compose every sync so a broken compose or an unrollable
+		// rollout service is caught at discovery — rollout is not hash-tracked,
+		// so an edit alone would not otherwise trigger a redeploy that reveals it.
 		cf, composeErr := compose.Parse(filepath.Join(stacksBaseDir, name, compose.FileName))
 		if rolloutErr == nil && composeErr == nil && stack.Rollout != nil {
 			rolloutErr = ValidateRolloutServices(stack.Rollout.Services, cf)
@@ -188,10 +185,9 @@ func discoverStackDirs(stacksBaseDir string) ([]string, error) {
 // unlike an absolute path, that's not a documented capability, just an
 // unintentional traversal a repo push could otherwise exploit.
 //
-// A relative (in-repo) path must also exist: it is committed alongside the
-// stacks, so a missing one is a typo we catch at discovery rather than at the
-// deploy that would fail hashing it. Absolute paths are not stat-ed — they may
-// be produced out-of-band on the host (the secrets escape hatch).
+// A relative (in-repo) path must also exist — a missing one is a typo, caught
+// here rather than at the deploy. Absolute paths are not stat-ed (they may be
+// produced out-of-band on the host — the secrets escape hatch).
 func resolveRepoPaths(stacksBaseDir string, paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil

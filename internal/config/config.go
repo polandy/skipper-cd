@@ -632,9 +632,8 @@ func validateConfig(cfg *Config) error {
 	}
 
 	if cfg.StackDiscovery && cfg.StacksBaseDir == "" {
-		// ADR-0043: under discovery the stacks: list is an optional per-stack
-		// override map (matched to discovered directories by name), not the
-		// membership — so it is no longer mutually exclusive with discovery.
+		// ADR-0043: under discovery the stacks: list is optional per-stack
+		// overrides, not the membership — so it no longer conflicts with discovery.
 		return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
 	}
 
@@ -668,10 +667,8 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	// In discovery mode cfg.Stacks is only the override subset, so depends_on
-	// edges are validated against the full discovered set at discovery time
-	// (LoadRepoStacks), not here — a dep on a discovered-but-unoverridden stack
-	// must not look "unknown".
+	// Under discovery, cfg.Stacks is only the override subset; depends_on is
+	// validated against the full set at discovery (LoadRepoStacks), not here.
 	if !cfg.StackDiscovery {
 		if err := validateStackDependencies(cfg.Stacks); err != nil {
 			return err
