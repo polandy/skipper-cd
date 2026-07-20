@@ -137,6 +137,13 @@ func main() {
 	}
 	slog.SetDefault(slog.New(logHandler))
 
+	// Config load already rejected clear errors; these are valid-but-suspicious
+	// setups worth flagging without refusing to start. Logged first, before any
+	// other startup line, so they are the first thing an operator sees.
+	for _, w := range cfg.Warnings {
+		slog.Warn("config warning", "msg", w)
+	}
+
 	// Assign the sink only for a non-nil ring: a typed-nil *logbuf.Log in
 	// the interface would defeat the runner's sink != nil check.
 	var sink command.LineSink
