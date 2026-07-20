@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// gzipEncoding is the Content-Encoding / Accept-Encoding token for gzip, used
+// by both ServeHTTP (to set the header) and acceptsGzip (to match it).
+const gzipEncoding = "gzip"
+
 // staticAsset serves a fixed byte payload with gzip content negotiation. The
 // gzip representation is computed once at construction time — handlers that
 // use it already build their payload once (e.g. IndexHandler bakes in the
@@ -41,7 +45,7 @@ func (a staticAsset) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", a.contentType)
 	w.Header().Set("Vary", "Accept-Encoding")
 	if acceptsGzip(r) {
-		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Encoding", gzipEncoding)
 		_, _ = w.Write(a.gzip)
 		return
 	}
@@ -55,7 +59,7 @@ func (a staticAsset) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func acceptsGzip(r *http.Request) bool {
 	for enc := range strings.SplitSeq(r.Header.Get("Accept-Encoding"), ",") {
 		name, _, _ := strings.Cut(strings.TrimSpace(enc), ";")
-		if strings.EqualFold(name, "gzip") {
+		if strings.EqualFold(name, gzipEncoding) {
 			return true
 		}
 	}
