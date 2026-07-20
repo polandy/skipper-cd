@@ -63,11 +63,7 @@ If the PR touches `internal/ui/static/index.html` or UI behavior:
 ## 7. Branch freshness — update if behind
 
 - Check whether the PR branch is behind the target branch: `git fetch origin && git rev-list --count <head>..origin/<base>`.
-- If behind, bring it up to date. Either approach is fine — the PR is squash-merged into `main` anyway, so intermediate history doesn't matter:
-  - **Rebase** onto the target branch (`git rebase origin/<base>`), then force-push with `--force-with-lease`, **or**
-  - **Merge** the target branch in (`git merge origin/<base>`) and push normally — no force-push, and prior review comments stay anchored.
-
-  Prefer the merge when a rebase would be painful (many commits, repeated conflicts) or when you want to avoid a force-push. Resolve any conflicts faithfully to both sides' intent.
+- If behind, **merge** the target branch in (`git merge origin/<base>`) and push normally. Always merge — never rebase: the PR is squash-merged into `main` anyway, so intermediate history doesn't matter, and merging avoids a force-push while keeping prior review comments anchored. Resolve any conflicts faithfully to both sides' intent.
 - **After updating, re-run the entire checklist above** (sections 1–6): the update may have pulled in doc moves, new ADRs, or code the PR now conflicts with semantically even if git merged cleanly. Wait for CI to go green again.
 - **Two things bite specifically after a merge when both PRs touch the UI** (git won't flag either — one is semantic, one is binary):
   - **Mask-letter collision** — the concurrently-merged PR may have taken your e2e "Maske" letter (§5). Rename yours to the next free letter (file + `Uxn` test IDs + `e2e-tests.md` section) so two masks don't share a letter.
