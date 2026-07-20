@@ -39,6 +39,20 @@ func (cf *composeFile) images() serviceImageByName {
 	return images
 }
 
+// hasHealthcheck reports whether any service in the compose file declares a
+// Docker healthcheck. Backs the automatic health_check gate (ADR-0046): an
+// operator who already opted a service into a compose healthcheck gets
+// skipper's --wait + rollback gate for free, without also declaring
+// health_check in the skipper config.
+func (cf *composeFile) hasHealthcheck() bool {
+	for _, svc := range cf.Services {
+		if svc.HasHealthcheck() {
+			return true
+		}
+	}
+	return false
+}
+
 // servicesExcept returns the compose service names not in the set, sorted — the
 // services a rollout deploys in place.
 func (cf *composeFile) servicesExcept(exclude map[string]bool) []string {

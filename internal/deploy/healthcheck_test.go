@@ -92,6 +92,56 @@ func TestWaitHealthy_ConnectionErrorRetriesAndFails(t *testing.T) {
 	}
 }
 
+// --- resolveHealthCheck unit tests ---
+
+func TestResolveHealthCheck_ExplicitConfigWins(t *testing.T) {
+	explicit := &config.HealthCheck{TimeoutSeconds: 45, URL: "http://localhost:8080/ping"}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, composeWithHealthcheck("nginx:1.26"))
+	cf := mustParseCompose(t, path)
+
+	got := resolveHealthCheck(explicit, cf)
+	if got != explicit {
+		t.Errorf("expected the explicit health_check to be returned unchanged, got %+v", got)
+	}
+}
+
+func TestResolveHealthCheck_AutoDetectsFromComposeHealthcheck(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, composeWithHealthcheck("nginx:1.26"))
+	cf := mustParseCompose(t, path)
+
+	got := resolveHealthCheck(nil, cf)
+	if got == nil {
+		t.Fatal("expected an automatic health_check, got nil")
+	}
+	if got.TimeoutSeconds != config.DefaultHealthCheckTimeoutSeconds {
+		t.Errorf("expected default timeout %d, got %d", config.DefaultHealthCheckTimeoutSeconds, got.TimeoutSeconds)
+	}
+	if got.URL != "" {
+		t.Errorf("expected no URL probe on an automatic gate, got %q", got.URL)
+	}
+}
+
+func TestResolveHealthCheck_NilWithoutComposeHealthcheck(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, composeWithImage("nginx:1.26"))
+	cf := mustParseCompose(t, path)
+
+	if got := resolveHealthCheck(nil, cf); got != nil {
+		t.Errorf("expected no automatic health_check without a compose healthcheck, got %+v", got)
+	}
+}
+
+func TestResolveHealthCheck_NilWhenComposeDidNotParse(t *testing.T) {
+	if got := resolveHealthCheck(nil, nil); got != nil {
+		t.Errorf("expected no automatic health_check when compose could not be parsed, got %+v", got)
+	}
+}
+
 // --- deployStackIfChanged integration ---
 
 // makeBaseWithStack creates <base>/mystack/docker-compose.yml and returns base.
@@ -103,6 +153,20 @@ func makeBaseWithStack(t *testing.T) string {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+	return baseDir
+}
+
+// makeBaseWithHealthcheckStack is makeBaseWithStack but the compose service
+// declares a Docker healthcheck, for tests of the automatic health_check
+// gate (ADR-0046).
+func makeBaseWithHealthcheckStack(t *testing.T) string {
+	t.Helper()
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithHealthcheck("nginx:1.26"))
 	return baseDir
 }
 
@@ -153,6 +217,85 @@ func TestDeployStack_NoWaitFlagsWithoutHealthCheck(t *testing.T) {
 	}
 
 	assertCommandNotCalled(t, runner.calls, "--wait")
+}
+
+func TestDeployStack_AutoDetectsHealthCheckFromComposeHealthcheck(t *testing.T) {
+	baseDir := makeBaseWithHealthcheckStack(t)
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+	d.stateDir = t.TempDir()
+
+	stack := config.Stack{Name: "mystack"} // no health_check declared
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ups := upCalls(runner.calls)
+	if len(ups) != 1 {
+		t.Fatalf("expected exactly 1 up call, got %d", len(ups))
+	}
+	for _, want := range []string{"--wait", "--wait-timeout", "60"} {
+		if !slices.Contains(ups[0].args, want) {
+			t.Errorf("expected up args to contain %q, got %v", want, ups[0].args)
+		}
+	}
+}
+
+func TestDeployStack_ExplicitHealthCheckOverridesAutoDetect(t *testing.T) {
+	baseDir := makeBaseWithHealthcheckStack(t)
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+	d.stateDir = t.TempDir()
+
+	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ups := upCalls(runner.calls)
+	if len(ups) != 1 {
+		t.Fatalf("expected exactly 1 up call, got %d", len(ups))
+	}
+	if !slices.Contains(ups[0].args, "45") {
+		t.Errorf("expected the explicit timeout 45 to win over the default, got %v", ups[0].args)
+	}
+	if slices.Contains(ups[0].args, "60") {
+		t.Errorf("did not expect the auto-detected default timeout, got %v", ups[0].args)
+	}
+}
+
+func TestDeployStack_AutoDetectedHealthCheckFailureTriggersRollback(t *testing.T) {
+	baseDir := makeBaseWithHealthcheckStack(t)
+	composePath := filepath.Join(baseDir, "mystack", "docker-compose.yml")
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{},
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(composeWithHealthcheck("nginx:1.25")),
+		},
+	}
+
+	// The first "up" (the deploy under the auto-detected gate) fails; the
+	// rollback's own "up" (second call) succeeds.
+	failingOnce := &failUpCallsRunner{errs: map[int]error{1: fmt.Errorf("compose up: services never turned healthy")}}
+	d := &Deployer{runner: failingOnce, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+
+	stack := config.Stack{Name: "mystack"} // no health_check declared, auto-detected from compose
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
+	if !errors.Is(err, ErrRolledBack) {
+		t.Fatalf("expected ErrRolledBack, got %v", err)
+	}
+	if failingOnce.upCount != 2 {
+		t.Errorf("expected 2 up calls (failed deploy + rollback), got %d", failingOnce.upCount)
+	}
 }
 
 func TestDeployStack_HealthProbePassKeepsDeploy(t *testing.T) {

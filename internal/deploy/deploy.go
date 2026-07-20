@@ -657,6 +657,12 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		slog.Warn("could not parse compose file, pulling all services and skipping build tracking", "stack", stack.Name, "err", err)
 	}
 
+	// A stack that declares no health_check but whose compose file has one
+	// gets the same --wait + rollback gate automatically, at the default
+	// timeout (ADR-0046). Resolved once here so every downstream read of
+	// run.stack.HealthCheck (rollback.go, rollout.go, below) sees it.
+	run.stack.HealthCheck = resolveHealthCheck(stack.HealthCheck, compose)
+
 	var dockerfilePaths []string
 	if compose != nil {
 		dockerfilePaths = compose.dockerfilePaths(repoDir)
@@ -746,7 +752,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	} else {
 		// --remove-orphans removes containers for services deleted from docker-compose.yml.
 		upArgs := []string{"up", "-d", "--remove-orphans"}
-		if hc := stack.HealthCheck; hc != nil {
+		if hc := run.stack.HealthCheck; hc != nil {
 			// First health gate: --wait makes the up itself fail when the services'
 			// compose healthchecks do not turn healthy in time (ADR-0022).
 			upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
@@ -758,7 +764,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	// Second health gate: the optional HTTP probe verifies the stack from the
 	// outside after a successful up (ADR-0022).
-	if hc := stack.HealthCheck; hc != nil && hc.URL != "" {
+	if hc := run.stack.HealthCheck; hc != nil && hc.URL != "" {
 		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
 		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
