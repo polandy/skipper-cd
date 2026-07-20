@@ -202,7 +202,10 @@ type Config struct {
 	// StackDiscovery discovers the stack set from the deploy repo on every sync
 	// (ADR-0034): every direct subdirectory of stacks_base_dir containing a
 	// docker-compose.yml is a stack; per-stack overrides come from the Stacks
-	// list (ADR-0043). Requires stacks_base_dir.
+	// list (ADR-0043). Defaults to true (an omitted key enables discovery);
+	// requires stacks_base_dir. Set false to list the stacks in the config
+	// yourself. The zero value is false, so a directly-constructed Config is
+	// not in discovery mode unless it opts in.
 	StackDiscovery bool `yaml:"stack_discovery"`
 
 	// UIEnabled serves the web UI (dashboard, event history, UI API) on the
@@ -469,6 +472,15 @@ func Load(path string) (*Config, error) {
 	}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config file: %w", err)
+	}
+
+	// stack_discovery defaults to true (ADR-0043). The field is a plain bool, so
+	// probe for an omitted key (vs an explicit false) to apply the default.
+	var probe struct {
+		StackDiscovery *bool `yaml:"stack_discovery"`
+	}
+	if yaml.Unmarshal(data, &probe) == nil && probe.StackDiscovery == nil {
+		cfg.StackDiscovery = true
 	}
 
 	if cfg.CommandTimeoutSeconds == 0 {

@@ -18,6 +18,32 @@ stack_discovery: true
 	}
 }
 
+func TestLoad_StackDiscoveryDefaultsTrue(t *testing.T) {
+	// An omitted stack_discovery enables discovery (ADR-0043).
+	cfg := loadFromString(t, `
+repo_url: ssh://git@gitea.example.com/user/deploy.git
+stacks_base_dir: /var/lib/skipper/repo/stacks
+`)
+	if !cfg.StackDiscovery {
+		t.Error("stack_discovery should default to true when omitted")
+	}
+}
+
+func TestLoad_StackDiscoveryExplicitFalse(t *testing.T) {
+	// An explicit false opts into listing the stacks in the config (the probe
+	// must distinguish an omitted key from an explicit false).
+	cfg := loadFromString(t, `
+repo_url: ssh://git@gitea.example.com/user/deploy.git
+stack_discovery: false
+stacks:
+  - name: web
+    working_dir: /opt/web
+`)
+	if cfg.StackDiscovery {
+		t.Error("explicit stack_discovery: false must stay false")
+	}
+}
+
 func TestLoad_StackDiscoveryAllowsStacksListAsOverrides(t *testing.T) {
 	// ADR-0043: under discovery the stacks: list is an optional per-stack
 	// override map (matched to discovered directories by name), so it no longer

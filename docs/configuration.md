@@ -2,7 +2,21 @@
 
 The configuration file is a YAML file passed via the `-config` flag (default: `/etc/skipper/skipper.yml`).
 
-For a minimal starting point see the [Quickstart](index.md#quickstart). This page is the full reference for every field.
+For a guided walkthrough see the [Quickstart](index.md#quickstart). This page is the full reference for every field.
+
+---
+
+## Minimal Example
+
+The smallest working config. Stack discovery is on by default, so every `<stacks_base_dir>/<name>/docker-compose.yml` in the deploy repo is a stack — no `stacks:` list needed:
+
+```yaml
+repo_url: ssh://git@gitea.example.com/user/deploy.git
+stacks_base_dir: /var/lib/skipper/repo/stacks
+webhook_secret: "your-secret-here"
+```
+
+skipper clones the repo and deploys every discovered stack; a git push then fires the signed webhook and it redeploys only what changed (a [reconcile loop](#periodic-reconcile) re-syncs on a timer as a safety net). `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
 
 ---
 
@@ -21,6 +35,7 @@ port: 8080
 metrics_port: 9120
 ui_enabled: true                        # optional, default: true (live web UI on the webhook port)
 autosync: true                          # optional, default: true (pause deploys globally)
+stack_discovery: false                  # this example lists stacks manually; omit it to auto-discover them (the default)
 
 stacks:
   - name: traefik
@@ -60,8 +75,8 @@ nixos_rebuild:
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. Must be 1–65535 and differ from `port`. |
 | `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
 | `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
-| `stacks` | list | unless `stack_discovery` | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). Without `stack_discovery` this list *is* the stack set. With `stack_discovery` it is optional and holds only per-stack overrides, matched to discovered directories by `name`. |
-| `stack_discovery` | bool | no | `false` | Discover the stack set from the deploy repo: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack; per-stack overrides come from the optional `stacks:` list above (see [Stack discovery](#stack-discovery)). Requires `stacks_base_dir`. |
+| `stacks` | list | no | — | List of Docker Compose stacks (see [Stack Fields](#stack-fields)). Under discovery (the default) it is optional and holds only per-stack overrides, matched to discovered directories by `name`. With `stack_discovery: false` this list *is* the stack set. |
+| `stack_discovery` | bool | no | `true` | Discover the stack set from the deploy repo: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack; per-stack overrides come from the optional `stacks:` list above (see [Stack discovery](#stack-discovery)). Requires `stacks_base_dir`. Set `false` to list the stacks in this file yourself. |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
 | `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
@@ -114,7 +129,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 
 ## Stack discovery
 
-With `stack_discovery: true` the **stack set** is discovered from the deploy repo — every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack — so adding or removing a stack is a single git push. Per-stack **overrides** live in this one config's optional `stacks:` list, matched to discovered directories by `name`:
+Stack discovery is **on by default** (`stack_discovery: true`; set `false` to list the stacks yourself). The **stack set** is discovered from the deploy repo — every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack — so adding or removing a stack is a single git push. Per-stack **overrides** live in this one config's optional `stacks:` list, matched to discovered directories by `name`:
 
 ```
 deploy-repo/

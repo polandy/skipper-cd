@@ -13,6 +13,7 @@ func TestLoad_AcceptsDependsOn(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
+stack_discovery: false
 stacks:
   - name: postgres
   - name: app
@@ -32,6 +33,7 @@ func TestLoad_RejectsDependsOnUnknownStack(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
+stack_discovery: false
 stacks:
   - name: app
     depends_on: [postgers]
@@ -49,6 +51,7 @@ func TestLoad_RejectsDependsOnSelf(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
+stack_discovery: false
 stacks:
   - name: app
     depends_on: [app]
@@ -66,6 +69,7 @@ func TestLoad_RejectsDependsOnCycle(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
+stack_discovery: false
 stacks:
   - name: a
     depends_on: [b]
@@ -89,6 +93,7 @@ func TestLoad_RejectsDependsOnReservedNixosKey(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
+stack_discovery: false
 stacks:
   - name: app
     depends_on: [_nixos]
