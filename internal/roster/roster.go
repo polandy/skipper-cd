@@ -1,5 +1,5 @@
 // Package roster builds the Stacks-view inventory: the full set of stacks
-// skipper owns (stack discovery, ADR-0034, or the host list in legacy mode)
+// skipper owns (stack discovery, ADR-0034, or the host stacks: list)
 // merged with each stack's last deploy outcome from the audit log (ADR-0033).
 //
 // Unlike the deploy table — an event log that only shows stacks with recent
