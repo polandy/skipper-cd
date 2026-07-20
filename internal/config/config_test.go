@@ -587,7 +587,7 @@ stacks:
     working_dir: relative/path
 `
 	_, err := loadStringToConfig(t, content)
-	if err == nil || !strings.Contains(err.Error(), "working_dir must be an absolute path") {
+	if err == nil || !strings.Contains(err.Error(), "must be an absolute path") {
 		t.Fatalf("expected a working_dir-must-be-absolute error, got %v", err)
 	}
 }

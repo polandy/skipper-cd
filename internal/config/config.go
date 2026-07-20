@@ -582,7 +582,7 @@ func collectWarnings(cfg *Config) []string {
 	// nothing to deploy or manage. Under discovery this is not suspicious —
 	// the repo may simply not have been synced yet.
 	if !cfg.StackDiscovery && len(cfg.Stacks) == 0 && !cfg.NixOSRebuild.IsEnabled() {
-		warnings = append(warnings, "stack_discovery is off, no stacks are configured, and nixos_rebuild is disabled — skipper-cd has nothing to deploy")
+		warnings = append(warnings, "stack_discovery is off, no stacks are configured, and nixos_rebuild is disabled — skipper-cd has nothing to deploy; set stack_discovery: true, add entries under stacks:, or configure nixos_rebuild")
 	}
 	return warnings
 }
@@ -663,7 +663,7 @@ func validateConfig(cfg *Config) error {
 	// otherwise only discover a missing/unreadable file at the first sync).
 	if cfg.VarsFile != "" {
 		if _, err := os.ReadFile(cfg.VarsFile); err != nil {
-			return fmt.Errorf("vars_file: %w", err)
+			return fmt.Errorf("vars_file: %w — check the path and that skipper-cd can read it, or remove vars_file if it's no longer needed", err)
 		}
 	}
 
@@ -691,25 +691,25 @@ func validateConfig(cfg *Config) error {
 	}
 
 	seen := make(map[string]struct{}, len(cfg.Stacks))
-	for _, s := range cfg.Stacks {
+	for i, s := range cfg.Stacks {
 		if s.Name == "" {
-			return fmt.Errorf("every stack needs a name")
+			return fmt.Errorf("stacks[%d] has no name — add a name: field to this entry", i)
 		}
 		if s.Name == ReservedStackName || s.Name == ReservedConfigStackName {
-			return fmt.Errorf("stack name %q is reserved", s.Name)
+			return fmt.Errorf("stack name %q is reserved for skipper's internal use (%s, %s) — rename this stack", s.Name, ReservedStackName, ReservedConfigStackName)
 		}
 		if _, dup := seen[s.Name]; dup {
-			return fmt.Errorf("duplicate stack name %q", s.Name)
+			return fmt.Errorf("duplicate stack name %q — stack names must be unique, rename one of the two entries", s.Name)
 		}
 		seen[s.Name] = struct{}{}
 
 		if s.WorkingDir == "" && cfg.StacksBaseDir == "" {
-			return fmt.Errorf("stack %q: working_dir is required when stacks_base_dir is not set", s.Name)
+			return fmt.Errorf("stack %q: working_dir is required when stacks_base_dir is not set — set one of the two", s.Name)
 		}
 		if s.WorkingDir != "" && !filepath.IsAbs(s.WorkingDir) {
 			// A relative working_dir would resolve against skipper's own process
 			// cwd, not the repo clone — silently wrong --project-directory.
-			return fmt.Errorf("stack %q: working_dir must be an absolute path, got %q", s.Name, s.WorkingDir)
+			return fmt.Errorf("stack %q: working_dir %q must be an absolute path (start it with \"/\")", s.Name, s.WorkingDir)
 		}
 
 		if err := validateHealthCheck(s.HealthCheck); err != nil {
@@ -961,11 +961,11 @@ func validateNotificationTarget(t NotificationTarget) error {
 	switch t.Format {
 	case NotifyFormatSignal, NotifyFormatGeneric:
 	default:
-		return fmt.Errorf("unknown format %q", t.Format)
+		return fmt.Errorf("unknown format %q, must be %q or %q", t.Format, NotifyFormatSignal, NotifyFormatGeneric)
 	}
 
 	if t.URL == "" {
-		return fmt.Errorf("url is required")
+		return fmt.Errorf("url is required (the endpoint the notification is POSTed to)")
 	}
 	if u, err := url.ParseRequestURI(t.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return fmt.Errorf("url %q must be a valid http(s) URL", t.URL)
@@ -975,7 +975,8 @@ func validateNotificationTarget(t NotificationTarget) error {
 		switch s {
 		case NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted:
 		default:
-			return fmt.Errorf("unknown on value %q", s)
+			return fmt.Errorf("unknown on value %q, must be one of %q, %q, %q, %q, %q",
+				s, NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted)
 		}
 	}
 
