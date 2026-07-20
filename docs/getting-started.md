@@ -38,12 +38,9 @@ repo_url: https://gitea.example.com/user/deploy-repo.git
 stacks_base_dir: /var/lib/skipper/repo/modules   # <clone dir>/modules
 webhook_secret: "a-long-random-string"           # you'll paste this into the webhook too
 ui_enabled: true                                 # live web UI on the webhook port
-
-stacks:
-  - name: traefik
-  - name: gitea
-  - name: monitoring
 ```
+
+Every `modules/<name>/docker-compose.yml` is discovered as a stack automatically — no list to maintain. (`webhook_secret` is optional: without it, deploys still run via the reconcile loop, just not instantly on push. This walkthrough wires the webhook, so set one.)
 
 Start it **[with Docker](docker.md)** (published image + Docker socket + this file — use an `http(s)` `repo_url`, the image ships no ssh client) or **[on NixOS](nixos.md)** (declarative module, can also run `nixos-rebuild switch`).
 
@@ -76,7 +73,7 @@ Target: `http://<skipper-host>:8080/webhook` — must be reachable from where yo
     | **Secret** | same string as `webhook_secret` |
     | **Events** | *Just the push event* |
 
-Content type must be `application/json` (form-encoded payloads are not understood), and the secret must match `webhook_secret` — payloads with a bad HMAC signature are rejected. An empty `webhook_secret` disables verification; fine for a local test only.
+Content type must be `application/json` (form-encoded payloads are not understood), and the secret must match `webhook_secret` — payloads with a bad HMAC signature are rejected. With no `webhook_secret` the `/webhook` endpoint is disabled entirely (it never accepts unsigned pushes); rely on the reconcile loop instead.
 
 ## Step 4 — Push and verify
 

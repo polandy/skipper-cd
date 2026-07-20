@@ -155,7 +155,11 @@ func main() {
 		"command_timeout", timeout,
 	)
 	if cfg.WebhookSecret == "" {
-		slog.Warn("webhook_secret is empty: /webhook accepts unsigned requests from anyone who can reach this port, and a malformed payload still triggers a deploy")
+		if *cfg.ReconcileIntervalSeconds > 0 {
+			slog.Info("webhook_secret not set: push webhooks are disabled; deploys run via the reconcile loop", "reconcile_interval_seconds", *cfg.ReconcileIntervalSeconds)
+		} else {
+			slog.Warn("webhook_secret not set and reconcile is disabled: nothing will trigger a deploy — set webhook_secret or reconcile_interval_seconds")
+		}
 	}
 
 	// Log the effective stack set (name, hooks, watch dirs) once so an

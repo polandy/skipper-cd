@@ -182,8 +182,10 @@ type Config struct {
 	StacksBaseDir string `yaml:"stacks_base_dir"`
 
 	// WebhookSecret is the shared HMAC-SHA256 secret push webhooks are signed
-	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Empty
-	// disables signature verification.
+	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Optional:
+	// when empty the /webhook endpoint is disabled (it never accepts unsigned
+	// pushes) and deploys run via the reconcile loop instead (ADR-0028). Set it
+	// to enable push-triggered deploys.
 	WebhookSecret string `yaml:"webhook_secret"`
 
 	// Port is the webhook/UI HTTP port. Defaults to 8080.
