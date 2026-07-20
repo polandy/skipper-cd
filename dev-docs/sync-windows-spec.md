@@ -1,6 +1,9 @@
 # Feature Spec: Sync Windows
 
-Status: proposal (not accepted)
+Status: **discarded 2026-07-21** (not accepted). Deploy-timing control is
+handled upstream by gating when Renovate's PRs merge (auto-merge windows),
+not by gating skipper's deploy of an already-merged commit — the design
+below is kept for reference only, in case that changes.
 Date: 2026-07-18
 
 ## Goal
