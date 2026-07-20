@@ -768,14 +768,14 @@ func validateConfig(cfg *Config) error {
 			// watch_dirs against stacks_base_dir (resolveRepoPaths). Host-list mode
 			// has no such resolution step, so a relative entry here would silently
 			// resolve against skipper's own process cwd instead.
-			for i, f := range s.EnvFiles {
+			for j, f := range s.EnvFiles {
 				if !filepath.IsAbs(f) {
-					return fmt.Errorf("stack %q: env_files[%d] %q must be an absolute path (start it with \"/\")", s.Name, i, f)
+					return fmt.Errorf("stack %q: env_files[%d] %q must be an absolute path (start it with \"/\")", s.Name, j, f)
 				}
 			}
-			for i, d := range s.WatchDirs {
+			for j, d := range s.WatchDirs {
 				if !filepath.IsAbs(d) {
-					return fmt.Errorf("stack %q: watch_dirs[%d] %q must be an absolute path (start it with \"/\")", s.Name, i, d)
+					return fmt.Errorf("stack %q: watch_dirs[%d] %q must be an absolute path (start it with \"/\")", s.Name, j, d)
 				}
 			}
 		}
