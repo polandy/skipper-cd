@@ -254,7 +254,7 @@
   <div id="log-view" class="clog-panel" data-testid="logs-panel">
     <div class="clog-head" data-taptip>
       <span class="clog-title">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="2"/><path d="M7 9.5l3 2.5-3 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 15H17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 6h14M5 11h14M5 16h9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="17" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
         skipper logs
       </span>
       <span class="clog-live" id="logs-live" data-testid="logs-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>
@@ -809,7 +809,7 @@
   // streams from /api/container-logs via EventSource and trails the row/line it
   // was opened from. Controls: live/pause, auto-scroll, wrap, in-log search,
   // fullscreen.
-  const CLOG_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15H17"/></svg>';
+  const CLOG_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6h14M5 11h14M5 16h9"/><circle cx="17" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>';
   const CLOG_ICONS = {
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>',
     wrap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h13a3 3 0 0 1 0 6h-4"/><path d="M16 15l-3 3 3 3"/><path d="M4 18h6"/></svg>',
