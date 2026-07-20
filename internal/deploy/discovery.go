@@ -14,8 +14,8 @@ import (
 const ConfigStateKey = config.ReservedConfigStackName
 
 // CurrentStacks returns the most recently discovered stack set (stack
-// discovery, ADR-0034): nil before the first successful discovery and in
-// legacy (host stacks list) mode. Out-of-run consumers — the health poller,
+// discovery, ADR-0034): nil before the first successful discovery and when the
+// stacks are listed explicitly. Out-of-run consumers — the health poller,
 // self-heal, the UI wiring — read the effective stacks through this. Safe for
 // concurrent use.
 func (d *Deployer) CurrentStacks() []config.Stack {
@@ -27,7 +27,7 @@ func (d *Deployer) CurrentStacks() []config.Stack {
 
 // CurrentDisabledStacks returns the names parked via disabled: true in the
 // most recently discovered set, for the UI's disabled line. nil before the
-// first discovery and in legacy mode. Safe for concurrent use.
+// first discovery and when the stacks are listed explicitly. Safe for concurrent use.
 func (d *Deployer) CurrentDisabledStacks() []string {
 	if p := d.discoveredStacks.Load(); p != nil {
 		return p.Disabled
@@ -59,11 +59,10 @@ func (d *Deployer) effectiveStack(cfg *config.Config, name string) (config.Stack
 	return config.Stack{}, false
 }
 
-// addStackConfigHash records the stack's effective-config hash under the
-// skipper.yaml path (at the stacks base dir), so a config edit is detected as a
-// change to that file — including in the UI's changed-files and diff views (the
-// diff is the real git diff of skipper.yaml). A stack without a ConfigHash
-// (legacy mode) adds nothing, keeping legacy change detection byte-identical.
+// addStackConfigHash records the stack's effective-config hash under a synthetic
+// per-stack key so a config edit is detected and redeploys that stack. The key
+// is a label, not a file read: as of ADR-0043 the config is host-side, so no git
+// diff exists for it. A stack without a ConfigHash adds nothing.
 func (d *Deployer) addStackConfigHash(hashes stackFileHashes, stack config.Stack, stacksBaseDir string) {
 	if stack.ConfigHash == "" {
 		return

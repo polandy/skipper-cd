@@ -25,7 +25,7 @@ deploy-repo/
             └── provisioning/
 ```
 
-The directory name is the stack `name` in the config. Push the repo to your Git host.
+The directory name is the stack name — skipper-cd discovers it automatically, no config entry needed. Push the repo to your Git host.
 
 !!! tip
     `modules/` is just a convention — `stacks_base_dir` can be any path in the repo. On NixOS, [self-registering stacks](nixos.md#recommended-pattern-self-registering-stacks) keep the stack list in sync automatically.
@@ -38,12 +38,9 @@ repo_url: https://gitea.example.com/user/deploy-repo.git
 stacks_base_dir: /var/lib/skipper/repo/modules   # <clone dir>/modules
 webhook_secret: "a-long-random-string"           # you'll paste this into the webhook too
 ui_enabled: true                                 # live web UI on the webhook port
-
-stacks:
-  - name: traefik
-  - name: gitea
-  - name: monitoring
 ```
+
+Stack discovery is on by default, so `traefik`, `gitea`, and `monitoring` are picked up from the repo layout above with no `stacks:` list needed — add one only to override a discovered stack (hooks, `health_check`, …) or to list stacks manually instead (`stack_discovery: false`).
 
 Start it **[with Docker](docker.md)** (published image + Docker socket + this file — use an `http(s)` `repo_url`, the image ships no ssh client) or **[on NixOS](nixos.md)** (declarative module, can also run `nixos-rebuild switch`).
 
@@ -76,7 +73,7 @@ Target: `http://<skipper-host>:8080/webhook` — must be reachable from where yo
     | **Secret** | same string as `webhook_secret` |
     | **Events** | *Just the push event* |
 
-Content type must be `application/json` (form-encoded payloads are not understood), and the secret must match `webhook_secret` — payloads with a bad HMAC signature are rejected. An empty `webhook_secret` disables verification; fine for a local test only.
+Content type must be `application/json` (form-encoded payloads are not understood), and the secret must match `webhook_secret` — payloads with a bad HMAC signature are rejected.
 
 ## Step 4 — Push and verify
 

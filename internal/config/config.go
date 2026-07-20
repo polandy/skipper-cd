@@ -78,11 +78,17 @@ type Stack struct {
 	// toggling it does not itself redeploy.
 	Rollout *Rollout `yaml:"rollout,omitempty"`
 
+	// Disabled excludes a discovered stack entirely (stack-discovery mode): not
+	// deployed, not health-polled. A running stack that becomes disabled keeps
+	// running — skipper hands it off, it does not tear it down. Ignored when the
+	// stacks are listed explicitly (stack_discovery: false), where the list is
+	// the membership.
+	Disabled bool `yaml:"disabled,omitempty"`
+
 	// ConfigHash is the hash of the stack's deploy-shaping config, set only by
 	// LoadRepoStacks in stack-discovery mode (ADR-0034). It participates in
-	// change detection so a repo skipper.yaml edit redeploys exactly the
-	// affected stack. Empty in legacy (host stacks list) mode. Never read from
-	// YAML.
+	// change detection so a per-stack config edit redeploys exactly the affected
+	// stack. Empty when the stacks are listed explicitly. Never read from YAML.
 	ConfigHash string `yaml:"-"`
 }
 
@@ -176,8 +182,10 @@ type Config struct {
 	StacksBaseDir string `yaml:"stacks_base_dir"`
 
 	// WebhookSecret is the shared HMAC-SHA256 secret push webhooks are signed
-	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Empty
-	// disables signature verification.
+	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Required:
+	// push webhooks are skipper's primary deploy trigger (the reconcile loop is
+	// a safety net, not a substitute), so it must be set and every request is
+	// signature-verified.
 	WebhookSecret string `yaml:"webhook_secret"`
 
 	// Port is the webhook/UI HTTP port. Defaults to 8080.
@@ -186,15 +194,18 @@ type Config struct {
 	// MetricsPort is the Prometheus /metrics HTTP port. Defaults to 9120.
 	MetricsPort int `yaml:"metrics_port"`
 
-	// Stacks lists the Docker Compose projects to deploy. Mutually exclusive
-	// with StackDiscovery.
+	// Stacks lists the Docker Compose projects to deploy. When stack_discovery
+	// is false this list is the stack set; under discovery it is the optional
+	// per-stack override list (ADR-0043), matched to discovered directories by name.
 	Stacks []Stack `yaml:"stacks"`
 
-	// StackDiscovery discovers the stack set from the deploy repo on every
-	// sync instead of this file (ADR-0034): every direct subdirectory of
-	// stacks_base_dir containing a docker-compose.yml is a stack, and the
-	// optional repo-root skipper.yaml holds per-stack overrides. Mutually
-	// exclusive with a non-empty Stacks list; requires stacks_base_dir.
+	// StackDiscovery discovers the stack set from the deploy repo on every sync
+	// (ADR-0034): every direct subdirectory of stacks_base_dir containing a
+	// docker-compose.yml is a stack; per-stack overrides come from the Stacks
+	// list (ADR-0043). Defaults to true (an omitted key enables discovery);
+	// requires stacks_base_dir. Set false to list the stacks in the config
+	// yourself. The zero value is false, so a directly-constructed Config is
+	// not in discovery mode unless it opts in.
 	StackDiscovery bool `yaml:"stack_discovery"`
 
 	// UIEnabled serves the web UI (dashboard, event history, UI API) on the
@@ -463,6 +474,15 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config file: %w", err)
 	}
 
+	// stack_discovery defaults to true (ADR-0043). The field is a plain bool, so
+	// probe for an omitted key (vs an explicit false) to apply the default.
+	var probe struct {
+		StackDiscovery *bool `yaml:"stack_discovery"`
+	}
+	if yaml.Unmarshal(data, &probe) == nil && probe.StackDiscovery == nil {
+		cfg.StackDiscovery = true
+	}
+
 	if cfg.CommandTimeoutSeconds == 0 {
 		cfg.CommandTimeoutSeconds = 300
 	}
@@ -607,6 +627,11 @@ func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
 		return fmt.Errorf("repo_url is required")
 	}
+	if cfg.WebhookSecret == "" {
+		// The webhook is skipper's primary deploy trigger (reconcile is a safety
+		// net), so require a secret — the endpoint is never open to unsigned pushes.
+		return fmt.Errorf("webhook_secret is required")
+	}
 
 	// A negative command_timeout_seconds would build an already-expired context,
 	// failing every git/docker/nixos command from the first sync with an opaque
@@ -625,13 +650,10 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("port and metrics_port must differ, both are %d", cfg.Port)
 	}
 
-	if cfg.StackDiscovery {
-		if len(cfg.Stacks) > 0 {
-			return fmt.Errorf("stacks must be empty when stack_discovery is enabled — per-stack config moves to the repo-root %s (ADR-0034)", RepoConfigFileName)
-		}
-		if cfg.StacksBaseDir == "" {
-			return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
-		}
+	if cfg.StackDiscovery && cfg.StacksBaseDir == "" {
+		// ADR-0043: under discovery the stacks: list is optional per-stack
+		// overrides, not the membership — so it no longer conflicts with discovery.
+		return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
 	}
 
 	seen := make(map[string]struct{}, len(cfg.Stacks))
@@ -664,8 +686,12 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	if err := validateStackDependencies(cfg.Stacks); err != nil {
-		return err
+	// Under discovery, cfg.Stacks is only the override subset; depends_on is
+	// validated against the full set at discovery (LoadRepoStacks), not here.
+	if !cfg.StackDiscovery {
+		if err := validateStackDependencies(cfg.Stacks); err != nil {
+			return err
+		}
 	}
 
 	if cfg.NixOSRebuild.IsEnabled() && cfg.NixOSRebuild.Flake == "" {

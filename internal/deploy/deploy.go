@@ -143,7 +143,7 @@ type Deployer struct {
 	lastSyncErr      atomic.Pointer[syncOutcome]       // nil until the first run
 	currentRunPlan   atomic.Pointer[RunPlan]           // latest published plan, for late joiners
 	currentHookRun   atomic.Pointer[HookRun]           // latest published hook-run state, for late joiners
-	discoveredStacks atomic.Pointer[config.RepoStacks] // stack-discovery result, nil in legacy mode
+	discoveredStacks atomic.Pointer[config.RepoStacks] // stack-discovery result, nil when stacks are listed explicitly
 	projectDirs      atomic.Pointer[map[string]string] // recorded stack→project-dir, for orphan detection
 }
 
@@ -568,7 +568,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// dependency gate below so their dependents block.
 	var stackErrs []config.StackError
 	if cfg.StackDiscovery {
-		repo, errs, err := config.LoadRepoStacks(cfg.StacksBaseDir)
+		repo, errs, err := config.LoadRepoStacks(cfg.StacksBaseDir, cfg.Stacks)
 		if err != nil {
 			slog.Error("stack discovery failed, no stacks deploy this run", "err", err)
 			d.emitDeployFailure(ConfigStateKey, 0, err, changeSet{})

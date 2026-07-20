@@ -2,7 +2,21 @@
 
 The configuration file is a YAML file passed via the `-config` flag (default: `/etc/skipper/skipper.yml`).
 
-For a minimal starting point see the [Quickstart](index.md#quickstart). This page is the full reference for every field.
+For a guided walkthrough see the [Quickstart](index.md#quickstart). This page is the full reference for every field.
+
+---
+
+## Minimal Example
+
+The smallest working config. Stack discovery is on by default, so every `<stacks_base_dir>/<name>/docker-compose.yml` in the deploy repo is a stack — no `stacks:` list needed:
+
+```yaml
+repo_url: ssh://git@gitea.example.com/user/deploy.git
+stacks_base_dir: /var/lib/skipper/repo/stacks
+webhook_secret: "your-secret-here"
+```
+
+skipper clones the repo and deploys every discovered stack; a git push then fires the signed webhook and it redeploys only what changed (a [reconcile loop](#periodic-reconcile) re-syncs on a timer as a safety net). `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
 
 ---
 
@@ -21,6 +35,7 @@ port: 8080
 metrics_port: 9120
 ui_enabled: true                        # optional, default: true (live web UI on the webhook port)
 autosync: true                          # optional, default: true (pause deploys globally)
+stack_discovery: false                  # this example lists stacks manually; omit it to auto-discover them (the default)
 
 stacks:
   - name: traefik
@@ -55,13 +70,13 @@ nixos_rebuild:
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |
 | `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
 | `stacks_base_dir` | string | no | — | Base directory prepended to a stack's `name` to derive its working directory when `working_dir` is not set. Avoids repeating long paths across stacks. |
-| `webhook_secret` | string | no | — | HMAC-SHA256 secret used to validate incoming webhook payloads (supports Gitea and GitHub/Forgejo signatures). When empty, signature validation is skipped (not recommended for production). |
+| `webhook_secret` | string | **yes** | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Required — the webhook is skipper's primary deploy trigger, so every request is signature-verified; an empty secret is rejected at startup. |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. Must be 1–65535 and differ from `port`. |
 | `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
 | `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
-| `stacks` | list | unless `stack_discovery` | — | List of Docker Compose stacks to manage (see [Stack Fields](#stack-fields)). Mutually exclusive with `stack_discovery`. |
-| `stack_discovery` | bool | no | `false` | Discover the stack set from the deploy repo instead of this file: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack, with optional per-stack overrides in a `skipper.yaml` at the `stacks_base_dir` root (see [Stack discovery](#stack-discovery)). Requires `stacks_base_dir`; mutually exclusive with `stacks`. |
+| `stacks` | list | no | — | List of Docker Compose stacks (see [Stack Fields](#stack-fields)). Under discovery (the default) it is optional and holds only per-stack overrides, matched to discovered directories by `name`. With `stack_discovery: false` this list *is* the stack set. |
+| `stack_discovery` | bool | no | `true` | Discover the stack set from the deploy repo: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack; per-stack overrides come from the optional `stacks:` list above (see [Stack discovery](#stack-discovery)). Requires `stacks_base_dir`. Set `false` to list the stacks in this file yourself. |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
 | `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
@@ -114,36 +129,35 @@ Each entry under `stacks` configures one Docker Compose stack.
 
 ## Stack discovery
 
-With `stack_discovery: true` the deploy repo declares the stacks — adding, changing, or removing a stack is a single git push, no host-config edit:
+Stack discovery is **on by default** (`stack_discovery: true`; set `false` to list the stacks yourself). The **stack set** is discovered from the deploy repo — every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack — so adding or removing a stack is a single git push. Per-stack **overrides** live in this one config's optional `stacks:` list, matched to discovered directories by `name`:
 
 ```
 deploy-repo/
 └── stacks/               # = stacks_base_dir
-    ├── skipper.yaml      # optional per-stack overrides
     ├── gitea/docker-compose.yml
     ├── traefik/docker-compose.yml
     └── wip/docker-compose.yml
 ```
 
-- Every directory under `stacks_base_dir` containing a `docker-compose.yml` is a stack; name = directory name, deploy order alphabetical (plus `depends_on`). Defaults apply — a bare directory is a fully functional stack.
-- The optional `skipper.yaml` at the `stacks_base_dir` root holds only the exceptions, keyed by stack name:
-
 ```yaml
-# skipper.yaml (in stacks_base_dir)
-stacks:
-  traefik:
+# host config (skipper.yaml)
+stack_discovery: true
+stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks:                     # optional — only the exceptions
+  - name: traefik
     depends_on: [gitea]
     health_check: { url: http://localhost:8080/ping }
-  wip:
-    disabled: true      # in the repo, deliberately not deployed
+  - name: wip
+    disabled: true          # discovered, deliberately not deployed
 ```
 
-- **Fields** — the [Stack Fields](#stack-fields) above except `name` and `autosync`, plus `disabled`. Relative `env_files`/`watch_dirs` paths resolve against `stacks_base_dir`; a relative path that escapes it via `../` fails that stack entry (absolute paths are unrestricted, same as [Stack Fields](#stack-fields)).
+- Every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack; name = directory name, deploy order alphabetical (plus `depends_on`). Defaults apply — a bare directory with no `stacks:` entry is a fully functional stack.
+- **Fields** — the [Stack Fields](#stack-fields) above, plus `disabled`. An entry's `name` must match a discovered directory (a typo fails that entry). Relative `env_files`/`watch_dirs` paths resolve against `stacks_base_dir`; a relative path that escapes it via `../`, or that does not exist, fails that stack entry (absolute paths are unrestricted and not existence-checked — the host-secret escape hatch).
 - **`disabled: true`** — parked: not deployed, not health-checked; a running stack keeps running. The web UI lists parked names in a `disabled` line below the deploy table.
-- **Config edits redeploy** — a `skipper.yaml` edit redeploys the affected stacks (shown as a `skipper.yaml` change). Enabling discovery redeploys every stack once.
-- **Broken config fails visibly** — an unparseable `skipper.yaml` shows as a failed `_config` row and deploys nothing; a single bad entry fails only that stack. Running containers are never touched.
-- **Validated every sync** — because discovery runs against the repo clone, each stack is checked up front, not only when it next deploys: its `docker-compose.yml` must parse, any relative (in-repo) `env_files`/`watch_dirs` must exist, and any `rollout` service must be present and eligible. A failure shows on the stack's row and excludes only that stack. Absolute paths are not existence-checked (the host-secret escape hatch).
-- **Self-heal** — activation is global-only here: the poller runs only when the host config sets `self_heal: true`. A per-stack `self_heal: true` in the repo `skipper.yaml` cannot turn it on by itself (it never activates); once global is on, per-stack `self_heal: false` opts a stack out.
+- **One config file** — there is no separate in-repo override file. A leftover `<stacks_base_dir>/skipper.yaml` in the clone is **not read** and fails the whole stack phase loudly (a `_config` row), so un-migrated overrides never silently revert stacks to defaults.
+- **Config edits redeploy** — changing a stack's effective config (e.g. its `watch_dirs`) redeploys exactly that stack. Because the config is host-side, the change is not a tracked repo file, so the UI shows the redeploy without a config diff (the diff is in the host's own git, e.g. `/etc/nixos`).
+- **Validated every sync** — because discovery runs against the repo clone, each stack is checked up front, not only when it next deploys: its `docker-compose.yml` must parse, any relative `env_files`/`watch_dirs` must exist, and any `rollout` service must be present and eligible. A failure shows on the stack's row and excludes only that stack.
+- **Self-heal** — activation is global-only here: the poller runs only when the host config sets `self_heal: true`. A per-stack `self_heal: true` cannot turn it on by itself (it never activates); once global is on, per-stack `self_heal: false` opts a stack out.
 
 ## Health-check-gated rollback
 

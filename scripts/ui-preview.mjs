@@ -175,22 +175,6 @@ for (const n of stacks) {
 mkdirSync(join(origin, 'experiments'), { recursive: true });
 writeFileSync(join(origin, 'experiments', 'docker-compose.yml'), `services:\n  experiments:\n    image: nginx:1.25\n`);
 writeFileSync(join(origin, 'experiments', 'icon.svg'), icon);
-// Stack-discovery overrides (ADR-0034), at the stacks_base_dir root: api keeps
-// its health-check gate; experiments is parked.
-writeFileSync(
-  join(origin, 'skipper.yaml'),
-  `stacks:\n` +
-    `  api:\n` +
-    `    health_check:\n      timeout_seconds: 1\n` +
-    // Deploy hooks (ADR-0038): drive the hooks badge + panel. Commands are
-    // harmless echoes so the preview's startup deploy still succeeds.
-    `    hooks:\n      pre_deploy:\n        - "echo dumping api database"\n      post_deploy:\n        - "echo smoke test ok"\n` +
-    `  web:\n` +
-    // A short sleep so the running-hook phase sub-label is visible for a few
-    // seconds during the startup deploy of web.
-    `    hooks:\n      pre_deploy:\n        - "echo starting backup"\n        - "sleep 4"\n      post_deploy:\n        - "echo verifying deploy"\n` +
-    `  experiments:\n    disabled: true\n`,
-);
 git(origin, 'add', '.');
 git(origin, 'commit', '-m', 'initial');
 
@@ -211,10 +195,18 @@ const cfg =
   // Dead source_url → auto-match icon fetches fail fast; committed icon.svg
   // overrides still resolve, so the preview stays fully offline.
   `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
-  // Stack discovery (ADR-0034): the stack set + per-stack config come from the
-  // repo (stacks_base_dir root skipper.yaml), matching production. worker and
+  // Stack discovery (ADR-0034): the stack set comes from the repo dirs. Per-stack
+  // overrides live in this one config's stacks: list (ADR-0043) — api keeps its
+  // health-check gate + hooks, web has hooks, experiments is parked. worker and
   // database are discovered but never pushed → they show as "never deployed".
-  `stack_discovery: true\n`;
+  `stack_discovery: true\n` +
+  `stacks:\n` +
+  `  - name: api\n` +
+  `    health_check:\n      timeout_seconds: 1\n` +
+  `    hooks:\n      pre_deploy:\n        - "echo dumping api database"\n      post_deploy:\n        - "echo smoke test ok"\n` +
+  `  - name: web\n` +
+  `    hooks:\n      pre_deploy:\n        - "echo starting backup"\n        - "sleep 4"\n      post_deploy:\n        - "echo verifying deploy"\n` +
+  `  - name: experiments\n    disabled: true\n`;
 const cfgPath = join(base, 'skipper.yml');
 writeFileSync(cfgPath, cfg);
 

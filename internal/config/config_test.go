@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/polandy/skipper-cd/internal/config"
@@ -444,6 +445,12 @@ func loadFromString(t *testing.T, content string) *config.Config {
 
 func loadStringToConfig(t *testing.T, content string) (*config.Config, error) {
 	t.Helper()
+	// webhook_secret is required (push webhooks are the primary trigger). Most
+	// tests aren't about it, so inject a default when absent; a test exercising
+	// the requirement sets webhook_secret explicitly (e.g. to "").
+	if !strings.Contains(content, "webhook_secret") {
+		content = "webhook_secret: test-secret\n" + content
+	}
 	path := filepath.Join(t.TempDir(), "skipper.yml")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
@@ -454,7 +461,21 @@ func loadStringToConfig(t *testing.T, content string) (*config.Config, error) {
 const minimalConfig = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
+webhook_secret: secret123
 `
+
+func TestLoad_RejectsMissingWebhookSecret(t *testing.T) {
+	// webhook_secret is required — the webhook is skipper's primary deploy
+	// trigger, and an empty secret would leave it unauthenticated.
+	_, err := loadStringToConfig(t, `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+webhook_secret: ""
+`)
+	if err == nil || !strings.Contains(err.Error(), "webhook_secret") {
+		t.Fatalf("expected a webhook_secret required error, got %v", err)
+	}
+}
 
 func TestLoad_HealthPollIntervalDefaultsTo30WhenOmitted(t *testing.T) {
 	cfg, err := loadStringToConfig(t, minimalConfig)

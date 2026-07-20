@@ -1,11 +1,8 @@
 package config
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,11 +13,9 @@ import (
 	"github.com/polandy/skipper-cd/internal/compose"
 )
 
-// RepoConfigFileName is the optional per-stack override file at the root of
-// the watched stacks directory (stacks_base_dir) in stack-discovery mode
-// (ADR-0034). Keeping it next to the stacks it configures lets one deploy repo
-// serve several hosts that each watch a different subtree, each with its own
-// skipper.yaml (ADR-0034 amendment).
+// RepoConfigFileName is the former in-repo per-stack override file. As of
+// ADR-0043 it is no longer read (overrides live in the host config); a leftover
+// one is rejected (see LoadRepoStacks).
 const RepoConfigFileName = "skipper.yaml"
 
 // StackError reports an entry-level failure of a single discovered stack (an
@@ -33,34 +28,6 @@ type StackError struct {
 
 func (e StackError) Error() string { return fmt.Sprintf("stack %q: %v", e.Stack, e.Err) }
 
-// repoStackOverride is one stack's entry in the skipper.yaml. Every
-// field is optional — a discovered stack without an entry runs on defaults.
-// It mirrors the per-stack fields of the host config; autosync is deliberately
-// absent for now (the autosync controller's config baseline is fixed at
-// startup; global autosync and UI overrides work as usual).
-type repoStackOverride struct {
-	WorkingDir         string       `yaml:"working_dir"`
-	EnvFiles           []string     `yaml:"env_files"`
-	WatchDirs          []string     `yaml:"watch_dirs"`
-	OnDemandContainers []string     `yaml:"on_demand_containers"`
-	Icon               string       `yaml:"icon"`
-	HealthCheck        *HealthCheck `yaml:"health_check"`
-	SelfHeal           *bool        `yaml:"self_heal"`
-	DependsOn          []string     `yaml:"depends_on"`
-	Hooks              Hooks        `yaml:"hooks"`
-	Rollout            *Rollout     `yaml:"rollout"`
-
-	// Disabled excludes the stack entirely: not deployed, not health-polled.
-	// A running stack that becomes disabled keeps running — skipper hands it
-	// off, it does not tear it down.
-	Disabled bool `yaml:"disabled"`
-}
-
-// repoConfig is the shape of the repo-root skipper.yaml.
-type repoConfig struct {
-	Stacks map[string]repoStackOverride `yaml:"stacks"`
-}
-
 // RepoStacks is the result of stack discovery: the deployable stacks and the
 // names parked via disabled: true — excluded from everything skipper does,
 // carried only so the UI can show they exist.
@@ -69,24 +36,28 @@ type RepoStacks struct {
 	Disabled []string
 }
 
-// LoadRepoStacks discovers the stack set from the deploy-repo clone
-// (ADR-0034): every direct subdirectory of stacksBaseDir containing a
-// docker-compose.yml is a stack (name = directory name, alphabetical order),
-// with optional per-stack overrides from <stacksBaseDir>/skipper.yaml. Relative
-// override paths resolve against stacksBaseDir, next to the stacks they configure.
+// LoadRepoStacks discovers the stack set from the deploy-repo clone and applies
+// the per-stack overrides from the host config (ADR-0034 discovery + ADR-0043
+// single config file): every direct subdirectory of stacksBaseDir containing a
+// docker-compose.yml is a stack (name = directory name, alphabetical order).
+// overrides are the host config's stacks: entries, matched to discovered stacks
+// by name; a discovered stack without a matching entry runs on defaults.
+// Relative override paths resolve against stacksBaseDir.
 //
-// The error return is file-level (unreadable base dir, unparseable or
-// unknown-field skipper.yaml): nothing can be trusted, the caller must not
-// deploy anything. StackErrors are entry-level: those stacks are excluded and
-// reported, the returned stacks are fine to deploy.
-func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
+// The error return is file-level (unreadable base dir, or a leftover in-repo
+// skipper.yaml that is no longer read): the caller must not deploy anything.
+// StackErrors are entry-level: those stacks are excluded and reported, the
+// returned stacks are fine to deploy.
+func LoadRepoStacks(stacksBaseDir string, overrides []Stack) (RepoStacks, []StackError, error) {
 	discovered, err := discoverStackDirs(stacksBaseDir)
 	if err != nil {
 		return RepoStacks{}, nil, err
 	}
-	ovf, err := loadRepoOverrides(filepath.Join(stacksBaseDir, RepoConfigFileName))
-	if err != nil {
-		return RepoStacks{}, nil, err
+	// A leftover in-repo override file is un-migrated config that would otherwise
+	// be silently ignored (ADR-0043) — reject it loudly.
+	repoFile := filepath.Join(stacksBaseDir, RepoConfigFileName)
+	if _, err := os.Stat(repoFile); err == nil {
+		return RepoStacks{}, nil, fmt.Errorf("%s is no longer read (ADR-0043): move its per-stack overrides into the host config's stacks: list and delete the file", repoFile)
 	}
 
 	known := make(map[string]bool, len(discovered))
@@ -94,27 +65,28 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 		known[name] = true
 	}
 
-	// failAt records an entry-level error, appending the marked skipper.yaml
-	// excerpt of the stack's entry (or one of its fields) when the location is
-	// known — so the failed row shows the offending config, not just its name.
-	var stackErrs []StackError
-	failAt := func(name, field string, format string, args ...any) {
-		stackErrs = append(stackErrs, StackError{Stack: name, Err: ovf.withSnippet(fmt.Errorf(format, args...), name, field)})
+	overrideByName := make(map[string]Stack, len(overrides))
+	for _, s := range overrides {
+		overrideByName[s.Name] = s
 	}
 
-	// A typo'd entry (no matching stack directory) must fail loudly — it is
-	// most likely a rename or misspelling that would otherwise silently strip
-	// a stack of its config.
-	for name := range ovf.stacks {
-		if !known[name] {
-			failAt(name, "", "no stack directory %s/%s with a docker-compose.yml", stacksBaseDir, name)
+	var stackErrs []StackError
+	fail := func(name string, format string, args ...any) {
+		stackErrs = append(stackErrs, StackError{Stack: name, Err: fmt.Errorf(format, args...)})
+	}
+
+	// An override for a stack that does not exist is a rename or misspelling that
+	// would otherwise silently strip a stack of its config — fail loudly.
+	for _, s := range overrides {
+		if !known[s.Name] {
+			fail(s.Name, "no stack directory %s/%s with a docker-compose.yml", stacksBaseDir, s.Name)
 		}
 	}
 
 	var stacks []Stack
 	var disabled []string
 	for _, name := range discovered {
-		ov := ovf.stacks[name]
+		ov := overrideByName[name]
 		if ov.Disabled {
 			disabled = append(disabled, name)
 			continue
@@ -128,6 +100,7 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 			WatchDirs:          watchDirs,
 			OnDemandContainers: ov.OnDemandContainers,
 			Icon:               ov.Icon,
+			Autosync:           ov.Autosync,
 			HealthCheck:        ov.HealthCheck,
 			SelfHeal:           ov.SelfHeal,
 			DependsOn:          ov.DependsOn,
@@ -141,9 +114,9 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 		hcErr := validateHealthCheck(stack.HealthCheck)
 		hookErr := validateHooks(stack.Hooks)
 		rolloutErr := validateRollout(stack.Rollout)
-		// Parse the compose file every sync so a broken compose (or a rollout
-		// naming an unrollable/typo'd service) is caught at discovery, not only
-		// when the stack next redeploys — rollout config is not hash-tracked.
+		// Parse the compose every sync so a broken compose or an unrollable
+		// rollout service is caught at discovery — rollout is not hash-tracked,
+		// so an edit alone would not otherwise trigger a redeploy that reveals it.
 		cf, composeErr := compose.Parse(filepath.Join(stacksBaseDir, name, compose.FileName))
 		if rolloutErr == nil && composeErr == nil && stack.Rollout != nil {
 			rolloutErr = ValidateRolloutServices(stack.Rollout.Services, cf)
@@ -151,30 +124,27 @@ func LoadRepoStacks(stacksBaseDir string) (RepoStacks, []StackError, error) {
 		depErr := invalidDependency(stack, known)
 		switch {
 		case strings.HasPrefix(name, "_"):
-			failAt(name, "", "stack names starting with _ are reserved")
+			fail(name, "stack names starting with _ are reserved")
 		case envErr != nil:
-			failAt(name, "env_files", "%v", envErr)
+			fail(name, "env_files: %v", envErr)
 		case watchErr != nil:
-			failAt(name, "watch_dirs", "%v", watchErr)
+			fail(name, "watch_dirs: %v", watchErr)
 		case hcErr != nil:
-			failAt(name, "health_check", "health_check: %v", hcErr)
+			fail(name, "health_check: %v", hcErr)
 		case hookErr != nil:
-			failAt(name, "hooks", "hooks: %v", hookErr)
+			fail(name, "hooks: %v", hookErr)
 		case composeErr != nil:
-			failAt(name, "", "%v", composeErr)
+			fail(name, "%v", composeErr)
 		case rolloutErr != nil:
-			failAt(name, "rollout", "rollout: %v", rolloutErr)
+			fail(name, "rollout: %v", rolloutErr)
 		case depErr != nil:
-			failAt(name, "depends_on", "%v", depErr)
+			fail(name, "%v", depErr)
 		default:
 			stacks = append(stacks, stack)
 		}
 	}
 
 	stacks, cycleErrs := dropDependencyCycles(stacks)
-	for i := range cycleErrs {
-		cycleErrs[i].Err = ovf.withSnippet(cycleErrs[i].Err, cycleErrs[i].Stack, "depends_on")
-	}
 	stackErrs = append(stackErrs, cycleErrs...)
 
 	for i := range stacks {
@@ -207,60 +177,6 @@ func discoverStackDirs(stacksBaseDir string) ([]string, error) {
 	return names, nil
 }
 
-// repoOverridesFile is the parsed repo-root skipper.yaml plus the raw source
-// and a stack/field → line index, kept so error messages can show the marked
-// excerpt of the offending entry. The zero value (missing file) yields no
-// overrides and no snippets.
-type repoOverridesFile struct {
-	stacks map[string]repoStackOverride
-	src    []byte
-	lines  map[string]map[string]int
-}
-
-// withSnippet appends the marked skipper.yaml excerpt for the stack entry (or
-// one of its fields, falling back to the entry) to err; err is returned
-// unchanged when no location is known.
-func (f repoOverridesFile) withSnippet(err error, stack, field string) error {
-	fields := f.lines[stack]
-	if fields == nil {
-		return err
-	}
-	line := fields[field]
-	if line == 0 {
-		line = fields[""]
-	}
-	if snip := yamlSnippet(f.src, line); snip != "" {
-		return fmt.Errorf("%w\n\n%s", err, snip)
-	}
-	return err
-}
-
-// loadRepoOverrides parses the optional repo-root skipper.yaml. A missing file
-// means no overrides. Decoding is strict: an unknown field is a file-level
-// error, so a misspelled field fails loudly instead of silently deploying
-// without it. Parse errors carry the marked excerpt of the failing line.
-func loadRepoOverrides(path string) (repoOverridesFile, error) {
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return repoOverridesFile{}, nil
-	}
-	if err != nil {
-		return repoOverridesFile{}, fmt.Errorf("read %s: %w", RepoConfigFileName, err)
-	}
-
-	var rc repoConfig
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&rc); err != nil && !errors.Is(err, io.EOF) {
-		parseErr := fmt.Errorf("parse %s: %w", RepoConfigFileName, err)
-		if snip := yamlSnippet(data, yamlErrorLine(err)); snip != "" {
-			parseErr = fmt.Errorf("%w\n\n%s", parseErr, snip)
-		}
-		return repoOverridesFile{}, parseErr
-	}
-	return repoOverridesFile{stacks: rc.Stacks, src: data, lines: indexOverrideLines(data)}, nil
-}
-
 // resolveRepoPaths resolves relative paths against the repo clone root, so
 // repo-config entries like stacks/web/secrets.env point into the clone.
 // Absolute paths stay as-is — a documented escape hatch for host-level
@@ -269,10 +185,9 @@ func loadRepoOverrides(path string) (repoOverridesFile, error) {
 // unlike an absolute path, that's not a documented capability, just an
 // unintentional traversal a repo push could otherwise exploit.
 //
-// A relative (in-repo) path must also exist: it is committed alongside the
-// stacks, so a missing one is a typo we catch at discovery rather than at the
-// deploy that would fail hashing it. Absolute paths are not stat-ed — they may
-// be produced out-of-band on the host (the secrets escape hatch).
+// A relative (in-repo) path must also exist — a missing one is a typo, caught
+// here rather than at the deploy. Absolute paths are not stat-ed (they may be
+// produced out-of-band on the host — the secrets escape hatch).
 func resolveRepoPaths(stacksBaseDir string, paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
