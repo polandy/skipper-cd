@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Thorough quality review of a pull request — docs/ADR sync, implementation quality, test coverage, UI docs + e2e tests, CI status (fix failures), and updating the branch (rebase or merge) if behind the target branch. Posts the verdict as a PR comment when done. Use when asked to review a PR by number or branch.
+description: Thorough quality review of a pull request — docs/ADR sync, implementation quality, test coverage, UI docs + e2e tests, CI status (fix failures), and merging the target branch in if the PR is behind. Posts the verdict as a PR comment when done. Use when asked to review a PR by number or branch.
 argument-hint: <PR number or branch>
 ---
 
