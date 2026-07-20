@@ -51,7 +51,7 @@ asserting **behaviour + visual snapshots**.
 > connected→reconnecting→connected, driven by a kill/relaunch of the binary on
 > the same port), **UD10** (recovery from a *fatal* stream error the browser
 > won't retry), **UD3** (deploy indicator names the active stack while held),
-> **UD4** (responsive ≤700px), **UD5** (build identity label), **UD8** (view-options popover), **UD9** (theme glyph). All four masks' behaviour is landed, **and the visual-snapshot
+> **UD4** (responsive ≤700px), **UD5** (build identity label), **UD8** (view-options popover), **UD9** (theme glyph), and **UD11** (tap-tip opt-in on non-header controls). All four masks' behaviour is landed, **and the visual-snapshot
 > baselines (§5) too**: a lean set of six baselines (deploys table, diff panel,
 > autosync drawer, both themes, mobile layout) generated and compared in
 > Playwright's pinned container, gated by `RUN_SNAPSHOTS`. The `e2e-ui` CI job now
@@ -419,6 +419,13 @@ UI suite reuses.
   `.release-please-manifest.json` (the same source as the Docker/Nix builds), so
   the case asserts the ldflags → `GET /api/version` → header render through-line
   against the exact shipped version (release-proof: both sides read the manifest).
+- **UD11 — Tap-tip opt-in on non-header controls.** A leaf-level `data-taptip`
+  control (the deploy row's `clog-btn`) flashes `.tap-tip` on a synthetic touch
+  `pointerdown` and auto-hides after its 1600ms timer (`page.clock`); the same
+  dispatch with `pointerType: 'mouse'` shows nothing. A second case opens the
+  `view-options` popover and confirms `deploy-search` still stays silent even
+  though it sits under the opted-in `<header>` — the `.view-options` exclusion
+  overrides an opted-in ancestor.
 
 ### 4.6 UI — Maske E: PWA update banner
 
@@ -910,6 +917,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Connection indicator states | **UD2** |
 | Connection indicator recovers from a fatal stream error | **UD10** |
 | Deploy indicator active/idle | **UD3** |
+| Tap-tip opt-in on non-header controls (touch flash / mouse silent / view-options excluded) | **UD11** |
 | Upcoming look-ahead trail (active + next) | **UF1** |
 | Run panel (open on click, ordered run, close on end) | **UF2** |
 | Upcoming mobile `+N` count chip | **UF3** |

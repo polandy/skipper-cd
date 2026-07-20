@@ -164,8 +164,8 @@ when it is running, ideally with the log":
    console icon so the two never read as the same thing. It shows the split
    `pre+post` count (e.g. `2+1`), not the sum, so the shape of the hooks is
    visible at a glance. Its tooltip is two lines (`pre-deploy hook: N` /
-   `post-deploy hook: N`); on touch it flashes the same **tap-tip bubble** the
-   header glyphs use (the UI is glyph-only, so touch has no native tooltip).
+   `post-deploy hook: N`); on touch it flashes the shared **tap-tip bubble**
+   (the UI is glyph-only, so touch has no native tooltip).
    Clicking it opens a bound per-row panel (variant A, neutral accent bar, joining
    the health/diff/audit one-panel-per-row exclusivity) listing the configured
    `pre_deploy` then `post_deploy` command lines verbatim. **Source (decided): the

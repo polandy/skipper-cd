@@ -49,7 +49,7 @@
 </head>
 <body>
 
-<header>
+<header data-taptip>
   <div class="brand">
     <div class="brand-icon">
       <svg viewBox="0 5 64 64" fill="none" role="img" aria-label="skipper-cd">
@@ -84,7 +84,7 @@
           <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l8 4-8 4-8-4 8-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 12l8 4 8-4M4 16.5l8 4 8-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <button data-view="logs" title="Logs" aria-label="Logs" aria-haspopup="true" aria-expanded="false">
-          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="2"/><path d="M7 9.5l3 2.5-3 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 15H17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12h4l2-6 3 12 2-8 2 4h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
       <div class="view-options" id="view-options" data-testid="view-options" role="menu" aria-label="View options">
@@ -163,7 +163,7 @@
         <div class="gr-label">Global autosync</div>
         <div class="gr-note" id="autosync-global-note">on · deploys apply automatically</div>
       </div>
-      <div class="sw lg on" id="autosync-global-sw" data-testid="global-switch" role="switch" aria-checked="true" tabindex="0" title="Toggle global autosync"></div>
+      <div class="sw lg on" id="autosync-global-sw" data-testid="global-switch" data-taptip role="switch" aria-checked="true" tabindex="0" title="Toggle global autosync"></div>
     </div>
 
     <div class="sec-label">Queued <span class="sec-count" id="autosync-qcount"></span> · drains in this order</div>
@@ -243,7 +243,7 @@
   </div>
 
   <div class="orphans" id="orphans" data-testid="orphans">
-    <button class="orphans-head" id="orphans-head" data-testid="orphans-head" aria-expanded="false" title="Running compose projects the discovered stack set no longer accounts for.">
+    <button class="orphans-head" id="orphans-head" data-testid="orphans-head" data-taptip aria-expanded="false" title="Running compose projects the discovered stack set no longer accounts for.">
       <span class="orphans-caret" aria-hidden="true">▶</span>
       <span>Orphans</span>
       <span class="orphans-count" id="orphans-count" data-testid="orphans-count">0</span>
@@ -252,7 +252,7 @@
   </div>
 
   <div id="log-view" class="clog-panel" data-testid="logs-panel">
-    <div class="clog-head">
+    <div class="clog-head" data-taptip>
       <span class="clog-title">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="2"/><path d="M7 9.5l3 2.5-3 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 15H17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         skipper logs
@@ -376,13 +376,13 @@
     if (!hosts || !hosts.length) return '';
     if (hosts.length === 1) {
       const url = 'https://' + hosts[0];
-      return `<span class="link-wrap"><a class="link-btn" data-testid="app-link-btn" href="${escapeAttr(url)}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + hosts[0])}">${LINK_ICON}</a></span>`;
+      return `<span class="link-wrap"><a class="link-btn" data-testid="app-link-btn" data-taptip href="${escapeAttr(url)}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + hosts[0])}">${LINK_ICON}</a></span>`;
     }
     const items = hosts.map(function(h) {
       return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
     }).join('');
     const label = hosts.length + ' app links';
-    return `<span class="link-wrap"><button class="link-btn" type="button" data-testid="app-link-btn" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${LINK_ICON}</button><div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
+    return `<span class="link-wrap"><button class="link-btn" type="button" data-testid="app-link-btn" data-taptip title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${LINK_ICON}</button><div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
   }
 
   // toggleAppLinkPopover opens wrap's popover, closing whichever was open
@@ -822,7 +822,7 @@
   // deploy row's action cell.
   function clogBtnHTML(stack, service) {
     const label = service ? ('logs for ' + stack + ' / ' + service) : ('logs for ' + stack + ' (all services)');
-    return `<button class="clog-btn" type="button" data-testid="clog-btn" data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
+    return `<button class="clog-btn" type="button" data-testid="clog-btn" data-taptip data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
   }
   function clogButton(stack, service) {
     const tmp = document.createElement('template');
@@ -848,7 +848,7 @@
     const pre = (hooks.pre_deploy || []).length, post = (hooks.post_deploy || []).length;
     const label = `pre-deploy hook: ${pre}\npost-deploy hook: ${post}`;
     // "2+1" rather than the sum, so the split is visible.
-    return `<button class="hooks-badge" type="button" data-testid="hooks-badge" data-hooks-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${HOOK_ICON}<span class="hk-count">${pre}+${post}</span></button>`;
+    return `<button class="hooks-badge" type="button" data-testid="hooks-badge" data-taptip data-hooks-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${HOOK_ICON}<span class="hk-count">${pre}+${post}</span></button>`;
   }
   function hooksBadgeButton(stack, hooks) {
     const tmp = document.createElement('template');
@@ -885,7 +885,7 @@
     const phase = document.createElement('span');
     phase.className = 'hook-phase';
     phase.dataset.testid = 'hook-phase';
-    phase.innerHTML = `<span class="hk-dot"></span>${escapeHtml(hr.phase)} hook${n}<button class="clog-btn hook-log-btn" type="button" data-testid="clog-btn" data-hook-log="${escapeAttr(hr.stack)}" title="View this hook's output in the log" aria-label="View hook log">${CLOG_ICON}</button>`;
+    phase.innerHTML = `<span class="hk-dot"></span>${escapeHtml(hr.phase)} hook${n}<button class="clog-btn hook-log-btn" type="button" data-testid="clog-btn" data-taptip data-hook-log="${escapeAttr(hr.stack)}" title="View this hook's output in the log" aria-label="View hook log">${CLOG_ICON}</button>`;
     return phase;
   }
 
@@ -1054,7 +1054,7 @@
       el.className = 'clog-panel';
       el.dataset.testid = 'clog-panel';
       el.innerHTML =
-        '<div class="clog-head">' +
+        '<div class="clog-head" data-taptip>' +
           '<span class="clog-title">' + CLOG_ICON + ' logs <span class="clog-scope">· ' + escapeHtml(scope) + '</span></span>' +
           '<span class="clog-live" data-testid="clog-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>' +
           '<span class="clog-grow"></span>' +
@@ -1260,7 +1260,7 @@
   // view switch when it finds nothing to land on.
   function jumpBtnHTML(targetView, stack) {
     const label = targetView === 'stacks' ? 'View in Stacks' : 'View in Deploys';
-    return `<button type="button" class="jump-btn" data-testid="jump-btn" data-jump-view="${targetView}" data-jump-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label + ': ' + stack)}">` +
+    return `<button type="button" class="jump-btn" data-testid="jump-btn" data-taptip data-jump-view="${targetView}" data-jump-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label + ': ' + stack)}">` +
       '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>' +
       '</button>';
   }
@@ -2319,7 +2319,7 @@
           `<div class="stack-name">${escapeHtml(s.name)}${chip}</div>` +
           `<div class="stack-detail">${stackDetail(s, item)}</div>` +
         `</div>` +
-        `<div class="sw${s.effective ? ' on' : ''}"${swTestid} role="switch" aria-checked="${s.effective}"` +
+        `<div class="sw${s.effective ? ' on' : ''}"${swTestid} data-taptip role="switch" aria-checked="${s.effective}"` +
           ` tabindex="0" data-stack="${escapeAttr(s.name)}" title="${s.effective ? 'Pause' : 'Resume'} autosync"></div>` +
       `</div>`;
   }
@@ -2971,8 +2971,8 @@
     .catch(function() {});
 
   // Tap-reveal tooltips for touch (titles never show on touch): a tap flashes
-  // the title in a bubble. Covers the header controls and the hooks badge.
-  // Mouse/pen keep the native tooltip — we only handle touch.
+  // the title in a bubble. Any control under a `data-taptip` ancestor (or
+  // carrying the attribute itself) opts in; mouse/pen keep the native tooltip.
   (function setupTapTips() {
     const tip = document.createElement('div');
     tip.className = 'tap-tip';
@@ -3002,10 +3002,8 @@
       if (e.pointerType && e.pointerType !== 'touch') return; // mouse/pen: native tooltip
       const el = e.target.closest && e.target.closest('[title]');
       if (!el) return;
-      const header = document.querySelector('header');
-      const inHeader = header && header.contains(el) && !el.closest('.view-options'); // popover rows already show labels
-      const isHookBadge = el.classList && el.classList.contains('hooks-badge');
-      if (!inHeader && !isHookBadge) return;
+      if (el.closest('.view-options')) return; // popover rows already show visible labels
+      if (!el.closest('[data-taptip]')) return; // deliberate opt-in, not "any [title]"
       flash(el);
     }, { passive: true });
     window.addEventListener('scroll', hide, { passive: true });
