@@ -27,7 +27,10 @@ jobs:
           git diff --exit-code
 
   # JS unit layer for the pure UI helpers (internal/ui/static/app-helpers.js),
-  # run with the Node built-in test runner — no build step, no npm deps (ADR-0035).
+  # run with the Node built-in test runner — no build step, no npm deps for the
+  # shipped app (ADR-0035). Prettier/ESLint here are dev-only devDependencies
+  # (internal/ui/static/package.json), scoped to the plain-script JS files;
+  # app.css keeps its hand-tuned compact style and is deliberately excluded.
   ui-unit:
     runs-on: ubuntu-latest
     steps:
@@ -35,6 +38,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install UI static tooling deps
+        working-directory: internal/ui/static
+        run: npm ci
+      - name: Prettier check
+        working-directory: internal/ui/static
+        run: npm run fmt:check
+      - name: ESLint
+        working-directory: internal/ui/static
+        run: npm run lint
       - run: node --test internal/ui/static/app-helpers.test.js
 
   # End-to-end tests: run the real skipper binary against a local git origin

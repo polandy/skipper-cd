@@ -1,0 +1,7 @@
+# app.css keeps its hand-tuned compact style (multiple declarations per line
+# in the theme blocks, see the "grouped for scanability" comment at its top);
+# Prettier would explode that into one declaration per line. index.html is the
+# app shell markup + inline script, same reasoning. Only the plain-script JS
+# files (app-helpers.js, app-helpers.test.js, sw.js) are formatted here.
+app.css
+index.html
