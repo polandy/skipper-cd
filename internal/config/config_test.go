@@ -697,3 +697,238 @@ nixos_rebuild:
 		t.Errorf("expected no warnings with nixos_rebuild enabled, got %v", cfg.Warnings)
 	}
 }
+
+func TestLoad_RejectsRelativeRepoDir(t *testing.T) {
+	_, err := loadStringToConfig(t, minimalConfig+"repo_dir: relative/repo\n")
+	if err == nil || !strings.Contains(err.Error(), "repo_dir") || !strings.Contains(err.Error(), "must be an absolute path") {
+		t.Fatalf("expected a repo_dir-must-be-absolute error, got %v", err)
+	}
+}
+
+func TestLoad_AcceptsAbsoluteRepoDir(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig+"repo_dir: /var/lib/skipper/repo\n")
+	if cfg.RepoDir != "/var/lib/skipper/repo" {
+		t.Errorf("unexpected repo_dir: %s", cfg.RepoDir)
+	}
+}
+
+func TestLoad_AcceptsOmittedRepoDir(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig)
+	if cfg.RepoDir != "" {
+		t.Errorf("expected repo_dir to stay empty (default applied downstream), got %q", cfg.RepoDir)
+	}
+}
+
+func TestLoad_RejectsRelativeStacksBaseDir(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: relative/modules
+webhook_secret: secret123
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil || !strings.Contains(err.Error(), "stacks_base_dir") || !strings.Contains(err.Error(), "must be an absolute path") {
+		t.Fatalf("expected a stacks_base_dir-must-be-absolute error, got %v", err)
+	}
+}
+
+func TestLoad_RejectsRelativeIconsCacheDir(t *testing.T) {
+	content := minimalConfig + `
+icons:
+  cache_dir: relative/icons
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil || !strings.Contains(err.Error(), "icons.cache_dir") || !strings.Contains(err.Error(), "must be an absolute path") {
+		t.Fatalf("expected an icons.cache_dir-must-be-absolute error, got %v", err)
+	}
+}
+
+func TestLoad_AcceptsAbsoluteIconsCacheDir(t *testing.T) {
+	content := minimalConfig + `
+icons:
+  cache_dir: /srv/skipper/icons
+`
+	cfg := loadFromString(t, content)
+	if cfg.Icons.CacheDir != "/srv/skipper/icons" {
+		t.Errorf("unexpected icons.cache_dir: %s", cfg.Icons.CacheDir)
+	}
+}
+
+func TestLoad_DefaultIconsCacheDirIsAbsolute(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig)
+	if !strings.HasPrefix(cfg.Icons.CacheDir, "/") {
+		t.Errorf("expected default icons.cache_dir to be absolute, got %q", cfg.Icons.CacheDir)
+	}
+}
+
+func TestLoad_RejectsRelativeEnvFileInHostListMode(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+stacks:
+  - name: gitea
+    project_directory: /etc/nixos/modules/gitea
+    env_files:
+      - relative/compose.env
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil || !strings.Contains(err.Error(), "env_files") || !strings.Contains(err.Error(), "must be an absolute path") {
+		t.Fatalf("expected an env_files-must-be-absolute error, got %v", err)
+	}
+}
+
+func TestLoad_RejectsRelativeWatchDirInHostListMode(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+stacks:
+  - name: gitea
+    project_directory: /etc/nixos/modules/gitea
+    watch_dirs:
+      - relative/provisioning
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil || !strings.Contains(err.Error(), "watch_dirs") || !strings.Contains(err.Error(), "must be an absolute path") {
+		t.Fatalf("expected a watch_dirs-must-be-absolute error, got %v", err)
+	}
+}
+
+func TestLoad_AcceptsAbsoluteEnvFilesAndWatchDirsInHostListMode(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+stacks:
+  - name: gitea
+    project_directory: /etc/nixos/modules/gitea
+    env_files:
+      - /run/secrets/gitea.env
+    watch_dirs:
+      - /etc/nixos/modules/gitea/provisioning
+`
+	cfg := loadFromString(t, content)
+	if cfg.Stacks[0].EnvFiles[0] != "/run/secrets/gitea.env" {
+		t.Errorf("unexpected env_files: %v", cfg.Stacks[0].EnvFiles)
+	}
+}
+
+func TestLoad_AcceptsRelativeEnvFilesUnderDiscovery(t *testing.T) {
+	// Under discovery, relative env_files/watch_dirs are resolved against
+	// stacks_base_dir by LoadRepoStacks, not checked here — config.Load never
+	// sees the repo clone that would let it validate them.
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+webhook_secret: secret123
+stacks:
+  - name: gitea
+    env_files:
+      - relative/compose.env
+`
+	cfg := loadFromString(t, content)
+	if cfg.Stacks[0].EnvFiles[0] != "relative/compose.env" {
+		t.Errorf("unexpected env_files: %v", cfg.Stacks[0].EnvFiles)
+	}
+}
+
+func TestLoad_WarnsWhenPerStackSelfHealDeadUnderDiscovery(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+webhook_secret: secret123
+stacks:
+  - name: gitea
+    self_heal: true
+`
+	cfg := loadFromString(t, content)
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `stack "gitea"`) || !strings.Contains(cfg.Warnings[0], "never takes effect") {
+		t.Fatalf("expected a dead self_heal-override warning, got %v", cfg.Warnings)
+	}
+}
+
+func TestLoad_NoSelfHealWarning_WhenGlobalSelfHealOn(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+webhook_secret: secret123
+self_heal: true
+stacks:
+  - name: gitea
+    self_heal: true
+`
+	cfg := loadFromString(t, content)
+	for _, w := range cfg.Warnings {
+		if strings.Contains(w, "self_heal") {
+			t.Errorf("did not expect a self_heal warning with the global flag on, got %v", cfg.Warnings)
+		}
+	}
+}
+
+func TestLoad_NoSelfHealWarning_InHostListMode(t *testing.T) {
+	// Outside discovery, cfg.Stacks is the real stack set, so a per-stack
+	// self_heal override is a real, effective override — not the discovery-only
+	// footgun this warning targets.
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+stacks:
+  - name: gitea
+    project_directory: /etc/nixos/modules/gitea
+    self_heal: true
+`
+	cfg := loadFromString(t, content)
+	for _, w := range cfg.Warnings {
+		if strings.Contains(w, "self_heal") {
+			t.Errorf("did not expect a self_heal warning in host-list mode, got %v", cfg.Warnings)
+		}
+	}
+}
+
+func TestLoad_WarnsWhenHookTimeoutExceedsCommandTimeout(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+webhook_secret: secret123
+command_timeout_seconds: 60
+stacks:
+  - name: gitea
+    hooks:
+      pre_deploy: ["pg_dump db > /backup/db.sql"]
+      timeout_seconds: 120
+`
+	cfg := loadFromString(t, content)
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `stack "gitea"`) || !strings.Contains(cfg.Warnings[0], "hooks.timeout_seconds") {
+		t.Fatalf("expected a hooks.timeout_seconds-exceeds-command_timeout_seconds warning, got %v", cfg.Warnings)
+	}
+}
+
+func TestLoad_NoHookTimeoutWarning_WhenWithinCommandTimeout(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+webhook_secret: secret123
+stacks:
+  - name: gitea
+    hooks:
+      pre_deploy: ["pg_dump db > /backup/db.sql"]
+      timeout_seconds: 60
+`
+	cfg := loadFromString(t, content)
+	if len(cfg.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", cfg.Warnings)
+	}
+}
+
+func TestLoad_NoHookTimeoutWarning_WhenUnset(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+webhook_secret: secret123
+stacks:
+  - name: gitea
+    hooks:
+      pre_deploy: ["pg_dump db > /backup/db.sql"]
+`
+	cfg := loadFromString(t, content)
+	if len(cfg.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", cfg.Warnings)
+	}
+}

@@ -774,6 +774,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}
 
 	if len(stack.OnDemandContainers) > 0 {
+		if compose != nil {
+			compose.warnUnmatchedOnDemandContainers(stack.Name, stack.OnDemandContainers)
+		}
 		slog.Info("stopping on-demand containers after deploy", "stack", stack.Name, "containers", stack.OnDemandContainers)
 		if err := d.runner.Run(ctx, "", nil, "docker", append([]string{"stop"}, stack.OnDemandContainers...)...); err != nil {
 			slog.Warn("could not stop on-demand containers", "stack", stack.Name, "err", err)

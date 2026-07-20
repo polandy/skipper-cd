@@ -1,8 +1,11 @@
 package deploy
 
 import (
+	"bytes"
+	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -235,5 +238,97 @@ func TestComposeFile_PullableServices_AllBuildServices(t *testing.T) {
 
 	if len(pullable) != 0 {
 		t.Errorf("expected no pullable services, got %v", pullable)
+	}
+}
+
+// --- composeFile.warnUnmatchedOnDemandContainers tests ---
+
+func captureWarnings(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	fn()
+	return buf.String()
+}
+
+func TestComposeFile_WarnUnmatchedOnDemandContainers_MatchingContainerNameIsSilent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: myapp:latest
+    container_name: karakeep-app
+`)
+	cf := mustParseCompose(t, path)
+
+	log := captureWarnings(t, func() {
+		cf.warnUnmatchedOnDemandContainers("karakeep", []string{"karakeep-app"})
+	})
+
+	if log != "" {
+		t.Errorf("expected no warning for a matching container_name, got %q", log)
+	}
+}
+
+func TestComposeFile_WarnUnmatchedOnDemandContainers_MismatchWarns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: myapp:latest
+    container_name: karakeep-app
+`)
+	cf := mustParseCompose(t, path)
+
+	log := captureWarnings(t, func() {
+		cf.warnUnmatchedOnDemandContainers("karakeep", []string{"karakeep-chrome"})
+	})
+
+	if !strings.Contains(log, "karakeep-chrome") || !strings.Contains(log, "container_name") {
+		t.Errorf("expected a container_name mismatch warning naming karakeep-chrome, got %q", log)
+	}
+}
+
+func TestComposeFile_WarnUnmatchedOnDemandContainers_NoContainerNameDeclaredWarns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: myapp:latest
+`)
+	cf := mustParseCompose(t, path)
+
+	log := captureWarnings(t, func() {
+		cf.warnUnmatchedOnDemandContainers("karakeep", []string{"karakeep-app"})
+	})
+
+	if !strings.Contains(log, "karakeep-app") {
+		t.Errorf("expected a warning when no service declares container_name, got %q", log)
+	}
+}
+
+func TestComposeFile_WarnUnmatchedOnDemandContainers_MultipleEntriesEachChecked(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: myapp:latest
+    container_name: karakeep-app
+  chrome:
+    image: chrome:latest
+`)
+	cf := mustParseCompose(t, path)
+
+	log := captureWarnings(t, func() {
+		cf.warnUnmatchedOnDemandContainers("karakeep", []string{"karakeep-app", "karakeep-chrome"})
+	})
+
+	if strings.Contains(log, "container=karakeep-app") {
+		t.Errorf("did not expect a warning for the matching entry karakeep-app, got %q", log)
+	}
+	if !strings.Contains(log, "container=karakeep-chrome") {
+		t.Errorf("expected a warning for the unmatched entry karakeep-chrome, got %q", log)
 	}
 }

@@ -30,12 +30,16 @@ type Stack struct {
 	ProjectDirectory string `yaml:"project_directory"`
 
 	// EnvFiles lists KEY=VALUE files injected into the environment when docker-compose
-	// is invoked, enabling ${VAR} substitution inside docker-compose.yml.
+	// is invoked, enabling ${VAR} substitution inside docker-compose.yml. Under
+	// stack discovery, a relative entry resolves against stacks_base_dir
+	// (LoadRepoStacks); in host-list mode (stack_discovery: false) every entry
+	// must be absolute — checked at Load, since there is no repo-relative base
+	// to resolve against.
 	EnvFiles []string `yaml:"env_files"`
 
-	// WatchDirs lists additional directories (relative to the repo root or absolute)
-	// whose contents are hashed alongside docker-compose.yml. Any change inside
-	// these directories triggers a redeployment.
+	// WatchDirs lists additional directories whose contents are hashed alongside
+	// docker-compose.yml. Any change inside these directories triggers a
+	// redeployment. Same relative/absolute rule as EnvFiles above.
 	WatchDirs []string `yaml:"watch_dirs"`
 
 	// OnDemandContainers lists container names to stop after a successful deployment.
@@ -115,7 +119,9 @@ type Hooks struct {
 	// TimeoutSeconds bounds each individual hook command. 0 (the default) leaves
 	// each hook bounded only by the global command_timeout_seconds, which is
 	// also the hard ceiling: a larger value here cannot exceed it (raise
-	// command_timeout_seconds for a backup slower than that).
+	// command_timeout_seconds for a backup slower than that) — a value that
+	// does exceed it logs a startup warning, since it would otherwise silently
+	// never have any effect.
 	TimeoutSeconds int `yaml:"timeout_seconds"`
 }
 
@@ -159,7 +165,8 @@ type Config struct {
 	RepoURL string `yaml:"repo_url"`
 
 	// RepoDir is the local directory where the repository is cloned.
-	// Defaults to /var/lib/skipper/repo when left empty.
+	// Defaults to /var/lib/skipper/repo when left empty. When set, it must be
+	// absolute — checked at Load, since internal/git uses it verbatim.
 	RepoDir string `yaml:"repo_dir"`
 
 	// Branch is the Git branch to track. Defaults to "main".
@@ -184,7 +191,9 @@ type Config struct {
 
 	// StacksBaseDir is the directory inside the repo clone that holds one
 	// subdirectory per stack (<stacks_base_dir>/<name>/docker-compose.yml).
-	// Change detection and the compose file always come from here.
+	// Change detection and the compose file always come from here. When set, it
+	// must be absolute — checked at Load, since it is joined verbatim into every
+	// stack's paths.
 	StacksBaseDir string `yaml:"stacks_base_dir"`
 
 	// ProjectDirectoryBase is an optional base directory from which a stack's
@@ -450,7 +459,7 @@ const (
 // IconsConfig configures how the web UI resolves and caches stack icons.
 type IconsConfig struct {
 	// CacheDir is the on-disk directory where fetched icons are cached.
-	// Defaults to /var/lib/skipper/icons.
+	// Defaults to /var/lib/skipper/icons. Must be absolute — checked at Load.
 	CacheDir string `yaml:"cache_dir"`
 
 	// SourceURL is the icon-set base URL; icons are fetched from
@@ -598,6 +607,27 @@ func collectWarnings(cfg *Config) []string {
 	if !cfg.StackDiscovery && len(cfg.Stacks) == 0 && !cfg.NixOSRebuild.IsEnabled() {
 		warnings = append(warnings, "stack_discovery is off, no stacks are configured, and nixos_rebuild is disabled — skipper-cd has nothing to deploy; set stack_discovery: true, add entries under stacks:, or configure nixos_rebuild")
 	}
+
+	// Under discovery, SelfHealActive follows the global self_heal flag alone —
+	// the stack set is unknown at startup, so a per-stack override cannot
+	// activate the poller by itself. A stacks: override that sets self_heal:
+	// true while the global flag is off therefore never takes effect.
+	if cfg.StackDiscovery && (cfg.SelfHeal == nil || !*cfg.SelfHeal) {
+		for _, s := range cfg.Stacks {
+			if s.SelfHeal != nil && *s.SelfHeal {
+				warnings = append(warnings, fmt.Sprintf("stack %q sets self_heal: true, but stack_discovery is on and the global self_heal is off — under discovery only the global flag activates self-heal, so this override never takes effect; set the top-level self_heal: true instead", s.Name))
+			}
+		}
+	}
+
+	// hooks.timeout_seconds is capped by command_timeout_seconds at deploy time
+	// (the hard ceiling), so a larger value here silently never has any effect.
+	for _, s := range cfg.Stacks {
+		if s.Hooks.TimeoutSeconds > cfg.CommandTimeoutSeconds {
+			warnings = append(warnings, fmt.Sprintf("stack %q: hooks.timeout_seconds (%d) exceeds command_timeout_seconds (%d) — the hook is capped to the lower value; raise command_timeout_seconds or lower hooks.timeout_seconds", s.Name, s.Hooks.TimeoutSeconds, cfg.CommandTimeoutSeconds))
+		}
+	}
+
 	return warnings
 }
 
@@ -685,6 +715,12 @@ func validateConfig(cfg *Config) error {
 		f.Close()
 	}
 
+	// repo_dir is used verbatim for git clone/pull; a relative value would
+	// resolve against skipper's own process cwd, not the intended location.
+	if cfg.RepoDir != "" && !filepath.IsAbs(cfg.RepoDir) {
+		return fmt.Errorf("repo_dir %q must be an absolute path (start it with \"/\"), or leave it empty to use the default /var/lib/skipper/repo", cfg.RepoDir)
+	}
+
 	// A negative command_timeout_seconds would build an already-expired context,
 	// failing every git/docker/nixos command from the first sync with an opaque
 	// "context deadline exceeded". An omitted or 0 value took the default above.
@@ -712,6 +748,19 @@ func validateConfig(cfg *Config) error {
 		// process cwd, not the repo clone — silently wrong --project-directory.
 		return fmt.Errorf("project_directory_base %q must be an absolute path (start it with \"/\")", cfg.ProjectDirectoryBase)
 	}
+	if cfg.StacksBaseDir != "" && !filepath.IsAbs(cfg.StacksBaseDir) {
+		// Joined verbatim into every stack's compose/working-dir path
+		// (filepath.Join(cfg.StacksBaseDir, name, ...)); a relative value would
+		// resolve against skipper's own process cwd instead of the repo clone.
+		return fmt.Errorf("stacks_base_dir %q must be an absolute path (start it with \"/\")", cfg.StacksBaseDir)
+	}
+
+	// icons.cache_dir is always non-empty here (Load applies the default before
+	// validateConfig runs) — an explicit relative override would still resolve
+	// against skipper's own process cwd instead of the intended cache location.
+	if !filepath.IsAbs(cfg.Icons.CacheDir) {
+		return fmt.Errorf("icons.cache_dir %q must be an absolute path (start it with \"/\")", cfg.Icons.CacheDir)
+	}
 
 	seen := make(map[string]struct{}, len(cfg.Stacks))
 	for i, s := range cfg.Stacks {
@@ -733,6 +782,23 @@ func validateConfig(cfg *Config) error {
 			// A relative project_directory would resolve against skipper's own
 			// process cwd, not the repo clone — silently wrong --project-directory.
 			return fmt.Errorf("stack %q: project_directory %q must be an absolute path (start it with \"/\")", s.Name, s.ProjectDirectory)
+		}
+
+		if !cfg.StackDiscovery {
+			// Under stack_discovery, LoadRepoStacks resolves relative env_files/
+			// watch_dirs against stacks_base_dir (resolveRepoPaths). Host-list mode
+			// has no such resolution step, so a relative entry here would silently
+			// resolve against skipper's own process cwd instead.
+			for j, f := range s.EnvFiles {
+				if !filepath.IsAbs(f) {
+					return fmt.Errorf("stack %q: env_files[%d] %q must be an absolute path (start it with \"/\")", s.Name, j, f)
+				}
+			}
+			for j, d := range s.WatchDirs {
+				if !filepath.IsAbs(d) {
+					return fmt.Errorf("stack %q: watch_dirs[%d] %q must be an absolute path (start it with \"/\")", s.Name, j, d)
+				}
+			}
 		}
 
 		if err := validateHealthCheck(s.HealthCheck); err != nil {
