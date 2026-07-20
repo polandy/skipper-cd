@@ -192,15 +192,15 @@ type Config struct {
 	// MetricsPort is the Prometheus /metrics HTTP port. Defaults to 9120.
 	MetricsPort int `yaml:"metrics_port"`
 
-	// Stacks lists the Docker Compose projects to deploy. Mutually exclusive
-	// with StackDiscovery.
+	// Stacks lists the Docker Compose projects to deploy. In legacy mode this
+	// list is the stack set; under discovery it is the optional per-stack
+	// override list (ADR-0043), matched to discovered directories by name.
 	Stacks []Stack `yaml:"stacks"`
 
-	// StackDiscovery discovers the stack set from the deploy repo on every
-	// sync instead of this file (ADR-0034): every direct subdirectory of
-	// stacks_base_dir containing a docker-compose.yml is a stack, and the
-	// optional repo-root skipper.yaml holds per-stack overrides. Mutually
-	// exclusive with a non-empty Stacks list; requires stacks_base_dir.
+	// StackDiscovery discovers the stack set from the deploy repo on every sync
+	// (ADR-0034): every direct subdirectory of stacks_base_dir containing a
+	// docker-compose.yml is a stack; per-stack overrides come from the Stacks
+	// list (ADR-0043). Requires stacks_base_dir.
 	StackDiscovery bool `yaml:"stack_discovery"`
 
 	// UIEnabled serves the web UI (dashboard, event history, UI API) on the
