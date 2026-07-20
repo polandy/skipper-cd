@@ -122,7 +122,10 @@ test('reasonFromSnap', () => {
 test('orphanMeta: state-only vs container count with pluralization', () => {
   assert.equal(h.orphanMeta({ state_only: true }), 'state only');
   assert.equal(h.orphanMeta({ containers: [{ name: 'a' }] }), '1 container');
-  assert.equal(h.orphanMeta({ containers: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] }), '3 containers');
+  assert.equal(
+    h.orphanMeta({ containers: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] }),
+    '3 containers',
+  );
   assert.equal(h.orphanMeta({}), '0 containers');
 });
 
@@ -135,7 +138,13 @@ test('orphanStateClass maps docker state to the dot vocabulary', () => {
 });
 
 test('containerMatchesQuery scans a container across its fields', () => {
-  const c = { name: 'legacy-redis-1', service: 'redis', image: 'redis:7', ports: '6379', status: 'Up 5 days' };
+  const c = {
+    name: 'legacy-redis-1',
+    service: 'redis',
+    image: 'redis:7',
+    ports: '6379',
+    status: 'Up 5 days',
+  };
   assert.equal(h.containerMatchesQuery(c, 'redis'), true);
   assert.equal(h.containerMatchesQuery(c, '6379'), true);
   assert.equal(h.containerMatchesQuery(c, 'up 5'), true);
@@ -159,7 +168,7 @@ test('orphanMatchesQuery scans project fields and containers', () => {
 });
 
 test('logLineVisible: empty query shows all, else case-insensitive contains', () => {
-  assert.equal(h.logLineVisible('GET /api/health 200', ''), true);   // no filter
+  assert.equal(h.logLineVisible('GET /api/health 200', ''), true); // no filter
   assert.equal(h.logLineVisible('GET /api/health 200', 'api'), true);
   assert.equal(h.logLineVisible('GET /api/health 200', 'API'), true); // case-insensitive
   assert.equal(h.logLineVisible('GET /api/health 200', 'wget'), false);

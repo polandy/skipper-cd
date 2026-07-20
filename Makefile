@@ -2,11 +2,11 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check ui-unit e2e e2e-ui lint govulncheck docs docker-build ui-preview
+.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
-ci: test vendor-check ui-unit lint govulncheck e2e docs e2e-ui
+ci: test vendor-check ui-fmt ui-lint ui-unit lint govulncheck e2e docs e2e-ui
 
 ## --- test job -------------------------------------------------------------
 build:
@@ -36,6 +36,16 @@ vendor-check:
 # the Node built-in runner — no build step, no deps.
 ui-unit:
 	node --test internal/ui/static/app-helpers.test.js
+
+# Prettier/ESLint for the embedded UI's plain-script JS (app-helpers.js,
+# app-helpers.test.js, sw.js). Dev-only npm devDependencies, scoped to
+# internal/ui/static — never shipped in the binary (ADR-0035). app.css keeps
+# its hand-tuned compact style and is intentionally not formatted here.
+ui-fmt:
+	cd internal/ui/static && npm ci && npm run fmt:check
+
+ui-lint:
+	cd internal/ui/static && npm ci && npm run lint
 
 ## --- e2e job --------------------------------------------------------------
 e2e:

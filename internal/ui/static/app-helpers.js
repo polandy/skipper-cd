@@ -40,7 +40,13 @@ function fullTime(ts) {
 
 // classifyDiffLine maps a unified-diff line to its CSS class (meta/hunk/add/del).
 function classifyDiffLine(line) {
-  if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ')) return 'diff-meta';
+  if (
+    line.startsWith('+++') ||
+    line.startsWith('---') ||
+    line.startsWith('diff ') ||
+    line.startsWith('index ')
+  )
+    return 'diff-meta';
   if (line.startsWith('@@')) return 'diff-hunk';
   if (line.startsWith('+')) return 'diff-add';
   if (line.startsWith('-')) return 'diff-del';
@@ -48,7 +54,9 @@ function classifyDiffLine(line) {
 }
 
 // shortSHA truncates a commit SHA to its 7-char short form.
-function shortSHA(sha) { return (sha || '').slice(0, 7); }
+function shortSHA(sha) {
+  return (sha || '').slice(0, 7);
+}
 
 // statusText renders a deploy status as the short label shown on the diff
 // panel's echo pill (mirrors badge wording without the stacked layout).
@@ -95,7 +103,8 @@ function phaseSince(ts) {
 // healthClass maps one service to the same status vocabulary as the rollup, so
 // the per-service dot colour matches the pill's tier.
 function healthClass(s) {
-  if (s.health === 'unhealthy' || s.state === 'restarting' || s.state === 'dead') return 'unhealthy';
+  if (s.health === 'unhealthy' || s.state === 'restarting' || s.state === 'dead')
+    return 'unhealthy';
   if (s.health === 'starting' || s.state === 'created') return 'starting';
   if (s.health === 'healthy' || s.state === 'running') return 'healthy';
   return 'stopped';
@@ -155,8 +164,15 @@ function containerMatchesQuery(c, q) {
 function orphanMatchesQuery(o, q) {
   if (!q) return false;
   const fields = [o.project, o.working_dir, o.config_file].concat(o.volumes || []);
-  if (fields.some(function (v) { return (v || '').toLowerCase().indexOf(q) !== -1; })) return true;
-  return (o.containers || []).some(function (c) { return containerMatchesQuery(c, q); });
+  if (
+    fields.some(function (v) {
+      return (v || '').toLowerCase().indexOf(q) !== -1;
+    })
+  )
+    return true;
+  return (o.containers || []).some(function (c) {
+    return containerMatchesQuery(c, q);
+  });
 }
 
 // logLineVisible reports whether a log line stays visible under the in-log
@@ -174,9 +190,23 @@ function logLineVisible(text, q) {
 // import. No bundler, no build step.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    formatDuration, formatTime, fullTime, classifyDiffLine, shortSHA,
-    statusText, auditStatusLabel, phaseDuration, phaseSince, healthClass,
-    levelClass, logTime, reasonFromSnap, orphanMeta, orphanStateClass,
-    containerMatchesQuery, orphanMatchesQuery, logLineVisible,
+    formatDuration,
+    formatTime,
+    fullTime,
+    classifyDiffLine,
+    shortSHA,
+    statusText,
+    auditStatusLabel,
+    phaseDuration,
+    phaseSince,
+    healthClass,
+    levelClass,
+    logTime,
+    reasonFromSnap,
+    orphanMeta,
+    orphanStateClass,
+    containerMatchesQuery,
+    orphanMatchesQuery,
+    logLineVisible,
   };
 }

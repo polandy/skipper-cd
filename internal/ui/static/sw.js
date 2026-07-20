@@ -34,9 +34,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(SHELL))
-  );
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
   // Intentionally no skipWaiting() here: on an update (an existing worker still
   // controls the page) the new worker stays in "waiting" so the page can prompt
   // the user to reload. It activates only when the page posts SKIP_WAITING
@@ -55,20 +53,17 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((names) => Promise.all(
-        names.filter((n) => n !== CACHE).map((n) => caches.delete(n))
-      ))
-      .then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((names) => Promise.all(names.filter((n) => n !== CACHE).map((n) => caches.delete(n))))
+      .then(() => self.clients.claim()),
   );
 });
 
 // bypassed reports paths that must never be intercepted or cached: live data,
 // metrics, and the webhook receiver.
 function bypassed(pathname) {
-  return pathname.startsWith('/api/') ||
-    pathname === '/metrics' ||
-    pathname === '/webhook';
+  return pathname.startsWith('/api/') || pathname === '/metrics' || pathname === '/webhook';
 }
 
 self.addEventListener('fetch', (event) => {
@@ -91,11 +86,13 @@ self.addEventListener('fetch', (event) => {
         }
         return resp;
       })
-      .catch(() => caches.match(req).then((hit) => {
-        if (hit) return hit;
-        // For navigations with no cached match, fall back to the app shell.
-        if (req.mode === 'navigate') return caches.match('/');
-        return Response.error();
-      }))
+      .catch(() =>
+        caches.match(req).then((hit) => {
+          if (hit) return hit;
+          // For navigations with no cached match, fall back to the app shell.
+          if (req.mode === 'navigate') return caches.match('/');
+          return Response.error();
+        }),
+      ),
   );
 });

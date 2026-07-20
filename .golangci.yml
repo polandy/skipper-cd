@@ -9,3 +9,9 @@ linters:
         # Writes that must be durable (writeFileAtomic) check Close explicitly.
         - (*os.File).Close
         - os.Remove
+  exclusions:
+    paths:
+      # gitignored npm dependency trees (internal/ui/static, e2e/ui); some npm
+      # packages bundle stray .go files (e.g. flatted's golang port) that would
+      # otherwise get linted as our own code after a local `npm ci`.
+      - node_modules
