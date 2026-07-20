@@ -662,9 +662,11 @@ func validateConfig(cfg *Config) error {
 	// rather than letting every deploy abort on a typo (internal/deploy would
 	// otherwise only discover a missing/unreadable file at the first sync).
 	if cfg.VarsFile != "" {
-		if _, err := os.ReadFile(cfg.VarsFile); err != nil {
+		f, err := os.Open(cfg.VarsFile)
+		if err != nil {
 			return fmt.Errorf("vars_file: %w — check the path and that skipper-cd can read it, or remove vars_file if it's no longer needed", err)
 		}
+		f.Close()
 	}
 
 	// A negative command_timeout_seconds would build an already-expired context,
