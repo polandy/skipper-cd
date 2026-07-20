@@ -598,7 +598,7 @@ func collectWarnings(cfg *Config) []string {
 	// the stack set is unknown at startup, so a per-stack override cannot
 	// activate the poller by itself. A stacks: override that sets self_heal:
 	// true while the global flag is off therefore never takes effect.
-	if cfg.StackDiscovery && !(cfg.SelfHeal != nil && *cfg.SelfHeal) {
+	if cfg.StackDiscovery && (cfg.SelfHeal == nil || !*cfg.SelfHeal) {
 		for _, s := range cfg.Stacks {
 			if s.SelfHeal != nil && *s.SelfHeal {
 				warnings = append(warnings, fmt.Sprintf("stack %q sets self_heal: true, but stack_discovery is on and the global self_heal is off — under discovery only the global flag activates self-heal, so this override never takes effect; set the top-level self_heal: true instead", s.Name))
