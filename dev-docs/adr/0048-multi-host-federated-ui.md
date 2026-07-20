@@ -1,4 +1,4 @@
-# ADR-0047: Multi-host federated UI (reverse-proxy switcher, not a control plane)
+# ADR-0048: Multi-host federated UI (reverse-proxy switcher, not a control plane)
 
 Status: proposed
 Date: 2026-07-21
