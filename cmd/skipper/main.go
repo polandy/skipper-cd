@@ -688,15 +688,15 @@ func stackAutosyncConfig(cfg *config.Config) map[string]*bool {
 }
 
 // healthStacks maps each effective stack to the compose identity the health
-// poller probes: the compose file from the repo clone plus the working_dir (if
-// any) as --project-directory — the same identity the deploy path uses.
+// poller probes: the compose file from the repo clone plus project_directory
+// (if any) as --project-directory — the same identity the deploy path uses.
 func healthStacks(cfg *config.Config, stacks []config.Stack) []health.StackRef {
 	refs := make([]health.StackRef, 0, len(stacks))
 	for _, s := range stacks {
 		refs = append(refs, health.StackRef{
 			Name:        s.Name,
 			ComposePath: filepath.Join(cfg.StacksBaseDir, s.Name, compose.FileName),
-			ProjectDir:  s.WorkingDir,
+			ProjectDir:  s.ProjectDirectory,
 			OnDemand:    s.OnDemandContainers,
 		})
 	}
@@ -704,11 +704,11 @@ func healthStacks(cfg *config.Config, stacks []config.Stack) []health.StackRef {
 }
 
 // stackProjectDir returns the compose project directory of a stack — its
-// working_dir when set, else stacks_base_dir/<name> — matching the working_dir
-// label a running project carries, for orphan detection (ADR-0036).
+// project_directory when set, else stacks_base_dir/<name> — matching the
+// working_dir label a running project carries, for orphan detection (ADR-0036).
 func stackProjectDir(cfg *config.Config, s config.Stack) string {
-	if s.WorkingDir != "" {
-		return s.WorkingDir
+	if s.ProjectDirectory != "" {
+		return s.ProjectDirectory
 	}
 	return filepath.Join(cfg.StacksBaseDir, s.Name)
 }

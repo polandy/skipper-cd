@@ -5,7 +5,7 @@ skipper-cd is built for NixOS: it can trigger `nixos-rebuild switch` as part of 
 - [NixOS Rebuild](#nixos-rebuild) — trigger `nixos-rebuild switch` when `.nix` files change
 - [NixOS Module](#nixos-module) — run skipper-cd itself as a declarative systemd service
 - [Recommended Pattern: Self-Registering Stacks](#recommended-pattern-self-registering-stacks)
-- [`working_dir` and Docker Compose Project Identity](#working_dir-and-docker-compose-project-identity)
+- [`project_directory` and Docker Compose Project Identity](#project_directory-and-docker-compose-project-identity)
 
 ---
 
@@ -95,7 +95,7 @@ let
   stackType = lib.types.submodule {
     options = {
       name                 = lib.mkOption { type = lib.types.str; };
-      working_dir          = lib.mkOption { type = lib.types.str; default = ""; };
+      project_directory    = lib.mkOption { type = lib.types.str; default = ""; };
       watch_dirs           = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
       on_demand_containers = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
     };
@@ -146,15 +146,15 @@ services.skipper-cd.stacks = [{
 }];
 ```
 
-Note there is no `working_dir` here even though monica is also managed by a NixOS systemd service at `/etc/nixos/modules/monica` — with the top-level `working_dir_base = "/etc/nixos/modules";` set once (see below), every stack module gets the matching `working_dir` for free and only needs to declare one when its directory breaks the `<working_dir_base>/<name>` pattern.
+Note there is no `project_directory` here even though monica is also managed by a NixOS systemd service at `/etc/nixos/modules/monica` — with the top-level `project_directory_base = "/etc/nixos/modules";` set once (see below), every stack module gets the matching `project_directory` for free and only needs to declare one when its directory breaks the `<project_directory_base>/<name>` pattern.
 
 Because the list is only populated when a service's `enable = true`, disabled services are automatically absent from `skipper.yml`. There is no risk of skipper-cd deploying a stack for a service that has been turned off.
 
-### `working_dir` and Docker Compose Project Identity
+### `project_directory` and Docker Compose Project Identity
 
-When a NixOS systemd service manages a Docker Compose stack (via `WorkingDirectory = /etc/nixos/modules/<name>`), Docker labels containers with `com.docker.compose.project.working_dir=/etc/nixos/modules/<name>`. skipper-cd always reads the compose file from its repo clone at `<stacks_base_dir>/<name>/docker-compose.yml` for change detection and deployment. When `working_dir` is set, skipper-cd passes it as `--project-directory` so Docker Compose uses the same project identity as systemd.
+When a NixOS systemd service manages a Docker Compose stack (via `WorkingDirectory = /etc/nixos/modules/<name>`), Docker labels containers with `com.docker.compose.project.working_dir=/etc/nixos/modules/<name>` — Docker's own compose-project-identity label, unrelated to skipper's config field name. skipper-cd always reads the compose file from its repo clone at `<stacks_base_dir>/<name>/docker-compose.yml` for change detection and deployment. When `project_directory` is set, skipper-cd passes it as `--project-directory` so Docker Compose uses the same project identity as systemd.
 
-Setting the top-level [`working_dir_base`](configuration.md#top-level-fields) to the NixOS modules directory (e.g. `/etc/nixos/modules`) derives every stack's `working_dir` as `<working_dir_base>/<name>` automatically — the common case with the self-registering pattern above, where every stack module lives at that same predictable path. A stack module only sets its own `working_dir` when its directory doesn't follow that pattern; the explicit value always wins over the derived one.
+Setting the top-level [`project_directory_base`](configuration.md#top-level-fields) to the NixOS modules directory (e.g. `/etc/nixos/modules`) derives every stack's `project_directory` as `<project_directory_base>/<name>` automatically — the common case with the self-registering pattern above, where every stack module lives at that same predictable path. A stack module only sets its own `project_directory` when its directory doesn't follow that pattern; the explicit value always wins over the derived one.
 
 ```
 docker compose \
@@ -167,4 +167,5 @@ This ensures:
 - **Change detection** uses the repo clone (merged PRs are detected immediately)
 - **Compose file** is always read from the repo clone (latest version)
 - **Project identity** matches the NixOS systemd path (no container name conflicts)
-- **`.env` files** at `working_dir` are loaded automatically via `--project-directory`
+- **`.env` files** at `project_directory` are loaded automatically via `--project-directory`
+- **Manual `docker compose` commands work.** Running `docker compose up -d` (or `logs`, `ps`, …) by hand from `/etc/nixos/modules/<name>` — for local testing or troubleshooting — resolves to the *same* project as skipper's own deploys, so it reuses the existing containers/network/volumes instead of standing up a second, conflicting project. Without `project_directory` set to that path, skipper's own deploys use the repo clone's directory as project identity instead, and a manual command run from `/etc/nixos/modules/<name>` would create a separate project.

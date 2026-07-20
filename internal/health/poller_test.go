@@ -68,7 +68,7 @@ func TestPoller_PollOnceReportsRollupPerStack(t *testing.T) {
 	}
 }
 
-func TestPoller_ProbeUsesComposeIdentityWithWorkingDir(t *testing.T) {
+func TestPoller_ProbeUsesComposeIdentityWithProjectDir(t *testing.T) {
 	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
 	p := newTestPoller(out, nil, nil, nil)
 
@@ -85,15 +85,15 @@ func TestPoller_ProbeUsesComposeIdentityWithWorkingDir(t *testing.T) {
 	}
 }
 
-func TestPoller_ProbeUsesComposeIdentityWithoutWorkingDir(t *testing.T) {
+func TestPoller_ProbeUsesComposeIdentityWithoutProjectDir(t *testing.T) {
 	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
 	p := newTestPoller(out, nil, nil, nil)
 
 	compose := "/repo/app/docker-compose.yml"
 	p.probe(context.Background(), StackRef{Name: "app", ComposePath: compose})
 
-	// No working_dir: no -f/--project-directory, run from the compose dir — mirrors
-	// how the deploy path invokes compose in that case.
+	// No project_directory: no -f/--project-directory, run from the compose dir
+	// — mirrors how the deploy path invokes compose in that case.
 	want := []string{"docker", "compose", "ps", "--format", "json", "--all"}
 	if !reflect.DeepEqual(out.calls[0], want) {
 		t.Errorf("argv:\n got %v\nwant %v", out.calls[0], want)

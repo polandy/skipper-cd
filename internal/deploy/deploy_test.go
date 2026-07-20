@@ -125,7 +125,7 @@ func TestDeployStack_FailsOnPullError(t *testing.T) {
 	}
 }
 
-func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
+func TestDeployStack_UsesBaseDirWhenProjectDirectoryAbsent(t *testing.T) {
 	baseDir := t.TempDir()
 	workDir := filepath.Join(baseDir, "gitea")
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
@@ -151,7 +151,7 @@ func TestDeployStack_UsesBaseDirWhenWorkingDirAbsent(t *testing.T) {
 	}
 }
 
-func TestDeployStack_WorkingDirUsesProjectDirectoryFlag(t *testing.T) {
+func TestDeployStack_ProjectDirectoryUsesProjectDirectoryFlag(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "nextcloud")
 	if err := os.MkdirAll(stackDir, 0o755); err != nil {
@@ -163,7 +163,7 @@ func TestDeployStack_WorkingDirUsesProjectDirectoryFlag(t *testing.T) {
 	d := newDeployerWithRunner(runner)
 
 	projectDir := "/etc/nixos/modules/nextcloud"
-	stack := config.Stack{Name: "nextcloud", WorkingDir: projectDir}
+	stack := config.Stack{Name: "nextcloud", ProjectDirectory: projectDir}
 	state := newEmptyState()
 
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
@@ -194,7 +194,7 @@ func TestDeployStack_WorkingDirUsesProjectDirectoryFlag(t *testing.T) {
 	}
 }
 
-func TestDeployStack_NoWorkingDirRunsFromRepoClone(t *testing.T) {
+func TestDeployStack_NoProjectDirectoryRunsFromRepoClone(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "gitea")
 	if err := os.MkdirAll(stackDir, 0o755); err != nil {
@@ -212,17 +212,17 @@ func TestDeployStack_NoWorkingDirRunsFromRepoClone(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Without working_dir, docker compose should run from the repo clone dir
+	// Without project_directory, docker compose should run from the repo clone dir
 	// without -f or --project-directory flags.
 	for _, c := range runner.calls {
 		if c.name != "docker" || !slices.Contains(c.args, "compose") {
 			continue
 		}
 		if slices.Contains(c.args, "-f") {
-			t.Errorf("unexpected -f flag without working_dir: %v", c.args)
+			t.Errorf("unexpected -f flag without project_directory: %v", c.args)
 		}
 		if slices.Contains(c.args, "--project-directory") {
-			t.Errorf("unexpected --project-directory flag without working_dir: %v", c.args)
+			t.Errorf("unexpected --project-directory flag without project_directory: %v", c.args)
 		}
 		if c.dir != stackDir {
 			t.Errorf("expected run dir %s, got %s", stackDir, c.dir)
@@ -339,7 +339,7 @@ func TestDeployStack_StoresImagesInStateAfterDeploy(t *testing.T) {
 	}
 }
 
-func TestDeployStack_RecordsComposeDirAsProjectDirWhenNoWorkingDir(t *testing.T) {
+func TestDeployStack_RecordsComposeDirAsProjectDirWhenNoProjectDirectory(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "db")
 	if err := os.MkdirAll(stackDir, 0o755); err != nil {
@@ -354,13 +354,13 @@ func TestDeployStack_RecordsComposeDirAsProjectDirWhenNoWorkingDir(t *testing.T)
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// With no working_dir, the project dir is the compose file's own directory.
+	// With no project_directory, the project dir is the compose file's own directory.
 	if got := state.ProjectDirs["db"]; got != stackDir {
 		t.Errorf("expected project dir %q, got %q", stackDir, got)
 	}
 }
 
-func TestDeployStack_RecordsWorkingDirAsProjectDir(t *testing.T) {
+func TestDeployStack_RecordsProjectDirectoryAsProjectDir(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "db")
 	if err := os.MkdirAll(stackDir, 0o755); err != nil {
@@ -372,12 +372,12 @@ func TestDeployStack_RecordsWorkingDirAsProjectDir(t *testing.T) {
 	state := newEmptyState()
 	workingDir := t.TempDir()
 
-	stack := config.Stack{Name: "db", WorkingDir: workingDir}
+	stack := config.Stack{Name: "db", ProjectDirectory: workingDir}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// working_dir (--project-directory) is the project's working_dir label.
+	// project_directory (--project-directory) is the project's working_dir label.
 	if got := state.ProjectDirs["db"]; got != workingDir {
 		t.Errorf("expected project dir %q, got %q", workingDir, got)
 	}

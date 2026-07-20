@@ -86,7 +86,7 @@ func TestLoadRepoStacks_NoOverridesYieldsDefaults(t *testing.T) {
 		t.Fatalf("got %d stacks, want 1", len(repo.Stacks))
 	}
 	s := repo.Stacks[0]
-	if s.Name != "web" || s.WorkingDir != "" || len(s.EnvFiles) != 0 || s.HealthCheck != nil || len(s.DependsOn) != 0 {
+	if s.Name != "web" || s.ProjectDirectory != "" || len(s.EnvFiles) != 0 || s.HealthCheck != nil || len(s.DependsOn) != 0 {
 		t.Errorf("stack not built with defaults: %+v", s)
 	}
 	if s.ConfigHash == "" {
@@ -94,7 +94,7 @@ func TestLoadRepoStacks_NoOverridesYieldsDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadRepoStacks_WorkingDirBaseAppliesWithoutOverride(t *testing.T) {
+func TestLoadRepoStacks_ProjectDirectoryBaseAppliesWithoutOverride(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
 	})
@@ -106,23 +106,23 @@ func TestLoadRepoStacks_WorkingDirBaseAppliesWithoutOverride(t *testing.T) {
 	if len(repo.Stacks) != 1 {
 		t.Fatalf("got %d stacks, want 1", len(repo.Stacks))
 	}
-	if got, want := repo.Stacks[0].WorkingDir, "/etc/nixos/modules/web"; got != want {
-		t.Errorf("expected working_dir %q, got %q", want, got)
+	if got, want := repo.Stacks[0].ProjectDirectory, "/etc/nixos/modules/web"; got != want {
+		t.Errorf("expected project_directory %q, got %q", want, got)
 	}
 }
 
-func TestLoadRepoStacks_OverrideWorkingDirWinsOverBase(t *testing.T) {
+func TestLoadRepoStacks_OverrideProjectDirectoryWinsOverBase(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
 	})
-	overrides := []Stack{{Name: "web", WorkingDir: "/srv/custom/web"}}
+	overrides := []Stack{{Name: "web", ProjectDirectory: "/srv/custom/web"}}
 
 	repo, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "/etc/nixos/modules")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
-	if got, want := repo.Stacks[0].WorkingDir, "/srv/custom/web"; got != want {
-		t.Errorf("expected override working_dir to win, got %q, want %q", got, want)
+	if got, want := repo.Stacks[0].ProjectDirectory, "/srv/custom/web"; got != want {
+		t.Errorf("expected override project_directory to win, got %q, want %q", got, want)
 	}
 }
 
@@ -152,7 +152,7 @@ func TestLoadRepoStacks_AppliesOverrides(t *testing.T) {
 	})
 	overrides := []Stack{{
 		Name:               "web",
-		WorkingDir:         "/opt/web",
+		ProjectDirectory:   "/opt/web",
 		EnvFiles:           []string{"web/secrets.env", "/etc/global.env"},
 		WatchDirs:          []string{"web/conf"},
 		OnDemandContainers: []string{"web-app"},
@@ -169,8 +169,8 @@ func TestLoadRepoStacks_AppliesOverrides(t *testing.T) {
 		t.Fatalf("unexpected stack errors: %v", stackErrs)
 	}
 	s := repo.Stacks[0]
-	if s.WorkingDir != "/opt/web" {
-		t.Errorf("WorkingDir = %q", s.WorkingDir)
+	if s.ProjectDirectory != "/opt/web" {
+		t.Errorf("ProjectDirectory = %q", s.ProjectDirectory)
 	}
 	// Relative paths resolve against the stacks base dir; absolute ones stay as-is.
 	if want := filepath.Join(repoDir, "stacks/web/secrets.env"); s.EnvFiles[0] != want {

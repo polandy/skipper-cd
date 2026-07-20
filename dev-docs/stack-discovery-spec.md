@@ -53,7 +53,7 @@ otherwise be an entry-level error.
 
 - Keyed by stack name; every key is optional. Available fields: the
   per-stack fields of the host config except `name` and `autosync`
-  (`working_dir`, `env_files`, `watch_dirs`, `on_demand_containers`, `icon`,
+  (`project_directory`, `env_files`, `watch_dirs`, `on_demand_containers`, `icon`,
   `health_check`, `self_heal`, `depends_on`) plus `disabled`. Relative
   `env_files`/`watch_dirs` paths resolve against `stacks_base_dir`. Decoding is
   strict — an unknown field is a file-level error, so a typo fails loudly
@@ -103,7 +103,7 @@ carry it with no schema change.
 
 ## Change detection (invariant 2 grows one input)
 
-- Each stack's **deploy-shaping** config — `working_dir`, `env_files`,
+- Each stack's **deploy-shaping** config — `project_directory`, `env_files`,
   `watch_dirs`, `on_demand_containers`, `health_check`, canonically
   marshaled — is hashed into `Stack.ConfigHash` and recorded under the repo
   `skipper.yaml` path in the stack's hash map. A config edit therefore

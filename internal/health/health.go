@@ -53,8 +53,8 @@ type Snapshot struct {
 
 // StackRef identifies a stack to probe. ComposePath and ProjectDir mirror how
 // the deploy path invokes compose (Invariant 1): the compose file comes from
-// the repo clone, and ProjectDir (a stack's working_dir, possibly empty) is the
-// --project-directory that fixes the compose project identity. OnDemand lists
+// the repo clone, and ProjectDir (a stack's project_directory, possibly empty)
+// is the --project-directory that fixes the compose project identity. OnDemand lists
 // the stack's on_demand_containers (container names): skipper stops those
 // after the deploy on purpose, so an exited one classifies as stopped, never
 // unhealthy.

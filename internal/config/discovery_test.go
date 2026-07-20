@@ -37,7 +37,7 @@ repo_url: ssh://git@gitea.example.com/user/deploy.git
 stack_discovery: false
 stacks:
   - name: web
-    working_dir: /opt/web
+    project_directory: /opt/web
 `)
 	if cfg.StackDiscovery {
 		t.Error("explicit stack_discovery: false must stay false")

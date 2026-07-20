@@ -86,8 +86,8 @@ func TestClassify_ProjectOutsideBaseDirIsUnmanagedNeverPrunable(t *testing.T) {
 	}
 }
 
-func TestClassify_RemovedStackWithWorkingDirOutsideBaseIsOrphanedViaState(t *testing.T) {
-	// A stack whose working_dir pointed outside stacks_base_dir is still
+func TestClassify_RemovedStackWithProjectDirOutsideBaseIsOrphanedViaState(t *testing.T) {
+	// A stack whose project_directory pointed outside stacks_base_dir is still
 	// recognized as formerly managed through its recorded state project dir.
 	m := Managed{
 		BaseDir:   "/repo/stacks",

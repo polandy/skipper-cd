@@ -32,7 +32,7 @@ compose file in `/tmp` but keep `--project-directory` at the original dir
 named `docker compose ls`; that call lacks the working_dir label, so one
 `docker ps` — which also yields the container count — replaced it.)
 
-Each discovered stack's expected project dir is computable (its `working_dir`
+Each discovered stack's expected project dir is computable (its `project_directory`
 override or `stacks_base_dir/<name>`). For every running project:
 
 | working_dir label matches …                        | class    | shown as        | prunable |
@@ -44,7 +44,7 @@ override or `stacks_base_dir/<name>`). For every running project:
 
 The state entry's `project_dir` field (written on every successful deploy,
 `persistedState.ProjectDirs`) covers the one heuristic remainder: a removed
-stack whose `working_dir` override pointed outside `stacks_base_dir` is still
+stack whose `project_directory` override pointed outside `stacks_base_dir` is still
 recognized as formerly managed.
 
 Stale `state.yaml` entries (recorded stack, no discovered stack, nothing
@@ -110,7 +110,7 @@ stacks:
   stays.
 - Compose project name vs stack name can differ (`COMPOSE_PROJECT_NAME`,
   `-p`); all matching is via the working_dir label, names are display-only.
-- A disabled stack with a `working_dir` override outside `stacks_base_dir` is
+- A disabled stack with a `project_directory` override outside `stacks_base_dir` is
   matched only via `stacks_base_dir/<name>`; it is never pruned regardless.
 
 ## Open questions (resolved)

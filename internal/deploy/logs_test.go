@@ -9,11 +9,11 @@ import (
 	"github.com/polandy/skipper-cd/internal/config"
 )
 
-func TestLogComposeInvocation_WithWorkingDir(t *testing.T) {
+func TestLogComposeInvocation_WithProjectDirectory(t *testing.T) {
 	d := &Deployer{}
 	cfg := &config.Config{
 		StacksBaseDir: "/repo",
-		Stacks:        []config.Stack{{Name: "web", WorkingDir: "/srv/web"}},
+		Stacks:        []config.Stack{{Name: "web", ProjectDirectory: "/srv/web"}},
 	}
 	dir, _, args, ok, err := d.LogComposeInvocation(cfg, "web")
 	if err != nil || !ok {
@@ -28,7 +28,7 @@ func TestLogComposeInvocation_WithWorkingDir(t *testing.T) {
 	}
 }
 
-func TestLogComposeInvocation_NoWorkingDir(t *testing.T) {
+func TestLogComposeInvocation_NoProjectDirectory(t *testing.T) {
 	d := &Deployer{}
 	cfg := &config.Config{
 		StacksBaseDir: "/repo",
@@ -38,7 +38,7 @@ func TestLogComposeInvocation_NoWorkingDir(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
-	// Without working_dir compose runs from the compose file's dir with no -f.
+	// Without project_directory compose runs from the compose file's dir with no -f.
 	if dir != "/repo/api" {
 		t.Errorf("dir = %q, want /repo/api", dir)
 	}

@@ -58,7 +58,7 @@ GET /api/container-logs/{stack}?tail=200[&since=<ts>]               # SSE, servi
   --no-color --no-log-prefix --tail N --timestamps --follow <service>`. The
   whole-stack endpoint drops `--no-log-prefix` so compose labels each line with
   its service. Compose file from the clone, `--project-directory` from
-  `working_dir` — same `stackRun` helper as deploy (Invariant 1).
+  `project_directory` — same `stackRun` helper as deploy (Invariant 1).
 - **Validation before argv**: `{stack}` in the current stack set
   (`CurrentStacks`, discovery-aware — Invariant 8); `{service}` present in the
   stack's current health snapshot; `tail` clamped to [1, 1000]. Otherwise 404.

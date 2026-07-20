@@ -16,16 +16,18 @@ import (
 
 // Stack represents a single Docker Compose project to be deployed.
 type Stack struct {
-	// Name is a unique identifier for the stack. When working_dir is omitted,
-	// the working directory is derived as stacks_base_dir/<name>.
+	// Name is a unique identifier for the stack. When project_directory is
+	// omitted, the compose file is still read from stacks_base_dir/<name>
+	// (Invariant 1).
 	Name string `yaml:"name"`
 
-	// WorkingDir is an optional absolute path passed as --project-directory to
-	// docker compose. It controls Docker Compose project identity (container
-	// labels) and .env file loading. Change detection and the compose file
-	// always come from stacks_base_dir/<name>. When empty, it defaults to
-	// working_dir_base/<name> if the config sets working_dir_base.
-	WorkingDir string `yaml:"working_dir"`
+	// ProjectDirectory is an optional absolute path passed as
+	// --project-directory to docker compose. It controls Docker Compose
+	// project identity (container labels) and .env file loading. Change
+	// detection and the compose file always come from stacks_base_dir/<name>
+	// — never conflate the two. When empty, it defaults to
+	// project_directory_base/<name> if the config sets project_directory_base.
+	ProjectDirectory string `yaml:"project_directory"`
 
 	// EnvFiles lists KEY=VALUE files injected into the environment when docker-compose
 	// is invoked, enabling ${VAR} substitution inside docker-compose.yml.
@@ -185,13 +187,13 @@ type Config struct {
 	// Change detection and the compose file always come from here.
 	StacksBaseDir string `yaml:"stacks_base_dir"`
 
-	// WorkingDirBase is an optional base directory from which a stack's
-	// working_dir is derived as <working_dir_base>/<name> when the stack does
-	// not set its own (ADR-0045). Mirrors stacks_base_dir's role for the
-	// compose path, but for --project-directory: it avoids repeating a common
-	// prefix (e.g. a NixOS modules directory) across every stack. Must be an
-	// absolute path when set.
-	WorkingDirBase string `yaml:"working_dir_base"`
+	// ProjectDirectoryBase is an optional base directory from which a stack's
+	// project_directory is derived as <project_directory_base>/<name> when the
+	// stack does not set its own (ADR-0045). Mirrors stacks_base_dir's role for
+	// the compose path, but for --project-directory: it avoids repeating a
+	// common prefix (e.g. a NixOS modules directory) across every stack. Must
+	// be an absolute path when set.
+	ProjectDirectoryBase string `yaml:"project_directory_base"`
 
 	// WebhookSecret is the shared HMAC-SHA256 secret push webhooks are signed
 	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Required:
@@ -571,8 +573,8 @@ func Load(path string) (*Config, error) {
 		}
 	}
 	for i := range cfg.Stacks {
-		if cfg.Stacks[i].WorkingDir == "" && cfg.WorkingDirBase != "" {
-			cfg.Stacks[i].WorkingDir = filepath.Join(cfg.WorkingDirBase, cfg.Stacks[i].Name)
+		if cfg.Stacks[i].ProjectDirectory == "" && cfg.ProjectDirectoryBase != "" {
+			cfg.Stacks[i].ProjectDirectory = filepath.Join(cfg.ProjectDirectoryBase, cfg.Stacks[i].Name)
 		}
 		if hc := cfg.Stacks[i].HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
 			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
@@ -705,10 +707,10 @@ func validateConfig(cfg *Config) error {
 		// overrides, not the membership — so it no longer conflicts with discovery.
 		return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
 	}
-	if cfg.WorkingDirBase != "" && !filepath.IsAbs(cfg.WorkingDirBase) {
-		// A relative working_dir_base would resolve against skipper's own
+	if cfg.ProjectDirectoryBase != "" && !filepath.IsAbs(cfg.ProjectDirectoryBase) {
+		// A relative project_directory_base would resolve against skipper's own
 		// process cwd, not the repo clone — silently wrong --project-directory.
-		return fmt.Errorf("working_dir_base %q must be an absolute path (start it with \"/\")", cfg.WorkingDirBase)
+		return fmt.Errorf("project_directory_base %q must be an absolute path (start it with \"/\")", cfg.ProjectDirectoryBase)
 	}
 
 	seen := make(map[string]struct{}, len(cfg.Stacks))
@@ -724,13 +726,13 @@ func validateConfig(cfg *Config) error {
 		}
 		seen[s.Name] = struct{}{}
 
-		if s.WorkingDir == "" && cfg.StacksBaseDir == "" {
-			return fmt.Errorf("stack %q: working_dir is required when stacks_base_dir is not set — set one of the two", s.Name)
+		if s.ProjectDirectory == "" && cfg.StacksBaseDir == "" {
+			return fmt.Errorf("stack %q: project_directory is required when stacks_base_dir is not set — set one of the two", s.Name)
 		}
-		if s.WorkingDir != "" && !filepath.IsAbs(s.WorkingDir) {
-			// A relative working_dir would resolve against skipper's own process
-			// cwd, not the repo clone — silently wrong --project-directory.
-			return fmt.Errorf("stack %q: working_dir %q must be an absolute path (start it with \"/\")", s.Name, s.WorkingDir)
+		if s.ProjectDirectory != "" && !filepath.IsAbs(s.ProjectDirectory) {
+			// A relative project_directory would resolve against skipper's own
+			// process cwd, not the repo clone — silently wrong --project-directory.
+			return fmt.Errorf("stack %q: project_directory %q must be an absolute path (start it with \"/\")", s.Name, s.ProjectDirectory)
 		}
 
 		if err := validateHealthCheck(s.HealthCheck); err != nil {
