@@ -6,7 +6,27 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/polandy/skipper-cd/internal/config"
 )
+
+// resolveHealthCheck returns the stack's configured health_check when it set
+// one. Otherwise, when the compose file declares a healthcheck: for at least
+// one service, it returns an automatic gate at the default timeout with no
+// URL probe: the operator already opted the service into a Docker healthcheck,
+// so skipper's --wait + rollback gate (ADR-0022) applies without also
+// requiring a redundant health_check: {} per stack (ADR-0046). A stack with no
+// compose healthcheck anywhere, or whose compose file failed to parse, stays
+// ungated exactly as an explicit absence would.
+func resolveHealthCheck(explicit *config.HealthCheck, cf *composeFile) *config.HealthCheck {
+	if explicit != nil {
+		return explicit
+	}
+	if cf == nil || !cf.hasHealthcheck() {
+		return nil
+	}
+	return &config.HealthCheck{TimeoutSeconds: config.DefaultHealthCheckTimeoutSeconds}
+}
 
 // httpDoer is the minimal HTTP client surface the health prober needs;
 // tests inject a fake instead of a real *http.Client.

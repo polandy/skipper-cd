@@ -122,6 +122,38 @@ func TestComposeFile_Images_ParsesImages(t *testing.T) {
 	}
 }
 
+func TestComposeFile_HasHealthcheck_TrueWhenAnyServiceDeclaresOne(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: gitea/gitea:1.21
+  db:
+    image: postgres:16-alpine
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+`)
+
+	if !mustParseCompose(t, path).hasHealthcheck() {
+		t.Error("expected hasHealthcheck to be true when a service declares one")
+	}
+}
+
+func TestComposeFile_HasHealthcheck_FalseWhenNoServiceDeclaresOne(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: gitea/gitea:1.21
+  db:
+    image: postgres:16-alpine
+`)
+
+	if mustParseCompose(t, path).hasHealthcheck() {
+		t.Error("expected hasHealthcheck to be false when no service declares one")
+	}
+}
+
 func TestImagesChanged_DetectsChange(t *testing.T) {
 	current := map[string]string{"app": "redis:7.4"}
 	previous := map[string]string{"app": "redis:7.2"}
