@@ -109,7 +109,7 @@ other automatic, harmless-when-absent features (icons, health pill).
 ## Future extension: Traefik file-provider support (not implemented)
 
 v1 only detects routes declared via Traefik's **Docker provider** (container
-labels) — see the non-goal above. Andy uses the file provider for a few
+labels) — see the non-goal above. Some deployments use the file provider for a few
 services (dynamic config files under `/etc/traefik/dynamic` *inside* the
 Traefik container, no host bind-mount), which this release does not cover;
 discussed 2026-07-19 and deliberately deferred rather than built, given the
@@ -129,7 +129,7 @@ means resolving *that* back to a container, not trusting any name:
 1. Locate the Traefik container (e.g. by its own `traefik.enable` label or a
    configured container name — itself an open question).
 2. `docker exec` into it to read `/etc/traefik/dynamic/*.yml` (YAML only, per
-   Andy's setup — Traefik also accepts TOML, out of scope).
+   the setup described here — Traefik also accepts TOML, out of scope).
 3. Parse every `http.routers.*.rule` (reuse `extractHosts`) and resolve its
    `service` to that service's backend server URL(s).
 4. Match the backend URL's host component against known container
