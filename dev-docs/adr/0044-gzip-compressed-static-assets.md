@@ -24,12 +24,13 @@ tool the self-contained invariant was written to avoid. It would also make
 `index.html`/`app.css` diffs harder to review, the opposite of why ADR-0035
 split fonts and JS out in the first place.
 
-**Compress at the reverse proxy.** Andy's own deployments sit behind Traefik,
-which has a built-in compress middleware — zero code change for that specific
-setup. Rejected as the *only* answer: skipper-cd is meant to be usable
-without a reverse proxy in front (`docs/getting-started.md`'s bare `docker
-run`/direct-port path), so any user not fronting it with a compressing proxy
-would get the uncompressed bytes regardless.
+**Compress at the reverse proxy.** A deployment fronted by Traefik (or nginx,
+Caddy, ...) can get this for free from that proxy's own compress middleware —
+zero code change for that specific setup. Rejected as the *only* answer:
+skipper-cd is meant to be usable without a reverse proxy in front
+(`docs/getting-started.md`'s bare `docker run`/direct-port path), so any
+deployment not fronted by a compressing proxy would get the uncompressed
+bytes regardless.
 
 **Gzip, negotiated per request, computed once at handler construction
 (chosen).** Each of the three handlers already builds its payload once, at
