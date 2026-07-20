@@ -37,14 +37,15 @@ test.describe('UO1: disabled-stacks line', () => {
   });
 });
 
-// UO2 — a broken repo skipper.yaml fails as a _config row whose error panel
-// shows the marked excerpt of the offending line.
-test.describe('UO2: broken repo config', () => {
+// UO2 — a leftover in-repo skipper.yaml is no longer read (ADR-0043); it fails
+// the whole stack phase as a _config row, so un-migrated config never silently
+// reverts stacks to defaults.
+test.describe('UO2: leftover repo config', () => {
   test.use({
     startOptions: { stacks: ['web'], discovery: {} },
   });
 
-  test('failed _config row carries the marked skipper.yaml excerpt', async ({
+  test('failed _config row explains the repo skipper.yaml is no longer read', async ({
     page,
     skipper,
   }) => {
@@ -53,15 +54,13 @@ test.describe('UO2: broken repo config', () => {
     // Healthy discovery run: no disabled stacks, so the line stays hidden.
     await expect(page.locator('[data-testid="disabled-stacks"]')).toBeHidden();
 
-    // Push a skipper.yaml whose line 3 is broken (stray tab).
-    skipper.setRepoConfig('stacks:\n  web:\n\ticon: broken\n');
+    // Push a leftover repo skipper.yaml — no longer read as of ADR-0043.
+    skipper.setRepoConfig('stacks:\n  web:\n    icon: nginx\n');
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
 
     const row = page.locator('[data-testid="deploy-row"][data-stack="_config"]');
     await expect(row).toHaveCount(1);
     await expect(row).toHaveAttribute('data-status', 'failed');
-    const panel = page.locator('[data-testid="error-panel"]');
-    await expect(panel).toContainText('parse skipper.yaml');
-    await expect(panel).toContainText('> 3 |');
+    await expect(page.locator('[data-testid="error-panel"]')).toContainText('no longer read');
   });
 });

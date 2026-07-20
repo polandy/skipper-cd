@@ -72,7 +72,7 @@ Rows are prepended (newest first) with a slide-in animation. Time cells show rel
 
 The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain`) left of the name for recognition. The image is served same-origin from `GET /api/icons/<stack>` (no CSP concern); on any load error the chip swaps to a **monogram** — the stack's first letter on an accent-tinted chip — via the `<img>` `error` handler, so a broken image never shows. Icons are resolved server-side (repo `icon.svg`/`icon.png` override → configured `icon:` slug → auto-match on the stack name → 404 → monogram) and cached on the host; see the README "Service Icons" section.
 
-The reserved pseudo-stacks resolve to fixed slugs instead of the monogram: `_nixos` (the NixOS rebuild) auto-matches the `nixos` icon and `_config` (repo stack-config failures in stack-discovery mode, ADR-0034) the `git` icon — its failures are about the repo's `skipper.yaml`.
+The reserved pseudo-stacks resolve to fixed slugs instead of the monogram: `_nixos` (the NixOS rebuild) auto-matches the `nixos` icon and `_config` (file-level stack-config failures in stack-discovery mode, ADR-0034/ADR-0043) the `git` icon.
 
 **Refreshing icons.** The server-side icon cache is cleared by `POST /api/icons/refresh` (e.g. `curl -X POST …/api/icons/refresh`); the next load of each icon then picks up renamed stacks and newly published icons. It is an **ops endpoint** — there is deliberately no header control and no keyboard trigger (the single-key `i` hotkey was removed so type-to-search in the deploys view can own printable keys — see [Deploys filter](#deploys-filter)).
 
@@ -125,7 +125,7 @@ The jump also **clears the target view's own [search filter](#deploys-filter)** 
 
 In [stack-discovery mode](../../docs/configuration.md#stack-discovery) a stack can be parked with `disabled: true` — present in the repo, deliberately not deployed. Those names render as a quiet **chip line below the deploy table** (`data-testid="disabled-stacks"`): a muted `disabled` label followed by one dashed-border chip per name, with an explanatory `title` on the line. Driven by the [`stacks`](#event-lifecycle-sse) SSE snapshot; the line is hidden entirely when the set is empty (always, in legacy mode) and in the logs view. Deliberately **not** table rows: the table is an event log and a disabled stack has no events — the line is inventory, not history.
 
-A file-level config failure in discovery mode emits an ordinary `failed` event under the reserved `_config` pseudo-stack, so it renders as a regular failed row — no dedicated surface; the error panel shows the message including a `>`-marked excerpt of the offending `skipper.yaml` lines, and its [icon](#stack-icons) is the git logo.
+A file-level config failure in discovery mode (an unreadable stacks base dir, or a leftover in-repo `skipper.yaml` that ADR-0043 no longer reads) emits an ordinary `failed` event under the reserved `_config` pseudo-stack, so it renders as a regular failed row — no dedicated surface; the error panel shows the message, and its [icon](#stack-icons) is the git logo.
 
 ### Orphans
 
