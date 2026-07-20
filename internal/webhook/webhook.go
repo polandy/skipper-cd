@@ -28,6 +28,7 @@ const MaxBodyBytes = 1 << 20 // 1 MiB
 const (
 	rejectReasonTooLarge  = "too_large"
 	rejectReasonSignature = "signature"
+	rejectReasonDisabled  = "disabled"
 )
 
 // deployTrigger starts a full sync+deploy run. It is implemented by
@@ -45,6 +46,15 @@ type deployTrigger interface {
 // Method enforcement is left to the mux route pattern ("POST /webhook").
 func Handler(cfg *config.Config, deployer deployTrigger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Defense in depth: webhook_secret is required at config load, but reject
+		// an empty one here too — verifying against an empty secret would accept
+		// a trivially forgeable signature.
+		if cfg.WebhookSecret == "" {
+			metrics.WebhooksRejected.WithLabelValues(rejectReasonDisabled).Inc()
+			http.Error(w, "webhook disabled: set webhook_secret to enable push-triggered deploys", http.StatusForbidden)
+			return
+		}
+
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
 		if err != nil {
 			var maxBytesErr *http.MaxBytesError
@@ -57,14 +67,12 @@ func Handler(cfg *config.Config, deployer deployTrigger) http.HandlerFunc {
 			return
 		}
 
-		if cfg.WebhookSecret != "" {
-			signature := extractSignature(r)
-			if err := verifyHMACSignature(body, signature, cfg.WebhookSecret); err != nil {
-				metrics.WebhooksRejected.WithLabelValues(rejectReasonSignature).Inc()
-				slog.Warn("webhook rejected: invalid signature", "err", err)
-				http.Error(w, "invalid signature", http.StatusUnauthorized)
-				return
-			}
+		signature := extractSignature(r)
+		if err := verifyHMACSignature(body, signature, cfg.WebhookSecret); err != nil {
+			metrics.WebhooksRejected.WithLabelValues(rejectReasonSignature).Inc()
+			slog.Warn("webhook rejected: invalid signature", "err", err)
+			http.Error(w, "invalid signature", http.StatusUnauthorized)
+			return
 		}
 
 		metrics.WebhooksReceived.Inc()
