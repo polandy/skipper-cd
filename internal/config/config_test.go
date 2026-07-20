@@ -556,3 +556,99 @@ func TestLoad_ReconcileIntervalNegativeIsRejected(t *testing.T) {
 		t.Fatal("expected an error for a negative interval")
 	}
 }
+
+func TestLoad_RejectsMissingVarsFile(t *testing.T) {
+	_, err := loadStringToConfig(t, minimalConfig+"vars_file: /no/such/vars.env\n")
+	if err == nil || !strings.Contains(err.Error(), "vars_file") {
+		t.Fatalf("expected a vars_file error, got %v", err)
+	}
+}
+
+func TestLoad_AcceptsExistingVarsFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vars.env")
+	if err := os.WriteFile(path, []byte("DOMAIN=example.com\n"), 0o644); err != nil {
+		t.Fatalf("failed to write vars file: %v", err)
+	}
+	cfg, err := loadStringToConfig(t, minimalConfig+"vars_file: "+path+"\n")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.VarsFile != path {
+		t.Errorf("expected vars_file %q, got %q", path, cfg.VarsFile)
+	}
+}
+
+func TestLoad_RejectsRelativeWorkingDir(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks:
+  - name: gitea
+    working_dir: relative/path
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil || !strings.Contains(err.Error(), "working_dir must be an absolute path") {
+		t.Fatalf("expected a working_dir-must-be-absolute error, got %v", err)
+	}
+}
+
+func TestLoad_AcceptsAbsoluteWorkingDir(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+stacks:
+  - name: gitea
+    working_dir: /etc/nixos/modules/gitea
+`
+	cfg := loadFromString(t, content)
+	if cfg.Stacks[0].WorkingDir != "/etc/nixos/modules/gitea" {
+		t.Errorf("unexpected working_dir: %s", cfg.Stacks[0].WorkingDir)
+	}
+}
+
+func TestLoad_WarnsWhenNothingToDeploy(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+`
+	cfg := loadFromString(t, content)
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "nothing to deploy") {
+		t.Fatalf("expected a single nothing-to-deploy warning, got %v", cfg.Warnings)
+	}
+}
+
+func TestLoad_NoNothingToDeployWarning_UnderDiscovery(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig) // stack_discovery defaults to true, no stacks list
+	for _, w := range cfg.Warnings {
+		if strings.Contains(w, "nothing to deploy") {
+			t.Errorf("did not expect a nothing-to-deploy warning under discovery, got %v", cfg.Warnings)
+		}
+	}
+}
+
+func TestLoad_NoNothingToDeployWarning_WithStacksConfigured(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+stacks:
+  - name: gitea
+    working_dir: /etc/nixos/modules/gitea
+`
+	cfg := loadFromString(t, content)
+	if len(cfg.Warnings) != 0 {
+		t.Errorf("expected no warnings with stacks configured, got %v", cfg.Warnings)
+	}
+}
+
+func TestLoad_NoNothingToDeployWarning_WithNixOSRebuildEnabled(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+nixos_rebuild:
+  flake: ".#nuc"
+`
+	cfg := loadFromString(t, content)
+	if len(cfg.Warnings) != 0 {
+		t.Errorf("expected no warnings with nixos_rebuild enabled, got %v", cfg.Warnings)
+	}
+}

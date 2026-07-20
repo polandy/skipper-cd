@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -163,7 +164,9 @@ type Config struct {
 
 	// VarsFile is an optional path to a KEY=VALUE env file whose entries are
 	// injected into the environment of every stack deployment, enabling
-	// ${VAR} substitution in docker-compose.yml (e.g. for domain names).
+	// ${VAR} substitution in docker-compose.yml (e.g. for domain names). When
+	// set, it must exist and be readable — checked at Load, since it is a host
+	// path available before any repo clone.
 	VarsFile string `yaml:"vars_file"`
 
 	// CommandTimeoutSeconds is the maximum number of seconds a single shell
@@ -291,6 +294,11 @@ type Config struct {
 	// services (ADR-0031). Omit the section to disable. Like self-heal it runs
 	// headless — not UI-gated.
 	HealthWatch *HealthWatch `yaml:"health_watch"`
+
+	// Warnings lists non-fatal issues found while loading the config — valid
+	// but suspicious setups that don't warrant refusing to start. Populated by
+	// Load; never read from YAML. The caller is expected to log each one.
+	Warnings []string `yaml:"-"`
 }
 
 // StackByName returns the configured stack with the given name.
@@ -559,7 +567,24 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	return cfg, validateConfig(cfg)
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
+	cfg.Warnings = collectWarnings(cfg)
+	return cfg, nil
+}
+
+// collectWarnings checks for valid-but-suspicious configs that don't warrant
+// refusing to start. Runs only once validateConfig has already accepted cfg.
+func collectWarnings(cfg *Config) []string {
+	var warnings []string
+	// Discovery off, no explicit stacks, and no nixos_rebuild: skipper has
+	// nothing to deploy or manage. Under discovery this is not suspicious —
+	// the repo may simply not have been synced yet.
+	if !cfg.StackDiscovery && len(cfg.Stacks) == 0 && !cfg.NixOSRebuild.IsEnabled() {
+		warnings = append(warnings, "stack_discovery is off, no stacks are configured, and nixos_rebuild is disabled — skipper-cd has nothing to deploy")
+	}
+	return warnings
 }
 
 // Valid values for the log_format config field.
@@ -633,6 +658,15 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("webhook_secret is required")
 	}
 
+	// vars_file is a host path, available before any repo clone — check it now
+	// rather than letting every deploy abort on a typo (internal/deploy would
+	// otherwise only discover a missing/unreadable file at the first sync).
+	if cfg.VarsFile != "" {
+		if _, err := os.ReadFile(cfg.VarsFile); err != nil {
+			return fmt.Errorf("vars_file: %w", err)
+		}
+	}
+
 	// A negative command_timeout_seconds would build an already-expired context,
 	// failing every git/docker/nixos command from the first sync with an opaque
 	// "context deadline exceeded". An omitted or 0 value took the default above.
@@ -671,6 +705,11 @@ func validateConfig(cfg *Config) error {
 
 		if s.WorkingDir == "" && cfg.StacksBaseDir == "" {
 			return fmt.Errorf("stack %q: working_dir is required when stacks_base_dir is not set", s.Name)
+		}
+		if s.WorkingDir != "" && !filepath.IsAbs(s.WorkingDir) {
+			// A relative working_dir would resolve against skipper's own process
+			// cwd, not the repo clone — silently wrong --project-directory.
+			return fmt.Errorf("stack %q: working_dir must be an absolute path, got %q", s.Name, s.WorkingDir)
 		}
 
 		if err := validateHealthCheck(s.HealthCheck); err != nil {
