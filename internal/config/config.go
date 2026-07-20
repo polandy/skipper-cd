@@ -192,15 +192,19 @@ type Config struct {
 	// MetricsPort is the Prometheus /metrics HTTP port. Defaults to 9120.
 	MetricsPort int `yaml:"metrics_port"`
 
-	// Stacks lists the Docker Compose projects to deploy. Mutually exclusive
-	// with StackDiscovery.
+	// Stacks lists the Docker Compose projects to deploy. In legacy mode
+	// (stack_discovery: false) this list is the stack set; under discovery it is
+	// the optional per-stack override list (ADR-0043), matched to discovered
+	// directories by name.
 	Stacks []Stack `yaml:"stacks"`
 
-	// StackDiscovery discovers the stack set from the deploy repo on every
-	// sync instead of this file (ADR-0034): every direct subdirectory of
-	// stacks_base_dir containing a docker-compose.yml is a stack, and the
-	// optional repo-root skipper.yaml holds per-stack overrides. Mutually
-	// exclusive with a non-empty Stacks list; requires stacks_base_dir.
+	// StackDiscovery discovers the stack set from the deploy repo on every sync
+	// (ADR-0034): every direct subdirectory of stacks_base_dir containing a
+	// docker-compose.yml is a stack; per-stack overrides come from the Stacks
+	// list (ADR-0043). Defaults to true (an omitted key enables discovery);
+	// requires stacks_base_dir. Set false for the legacy host-list-as-membership
+	// mode. The default is applied in Load; a directly-constructed Config keeps
+	// the zero value (legacy), which every test relies on.
 	StackDiscovery bool `yaml:"stack_discovery"`
 
 	// UIEnabled serves the web UI (dashboard, event history, UI API) on the
@@ -467,6 +471,17 @@ func Load(path string) (*Config, error) {
 	}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config file: %w", err)
+	}
+
+	// stack_discovery defaults to true (ADR-0043): the deploy repo declares the
+	// stack set, and the host stacks: list is optional per-stack overrides.
+	// Detect an omitted key (vs an explicit false, which selects the legacy
+	// host-list-as-membership mode) via a probe, since the field is a plain bool.
+	var probe struct {
+		StackDiscovery *bool `yaml:"stack_discovery"`
+	}
+	if yaml.Unmarshal(data, &probe) == nil && probe.StackDiscovery == nil {
+		cfg.StackDiscovery = true
 	}
 
 	if cfg.CommandTimeoutSeconds == 0 {

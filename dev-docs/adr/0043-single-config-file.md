@@ -81,9 +81,14 @@ Concretely:
 
 - Relax the current invariant that `stack_discovery: true` is *mutually
   exclusive* with a host `stacks:` list. Under discovery, `stacks:` becomes an
-  **optional override map** keyed by stack name (today's `repoStackOverride`
-  shape), not a membership list. A name with no discovered directory is an
-  entry-level error, same as the repo file gives today.
+  **optional override list** (matched to discovered directories by `name`), not a
+  membership list. A name with no discovered directory is an entry-level error.
+- **`stack_discovery` defaults to `true`** — discovery is the primary model, so
+  an omitted key enables it (the deploy repo declares the stacks). The legacy
+  host-list-as-membership mode is opt-in via an explicit `stack_discovery:
+  false` (mirrors `ui_enabled`'s default-true / explicit-false). The default is
+  applied in `Load` by probing for an omitted key; a directly-constructed
+  `Config` keeps the zero value (legacy), which the Go test suite relies on.
 - Delete `LoadRepoStacks`'s reading of `<stacks_base_dir>/skipper.yaml`; the
   override map comes from the already-loaded host config. Directory discovery of
   the set is unchanged.
