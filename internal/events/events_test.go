@@ -116,7 +116,7 @@ func TestSSEPayload_StripsCommits(t *testing.T) {
 		Stack:   "gitea",
 		Status:  StatusSuccess,
 		Diffs:   map[string]string{"docker-compose.yml": "+new line"},
-		Commits: []CommitInfo{{SHA: "abc123", Subject: "feat: x", Author: "Andy"}},
+		Commits: []CommitInfo{{SHA: "abc123", Subject: "feat: x", Author: "Jane Doe"}},
 	}
 
 	payload := evt.SSEPayload()

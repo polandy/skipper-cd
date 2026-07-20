@@ -127,8 +127,8 @@ placement (over a dedicated Health column) keeps the 5-column grid intact and
 avoids spending horizontal width on a value that is only shown once per stack.
 
 The surface is read-only — it shows health, it does not restart or redeploy
-anything. `internal/ui/UI_SPEC.md` is updated before the UI change and Andy
-eyeballs the rendered pill before the e2e mask is finalized.
+anything. `internal/ui/UI_SPEC.md` is updated before the UI change and the
+maintainer eyeballs the rendered pill before the e2e mask is finalized.
 
 ## Consequences
 

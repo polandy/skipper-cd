@@ -151,7 +151,7 @@ surfaces (the health-pill badge pattern, the per-row bound panels, and the
 container-logs panel component), no new page and minimal new machinery.
 Read-only throughout — hooks are config-driven, never triggered from the UI.
 Full surface + `data-testid`s live in `internal/ui/UI_SPEC.md` (§ Deploy hooks);
-this section is the feature-level intent. Every decision below was made with Andy
+this section is the feature-level intent. Every decision below was made
 on a clickable Artifact mockup and then the live `make ui-preview`.
 
 Three things surface, mapping to the request "show when a hook is defined and
@@ -230,7 +230,7 @@ of skipped/self-heal/rollback runs (they never execute — nothing to show).
 
 ## Open questions
 
-None. Both UI-increment questions were decided (2026-07-19, with Andy on a
+None. Both UI-increment questions were decided (2026-07-19, on a
 clickable mockup): hook commands ride **inline** on the `stacks` snapshot (no
 endpoint), and the hook log **reuses the existing log view** via a logs icon
 on the running phase (**Option A**), not a new inline panel. Recorded in the UI

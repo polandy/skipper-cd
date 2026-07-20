@@ -47,7 +47,7 @@ Two deliberate exceptions run real commands: `internal/command` tests (the proce
 
 ## Engineering principles
 
-Andy's priorities for all work in this repo:
+Priorities for all work in this repo:
 
 - **Test-first**: a new feature starts with tests that specify its behavior (behavior-revealing names like `TestDeployStack_SkipsWhenUnchanged`), then implement until green. Bug fixes start with a failing test reproducing the bug.
 - **Readability first**: small files, doc comments on exported symbols, names that reveal behavior. Readable beats clever.

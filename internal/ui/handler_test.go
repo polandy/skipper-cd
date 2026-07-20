@@ -573,7 +573,7 @@ func TestDiffHandler_ReturnsDiffsForKnownEvent(t *testing.T) {
 		ID:      1,
 		Stack:   "gitea",
 		Diffs:   map[string]string{"docker-compose.yml": "+new line"},
-		Commits: []events.CommitInfo{{SHA: "def456", Subject: "feat: bump gitea", Author: "Andy Pollari"}},
+		Commits: []events.CommitInfo{{SHA: "def456", Subject: "feat: bump gitea", Author: "Jane Doe"}},
 	})
 
 	handler := DiffHandler(history)

@@ -297,7 +297,7 @@ func TestCollectDiffs_SkipsFilesOutsideRepo(t *testing.T) {
 func TestCollectCommits_ReturnsCommits(t *testing.T) {
 	cr := &fakeCommitReader{
 		commits: map[string][]events.CommitInfo{
-			"/repo/docker-compose.yml": {{SHA: "def456", Subject: "feat: bump", Author: "Andy"}},
+			"/repo/docker-compose.yml": {{SHA: "def456", Subject: "feat: bump", Author: "Jane Doe"}},
 		},
 	}
 	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
@@ -358,7 +358,7 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 			composePath: "+image: nginx:1.25\n",
 		},
 		commits: map[string][]events.CommitInfo{
-			composePath: {{SHA: "def456", Subject: "feat: bump gitea image", Author: "Andy Pollari"}},
+			composePath: {{SHA: "def456", Subject: "feat: bump gitea image", Author: "Jane Doe"}},
 		},
 	}
 	runner := &recordingRunner{}
