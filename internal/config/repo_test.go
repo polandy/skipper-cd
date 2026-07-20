@@ -86,7 +86,7 @@ func TestLoadRepoStacks_NoOverridesYieldsDefaults(t *testing.T) {
 		t.Fatalf("got %d stacks, want 1", len(repo.Stacks))
 	}
 	s := repo.Stacks[0]
-	if s.Name != "web" || s.ProjectDirectory != "" || len(s.EnvFiles) != 0 || s.HealthCheck != nil || len(s.DependsOn) != 0 {
+	if s.Name != "web" || s.ProjectDirectory != "" || len(s.EnvFiles) != 0 || s.DeployHealthCheck != nil || len(s.DependsOn) != 0 {
 		t.Errorf("stack not built with defaults: %+v", s)
 	}
 	if s.ConfigHash == "" {
@@ -158,7 +158,7 @@ func TestLoadRepoStacks_AppliesOverrides(t *testing.T) {
 		OnDemandContainers: []string{"web-app"},
 		Icon:               "nginx",
 		SelfHeal:           boolPtr(true),
-		HealthCheck:        &HealthCheck{URL: "http://localhost:8080/health"},
+		DeployHealthCheck:  &HealthCheck{URL: "http://localhost:8080/health"},
 	}}
 
 	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
@@ -185,8 +185,8 @@ func TestLoadRepoStacks_AppliesOverrides(t *testing.T) {
 	if s.Icon != "nginx" || s.SelfHeal == nil || !*s.SelfHeal || len(s.OnDemandContainers) != 1 {
 		t.Errorf("overrides not applied: %+v", s)
 	}
-	if s.HealthCheck == nil || s.HealthCheck.TimeoutSeconds != 60 {
-		t.Errorf("health_check timeout not defaulted: %+v", s.HealthCheck)
+	if s.DeployHealthCheck == nil || s.DeployHealthCheck.TimeoutSeconds != 60 {
+		t.Errorf("deploy_health_check timeout not defaulted: %+v", s.DeployHealthCheck)
 	}
 }
 
@@ -310,7 +310,7 @@ func TestLoadRepoStacks_InvalidHealthCheckReported(t *testing.T) {
 		"stacks/bad/docker-compose.yml": minimalCompose,
 		"stacks/ok/docker-compose.yml":  minimalCompose,
 	})
-	overrides := []Stack{{Name: "bad", HealthCheck: &HealthCheck{URL: "notaurl"}}}
+	overrides := []Stack{{Name: "bad", DeployHealthCheck: &HealthCheck{URL: "notaurl"}}}
 
 	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {

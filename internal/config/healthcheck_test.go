@@ -11,13 +11,13 @@ repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
 stacks:
   - name: whoami
-    health_check: {}
+    deploy_health_check: {}
 `
 	cfg := loadFromString(t, content)
 
-	hc := cfg.Stacks[0].HealthCheck
+	hc := cfg.Stacks[0].DeployHealthCheck
 	if hc == nil {
-		t.Fatal("expected health_check to be set")
+		t.Fatal("expected deploy_health_check to be set")
 	}
 	if hc.TimeoutSeconds != 60 {
 		t.Errorf("expected default timeout_seconds 60, got %d", hc.TimeoutSeconds)
@@ -33,13 +33,13 @@ repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
 stacks:
   - name: whoami
-    health_check:
+    deploy_health_check:
       timeout_seconds: 120
       url: http://localhost:8080/health
 `
 	cfg := loadFromString(t, content)
 
-	hc := cfg.Stacks[0].HealthCheck
+	hc := cfg.Stacks[0].DeployHealthCheck
 	if hc.TimeoutSeconds != 120 {
 		t.Errorf("expected timeout_seconds 120, got %d", hc.TimeoutSeconds)
 	}
@@ -57,8 +57,8 @@ stacks:
 `
 	cfg := loadFromString(t, content)
 
-	if cfg.Stacks[0].HealthCheck != nil {
-		t.Errorf("expected nil health_check when omitted, got %+v", cfg.Stacks[0].HealthCheck)
+	if cfg.Stacks[0].DeployHealthCheck != nil {
+		t.Errorf("expected nil deploy_health_check when omitted, got %+v", cfg.Stacks[0].DeployHealthCheck)
 	}
 }
 
@@ -70,12 +70,12 @@ func TestLoad_HealthCheckValidation(t *testing.T) {
 	}{
 		{
 			name:    "non-http url",
-			yaml:    "    health_check:\n      url: ftp://example.com/x\n",
+			yaml:    "    deploy_health_check:\n      url: ftp://example.com/x\n",
 			wantErr: "valid http(s) URL",
 		},
 		{
 			name:    "negative timeout",
-			yaml:    "    health_check:\n      timeout_seconds: -5\n",
+			yaml:    "    deploy_health_check:\n      timeout_seconds: -5\n",
 			wantErr: "timeout_seconds must not be negative",
 		},
 	}

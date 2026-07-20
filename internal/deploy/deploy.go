@@ -657,11 +657,11 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		slog.Warn("could not parse compose file, pulling all services and skipping build tracking", "stack", stack.Name, "err", err)
 	}
 
-	// A stack that declares no health_check but whose compose file has one
-	// gets the same --wait + rollback gate automatically, at the default
+	// A stack that declares no deploy_health_check but whose compose file has
+	// one gets the same --wait + rollback gate automatically, at the default
 	// timeout (ADR-0046). Resolved once here so every downstream read of
-	// run.stack.HealthCheck (rollback.go, rollout.go, below) sees it.
-	run.stack.HealthCheck = resolveHealthCheck(stack.HealthCheck, compose)
+	// run.stack.DeployHealthCheck (rollback.go, rollout.go, below) sees it.
+	run.stack.DeployHealthCheck = resolveHealthCheck(stack.DeployHealthCheck, compose)
 
 	var dockerfilePaths []string
 	if compose != nil {
@@ -752,7 +752,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	} else {
 		// --remove-orphans removes containers for services deleted from docker-compose.yml.
 		upArgs := []string{"up", "-d", "--remove-orphans"}
-		if hc := run.stack.HealthCheck; hc != nil {
+		if hc := run.stack.DeployHealthCheck; hc != nil {
 			// First health gate: --wait makes the up itself fail when the services'
 			// compose healthchecks do not turn healthy in time (ADR-0022).
 			upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
@@ -764,7 +764,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	// Second health gate: the optional HTTP probe verifies the stack from the
 	// outside after a successful up (ADR-0022).
-	if hc := run.stack.HealthCheck; hc != nil && hc.URL != "" {
+	if hc := run.stack.DeployHealthCheck; hc != nil && hc.URL != "" {
 		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
 		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
@@ -773,7 +773,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	// post_deploy hooks validate the new version from outside compose (a smoke
 	// test, a migration). A failure takes the same rollback path as a health
-	// probe failure, even without a health_check (ADR-0038): the hook is itself a
+	// probe failure, even without a deploy_health_check (ADR-0038): the hook is itself a
 	// user-authored health gate.
 	if err := d.runHooks(ctx, run, hookPhasePost, stack.Hooks.PostDeploy); err != nil {
 		return d.rollBackFailedDeploy(ctx, run, state, "post_deploy hook", err)

@@ -25,7 +25,7 @@ func TestLoad_SelfHealDefaultsOffWithPacingDefaults(t *testing.T) {
 }
 
 // An explicit 0 disables the cooldown instead of falling back to the default —
-// the same omitted-vs-explicit-0 convention as health_poll_interval_seconds,
+// the same omitted-vs-explicit-0 convention as runtime_health_poll_interval_seconds,
 // reconcile_interval_seconds, and alert_cooldown_seconds.
 func TestLoad_SelfHealCooldownExplicitZeroDisables(t *testing.T) {
 	cfg, err := loadStringToConfig(t, `
@@ -110,11 +110,11 @@ func TestLoad_SelfHealRequiresPositiveHealthPollInterval(t *testing.T) {
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
 self_heal: true
-health_poll_interval_seconds: 0
+runtime_health_poll_interval_seconds: 0
 stacks:
   - name: web
 `)
-	if err == nil || !strings.Contains(err.Error(), "health_poll_interval_seconds") {
+	if err == nil || !strings.Contains(err.Error(), "runtime_health_poll_interval_seconds") {
 		t.Fatalf("expected self_heal-requires-poll error, got %v", err)
 	}
 }

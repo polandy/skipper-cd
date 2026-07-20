@@ -178,7 +178,7 @@ export interface StartOptions {
    *  STUB_DOCKER_ECHO=<line> to print a line to stdout on `up` so the captured
    *  child-process output reaches the log ring). */
   stubEnv?: Record<string, string>;
-  /** Stacks that get a `health_check:` section (timeout_seconds: 1, no url):
+  /** Stacks that get a `deploy_health_check:` section (timeout_seconds: 1, no url):
    *  their `up`s run with --wait and a failing rollback `up` drives
    *  `rolled_back_unhealthy`. The stub ignores the flags, so no real waiting. */
   healthCheck?: string[];
@@ -415,7 +415,7 @@ export class Skipper {
       (opts.themeSwitcher ? `ui_theme_switcher: true\n` : '') +
       // Health polling off by default so masks predating it stay health-free;
       // Maske H opts in via healthPoll (ADR-0027).
-      `health_poll_interval_seconds: ${opts.healthPoll ?? 0}\n` +
+      `runtime_health_poll_interval_seconds: ${opts.healthPoll ?? 0}\n` +
       (opts.healthWatch ? `health_watch:\n  debounce_polls: 1\n` : '') +
       (opts.selfHeal ? `self_heal: true\n` : '') +
       (opts.selfHealMinUnhealthyPolls !== undefined
@@ -448,7 +448,7 @@ export class Skipper {
                   ? `    depends_on: [${(opts.dependsOn?.[n] ?? []).map((d) => JSON.stringify(d)).join(', ')}]\n`
                   : '') +
                 ((opts.healthCheck ?? []).includes(n)
-                  ? `    health_check:\n      timeout_seconds: 1\n`
+                  ? `    deploy_health_check:\n      timeout_seconds: 1\n`
                   : '') +
                 ((opts.onDemand?.[n] ?? []).length
                   ? `    on_demand_containers:\n` +

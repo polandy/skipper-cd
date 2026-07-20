@@ -103,7 +103,7 @@ status check wants without four calls:
   "config": {
     "watch_dirs": ["traefik"],
     "env_files": ["traefik/.env"],
-    "health_check": { "url": "http://…/ping", "timeout_seconds": 30 },
+    "deploy_health_check": { "url": "http://…/ping", "timeout_seconds": 30 },
     "depends_on": ["authelia", "crowdsec"]
   },
   "autosync": { "effective": true, "source": "global" },

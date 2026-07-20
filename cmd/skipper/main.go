@@ -364,7 +364,7 @@ func main() {
 	// watchdog set AlwaysPoll so it still runs headless on an unattended host
 	// (ADR-0029, ADR-0031). Config validation guarantees a positive interval
 	// whenever self-heal or the watchdog is active.
-	if interval := *cfg.HealthPollIntervalSeconds; interval > 0 && (*cfg.UIEnabled || selfHealActive || healthWatcher != nil) {
+	if interval := *cfg.RuntimeHealthPollIntervalSeconds; interval > 0 && (*cfg.UIEnabled || selfHealActive || healthWatcher != nil) {
 		healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 		hpCfg := health.Config{
 			Outputter:  command.NewShellRunner(healthTimeout),

@@ -149,7 +149,7 @@ func composeWithImage(image string) string {
 }
 
 // composeWithHealthcheck is composeWithImage plus a Docker healthcheck on the
-// service, for tests of the automatic health_check gate (ADR-0046).
+// service, for tests of the automatic deploy_health_check gate (ADR-0046).
 func composeWithHealthcheck(image string) string {
 	return fmt.Sprintf("services:\n  app:\n    image: %s\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n", image)
 }
