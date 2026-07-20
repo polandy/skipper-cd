@@ -121,7 +121,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. The [Stack health](#stack-health) view and the [health watch](#health-watch) know about this: an exited on-demand container reads as `stopped` (its intended idle state) whatever its exit code — never as `unhealthy`. Docker Compose auto-generates container names (`<project>-<service>-1`) unless the service sets `container_name:`; a name here that matches no declared `container_name` logs a startup-adjacent warning at deploy time (not a hard error, since the auto-generated name may still happen to be right) — set `container_name:` on the corresponding service to make it deterministic and checked. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
-| `health_check` | section | no | — | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. See [Health-check-gated rollback](#health-check-gated-rollback). |
+| `health_check` | section | no | automatic if the compose file has a `healthcheck:` | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this section to change the timeout or add an HTTP probe. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
@@ -161,7 +161,7 @@ stacks:                     # optional — only the exceptions
 
 ## Health-check-gated rollback
 
-Without a `health_check`, a rollback only happens when `docker compose up` itself fails. A deploy whose containers *start* but stay broken (crash-loop, 500s) would be marked successful. Adding a `health_check` section closes that gap:
+Without any gate, a rollback only happens when `docker compose up` itself fails. A deploy whose containers *start* but stay broken (crash-loop, 500s) would be marked successful. A `healthcheck:` in the compose file closes that gap automatically (see Stage 1 below); a `health_check` section in this config adds an HTTP probe on top, or tunes the timeout:
 
 ```yaml
 stacks:
@@ -173,11 +173,9 @@ stacks:
 
 The gate has two stages.
 
-### Stage 1 — the compose healthcheck (recommended)
+### Stage 1 — the compose healthcheck (automatic)
 
-When the section is present, `docker compose up` runs with `--wait --wait-timeout <timeout_seconds>`, so the `up` fails unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
-
-The `healthy` state comes from a [`healthcheck:`](https://docs.docker.com/reference/compose-file/services/#healthcheck) defined on the service in your compose file. **This is the exposure-free path: the healthcheck command runs *inside* the container, so nothing needs a published port.** For a container whose endpoint is not reachable from the host, this is the mechanism to use:
+The `healthy` state comes from a [`healthcheck:`](https://docs.docker.com/reference/compose-file/services/#healthcheck) defined on a service in your compose file. **This is the exposure-free path: the healthcheck command runs *inside* the container, so nothing needs a published port.** For a container whose endpoint is not reachable from the host, this is the mechanism to use:
 
 ```yaml
 # docker-compose.yml
@@ -190,7 +188,9 @@ services:
       retries: 5
 ```
 
-With that in place, a stack-level `health_check: {}` (no `url`) is enough — `--wait` gates the deploy on the internal healthcheck and rolls back if it never turns `healthy`.
+As soon as any service in the stack's compose file declares a `healthcheck:`, skipper-cd applies this gate **automatically** — no `health_check` section needed in this config at all (ADR-0046). `docker compose up` runs with `--wait --wait-timeout 60` (the default), so the `up` fails and the deploy rolls back unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
+
+Add an explicit `health_check` section only to change the default 60s timeout, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `health_check` itself.
 
 ### Stage 2 — the HTTP probe (optional)
 

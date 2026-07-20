@@ -572,7 +572,7 @@ func Load(path string) (*Config, error) {
 	}
 	for i := range cfg.Stacks {
 		if hc := cfg.Stacks[i].HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
-			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
+			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
 		}
 	}
 
@@ -641,9 +641,11 @@ const ReservedStackName = "_nixos"
 // not collide with a configured stack.
 const ReservedConfigStackName = "_config"
 
-// defaultHealthCheckTimeoutSeconds is applied when a health_check section is
-// present without an explicit timeout_seconds.
-const defaultHealthCheckTimeoutSeconds = 60
+// DefaultHealthCheckTimeoutSeconds is applied when a health_check section is
+// present without an explicit timeout_seconds, and by internal/deploy's
+// automatic gate for a stack that declares no health_check but whose compose
+// file has one (ADR-0046).
+const DefaultHealthCheckTimeoutSeconds = 60
 
 // defaultHealthPollIntervalSeconds is the UI stack-health poll cadence applied
 // when health_poll_interval_seconds is omitted (ADR-0027). An explicit 0

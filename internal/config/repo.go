@@ -108,7 +108,7 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack) (RepoStacks, []Stac
 			Rollout:            ov.Rollout,
 		}
 		if hc := stack.HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
-			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
+			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
 		}
 
 		hcErr := validateHealthCheck(stack.HealthCheck)
