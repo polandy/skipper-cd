@@ -40,7 +40,7 @@ webhook_secret: "a-long-random-string"           # you'll paste this into the we
 ui_enabled: true                                 # live web UI on the webhook port
 ```
 
-Stack discovery is on by default, so `traefik`, `gitea`, and `monitoring` are picked up from the repo layout above with no `stacks:` list needed — add one only to override a discovered stack (hooks, `health_check`, …) or to list stacks manually instead (`stack_discovery: false`).
+Stack discovery is on by default, so `traefik`, `gitea`, and `monitoring` are picked up from the repo layout above with no `stacks:` list needed — add one only to override a discovered stack (hooks, `deploy_health_check`, …) or to list stacks manually instead (`stack_discovery: false`).
 
 Start it **[with Docker](docker.md)** (published image + Docker socket + this file — use an `http(s)` `repo_url`, the image ships no ssh client) or **[on NixOS](nixos.md)** (declarative module, can also run `nixos-rebuild switch`).
 

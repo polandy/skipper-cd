@@ -52,7 +52,7 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 	// its canary starts.
 	if nonRolled := cf.servicesExcept(rolled); len(nonRolled) > 0 {
 		upArgs := []string{"up", "-d", "--remove-orphans"}
-		if hc := run.stack.HealthCheck; hc != nil {
+		if hc := run.stack.DeployHealthCheck; hc != nil {
 			upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
 		}
 		upArgs = append(upArgs, nonRolled...)
@@ -219,14 +219,14 @@ func (d *Deployer) drainDelay(stack config.Stack) time.Duration {
 }
 
 // rolloutTimeout is the canary health-wait deadline: rollout.health_timeout_seconds,
-// else the stack's health_check timeout, else the default (a test override wins).
+// else the stack's deploy_health_check timeout, else the default (a test override wins).
 func (d *Deployer) rolloutTimeout(stack config.Stack) time.Duration {
 	if d.rolloutTimeoutOverride > 0 {
 		return d.rolloutTimeoutOverride
 	}
 	secs := stack.Rollout.HealthTimeoutSeconds
 	if secs <= 0 {
-		if hc := stack.HealthCheck; hc != nil && hc.TimeoutSeconds > 0 {
+		if hc := stack.DeployHealthCheck; hc != nil && hc.TimeoutSeconds > 0 {
 			secs = hc.TimeoutSeconds
 		} else {
 			secs = defaultRolloutTimeoutSeconds

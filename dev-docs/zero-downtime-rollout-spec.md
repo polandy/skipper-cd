@@ -48,7 +48,7 @@ stacks:
   - name: dashboard
     rollout:
       services: [web]              # only these roll; every other service recreates normally
-      health_timeout_seconds: 60   # optional; per rolled service; default = health_check timeout or 60
+      health_timeout_seconds: 60   # optional; per rolled service; default = deploy_health_check timeout or 60
       drain_seconds: 5             # optional; wait after canary healthy before draining the old container
 ```
 
@@ -62,7 +62,7 @@ stacks:
   correct for databases and anything else that cannot run two instances.
 - `health_timeout_seconds` bounds how long skipper waits for a canary to turn
   healthy before treating the rollout as failed. It falls back to the stack's
-  `health_check.timeout_seconds` if set, else the shared default (60s).
+  `deploy_health_check.timeout_seconds` if set, else the shared default (60s).
 
 ## Semantics
 
@@ -77,7 +77,7 @@ pre_deploy hooks                     ── unchanged; runs while the OLD versio
       up -d --remove-orphans <non-rolled services>   (in-place, as today)
       for each rolled service (sequentially):
         rollOne(service)
-  → HTTP probe (if health_check.url)   ── stack-level gate 2, unchanged
+  → HTTP probe (if deploy_health_check.url)   ── stack-level gate 2, unchanged
   → post_deploy hooks                  ── unchanged; runs against the new serving version
   → stop on-demand containers → record hashes/images → save state
 ```
@@ -303,8 +303,8 @@ visual baseline needed if the idle header is unchanged.
    the old container ID. Validate on real Traefik in the homelab before marking
    accepted.
 
-3. **Rollout + `health_check.url` overlap.** With both a rollout (per-container
-   healthcheck gate) and a stack-level `health_check.url` (external probe), the
+3. **Rollout + `deploy_health_check.url` overlap.** With both a rollout (per-container
+   healthcheck gate) and a stack-level `deploy_health_check.url` (external probe), the
    probe runs once after all cutovers — correct, but double-gating. Document
    that rollout services should rely on their compose `healthcheck:` and reserve
-   `health_check.url` for whole-stack smoke tests.
+   `deploy_health_check.url` for whole-stack smoke tests.

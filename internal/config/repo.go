@@ -105,7 +105,7 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 			OnDemandContainers: ov.OnDemandContainers,
 			Icon:               ov.Icon,
 			Autosync:           ov.Autosync,
-			HealthCheck:        ov.HealthCheck,
+			DeployHealthCheck:  ov.DeployHealthCheck,
 			SelfHeal:           ov.SelfHeal,
 			DependsOn:          ov.DependsOn,
 			Hooks:              ov.Hooks,
@@ -114,11 +114,11 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 		if stack.ProjectDirectory == "" && projectDirectoryBase != "" {
 			stack.ProjectDirectory = filepath.Join(projectDirectoryBase, name)
 		}
-		if hc := stack.HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
+		if hc := stack.DeployHealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
 			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
 		}
 
-		hcErr := validateHealthCheck(stack.HealthCheck)
+		hcErr := validateHealthCheck(stack.DeployHealthCheck)
 		hookErr := validateHooks(stack.Hooks)
 		rolloutErr := validateRollout(stack.Rollout)
 		// Parse the compose every sync so a broken compose or an unrollable
@@ -137,7 +137,7 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 		case watchErr != nil:
 			fail(name, "watch_dirs: %v", watchErr)
 		case hcErr != nil:
-			fail(name, "health_check: %v", hcErr)
+			fail(name, "deploy_health_check: %v", hcErr)
 		case hookErr != nil:
 			fail(name, "hooks: %v", hookErr)
 		case composeErr != nil:
@@ -298,7 +298,7 @@ type stackDeployInputs struct {
 	EnvFiles           []string     `yaml:"env_files"`
 	WatchDirs          []string     `yaml:"watch_dirs"`
 	OnDemandContainers []string     `yaml:"on_demand_containers"`
-	HealthCheck        *HealthCheck `yaml:"health_check"`
+	DeployHealthCheck  *HealthCheck `yaml:"deploy_health_check"`
 }
 
 // stackConfigHash returns the SHA-256 over the stack's deploy-shaping config,
@@ -309,7 +309,7 @@ func stackConfigHash(s Stack) string {
 		EnvFiles:           s.EnvFiles,
 		WatchDirs:          s.WatchDirs,
 		OnDemandContainers: s.OnDemandContainers,
-		HealthCheck:        s.HealthCheck,
+		DeployHealthCheck:  s.DeployHealthCheck,
 	})
 	if err != nil {
 		// Marshaling a plain struct cannot fail; guard anyway.

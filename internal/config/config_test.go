@@ -482,36 +482,36 @@ func TestLoad_HealthPollIntervalDefaultsTo30WhenOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.HealthPollIntervalSeconds == nil {
+	if cfg.RuntimeHealthPollIntervalSeconds == nil {
 		t.Fatal("expected default to be applied, got nil")
 	}
-	if got := *cfg.HealthPollIntervalSeconds; got != 30 {
+	if got := *cfg.RuntimeHealthPollIntervalSeconds; got != 30 {
 		t.Errorf("expected default 30, got %d", got)
 	}
 }
 
 func TestLoad_HealthPollIntervalExplicitZeroIsPreserved(t *testing.T) {
-	cfg, err := loadStringToConfig(t, minimalConfig+"health_poll_interval_seconds: 0\n")
+	cfg, err := loadStringToConfig(t, minimalConfig+"runtime_health_poll_interval_seconds: 0\n")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.HealthPollIntervalSeconds == nil || *cfg.HealthPollIntervalSeconds != 0 {
-		t.Errorf("expected explicit 0 to be preserved (disabled), got %v", cfg.HealthPollIntervalSeconds)
+	if cfg.RuntimeHealthPollIntervalSeconds == nil || *cfg.RuntimeHealthPollIntervalSeconds != 0 {
+		t.Errorf("expected explicit 0 to be preserved (disabled), got %v", cfg.RuntimeHealthPollIntervalSeconds)
 	}
 }
 
 func TestLoad_HealthPollIntervalExplicitValue(t *testing.T) {
-	cfg, err := loadStringToConfig(t, minimalConfig+"health_poll_interval_seconds: 60\n")
+	cfg, err := loadStringToConfig(t, minimalConfig+"runtime_health_poll_interval_seconds: 60\n")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.HealthPollIntervalSeconds == nil || *cfg.HealthPollIntervalSeconds != 60 {
-		t.Errorf("expected 60, got %v", cfg.HealthPollIntervalSeconds)
+	if cfg.RuntimeHealthPollIntervalSeconds == nil || *cfg.RuntimeHealthPollIntervalSeconds != 60 {
+		t.Errorf("expected 60, got %v", cfg.RuntimeHealthPollIntervalSeconds)
 	}
 }
 
 func TestLoad_HealthPollIntervalNegativeIsRejected(t *testing.T) {
-	_, err := loadStringToConfig(t, minimalConfig+"health_poll_interval_seconds: -5\n")
+	_, err := loadStringToConfig(t, minimalConfig+"runtime_health_poll_interval_seconds: -5\n")
 	if err == nil {
 		t.Fatal("expected an error for a negative interval")
 	}

@@ -51,3 +51,4 @@ One file per decision, numbered sequentially (see
 | [0044](0044-gzip-compressed-static-assets.md) | Gzip-compressed app-shell assets, negotiated at request time |
 | [0045](0045-project-directory.md) | `project_directory` — rename `working_dir`, add a derived base directory |
 | [0046](0046-automatic-health-check-from-compose-healthcheck.md) | Automatic health_check gate from the compose file's own healthcheck |
+| [0047](0047-deploy-health-check-and-runtime-health-poll-rename.md) | Rename `health_check` to `deploy_health_check`, `health_poll_interval_seconds` to `runtime_health_poll_interval_seconds` |

@@ -53,10 +53,10 @@ func TestLoad_HealthWatchRequiresPositivePollInterval(t *testing.T) {
 	// The watchdog rides the health poller's cadence (like self-heal), so a
 	// disabled health poll cannot host it.
 	_, err := loadStringToConfig(t, minimalConfig+`
-health_poll_interval_seconds: 0
+runtime_health_poll_interval_seconds: 0
 health_watch: {}
 `)
-	if err == nil || !strings.Contains(err.Error(), "health_poll_interval_seconds") {
+	if err == nil || !strings.Contains(err.Error(), "runtime_health_poll_interval_seconds") {
 		t.Fatalf("expected the poll-interval requirement error, got %v", err)
 	}
 }

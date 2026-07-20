@@ -16,7 +16,7 @@ stacks_base_dir: /var/lib/skipper/repo/stacks
 webhook_secret: "your-secret-here"
 ```
 
-skipper clones the repo and deploys every discovered stack; a git push then fires the signed webhook and it redeploys only what changed (a [reconcile loop](#periodic-reconcile) re-syncs on a timer as a safety net). `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
+skipper clones the repo and deploys every discovered stack; a git push then fires the signed webhook and it redeploys only what changed (a [reconcile loop](#periodic-reconcile) re-syncs on a timer as a safety net). `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `deploy_health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
 
 ---
 
@@ -91,13 +91,13 @@ nixos_rebuild:
 | `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
 | `ui_theme` | string | no | `catppuccin` | Web UI colour palette: one of `catppuccin`, `nord`, `solarized`, `gruvbox`, `rose-pine` (see [Web UI Theme](#web-ui-theme)). |
 | `ui_theme_switcher` | bool | no | `false` | Show the in-UI theme picker so a browser can try other palettes locally. Off by default — the deployed `ui_theme` is then fixed (see [Web UI Theme](#web-ui-theme)). |
-| `health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
+| `runtime_health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
 | `reconcile_interval_seconds` | int | no | `300` | How often skipper re-runs its git sync + deploy on a timer, so a missed webhook cannot leave the host drifted (see [Periodic reconcile](#periodic-reconcile)). `0` disables it (pure webhook + startup). Runs headless — not tied to the UI. |
-| `self_heal` | bool | no | `false` | Global default for whether a stack the health poller finds degraded is automatically restored to its running state by a corrective redeploy (see [Self-heal](#self-heal)). A per-stack `self_heal` overrides it. Requires `health_poll_interval_seconds` > 0. |
+| `self_heal` | bool | no | `false` | Global default for whether a stack the health poller finds degraded is automatically restored to its running state by a corrective redeploy (see [Self-heal](#self-heal)). A per-stack `self_heal` overrides it. Requires `runtime_health_poll_interval_seconds` > 0. |
 | `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce). Must be ≥ 1. |
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
 | `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0; an explicit `0` disables the cooldown. |
-| `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `health_poll_interval_seconds` > 0. |
+| `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `runtime_health_poll_interval_seconds` > 0. |
 
 ## Pretty console output
 
@@ -130,7 +130,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. The [Stack health](#stack-health) view and the [health watch](#health-watch) know about this: an exited on-demand container reads as `stopped` (its intended idle state) whatever its exit code — never as `unhealthy`. Docker Compose auto-generates container names (`<project>-<service>-1`) unless the service sets `container_name:`; a name here that matches no declared `container_name` logs a startup-adjacent warning at deploy time (not a hard error, since the auto-generated name may still happen to be right) — set `container_name:` on the corresponding service to make it deterministic and checked. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
-| `health_check` | section | no | automatic if the compose file has a `healthcheck:` | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this section to change the timeout or add an HTTP probe. See [Health-check-gated rollback](#health-check-gated-rollback). |
+| `deploy_health_check` | section | no | automatic if the compose file has a `healthcheck:` | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this section to change the timeout or add an HTTP probe. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
@@ -155,7 +155,7 @@ stacks_base_dir: /var/lib/skipper/repo/stacks
 stacks:                     # optional — only the exceptions
   - name: traefik
     depends_on: [gitea]
-    health_check: { url: http://localhost:8080/ping }
+    deploy_health_check: { url: http://localhost:8080/ping }
   - name: wip
     disabled: true          # discovered, deliberately not deployed
 ```
@@ -170,12 +170,12 @@ stacks:                     # optional — only the exceptions
 
 ## Health-check-gated rollback
 
-Without any gate, a rollback only happens when `docker compose up` itself fails. A deploy whose containers *start* but stay broken (crash-loop, 500s) would be marked successful. A `healthcheck:` in the compose file closes that gap automatically (see Stage 1 below); a `health_check` section in this config adds an HTTP probe on top, or tunes the timeout:
+Without any gate, a rollback only happens when `docker compose up` itself fails. A deploy whose containers *start* but stay broken (crash-loop, 500s) would be marked successful. A `healthcheck:` in the compose file closes that gap automatically (see Stage 1 below); a `deploy_health_check` section in this config adds an HTTP probe on top, or tunes the timeout:
 
 ```yaml
 stacks:
   - name: whoami
-    health_check:
+    deploy_health_check:
       timeout_seconds: 60                # optional, default: 60
       url: http://localhost:8080/health  # optional HTTP probe
 ```
@@ -197,9 +197,9 @@ services:
       retries: 5
 ```
 
-As soon as any service in the stack's compose file declares a `healthcheck:`, skipper-cd applies this gate **automatically** — no `health_check` section needed in this config at all (ADR-0046). `docker compose up` runs with `--wait --wait-timeout 60` (the default), so the `up` fails and the deploy rolls back unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
+As soon as any service in the stack's compose file declares a `healthcheck:`, skipper-cd applies this gate **automatically** — no `deploy_health_check` section needed in this config at all (ADR-0046). `docker compose up` runs with `--wait --wait-timeout 60` (the default), so the `up` fails and the deploy rolls back unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
 
-Add an explicit `health_check` section only to change the default 60s timeout, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `health_check` itself.
+Add an explicit `deploy_health_check` section only to change the default 60s timeout, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `deploy_health_check` itself.
 
 ### Stage 2 — the HTTP probe (optional)
 
@@ -214,7 +214,7 @@ The rollback itself is verified through the same gate: its `up` also runs with `
 | `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
 | `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
 
-> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Don't enable `health_check` on stacks with deliberate one-shot containers, or model those as [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependencies.
+> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Don't enable `deploy_health_check` on stacks with deliberate one-shot containers, or model those as [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependencies.
 
 ## Deploy hooks
 
@@ -233,7 +233,7 @@ stacks:
 
 - Each entry is one `sh -c` command line, run in order. Env = the stack's deploy environment plus `SKIPPER_STACK` and `SKIPPER_HOOK` (`pre_deploy`/`post_deploy`); working directory = the stack's project directory.
 - `pre_deploy` runs **before any container is touched** — the old version is still up, so a `docker exec … pg_dump` backs up the running old version. A failing `pre_deploy` hook aborts the deploy before pull/up, with no rollback (nothing changed); the next sync retries. On a stack's first-ever deploy there is nothing to back up yet — guard the command if that matters.
-- `post_deploy` runs after a successful `up` (and health gate). A failing `post_deploy` hook **rolls the deploy back** to the previous version, exactly like a `health_check` failure — even without a `health_check` set.
+- `post_deploy` runs after a successful `up` (and health gate). A failing `post_deploy` hook **rolls the deploy back** to the previous version, exactly like a `deploy_health_check` failure — even without a `deploy_health_check` set.
 - Hooks are **not** hash-tracked: editing a hook does not trigger a redeploy; it takes effect on the stack's next deploy. (A hook that runs a script under a `watch_dirs` entry still redeploys when that script changes.)
 - Hooks run only when the stack actually deploys — never on a skip, a self-heal, or a rollback.
 - `timeout_seconds` bounds each hook; `command_timeout_seconds` is the hard ceiling (a larger value has no effect — and logs a startup warning). For a backup slower than that, raise `command_timeout_seconds`.
@@ -249,7 +249,7 @@ stacks:
   - name: dashboard
     rollout:
       services: [web]              # only these roll; every other service recreates in place
-      health_timeout_seconds: 60   # optional; default = health_check timeout, else 60
+      health_timeout_seconds: 60   # optional; default = deploy_health_check timeout, else 60
       drain_seconds: 5             # optional; hold the old container this long after the new one is healthy
 ```
 
@@ -443,7 +443,7 @@ The health is read by polling `docker compose ps` for each stack, using the same
 
 Containers listed in a stack's [`on_demand_containers`](#stack-fields) get special treatment: skipper stops them itself after every deploy (often via SIGKILL, so they exit non-zero) and the on-demand scheduler starts them on request — that idle is their intended state. An exited on-demand container therefore always reads as `stopped`, never `unhealthy`, whatever its exit code; the per-service panel labels it `on-demand`. A crash-looping or unhealthy on-demand container still counts as a real failure.
 
-`health_poll_interval_seconds` controls the cadence:
+`runtime_health_poll_interval_seconds` controls the cadence:
 
 - **default `30`** — poll every 30 seconds.
 - **`0`** — disable the health view entirely (no polling, no pill).
@@ -455,10 +455,10 @@ On a resource-constrained host, raise the interval rather than disabling it. See
 
 The [Stack health](#stack-health) view only *shows* health, and only while a browser is watching. The **health watch** goes one step further: it tracks each **service's** health over time and reports **transitions**: a service turning `unhealthy` fires an alert, and its recovery fires a matching all-clear. Transitions between the other statuses (`starting`, `stopped`) are recorded and logged but never alert, so an intentional `docker compose down` does not page.
 
-The watchdog has no poll loop of its own: it consumes the health poller's feed (like [self-heal](#self-heal)), so its cadence **is** `health_poll_interval_seconds` — which must therefore be > 0 — and enabling it makes that poll run headless, independent of the UI and of connected browsers. There is no extra `docker compose ps` work: one poll serves the UI view, self-heal, and the watchdog.
+The watchdog has no poll loop of its own: it consumes the health poller's feed (like [self-heal](#self-heal)), so its cadence **is** `runtime_health_poll_interval_seconds` — which must therefore be > 0 — and enabling it makes that poll run headless, independent of the UI and of connected browsers. There is no extra `docker compose ps` work: one poll serves the UI view, self-heal, and the watchdog.
 
 ```yaml
-health_watch:                      # cadence = health_poll_interval_seconds
+health_watch:                      # cadence = runtime_health_poll_interval_seconds
   debounce_polls: 2                # consecutive confirmations before a change is accepted
   attribution_window_seconds: 300  # transitions this soon after a deploy are marked deploy-correlated
   alert_cooldown_seconds: 1800     # rate limit for repeat alerts of one service; 0 = off
@@ -501,7 +501,7 @@ Within a run, a dependency's outcome gates its dependents:
 - **Dependency queued** (its `autosync` is paused) → the dependent queues too, rather than overtaking a change that is being deliberately held back.
 - **Dependency unchanged** (skipped) → it is already at its desired state, so the dependent proceeds.
 
-`depends_on` guarantees the dependency's deploy *completed*; by default `docker compose up` returns once containers start, not once they are ready. For true readiness (the database accepting connections before the app starts), add a [`health_check`](#health-check-gated-rollback) to the **dependency** — because deploys are sequential, the dependent only starts once the dependency proved healthy. See [ADR-0032](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0032-stack-deploy-ordering-via-depends-on.md).
+`depends_on` guarantees the dependency's deploy *completed*; by default `docker compose up` returns once containers start, not once they are ready. For true readiness (the database accepting connections before the app starts), add a [`deploy_health_check`](#health-check-gated-rollback) to the **dependency** — because deploys are sequential, the dependent only starts once the dependency proved healthy. See [ADR-0032](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0032-stack-deploy-ordering-via-depends-on.md).
 
 ## Periodic reconcile
 
@@ -529,7 +529,7 @@ Guardrails keep it from fighting a genuinely broken stack:
 - **Cooldown** — at least `self_heal_cooldown_seconds` (default 60, explicit `0` disables) between redeploys of the same stack.
 - **Circuit breaker** — after `self_heal_max_attempts` (default 3) redeploys that don't restore the stack, skipper gives up, leaves it reported `unhealthy`, and emits a single `heal_exhausted` event (a `heal_exhausted` [notification](#notifications) fires by default — the "a stack is down and I couldn't fix it" alarm). The counter resets when the stack recovers or a real git deploy of it runs.
 
-Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `health_poll_interval_seconds` > 0 even with the UI off. A successful redeploy shows as a `healed` event in the deploy log. See [ADR-0029](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0029-runtime-drift-self-heal.md).
+Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `runtime_health_poll_interval_seconds` > 0 even with the UI off. A successful redeploy shows as a `healed` event in the deploy log. See [ADR-0029](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0029-runtime-drift-self-heal.md).
 
 ## Keeping images up to date
 

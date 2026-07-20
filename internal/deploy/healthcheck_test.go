@@ -103,7 +103,7 @@ func TestResolveHealthCheck_ExplicitConfigWins(t *testing.T) {
 
 	got := resolveHealthCheck(explicit, cf)
 	if got != explicit {
-		t.Errorf("expected the explicit health_check to be returned unchanged, got %+v", got)
+		t.Errorf("expected the explicit deploy_health_check to be returned unchanged, got %+v", got)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestResolveHealthCheck_AutoDetectsFromComposeHealthcheck(t *testing.T) {
 
 	got := resolveHealthCheck(nil, cf)
 	if got == nil {
-		t.Fatal("expected an automatic health_check, got nil")
+		t.Fatal("expected an automatic deploy_health_check, got nil")
 	}
 	if got.TimeoutSeconds != config.DefaultHealthCheckTimeoutSeconds {
 		t.Errorf("expected default timeout %d, got %d", config.DefaultHealthCheckTimeoutSeconds, got.TimeoutSeconds)
@@ -132,13 +132,13 @@ func TestResolveHealthCheck_NilWithoutComposeHealthcheck(t *testing.T) {
 	cf := mustParseCompose(t, path)
 
 	if got := resolveHealthCheck(nil, cf); got != nil {
-		t.Errorf("expected no automatic health_check without a compose healthcheck, got %+v", got)
+		t.Errorf("expected no automatic deploy_health_check without a compose healthcheck, got %+v", got)
 	}
 }
 
 func TestResolveHealthCheck_NilWhenComposeDidNotParse(t *testing.T) {
 	if got := resolveHealthCheck(nil, nil); got != nil {
-		t.Errorf("expected no automatic health_check when compose could not be parsed, got %+v", got)
+		t.Errorf("expected no automatic deploy_health_check when compose could not be parsed, got %+v", got)
 	}
 }
 
@@ -157,7 +157,7 @@ func makeBaseWithStack(t *testing.T) string {
 }
 
 // makeBaseWithHealthcheckStack is makeBaseWithStack but the compose service
-// declares a Docker healthcheck, for tests of the automatic health_check
+// declares a Docker healthcheck, for tests of the automatic deploy_health_check
 // gate (ADR-0046).
 func makeBaseWithHealthcheckStack(t *testing.T) string {
 	t.Helper()
@@ -188,7 +188,7 @@ func TestDeployStack_UpWaitsForHealthWhenConfigured(t *testing.T) {
 	d := newDeployerWithRunner(runner)
 	d.stateDir = t.TempDir()
 
-	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
+	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestDeployStack_AutoDetectsHealthCheckFromComposeHealthcheck(t *testing.T) 
 	d := newDeployerWithRunner(runner)
 	d.stateDir = t.TempDir()
 
-	stack := config.Stack{Name: "mystack"} // no health_check declared
+	stack := config.Stack{Name: "mystack"} // no deploy_health_check declared
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestDeployStack_ExplicitHealthCheckOverridesAutoDetect(t *testing.T) {
 	d := newDeployerWithRunner(runner)
 	d.stateDir = t.TempDir()
 
-	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
+	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestDeployStack_AutoDetectedHealthCheckFailureTriggersRollback(t *testing.T
 	failingOnce := &failUpCallsRunner{errs: map[int]error{1: fmt.Errorf("compose up: services never turned healthy")}}
 	d := &Deployer{runner: failingOnce, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
 
-	stack := config.Stack{Name: "mystack"} // no health_check declared, auto-detected from compose
+	stack := config.Stack{Name: "mystack"} // no deploy_health_check declared, auto-detected from compose
 	state := &persistedState{
 		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
 		Images:             map[string]serviceImageByName{},
@@ -307,7 +307,7 @@ func TestDeployStack_HealthProbePassKeepsDeploy(t *testing.T) {
 	d.stateDir = t.TempDir()
 	d.prober = &httpHealthProber{doer: doer, interval: time.Millisecond}
 
-	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{
+	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",
 	}}
 	state := newEmptyState()
@@ -336,7 +336,7 @@ func TestDeployStack_NoProbeWithoutURL(t *testing.T) {
 	d.stateDir = t.TempDir()
 	d.prober = &httpHealthProber{doer: doer, interval: time.Millisecond}
 
-	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{TimeoutSeconds: 1}}
+	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 1}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestDeployStack_HealthProbeFailureRollsBack(t *testing.T) {
 	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
 	d.prober = &httpHealthProber{doer: doer, interval: 50 * time.Millisecond}
 
-	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{
+	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",
 	}}
 	state := &persistedState{
@@ -434,7 +434,7 @@ func TestDeployStack_RollbackUpStillUnhealthyWrapsErrRollbackUnhealthy(t *testin
 	runner := &recordingRunner{errOnCommand: "up"}
 	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
 
-	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
+	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
 	state := &persistedState{
 		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
 		Images:             map[string]serviceImageByName{},
@@ -473,7 +473,7 @@ func TestDeployStack_RollbackProbeFailureWrapsErrRollbackUnhealthy(t *testing.T)
 	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
 	d.prober = &httpHealthProber{doer: doer, interval: 50 * time.Millisecond}
 
-	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{
+	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",
 	}}
 	state := &persistedState{
@@ -510,7 +510,7 @@ func TestDeployStack_HealthProbeFailureRollbackAlsoFails(t *testing.T) {
 	d.stateDir = t.TempDir()
 	d.prober = &httpHealthProber{doer: doer, interval: 50 * time.Millisecond}
 
-	stack := config.Stack{Name: "mystack", HealthCheck: &config.HealthCheck{
+	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",
 	}}
 
