@@ -8,17 +8,15 @@ For a guided walkthrough see the [Quickstart](index.md#quickstart). This page is
 
 ## Minimal Example
 
-The smallest working config — two lines. Stack discovery is on by default (ADR-0043), so every `<stacks_base_dir>/<name>/docker-compose.yml` in the deploy repo is a stack — no `stacks:` list needed:
+The smallest working config. Stack discovery is on by default (ADR-0043), so every `<stacks_base_dir>/<name>/docker-compose.yml` in the deploy repo is a stack — no `stacks:` list needed:
 
 ```yaml
 repo_url: ssh://git@gitea.example.com/user/deploy.git
 stacks_base_dir: /var/lib/skipper/repo/stacks
+webhook_secret: "your-secret-here"
 ```
 
-skipper clones the repo, deploys every discovered stack, and redeploys changed ones via the **reconcile loop** (git polled every 5 min by default). `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults.
-
-- Add `webhook_secret: "…"` for **instant** push-triggered deploys — without it the `/webhook` endpoint is disabled and only the reconcile loop deploys (it never accepts unsigned pushes).
-- Add a `stacks:` list only to override a discovered stack (hooks, `health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
+skipper clones the repo and deploys every discovered stack; a git push then fires the signed webhook and it redeploys only what changed (a [reconcile loop](#periodic-reconcile) re-syncs on a timer as a safety net). `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
 
 ---
 
@@ -72,7 +70,7 @@ nixos_rebuild:
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |
 | `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
 | `stacks_base_dir` | string | no | — | Base directory prepended to a stack's `name` to derive its working directory when `working_dir` is not set. Avoids repeating long paths across stacks. |
-| `webhook_secret` | string | no | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Optional: when empty the `/webhook` endpoint is **disabled** (it never accepts unsigned pushes) and deploys run via the [reconcile loop](#periodic-reconcile) instead. Set it for instant push-triggered deploys. |
+| `webhook_secret` | string | **yes** | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Required — the webhook is skipper's primary deploy trigger, so every request is signature-verified; an empty secret is rejected at startup. |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. Must be 1–65535 and differ from `port`. |
 | `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |

@@ -182,10 +182,10 @@ type Config struct {
 	StacksBaseDir string `yaml:"stacks_base_dir"`
 
 	// WebhookSecret is the shared HMAC-SHA256 secret push webhooks are signed
-	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Optional:
-	// when empty the /webhook endpoint is disabled (it never accepts unsigned
-	// pushes) and deploys run via the reconcile loop instead (ADR-0028). Set it
-	// to enable push-triggered deploys.
+	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Required:
+	// push webhooks are skipper's primary deploy trigger (the reconcile loop is
+	// a safety net, not a substitute), so it must be set and every request is
+	// signature-verified.
 	WebhookSecret string `yaml:"webhook_secret"`
 
 	// Port is the webhook/UI HTTP port. Defaults to 8080.
@@ -629,6 +629,12 @@ const (
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
 		return fmt.Errorf("repo_url is required")
+	}
+	if cfg.WebhookSecret == "" {
+		// Push webhooks are skipper's primary deploy trigger; the reconcile loop
+		// is a safety net, not a substitute. Require a secret so the webhook is
+		// always signed (never open to unsigned requests).
+		return fmt.Errorf("webhook_secret is required")
 	}
 
 	// A negative command_timeout_seconds would build an already-expired context,

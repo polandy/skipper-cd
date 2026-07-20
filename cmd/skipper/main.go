@@ -154,13 +154,6 @@ func main() {
 		"branch", cfg.Branch,
 		"command_timeout", timeout,
 	)
-	if cfg.WebhookSecret == "" {
-		if *cfg.ReconcileIntervalSeconds > 0 {
-			slog.Info("webhook_secret not set: push webhooks are disabled; deploys run via the reconcile loop", "reconcile_interval_seconds", *cfg.ReconcileIntervalSeconds)
-		} else {
-			slog.Warn("webhook_secret not set and reconcile is disabled: nothing will trigger a deploy — set webhook_secret or reconcile_interval_seconds")
-		}
-	}
 
 	// Log the effective stack set (name, hooks, watch dirs) once so an
 	// operator can see what skipper is watching without waiting for a deploy
