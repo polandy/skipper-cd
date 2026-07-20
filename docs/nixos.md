@@ -137,21 +137,24 @@ services.skipper-cd.stacks = [{
 }];
 ```
 
-**`modules/monica/default.nix`** — with `on_demand_containers` and `working_dir`:
+**`modules/monica/default.nix`** — with `on_demand_containers`:
 
 ```nix
 services.skipper-cd.stacks = [{
   name                 = "monica";
-  working_dir          = "/etc/nixos/modules/monica";
   on_demand_containers = [ "monica-app" "monica-db" ];
 }];
 ```
+
+Note there is no `working_dir` here even though monica is also managed by a NixOS systemd service at `/etc/nixos/modules/monica` — with the top-level `working_dir_base = "/etc/nixos/modules";` set once (see below), every stack module gets the matching `working_dir` for free and only needs to declare one when its directory breaks the `<working_dir_base>/<name>` pattern.
 
 Because the list is only populated when a service's `enable = true`, disabled services are automatically absent from `skipper.yml`. There is no risk of skipper-cd deploying a stack for a service that has been turned off.
 
 ### `working_dir` and Docker Compose Project Identity
 
-When a NixOS systemd service manages a Docker Compose stack (via `WorkingDirectory = /etc/nixos/modules/<name>`), Docker labels containers with `com.docker.compose.project.working_dir=/etc/nixos/modules/<name>`. skipper-cd always reads the compose file from its repo clone at `<stacks_base_dir>/<name>/docker-compose.yml` for change detection and deployment. When `working_dir` is set, skipper-cd passes it as `--project-directory` so Docker Compose uses the same project identity as systemd:
+When a NixOS systemd service manages a Docker Compose stack (via `WorkingDirectory = /etc/nixos/modules/<name>`), Docker labels containers with `com.docker.compose.project.working_dir=/etc/nixos/modules/<name>`. skipper-cd always reads the compose file from its repo clone at `<stacks_base_dir>/<name>/docker-compose.yml` for change detection and deployment. When `working_dir` is set, skipper-cd passes it as `--project-directory` so Docker Compose uses the same project identity as systemd.
+
+Setting the top-level [`working_dir_base`](configuration.md#top-level-fields) to the NixOS modules directory (e.g. `/etc/nixos/modules`) derives every stack's `working_dir` as `<working_dir_base>/<name>` automatically — the common case with the self-registering pattern above, where every stack module lives at that same predictable path. A stack module only sets its own `working_dir` when its directory doesn't follow that pattern; the explicit value always wins over the derived one.
 
 ```
 docker compose \

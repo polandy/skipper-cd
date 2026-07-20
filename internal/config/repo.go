@@ -42,13 +42,16 @@ type RepoStacks struct {
 // docker-compose.yml is a stack (name = directory name, alphabetical order).
 // overrides are the host config's stacks: entries, matched to discovered stacks
 // by name; a discovered stack without a matching entry runs on defaults.
-// Relative override paths resolve against stacksBaseDir.
+// Relative override paths resolve against stacksBaseDir. workingDirBase, when
+// set, derives a discovered stack's working_dir as <workingDirBase>/<name>
+// whenever the override does not set its own (ADR-0045); empty leaves
+// working_dir unset, same as before working_dir_base existed.
 //
 // The error return is file-level (unreadable base dir, or a leftover in-repo
 // skipper.yaml that is no longer read): the caller must not deploy anything.
 // StackErrors are entry-level: those stacks are excluded and reported, the
 // returned stacks are fine to deploy.
-func LoadRepoStacks(stacksBaseDir string, overrides []Stack) (RepoStacks, []StackError, error) {
+func LoadRepoStacks(stacksBaseDir string, overrides []Stack, workingDirBase string) (RepoStacks, []StackError, error) {
 	discovered, err := discoverStackDirs(stacksBaseDir)
 	if err != nil {
 		return RepoStacks{}, nil, err
@@ -107,8 +110,11 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack) (RepoStacks, []Stac
 			Hooks:              ov.Hooks,
 			Rollout:            ov.Rollout,
 		}
+		if stack.WorkingDir == "" && workingDirBase != "" {
+			stack.WorkingDir = filepath.Join(workingDirBase, name)
+		}
 		if hc := stack.HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
-			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
+			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
 		}
 
 		hcErr := validateHealthCheck(stack.HealthCheck)

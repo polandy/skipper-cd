@@ -59,7 +59,7 @@ func TestLoadRepoStacks_DiscoversDirsWithComposeFile(t *testing.T) {
 		"stacks/alpha/sub/docker-compose.yml": minimalCompose, // nested: not scanned
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestLoadRepoStacks_NoOverridesYieldsDefaults(t *testing.T) {
 		"stacks/web/docker-compose.yml": minimalCompose,
 	})
 
-	repo, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
+	repo, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -94,6 +94,38 @@ func TestLoadRepoStacks_NoOverridesYieldsDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadRepoStacks_WorkingDirBaseAppliesWithoutOverride(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+	})
+
+	repo, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil, "/etc/nixos/modules")
+	if err != nil {
+		t.Fatalf("LoadRepoStacks: %v", err)
+	}
+	if len(repo.Stacks) != 1 {
+		t.Fatalf("got %d stacks, want 1", len(repo.Stacks))
+	}
+	if got, want := repo.Stacks[0].WorkingDir, "/etc/nixos/modules/web"; got != want {
+		t.Errorf("expected working_dir %q, got %q", want, got)
+	}
+}
+
+func TestLoadRepoStacks_OverrideWorkingDirWinsOverBase(t *testing.T) {
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+	})
+	overrides := []Stack{{Name: "web", WorkingDir: "/srv/custom/web"}}
+
+	repo, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "/etc/nixos/modules")
+	if err != nil {
+		t.Fatalf("LoadRepoStacks: %v", err)
+	}
+	if got, want := repo.Stacks[0].WorkingDir, "/srv/custom/web"; got != want {
+		t.Errorf("expected override working_dir to win, got %q, want %q", got, want)
+	}
+}
+
 func TestLoadRepoStacks_LeftoverRepoFileIsFileLevel(t *testing.T) {
 	// ADR-0043: the in-repo override file is no longer read. A leftover one is
 	// un-migrated config that would otherwise be silently ignored — it must fail
@@ -103,7 +135,7 @@ func TestLoadRepoStacks_LeftoverRepoFileIsFileLevel(t *testing.T) {
 		"stacks/skipper.yaml":           "stacks:\n  web:\n    icon: nginx\n",
 	})
 
-	_, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
+	_, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil, "")
 	if err == nil {
 		t.Fatal("expected a file-level error for a leftover repo skipper.yaml")
 	}
@@ -129,7 +161,7 @@ func TestLoadRepoStacks_AppliesOverrides(t *testing.T) {
 		HealthCheck:        &HealthCheck{URL: "http://localhost:8080/health"},
 	}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -166,7 +198,7 @@ func TestLoadRepoStacks_AppliesAutosyncOverride(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Autosync: boolPtr(false)}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
@@ -182,7 +214,7 @@ func TestLoadRepoStacks_DisabledStackExcluded(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "wip", Disabled: true}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil || len(stackErrs) != 0 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -201,7 +233,7 @@ func TestLoadRepoStacks_UnknownOverrideEntryReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "ghost", Icon: "casper"}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -216,7 +248,7 @@ func TestLoadRepoStacks_UnknownOverrideEntryReported(t *testing.T) {
 
 func TestLoadRepoStacks_MissingBaseDirIsFileLevel(t *testing.T) {
 	repoDir := t.TempDir()
-	if _, _, err := LoadRepoStacks(filepath.Join(repoDir, "missing"), nil); err == nil {
+	if _, _, err := LoadRepoStacks(filepath.Join(repoDir, "missing"), nil, ""); err == nil {
 		t.Fatal("expected a file-level error for a missing stacks_base_dir")
 	}
 }
@@ -227,7 +259,7 @@ func TestLoadRepoStacks_ReservedDirNameReported(t *testing.T) {
 		"stacks/web/docker-compose.yml":    minimalCompose,
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -246,7 +278,7 @@ func TestLoadRepoStacks_EnvFileEscapingStacksBaseDirReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "bad", EnvFiles: []string{"../../etc/passwd"}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -264,7 +296,7 @@ func TestLoadRepoStacks_WatchDirEscapingStacksBaseDirReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "bad", WatchDirs: []string{"../outside"}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -280,7 +312,7 @@ func TestLoadRepoStacks_InvalidHealthCheckReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "bad", HealthCheck: &HealthCheck{URL: "notaurl"}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -303,7 +335,7 @@ func TestLoadRepoStacks_InvalidDependencyReported(t *testing.T) {
 		{Name: "dangling", DependsOn: []string{"missing"}},
 	}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -326,7 +358,7 @@ func TestLoadRepoStacks_DependencyCycleReported(t *testing.T) {
 		{Name: "b", DependsOn: []string{"a"}},
 	}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -350,7 +382,7 @@ func TestLoadRepoStacks_DependencyOnDisabledStackAllowed(t *testing.T) {
 		{Name: "db", Disabled: true},
 	}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil || len(stackErrs) != 0 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -368,7 +400,7 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 			override.Name = "web"
 			overrides = []Stack{*override}
 		}
-		repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+		repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 		if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 			t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 		}
@@ -414,7 +446,7 @@ func TestLoadRepoStacks_AppliesHookOverrides(t *testing.T) {
 		TimeoutSeconds: 90,
 	}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
@@ -436,7 +468,7 @@ func TestLoadRepoStacks_AppliesRolloutOverride(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}, HealthTimeoutSeconds: 30}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
@@ -452,7 +484,7 @@ func TestLoadRepoStacks_InvalidRolloutReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -470,7 +502,7 @@ func TestLoadRepoStacks_RolloutUnknownServiceReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"nope"}}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -492,7 +524,7 @@ func TestLoadRepoStacks_RolloutOneOfManyServicesUnknownReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app", "ghost"}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -507,7 +539,7 @@ func TestLoadRepoStacks_RolloutKnownServiceAccepted(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
@@ -519,7 +551,7 @@ func TestLoadRepoStacks_RolloutServiceMissingHealthcheckReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -534,7 +566,7 @@ func TestLoadRepoStacks_RolloutServicePublishesPortsReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -549,7 +581,7 @@ func TestLoadRepoStacks_RolloutServiceContainerNameReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -565,7 +597,7 @@ func TestLoadRepoStacks_UnparseableComposeReported(t *testing.T) {
 		"stacks/web/docker-compose.yml": "services: [not valid",
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil, "")
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -583,7 +615,7 @@ func TestLoadRepoStacks_MissingRelativeEnvFileReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", EnvFiles: []string{"web/missing.env"}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -598,7 +630,7 @@ func TestLoadRepoStacks_MissingRelativeWatchDirReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", WatchDirs: []string{"web/missing"}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -615,7 +647,7 @@ func TestLoadRepoStacks_AbsoluteEnvFileNotRequiredToExist(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", EnvFiles: []string{"/etc/does-not-exist.env"}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("absolute env_file must not be existence-checked: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
@@ -627,7 +659,7 @@ func TestLoadRepoStacks_InvalidHookReported(t *testing.T) {
 	})
 	overrides := []Stack{{Name: "web", Hooks: Hooks{PreDeploy: []string{"  "}}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}

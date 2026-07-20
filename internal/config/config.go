@@ -23,7 +23,8 @@ type Stack struct {
 	// WorkingDir is an optional absolute path passed as --project-directory to
 	// docker compose. It controls Docker Compose project identity (container
 	// labels) and .env file loading. Change detection and the compose file
-	// always come from stacks_base_dir/<name>.
+	// always come from stacks_base_dir/<name>. When empty, it defaults to
+	// working_dir_base/<name> if the config sets working_dir_base.
 	WorkingDir string `yaml:"working_dir"`
 
 	// EnvFiles lists KEY=VALUE files injected into the environment when docker-compose
@@ -183,6 +184,14 @@ type Config struct {
 	// subdirectory per stack (<stacks_base_dir>/<name>/docker-compose.yml).
 	// Change detection and the compose file always come from here.
 	StacksBaseDir string `yaml:"stacks_base_dir"`
+
+	// WorkingDirBase is an optional base directory from which a stack's
+	// working_dir is derived as <working_dir_base>/<name> when the stack does
+	// not set its own (ADR-0045). Mirrors stacks_base_dir's role for the
+	// compose path, but for --project-directory: it avoids repeating a common
+	// prefix (e.g. a NixOS modules directory) across every stack. Must be an
+	// absolute path when set.
+	WorkingDirBase string `yaml:"working_dir_base"`
 
 	// WebhookSecret is the shared HMAC-SHA256 secret push webhooks are signed
 	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Required:
@@ -562,8 +571,11 @@ func Load(path string) (*Config, error) {
 		}
 	}
 	for i := range cfg.Stacks {
+		if cfg.Stacks[i].WorkingDir == "" && cfg.WorkingDirBase != "" {
+			cfg.Stacks[i].WorkingDir = filepath.Join(cfg.WorkingDirBase, cfg.Stacks[i].Name)
+		}
 		if hc := cfg.Stacks[i].HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
-			hc.TimeoutSeconds = defaultHealthCheckTimeoutSeconds
+			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
 		}
 	}
 
@@ -611,9 +623,11 @@ const ReservedStackName = "_nixos"
 // not collide with a configured stack.
 const ReservedConfigStackName = "_config"
 
-// defaultHealthCheckTimeoutSeconds is applied when a health_check section is
-// present without an explicit timeout_seconds.
-const defaultHealthCheckTimeoutSeconds = 60
+// DefaultHealthCheckTimeoutSeconds is applied when a health_check section is
+// present without an explicit timeout_seconds, and by internal/deploy's
+// automatic gate for a stack that declares no health_check but whose compose
+// file has one (ADR-0046).
+const DefaultHealthCheckTimeoutSeconds = 60
 
 // defaultHealthPollIntervalSeconds is the UI stack-health poll cadence applied
 // when health_poll_interval_seconds is omitted (ADR-0027). An explicit 0
@@ -690,6 +704,11 @@ func validateConfig(cfg *Config) error {
 		// ADR-0043: under discovery the stacks: list is optional per-stack
 		// overrides, not the membership — so it no longer conflicts with discovery.
 		return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
+	}
+	if cfg.WorkingDirBase != "" && !filepath.IsAbs(cfg.WorkingDirBase) {
+		// A relative working_dir_base would resolve against skipper's own
+		// process cwd, not the repo clone — silently wrong --project-directory.
+		return fmt.Errorf("working_dir_base %q must be an absolute path (start it with \"/\")", cfg.WorkingDirBase)
 	}
 
 	seen := make(map[string]struct{}, len(cfg.Stacks))

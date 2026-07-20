@@ -606,6 +606,51 @@ stacks:
 	}
 }
 
+func TestLoad_WorkingDirBaseDerivesPerStackWorkingDir(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+working_dir_base: /etc/nixos/modules
+stacks:
+  - name: gitea
+  - name: nextcloud
+`
+	cfg := loadFromString(t, content)
+	if got, want := cfg.Stacks[0].WorkingDir, "/etc/nixos/modules/gitea"; got != want {
+		t.Errorf("stack gitea: expected working_dir %q, got %q", want, got)
+	}
+	if got, want := cfg.Stacks[1].WorkingDir, "/etc/nixos/modules/nextcloud"; got != want {
+		t.Errorf("stack nextcloud: expected working_dir %q, got %q", want, got)
+	}
+}
+
+func TestLoad_ExplicitWorkingDirOverridesWorkingDirBase(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+working_dir_base: /etc/nixos/modules
+stacks:
+  - name: gitea
+    working_dir: /srv/custom/gitea
+`
+	cfg := loadFromString(t, content)
+	if got, want := cfg.Stacks[0].WorkingDir, "/srv/custom/gitea"; got != want {
+		t.Errorf("expected explicit working_dir to win, got %q, want %q", got, want)
+	}
+}
+
+func TestLoad_RejectsRelativeWorkingDirBase(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+working_dir_base: relative/modules
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil || !strings.Contains(err.Error(), "working_dir_base") || !strings.Contains(err.Error(), "must be an absolute path") {
+		t.Fatalf("expected a working_dir_base-must-be-absolute error, got %v", err)
+	}
+}
+
 func TestLoad_WarnsWhenNothingToDeploy(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git

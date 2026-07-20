@@ -568,7 +568,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// dependency gate below so their dependents block.
 	var stackErrs []config.StackError
 	if cfg.StackDiscovery {
-		repo, errs, err := config.LoadRepoStacks(cfg.StacksBaseDir, cfg.Stacks)
+		repo, errs, err := config.LoadRepoStacks(cfg.StacksBaseDir, cfg.Stacks, cfg.WorkingDirBase)
 		if err != nil {
 			slog.Error("stack discovery failed, no stacks deploy this run", "err", err)
 			d.emitDeployFailure(ConfigStateKey, 0, err, changeSet{})
