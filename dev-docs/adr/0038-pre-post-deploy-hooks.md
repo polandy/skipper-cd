@@ -113,7 +113,7 @@ rollback all run zero hooks.
 
 The initial feature (above, #139) is backend-only. A follow-up increment surfaces
 hooks in the web UI, read-only, **reusing existing components rather than adding
-new ones** (per `dev-docs/ui-design-concept.md`). Decided with Andy on a clickable
+new ones** (per `dev-docs/ui-design-concept.md`). Decided on a clickable
 mockup and the live `make ui-preview` (2026-07-19):
 
 1. A **hooks badge** on the stack cell (newest deploy row + roster row) — a
