@@ -333,7 +333,7 @@
 
   // Names parked with disabled: true, from the 'stacks' SSE snapshot (stack
   // discovery, ADR-0034). Rendered as a quiet chip line below the deploy table;
-  // empty (and the line hidden) in legacy mode.
+  // empty (and the line hidden) in host-list mode.
   let disabledSnap = [];
 
   function renderDisabledStacks() {
@@ -351,7 +351,7 @@
   }
 
   // The Stacks view roster: the full stack set (stack discovery, ADR-0034, or
-  // the host list in legacy mode) with each stack's last outcome, from the
+  // the host stacks: list) with each stack's last outcome, from the
   // 'stacks' SSE snapshot. Inventory, not an event log — every declared stack
   // appears, including never-deployed and disabled ones. See
   // dev-docs/stack-roster-spec.md.

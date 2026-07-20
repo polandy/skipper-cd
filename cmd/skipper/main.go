@@ -564,7 +564,7 @@ func metricsMux() *http.ServeMux {
 // stacksState is the `stacks` SSE snapshot: stack-set facts that are not
 // deploy events. Disabled carries the names parked via disabled: true in
 // stack-discovery mode (ADR-0034), driving the Deploys view's disabled line
-// (empty in legacy mode). Roster is the full inventory for the Stacks view —
+// (empty in host-list mode). Roster is the full inventory for the Stacks view —
 // every declared stack with its last outcome (dev-docs/stack-roster-spec.md).
 type stacksState struct {
 	Disabled []string       `json:"disabled"`
