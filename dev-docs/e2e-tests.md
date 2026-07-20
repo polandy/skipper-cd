@@ -423,7 +423,7 @@ UI suite reuses.
   control (the deploy row's `clog-btn`) flashes `.tap-tip` on a synthetic touch
   `pointerdown` and auto-hides after its 1600ms timer (`page.clock`); the same
   dispatch with `pointerType: 'mouse'` shows nothing. A second case opens the
-  `view-options` popover and confirms `deploy-search` still stays silent even
+  `view-options` popover and confirms `time-mode` still stays silent even
   though it sits under the opted-in `<header>` — the `.view-options` exclusion
   overrides an opted-in ancestor.
 

@@ -438,11 +438,13 @@ test.describe('UD11: tap-tip opt-in on non-header controls', () => {
     await page.goto(`${skipper.baseURL}/`);
 
     // Open the popover so the excluded control is actually reachable (UD8).
+    // time-mode, not deploy-search: the search row is desktop-hidden (UG3),
+    // so it wouldn't be visible here regardless of the tap-tip exclusion.
     await page.locator('[data-testid="view-toggle"] button[data-view="deploys"]').click();
-    const searchToggle = page.locator('[data-testid="deploy-search"]');
-    await expect(searchToggle).toBeVisible();
+    const timeMode = page.locator('[data-testid="time-mode"]');
+    await expect(timeMode).toBeVisible();
 
-    await searchToggle.dispatchEvent('pointerdown', { pointerType: 'touch' });
+    await timeMode.dispatchEvent('pointerdown', { pointerType: 'touch' });
     await expect(page.locator('.tap-tip')).not.toHaveClass(/\bshow\b/);
   });
 });
