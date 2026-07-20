@@ -64,12 +64,12 @@ nixos_rebuild:
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `repo_url` | string | yes | — | URL of the Git repository to clone and pull (supports SSH and HTTPS). |
-| `repo_dir` | string | no | `/var/lib/skipper/repo` | Local directory where the repository is cloned. skipper-cd manages this directory independently of any live checkout. |
+| `repo_dir` | string | no | `/var/lib/skipper/repo` | Local directory where the repository is cloned. skipper-cd manages this directory independently of any live checkout. Must be absolute when set. |
 | `branch` | string | no | `main` | Git branch to track. Used for `git clone --branch` and `git reset --hard origin/<branch>`. |
-| `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. When set, it must exist and be readable — checked at startup. |
+| `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. When set, it must exist and be readable. |
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |
 | `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
-| `stacks_base_dir` | string | no | — | Base directory prepended to a stack's `name` to derive its working directory when `working_dir` is not set. Avoids repeating long paths across stacks. |
+| `stacks_base_dir` | string | no | — | Base directory prepended to a stack's `name` to derive its working directory when `working_dir` is not set. Avoids repeating long paths across stacks. Must be absolute when set. |
 | `webhook_secret` | string | **yes** | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Required — the webhook is skipper's primary deploy trigger, so every request is signature-verified; an empty secret is rejected at startup. |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. Must be 1–65535 and differ from `port`. |
@@ -115,15 +115,15 @@ Each entry under `stacks` configures one Docker Compose stack.
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `name` | string | yes | — | Name of the stack. The compose file is always read from `<stacks_base_dir>/<name>/docker-compose.yml`. Also used as the key in the deploy state file. |
-| `working_dir` | string | no | — | Absolute path passed as `--project-directory` to `docker compose`. Controls Docker Compose project identity (container labels) and `.env` file loading. Change detection and the compose file always come from `<stacks_base_dir>/<name>`. Must be absolute — checked at startup. See [working_dir and Docker Compose project identity](nixos.md#working_dir-and-docker-compose-project-identity). |
-| `env_files` | list of strings | no | — | Absolute paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. |
-| `watch_dirs` | list of strings | no | — | Absolute paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). |
+| `working_dir` | string | no | — | Absolute path passed as `--project-directory` to `docker compose`. Controls Docker Compose project identity (container labels) and `.env` file loading. Change detection and the compose file always come from `<stacks_base_dir>/<name>`. Must be absolute. See [working_dir and Docker Compose project identity](nixos.md#working_dir-and-docker-compose-project-identity). |
+| `env_files` | list of strings | no | — | Paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. With `stack_discovery: false` every entry must be absolute. Under discovery, a relative entry resolves against `stacks_base_dir` (see [Stack discovery](#stack-discovery)). |
+| `watch_dirs` | list of strings | no | — | Paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). Same absolute-path rule as `env_files` above. |
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. The [Stack health](#stack-health) view and the [health watch](#health-watch) know about this: an exited on-demand container reads as `stopped` (its intended idle state) whatever its exit code — never as `unhealthy`. Docker Compose auto-generates container names (`<project>-<service>-1`) unless the service sets `container_name:`; a name here that matches no declared `container_name` logs a startup-adjacent warning at deploy time (not a hard error, since the auto-generated name may still happen to be right) — set `container_name:` on the corresponding service to make it deterministic and checked. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
 | `health_check` | section | no | — | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
-| `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic (both checked at startup). See [Deploy ordering](#deploy-ordering). |
+| `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
 | `rollout` | section | no | — | Deploy the named services with a zero-downtime cutover (new container alongside the old, then drain) instead of an in-place recreate. Needs a reverse proxy in front of the service (only Traefik tested). Never hash-tracked. See [Zero-downtime rollout](#zero-downtime-rollout). |
 
@@ -157,7 +157,7 @@ stacks:                     # optional — only the exceptions
 - **One config file** — there is no separate in-repo override file. A leftover `<stacks_base_dir>/skipper.yaml` in the clone is **not read** and fails the whole stack phase loudly (a `_config` row), so un-migrated overrides never silently revert stacks to defaults.
 - **Config edits redeploy** — changing a stack's effective config (e.g. its `watch_dirs`) redeploys exactly that stack. Because the config is host-side, the change is not a tracked repo file, so the UI shows the redeploy without a config diff (the diff is in the host's own git, e.g. `/etc/nixos`).
 - **Validated every sync** — because discovery runs against the repo clone, each stack is checked up front, not only when it next deploys: its `docker-compose.yml` must parse, any relative `env_files`/`watch_dirs` must exist, and any `rollout` service must be present and eligible. A failure shows on the stack's row and excludes only that stack.
-- **Self-heal** — activation is global-only here: the poller runs only when the host config sets `self_heal: true`. A per-stack `self_heal: true` cannot turn it on by itself (it never activates); once global is on, per-stack `self_heal: false` opts a stack out.
+- **Self-heal** — activation is global-only here: the poller runs only when the host config sets `self_heal: true`. A per-stack `self_heal: true` cannot turn it on by itself (it never activates); once global is on, per-stack `self_heal: false` opts a stack out. A `stacks:` override that sets `self_heal: true` while the global flag stays off logs a startup warning, since it looks like a working opt-in but silently never activates.
 
 ## Health-check-gated rollback
 
@@ -227,7 +227,7 @@ stacks:
 - `post_deploy` runs after a successful `up` (and health gate). A failing `post_deploy` hook **rolls the deploy back** to the previous version, exactly like a `health_check` failure — even without a `health_check` set.
 - Hooks are **not** hash-tracked: editing a hook does not trigger a redeploy; it takes effect on the stack's next deploy. (A hook that runs a script under a `watch_dirs` entry still redeploys when that script changes.)
 - Hooks run only when the stack actually deploys — never on a skip, a self-heal, or a rollback.
-- `timeout_seconds` bounds each hook; `command_timeout_seconds` is the hard ceiling (a larger value has no effect). For a backup slower than that, raise `command_timeout_seconds`.
+- `timeout_seconds` bounds each hook; `command_timeout_seconds` is the hard ceiling (a larger value has no effect — and logs a startup warning). For a backup slower than that, raise `command_timeout_seconds`.
 
 In the web UI, a stack with hooks shows a **hook badge** on its row (in both the Deploys and Stacks views) with a `pre+post` count — click it to see the configured commands. While a deploy runs a hook, the row shows which one is running (`pre_deploy hook 1/2`); the logs icon there opens the hook's live output in a log panel, inline on the same page.
 
@@ -288,7 +288,7 @@ The reserved NixOS pseudo-stack `_nixos` (see [NixOS](nixos.md)) is not a config
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `cache_dir` | string | no | `/var/lib/skipper/icons` | Directory where fetched icons are cached on disk. |
+| `cache_dir` | string | no | `/var/lib/skipper/icons` | Directory where fetched icons are cached on disk. Must be absolute. |
 | `source_url` | string | no | dashboard-icons CDN | Icon-set **root** URL; icons are fetched from `<source_url>/<format>/<slug>.<format>` for `format` in `svg`, `png`, `webp` (first hit wins). |
 
 ```yaml
@@ -484,7 +484,7 @@ stacks:
   - name: monitoring        # unrelated, deploys in config order
 ```
 
-Stacks then deploy in dependency order (a stable topological sort: a stack never deploys before one it depends on, and stacks not otherwise constrained keep their config order). A config with no `depends_on` anywhere behaves exactly as before. Deploys stay sequential — this orders the sequence, it does not run stacks in parallel. Names must refer to defined stacks and the graph must be acyclic; both are checked at startup, so a typo or cycle fails fast rather than at deploy time.
+Stacks then deploy in dependency order (a stable topological sort: a stack never deploys before one it depends on, and stacks not otherwise constrained keep their config order). A config with no `depends_on` anywhere behaves exactly as before. Deploys stay sequential — this orders the sequence, it does not run stacks in parallel. Names must refer to defined stacks and the graph must be acyclic — a typo or cycle fails fast, before any stack deploys.
 
 Within a run, a dependency's outcome gates its dependents:
 
