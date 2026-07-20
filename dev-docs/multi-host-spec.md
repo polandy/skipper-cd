@@ -1,6 +1,8 @@
 # Feature Spec: Multi-Host Federated UI
 
-Status: proposal (not accepted)
+Status: proposal (not accepted). Header placement and mobile behavior
+validated 2026-07-21 against an interactive mockup; two gaps surfaced by
+that mockup are recorded in Open Questions below.
 Date: 2026-07-18
 
 ## Goal
@@ -44,10 +46,20 @@ The federating instance mounts a path-prefixed reverse proxy per peer:
   cache, or re-emit peer data — it forwards bytes (including the SSE
   stream, with flushing). This keeps the server change tiny and version-
   skew-tolerant: a peer on an older skipper just serves its older UI.
-- The **UI** grows a host switcher in the header (chips: local + one per
-  peer, from a new `/api/peers` endpoint). Selecting a peer loads that
-  peer's UI in place via the proxy prefix. Phase 1 is switch-not-merge;
-  a merged "all hosts" table is explicitly deferred (see open questions).
+- The **UI** grows a host switcher: the **leftmost** header control, ahead
+  of even the brand mark (separated by a hairline). Which host's data is on
+  screen is a more basic question than which view (Deploys/Stacks) is
+  active, so it leads. Wide: a chip per host (local + peers, from a new
+  `/api/peers` endpoint), monogram + name + a reachability dot, current
+  host highlighted. Narrow: collapses to a single trigger button (active
+  host's monogram + chevron) opening a popover list — **the same
+  trigger-button-opens-popover pattern the app-link feature already built**
+  for its own multi-host case (`internal/ui/static/index.html`:
+  `.link-wrap > .link-btn` → `.link-pop`); reuse that component's CSS
+  rather than adding a second one, per `ui-design-concept.md`. Selecting a
+  peer loads that peer's UI in place via the proxy prefix. Phase 1 is
+  switch-not-merge; a merged "all hosts" table is explicitly deferred (see
+  open questions).
 - Auth: peers sit behind the primary's existing front-auth (Authelia)
   because the browser only ever talks to the primary. Peers can then
   firewall their own port to the primary's IP (same pattern as
@@ -92,3 +104,21 @@ The federating instance mounts a path-prefixed reverse proxy per peer:
 2. Should notifications gain the host prefix automatically from `peers`
    config? Today the `[nuc]`/`[argoneon]` prefix is manual per-target
    config — orthogonal, leave as is.
+3. **Getting back from a peer isn't solved yet.** Every skipper instance
+   ships the same self-contained UI (ADR-0035), so a peer's page — served
+   fresh by the peer itself, only forwarded through the primary's proxy —
+   only shows its own switcher if *that* host also has `peers:` configured.
+   In the intended one-primary setup (only nuc lists peers), a page loaded
+   via `/peer/argoneon/` has no switcher at all once you're on it, only
+   the browser's back button. Two ways out: (a) require reciprocal
+   `peers:` on every federated host, so each one's own page always renders
+   a switcher; or (b) make the switcher **path-aware, not config-aware**
+   on the served side — the shared JS bundle detects a `/peer/<name>/`
+   path prefix client-side (independent of that host's own `peers:` config)
+   and renders a minimal "back to primary" control. (b) needs no config
+   changes on peers, but only gets you *back*, not *sideways* to a third
+   host, without the full chip list. Needs a decision before implementation.
+4. **Chip-row scale limit.** Three hosts still reads fine as a chip row at
+   full width. Unclear where that stops working — four or five peers may
+   want the same trigger+popover collapse even on desktop. No threshold
+   picked; revisit once a real deployment has more than a couple of peers.
