@@ -134,7 +134,7 @@ func TestSync_CloneLogRedactsCredentials(t *testing.T) {
 
 	repoDir := filepath.Join(t.TempDir(), "repo")
 	runner := &recordingRunner{}
-	s := newRepoSyncWithRunner(runner, "https://andy:sekrit@example.com/repo.git", repoDir, "master")
+	s := newRepoSyncWithRunner(runner, "https://user:sekrit@example.com/repo.git", repoDir, "master")
 
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -147,14 +147,14 @@ func TestSync_CloneLogRedactsCredentials(t *testing.T) {
 		t.Errorf("expected masked password in log, got: %s", buf.String())
 	}
 	// The git command itself must still receive the real URL.
-	assertArgPresent(t, runner.calls[0].args, "https://andy:sekrit@example.com/repo.git")
+	assertArgPresent(t, runner.calls[0].args, "https://user:sekrit@example.com/repo.git")
 }
 
 func TestRedactedURL(t *testing.T) {
 	tests := []struct {
 		name, in, want string
 	}{
-		{"masks password", "https://andy:sekrit@example.com/repo.git", "https://andy:xxxxx@example.com/repo.git"},
+		{"masks password", "https://user:sekrit@example.com/repo.git", "https://user:xxxxx@example.com/repo.git"},
 		{"keeps ssh url without password", "ssh://git@example.com:1022/user/repo.git", "ssh://git@example.com:1022/user/repo.git"},
 		{"keeps scp-like syntax", "git@example.com:user/repo.git", "git@example.com:user/repo.git"},
 	}
@@ -303,8 +303,8 @@ func TestCommitsSinceCommit_NilWithoutFiles(t *testing.T) {
 }
 
 func TestCommitsSinceCommit_LogsRangeRestrictedToFiles(t *testing.T) {
-	out := "def456\x1fAndy Pollari\x1f2026-07-15T14:19:07+02:00\x1ffeat: bump grafana\n" +
-		"abc123\x1fAndy Pollari\x1f2026-07-15T13:58:41+02:00\x1ffix: retry send"
+	out := "def456\x1fJane Doe\x1f2026-07-15T14:19:07+02:00\x1ffeat: bump grafana\n" +
+		"abc123\x1fJane Doe\x1f2026-07-15T13:58:41+02:00\x1ffix: retry send"
 	runner := &fakeOutputRunner{output: []byte(out)}
 	r := newRepoReaderWithRunner(runner, "/repo")
 
@@ -324,7 +324,7 @@ func TestCommitsSinceCommit_LogsRangeRestrictedToFiles(t *testing.T) {
 		t.Fatalf("expected 2 commits, got %d", len(commits))
 	}
 	// Newest first.
-	if commits[0].SHA != "def456" || commits[0].Subject != "feat: bump grafana" || commits[0].Author != "Andy Pollari" {
+	if commits[0].SHA != "def456" || commits[0].Subject != "feat: bump grafana" || commits[0].Author != "Jane Doe" {
 		t.Errorf("unexpected first commit: %+v", commits[0])
 	}
 	if commits[0].Date.IsZero() {

@@ -53,7 +53,7 @@ If the PR touches `internal/ui/static/index.html` or UI behavior:
 - User docs (`docs/`) must mention user-visible UI features where relevant.
 - **e2e tests**: a new UI behavior needs a corresponding Playwright e2e test (the "Maske" units under the e2e suite — one unit per PR). Check that behavior assertions exist; visual snapshots only where the established baselines pattern applies. Do **not** run Playwright locally — push and let the `e2e-ui` CI job verify.
 - **Mask-letter uniqueness**: the "Maske" letter (the `us-`/`ut-` file prefix, the `Uxn` test IDs, the `dev-docs/e2e-tests.md` §/heading) must be unique on the *target* branch. A PR that sat open can collide with a letter a concurrently-merged PR already claimed — `ls e2e/ui/tests/` on the updated branch and, if collided, rename yours to the next free letter across all three places (file, test IDs, spec section).
-- Remember: manual-test-first — if Andy hasn't eyeballed the rendered UI yet, flag that as a gate before finalizing e2e tests, don't silently skip it.
+- Remember: manual-test-first — if the maintainer hasn't eyeballed the rendered UI yet, flag that as a gate before finalizing e2e tests, don't silently skip it.
 
 ## 6. CI status — fix failures
 
@@ -75,8 +75,8 @@ End with a concise report:
 
 1. **Summary** — what the PR does, one paragraph.
 2. **Findings** — per section above: ✅ ok / ⚠️ issue (with file:line) / 🔧 fixed by me (with commit).
-3. **Blockers** — anything that must change before merge and that you could not fix yourself (e.g. missing manual UI check by Andy, design questions).
-4. **Merge readiness** — ready / not ready. Do **not** merge; Andy merges via squash with a crafted Conventional Commit message on his own command.
+3. **Blockers** — anything that must change before merge and that you could not fix yourself (e.g. missing manual UI check by the maintainer, design questions).
+4. **Merge readiness** — ready / not ready. Do **not** merge; the maintainer merges via squash with a crafted Conventional Commit message on their own command.
 
 ## 9. Post the verdict as a PR comment
 
