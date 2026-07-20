@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Thorough quality review of a pull request — docs/ADR sync, implementation quality, test coverage, UI docs + e2e tests, CI status (fix failures), and updating the branch (rebase or merge) if behind the target branch. Posts the verdict as a PR comment when done. Use when asked to review a PR by number or branch.
+description: Thorough quality review of a pull request — docs/ADR sync, implementation quality, test coverage, UI docs + e2e tests, CI status (fix failures), and merging the target branch in if the PR is behind. Posts the verdict as a PR comment when done. Use when asked to review a PR by number or branch.
 argument-hint: <PR number or branch>
 ---
 
@@ -31,8 +31,10 @@ Work through **all** sections below in order. Collect findings as you go and fix
 ## 3. Implementation quality
 
 - Clean, readable, small files; names reveal behavior; no dead code left "for later".
+- **Comment verbosity**: comments cover the essentials a developer new to the project needs — the non-obvious *what* plus the one *why*. Flag comments that over-explain, narrate the change, or restate what the code already says. When the code references an ADR, the comment can stay short: the rationale lives in the ADR, so don't duplicate it inline — a pointer (`// see ADR-00xx`) beats a paragraph. Also flag comments that become unnecessary once the value or logic is extracted into a well-named variable or method — prefer the self-documenting name over the comment.
 - Encapsulation: no raw mutable maps/structs passed around where a type with methods belongs; consumer-side interfaces (`Runner`, `CommitReader` style) instead of concrete coupling.
 - Go conventions: sentinel errors + `errors.Is` (never string matching), `any` not `interface{}`, atomic writes (temp file + rename) for persisted state.
+- **Error handling**: errors are handled at the call site, not silently dropped; wrapped with context via `%w` when propagated (not string-matched); sentinel errors + `errors.Is` for classification. Handling is consistent in *style* but appropriate to context — flag copy-paste `return err` that loses context, or a genuinely fatal error that's only logged.
 - Never touch or review `vendor/`; if `go.mod` changed, verify `go mod tidy && go mod vendor` was run and `vendor/` is in sync.
 - Respect package boundaries (e.g. `internal/nixos` must stay free of docker/state/metrics/events knowledge).
 
@@ -61,11 +63,7 @@ If the PR touches `internal/ui/static/index.html` or UI behavior:
 ## 7. Branch freshness — update if behind
 
 - Check whether the PR branch is behind the target branch: `git fetch origin && git rev-list --count <head>..origin/<base>`.
-- If behind, bring it up to date. Either approach is fine — the PR is squash-merged into `main` anyway, so intermediate history doesn't matter:
-  - **Rebase** onto the target branch (`git rebase origin/<base>`), then force-push with `--force-with-lease`, **or**
-  - **Merge** the target branch in (`git merge origin/<base>`) and push normally — no force-push, and prior review comments stay anchored.
-
-  Prefer the merge when a rebase would be painful (many commits, repeated conflicts) or when you want to avoid a force-push. Resolve any conflicts faithfully to both sides' intent.
+- If behind, **merge** the target branch in (`git merge origin/<base>`) and push normally. Always merge — never rebase: the PR is squash-merged into `main` anyway, so intermediate history doesn't matter, and merging avoids a force-push while keeping prior review comments anchored. Resolve any conflicts faithfully to both sides' intent.
 - **After updating, re-run the entire checklist above** (sections 1–6): the update may have pulled in doc moves, new ADRs, or code the PR now conflicts with semantically even if git merged cleanly. Wait for CI to go green again.
 - **Two things bite specifically after a merge when both PRs touch the UI** (git won't flag either — one is semantic, one is binary):
   - **Mask-letter collision** — the concurrently-merged PR may have taken your e2e "Maske" letter (§5). Rename yours to the next free letter (file + `Uxn` test IDs + `e2e-tests.md` section) so two masks don't share a letter.

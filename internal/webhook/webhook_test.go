@@ -40,7 +40,7 @@ func TestHandler_RejectsNonPostRequests(t *testing.T) {
 }
 
 func TestHandler_RejectsOversizedBody(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, ""), newFakeTrigger())
+	handler := webhook.Handler(newTestConfig(t, testSecret), newFakeTrigger())
 
 	body := bytes.NewReader(make([]byte, webhook.MaxBodyBytes+1))
 	req := httptest.NewRequest(http.MethodPost, "/webhook", body)
@@ -52,16 +52,20 @@ func TestHandler_RejectsOversizedBody(t *testing.T) {
 	}
 }
 
-func TestHandler_AcceptsRequestWithoutSecret(t *testing.T) {
-	handler := webhook.Handler(newTestConfig(t, ""), newFakeTrigger())
+func TestHandler_RejectsRequestWithoutSecret(t *testing.T) {
+	// Without a configured secret the webhook is disabled (deploys run via the
+	// reconcile loop), so it never accepts unsigned pushes.
+	trigger := newFakeTrigger()
+	handler := webhook.Handler(newTestConfig(t, ""), trigger)
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("{}"))
 	rec := httptest.NewRecorder()
 	handler(rec, req)
 
-	if rec.Code != http.StatusAccepted {
-		t.Errorf("expected 202, got %d", rec.Code)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
 	}
+	trigger.assertNotTriggered(t)
 }
 
 func TestHandler_AcceptsRequestWithValidSignature(t *testing.T) {
@@ -157,14 +161,13 @@ func (f *fakeTrigger) assertNotTriggered(t *testing.T) {
 }
 
 func TestHandler_TriggersDeployForConfiguredBranch(t *testing.T) {
-	cfg := newTestConfig(t, "")
+	cfg := newTestConfig(t, testSecret)
 	cfg.Branch = "main"
 	trigger := newFakeTrigger()
 	handler := webhook.Handler(cfg, trigger)
 
-	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(`{"ref":"refs/heads/main"}`))
 	rec := httptest.NewRecorder()
-	handler(rec, req)
+	handler(rec, signedPost(`{"ref":"refs/heads/main"}`))
 
 	if rec.Code != http.StatusAccepted {
 		t.Errorf("expected 202, got %d", rec.Code)
@@ -173,14 +176,13 @@ func TestHandler_TriggersDeployForConfiguredBranch(t *testing.T) {
 }
 
 func TestHandler_IgnoresPushToOtherBranch(t *testing.T) {
-	cfg := newTestConfig(t, "")
+	cfg := newTestConfig(t, testSecret)
 	cfg.Branch = "main"
 	trigger := newFakeTrigger()
 	handler := webhook.Handler(cfg, trigger)
 
-	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(`{"ref":"refs/heads/feature/foo"}`))
 	rec := httptest.NewRecorder()
-	handler(rec, req)
+	handler(rec, signedPost(`{"ref":"refs/heads/feature/foo"}`))
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 for ignored branch, got %d", rec.Code)
@@ -190,14 +192,13 @@ func TestHandler_IgnoresPushToOtherBranch(t *testing.T) {
 
 func TestHandler_TriggersDeployWhenPayloadHasNoRef(t *testing.T) {
 	// Manual curl or non-push payloads carry no ref — deploy to be safe.
-	cfg := newTestConfig(t, "")
+	cfg := newTestConfig(t, testSecret)
 	cfg.Branch = "main"
 	trigger := newFakeTrigger()
 	handler := webhook.Handler(cfg, trigger)
 
-	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(`{}`))
 	rec := httptest.NewRecorder()
-	handler(rec, req)
+	handler(rec, signedPost(`{}`))
 
 	if rec.Code != http.StatusAccepted {
 		t.Errorf("expected 202, got %d", rec.Code)
@@ -206,14 +207,13 @@ func TestHandler_TriggersDeployWhenPayloadHasNoRef(t *testing.T) {
 }
 
 func TestHandler_TriggersDeployWhenBodyIsNotJSON(t *testing.T) {
-	cfg := newTestConfig(t, "")
+	cfg := newTestConfig(t, testSecret)
 	cfg.Branch = "main"
 	trigger := newFakeTrigger()
 	handler := webhook.Handler(cfg, trigger)
 
-	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString("not json"))
 	rec := httptest.NewRecorder()
-	handler(rec, req)
+	handler(rec, signedPost("not json"))
 
 	if rec.Code != http.StatusAccepted {
 		t.Errorf("expected 202, got %d", rec.Code)
@@ -225,4 +225,14 @@ func computeSignature(body []byte, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+const testSecret = "supersecret"
+
+// signedPost builds a POST /webhook request whose body carries a valid
+// signature for testSecret, so it passes the (now mandatory) auth check.
+func signedPost(body string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(body))
+	req.Header.Set("X-Gitea-Signature", computeSignature([]byte(body), testSecret))
+	return req
 }
