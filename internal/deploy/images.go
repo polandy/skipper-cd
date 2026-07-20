@@ -136,6 +136,27 @@ func (cf *composeFile) dockerfilePaths(workDir string) []string {
 	return paths
 }
 
+// warnUnmatchedOnDemandContainers logs a warning for each on_demand_containers
+// entry that does not match any service's container_name in the parsed
+// compose file. Compose auto-generates container names (<project>-<service>-1)
+// unless container_name: is set, so a name copied from `docker ps` can look
+// right but drift the moment the project/service naming changes — declaring
+// container_name pins it and makes it checkable here.
+func (cf *composeFile) warnUnmatchedOnDemandContainers(stackName string, containers []string) {
+	declared := make(map[string]bool, len(cf.Services))
+	for _, svc := range cf.Services {
+		if svc.ContainerName != "" {
+			declared[svc.ContainerName] = true
+		}
+	}
+	for _, name := range containers {
+		if !declared[name] {
+			slog.Warn("on_demand_containers entry does not match any service's container_name in docker-compose.yml — declare container_name on the corresponding service so docker stop targets it reliably",
+				"stack", stackName, "container", name)
+		}
+	}
+}
+
 // hasAnyImageChanged returns true if the current images differ from the previous ones.
 // The comparison uses the full image reference string (e.g. "redis:7.2", "postgres:16-alpine@sha256:abc...")
 // so any change in image name, tag, or digest is detected.
