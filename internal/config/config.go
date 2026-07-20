@@ -201,9 +201,9 @@ type Config struct {
 	// (ADR-0034): every direct subdirectory of stacks_base_dir containing a
 	// docker-compose.yml is a stack; per-stack overrides come from the Stacks
 	// list (ADR-0043). Defaults to true (an omitted key enables discovery);
-	// requires stacks_base_dir. Set false to list the stacks in this file
-	// yourself. The default is applied in Load; a directly-constructed Config
-	// keeps the zero value (false), which every test relies on.
+	// requires stacks_base_dir. Set false to list the stacks in the config
+	// yourself. The zero value is false, so a directly-constructed Config is
+	// not in discovery mode unless it opts in.
 	StackDiscovery bool `yaml:"stack_discovery"`
 
 	// UIEnabled serves the web UI (dashboard, event history, UI API) on the
@@ -472,10 +472,8 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config file: %w", err)
 	}
 
-	// stack_discovery defaults to true (ADR-0043): the deploy repo declares the
-	// stack set, and the host stacks: list is optional per-stack overrides.
-	// Detect an omitted key (vs an explicit false, which lists the stacks in
-	// this file explicitly) via a probe, since the field is a plain bool.
+	// stack_discovery defaults to true (ADR-0043). The field is a plain bool, so
+	// probe for an omitted key (vs an explicit false) to apply the default.
 	var probe struct {
 		StackDiscovery *bool `yaml:"stack_discovery"`
 	}
