@@ -107,6 +107,6 @@ as "all stacks are gone".
   matched only via `stacks_base_dir/<name>` (the override is not exposed to the
   disabled set); such a project could misclassify as orphaned. Acceptable v1
   limitation — disabled stacks are hands-off and never pruned regardless.
-- Legacy (host `stacks:` list) mode works too, but with `stacks_base_dir` often
+- Host-list mode (an explicit `stacks:` list) works too, but with `stacks_base_dir` often
   empty its `under-base` heuristic is inert; matching then rests on active dirs
   and recorded state. Orphan detection is most meaningful in discovery mode.
