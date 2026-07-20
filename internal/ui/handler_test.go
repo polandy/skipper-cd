@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -61,6 +63,33 @@ func TestIndexHandler_ServesHTML(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, "skipper-cd") {
 		t.Error("expected HTML to contain 'skipper-cd'")
+	}
+}
+
+func TestIndexHandler_ServesGzipWhenAccepted(t *testing.T) {
+	handler := IndexHandler(ThemeCatppuccin, false)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if enc := rec.Header().Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", enc)
+	}
+	if vary := rec.Header().Get("Vary"); vary != "Accept-Encoding" {
+		t.Errorf("Vary = %q, want Accept-Encoding", vary)
+	}
+	gr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	got, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatalf("reading gzip body: %v", err)
+	}
+	if !strings.Contains(string(got), "skipper-cd") {
+		t.Error("decompressed body does not contain 'skipper-cd'")
 	}
 }
 
@@ -383,6 +412,60 @@ func TestAppCSSHandler_ServesCSS(t *testing.T) {
 	}
 	if body := rec.Body.String(); !strings.Contains(body, "@font-face") {
 		t.Error("body does not contain the extracted stylesheet")
+	}
+}
+
+func TestAppHelpersHandler_ServesGzipWhenAccepted(t *testing.T) {
+	handler := AppHelpersHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-helpers.js", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if enc := rec.Header().Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", enc)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("Cache-Control = %q, want no-cache even when gzipped", cc)
+	}
+	gr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	got, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatalf("reading gzip body: %v", err)
+	}
+	if !strings.Contains(string(got), "function formatDuration") {
+		t.Error("decompressed body does not contain the extracted helper functions")
+	}
+}
+
+func TestAppCSSHandler_ServesGzipWhenAccepted(t *testing.T) {
+	handler := AppCSSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app.css", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if enc := rec.Header().Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", enc)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("Cache-Control = %q, want no-cache even when gzipped", cc)
+	}
+	gr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	got, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatalf("reading gzip body: %v", err)
+	}
+	if !strings.Contains(string(got), "@font-face") {
+		t.Error("decompressed body does not contain the extracted stylesheet")
 	}
 }
 
