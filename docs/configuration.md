@@ -30,6 +30,7 @@ vars_file: /etc/skipper/vars.env        # optional
 command_timeout_seconds: 300            # optional, default: 300
 log_format: pretty                      # optional, default: pretty (colored console); "text" or "json" for machine-readable logs
 stacks_base_dir: /var/lib/skipper/repo/modules
+project_directory_base: /etc/nixos/modules    # optional; see project_directory_base below
 webhook_secret: "your-secret-here"
 port: 8080
 metrics_port: 9120
@@ -47,10 +48,17 @@ stacks:
     env_files:
       - /run/secrets/rendered/skipper/compose.env
 
-  # Set working_dir when a NixOS systemd service also manages this stack,
-  # so Docker Compose uses the same project identity for both.
+  # project_directory_base above already derives this stack's project_directory as
+  # /etc/nixos/modules/nextcloud (matching the NixOS systemd service that
+  # also manages it) — nothing to repeat here.
   - name: nextcloud
-    working_dir: /etc/nixos/modules/nextcloud
+    env_files:
+      - /run/secrets/rendered/skipper/compose.env
+
+  # A stack whose NixOS-managed directory doesn't follow the pattern still
+  # overrides project_directory explicitly; it wins over project_directory_base.
+  - name: legacy-app
+    project_directory: /etc/nixos/modules/legacy-app-v2
     env_files:
       - /run/secrets/rendered/skipper/compose.env
 
@@ -69,7 +77,8 @@ nixos_rebuild:
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. When set, it must exist and be readable. |
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |
 | `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
-| `stacks_base_dir` | string | no | — | Base directory prepended to a stack's `name` to derive its working directory when `working_dir` is not set. Avoids repeating long paths across stacks. Must be absolute when set. |
+| `stacks_base_dir` | string | no | — | Base directory holding one subdirectory per stack (`<stacks_base_dir>/<name>/docker-compose.yml`); always the source of the compose file and change detection. Must be absolute when set. |
+| `project_directory_base` | string | no | — | Base directory a stack's `project_directory` is derived from as `<project_directory_base>/<name>` when the stack does not set its own `project_directory` (see [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity)). Avoids repeating a common prefix (e.g. a NixOS modules directory) across stacks. Must be absolute — checked at startup. |
 | `webhook_secret` | string | **yes** | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Required — the webhook is skipper's primary deploy trigger, so every request is signature-verified; an empty secret is rejected at startup. |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. Must be 1–65535 and differ from `port`. |
@@ -115,7 +124,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `name` | string | yes | — | Name of the stack. The compose file is always read from `<stacks_base_dir>/<name>/docker-compose.yml`. Also used as the key in the deploy state file. |
-| `working_dir` | string | no | — | Absolute path passed as `--project-directory` to `docker compose`. Controls Docker Compose project identity (container labels) and `.env` file loading. Change detection and the compose file always come from `<stacks_base_dir>/<name>`. Must be absolute. See [working_dir and Docker Compose project identity](nixos.md#working_dir-and-docker-compose-project-identity). |
+| `project_directory` | string | no | `<project_directory_base>/<name>` if set, else unset | Absolute path passed as `--project-directory` to `docker compose`. Controls Docker Compose project identity (container labels) and `.env` file loading. Change detection and the compose file always come from `<stacks_base_dir>/<name>`. Must be absolute — checked at startup. See [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity). |
 | `env_files` | list of strings | no | — | Paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. With `stack_discovery: false` every entry must be absolute. Under discovery, a relative entry resolves against `stacks_base_dir` (see [Stack discovery](#stack-discovery)). |
 | `watch_dirs` | list of strings | no | — | Paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). Same absolute-path rule as `env_files` above. |
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. The [Stack health](#stack-health) view and the [health watch](#health-watch) know about this: an exited on-demand container reads as `stopped` (its intended idle state) whatever its exit code — never as `unhealthy`. Docker Compose auto-generates container names (`<project>-<service>-1`) unless the service sets `container_name:`; a name here that matches no declared `container_name` logs a startup-adjacent warning at deploy time (not a hard error, since the auto-generated name may still happen to be right) — set `container_name:` on the corresponding service to make it deterministic and checked. |

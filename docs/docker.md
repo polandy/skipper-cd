@@ -28,7 +28,7 @@ The Docker socket mount is required — skipper-cd uses it to manage compose sta
 
 Container notes:
 
-- **Mount referenced paths at identical paths.** skipper-cd drives the *host's* Docker daemon through the socket, so every path the config references — [`working_dir`](configuration.md#stack-fields), `vars_file`, `env_files` — must be mounted (read-only) at the same path inside the container as on the host.
+- **Mount referenced paths at identical paths.** skipper-cd drives the *host's* Docker daemon through the socket, so every path the config references — [`project_directory`](configuration.md#stack-fields), `vars_file`, `env_files` — must be mounted (read-only) at the same path inside the container as on the host.
 - **`nixos_rebuild` cannot run in a container** — leave it out of the config.
 - **Shutdown:** skipper-cd exits gracefully on SIGTERM and waits for an in-flight deploy; give it room with `stop_grace_period` (Docker's default is 10 s).
 - **`localhost` URLs** ([notifications](configuration.md#notifications), [health-check](configuration.md#health-check-gated-rollback) probes) resolve inside the container. Use an address reachable from the container, or `network_mode: host` (then drop `ports:`).

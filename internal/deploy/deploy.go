@@ -200,12 +200,12 @@ func (r stackRun) effectiveProjectDir() string {
 }
 
 // newStackRun resolves the run values for a stack: the compose file from the
-// repo clone (Invariant 1) and working_dir as the compose project directory.
+// repo clone (Invariant 1) and project_directory as the compose project directory.
 func newStackRun(stack config.Stack, baseDir string, baseEnv []string) stackRun {
 	return stackRun{
 		stack:       stack,
 		composePath: filepath.Join(baseDir, stack.Name, compose.FileName),
-		projectDir:  stack.WorkingDir,
+		projectDir:  stack.ProjectDirectory,
 		baseEnv:     baseEnv,
 	}
 }
@@ -568,7 +568,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// dependency gate below so their dependents block.
 	var stackErrs []config.StackError
 	if cfg.StackDiscovery {
-		repo, errs, err := config.LoadRepoStacks(cfg.StacksBaseDir, cfg.Stacks)
+		repo, errs, err := config.LoadRepoStacks(cfg.StacksBaseDir, cfg.Stacks, cfg.ProjectDirectoryBase)
 		if err != nil {
 			slog.Error("stack discovery failed, no stacks deploy this run", "err", err)
 			d.emitDeployFailure(ConfigStateKey, 0, err, changeSet{})

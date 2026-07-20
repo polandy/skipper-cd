@@ -23,7 +23,7 @@ stacks:
     env_files:
       - /run/secrets/compose.env
   - name: traefik
-    working_dir: /custom/path
+    project_directory: /custom/path
 `
 	cfg := loadFromString(t, content)
 
@@ -156,7 +156,7 @@ stacks: []
 	}
 }
 
-func TestLoad_MissingWorkingDirWithoutBaseDir(t *testing.T) {
+func TestLoad_MissingProjectDirectoryWithoutBaseDir(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks:
@@ -164,7 +164,7 @@ stacks:
 `
 	_, err := loadStringToConfig(t, content)
 	if err == nil {
-		t.Error("expected error when working_dir and stacks_base_dir are both absent")
+		t.Error("expected error when project_directory and stacks_base_dir are both absent")
 	}
 }
 
@@ -578,31 +578,76 @@ func TestLoad_AcceptsExistingVarsFile(t *testing.T) {
 	}
 }
 
-func TestLoad_RejectsRelativeWorkingDir(t *testing.T) {
+func TestLoad_RejectsRelativeProjectDirectory(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
 stacks:
   - name: gitea
-    working_dir: relative/path
+    project_directory: relative/path
 `
 	_, err := loadStringToConfig(t, content)
 	if err == nil || !strings.Contains(err.Error(), "must be an absolute path") {
-		t.Fatalf("expected a working_dir-must-be-absolute error, got %v", err)
+		t.Fatalf("expected a project_directory-must-be-absolute error, got %v", err)
 	}
 }
 
-func TestLoad_AcceptsAbsoluteWorkingDir(t *testing.T) {
+func TestLoad_AcceptsAbsoluteProjectDirectory(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stack_discovery: false
 stacks:
   - name: gitea
-    working_dir: /etc/nixos/modules/gitea
+    project_directory: /etc/nixos/modules/gitea
 `
 	cfg := loadFromString(t, content)
-	if cfg.Stacks[0].WorkingDir != "/etc/nixos/modules/gitea" {
-		t.Errorf("unexpected working_dir: %s", cfg.Stacks[0].WorkingDir)
+	if cfg.Stacks[0].ProjectDirectory != "/etc/nixos/modules/gitea" {
+		t.Errorf("unexpected project_directory: %s", cfg.Stacks[0].ProjectDirectory)
+	}
+}
+
+func TestLoad_ProjectDirectoryBaseDerivesPerStackProjectDirectory(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+project_directory_base: /etc/nixos/modules
+stacks:
+  - name: gitea
+  - name: nextcloud
+`
+	cfg := loadFromString(t, content)
+	if got, want := cfg.Stacks[0].ProjectDirectory, "/etc/nixos/modules/gitea"; got != want {
+		t.Errorf("stack gitea: expected project_directory %q, got %q", want, got)
+	}
+	if got, want := cfg.Stacks[1].ProjectDirectory, "/etc/nixos/modules/nextcloud"; got != want {
+		t.Errorf("stack nextcloud: expected project_directory %q, got %q", want, got)
+	}
+}
+
+func TestLoad_ExplicitProjectDirectoryOverridesProjectDirectoryBase(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+project_directory_base: /etc/nixos/modules
+stacks:
+  - name: gitea
+    project_directory: /srv/custom/gitea
+`
+	cfg := loadFromString(t, content)
+	if got, want := cfg.Stacks[0].ProjectDirectory, "/srv/custom/gitea"; got != want {
+		t.Errorf("expected explicit project_directory to win, got %q, want %q", got, want)
+	}
+}
+
+func TestLoad_RejectsRelativeProjectDirectoryBase(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+project_directory_base: relative/modules
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil || !strings.Contains(err.Error(), "project_directory_base") || !strings.Contains(err.Error(), "must be an absolute path") {
+		t.Fatalf("expected a project_directory_base-must-be-absolute error, got %v", err)
 	}
 }
 
@@ -632,7 +677,7 @@ repo_url: ssh://git@gitea.example.com/user/nixos.git
 stack_discovery: false
 stacks:
   - name: gitea
-    working_dir: /etc/nixos/modules/gitea
+    project_directory: /etc/nixos/modules/gitea
 `
 	cfg := loadFromString(t, content)
 	if len(cfg.Warnings) != 0 {
@@ -721,7 +766,7 @@ repo_url: ssh://git@gitea.example.com/user/nixos.git
 stack_discovery: false
 stacks:
   - name: gitea
-    working_dir: /etc/nixos/modules/gitea
+    project_directory: /etc/nixos/modules/gitea
     env_files:
       - relative/compose.env
 `
@@ -737,7 +782,7 @@ repo_url: ssh://git@gitea.example.com/user/nixos.git
 stack_discovery: false
 stacks:
   - name: gitea
-    working_dir: /etc/nixos/modules/gitea
+    project_directory: /etc/nixos/modules/gitea
     watch_dirs:
       - relative/provisioning
 `
@@ -753,7 +798,7 @@ repo_url: ssh://git@gitea.example.com/user/nixos.git
 stack_discovery: false
 stacks:
   - name: gitea
-    working_dir: /etc/nixos/modules/gitea
+    project_directory: /etc/nixos/modules/gitea
     env_files:
       - /run/secrets/gitea.env
     watch_dirs:
@@ -826,7 +871,7 @@ repo_url: ssh://git@gitea.example.com/user/nixos.git
 stack_discovery: false
 stacks:
   - name: gitea
-    working_dir: /etc/nixos/modules/gitea
+    project_directory: /etc/nixos/modules/gitea
     self_heal: true
 `
 	cfg := loadFromString(t, content)

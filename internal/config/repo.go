@@ -42,13 +42,17 @@ type RepoStacks struct {
 // docker-compose.yml is a stack (name = directory name, alphabetical order).
 // overrides are the host config's stacks: entries, matched to discovered stacks
 // by name; a discovered stack without a matching entry runs on defaults.
-// Relative override paths resolve against stacksBaseDir.
+// Relative override paths resolve against stacksBaseDir. projectDirectoryBase,
+// when set, derives a discovered stack's project_directory as
+// <projectDirectoryBase>/<name> whenever the override does not set its own
+// (ADR-0045); empty leaves project_directory unset, same as before
+// project_directory_base existed.
 //
 // The error return is file-level (unreadable base dir, or a leftover in-repo
 // skipper.yaml that is no longer read): the caller must not deploy anything.
 // StackErrors are entry-level: those stacks are excluded and reported, the
 // returned stacks are fine to deploy.
-func LoadRepoStacks(stacksBaseDir string, overrides []Stack) (RepoStacks, []StackError, error) {
+func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBase string) (RepoStacks, []StackError, error) {
 	discovered, err := discoverStackDirs(stacksBaseDir)
 	if err != nil {
 		return RepoStacks{}, nil, err
@@ -95,7 +99,7 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack) (RepoStacks, []Stac
 		watchDirs, watchErr := resolveRepoPaths(stacksBaseDir, ov.WatchDirs)
 		stack := Stack{
 			Name:               name,
-			WorkingDir:         ov.WorkingDir,
+			ProjectDirectory:   ov.ProjectDirectory,
 			EnvFiles:           envFiles,
 			WatchDirs:          watchDirs,
 			OnDemandContainers: ov.OnDemandContainers,
@@ -106,6 +110,9 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack) (RepoStacks, []Stac
 			DependsOn:          ov.DependsOn,
 			Hooks:              ov.Hooks,
 			Rollout:            ov.Rollout,
+		}
+		if stack.ProjectDirectory == "" && projectDirectoryBase != "" {
+			stack.ProjectDirectory = filepath.Join(projectDirectoryBase, name)
 		}
 		if hc := stack.HealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
 			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
@@ -287,7 +294,7 @@ func dropDependencyCycles(stacks []Stack) ([]Stack, []StackError) {
 // deploy-mechanism (rollout) fields are deliberately excluded — editing them
 // must never redeploy.
 type stackDeployInputs struct {
-	WorkingDir         string       `yaml:"working_dir"`
+	ProjectDirectory   string       `yaml:"project_directory"`
 	EnvFiles           []string     `yaml:"env_files"`
 	WatchDirs          []string     `yaml:"watch_dirs"`
 	OnDemandContainers []string     `yaml:"on_demand_containers"`
@@ -298,7 +305,7 @@ type stackDeployInputs struct {
 // canonically marshaled (struct field order is fixed, so the hash is stable).
 func stackConfigHash(s Stack) string {
 	data, err := yaml.Marshal(stackDeployInputs{
-		WorkingDir:         s.WorkingDir,
+		ProjectDirectory:   s.ProjectDirectory,
 		EnvFiles:           s.EnvFiles,
 		WatchDirs:          s.WatchDirs,
 		OnDemandContainers: s.OnDemandContainers,
