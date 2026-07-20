@@ -91,7 +91,7 @@ Concretely:
   alias) — **follow-up**, cosmetic and downstream-only (the NixOS module passes
   `-config` explicitly), kept out of the mechanism change.
 - The NixOS module gains the per-stack override options under discovery (today
-  they are "legacy-mode-only"); it renders them into the one config.
+  they apply only when stacks are listed explicitly); it renders them into the one config.
 - The in-repo-file error snippets (the `>`-marked excerpt ADR-0034 added) are
   dropped: the config is host-side now, so there is no repo file to excerpt.
   Entry-level errors still name the stack and the problem.
@@ -108,7 +108,7 @@ Concretely:
   because the autosync controller's per-stack config is fixed at startup from
   `cfg.Stacks`, which is empty in discovery mode. With overrides now in the
   startup host config, the controller reads the override map at startup as it
-  does in legacy mode, so the blocker dissolves. Autosync stays **on by default
+  does when the stacks are listed in the host config, so the blocker dissolves. Autosync stays **on by default
   for every stack**; a per-stack `autosync: false` in the override map opts a
   single stack out (the existing `*bool` inherit semantics). This does **not**
   address ADR-0034's *other* v1 limitation — self-heal *activation* still follows

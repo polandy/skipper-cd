@@ -155,7 +155,7 @@ function git(dir: string, ...args: string[]): void {
   execFileSync('git', dir ? ['-C', dir, ...full] : full, { stdio: 'pipe' });
 }
 
-/** repoOverridesToHostStacks converts the legacy repo-file override shape
+/** repoOverridesToHostStacks converts the former in-repo override shape
  *  (`stacks:` map keyed by name) into the host config's `stacks:` list body
  *  (ADR-0043). Each `  name:` map key becomes `  - name: name`; nested fields
  *  keep their indentation. Returns the list-item body (no leading `stacks:`). */
@@ -225,7 +225,7 @@ export interface StartOptions {
     Array<{ Service: string; Name?: string; State: string; Health?: string; ExitCode?: number }>
   >;
   /** Stack discovery (ADR-0034): boot with `stack_discovery: true` — the origin's
-   *  stack dirs are the stack set. `repoConfig` (when set) is the legacy repo-file
+   *  stack dirs are the stack set. `repoConfig` (when set) is the former in-repo
    *  override shape (`stacks:` map); ADR-0043 folds it into the host config's
    *  `stacks:` list. Names in `disabled` are parked and not awaited at startup.
    *  Maske O opts in. */

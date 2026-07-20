@@ -13,7 +13,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/compose"
 )
 
-// RepoConfigFileName is the legacy in-repo per-stack override file
+// RepoConfigFileName is the former in-repo per-stack override file
 // (<stacks_base_dir>/skipper.yaml). As of ADR-0043 it is no longer read —
 // per-stack overrides live in the one host config. A leftover file is rejected
 // (see LoadRepoStacks) so un-migrated config fails loudly instead of being
