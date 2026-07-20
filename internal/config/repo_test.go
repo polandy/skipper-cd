@@ -31,6 +31,8 @@ const minimalCompose = "services:\n  app:\n    image: nginx:1.25\n"
 // check (ADR-0040).
 const rolloutReadyCompose = "services:\n  app:\n    image: nginx:1.25\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n"
 
+func boolPtr(b bool) *bool { return &b }
+
 func stackNames(stacks []Stack) []string {
 	names := make([]string, len(stacks))
 	for i, s := range stacks {
@@ -57,7 +59,7 @@ func TestLoadRepoStacks_DiscoversDirsWithComposeFile(t *testing.T) {
 		"stacks/alpha/sub/docker-compose.yml": minimalCompose, // nested: not scanned
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -71,12 +73,12 @@ func TestLoadRepoStacks_DiscoversDirsWithComposeFile(t *testing.T) {
 	}
 }
 
-func TestLoadRepoStacks_MissingRepoConfigYieldsDefaults(t *testing.T) {
+func TestLoadRepoStacks_NoOverridesYieldsDefaults(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
 	})
 
-	repo, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -92,29 +94,42 @@ func TestLoadRepoStacks_MissingRepoConfigYieldsDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadRepoStacks_LeftoverRepoFileIsFileLevel(t *testing.T) {
+	// ADR-0043: the in-repo override file is no longer read. A leftover one is
+	// un-migrated config that would otherwise be silently ignored — it must fail
+	// loudly (file-level), so nothing deploys until the operator migrates it.
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+		"stacks/skipper.yaml":           "stacks:\n  web:\n    icon: nginx\n",
+	})
+
+	_, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
+	if err == nil {
+		t.Fatal("expected a file-level error for a leftover repo skipper.yaml")
+	}
+	if !strings.Contains(err.Error(), "no longer read") {
+		t.Errorf("error should explain the file is no longer read, got: %v", err)
+	}
+}
+
 func TestLoadRepoStacks_AppliesOverrides(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
 		"stacks/web/secrets.env":        "SECRET=1\n", // relative in-repo paths must exist
 		"stacks/web/conf/app.conf":      "x\n",
-		"stacks/skipper.yaml": `
-stacks:
-  web:
-    working_dir: /opt/web
-    env_files:
-      - web/secrets.env
-      - /etc/global.env
-    watch_dirs:
-      - web/conf
-    on_demand_containers: [web-app]
-    icon: nginx
-    self_heal: true
-    health_check:
-      url: http://localhost:8080/health
-`,
 	})
+	overrides := []Stack{{
+		Name:               "web",
+		WorkingDir:         "/opt/web",
+		EnvFiles:           []string{"web/secrets.env", "/etc/global.env"},
+		WatchDirs:          []string{"web/conf"},
+		OnDemandContainers: []string{"web-app"},
+		Icon:               "nginx",
+		SelfHeal:           boolPtr(true),
+		HealthCheck:        &HealthCheck{URL: "http://localhost:8080/health"},
+	}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -125,8 +140,7 @@ stacks:
 	if s.WorkingDir != "/opt/web" {
 		t.Errorf("WorkingDir = %q", s.WorkingDir)
 	}
-	// Relative paths resolve against the stacks base dir (where skipper.yaml
-	// lives); absolute ones stay as-is.
+	// Relative paths resolve against the stacks base dir; absolute ones stay as-is.
 	if want := filepath.Join(repoDir, "stacks/web/secrets.env"); s.EnvFiles[0] != want {
 		t.Errorf("EnvFiles[0] = %q, want %q", s.EnvFiles[0], want)
 	}
@@ -144,14 +158,31 @@ stacks:
 	}
 }
 
+func TestLoadRepoStacks_AppliesAutosyncOverride(t *testing.T) {
+	// ADR-0043: with overrides in the startup host config, a per-stack autosync
+	// override is available (default on; autosync: false opts a stack out).
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+	})
+	overrides := []Stack{{Name: "web", Autosync: boolPtr(false)}}
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
+	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
+		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
+	}
+	if a := repo.Stacks[0].Autosync; a == nil || *a {
+		t.Errorf("Autosync override not applied: %+v", a)
+	}
+}
+
 func TestLoadRepoStacks_DisabledStackExcluded(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
 		"stacks/wip/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml":           "stacks:\n  wip:\n    disabled: true\n",
 	})
+	overrides := []Stack{{Name: "wip", Disabled: true}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil || len(stackErrs) != 0 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -167,10 +198,10 @@ func TestLoadRepoStacks_DisabledStackExcluded(t *testing.T) {
 func TestLoadRepoStacks_UnknownOverrideEntryReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml":           "stacks:\n  ghost:\n    icon: casper\n",
 	})
+	overrides := []Stack{{Name: "ghost", Icon: "casper"}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -183,32 +214,9 @@ func TestLoadRepoStacks_UnknownOverrideEntryReported(t *testing.T) {
 	}
 }
 
-func TestLoadRepoStacks_ParseErrorIsFileLevel(t *testing.T) {
-	repoDir := writeRepo(t, map[string]string{
-		"stacks/web/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml":           "stacks: [not: {a map\n",
-	})
-
-	if _, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks")); err == nil {
-		t.Fatal("expected a file-level error for unparseable skipper.yaml")
-	}
-}
-
-func TestLoadRepoStacks_UnknownFieldIsFileLevel(t *testing.T) {
-	repoDir := writeRepo(t, map[string]string{
-		"stacks/web/docker-compose.yml": minimalCompose,
-		// A misspelled field must fail loudly, not silently deploy without it.
-		"stacks/skipper.yaml": "stacks:\n  web:\n    depends_onn: [db]\n",
-	})
-
-	if _, _, err := LoadRepoStacks(filepath.Join(repoDir, "stacks")); err == nil {
-		t.Fatal("expected a file-level error for an unknown field")
-	}
-}
-
 func TestLoadRepoStacks_MissingBaseDirIsFileLevel(t *testing.T) {
 	repoDir := t.TempDir()
-	if _, _, err := LoadRepoStacks(filepath.Join(repoDir, "missing")); err == nil {
+	if _, _, err := LoadRepoStacks(filepath.Join(repoDir, "missing"), nil); err == nil {
 		t.Fatal("expected a file-level error for a missing stacks_base_dir")
 	}
 }
@@ -219,7 +227,7 @@ func TestLoadRepoStacks_ReservedDirNameReported(t *testing.T) {
 		"stacks/web/docker-compose.yml":    minimalCompose,
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -235,10 +243,10 @@ func TestLoadRepoStacks_EnvFileEscapingStacksBaseDirReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/bad/docker-compose.yml": minimalCompose,
 		"stacks/ok/docker-compose.yml":  minimalCompose,
-		"stacks/skipper.yaml":           "stacks:\n  bad:\n    env_files:\n      - ../../etc/passwd\n",
 	})
+	overrides := []Stack{{Name: "bad", EnvFiles: []string{"../../etc/passwd"}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -253,10 +261,10 @@ func TestLoadRepoStacks_EnvFileEscapingStacksBaseDirReported(t *testing.T) {
 func TestLoadRepoStacks_WatchDirEscapingStacksBaseDirReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/bad/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml":           "stacks:\n  bad:\n    watch_dirs:\n      - ../outside\n",
 	})
+	overrides := []Stack{{Name: "bad", WatchDirs: []string{"../outside"}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -269,10 +277,10 @@ func TestLoadRepoStacks_InvalidHealthCheckReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/bad/docker-compose.yml": minimalCompose,
 		"stacks/ok/docker-compose.yml":  minimalCompose,
-		"stacks/skipper.yaml":           "stacks:\n  bad:\n    health_check:\n      url: notaurl\n",
 	})
+	overrides := []Stack{{Name: "bad", HealthCheck: &HealthCheck{URL: "notaurl"}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -289,16 +297,13 @@ func TestLoadRepoStacks_InvalidDependencyReported(t *testing.T) {
 		"stacks/selfref/docker-compose.yml":  minimalCompose,
 		"stacks/dangling/docker-compose.yml": minimalCompose,
 		"stacks/ok/docker-compose.yml":       minimalCompose,
-		"stacks/skipper.yaml": `
-stacks:
-  selfref:
-    depends_on: [selfref]
-  dangling:
-    depends_on: [missing]
-`,
 	})
+	overrides := []Stack{
+		{Name: "selfref", DependsOn: []string{"selfref"}},
+		{Name: "dangling", DependsOn: []string{"missing"}},
+	}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -315,16 +320,13 @@ func TestLoadRepoStacks_DependencyCycleReported(t *testing.T) {
 		"stacks/a/docker-compose.yml":  minimalCompose,
 		"stacks/b/docker-compose.yml":  minimalCompose,
 		"stacks/ok/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml": `
-stacks:
-  a:
-    depends_on: [b]
-  b:
-    depends_on: [a]
-`,
 	})
+	overrides := []Stack{
+		{Name: "a", DependsOn: []string{"b"}},
+		{Name: "b", DependsOn: []string{"a"}},
+	}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}
@@ -337,21 +339,18 @@ stacks:
 }
 
 func TestLoadRepoStacks_DependencyOnDisabledStackAllowed(t *testing.T) {
-	// A disabled dependency is hands-off, not broken: the dependent stays
-	// valid and the runtime gate treats the absent dependency as satisfied.
+	// A disabled dependency is hands-off, not broken: the dependent stays valid
+	// and the runtime gate treats the absent dependency as satisfied.
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/app/docker-compose.yml": minimalCompose,
 		"stacks/db/docker-compose.yml":  minimalCompose,
-		"stacks/skipper.yaml": `
-stacks:
-  app:
-    depends_on: [db]
-  db:
-    disabled: true
-`,
 	})
+	overrides := []Stack{
+		{Name: "app", DependsOn: []string{"db"}},
+		{Name: "db", Disabled: true},
+	}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil || len(stackErrs) != 0 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v", err, stackErrs)
 	}
@@ -361,62 +360,61 @@ stacks:
 }
 
 func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
-	hashFor := func(t *testing.T, repoConfig string) string {
+	hashFor := func(t *testing.T, override *Stack) string {
 		t.Helper()
-		f := map[string]string{"stacks/web/docker-compose.yml": rolloutReadyCompose}
-		if repoConfig != "" {
-			f["stacks/skipper.yaml"] = repoConfig
+		repoDir := writeRepo(t, map[string]string{"stacks/web/docker-compose.yml": rolloutReadyCompose})
+		var overrides []Stack
+		if override != nil {
+			override.Name = "web"
+			overrides = []Stack{*override}
 		}
-		repoDir := writeRepo(t, f)
-		repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+		repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 		if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 			t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 		}
 		return repo.Stacks[0].ConfigHash
 	}
 
-	base := hashFor(t, "")
-	if again := hashFor(t, ""); again != base {
+	base := hashFor(t, nil)
+	if again := hashFor(t, nil); again != base {
 		t.Error("ConfigHash must be stable across loads of the same config")
 	}
-	// env_files shape the deploy → hash changes. The path resolves against the
-	// stacks base dir, which is a temp dir per load, so compare via absolute
-	// path to keep the input identical across loads.
-	if withEnv := hashFor(t, "stacks:\n  web:\n    env_files: [/etc/web.env]\n"); withEnv == base {
+	// env_files shape the deploy → hash changes. Absolute path so the input is
+	// identical across loads (the base dir is a fresh temp dir each time).
+	if withEnv := hashFor(t, &Stack{EnvFiles: []string{"/etc/web.env"}}); withEnv == base {
 		t.Error("ConfigHash must change when env_files change")
 	}
-	// icon is display-only ("never hashed") and self_heal/depends_on are
-	// runtime/ordering behaviour → the hash must not move.
-	if withIcon := hashFor(t, "stacks:\n  web:\n    icon: nginx\n    self_heal: true\n"); withIcon != base {
+	// icon is display-only ("never hashed") and self_heal is runtime behaviour →
+	// the hash must not move.
+	if withIcon := hashFor(t, &Stack{Icon: "nginx", SelfHeal: boolPtr(true)}); withIcon != base {
 		t.Error("ConfigHash must ignore icon and self_heal")
 	}
-	// hooks must not redeploy (ADR-0038): editing a backup command changes no
-	// hashed input, so the ConfigHash stays put.
-	if withHooks := hashFor(t, "stacks:\n  web:\n    hooks:\n      pre_deploy: [\"pg_dump > /backup/x.sql\"]\n"); withHooks != base {
+	// hooks must not redeploy (ADR-0038).
+	if withHooks := hashFor(t, &Stack{Hooks: Hooks{PreDeploy: []string{"pg_dump > /backup/x.sql"}}}); withHooks != base {
 		t.Error("ConfigHash must ignore hooks")
 	}
 	// rollout is a deploy-mechanism knob (ADR-0040): switching a service to/from
 	// rollout must not by itself redeploy an unchanged stack.
-	if withRollout := hashFor(t, "stacks:\n  web:\n    rollout:\n      services: [app]\n"); withRollout != base {
+	if withRollout := hashFor(t, &Stack{Rollout: &Rollout{Services: []string{"app"}}}); withRollout != base {
 		t.Error("ConfigHash must ignore rollout")
+	}
+	// autosync is a runtime toggle (ADR-0043) → never hashed.
+	if withAutosync := hashFor(t, &Stack{Autosync: boolPtr(false)}); withAutosync != base {
+		t.Error("ConfigHash must ignore autosync")
 	}
 }
 
 func TestLoadRepoStacks_AppliesHookOverrides(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml": `stacks:
-  web:
-    hooks:
-      pre_deploy:
-        - "pg_dump > /backup/web.sql"
-      post_deploy:
-        - "curl -fsS http://localhost/health"
-      timeout_seconds: 90
-`,
 	})
+	overrides := []Stack{{Name: "web", Hooks: Hooks{
+		PreDeploy:      []string{"pg_dump > /backup/web.sql"},
+		PostDeploy:     []string{"curl -fsS http://localhost/health"},
+		TimeoutSeconds: 90,
+	}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
@@ -435,15 +433,10 @@ func TestLoadRepoStacks_AppliesHookOverrides(t *testing.T) {
 func TestLoadRepoStacks_AppliesRolloutOverride(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": rolloutReadyCompose, // eligible service "app"
-		"stacks/skipper.yaml": `stacks:
-  web:
-    rollout:
-      services: [app]
-      health_timeout_seconds: 30
-`,
 	})
+	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}, HealthTimeoutSeconds: 30}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
@@ -456,14 +449,10 @@ func TestLoadRepoStacks_AppliesRolloutOverride(t *testing.T) {
 func TestLoadRepoStacks_InvalidRolloutReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml": `stacks:
-  web:
-    rollout:
-      services: []
-`,
 	})
+	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -473,20 +462,15 @@ func TestLoadRepoStacks_InvalidRolloutReported(t *testing.T) {
 }
 
 func TestLoadRepoStacks_RolloutUnknownServiceReported(t *testing.T) {
-	// A rollout naming a service that is not in the stack's docker-compose.yml
-	// is a typo we must catch at discovery: rollout config is excluded from
-	// change detection (ADR-0040), so the mistake would otherwise stay latent
-	// until an unrelated change happens to redeploy the stack.
+	// A rollout naming a service not in the compose file is a typo we catch at
+	// discovery: rollout config is excluded from change detection (ADR-0040), so
+	// it would otherwise stay latent until an unrelated redeploy.
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose, // defines service "app"
-		"stacks/skipper.yaml": `stacks:
-  web:
-    rollout:
-      services: [nope]
-`,
 	})
+	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"nope"}}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -503,17 +487,12 @@ func TestLoadRepoStacks_RolloutUnknownServiceReported(t *testing.T) {
 }
 
 func TestLoadRepoStacks_RolloutOneOfManyServicesUnknownReported(t *testing.T) {
-	// The missing service must be named even when others are valid.
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": rolloutReadyCompose, // eligible service "app"
-		"stacks/skipper.yaml": `stacks:
-  web:
-    rollout:
-      services: [app, ghost]
-`,
 	})
+	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app", "ghost"}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -523,17 +502,12 @@ func TestLoadRepoStacks_RolloutOneOfManyServicesUnknownReported(t *testing.T) {
 }
 
 func TestLoadRepoStacks_RolloutKnownServiceAccepted(t *testing.T) {
-	// A rollout naming a service that exists in the compose file passes.
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": rolloutReadyCompose, // eligible service "app"
-		"stacks/skipper.yaml": `stacks:
-  web:
-    rollout:
-      services: [app]
-`,
 	})
+	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
@@ -542,14 +516,10 @@ func TestLoadRepoStacks_RolloutKnownServiceAccepted(t *testing.T) {
 func TestLoadRepoStacks_RolloutServiceMissingHealthcheckReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose, // service "app", no healthcheck
-		"stacks/skipper.yaml": `stacks:
-  web:
-    rollout:
-      services: [app]
-`,
 	})
+	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -561,14 +531,10 @@ func TestLoadRepoStacks_RolloutServiceMissingHealthcheckReported(t *testing.T) {
 func TestLoadRepoStacks_RolloutServicePublishesPortsReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": "services:\n  app:\n    image: nginx:1.25\n    ports: [\"8080:80\"]\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n",
-		"stacks/skipper.yaml": `stacks:
-  web:
-    rollout:
-      services: [app]
-`,
 	})
+	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -580,14 +546,10 @@ func TestLoadRepoStacks_RolloutServicePublishesPortsReported(t *testing.T) {
 func TestLoadRepoStacks_RolloutServiceContainerNameReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": "services:\n  app:\n    image: nginx:1.25\n    container_name: app\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n",
-		"stacks/skipper.yaml": `stacks:
-  web:
-    rollout:
-      services: [app]
-`,
 	})
+	overrides := []Stack{{Name: "web", Rollout: &Rollout{Services: []string{"app"}}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -603,7 +565,7 @@ func TestLoadRepoStacks_UnparseableComposeReported(t *testing.T) {
 		"stacks/web/docker-compose.yml": "services: [not valid",
 	})
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), nil)
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -618,14 +580,10 @@ func TestLoadRepoStacks_UnparseableComposeReported(t *testing.T) {
 func TestLoadRepoStacks_MissingRelativeEnvFileReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml": `stacks:
-  web:
-    env_files:
-      - web/missing.env
-`,
 	})
+	overrides := []Stack{{Name: "web", EnvFiles: []string{"web/missing.env"}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -637,14 +595,10 @@ func TestLoadRepoStacks_MissingRelativeEnvFileReported(t *testing.T) {
 func TestLoadRepoStacks_MissingRelativeWatchDirReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml": `stacks:
-  web:
-    watch_dirs:
-      - web/missing
-`,
 	})
+	overrides := []Stack{{Name: "web", WatchDirs: []string{"web/missing"}}}
 
-	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	_, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("file-level error unexpected: %v", err)
 	}
@@ -658,14 +612,10 @@ func TestLoadRepoStacks_AbsoluteEnvFileNotRequiredToExist(t *testing.T) {
 	// out-of-band), so they are not existence-checked at discovery.
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml": `stacks:
-  web:
-    env_files:
-      - /etc/does-not-exist.env
-`,
 	})
+	overrides := []Stack{{Name: "web", EnvFiles: []string{"/etc/does-not-exist.env"}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("absolute env_file must not be existence-checked: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
@@ -674,15 +624,10 @@ func TestLoadRepoStacks_AbsoluteEnvFileNotRequiredToExist(t *testing.T) {
 func TestLoadRepoStacks_InvalidHookReported(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
-		"stacks/skipper.yaml": `stacks:
-  web:
-    hooks:
-      pre_deploy:
-        - "  "
-`,
 	})
+	overrides := []Stack{{Name: "web", Hooks: Hooks{PreDeploy: []string{"  "}}}}
 
-	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"))
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides)
 	if err != nil {
 		t.Fatalf("LoadRepoStacks: %v", err)
 	}

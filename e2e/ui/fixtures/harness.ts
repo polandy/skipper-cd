@@ -155,6 +155,16 @@ function git(dir: string, ...args: string[]): void {
   execFileSync('git', dir ? ['-C', dir, ...full] : full, { stdio: 'pipe' });
 }
 
+/** repoOverridesToHostStacks converts the former in-repo override shape
+ *  (`stacks:` map keyed by name) into the host config's `stacks:` list body
+ *  (ADR-0043). Each `  name:` map key becomes `  - name: name`; nested fields
+ *  keep their indentation. Returns the list-item body (no leading `stacks:`). */
+function repoOverridesToHostStacks(repoConfig: string): string {
+  return repoConfig
+    .replace(/^stacks:[ \t]*\n/, '')
+    .replace(/^ {2}(\S+):[ \t]*$/gm, '  - name: $1');
+}
+
 export interface StartOptions {
   stacks?: string[];
   /**
@@ -214,10 +224,11 @@ export interface StartOptions {
     string,
     Array<{ Service: string; Name?: string; State: string; Health?: string; ExitCode?: number }>
   >;
-  /** Stack discovery (ADR-0034): boot with `stack_discovery: true` instead of a
-   *  `stacks:` list — the origin's stack dirs are the stack set. `repoConfig`
-   *  (when set) is committed as the repo-root skipper.yaml; names in `disabled`
-   *  are parked there and not awaited at startup. Maske O opts in. */
+  /** Stack discovery (ADR-0034): boot with `stack_discovery: true` — the origin's
+   *  stack dirs are the stack set. `repoConfig` (when set) is the former in-repo
+   *  override shape (`stacks:` map); ADR-0043 folds it into the host config's
+   *  `stacks:` list. Names in `disabled` are parked and not awaited at startup.
+   *  Maske O opts in. */
   discovery?: { repoConfig?: string; disabled?: string[] };
   /** Per-stack depends_on edges (ADR-0032), mirroring the Go harness's
    *  startSkipperOrdered: a stack deploys only after its dependencies, and a
@@ -364,9 +375,9 @@ export class Skipper {
     if (stacks.length === 0) {
       writeFileSync(join(origin, '.keep'), '');
     }
-    if (opts.discovery?.repoConfig !== undefined) {
-      writeFileSync(join(origin, 'skipper.yaml'), opts.discovery.repoConfig);
-    }
+    // ADR-0043: per-stack overrides go into the host config's stacks: list, not
+    // an in-repo skipper.yaml (a leftover one is now a hard error). setRepoConfig
+    // still writes one on purpose, to exercise that guard.
     git(origin, 'add', '.');
     git(origin, 'commit', '-m', 'initial');
 
@@ -422,7 +433,10 @@ export class Skipper {
       // the whole UI suite offline. Repo icon.svg overrides still resolve.
       `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
       (opts.discovery
-        ? `stack_discovery: true\n`
+        ? `stack_discovery: true\n` +
+          (opts.discovery.repoConfig !== undefined
+            ? `stacks:\n` + repoOverridesToHostStacks(opts.discovery.repoConfig)
+            : '')
         : `stacks:\n` +
           stacks
             .map(

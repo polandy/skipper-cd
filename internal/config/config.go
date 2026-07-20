@@ -78,11 +78,17 @@ type Stack struct {
 	// toggling it does not itself redeploy.
 	Rollout *Rollout `yaml:"rollout,omitempty"`
 
+	// Disabled excludes a discovered stack entirely (stack-discovery mode): not
+	// deployed, not health-polled. A running stack that becomes disabled keeps
+	// running — skipper hands it off, it does not tear it down. Ignored when the
+	// stacks are listed explicitly (stack_discovery: false), where the list is
+	// the membership.
+	Disabled bool `yaml:"disabled,omitempty"`
+
 	// ConfigHash is the hash of the stack's deploy-shaping config, set only by
 	// LoadRepoStacks in stack-discovery mode (ADR-0034). It participates in
-	// change detection so a repo skipper.yaml edit redeploys exactly the
-	// affected stack. Empty in legacy (host stacks list) mode. Never read from
-	// YAML.
+	// change detection so a per-stack config edit redeploys exactly the affected
+	// stack. Empty when the stacks are listed explicitly. Never read from YAML.
 	ConfigHash string `yaml:"-"`
 }
 
@@ -188,15 +194,15 @@ type Config struct {
 	// MetricsPort is the Prometheus /metrics HTTP port. Defaults to 9120.
 	MetricsPort int `yaml:"metrics_port"`
 
-	// Stacks lists the Docker Compose projects to deploy. Mutually exclusive
-	// with StackDiscovery.
+	// Stacks lists the Docker Compose projects to deploy. When stack_discovery
+	// is false this list is the stack set; under discovery it is the optional
+	// per-stack override list (ADR-0043), matched to discovered directories by name.
 	Stacks []Stack `yaml:"stacks"`
 
-	// StackDiscovery discovers the stack set from the deploy repo on every
-	// sync instead of this file (ADR-0034): every direct subdirectory of
-	// stacks_base_dir containing a docker-compose.yml is a stack, and the
-	// optional repo-root skipper.yaml holds per-stack overrides. Mutually
-	// exclusive with a non-empty Stacks list; requires stacks_base_dir.
+	// StackDiscovery discovers the stack set from the deploy repo on every sync
+	// (ADR-0034): every direct subdirectory of stacks_base_dir containing a
+	// docker-compose.yml is a stack; per-stack overrides come from the Stacks
+	// list (ADR-0043). Requires stacks_base_dir.
 	StackDiscovery bool `yaml:"stack_discovery"`
 
 	// UIEnabled serves the web UI (dashboard, event history, UI API) on the
@@ -632,13 +638,10 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("port and metrics_port must differ, both are %d", cfg.Port)
 	}
 
-	if cfg.StackDiscovery {
-		if len(cfg.Stacks) > 0 {
-			return fmt.Errorf("stacks must be empty when stack_discovery is enabled — per-stack config moves to the repo-root %s (ADR-0034)", RepoConfigFileName)
-		}
-		if cfg.StacksBaseDir == "" {
-			return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
-		}
+	if cfg.StackDiscovery && cfg.StacksBaseDir == "" {
+		// ADR-0043: under discovery the stacks: list is optional per-stack
+		// overrides, not the membership — so it no longer conflicts with discovery.
+		return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
 	}
 
 	seen := make(map[string]struct{}, len(cfg.Stacks))
@@ -671,8 +674,12 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	if err := validateStackDependencies(cfg.Stacks); err != nil {
-		return err
+	// Under discovery, cfg.Stacks is only the override subset; depends_on is
+	// validated against the full set at discovery (LoadRepoStacks), not here.
+	if !cfg.StackDiscovery {
+		if err := validateStackDependencies(cfg.Stacks); err != nil {
+			return err
+		}
 	}
 
 	if cfg.NixOSRebuild.IsEnabled() && cfg.NixOSRebuild.Flake == "" {

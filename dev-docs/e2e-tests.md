@@ -632,18 +632,19 @@ service is listed. Behaviour-only (no snapshot).
 ### 4.16 UI — Maske O: stack discovery surface (ADR-0034)
 
 The harness boots in discovery mode (`discovery` start option): the origin's
-stack dirs are the stack set, `stack_discovery: true` replaces the `stacks:`
-list, and the repo-root `skipper.yaml` (committed via the option's
-`repoConfig`, mutated later with `setRepoConfig`) carries the per-stack
-overrides. Behaviour-only (no snapshot) — the disabled line is hidden when
-empty, so the existing visual baselines are untouched.
+stack dirs are the stack set (`stack_discovery: true`), and the per-stack
+overrides go into the host config's `stacks:` list (ADR-0043; the option's
+`repoConfig` map shape is folded into it). Behaviour-only (no snapshot) — the
+disabled line is hidden when empty, so the existing visual baselines are
+untouched.
 
 - **UO1 — Disabled line.** With `wip` parked via `disabled: true`, the deploys
   view shows no `wip` row but a `disabled-stacks` line with one `wip` chip;
   the line is hidden in the logs view and returns with the deploys view.
-- **UO2 — Broken repo config.** Pushing a `skipper.yaml` with a syntax error on
-  line 3 produces a `failed` row for the reserved `_config` stack whose error
-  panel carries the parse error plus the marked excerpt (`> 3 |`).
+- **UO2 — Leftover repo config.** Pushing a leftover in-repo `skipper.yaml`
+  (`setRepoConfig`) — no longer read as of ADR-0043 — produces a `failed` row
+  for the reserved `_config` stack whose error panel explains the file is no
+  longer read, so un-migrated config never silently reverts to defaults.
 
 ### 4.17 UI — Maske P: blocked rows + hostile-name escaping (ADR-0032)
 
@@ -694,7 +695,7 @@ The third top-level view: an inventory of the full stack set skipper owns (stack
 discovery, ADR-0034) with each stack's last outcome — as opposed to the deploy
 table's event log — rendered as an aligned table that reuses the deploy table's
 row/column/expand language (`dev-docs/ui-design-concept.md`). Boots in discovery
-mode with `stacks: ['api', 'web', 'wip']`, a repo-root `skipper.yaml` parking
+mode with `stacks: ['api', 'web', 'wip']`, a host-config override parking
 `wip` (`disabled: true`), and `healthPoll` + `initialHealth` for api/web so the
 containers panel is populated. Behaviour-only (no new snapshot; the default
 deploy view is unchanged, so the full-page `ud-chrome` baselines still hold).
@@ -785,7 +786,7 @@ baselines the row icon already shifts).
 
 The hooks UI surface: the per-stack **hooks badge** + command panel, the hook
 output attributed in the log, and the **running-hook phase** + inline hook log.
-Boots in **discovery mode** with a repo `skipper.yaml` that declares hooks for
+Boots in **discovery mode** with a host-config override that declares hooks for
 `web` — harmless `echo`s (they succeed and their stdout is attributed to the
 stack), plus a `sleep` for the running-hook cases so the phase is observable.
 The running-hook masks use `readiness: 'listening'` so the page loads while the
