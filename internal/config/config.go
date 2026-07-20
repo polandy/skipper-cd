@@ -610,9 +610,8 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("repo_url is required")
 	}
 	if cfg.WebhookSecret == "" {
-		// Push webhooks are skipper's primary deploy trigger; the reconcile loop
-		// is a safety net, not a substitute. Require a secret so the webhook is
-		// always signed (never open to unsigned requests).
+		// The webhook is skipper's primary deploy trigger (reconcile is a safety
+		// net), so require a secret — the endpoint is never open to unsigned pushes.
 		return fmt.Errorf("webhook_secret is required")
 	}
 
