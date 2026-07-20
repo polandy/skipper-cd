@@ -76,7 +76,7 @@ Target: `http://<skipper-host>:8080/webhook` — must be reachable from where yo
     | **Secret** | same string as `webhook_secret` |
     | **Events** | *Just the push event* |
 
-Content type must be `application/json` (form-encoded payloads are not understood), and the secret must match `webhook_secret` — payloads with a bad HMAC signature are rejected. An empty `webhook_secret` disables verification; fine for a local test only.
+Content type must be `application/json` (form-encoded payloads are not understood), and the secret must match `webhook_secret` — payloads with a bad HMAC signature are rejected.
 
 ## Step 4 — Push and verify
 
