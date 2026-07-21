@@ -153,10 +153,12 @@ type Rollout struct {
 // the automatic compose-`healthcheck:` gate of ADR-0046 — and `true` enables it
 // at the defaults (equivalent to an empty mapping `{}`). See UnmarshalYAML.
 type HealthCheck struct {
-	// Enabled is the boolean-scalar off/on switch (ADR-0049). nil means the
-	// gate was given as a mapping (or defaulted on); a non-nil false is an
-	// explicit opt-out that suppresses the ADR-0046 automatic gate. Set only by
-	// UnmarshalYAML for the scalar form. See IsDisabled.
+	// Enabled is the off/on switch (ADR-0049). nil means the gate was given as a
+	// mapping with no enabled: key (or defaulted on); a non-nil false is an
+	// explicit opt-out that suppresses the ADR-0046 automatic gate. Usually set
+	// via the boolean-scalar form (see UnmarshalYAML); the yaml tag also lets a
+	// mapping set it and, more importantly, carries it into the ConfigHash so
+	// toggling the opt-out redeploys the stack. See IsDisabled.
 	Enabled *bool `yaml:"enabled,omitempty"`
 
 	// TimeoutSeconds bounds the wait: it is passed as --wait-timeout to

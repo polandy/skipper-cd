@@ -130,6 +130,25 @@ func TestHealthCheck_NilIsNotDisabled(t *testing.T) {
 	}
 }
 
+// A null/empty deploy_health_check value must stay nil (absent), NOT decode
+// into a disabled gate: yaml.v3 skips UnmarshalYAML for a null value on a
+// pointer field, so absence keeps the automatic gate free to apply. Locks in
+// that subtlety against a refactor of the custom UnmarshalYAML.
+func TestLoad_HealthCheckNullIsAbsent(t *testing.T) {
+	for _, val := range []string{"", " null", " ~"} {
+		content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks:
+  - name: whoami
+    deploy_health_check:` + val + "\n"
+		cfg := loadFromString(t, content)
+		if hc := cfg.Stacks[0].DeployHealthCheck; hc != nil {
+			t.Errorf("deploy_health_check:%q — expected nil (absent), got %+v (IsDisabled=%v)", val, hc, hc.IsDisabled())
+		}
+	}
+}
+
 func TestLoad_HealthCheckScalarRejectsNonBool(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
