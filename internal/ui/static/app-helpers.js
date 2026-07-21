@@ -175,6 +175,48 @@ function orphanMatchesQuery(o, q) {
   });
 }
 
+// HOST_COLOR_COUNT is how many distinct per-host identity colours the palette
+// provides (ADR-0048). Colours are assigned by a host's position in the ordered
+// host set (self first, then peers in config order), wrapping past this many —
+// the app.css `[data-host-color="N"]` slots must match this count per theme.
+const HOST_COLOR_COUNT = 6;
+
+// hostColorIndex gives a host its stable identity-colour slot: its position in
+// the ordered host set, wrapped to the palette size. Order (not a hash) keeps
+// "the first host is blue" predictable and clear of near-hue collisions. An
+// unknown name falls back to slot 0.
+function hostColorIndex(name, orderedNames) {
+  const i = (orderedNames || []).indexOf(name);
+  if (i < 0) return 0;
+  return i % HOST_COLOR_COUNT;
+}
+
+// hostFilterActive reports whether the Hosts filter is narrowing the view (a
+// strict subset is selected) — the signal that lights the Hosts control.
+function hostFilterActive(selectedCount, totalCount) {
+  return totalCount > 0 && selectedCount > 0 && selectedCount < totalCount;
+}
+
+// showHostColumn reports whether the merged feed's Host column is shown: only
+// when more than one host is selected. With exactly one host in view the column
+// is redundant (every row is that host), so it hides.
+function showHostColumn(selectedCount) {
+  return selectedCount > 1;
+}
+
+// hostFilterSummary is the one-line summary above the merged feed, e.g.
+// "12 deploys · all 3 hosts" or "5 deploys · host-a, host-c". selectedNames are
+// the in-view hosts; totalCount is the full host set size.
+function hostFilterSummary(count, selectedNames, totalCount) {
+  const noun = count === 1 ? 'deploy' : 'deploys';
+  const names = selectedNames || [];
+  const scope =
+    names.length >= totalCount && totalCount > 0
+      ? 'all ' + totalCount + ' hosts'
+      : names.join(', ');
+  return count + ' ' + noun + (scope ? ' · ' + scope : '');
+}
+
 // logLineVisible reports whether a log line stays visible under the in-log
 // search filter (ADR-0037): an empty query shows every line, otherwise the line
 // must contain the query (case-insensitive). A non-empty query that matches is
@@ -208,5 +250,10 @@ if (typeof module !== 'undefined' && module.exports) {
     containerMatchesQuery,
     orphanMatchesQuery,
     logLineVisible,
+    HOST_COLOR_COUNT,
+    hostColorIndex,
+    hostFilterActive,
+    showHostColumn,
+    hostFilterSummary,
   };
 }

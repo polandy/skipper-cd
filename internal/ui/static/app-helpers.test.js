@@ -174,3 +174,39 @@ test('logLineVisible: empty query shows all, else case-insensitive contains', ()
   assert.equal(h.logLineVisible('GET /api/health 200', 'wget'), false);
   assert.equal(h.logLineVisible('', 'x'), false);
 });
+
+test('hostColorIndex: stable by position in the ordered host set', () => {
+  const hosts = ['host-a', 'host-b', 'host-c'];
+  assert.equal(h.hostColorIndex('host-a', hosts), 0); // self is first
+  assert.equal(h.hostColorIndex('host-b', hosts), 1);
+  assert.equal(h.hostColorIndex('host-c', hosts), 2);
+  assert.equal(h.hostColorIndex('unknown', hosts), 0); // fallback
+  assert.equal(h.hostColorIndex('host-a', hosts), 0); // deterministic
+});
+
+test('hostColorIndex wraps past the palette size', () => {
+  const many = [];
+  for (let i = 0; i < h.HOST_COLOR_COUNT + 2; i++) many.push('h' + i);
+  assert.equal(h.hostColorIndex('h' + h.HOST_COLOR_COUNT, many), 0); // wrapped
+  assert.equal(h.hostColorIndex('h' + (h.HOST_COLOR_COUNT + 1), many), 1);
+});
+
+test('hostFilterActive: only a strict non-empty subset lights the control', () => {
+  assert.equal(h.hostFilterActive(3, 3), false); // all selected
+  assert.equal(h.hostFilterActive(2, 3), true); // subset
+  assert.equal(h.hostFilterActive(0, 3), false); // none (guard, treated inactive)
+  assert.equal(h.hostFilterActive(1, 1), false); // single host, all selected
+});
+
+test('showHostColumn: shown only with more than one host in view', () => {
+  assert.equal(h.showHostColumn(1), false); // redundant with one host
+  assert.equal(h.showHostColumn(2), true);
+  assert.equal(h.showHostColumn(3), true);
+});
+
+test('hostFilterSummary: all-hosts vs named subset', () => {
+  assert.equal(h.hostFilterSummary(12, ['host-a', 'host-b', 'host-c'], 3), '12 deploys · all 3 hosts');
+  assert.equal(h.hostFilterSummary(5, ['host-a', 'host-c'], 3), '5 deploys · host-a, host-c');
+  assert.equal(h.hostFilterSummary(1, ['host-a'], 3), '1 deploy · host-a'); // singular noun
+  assert.equal(h.hostFilterSummary(0, [], 3), '0 deploys'); // nothing selected → no scope
+});
