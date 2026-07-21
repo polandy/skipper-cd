@@ -114,7 +114,7 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 		if stack.ProjectDirectory == "" && projectDirectoryBase != "" {
 			stack.ProjectDirectory = filepath.Join(projectDirectoryBase, name)
 		}
-		if hc := stack.DeployHealthCheck; hc != nil && hc.TimeoutSeconds == 0 {
+		if hc := stack.DeployHealthCheck; hc != nil && !hc.IsDisabled() && hc.TimeoutSeconds == 0 {
 			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
 		}
 

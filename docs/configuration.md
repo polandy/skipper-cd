@@ -130,7 +130,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. The [Stack health](#stack-health) view and the [health watch](#health-watch) know about this: an exited on-demand container reads as `stopped` (its intended idle state) whatever its exit code — never as `unhealthy`. Docker Compose auto-generates container names (`<project>-<service>-1`) unless the service sets `container_name:`; a name here that matches no declared `container_name` logs a startup-adjacent warning at deploy time (not a hard error, since the auto-generated name may still happen to be right) — set `container_name:` on the corresponding service to make it deterministic and checked. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
-| `deploy_health_check` | section | no | automatic if the compose file has a `healthcheck:` | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this section to change the timeout or add an HTTP probe. See [Health-check-gated rollback](#health-check-gated-rollback). |
+| `deploy_health_check` | section or bool | no | automatic if the compose file has a `healthcheck:` (except on-demand stacks) | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this as a section to change the timeout or add an HTTP probe. A stack with `on_demand_containers` is never auto-gated. The scalar `false` explicitly disables the gate (keep a compose `healthcheck:` without gating on it); `true` enables it at the defaults. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
@@ -197,9 +197,19 @@ services:
       retries: 5
 ```
 
-As soon as any service in the stack's compose file declares a `healthcheck:`, skipper-cd applies this gate **automatically** — no `deploy_health_check` section needed in this config at all (ADR-0046). `docker compose up` runs with `--wait --wait-timeout 60` (the default), so the `up` fails and the deploy rolls back unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
+As soon as any service in the stack's compose file declares a `healthcheck:`, skipper-cd applies this gate **automatically** — no `deploy_health_check` section needed in this config at all. `docker compose up` runs with `--wait --wait-timeout 60` (the default), so the `up` fails and the deploy rolls back unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
 
 Add an explicit `deploy_health_check` section only to change the default 60s timeout, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `deploy_health_check` itself.
+
+**On-demand stacks are never auto-gated.** A stack with [`on_demand_containers`](#stack-fields) is stopped right after `up`, so skipper skips the automatic gate for it even when its compose file declares a `healthcheck:` — `--wait` would cold-start the on-demand container only for skipper to stop it again, and a slow warm-up would time out into a spurious rollback. No config is needed; set an explicit `deploy_health_check` only if you deliberately want a gate on such a stack.
+
+**Opting out on any other stack.** To keep a compose `healthcheck:` (for external monitoring, `docker ps` status, or an orchestrator) *without* letting skipper `--wait` on it and roll back, set the scalar `deploy_health_check: false`. It overrides the automatic gate so the stack deploys with a plain `up`. The scalar `deploy_health_check: true` is the inverse — gate on at the defaults, equivalent to an empty `deploy_health_check: {}` mapping.
+
+```yaml
+stacks:
+  - name: metrics-exporter
+    deploy_health_check: false   # compose healthcheck is for monitoring; don't gate the deploy on it
+```
 
 ### Stage 2 — the HTTP probe (optional)
 
@@ -214,7 +224,7 @@ The rollback itself is verified through the same gate: its `up` also runs with `
 | `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
 | `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
 
-> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Don't enable `deploy_health_check` on stacks with deliberate one-shot containers, or model those as [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependencies.
+> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Stacks with `on_demand_containers` are excluded from the automatic gate for this reason; for a deliberate one-shot container on a non-on-demand stack, set `deploy_health_check: false` to opt out (even if the compose file has a `healthcheck:`), or model the one-shot as a [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependency.
 
 ## Deploy hooks
 
@@ -374,7 +384,7 @@ notifications:
 
 > **Reachability.** `url` must be reachable from wherever skipper-cd runs. As a **host service** (e.g. the [NixOS module](nixos.md)), a container's host-published port is `http://localhost:8020` — reaching it directly, bypassing any reverse proxy/auth. When skipper-cd itself runs **in a container**, `localhost` is the container, not the host (see [Docker](docker.md)).
 
-> **No email.** Native SMTP is deliberately unsupported (see [ADR-0020](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0020-outbound-deploy-notifications.md)). Point a `generic` target at an email-capable relay (ntfy, Apprise, Shoutrrr) if you need email.
+> **No email.** Native SMTP is deliberately unsupported. Point a `generic` target at an email-capable relay (ntfy, Apprise, Shoutrrr) if you need email.
 
 > **Self-notify caveat.** If Signal is delivered through a `signal-api` stack that skipper itself deploys, a failed `signal-api` deploy cannot notify you about itself. Configure a second, independent target (e.g. `generic` → ntfy) so at least one path never depends on the stack being reported on.
 
@@ -479,7 +489,7 @@ health_watch:                      # cadence = runtime_health_poll_interval_seco
 
 A new failure reads `🚨 stack health: <stack>/<service> healthy → unhealthy (was healthy 2h13m) — after deploy of a1b2c3d`; the recovery reads `✅ stack health recovered: <stack>/<service> after 4m12s`. The `generic` format posts the structured alert as JSON with a `"type": "health"` marker so a receiver shared with deploy notifications can tell the payloads apart.
 
-Transitions are persisted across restarts (no re-alerting of known failures; a failure that happened while skipper was down is alerted after startup), and with the web UI enabled each service's [Stack health](#stack-health) panel shows a timeline of its recent status phases. This watches **only skipper's own stacks** — it is not a host-wide container watchdog. Design details in [ADR-0031](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0031-notify-on-own-stack-health-change.md).
+Transitions are persisted across restarts (no re-alerting of known failures; a failure that happened while skipper was down is alerted after startup), and with the web UI enabled each service's [Stack health](#stack-health) panel shows a timeline of its recent status phases. This watches **only skipper's own stacks** — it is not a host-wide container watchdog.
 
 ## Deploy ordering
 
@@ -501,7 +511,7 @@ Within a run, a dependency's outcome gates its dependents:
 - **Dependency queued** (its `autosync` is paused) → the dependent queues too, rather than overtaking a change that is being deliberately held back.
 - **Dependency unchanged** (skipped) → it is already at its desired state, so the dependent proceeds.
 
-`depends_on` guarantees the dependency's deploy *completed*; by default `docker compose up` returns once containers start, not once they are ready. For true readiness (the database accepting connections before the app starts), add a [`deploy_health_check`](#health-check-gated-rollback) to the **dependency** — because deploys are sequential, the dependent only starts once the dependency proved healthy. See [ADR-0032](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0032-stack-deploy-ordering-via-depends-on.md).
+`depends_on` guarantees the dependency's deploy *completed*; by default `docker compose up` returns once containers start, not once they are ready. For true readiness (the database accepting connections before the app starts), add a [`deploy_health_check`](#health-check-gated-rollback) to the **dependency** — because deploys are sequential, the dependent only starts once the dependency proved healthy.
 
 ## Periodic reconcile
 
@@ -515,7 +525,7 @@ To close that gap, skipper also re-runs its git sync + deploy on a timer. Each t
 - **`0`** — disable the loop entirely, restoring pure webhook + startup behaviour.
 - Unlike the health poll, it is **not** tied to the UI — it runs headless, since it is a correctness feature rather than a display feed.
 
-A tick is skipped while a deploy is already in flight (a reconcile carries no unique information, so it is dropped rather than queued behind the running deploy), and it flows through the same per-stack deploy gate as a webhook — so a stack with `autosync` off is queued, not force-deployed. See [ADR-0028](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0028-periodic-reconcile-loop.md).
+A tick is skipped while a deploy is already in flight (a reconcile carries no unique information, so it is dropped rather than queued behind the running deploy), and it flows through the same per-stack deploy gate as a webhook — so a stack with `autosync` off is queued, not force-deployed.
 
 ## Self-heal
 
@@ -529,11 +539,11 @@ Guardrails keep it from fighting a genuinely broken stack:
 - **Cooldown** — at least `self_heal_cooldown_seconds` (default 60, explicit `0` disables) between redeploys of the same stack.
 - **Circuit breaker** — after `self_heal_max_attempts` (default 3) redeploys that don't restore the stack, skipper gives up, leaves it reported `unhealthy`, and emits a single `heal_exhausted` event (a `heal_exhausted` [notification](#notifications) fires by default — the "a stack is down and I couldn't fix it" alarm). The counter resets when the stack recovers or a real git deploy of it runs.
 
-Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `runtime_health_poll_interval_seconds` > 0 even with the UI off. A successful redeploy shows as a `healed` event in the deploy log. See [ADR-0029](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0029-runtime-drift-self-heal.md).
+Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `runtime_health_poll_interval_seconds` > 0 even with the UI off. A successful redeploy shows as a `healed` event in the deploy log.
 
 ## Keeping images up to date
 
-skipper deploys the images your compose files declare; it does **not** watch registries for new versions on its own. That is a deliberate scope choice: skipper acts on git, so an image update should reach it *as a change in git* — see [ADR-0030](https://github.com/polandy/skipper-cd/blob/main/dev-docs/adr/0030-image-update-automation.md). The supported way to automate updates is to let [Renovate](https://docs.renovatebot.com/) keep the `image:` references in your **deploy repo** current: Renovate opens (or auto-merges) a change that bumps the reference and pins it to a digest, and that merge is an ordinary push, so skipper's webhook and [periodic reconcile](#periodic-reconcile) path pick it up and redeploy — no skipper configuration required.
+skipper deploys the images your compose files declare; it does **not** watch registries for new versions on its own. That is a deliberate scope choice: skipper acts on git, so an image update should reach it *as a change in git*. The supported way to automate updates is to let [Renovate](https://docs.renovatebot.com/) keep the `image:` references in your **deploy repo** current: Renovate opens (or auto-merges) a change that bumps the reference and pins it to a digest, and that merge is an ordinary push, so skipper's webhook and [periodic reconcile](#periodic-reconcile) path pick it up and redeploy — no skipper configuration required.
 
 Digest pinning is what makes this work. With a plain mutable tag like `image: caddy:latest`, the text in git never changes when the registry publishes a new image behind the same tag, so skipper never sees a change. Renovate's digest pinning rewrites the reference to `image: caddy:2.8.4@sha256:…` and keeps that digest current — so **every** update lands in git as a changed reference and deploys through the normal path.
 
