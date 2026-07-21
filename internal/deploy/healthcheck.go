@@ -10,25 +10,34 @@ import (
 	"github.com/polandy/skipper-cd/internal/config"
 )
 
-// resolveHealthCheck returns the stack's configured deploy_health_check when
-// it set one. Otherwise, when the compose file declares a healthcheck: for at
-// least one service, it returns an automatic gate at the default timeout with
-// no URL probe: the operator already opted the service into a Docker
-// healthcheck, so skipper's --wait + rollback gate (ADR-0022) applies without
-// also requiring a redundant deploy_health_check: {} per stack (ADR-0046). A
-// stack with no compose healthcheck anywhere, or whose compose file failed to
-// parse, stays ungated exactly as an explicit absence would.
+// resolveHealthCheck returns the stack's effective deploy gate. An explicit
+// deploy_health_check wins: a mapping is returned unchanged, and the scalar
+// deploy_health_check: false (ADR-0049) suppresses any gate — the one way to
+// keep a compose healthcheck: for external monitoring without letting skipper
+// --wait on it.
 //
-// An explicit deploy_health_check: false (ADR-0049) suppresses the automatic
-// gate: it is the one way to keep a compose healthcheck: for external
-// monitoring without letting skipper --wait on it — the case an on-demand
-// container needs, since --wait would cold-start it only to be stopped again.
-func resolveHealthCheck(explicit *config.HealthCheck, cf *composeFile) *config.HealthCheck {
-	if explicit != nil {
+// With no explicit config, the gate is inferred:
+//   - A stack with on_demand_containers gets NO gate, even if its compose file
+//     declares a healthcheck: — skipper stops those containers right after up,
+//     so `up --wait` would cold-start them only to be stopped again, and a slow
+//     warm-up would time out into a spurious rollback (ADR-0049). An operator
+//     who really wants a gate here must set deploy_health_check explicitly.
+//   - Otherwise, when the compose file declares a healthcheck: for at least one
+//     service, an automatic gate applies at the default timeout with no URL
+//     probe: the service already opted into a Docker healthcheck, so skipper's
+//     --wait + rollback gate (ADR-0022) applies without a redundant
+//     deploy_health_check: {} per stack (ADR-0046).
+//   - A stack with no compose healthcheck anywhere, or whose compose file
+//     failed to parse, stays ungated.
+func resolveHealthCheck(stack config.Stack, cf *composeFile) *config.HealthCheck {
+	if explicit := stack.DeployHealthCheck; explicit != nil {
 		if explicit.IsDisabled() {
 			return nil
 		}
 		return explicit
+	}
+	if len(stack.OnDemandContainers) > 0 {
+		return nil
 	}
 	if cf == nil || !cf.hasHealthcheck() {
 		return nil

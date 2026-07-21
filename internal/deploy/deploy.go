@@ -657,11 +657,12 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		slog.Warn("could not parse compose file, pulling all services and skipping build tracking", "stack", stack.Name, "err", err)
 	}
 
-	// A stack that declares no deploy_health_check but whose compose file has
-	// one gets the same --wait + rollback gate automatically, at the default
-	// timeout (ADR-0046). Resolved once here so every downstream read of
-	// run.stack.DeployHealthCheck (rollback.go, rollout.go, below) sees it.
-	run.stack.DeployHealthCheck = resolveHealthCheck(stack.DeployHealthCheck, compose)
+	// The effective deploy gate is resolved once here so every downstream read
+	// of run.stack.DeployHealthCheck (rollback.go, rollout.go, below) sees it:
+	// an explicit config, or the automatic compose-healthcheck gate (ADR-0046),
+	// suppressed for on-demand stacks and by deploy_health_check: false
+	// (ADR-0049). See resolveHealthCheck.
+	run.stack.DeployHealthCheck = resolveHealthCheck(stack, compose)
 
 	var dockerfilePaths []string
 	if compose != nil {
