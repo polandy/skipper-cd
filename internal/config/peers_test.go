@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/polandy/skipper-cd/internal/ui"
 )
 
 func TestLoad_HostNameDefaultsToOSHostname(t *testing.T) {
@@ -72,7 +74,8 @@ stacks: []
 }
 
 func TestLoad_WarnsWhenMoreHostsThanColours(t *testing.T) {
-	// This host + 6 peers = 7 hosts, past the 6-slot host-colour palette.
+	// HostColorCount peers + this host = HostColorCount+1 hosts, one past the
+	// palette — derived from the constant so it holds if the palette size changes.
 	var b strings.Builder
 	b.WriteString(`
 repo_url: ssh://git@gitea.example.com/user/nixos.git
@@ -80,7 +83,7 @@ stacks_base_dir: /var/lib/skipper/repo/modules
 stacks: []
 peers:
 `)
-	for i := range 6 {
+	for i := range ui.HostColorCount {
 		fmt.Fprintf(&b, "  - name: host-%d\n    url: http://host-%d:8001\n", i, i)
 	}
 	cfg := loadFromString(t, b.String())
