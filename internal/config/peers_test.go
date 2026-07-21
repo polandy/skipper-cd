@@ -1,0 +1,88 @@
+package config_test
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestLoad_PeersParsed(t *testing.T) {
+	const content = `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+peers:
+  - name: host-b
+    url: http://host-b:8001
+  - name: host-c
+    url: http://host-c:8001
+`
+	cfg := loadFromString(t, content)
+	if len(cfg.Peers) != 2 {
+		t.Fatalf("expected 2 peers, got %d", len(cfg.Peers))
+	}
+	if cfg.Peers[0].Name != "host-b" || cfg.Peers[0].URL != "http://host-b:8001" {
+		t.Errorf("peer[0] = %+v, want {host-b, http://host-b:8001}", cfg.Peers[0])
+	}
+	if cfg.Peers[1].Name != "host-c" {
+		t.Errorf("peer[1].Name = %q, want host-c", cfg.Peers[1].Name)
+	}
+}
+
+func TestLoad_PeersOmittedIsEmpty(t *testing.T) {
+	const content = `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+	if len(cfg.Peers) != 0 {
+		t.Fatalf("expected no peers when omitted, got %d", len(cfg.Peers))
+	}
+}
+
+func TestLoad_PeersValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr string
+	}{
+		{
+			name:    "missing name",
+			yaml:    "  - url: http://host-b:8001\n",
+			wantErr: "name is required",
+		},
+		{
+			name:    "missing url",
+			yaml:    "  - name: host-b\n",
+			wantErr: "url is required",
+		},
+		{
+			name:    "non-http url",
+			yaml:    "  - name: host-b\n    url: ftp://host-b/x\n",
+			wantErr: "valid http(s) URL",
+		},
+		{
+			name:    "duplicate name",
+			yaml:    "  - name: host-b\n    url: http://host-b:8001\n  - name: host-b\n    url: http://other:8001\n",
+			wantErr: "duplicate peer name",
+		},
+	}
+
+	const base = `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+peers:
+`
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loadStringToConfig(t, base+tt.yaml)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
