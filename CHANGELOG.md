@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.19.0](https://github.com/polandy/skipper-cd/compare/v0.18.0...v0.19.0) (2026-07-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **config:** rename health_check to deploy_health_check, health_poll_interval_seconds to runtime_health_poll_interval_seconds
+* **config:** working_dir must become project_directory in any existing skipper.yaml before upgrading — the YAML decoder is not strict, so a stale key is silently ignored rather than erroring.
+
+### Features
+
+* **config:** absolute-path checks, dead self_heal override warning, hook-timeout warning ([0a38a37](https://github.com/polandy/skipper-cd/commit/0a38a378114428b24a83366689ca7435e1ee4a5f))
+* **config:** default stack_discovery to true (ADR-0043) ([0439e66](https://github.com/polandy/skipper-cd/commit/0439e66b8725e3d3a9c23f6daa87cd57a7caef28))
+* **config:** fold per-stack overrides into the host config (ADR-0043) ([c7ca5ee](https://github.com/polandy/skipper-cd/commit/c7ca5eed4f3e61af8ed5fcd2bd87871efd320d71))
+* **config:** require webhook_secret ([7ee4134](https://github.com/polandy/skipper-cd/commit/7ee41349f7971f850b1f4ddc582d8f761da31102))
+* **config:** shift compose validation to discovery + extract internal/compose ([eb992e6](https://github.com/polandy/skipper-cd/commit/eb992e6d33fb6c5333b4660e9aa0022a20b5fa1e))
+* **config:** validate rollout service names against compose at discovery ([5a57ec6](https://github.com/polandy/skipper-cd/commit/5a57ec6e03dd125821170037e2820921de60ee86))
+* **config:** validate vars_file and working_dir, add startup warnings ([246b706](https://github.com/polandy/skipper-cd/commit/246b706239dceabc96413abaf30131219008cb83))
+* **deploy:** auto-gate deploys on the compose file's own healthcheck ([9bc6f6e](https://github.com/polandy/skipper-cd/commit/9bc6f6ee2a155b55e6562d694f1ff7876a52400f))
+* **deploy:** explicit + on-demand opt-out for the auto health gate (ADR-0049) ([9516247](https://github.com/polandy/skipper-cd/commit/951624727044bf7b80c44df48fc86746a357c3bf))
+* **deploy:** warn when on_demand_containers doesn't match a container_name ([2407363](https://github.com/polandy/skipper-cd/commit/2407363270534de5cfa64bbba1ea311bd215721f))
+* **deploy:** zero-downtime rollout for Traefik-fronted services ([#146](https://github.com/polandy/skipper-cd/issues/146)) ([7e41d4d](https://github.com/polandy/skipper-cd/commit/7e41d4df060228d32916ade997bede27e0d39947))
+* **logging:** add pretty console output, make it the default log_format ([6df79a2](https://github.com/polandy/skipper-cd/commit/6df79a296a286c6ff761d5d44971c7ebee7479a2))
+* **ui:** generalize tap-tip bubble to every glyph-only control ([0024ab7](https://github.com/polandy/skipper-cd/commit/0024ab7243ee98c13b3e4d8f8632bf9b9003ffce))
+* **ui:** restyle the Logs view as a page-sized clog-panel ([7d01fe4](https://github.com/polandy/skipper-cd/commit/7d01fe43d930a248fc2ba35ac0a7e7ddefc95f73))
+* **ui:** serve the app shell gzip-compressed when the client supports it ([d9a2aba](https://github.com/polandy/skipper-cd/commit/d9a2aba68dcaac3c8bdc52066a37a4a66395083b))
+
+
+### Bug Fixes
+
+* **selfheal:** never heal an idle on-demand container ([#172](https://github.com/polandy/skipper-cd/issues/172)) ([07a7115](https://github.com/polandy/skipper-cd/commit/07a71157c526eac133f153335da5b5acf5726456))
+
+
+### Code Refactoring
+
+* **config:** rename health_check to deploy_health_check, health_poll_interval_seconds to runtime_health_poll_interval_seconds ([cb8fd13](https://github.com/polandy/skipper-cd/commit/cb8fd13cc0b1a0f89d5d9502b469948b2411f545))
+* **config:** rename working_dir to project_directory, add project_directory_base ([f09689e](https://github.com/polandy/skipper-cd/commit/f09689ee6b480734e5eac0ded897959d24e0e5f9))
+
 ## [0.18.0](https://github.com/polandy/skipper-cd/compare/v0.17.0...v0.18.0) (2026-07-19)
 
 
