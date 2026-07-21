@@ -21,10 +21,10 @@ the gate off despite a compose healthcheck being present:
    on-demand container and block until it reports healthy only for skipper to
    stop it again — wasteful, and a slow warm-up would time out into a spurious
    rollback. Before ADR-0046 these stacks were ungated precisely by *omitting*
-   `deploy_health_check`; ADR-0046 turned that omission into the trigger.
-   Several such stacks (mediatracker, vscode-server, monica, karakeep,
-   cyberchef, bentopdf on the homelab) declare a compose `healthcheck:`, so on
-   the first upgrade past ADR-0046 they would silently start being gated.
+   `deploy_health_check`; ADR-0046 turned that omission into the trigger. Such
+   a stack commonly declares a compose `healthcheck:` too (the on-demand app is
+   an ordinary web service between activations), so on the first upgrade past
+   ADR-0046 it would silently start being gated.
 
 2. **Monitoring-only healthchecks.** A compose `healthcheck:` is also
    legitimately present for reasons unrelated to deploy gating — external
@@ -75,9 +75,9 @@ situations while keeping the on-demand case zero-config.
 ## Consequences
 
 - On-demand stacks need **no** `deploy_health_check` line to stay ungated —
-  skipper suppresses the gate from `on_demand_containers` alone. The NixOS
-  homelab module therefore renders nothing extra for them; the earlier plan to
-  emit `deploy_health_check: false` per on-demand stack is unnecessary.
+  skipper suppresses the gate from `on_demand_containers` alone. A config
+  generator (e.g. a NixOS module) therefore renders nothing extra for them; no
+  per-stack `deploy_health_check: false` is needed.
 - Any stack can still keep a compose `healthcheck:` for monitoring while opting
   out of the deploy gate with one line: `deploy_health_check: false`.
 - `deploy_health_check: false` is part of a stack's `ConfigHash`
