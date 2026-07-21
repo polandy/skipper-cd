@@ -189,7 +189,11 @@ func FontsHandler() http.Handler {
 // broadcaster is configured, the current autosync and queue snapshots, then
 // streams live deploy and state (autosync/queue) events. Supports
 // Last-Event-ID for reconnection of the deploy history.
-func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.Broadcaster[events.StateEvent], history *events.History, initialState func() []events.StateEvent) http.Handler {
+// The initial UI state (autosync, stacks, health, …) is no longer replayed on
+// this stream — the UI fetches it from GET /api/v1/snapshot on every (re)open
+// (ADR-0039). This stream replays the deploy-event history and then carries
+// live deploy events plus live state changes.
+func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.Broadcaster[events.StateEvent], history *events.History) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -215,14 +219,6 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 		for _, evt := range historyEvents {
 			if err := writeSSE(w, evt); err != nil {
 				return
-			}
-		}
-		// Send the current autosync + queue snapshots so a fresh tab paints.
-		if initialState != nil {
-			for _, se := range initialState() {
-				if err := writeSSEState(w, se); err != nil {
-					return
-				}
 			}
 		}
 		flusher.Flush()
@@ -352,6 +348,28 @@ func writeSSEState(w http.ResponseWriter, se events.StateEvent) error {
 	}
 	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", se.Name, data)
 	return err
+}
+
+// SnapshotHandler serves GET /api/v1/snapshot — the current UI state as one
+// JSON object keyed by state-event name, e.g.
+// {"stacks": {...}, "health": {...}, "autosync": {...}, ...}. The values are
+// the same payloads the SSE stream publishes under those event names, built
+// from the same collector, so the REST snapshot and the live stream cannot
+// drift (ADR-0039). It is the read surface external consumers poll — notably
+// the multi-host fan-in (ADR-0048) — and the UI's own initial paint, replacing
+// the former SSE initial-state burst. `collect` may refresh live subsystems as
+// a side effect (the same refresh a fresh SSE connection triggers).
+func SnapshotHandler(collect func() []events.StateEvent) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		snap := make(map[string]any, len(events.AllStateNames))
+		for _, se := range collect() {
+			snap[se.Name] = se.Data
+		}
+		w.Header().Set("Content-Type", "application/json")
+		// The status header is implicitly 200; a failed body write cannot be
+		// reported to the client anymore.
+		_ = json.NewEncoder(w).Encode(snap)
+	})
 }
 
 // DiffHandler serves GET /api/events/{id}/diffs — returns the diff content

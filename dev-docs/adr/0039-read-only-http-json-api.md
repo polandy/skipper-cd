@@ -1,9 +1,15 @@
 # ADR-0039: Read-only HTTP JSON API (snapshot + stream)
 
-Status: proposed. Parked for want of a concrete consumer when written; as of
-2026-07-21 **[ADR-0048](0048-multi-host-federated-ui.md) (multi-host
-federated UI) is that consumer** — its read-data fan-in is built on this
-`/api/v1`, so shipping multi-host requires shipping this first.
+Status: accepted. Parked for want of a concrete consumer when written;
+**[ADR-0048](0048-multi-host-federated-ui.md) (multi-host federated UI) is
+that consumer** — its read-data fan-in polls this API, so it ships first.
+**Core implemented 2026-07-21**: `GET /api/v1/snapshot` (the whole state as
+one JSON document, built from the same collector as the SSE stream so the two
+cannot drift) plus the UI dogfooding it — the initial paint now fetches
+`/api/v1/snapshot` on every SSE (re)open, and the SSE stream no longer replays
+an initial state burst. The remaining per-topic endpoints in this ADR
+(`/api/v1/stacks`, `/api/v1/deploys`, …) are additive within this design and
+deferred until a consumer needs them.
 Date: 2026-07-19
 
 ## Context

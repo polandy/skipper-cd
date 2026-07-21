@@ -475,7 +475,7 @@ func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 	history.Add(events.DeployEvent{ID: 1, Stack: "gitea", Status: events.StatusSuccess})
 	history.Add(events.DeployEvent{ID: 2, Stack: "traefik", Status: events.StatusFailed, Error: "timeout"})
 
-	handler := SSEHandler(broadcaster, nil, history, nil)
+	handler := SSEHandler(broadcaster, nil, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	rec := serveSSE(t, handler, req, nil)
 
@@ -494,7 +494,7 @@ func TestSSEHandler_FiltersHistoryByLastEventID(t *testing.T) {
 	history.Add(events.DeployEvent{ID: 1, Stack: "old"})
 	history.Add(events.DeployEvent{ID: 2, Stack: "new"})
 
-	handler := SSEHandler(broadcaster, nil, history, nil)
+	handler := SSEHandler(broadcaster, nil, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	req.Header.Set("Last-Event-ID", "1")
 	rec := serveSSE(t, handler, req, nil)
@@ -512,7 +512,7 @@ func TestSSEHandler_StreamsLiveEvents(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")
 
-	handler := SSEHandler(broadcaster, nil, history, nil)
+	handler := SSEHandler(broadcaster, nil, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	rec := serveSSE(t, handler, req, func() {
 		broadcaster.Publish(events.DeployEvent{
@@ -535,7 +535,7 @@ func TestSSEHandler_SetsCorrectHeaders(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")
 
-	handler := SSEHandler(broadcaster, nil, history, nil)
+	handler := SSEHandler(broadcaster, nil, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	rec := serveSSE(t, handler, req, nil)
 
@@ -646,7 +646,7 @@ func TestSSEHandler_StripsDiffsFromStream(t *testing.T) {
 		Diffs:  map[string]string{"file.yml": "+added"},
 	})
 
-	handler := SSEHandler(broadcaster, nil, history, nil)
+	handler := SSEHandler(broadcaster, nil, history)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	rec := serveSSE(t, handler, req, nil)
 
