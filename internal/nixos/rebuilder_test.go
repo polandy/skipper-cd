@@ -155,7 +155,7 @@ func TestRebuild_StartsFireAndForgetTransientUnitThenReportsSuccess(t *testing.T
 	r := New(runner)
 	r.pollInterval = 0 // no real sleeping in tests
 
-	if err := r.Rebuild(context.Background(), dir, ".#nuc"); err != nil {
+	if err := r.Rebuild(context.Background(), dir, ".#host-a"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -183,7 +183,7 @@ func TestRebuild_StartsFireAndForgetTransientUnitThenReportsSuccess(t *testing.T
 	if !slices.ContainsFunc(c.args, func(a string) bool { return strings.HasPrefix(a, "--setenv=PATH=") }) {
 		t.Errorf("expected PATH to be propagated, got args=%v", c.args)
 	}
-	wantTail := []string{"nixos-rebuild", "switch", "--flake", ".#nuc"}
+	wantTail := []string{"nixos-rebuild", "switch", "--flake", ".#host-a"}
 	if len(c.args) < len(wantTail) || !slices.Equal(c.args[len(c.args)-len(wantTail):], wantTail) {
 		t.Errorf("expected args to end with %v, got %v", wantTail, c.args)
 	}
@@ -201,7 +201,7 @@ func TestRebuild_ReturnsErrorWhenUnitFails(t *testing.T) {
 	r := New(runner)
 	r.pollInterval = 0
 
-	err := r.Rebuild(context.Background(), t.TempDir(), ".#nuc")
+	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a")
 	if err == nil {
 		t.Fatal("expected error when the rebuild unit ends failed")
 	}
@@ -215,7 +215,7 @@ func TestRebuild_ReturnsErrorWhenStartFails(t *testing.T) {
 	r := New(runner)
 	r.pollInterval = 0
 
-	if err := r.Rebuild(context.Background(), t.TempDir(), ".#nuc"); err == nil {
+	if err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a"); err == nil {
 		t.Fatal("expected error when systemd-run fails to start the unit")
 	}
 }
@@ -235,7 +235,7 @@ func TestRebuild_AbandonsWaitOnContextCancel(t *testing.T) {
 	r := New(runner)
 	r.pollInterval = 0
 
-	err := r.Rebuild(ctx, t.TempDir(), ".#nuc")
+	err := r.Rebuild(ctx, t.TempDir(), ".#host-a")
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled (abandoned wait), got %v", err)
 	}

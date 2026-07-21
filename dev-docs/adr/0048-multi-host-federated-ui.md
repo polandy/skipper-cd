@@ -5,7 +5,7 @@ Date: 2026-07-21
 
 ## Context
 
-A homelab running skipper on more than one host (today: nuc + argoneon) has
+A homelab running skipper on more than one host (today: host-a + host-b) has
 no single place to look — each host's UI only ever shows that host's own
 stacks. ArgoCD's answer to "many hosts, one view" is a central control
 plane: one server holds the desired state for every cluster and pushes to
@@ -100,7 +100,7 @@ not designed speculatively now.
 1. **Returning from a peer.** Every skipper ships the same self-contained
    UI (ADR-0035); a peer's page only renders its own switcher if *that*
    host also has `peers:` configured. In the intended one-primary setup
-   (only the primary lists peers), a page loaded via `/peer/argoneon/` has
+   (only the primary lists peers), a page loaded via `/peer/host-b/` has
    no switcher of its own — only the browser back button. Needs a decision
    between requiring reciprocal `peers:` config on every federated host, or
    making the switcher detect a `/peer/<name>/` path prefix client-side

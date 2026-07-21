@@ -419,7 +419,7 @@ func TestRebuildNixOS_SuccessEventIncludesDiffs(t *testing.T) {
 	state.LastDeployedCommit = "old-sha"
 
 	enabled := true
-	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"}}
+	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"}}
 
 	if ok := d.rebuildNixOSIfChanged(context.Background(), cfg, state); !ok {
 		t.Fatal("expected nixos-rebuild to succeed")

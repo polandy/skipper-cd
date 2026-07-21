@@ -50,7 +50,7 @@ stacks:
 # The skipper-cd systemd service must run as root for nixos-rebuild to work.
 # Omit this section entirely to disable NixOS rebuild.
 nixos_rebuild:
-  flake: ".#nuc"    # required; passed as: nixos-rebuild switch --flake <flake>
+  flake: ".#host-a"    # required; passed as: nixos-rebuild switch --flake <flake>
   # enabled: false  # set to false to temporarily disable without removing the section
 
 # Web-UI service icons (only used when ui_enabled). Omit to use the defaults below.
@@ -65,7 +65,7 @@ nixos_rebuild:
 #     url: http://localhost:8020           # signal-api base; /v2/send is appended
 #     number: "+491234567890"              # sender (required for signal)
 #     recipients: ["+491234567890"]        # recipients (required for signal)
-#     prefix: nuc                          # optional; message becomes "[nuc] …"
+#     prefix: host-a                       # optional; message becomes "[host-a] …"
 #     # on: [failed, success, rolled_back, rolled_back_unhealthy] # default; subset of these four
 #   - format: generic                      # a second, independent target for failures
 #     url: https://ntfy.example.com/skipper

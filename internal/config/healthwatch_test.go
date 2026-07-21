@@ -38,13 +38,13 @@ health_watch:
       url: http://localhost:8020
       number: "+4100000000"
       recipients: ["+4111111111"]
-      prefix: nuc
+      prefix: host-a
 `)
 	hw := cfg.HealthWatch
 	if hw.DebouncePolls != 3 || hw.AttributionWindowSeconds != 60 {
 		t.Errorf("explicit values not honoured: %+v", hw)
 	}
-	if len(hw.Targets) != 1 || hw.Targets[0].Prefix != "nuc" {
+	if len(hw.Targets) != 1 || hw.Targets[0].Prefix != "host-a" {
 		t.Errorf("unexpected targets: %+v", hw.Targets)
 	}
 }

@@ -47,7 +47,7 @@ func unhealthyAlert() healthwatch.Alert {
 
 func TestHealthAlerter_SignalMessageForNewFailure(t *testing.T) {
 	doer := &fakeDoer{}
-	a := mustNewHealthAlerter(t, []config.NotificationTarget{signalHealthTarget("nuc")}, doer)
+	a := mustNewHealthAlerter(t, []config.NotificationTarget{signalHealthTarget("host-a")}, doer)
 
 	a.handle(context.Background(), unhealthyAlert())
 
@@ -59,7 +59,7 @@ func TestHealthAlerter_SignalMessageForNewFailure(t *testing.T) {
 	}
 	body := doer.bodies[0]
 	for _, want := range []string{
-		"[nuc]", "🚨", "vaultwarden/vaultwarden", "healthy → unhealthy",
+		"[host-a]", "🚨", "vaultwarden/vaultwarden", "healthy → unhealthy",
 		"was healthy 2h13m", "after deploy of a1b2c3d",
 	} {
 		if !strings.Contains(body, want) {

@@ -19,7 +19,7 @@ import (
 // outside the repo are left untouched.
 func TestEmit_ShortensPathsToRepoRelative(t *testing.T) {
 	repoDir := "/var/lib/skipper/repo"
-	inside := repoDir + "/system/argoneon/default.nix"
+	inside := repoDir + "/system/host-b/default.nix"
 	outside := "/etc/somewhere/else.nix"
 
 	d := &Deployer{repoDir: repoDir}
@@ -31,11 +31,11 @@ func TestEmit_ShortensPathsToRepoRelative(t *testing.T) {
 		diffs: map[string]string{inside: "diff-a", outside: "diff-b"},
 	})
 
-	wantFiles := []string{"system/argoneon/default.nix", outside}
+	wantFiles := []string{"system/host-b/default.nix", outside}
 	if !slices.Equal(got.ChangedFiles, wantFiles) {
 		t.Errorf("changed_files = %v, want %v", got.ChangedFiles, wantFiles)
 	}
-	if _, ok := got.Diffs["system/argoneon/default.nix"]; !ok {
+	if _, ok := got.Diffs["system/host-b/default.nix"]; !ok {
 		t.Errorf("diff key not shortened to repo-relative: %v", got.Diffs)
 	}
 	if _, ok := got.Diffs[outside]; !ok {

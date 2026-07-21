@@ -74,14 +74,14 @@ stacks: []
 notifications:
   - format: signal
     url: http://localhost:8020
-    prefix: argoneon
+    prefix: host-b
     number: "+491234567890"
     recipients: ["+491234567890"]
 `
 	cfg := loadFromString(t, content)
 
-	if got := cfg.Notifications[0].Prefix; got != "argoneon" {
-		t.Errorf("prefix = %q, want %q", got, "argoneon")
+	if got := cfg.Notifications[0].Prefix; got != "host-b" {
+		t.Errorf("prefix = %q, want %q", got, "host-b")
 	}
 }
 

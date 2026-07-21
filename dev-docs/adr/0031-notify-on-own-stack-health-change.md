@@ -232,7 +232,7 @@ health_watch:                      # cadence = health_poll_interval_seconds (mus
       url: http://localhost:8020
       number: "+41..."
       recipients: ["+41..."]
-      prefix: nuc
+      prefix: host-a
 ```
 
 There is deliberately no `interval_seconds` of its own — the watchdog rides the
@@ -240,7 +240,7 @@ shared poller's `health_poll_interval_seconds` (like self-heal), and validation
 rejects `health_watch` when that is 0. Omitting the whole section disables the
 feature, so existing installs are unaffected. Per-host control follows the
 established pattern (a NixOS module option in the style of
-`healthPollIntervalSeconds`/`uiTheme`): argoneon can disable it while the NUC
+`healthPollIntervalSeconds`/`uiTheme`): host-b can disable it while host-a
 runs it. The history bound (10) is intentionally not exposed.
 
 ### Observability — logging + metrics
@@ -348,7 +348,7 @@ implementation PR is backend-only and deliberately exposes no unused API.
   concept and threads health through deploy-event plumbing. Rejected; the
   `HealthAlerter` reuses the transport without touching the event vocabulary.
 - **Gate the watcher on having ≥1 target.** Rejected: journal logging + persisted
-  history are valuable on their own (and argoneon currently has no local
+  history are valuable on their own (and host-b currently has no local
   signal-api); omitting the `health_watch` section is the off switch.
 
 ## Amendment (2026-07-17): per-service alert cooldown

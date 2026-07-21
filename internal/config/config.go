@@ -516,7 +516,7 @@ type IconsConfig struct {
 // flake.lock change in the repository.
 type NixOSRebuild struct {
 	Enabled *bool  `yaml:"enabled"` // nil = true when section present
-	Flake   string `yaml:"flake"`   // e.g. ".#nuc", required when enabled
+	Flake   string `yaml:"flake"`   // e.g. ".#host-a", required when enabled
 }
 
 // IsEnabled returns whether NixOS rebuild is enabled.

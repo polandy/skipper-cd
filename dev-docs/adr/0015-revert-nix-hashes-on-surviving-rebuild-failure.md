@@ -20,7 +20,7 @@ rebuild, and the change is silently never applied while state claims it is
 done. This is the same silent-partial-update failure class as the old
 deadlock, reached through a different door.
 
-This bit argoneon in production on 2026-07-11: `switch-to-configuration`
+This bit host-b in production on 2026-07-11: `switch-to-configuration`
 aborted with `Failed to get GID for root … Unknown object
 '/org/freedesktop/login1/user/_0'` (a logind race while reloading user units).
 The rebuild failed, skipper stayed up, yet `_nixos` was marked done.
