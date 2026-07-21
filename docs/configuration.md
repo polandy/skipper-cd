@@ -531,7 +531,9 @@ A tick is skipped while a deploy is already in flight (a reconcile carries no un
 
 Periodic reconcile closes drift on the **git axis** (git changed, live didn't). Self-heal closes it on the **runtime axis**: a stack the [health poller](#stack-health) finds degraded — a container that was stopped or removed out of band, exhausted its restart policy, or turned `unhealthy` — is automatically restored to its **currently deployed** running state by a corrective `docker compose up -d`. It is **not** a git deploy: the desired version is unchanged, so there is no change detection and no rollback — it only restarts what should already be running.
 
-Self-heal is **opt-in and off by default**. Enable it globally with `self_heal: true`, or per stack, and leave it off for stacks you deliberately stop (an on-demand scheduler, a one-shot job). It is a backstop for the cases Docker's own `restart:` policy cannot handle — recreating a removed container, recovering an exhausted policy, reacting to a failing `HEALTHCHECK` — not a replacement for it; set a restart policy too.
+Self-heal is **opt-in and off by default**. Enable it globally with `self_heal: true`, or per stack, and leave it off for stacks you deliberately stop (a one-shot job). It is a backstop for the cases Docker's own `restart:` policy cannot handle — recreating a removed container, recovering an exhausted policy, reacting to a failing `HEALTHCHECK` — not a replacement for it; set a restart policy too.
+
+An idle [`on_demand_containers`](#stack-fields) container is exempt: skipper stops it on purpose after each deploy, so its `stopped` state is not drift and self-heal never wakes it — even under a global `self_heal: true`. An on-demand container in any other bad state (crash-looping, `unhealthy`) is still a real failure and is healed as usual.
 
 Guardrails keep it from fighting a genuinely broken stack:
 
