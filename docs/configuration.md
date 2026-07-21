@@ -130,7 +130,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. The [Stack health](#stack-health) view and the [health watch](#health-watch) know about this: an exited on-demand container reads as `stopped` (its intended idle state) whatever its exit code — never as `unhealthy`. Docker Compose auto-generates container names (`<project>-<service>-1`) unless the service sets `container_name:`; a name here that matches no declared `container_name` logs a startup-adjacent warning at deploy time (not a hard error, since the auto-generated name may still happen to be right) — set `container_name:` on the corresponding service to make it deterministic and checked. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
-| `deploy_health_check` | section | no | automatic if the compose file has a `healthcheck:` | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this section to change the timeout or add an HTTP probe. See [Health-check-gated rollback](#health-check-gated-rollback). |
+| `deploy_health_check` | section or bool | no | automatic if the compose file has a `healthcheck:` | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this as a section to change the timeout or add an HTTP probe. The scalar `false` explicitly disables the gate (keep a compose `healthcheck:` without gating on it — needed for `on_demand_containers`); `true` enables it at the defaults. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
@@ -201,6 +201,15 @@ As soon as any service in the stack's compose file declares a `healthcheck:`, sk
 
 Add an explicit `deploy_health_check` section only to change the default 60s timeout, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `deploy_health_check` itself.
 
+**Opting out of the automatic gate.** To keep a compose `healthcheck:` (for external monitoring, `docker ps` status, or an orchestrator) *without* letting skipper `--wait` on it and roll back, set the scalar `deploy_health_check: false`. It overrides the automatic gate so the stack deploys with a plain `up`. This is the right setting for [`on_demand_containers`](#stack-fields) stacks: `--wait` would cold-start the on-demand container only for skipper to stop it again, and a slow warm-up would time out into a spurious rollback. The scalar `deploy_health_check: true` is the inverse — gate on at the defaults, equivalent to an empty `deploy_health_check: {}` mapping.
+
+```yaml
+stacks:
+  - name: mediatracker
+    on_demand_containers: [mediatracker-app]
+    deploy_health_check: false   # keep the compose healthcheck, but don't gate the deploy on it
+```
+
 ### Stage 2 — the HTTP probe (optional)
 
 Only when `url` is set: after a successful `up`, skipper-cd GETs the URL every 2 seconds until it answers with a 2xx status; anything else for `timeout_seconds` fails the deploy. The probe runs **from the skipper-cd host**, so the URL must be reachable from there (a published port on `localhost`, or a routable address via a reverse proxy). Use it when the stack has no internal `healthcheck:` but does expose a reachable endpoint, or as an extra end-to-end check on top of stage 1.
@@ -214,7 +223,7 @@ The rollback itself is verified through the same gate: its `up` also runs with `
 | `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
 | `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
 
-> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Don't enable `deploy_health_check` on stacks with deliberate one-shot containers, or model those as [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependencies.
+> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. On a stack with deliberate one-shot or on-demand containers, set `deploy_health_check: false` to opt out of the gate (even if the compose file has a `healthcheck:`), or model the one-shot as a [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependency.
 
 ## Deploy hooks
 

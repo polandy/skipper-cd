@@ -434,6 +434,12 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	if withAutosync := hashFor(t, &Stack{Autosync: boolPtr(false)}); withAutosync != base {
 		t.Error("ConfigHash must ignore autosync")
 	}
+	// deploy_health_check shapes the deploy (--wait gate) → hashed. An explicit
+	// off-switch (ADR-0049) must hash distinctly from absence, so toggling it
+	// deploys the stack once under the new gate policy.
+	if withDisabled := hashFor(t, &Stack{DeployHealthCheck: &HealthCheck{Enabled: boolPtr(false)}}); withDisabled == base {
+		t.Error("ConfigHash must change when deploy_health_check is explicitly disabled")
+	}
 }
 
 func TestLoadRepoStacks_AppliesHookOverrides(t *testing.T) {

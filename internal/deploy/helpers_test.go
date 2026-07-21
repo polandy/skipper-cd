@@ -180,3 +180,6 @@ func assertCommandNotCalled(t *testing.T, calls []runCall, subcommand string) {
 		}
 	}
 }
+
+// boolPtr returns a pointer to b, for optional *bool config fields in tests.
+func boolPtr(b bool) *bool { return &b }

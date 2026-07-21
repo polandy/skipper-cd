@@ -125,6 +125,18 @@ func TestResolveHealthCheck_AutoDetectsFromComposeHealthcheck(t *testing.T) {
 	}
 }
 
+func TestResolveHealthCheck_ExplicitDisableOverridesAutoDetect(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, composeWithHealthcheck("nginx:1.26"))
+	cf := mustParseCompose(t, path)
+
+	disabled := &config.HealthCheck{Enabled: boolPtr(false)}
+	if got := resolveHealthCheck(disabled, cf); got != nil {
+		t.Errorf("expected an explicit deploy_health_check: false to suppress the automatic gate, got %+v", got)
+	}
+}
+
 func TestResolveHealthCheck_NilWithoutComposeHealthcheck(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "docker-compose.yml")
@@ -240,6 +252,23 @@ func TestDeployStack_AutoDetectsHealthCheckFromComposeHealthcheck(t *testing.T) 
 			t.Errorf("expected up args to contain %q, got %v", want, ups[0].args)
 		}
 	}
+}
+
+func TestDeployStack_ExplicitDisableSkipsAutoGate(t *testing.T) {
+	// The compose file has a healthcheck: (which would auto-gate per ADR-0046),
+	// but the stack sets deploy_health_check: false — the on-demand case.
+	baseDir := makeBaseWithHealthcheckStack(t)
+
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+	d.stateDir = t.TempDir()
+
+	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{Enabled: boolPtr(false)}}
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertCommandNotCalled(t, runner.calls, "--wait")
 }
 
 func TestDeployStack_ExplicitHealthCheckOverridesAutoDetect(t *testing.T) {

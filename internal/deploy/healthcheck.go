@@ -18,8 +18,16 @@ import (
 // also requiring a redundant deploy_health_check: {} per stack (ADR-0046). A
 // stack with no compose healthcheck anywhere, or whose compose file failed to
 // parse, stays ungated exactly as an explicit absence would.
+//
+// An explicit deploy_health_check: false (ADR-0049) suppresses the automatic
+// gate: it is the one way to keep a compose healthcheck: for external
+// monitoring without letting skipper --wait on it — the case an on-demand
+// container needs, since --wait would cold-start it only to be stopped again.
 func resolveHealthCheck(explicit *config.HealthCheck, cf *composeFile) *config.HealthCheck {
 	if explicit != nil {
+		if explicit.IsDisabled() {
+			return nil
+		}
 		return explicit
 	}
 	if cf == nil || !cf.hasHealthcheck() {
