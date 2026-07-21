@@ -176,19 +176,24 @@ function orphanMatchesQuery(o, q) {
 }
 
 // HOST_COLOR_COUNT is how many distinct per-host identity colours the palette
-// provides (ADR-0048). Colours are assigned by a host's position in the ordered
-// host set (self first, then peers in config order), wrapping past this many —
-// the app.css `[data-host-color="N"]` slots must match this count per theme.
+// provides (ADR-0048) — the app.css `[data-host-color="N"]` slots must match
+// this count per theme.
 const HOST_COLOR_COUNT = 6;
 
-// hostColorIndex gives a host its stable identity-colour slot: its position in
-// the ordered host set, wrapped to the palette size. Order (not a hash) keeps
-// "the first host is blue" predictable and clear of near-hue collisions. An
-// unknown name falls back to slot 0.
-function hostColorIndex(name, orderedNames) {
-  const i = (orderedNames || []).indexOf(name);
-  if (i < 0) return 0;
-  return i % HOST_COLOR_COUNT;
+// hostColorIndex assigns a host its identity-colour slot automatically and
+// deterministically from its name alone: a fixed FNV-1a hash of the name,
+// wrapped to the palette size. Hashing the name (not the host's position in the
+// set) means a host keeps the same colour regardless of host-set order, how
+// many peers exist, or which instance is the primary — "host-b is always the
+// same colour" holds everywhere it appears.
+function hostColorIndex(name) {
+  let hash = 0x811c9dc5; // FNV-1a 32-bit offset basis
+  const s = name || '';
+  for (let i = 0; i < s.length; i++) {
+    hash ^= s.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193); // FNV prime
+  }
+  return (hash >>> 0) % HOST_COLOR_COUNT;
 }
 
 // hostFilterActive reports whether the Hosts filter is narrowing the view (a

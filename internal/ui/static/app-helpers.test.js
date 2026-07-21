@@ -175,20 +175,21 @@ test('logLineVisible: empty query shows all, else case-insensitive contains', ()
   assert.equal(h.logLineVisible('', 'x'), false);
 });
 
-test('hostColorIndex: stable by position in the ordered host set', () => {
-  const hosts = ['host-a', 'host-b', 'host-c'];
-  assert.equal(h.hostColorIndex('host-a', hosts), 0); // self is first
-  assert.equal(h.hostColorIndex('host-b', hosts), 1);
-  assert.equal(h.hostColorIndex('host-c', hosts), 2);
-  assert.equal(h.hostColorIndex('unknown', hosts), 0); // fallback
-  assert.equal(h.hostColorIndex('host-a', hosts), 0); // deterministic
+test('hostColorIndex: deterministic function of the name, in palette range', () => {
+  // Same name → same slot every time, independent of any surrounding host set.
+  assert.equal(h.hostColorIndex('host-b'), h.hostColorIndex('host-b'));
+  // In-range for the palette.
+  for (const n of ['host-a', 'host-b', 'host-c', 'nuc', 'argoneon', '']) {
+    const i = h.hostColorIndex(n);
+    assert.ok(Number.isInteger(i) && i >= 0 && i < h.HOST_COLOR_COUNT, n + ' -> ' + i);
+  }
 });
 
-test('hostColorIndex wraps past the palette size', () => {
-  const many = [];
-  for (let i = 0; i < h.HOST_COLOR_COUNT + 2; i++) many.push('h' + i);
-  assert.equal(h.hostColorIndex('h' + h.HOST_COLOR_COUNT, many), 0); // wrapped
-  assert.equal(h.hostColorIndex('h' + (h.HOST_COLOR_COUNT + 1), many), 1);
+test('hostColorIndex: independent of order/count (name-based, not positional)', () => {
+  // Whatever slot host-c hashes to, it is the same whether it is the only host
+  // or one of many — the colour follows the name, not its position.
+  const solo = h.hostColorIndex('host-c');
+  assert.equal(h.hostColorIndex('host-c'), solo);
 });
 
 test('hostFilterActive: only a strict non-empty subset lights the control', () => {
