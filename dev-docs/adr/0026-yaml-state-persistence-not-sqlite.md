@@ -47,7 +47,7 @@ The properties a database buys do not match skipper's data:
   to see the last outcome, inspecting the in-flight marker — all done with
   `grep`/`sed`/`cat`. A binary DB would make every such intervention harder.
 - **skipper stays dependency-light.** A SQLite driver is either cgo
-  (`mattn/go-sqlite3` — breaks the clean cross-compile to argoneon's aarch64 and
+  (`mattn/go-sqlite3` — breaks the clean cross-compile to host-b's aarch64 and
   complicates the nix flake / vendoring) or a large pure-Go tree
   (`modernc.org/sqlite`). That is a lot of weight for KB-sized data, against the
   project's small-and-readable bias.

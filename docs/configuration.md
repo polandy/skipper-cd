@@ -352,7 +352,7 @@ notifications:
     url: http://localhost:8020        # service base; /v2/send is appended
     number: "+491234567890"           # sender (required for signal)
     recipients: ["+491234567890"]     # recipients (required for signal)
-    prefix: nuc                       # optional; message becomes "[nuc] …"
+    prefix: host-a                    # optional; message becomes "[host-a] …"
     # on:  defaults to [failed, success, rolled_back, rolled_back_unhealthy, heal_exhausted]
 
   # A second, independent target for failures only.
@@ -477,7 +477,7 @@ health_watch:                      # cadence = runtime_health_poll_interval_seco
       url: http://localhost:8020
       number: "+491234567890"
       recipients: ["+491234567890"]
-      prefix: nuc
+      prefix: host-a
 ```
 
 | Field | Type | Required | Default | Description |

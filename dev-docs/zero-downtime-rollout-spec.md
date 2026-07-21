@@ -276,7 +276,7 @@ visual baseline needed if the idle header is unchanged.
 
 ## Open questions
 
-1. **Stop grace / connection draining. — ANSWERED (real Traefik test, argoneon
+1. **Stop grace / connection draining. — ANSWERED (real Traefik test, host-b
    2026-07-19).** A real cutover behind Traefik v3.7.7 showed a brief race, so
    `drain_seconds` was added: after the canary is healthy skipper waits
    `rollout.drain_seconds` before removing the old container (the equivalent of

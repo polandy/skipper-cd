@@ -336,9 +336,9 @@ func TestCommitsSinceCommit_LogsRangeRestrictedToFiles(t *testing.T) {
 }
 
 func TestParseCommitLog_SkipsMalformedLines(t *testing.T) {
-	out := "abc123\x1fAndy\x1f2026-07-15T13:58:41+02:00\x1ffix: retry send\n" +
+	out := "abc123\x1fJane Doe\x1f2026-07-15T13:58:41+02:00\x1ffix: retry send\n" +
 		"garbage-without-separators\n" +
-		"def456\x1fAndy\x1f2026-07-15T14:19:07+02:00\x1ffeat: bump"
+		"def456\x1fJane Doe\x1f2026-07-15T14:19:07+02:00\x1ffeat: bump"
 	commits := parseCommitLog(out)
 	if len(commits) != 2 {
 		t.Fatalf("expected 2 valid commits (1 malformed skipped), got %d", len(commits))

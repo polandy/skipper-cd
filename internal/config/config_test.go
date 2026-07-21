@@ -353,15 +353,15 @@ repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: /var/lib/skipper/repo/modules
 stacks: []
 nixos_rebuild:
-  flake: ".#nuc"
+  flake: ".#host-a"
 `
 	cfg := loadFromString(t, content)
 
 	if !cfg.NixOSRebuild.IsEnabled() {
 		t.Error("expected NixOSRebuild to be enabled")
 	}
-	if cfg.NixOSRebuild.Flake != ".#nuc" {
-		t.Errorf("expected flake '.#nuc', got %q", cfg.NixOSRebuild.Flake)
+	if cfg.NixOSRebuild.Flake != ".#host-a" {
+		t.Errorf("expected flake '.#host-a', got %q", cfg.NixOSRebuild.Flake)
 	}
 }
 
@@ -372,7 +372,7 @@ stacks_base_dir: /var/lib/skipper/repo/modules
 stacks: []
 nixos_rebuild:
   enabled: false
-  flake: ".#nuc"
+  flake: ".#host-a"
 `
 	cfg := loadFromString(t, content)
 
@@ -690,7 +690,7 @@ func TestLoad_NoNothingToDeployWarning_WithNixOSRebuildEnabled(t *testing.T) {
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stack_discovery: false
 nixos_rebuild:
-  flake: ".#nuc"
+  flake: ".#host-a"
 `
 	cfg := loadFromString(t, content)
 	if len(cfg.Warnings) != 0 {

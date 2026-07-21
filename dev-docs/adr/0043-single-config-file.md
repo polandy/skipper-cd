@@ -140,7 +140,7 @@ Concretely:
   override edit redeploys exactly that stack; it is just sourced from the host
   config now. The UI loses the "show the git diff of the changed repo file" for
   config-driven redeploys — the config is no longer a file in the deploy repo.
-- **Migration.** nuc and argoneon currently run discovery with committed repo
+- **Migration.** host-a and host-b currently run discovery with committed repo
   `skipper.yaml` overrides (LIVE). Accepting this ADR means moving those
   overrides into each host's NixOS module and deleting the repo files, in one
   coordinated change per host. Until migrated, both hosts keep working on the

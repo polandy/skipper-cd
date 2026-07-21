@@ -7,7 +7,7 @@ Date: 2026-07-18
 
 ## Goal
 
-One pane of glass for a multi-host homelab (nuc + argoneon today): a single
+One pane of glass for a multi-host homelab (host-a + host-b today): a single
 skipper UI that shows every host's stacks, deploy history, health, and
 events. ArgoCD's answer is a central control plane managing many clusters;
 skipper's answer stays decentralized — **every host keeps running its own
@@ -22,10 +22,10 @@ deploys and still serves its own UI.
 ## User model
 
 ```yaml
-# nuc's skipper.yml (the federating instance)
+# host-a's skipper.yml (the federating instance)
 peers:
-  - name: argoneon
-    url: http://argoneon:8001
+  - name: host-b
+    url: http://host-b:8001
 ```
 
 - `peers` is optional; without it nothing changes. Any instance may list
@@ -63,7 +63,7 @@ The federating instance mounts a path-prefixed reverse proxy per peer:
 - Auth: peers sit behind the primary's existing front-auth (Authelia)
   because the browser only ever talks to the primary. Peers can then
   firewall their own port to the primary's IP (same pattern as
-  signal-api's `allowedClientIP` on nuc).
+  signal-api's `allowedClientIP` on host-a).
 
 ## Behavior details
 
@@ -102,14 +102,14 @@ The federating instance mounts a path-prefixed reverse proxy per peer:
    no server change, but real UI work. Proposed: ship switcher first,
    decide after living with it.
 2. Should notifications gain the host prefix automatically from `peers`
-   config? Today the `[nuc]`/`[argoneon]` prefix is manual per-target
+   config? Today the `[host-a]`/`[host-b]` prefix is manual per-target
    config — orthogonal, leave as is.
 3. **Getting back from a peer isn't solved yet.** Every skipper instance
    ships the same self-contained UI (ADR-0035), so a peer's page — served
    fresh by the peer itself, only forwarded through the primary's proxy —
    only shows its own switcher if *that* host also has `peers:` configured.
-   In the intended one-primary setup (only nuc lists peers), a page loaded
-   via `/peer/argoneon/` has no switcher at all once you're on it, only
+   In the intended one-primary setup (only host-a lists peers), a page loaded
+   via `/peer/host-b/` has no switcher at all once you're on it, only
    the browser's back button. Two ways out: (a) require reciprocal
    `peers:` on every federated host, so each one's own page always renders
    a switcher; or (b) make the switcher **path-aware, not config-aware**

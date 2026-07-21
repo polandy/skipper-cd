@@ -89,8 +89,8 @@ There is deliberately **no separate enable/disable boolean**. The three gates
 above plus `health_poll_interval_seconds: 0` already cover "off", so a fourth,
 redundant switch would only add config surface. Per-host control is the NixOS
 module option (`healthPollIntervalSeconds`, in the style of `uiTheme`/
-`notifications`): a weaker host such as argoneon can raise the interval or set it
-to `0` while the NUC keeps the default.
+`notifications`): a weaker host such as host-b can raise the interval or set it
+to `0` while host-a keeps the default.
 
 ### The `health` SSE snapshot
 
@@ -164,7 +164,7 @@ maintainer eyeballs the rendered pill before the e2e mask is finalized.
   ARM host, more effective than any on/off toggle. It is not the initial choice
   because it trades compose's clean per-service `Health` field for scraping the
   `Status` string (`(healthy)`/`(unhealthy)`/`(health: starting)`), which is
-  brittler. Adopt it only if profiling on argoneon shows the per-stack calls
+  brittler. Adopt it only if profiling on host-b shows the per-stack calls
   actually matter; the subscriber-gated default is cheap enough until then.
 - **Push health from a compose/Docker event stream** (`docker events`). A live
   stream avoids polling but means holding a long-lived subprocess and parsing an

@@ -59,7 +59,7 @@ stack's `ConfigHash`, so its rename triggers no redeploy.
   downtime for an unchanged deploy) — accepted, not worth a migration shim for
   two single-admin hosts.
 - **Migration required on both homelab hosts**: every `health_check:` /
-  `health_poll_interval_seconds:` in nuc's and argoneon's NixOS config must
+  `health_poll_interval_seconds:` in host-a's and host-b's NixOS config must
   become `deploy_health_check:` / `runtime_health_poll_interval_seconds:`
   before or alongside the upgrade. A leftover `health_check:` silently stops
   gating the stack (falls back to the automatic compose-`healthcheck:` gate

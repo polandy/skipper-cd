@@ -13,7 +13,7 @@ missing is *retention and per-stack access*, not new data.
 Today those events land in one structure — `events.History`:
 
 - It is a **single global ring buffer capped at 100 events** across *all*
-  stacks. On a host with ~27 stacks (the nuc), a handful of active stacks evict
+  stacks. On a host with ~27 stacks (host-a), a handful of active stacks evict
   everyone else's records within a day. The cap exists to bound the live feed,
   not to preserve a history.
 - It has **no per-stack query**. The Deploys view pulls the whole 100-event

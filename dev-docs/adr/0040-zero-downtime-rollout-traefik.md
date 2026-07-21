@@ -114,7 +114,7 @@ in tests.
   orchestrator, and no change to how deploys are triggered (still git-driven).
   Failure never drops the service — a genuine improvement over the recreate
   path's git-restore rollback, which briefly does.
-- **Verified on real Traefik (v3.7.7, argoneon, 2026-07-19).** A real cutover
+- **Verified on real Traefik (v3.7.7, host-b, 2026-07-19).** A real cutover
   confirmed the mechanics end-to-end, and surfaced a drain-edge race: "canary
   healthy" (docker healthcheck) precedes "proxy is routing to the new container".
   An optional **`drain_seconds`** (docker-rollout's `--wait-after-healthy`) was

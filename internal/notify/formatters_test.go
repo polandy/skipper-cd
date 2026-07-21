@@ -74,12 +74,12 @@ func TestSignalFormatter_RolledBackUnhealthyMessage(t *testing.T) {
 }
 
 func TestSignalFormatter_PrefixPrependsMessage(t *testing.T) {
-	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}, prefix: "argoneon"}
+	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}, prefix: "host-b"}
 	ev := events.DeployEvent{Stack: "jdownloader", Status: events.StatusSuccess, DurationMs: 3000}
 	req := mustFormat(t, f, ev)
 
 	msg, _ := bodyOf(t, req)["message"].(string)
-	if !strings.HasPrefix(msg, "[argoneon] ") {
+	if !strings.HasPrefix(msg, "[host-b] ") {
 		t.Errorf("message should start with the host prefix, got %q", msg)
 	}
 	if !strings.Contains(msg, "jdownloader") {

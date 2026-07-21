@@ -36,7 +36,7 @@ func TestDeployAllStacks_AbortsStacksWhenNixOSFails(t *testing.T) {
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: filepath.Join(baseDir, "modules"),
 		Stacks:        []config.Stack{{Name: "gitea"}},
-		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"},
 	}
 
 	d.DeployAllStacks(context.Background(), cfg)
@@ -105,7 +105,7 @@ func TestDeployAllStacks_ShutdownDuringRebuildAbortsStackDeploys(t *testing.T) {
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: filepath.Join(baseDir, "modules"),
 		Stacks:        []config.Stack{{Name: "gitea"}},
-		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"},
 	}
 
 	done := make(chan struct{})
@@ -153,7 +153,7 @@ func TestDeployAllStacks_NixOSSuccessContinuesToDockerStacks(t *testing.T) {
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: filepath.Join(baseDir, "modules"),
 		Stacks:        []config.Stack{{Name: "gitea"}},
-		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"},
 	}
 
 	d.DeployAllStacks(context.Background(), cfg)
@@ -195,7 +195,7 @@ func TestDeployAllStacks_RetriesNixOSRebuildAfterSurvivingFailure(t *testing.T) 
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: filepath.Join(baseDir, "modules"),
 		Stacks:        []config.Stack{{Name: "gitea"}},
-		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"},
 	}
 
 	// First run: the rebuild fails while skipper is still running.
@@ -248,7 +248,7 @@ func TestDeployAllStacks_KeepsNixHashesWhenRebuildAbandonedOnShutdown(t *testing
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: filepath.Join(baseDir, "modules"),
 		Stacks:        []config.Stack{{Name: "gitea"}},
-		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"},
 	}
 
 	done := make(chan struct{})
@@ -310,7 +310,7 @@ func TestDeployAllStacks_ShutdownDuringRebuildDoesNotEmitFailure(t *testing.T) {
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: filepath.Join(baseDir, "modules"),
 		Stacks:        []config.Stack{{Name: "gitea"}},
-		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"},
 	}
 
 	done := make(chan struct{})
@@ -368,7 +368,7 @@ func TestRebuildNixOS_ReconcilesInterruptedRebuildIntoSuccess(t *testing.T) {
 	state.markNixOSRebuildInFlight([]string{nixFile})
 
 	enabled := true
-	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"}}
+	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"}}
 
 	if ok := d.rebuildNixOSIfChanged(context.Background(), cfg, state); !ok {
 		t.Fatal("reconciliation must not abort the run")
@@ -418,7 +418,7 @@ func TestRebuildNixOS_ReconciledSuccessCarriesDiffs(t *testing.T) {
 	state.LastDeployedCommit = "prev-sha"
 
 	enabled := true
-	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#nuc"}}
+	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"}}
 
 	if ok := d.rebuildNixOSIfChanged(context.Background(), cfg, state); !ok {
 		t.Fatal("reconciliation must not abort the run")

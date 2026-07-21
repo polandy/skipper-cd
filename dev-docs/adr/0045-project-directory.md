@@ -76,7 +76,7 @@ renamed, the canonical hash input changes for every stack regardless of value
   the entire effect (idempotent, no downtime for an unchanged deploy) —
   accepted, not worth a migration shim for two single-admin hosts.
 - **Migration required on both homelab hosts**: every `working_dir:` /
-  `working_dir = "...";` in nuc's and argoneon's NixOS config (host config and
+  `working_dir = "...";` in host-a's and host-b's NixOS config (host config and
   any self-registering stack modules) must become `project_directory` before
   or alongside the upgrade, or that stack silently loses its
   `--project-directory` override (falls back to the compose file's own
