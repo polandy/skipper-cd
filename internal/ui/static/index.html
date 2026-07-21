@@ -1841,26 +1841,32 @@
   // resync without the stream replaying an initial state burst. A failure is
   // non-fatal: the next live state event, or the next reconnect, repaints.
   function fetchSnapshot() {
-    fetch('/api/v1/snapshot', { headers: { Accept: 'application/json' } })
+    return fetch('/api/v1/snapshot', { headers: { Accept: 'application/json' } })
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(snap) {
         if (!snap) return;
         Object.keys(snap).forEach(function(name) { applyState(name, snap[name]); });
       })
-      .catch(function() { /* a live state event will paint instead */ });
+      .catch(function() { /* the stream's live events will paint instead */ });
   }
 
+  // Snapshot first (baseline), then open the stream for deltas. The two travel
+  // on separate channels, so opening the stream first would let a late, staler
+  // snapshot response clobber a live event that already arrived — fetching the
+  // baseline before subscribing keeps the ordering. Re-run on every reconnect.
   function connect() {
     connDot.className = 'indicator-dot warn';
     connText.textContent = 'connecting';
     connDot.parentElement.dataset.state = 'connecting';
     connDot.parentElement.title = 'connecting';
+    fetchSnapshot().finally(openStream);
+  }
 
+  function openStream() {
     const es = new EventSource('/api/events');
 
     es.onopen = function() {
       reconnectDelay = 1000; // a good connection resets the backoff
-      fetchSnapshot(); // paint current state from REST (replaces the SSE state burst)
       connDot.className = 'indicator-dot';
       connText.textContent = 'connected';
       connDot.parentElement.dataset.state = 'connected';
