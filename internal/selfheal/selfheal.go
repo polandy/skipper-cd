@@ -107,18 +107,73 @@ func (e *Engine) Observe(ctx context.Context, snap health.Snapshot) {
 	}
 }
 
+// onDemandIdle reports whether a service is an on-demand container in its
+// intended stopped state. skipper stops on_demand_containers right after a
+// deploy and a scheduler starts them on request, so their stopped state is not
+// drift — self-heal must ignore it, mirroring how the health package classifies
+// an exited on-demand container as stopped rather than unhealthy (ADR-0029).
+func onDemandIdle(svc health.ServiceHealth) bool {
+	return svc.OnDemand && svc.Status == health.Stopped
+}
+
 // driftedServices lists the services that are degraded (unhealthy or stopped) in
 // a stack's health, in the order the poller reported them — the "what triggered
-// the heal" detail carried on the healed event. Returns nil when the rollup is
-// degraded but no individual service is (e.g. an unreadable per-service state).
+// the heal" detail carried on the healed event. Idle on-demand containers are
+// skipped: they are intended, not drift. Returns nil when the rollup is degraded
+// but no individual service is (e.g. an unreadable per-service state).
 func driftedServices(sh health.StackHealth) []events.DriftedService {
 	var drift []events.DriftedService
 	for _, svc := range sh.Services {
+		if onDemandIdle(svc) {
+			continue
+		}
 		if classify(svc.Status) == degradedCat {
 			drift = append(drift, events.DriftedService{Name: svc.Name, Status: string(svc.Status)})
 		}
 	}
 	return drift
+}
+
+// selfHealStatus reduces a stack's health to the status self-heal acts on,
+// discounting on-demand containers that are idle (stopped) so their intended
+// state never reads as drift. It re-rolls the remaining services with the same
+// precedence the health package uses (any unhealthy, then starting, then
+// healthy, else stopped). A stack made up entirely of idle on-demand containers
+// counts as healthy — nothing to heal. With no per-service detail (a fully-down
+// stack reports none) it falls back to the rolled-up status unchanged.
+func selfHealStatus(sh health.StackHealth) health.Status {
+	if len(sh.Services) == 0 {
+		return sh.Status
+	}
+	var anyStarting, anyHealthy, anyStopped, anyRelevant bool
+	for _, svc := range sh.Services {
+		if onDemandIdle(svc) {
+			continue
+		}
+		anyRelevant = true
+		switch svc.Status {
+		case health.Unhealthy:
+			return health.Unhealthy
+		case health.Starting:
+			anyStarting = true
+		case health.Healthy:
+			anyHealthy = true
+		case health.Stopped:
+			anyStopped = true
+		}
+	}
+	switch {
+	case !anyRelevant:
+		return health.Healthy // every service is an idle on-demand container
+	case anyStarting:
+		return health.Starting
+	case anyHealthy:
+		return health.Healthy
+	case anyStopped:
+		return health.Stopped
+	default:
+		return health.Healthy
+	}
 }
 
 // Reset clears a stack's self-heal state. The wiring calls it when a real git
@@ -138,7 +193,7 @@ func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHeal
 		e.states[stack] = s
 	}
 
-	switch classify(sh.Status) {
+	switch classify(selfHealStatus(sh)) {
 	case recovered:
 		// Healthy again: clear the outage so a future one starts fresh.
 		delete(e.states, stack)
