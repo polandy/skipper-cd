@@ -1,6 +1,9 @@
 # ADR-0039: Read-only HTTP JSON API (snapshot + stream)
 
-Status: proposed
+Status: proposed. Parked for want of a concrete consumer when written; as of
+2026-07-21 **[ADR-0048](0048-multi-host-federated-ui.md) (multi-host
+federated UI) is that consumer** — its read-data fan-in is built on this
+`/api/v1`, so shipping multi-host requires shipping this first.
 Date: 2026-07-19
 
 ## Context
