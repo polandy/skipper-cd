@@ -696,6 +696,14 @@ func collectWarnings(cfg *Config) []string {
 		}
 	}
 
+	// Per-host identity colours are drawn from a fixed palette (ui.HostColorCount
+	// slots); the merged multi-host UI (ADR-0048) counts this host plus every
+	// peer. Beyond the palette size two hosts hash to the same colour, so the
+	// colour stops uniquely identifying a host.
+	if totalHosts := len(cfg.Peers) + 1; totalHosts > ui.HostColorCount {
+		warnings = append(warnings, fmt.Sprintf("%d hosts are configured (this host plus %d peers) but only %d distinct host colours are available — some hosts will share a colour in the merged UI; reduce the number of peers to keep colours unique", totalHosts, len(cfg.Peers), ui.HostColorCount))
+	}
+
 	return warnings
 }
 

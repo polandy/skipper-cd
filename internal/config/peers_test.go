@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -67,6 +68,51 @@ stacks: []
 	cfg := loadFromString(t, content)
 	if len(cfg.Peers) != 0 {
 		t.Fatalf("expected no peers when omitted, got %d", len(cfg.Peers))
+	}
+}
+
+func TestLoad_WarnsWhenMoreHostsThanColours(t *testing.T) {
+	// This host + 6 peers = 7 hosts, past the 6-slot host-colour palette.
+	var b strings.Builder
+	b.WriteString(`
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+peers:
+`)
+	for i := range 6 {
+		fmt.Fprintf(&b, "  - name: host-%d\n    url: http://host-%d:8001\n", i, i)
+	}
+	cfg := loadFromString(t, b.String())
+
+	var found bool
+	for _, w := range cfg.Warnings {
+		if strings.Contains(w, "distinct host colours") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a host-colour palette warning with 7 hosts, got %v", cfg.Warnings)
+	}
+}
+
+func TestLoad_NoColourWarningWithinPalette(t *testing.T) {
+	// This host + 2 peers = 3 hosts, well within the palette — no warning.
+	const content = `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+peers:
+  - name: host-b
+    url: http://host-b:8001
+  - name: host-c
+    url: http://host-c:8001
+`
+	cfg := loadFromString(t, content)
+	for _, w := range cfg.Warnings {
+		if strings.Contains(w, "distinct host colours") {
+			t.Errorf("unexpected colour warning within palette: %q", w)
+		}
 	}
 }
 
