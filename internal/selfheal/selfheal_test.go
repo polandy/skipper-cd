@@ -96,6 +96,69 @@ func TestEngine_PassesDegradedServicesAsDrift(t *testing.T) {
 	}
 }
 
+func TestEngine_DoesNotHealIdleOnDemandStack(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	eng := newEngine(h, clk, 1, 3, 0, nil)
+
+	// An on-demand stack after a deploy: skipper started its container then
+	// stopped it, so it reads as stopped. The rollup is Stopped, but the stopped
+	// service is the stack's on_demand_containers — intended idle, not drift, so
+	// self-heal must leave it alone (ADR-0029).
+	sh := health.StackHealth{
+		Status: health.Stopped,
+		Services: []health.ServiceHealth{
+			{Name: "whoami", Status: health.Stopped, OnDemand: true},
+		},
+	}
+	for range 3 {
+		eng.Observe(context.Background(), health.Snapshot{Stacks: map[string]health.StackHealth{"whoami": sh}})
+	}
+	if len(h.calls) != 0 {
+		t.Fatalf("an idle on-demand stack must never be healed, got %v", h.calls)
+	}
+}
+
+func TestEngine_HealsRealDriftAlongsideIdleOnDemand(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	eng := newEngine(h, clk, 1, 3, time.Minute, nil)
+
+	// A stack mixing a genuinely down service with an idle on-demand container:
+	// the real drift must still heal, but the on-demand-idle container must not
+	// appear in the drift list that describes what triggered the heal.
+	sh := health.StackHealth{
+		Status: health.Stopped,
+		Services: []health.ServiceHealth{
+			{Name: "api", Status: health.Stopped},
+			{Name: "batch", Status: health.Stopped, OnDemand: true},
+		},
+	}
+	eng.Observe(context.Background(), health.Snapshot{Stacks: map[string]health.StackHealth{"web": sh}})
+
+	if len(h.calls) != 1 {
+		t.Fatalf("a stack with a genuinely down service must heal, got %d", len(h.calls))
+	}
+	want := []events.DriftedService{{Name: "api", Status: "stopped"}}
+	if len(h.lastDrift) != len(want) || h.lastDrift[0] != want[0] {
+		t.Fatalf("drift should list only the real down service, got %+v", h.lastDrift)
+	}
+}
+
+func TestEngine_HealsStoppedStackWithoutServiceDetail(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	eng := newEngine(h, clk, 1, 3, 0, nil)
+
+	// A normal stack that is fully down reports Stopped with no per-service
+	// detail (no containers for the project). With no services to inspect for
+	// on-demand markers, it must still heal as before.
+	eng.Observe(context.Background(), snap("web", health.Stopped))
+	if len(h.calls) != 1 {
+		t.Fatalf("a stopped stack with no service detail must still heal, got %d", len(h.calls))
+	}
+}
+
 func TestEngine_HonoursCooldownBetweenAttempts(t *testing.T) {
 	h := &fakeHealer{ran: true}
 	clk := &clock{t: time.Unix(1000, 0)}

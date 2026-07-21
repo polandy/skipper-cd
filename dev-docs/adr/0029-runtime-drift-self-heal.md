@@ -243,3 +243,25 @@ corrective-redeploy explanation and the drifted-service list (see
 adding any trigger surface — the action stays backend-only and unchanged; only
 its *reporting* got richer. Older healed events (no recorded drift) degrade
 gracefully to the explanation alone.
+
+## Amendment (2026-07-21): idle on-demand containers are expected `stopped`
+
+The "*expected* `stopped` never triggers a heal" rule above had a gap: it was only
+enforced at the rolled-up stack status, which loses per-service detail. A stack
+whose `on_demand_containers` skipper stops right after each deploy rolls up to
+`stopped`, and self-heal read that as drift and corrective-redeployed it —
+directly contradicting the on-demand invariant the health package already honours
+(an exited on-demand container classifies as `stopped`, never `unhealthy`, ADR-0027).
+Normally invisible because on-demand stacks rarely redeploy, it surfaced when a
+config change redeployed every stack at once and self-heal woke each idle
+on-demand container.
+
+Self-heal now discounts on-demand-idle services before it decides. It re-rolls the
+health snapshot's per-service statuses (which already carry the `on_demand` flag),
+skipping any on-demand container that is `stopped`, with the same precedence the
+health package uses; a stack made up entirely of idle on-demand containers reads as
+healthy, and the drifted-service list omits them too. A genuinely down *non*-on-demand
+service in the same stack still heals, and an on-demand container in any other bad
+state (e.g. `restarting`) still classifies as usual — the exclusion is exactly the
+intended-idle case, no wider. A fully-down stack with no per-service detail falls
+back to the rolled-up status unchanged, so nothing else about the policy moves.
