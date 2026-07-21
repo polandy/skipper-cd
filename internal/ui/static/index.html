@@ -1777,6 +1777,79 @@
     reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
   }
 
+  // applyState routes one state snapshot (by its state-event name) to the same
+  // handling whether it arrived from GET /api/v1/snapshot on (re)connect or as a
+  // live SSE state event. State payloads are snapshots (full replacements), so
+  // applying one is idempotent. 'deploy' is not here — deploy events are the
+  // append-style history, streamed over SSE, not part of the state snapshot.
+  function applyState(name, d) {
+    switch (name) {
+      case 'autosync':
+        autosyncSnap = d;
+        renderAutosync();
+        break;
+      case 'queue':
+        queueSnap = d;
+        queueByStack = {};
+        (queueSnap.pending || []).forEach(function(it) { queueByStack[it.stack] = it; });
+        // A stack that left the pending set without a deploy event (e.g. resumed
+        // then found unchanged) must lose its now-stale queued row.
+        Object.keys(queuedRows).forEach(function(stack) {
+          if (!queueByStack[stack]) removeQueuedRow(stack);
+        });
+        refreshPendingTags();
+        renderAutosync();
+        break;
+      case 'upcoming':
+        upcomingSnap = (d && d.upcoming) || [];
+        updateDeployingIndicator();
+        break;
+      case 'hookrun':
+        hookRunSnap = d || {};
+        applyHookRun();
+        break;
+      case 'health':
+        healthSnap = (d && d.stacks) || {};
+        updateStackAffordances();
+        break;
+      case 'healthwatch':
+        healthwatchSnap = (d && d.stacks) || {};
+        break;
+      case 'stacks':
+        disabledSnap = (d && d.disabled) || [];
+        rosterSnap = (d && d.roster) || [];
+        renderDisabledStacks();
+        renderRoster();
+        updateStackAffordances(); // roster carries the hooks — (de)show the badge
+        break;
+      case 'app_links':
+        appLinksSnap = (d && d.stacks) || {};
+        updateAppLinks();
+        break;
+      case 'orphans':
+        orphansSnap = (d && d.orphans) || [];
+        // Under an active search, re-run the filter so new data obeys the query;
+        // otherwise a plain render.
+        if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
+        else renderOrphans();
+        break;
+    }
+  }
+
+  // fetchSnapshot paints the current state from the REST read surface
+  // (ADR-0039), called on every SSE (re)open so a fresh tab and a reconnect both
+  // resync without the stream replaying an initial state burst. A failure is
+  // non-fatal: the next live state event, or the next reconnect, repaints.
+  function fetchSnapshot() {
+    fetch('/api/v1/snapshot', { headers: { Accept: 'application/json' } })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(snap) {
+        if (!snap) return;
+        Object.keys(snap).forEach(function(name) { applyState(name, snap[name]); });
+      })
+      .catch(function() { /* a live state event will paint instead */ });
+  }
+
   function connect() {
     connDot.className = 'indicator-dot warn';
     connText.textContent = 'connecting';
@@ -1787,6 +1860,7 @@
 
     es.onopen = function() {
       reconnectDelay = 1000; // a good connection resets the backoff
+      fetchSnapshot(); // paint current state from REST (replaces the SSE state burst)
       connDot.className = 'indicator-dot';
       connText.textContent = 'connected';
       connDot.parentElement.dataset.state = 'connected';
@@ -1801,69 +1875,9 @@
       if (activeView === 'stacks') refreshRosterRow(evt.stack); // reflect in-flight/settled state live
     });
 
-    es.addEventListener('autosync', function(e) {
-      autosyncSnap = JSON.parse(e.data);
-      renderAutosync();
-    });
-
-    es.addEventListener('queue', function(e) {
-      queueSnap = JSON.parse(e.data);
-      queueByStack = {};
-      (queueSnap.pending || []).forEach(function(it) { queueByStack[it.stack] = it; });
-      // A stack that left the pending set without a deploy event (e.g. resumed
-      // then found unchanged) must lose its now-stale queued row.
-      Object.keys(queuedRows).forEach(function(stack) {
-        if (!queueByStack[stack]) removeQueuedRow(stack);
-      });
-      refreshPendingTags();
-      renderAutosync();
-    });
-
-    es.addEventListener('upcoming', function(e) {
-      const d = JSON.parse(e.data);
-      upcomingSnap = (d && d.upcoming) || [];
-      updateDeployingIndicator();
-    });
-
-    es.addEventListener('hookrun', function(e) {
-      // The hook a deploy is currently executing (ADR-0038); {} clears it.
-      hookRunSnap = JSON.parse(e.data) || {};
-      applyHookRun();
-    });
-
-    es.addEventListener('health', function(e) {
-      const d = JSON.parse(e.data);
-      healthSnap = (d && d.stacks) || {};
-      updateStackAffordances();
-    });
-
-    es.addEventListener('healthwatch', function(e) {
-      const d = JSON.parse(e.data);
-      healthwatchSnap = (d && d.stacks) || {};
-    });
-
-    es.addEventListener('stacks', function(e) {
-      const d = JSON.parse(e.data);
-      disabledSnap = (d && d.disabled) || [];
-      rosterSnap = (d && d.roster) || [];
-      renderDisabledStacks();
-      renderRoster();
-      updateStackAffordances(); // roster carries the hooks — (de)show the badge
-    });
-
-    es.addEventListener('app_links', function(e) {
-      const d = JSON.parse(e.data);
-      appLinksSnap = (d && d.stacks) || {};
-      updateAppLinks();
-    });
-
-    es.addEventListener('orphans', function(e) {
-      const d = JSON.parse(e.data);
-      orphansSnap = (d && d.orphans) || [];
-      // Under an active search, re-run the filter so new data obeys the query;
-      // otherwise a plain render.
-      if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
-      else renderOrphans();
+    // Live state changes reuse the same apply path as the snapshot fetch.
+    ['autosync', 'queue', 'upcoming', 'hookrun', 'health', 'healthwatch', 'stacks', 'app_links', 'orphans'].forEach(function(name) {
+      es.addEventListener(name, function(e) { applyState(name, JSON.parse(e.data)); });
     });
 
     es.onerror = function() {

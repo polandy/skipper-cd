@@ -115,6 +115,15 @@ const (
 	StateHookRun = "hookrun"
 )
 
+// AllStateNames is every state-event name a snapshot or the SSE stream may
+// carry (the optional subsystems — health, orphans, app_links, healthwatch —
+// are only present when their component is enabled). Used to size the snapshot
+// map and to assert coverage in tests.
+var AllStateNames = []string{
+	StateAutosync, StateQueue, StateStacks, StateUpcoming, StateHookRun,
+	StateHealth, StateHealthWatch, StateOrphans, StateAppLinks,
+}
+
 // Broadcaster fans out values of type T to all connected subscribers.
 // Sends are non-blocking: slow subscribers have values dropped.
 type Broadcaster[T any] struct {
