@@ -299,6 +299,14 @@ type Config struct {
 	// disables notifications entirely. See ADR-0020.
 	Notifications []NotificationTarget `yaml:"notifications"`
 
+	// HostName is this instance's own display label and identity key in the
+	// merged multi-host UI (ADR-0048) — the name shown on its host badge, the
+	// key its per-host colour is derived from, and its entry in the Hosts
+	// filter. Optional; Load defaults it to the OS hostname. Only meaningful
+	// when peers are configured (or a peer fans this instance in), but harmless
+	// otherwise.
+	HostName string `yaml:"host_name"`
+
 	// Peers lists other skipper instances whose read data this instance fans
 	// in and renders in one merged UI (ADR-0048). Optional; empty means this
 	// instance shows only its own stacks. Only the primary needs a peers list;
@@ -589,6 +597,14 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.UITheme == "" {
 		cfg.UITheme = ui.ThemeCatppuccin
+	}
+	if cfg.HostName == "" {
+		// Default the self-identity label to the OS hostname so the merged
+		// multi-host UI (ADR-0048) has a stable name without extra config; an
+		// explicit host_name overrides it.
+		if h, err := os.Hostname(); err == nil {
+			cfg.HostName = h
+		}
 	}
 	if cfg.UIEnabled == nil {
 		d := true

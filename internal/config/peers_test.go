@@ -1,9 +1,39 @@
 package config_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
+
+func TestLoad_HostNameDefaultsToOSHostname(t *testing.T) {
+	const content = `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+	want, err := os.Hostname()
+	if err != nil {
+		t.Skipf("os.Hostname() failed: %v", err)
+	}
+	if cfg.HostName != want {
+		t.Errorf("HostName = %q, want OS hostname %q", cfg.HostName, want)
+	}
+}
+
+func TestLoad_HostNameOverride(t *testing.T) {
+	const content = `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
+stacks: []
+host_name: host-a
+`
+	cfg := loadFromString(t, content)
+	if cfg.HostName != "host-a" {
+		t.Errorf("HostName = %q, want host-a", cfg.HostName)
+	}
+}
 
 func TestLoad_PeersParsed(t *testing.T) {
 	const content = `

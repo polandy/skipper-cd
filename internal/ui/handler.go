@@ -372,6 +372,21 @@ func SnapshotHandler(collect func() []events.StateEvent) http.Handler {
 	})
 }
 
+// PeersHandler serves GET /api/peers — the effective multi-host set (ADR-0048)
+// as JSON: the primary itself first (self:true), then each configured peer,
+// with reachability and last-seen but without the bulky per-host read data
+// (that rides the `peers` state event). `hosts` returns the live set; it is
+// passed as an opaque payload so this package need not import internal/peers
+// (which would cycle through config → ui).
+func PeersHandler(hosts func() any) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// The status header is implicitly 200; a failed body write cannot be
+		// reported to the client anymore.
+		_ = json.NewEncoder(w).Encode(map[string]any{"hosts": hosts()})
+	})
+}
+
 // DiffHandler serves GET /api/events/{id}/diffs — returns the diff content
 // for a specific deploy event as JSON.
 func DiffHandler(history *events.History) http.Handler {
