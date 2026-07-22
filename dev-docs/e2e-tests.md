@@ -795,10 +795,12 @@ The hooks UI surface: the per-stack **hooks badge** + command panel, the hook
 output attributed in the log, and the **running-hook phase** + inline hook log.
 Boots in **discovery mode** with a host-config override that declares hooks for
 `web` — harmless `echo`s (they succeed and their stdout is attributed to the
-stack), plus a `sleep` for the running-hook cases so the phase is observable.
-The running-hook masks use `readiness: 'listening'` so the page loads while the
-deploy is still in the hook (a deterministic window; the `sleep` is well under
-the 30s command timeout). No real docker — hooks run via real `sh -c`.
+stack), plus a hook that blocks on the harness's hook-hold file for the
+running-hook cases, so the phase stays observable until the test calls
+`releaseHook()` — the same file-gate idiom as `hold()`/`release()` on `up`
+(§4.7), just for a hook command instead of `compose up`. The running-hook
+masks use `readiness: 'listening'` so the page loads while the deploy is
+parked in the held hook. No real docker — hooks run via real `sh -c`.
 Behaviour-only: the visual-snapshot masks configure no hooks, so the badge/phase
 never appear in a baseline (and the status cell only stacks `:has(.hook-phase)`),
 so no baseline shifts and no new snapshot is added.
@@ -810,12 +812,13 @@ so no baseline shifts and no new snapshot is added.
 - **UU2 — Log attribution.** In the Logs view, filtering to `web` shows the
   hook's `echo` output as a `log-line` with a `[web]` `stack-prefix` — the
   attribution that lets the hook log filter by stack.
-- **UU3 — Running phase + inline log.** With a `sleep` hook in flight, the
+- **UU3 — Running phase + inline log.** With the held hook in flight, the
   deploying `web` row shows the `hook-phase` (`pre_deploy hook …`) and a pulsing
   `hooks-badge` (`data-hook-active`). The phase's logs icon opens the
   container-logs panel **in skipper mode** inline (the `deploys-table` stays
   visible — no page jump), streaming the stack-filtered `/api/logs` (the
-  `clog-body` shows the hook output).
+  `clog-body` shows the hook output). The test calls `releaseHook()` once done
+  so the deploy settles before teardown.
 - **UU4 — Phase in the roster.** The same running-hook phase renders on the
   Stacks `roster-row` for `web`, identical to the Deploys view.
 
