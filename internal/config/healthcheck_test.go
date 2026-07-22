@@ -10,7 +10,7 @@ import (
 func TestLoad_HealthCheckDefaults(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: whoami
     deploy_health_check: {}
@@ -32,7 +32,7 @@ stacks:
 func TestLoad_HealthCheckExplicitValues(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: whoami
     deploy_health_check:
@@ -53,7 +53,7 @@ stacks:
 func TestLoad_HealthCheckOmittedIsNil(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: whoami
 `
@@ -67,7 +67,7 @@ stacks:
 func TestLoad_HealthCheckDisabledScalar(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: whoami
     deploy_health_check: false
@@ -86,7 +86,7 @@ stacks:
 func TestLoad_HealthCheckEnabledScalar(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: whoami
     deploy_health_check: true
@@ -109,7 +109,7 @@ stacks:
 func TestLoad_HealthCheckMappingIsNotDisabled(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: whoami
     deploy_health_check: {}
@@ -138,7 +138,7 @@ func TestLoad_HealthCheckNullIsAbsent(t *testing.T) {
 	for _, val := range []string{"", " null", " ~"} {
 		content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: whoami
     deploy_health_check:` + val + "\n"
@@ -152,7 +152,7 @@ stacks:
 func TestLoad_HealthCheckScalarRejectsNonBool(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: whoami
     deploy_health_check: "sometimes"
@@ -186,7 +186,7 @@ func TestLoad_HealthCheckValidation(t *testing.T) {
 
 	const base = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: whoami
 `

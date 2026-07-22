@@ -22,7 +22,7 @@ Point skipper-cd at your deploy repo — that's the whole config:
 ```yaml
 # skipper.yml
 repo_url: ssh://git@gitea.example.com/user/deploy.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules                 # relative to the repo clone; omit for the repo root
 webhook_secret: "your-secret-here"
 ```
 

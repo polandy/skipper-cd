@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/polandy/skipper-cd/internal/compose"
+	"github.com/polandy/skipper-cd/internal/git"
 	"github.com/polandy/skipper-cd/internal/ui"
 )
 
@@ -235,9 +236,11 @@ type Config struct {
 
 	// StacksBaseDir is the directory inside the repo clone that holds one
 	// subdirectory per stack (<stacks_base_dir>/<name>/docker-compose.yml).
-	// Change detection and the compose file always come from here. When set, it
-	// must be absolute — checked at Load, since it is joined verbatim into every
-	// stack's paths.
+	// Change detection and the compose file always come from here. It is a path
+	// relative to repo_dir (the repo clone) — Load resolves it to an absolute
+	// path against the effective repo_dir, so downstream consumers join it
+	// verbatim. An empty value means the repo root itself. An absolute value is
+	// rejected at Load.
 	StacksBaseDir string `yaml:"stacks_base_dir"`
 
 	// ProjectDirectoryBase is an optional base directory from which a stack's
@@ -571,6 +574,11 @@ func Load(path string) (*Config, error) {
 		cfg.StackDiscovery = true
 	}
 
+	if cfg.RepoDir == "" {
+		// Applied up front (not just downstream in internal/git) so stacks_base_dir
+		// can be resolved against the effective clone path below.
+		cfg.RepoDir = git.DefaultRepoDir
+	}
 	if cfg.CommandTimeoutSeconds == 0 {
 		cfg.CommandTimeoutSeconds = 300
 	}
@@ -661,6 +669,13 @@ func Load(path string) (*Config, error) {
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
+
+	// stacks_base_dir is relative to the repo clone (repo_dir); resolve it to an
+	// absolute path once validation has accepted the raw value, so every
+	// downstream consumer keeps joining it verbatim. An empty value resolves to
+	// the repo root itself.
+	cfg.StacksBaseDir = filepath.Join(cfg.RepoDir, cfg.StacksBaseDir)
+
 	cfg.Warnings = collectWarnings(cfg)
 	return cfg, nil
 }
@@ -794,7 +809,7 @@ func validateConfig(cfg *Config) error {
 	// repo_dir is used verbatim for git clone/pull; a relative value would
 	// resolve against skipper's own process cwd, not the intended location.
 	if cfg.RepoDir != "" && !filepath.IsAbs(cfg.RepoDir) {
-		return fmt.Errorf("repo_dir %q must be an absolute path (start it with \"/\"), or leave it empty to use the default /var/lib/skipper/repo", cfg.RepoDir)
+		return fmt.Errorf("repo_dir %q must be an absolute path (start it with \"/\"), or leave it empty to use the default %s", cfg.RepoDir, git.DefaultRepoDir)
 	}
 
 	// A negative command_timeout_seconds would build an already-expired context,
@@ -814,21 +829,21 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("port and metrics_port must differ, both are %d", cfg.Port)
 	}
 
-	if cfg.StackDiscovery && cfg.StacksBaseDir == "" {
-		// ADR-0043: under discovery the stacks: list is optional per-stack
-		// overrides, not the membership — so it no longer conflicts with discovery.
-		return fmt.Errorf("stacks_base_dir is required when stack_discovery is enabled")
-	}
 	if cfg.ProjectDirectoryBase != "" && !filepath.IsAbs(cfg.ProjectDirectoryBase) {
 		// A relative project_directory_base would resolve against skipper's own
 		// process cwd, not the repo clone — silently wrong --project-directory.
 		return fmt.Errorf("project_directory_base %q must be an absolute path (start it with \"/\")", cfg.ProjectDirectoryBase)
 	}
-	if cfg.StacksBaseDir != "" && !filepath.IsAbs(cfg.StacksBaseDir) {
-		// Joined verbatim into every stack's compose/working-dir path
-		// (filepath.Join(cfg.StacksBaseDir, name, ...)); a relative value would
-		// resolve against skipper's own process cwd instead of the repo clone.
-		return fmt.Errorf("stacks_base_dir %q must be an absolute path (start it with \"/\")", cfg.StacksBaseDir)
+	// stacks_base_dir is relative to repo_dir (Load resolves it afterwards). An
+	// absolute value would be silently mangled by the resolution join and, by
+	// definition, could point outside the clone — which breaks invariant #1
+	// (change detection and the compose file always come from the repo clone).
+	if filepath.IsAbs(cfg.StacksBaseDir) {
+		return fmt.Errorf("stacks_base_dir %q must be relative to repo_dir (the repo clone), not absolute — drop the leading \"/\" and the repo_dir prefix (e.g. \"stacks\" for <repo_dir>/stacks)", cfg.StacksBaseDir)
+	}
+	// A "../" escape would resolve outside the clone, same invariant #1 breach.
+	if rel := filepath.Clean(cfg.StacksBaseDir); rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("stacks_base_dir %q must stay inside repo_dir (the repo clone) — it must not escape via \"../\"", cfg.StacksBaseDir)
 	}
 
 	// icons.cache_dir is always non-empty here (Load applies the default before
@@ -851,9 +866,9 @@ func validateConfig(cfg *Config) error {
 		}
 		seen[s.Name] = struct{}{}
 
-		if s.ProjectDirectory == "" && cfg.StacksBaseDir == "" {
-			return fmt.Errorf("stack %q: project_directory is required when stacks_base_dir is not set — set one of the two", s.Name)
-		}
+		// project_directory is optional: when unset the compose file is located
+		// at <stacks_base_dir>/<name>, and stacks_base_dir always resolves to an
+		// absolute path (empty = repo root), so there is nothing left to require.
 		if s.ProjectDirectory != "" && !filepath.IsAbs(s.ProjectDirectory) {
 			// A relative project_directory would resolve against skipper's own
 			// process cwd, not the repo clone — silently wrong --project-directory.

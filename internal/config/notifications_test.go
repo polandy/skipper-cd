@@ -10,7 +10,7 @@ import (
 func TestLoad_NotificationDefaults(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 notifications:
   - url: https://ntfy.example.com/skipper
@@ -33,7 +33,7 @@ notifications:
 func TestLoad_NotificationOnRolledBackUnhealthy(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 notifications:
   - url: https://ntfy.example.com/skipper
@@ -50,7 +50,7 @@ notifications:
 func TestLoad_NotificationSignalTarget(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 notifications:
   - format: signal
@@ -69,7 +69,7 @@ notifications:
 func TestLoad_NotificationPrefix(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 notifications:
   - format: signal
@@ -130,7 +130,7 @@ func TestLoad_NotificationValidation(t *testing.T) {
 
 	const base = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 notifications:
 `

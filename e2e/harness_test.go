@@ -241,7 +241,8 @@ func (s *skipper) writeConfig(base string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "repo_url: %q\n", s.origin)
 	fmt.Fprintf(&b, "repo_dir: %q\n", s.repoDir)
-	fmt.Fprintf(&b, "stacks_base_dir: %q\n", s.repoDir)
+	// stacks_base_dir omitted: it is relative to repo_dir and defaults to the
+	// repo root, which is exactly repoDir here (stacks live at the clone root).
 	fmt.Fprintf(&b, "branch: main\n")
 	fmt.Fprintf(&b, "webhook_secret: %q\n", s.secret)
 	fmt.Fprintf(&b, "port: %d\n", port)

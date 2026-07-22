@@ -12,7 +12,7 @@ The smallest working config. Stack discovery is on by default, so every `<stacks
 
 ```yaml
 repo_url: ssh://git@gitea.example.com/user/deploy.git
-stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks_base_dir: stacks                  # relative to repo_dir; omit for the repo root
 webhook_secret: "your-secret-here"
 ```
 
@@ -29,7 +29,7 @@ branch: main                            # optional, default: main
 vars_file: /etc/skipper/vars.env        # optional
 command_timeout_seconds: 300            # optional, default: 300
 log_format: pretty                      # optional, default: pretty (colored console); "text" or "json" for machine-readable logs
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules                # relative to repo_dir (the clone); omit for the repo root
 project_directory_base: /etc/nixos/modules    # optional; see project_directory_base below
 webhook_secret: "your-secret-here"
 port: 8080
@@ -77,7 +77,7 @@ nixos_rebuild:
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. When set, it must exist and be readable. |
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |
 | `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
-| `stacks_base_dir` | string | no | — | Base directory holding one subdirectory per stack (`<stacks_base_dir>/<name>/docker-compose.yml`); always the source of the compose file and change detection. Must be absolute when set. |
+| `stacks_base_dir` | string | no | repo root | Base directory holding one subdirectory per stack (`<stacks_base_dir>/<name>/docker-compose.yml`); always the source of the compose file and change detection. Relative to `repo_dir` (the clone) — e.g. `stacks`, not `/var/lib/skipper/repo/stacks`. Omit it for the repo root itself. An absolute value, or one escaping the clone via `../`, is rejected at startup. |
 | `project_directory_base` | string | no | — | Base directory a stack's `project_directory` is derived from as `<project_directory_base>/<name>` when the stack does not set its own `project_directory` (see [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity)). Avoids repeating a common prefix (e.g. a NixOS modules directory) across stacks. Must be absolute — checked at startup. |
 | `webhook_secret` | string | **yes** | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Required — the webhook is skipper's primary deploy trigger, so every request is signature-verified; an empty secret is rejected at startup. |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
@@ -85,7 +85,7 @@ nixos_rebuild:
 | `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
 | `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
 | `stacks` | list | no | — | List of Docker Compose stacks (see [Stack Fields](#stack-fields)). Under discovery (the default) it is optional and holds only per-stack overrides, matched to discovered directories by `name`. With `stack_discovery: false` this list *is* the stack set. |
-| `stack_discovery` | bool | no | `true` | Discover the stack set from the deploy repo: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack; per-stack overrides come from the optional `stacks:` list above (see [Stack discovery](#stack-discovery)). Requires `stacks_base_dir`. Set `false` to list the stacks in this file yourself. |
+| `stack_discovery` | bool | no | `true` | Discover the stack set from the deploy repo: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack; per-stack overrides come from the optional `stacks:` list above (see [Stack discovery](#stack-discovery)). Set `false` to list the stacks in this file yourself. |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
 | `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
@@ -153,7 +153,7 @@ deploy-repo/
 ```yaml
 # host config (skipper.yaml)
 stack_discovery: true
-stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks_base_dir: stacks     # relative to repo_dir; omit to discover from the repo root
 stacks:                     # optional — only the exceptions
   - name: traefik
     depends_on: [gitea]

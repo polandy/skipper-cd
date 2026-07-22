@@ -499,7 +499,8 @@ export class Skipper {
     const cfg =
       `repo_url: ${JSON.stringify(origin)}\n` +
       `repo_dir: ${JSON.stringify(repoDir)}\n` +
-      `stacks_base_dir: ${JSON.stringify(repoDir)}\n` +
+      // stacks_base_dir omitted: it is relative to repo_dir and defaults to the
+      // repo root, which is exactly repoDir here (stacks live at the clone root).
       `branch: main\n` +
       `webhook_secret: ${JSON.stringify(SECRET)}\n` +
       `port: ${port}\n` +
