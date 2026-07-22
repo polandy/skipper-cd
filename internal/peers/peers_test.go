@@ -207,6 +207,21 @@ func TestPoll_LogsReachabilityEdgesOncePerTransition(t *testing.T) {
 	}
 }
 
+func TestPeerDiffsURL(t *testing.T) {
+	reg := peers.New("host-a", []config.Peer{{Name: "host-b", URL: "http://host-b:8001/"}}, &fakeClient{}, time.Second)
+
+	url, ok := reg.PeerDiffsURL("host-b", "42")
+	if !ok || url != "http://host-b:8001/api/events/42/diffs" {
+		t.Errorf("PeerDiffsURL(host-b, 42) = %q, %v; want the peer's diff endpoint", url, ok)
+	}
+	if _, ok := reg.PeerDiffsURL("host-a", "42"); ok {
+		t.Error("PeerDiffsURL resolved self, want false")
+	}
+	if _, ok := reg.PeerDiffsURL("nope", "42"); ok {
+		t.Error("PeerDiffsURL resolved an unknown host, want false")
+	}
+}
+
 func TestHosts_SelfFirstThenPeers(t *testing.T) {
 	fc := &fakeClient{data: map[string]peers.Data{
 		"http://host-b:8001": dataWith(),

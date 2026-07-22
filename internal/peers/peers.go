@@ -193,6 +193,18 @@ func (r *Registry) State() State {
 	return s
 }
 
+// PeerDiffsURL resolves a configured peer's diff endpoint for a deploy event id
+// (its /api/events/{id}/diffs), used by the primary to proxy a peer's diff on
+// demand (ADR-0048). The second return is false when name is not a peer.
+func (r *Registry) PeerDiffsURL(name, eventID string) (string, bool) {
+	for _, p := range r.peers {
+		if p.Name == name {
+			return normalizeBaseURL(p.URL) + "/api/events/" + eventID + "/diffs", true
+		}
+	}
+	return "", false
+}
+
 // Hosts returns the effective host set — the primary (self) first, then each
 // peer — with reachability but without the bulky read data. It backs GET
 // /api/peers.

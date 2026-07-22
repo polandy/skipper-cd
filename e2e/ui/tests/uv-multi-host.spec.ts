@@ -30,9 +30,16 @@ const hostB = {
     app_links: { stacks: {} },
   },
   audit: [
-    { stack: 'gitea', status: 'success', timestamp: iso(3), duration_ms: 1400, changed_files: 1, commit_sha: 'aaa1111' },
-    { stack: 'forgejo', status: 'failed', timestamp: iso(9), duration_ms: 800, changed_files: 2, commit_sha: 'bbb2222' },
+    { stack: 'gitea', status: 'success', timestamp: iso(3), duration_ms: 1400, changed_files: 1, commit_sha: 'aaa1111', id: 42 },
+    { stack: 'forgejo', status: 'failed', timestamp: iso(9), duration_ms: 800, changed_files: 2, commit_sha: 'bbb2222', id: 7 },
   ],
+  // Diff the primary's proxy fetches for gitea's deploy (event id 42).
+  diffs: {
+    '42': {
+      diffs: { 'docker-compose.yml': 'diff --git a/docker-compose.yml b/docker-compose.yml\n-  image: gitea:1.21\n+  image: gitea:1.22\n' },
+      commits: [{ sha: 'aaa1111', subject: 'bump gitea', author: 'a', date: iso(3) }],
+    },
+  },
 };
 
 test.use({
@@ -189,6 +196,10 @@ test('UV6: clicking a peer row opens its read-only detail with a peer-UI link', 
   await expect(detail).toContainText('aaa1111'); // the peer record's commit
   await expect(detail).toContainText('1 file changed');
   await expect(detail.locator('[data-testid="peer-detail-link"]')).toHaveAttribute('href', /^http:\/\/127\.0\.0\.1/);
+
+  // The peer's diff is fetched through the primary's proxy and rendered inline.
+  await expect(detail.locator('[data-testid="peer-diff"] [data-testid="diff-panel"]')).toBeVisible();
+  await expect(detail.locator('[data-testid="peer-diff"]')).toContainText('gitea:1.22');
 
   // Clicking again closes it.
   await peerRow.click();

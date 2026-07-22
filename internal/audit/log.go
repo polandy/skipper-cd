@@ -43,13 +43,19 @@ var auditableStatuses = map[events.Status]bool{
 // Record is one terminal deploy outcome for one stack: metadata only, no diffs.
 // The commit SHA lets the change be reconstructed from git if ever needed.
 type Record struct {
-	Stack        string        `json:"stack"`
-	Timestamp    time.Time     `json:"timestamp"`
-	Status       events.Status `json:"status"`
-	DurationMs   int64         `json:"duration_ms,omitempty"`
-	CommitSHA    string        `json:"commit_sha,omitempty"`
-	ChangedFiles int           `json:"changed_files,omitempty"`
-	Error        string        `json:"error,omitempty"`
+	Stack     string        `json:"stack"`
+	Timestamp time.Time     `json:"timestamp"`
+	Status    events.Status `json:"status"`
+	// ID is the originating deploy event's id, carried so a consumer can fetch
+	// that deploy's diff via /api/events/{id}/diffs — notably the multi-host
+	// fan-in, where the primary proxies a peer's diff on demand (ADR-0048). The
+	// event history is persisted and bounded, so the id stays valid across
+	// restarts until the event is evicted.
+	ID           int64  `json:"id,omitempty"`
+	DurationMs   int64  `json:"duration_ms,omitempty"`
+	CommitSHA    string `json:"commit_sha,omitempty"`
+	ChangedFiles int    `json:"changed_files,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 // Log is a thread-safe, per-stack bounded audit trail with append-only NDJSON
@@ -103,6 +109,7 @@ func recordFromEvent(e events.DeployEvent) Record {
 		Stack:        e.Stack,
 		Timestamp:    e.Timestamp,
 		Status:       e.Status,
+		ID:           e.ID,
 		DurationMs:   e.DurationMs,
 		ChangedFiles: len(e.ChangedFiles),
 		Error:        e.Error,

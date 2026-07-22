@@ -174,9 +174,12 @@ no per-host reskin.
   each row carries its host chip. Peer deploy rows are read-only mirrors: the
   usual *local* fetches (diff/history/health/logs/hooks) are omitted, since the
   primary has none of a peer's detail — but a click never dead-ends, it opens a
-  compact **peer-detail** panel (the commit, changed-file count and status the
-  fan-in carries, plus a link to the peer's own UI for the full diff;
-  `createPeerDetailPanel`). Local deploy rows
+  compact **peer-detail** panel (`createPeerDetailPanel`): the commit,
+  changed-file count and status the fan-in carries, the **peer's diff loaded
+  inline** (fetched through the primary's proxy `GET
+  /api/peers/{name}/events/{id}/diffs`, since the browser can't reach the peer
+  cross-origin; the audit record now carries the deploy's event `id` for this),
+  and a link to the peer's own UI as a fallback when the diff was evicted. Local deploy rows
   are inserted at the top as they arrive; peer rows are then re-slotted by
   timestamp (`schedulePeerReflow`) so the merge stays chronological. An active
   host filter is signalled by the lit Hosts control + the count badge + the

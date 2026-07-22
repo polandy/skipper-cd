@@ -837,6 +837,8 @@ func registerEventRoutes(mux *http.ServeMux, broadcaster *events.Broadcaster[eve
 	mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
 	if snap.peers != nil {
 		mux.Handle("GET /api/peers", ui.PeersHandler(func() any { return snap.peers.Hosts() }))
+		mux.Handle("GET /api/peers/{name}/events/{id}/diffs",
+			ui.PeerDiffsHandler(snap.peers.PeerDiffsURL, &http.Client{Timeout: peerPollTimeout}))
 	}
 }
 

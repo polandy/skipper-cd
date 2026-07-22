@@ -259,6 +259,9 @@ export interface PeerSpec {
   snapshot?: Record<string, unknown>;
   /** The audit records the stub serves at `/api/audit` (the peer's deploys). */
   audit?: Array<Record<string, unknown>>;
+  /** Diffs the stub serves at `/api/events/{id}/diffs`, keyed by event id — what
+   *  the primary's peer-diff proxy fetches on a peer-row expand. */
+  diffs?: Record<string, unknown>;
   /** false → no server is started; the peer URL points at a dead port so the
    *  primary sees it unreachable (offline banner). Default true. */
   reachable?: boolean;
@@ -470,6 +473,13 @@ export class Skipper {
           res.setHeader('Content-Type', 'application/json');
           if (path === '/api/v1/snapshot') return void res.end(JSON.stringify(spec.snapshot ?? {}));
           if (path === '/api/audit') return void res.end(JSON.stringify(spec.audit ?? []));
+          const diffMatch = path.match(/^\/api\/events\/([^/]+)\/diffs$/);
+          if (diffMatch) {
+            const d = (spec.diffs ?? {})[diffMatch[1]];
+            if (d) return void res.end(JSON.stringify(d));
+            res.statusCode = 404;
+            return void res.end('{}');
+          }
           res.statusCode = 404;
           res.end('{}');
         });

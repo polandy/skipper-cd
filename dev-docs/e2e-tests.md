@@ -851,6 +851,13 @@ unit-tested (`app-helpers.test.js`).
   host-tagged; a peer `roster-row` shows its status badge and host chip but no
   `jump-btn` / `clog-btn`, and the same chip-filter isolates the roster to one host.
 
+- **UV6 — Peer row never dead-ends.** A peer row is a read-only mirror, but
+  clicking it opens a `peer-detail` panel (commit + file count + status + an
+  "open the peer's UI" link) and loads the peer's diff inline through the
+  primary's proxy (`GET /api/peers/{name}/events/{id}/diffs`, stub-served by the
+  harness `diffs`), rendered as a normal `diff-panel`. This is the case behind
+  the "clicking the peer `_nixos` row does nothing" report.
+
 ### 4.24 UI — Maske W: `_nixos` rebuild row (ADR-0025)
 
 The NixOS-rebuild pseudo-stack's deploy row. The harness (`nixosRebuild`) commits

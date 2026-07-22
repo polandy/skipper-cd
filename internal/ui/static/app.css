@@ -595,6 +595,12 @@
   .peer-detail .pd-error { font-family: var(--font-mono); font-size: 12px; color: var(--danger); white-space: pre-wrap; }
   .peer-detail .pd-link { font-size: 13px; color: var(--accent); text-decoration: none; width: fit-content; }
   .peer-detail .pd-link:hover { text-decoration: underline; }
+  /* The proxied peer diff renders as a normal diff panel; flatten it into the
+     peer-detail card (no second background/padding/margin) and hide its status
+     bar (the peer-detail already carries the context). */
+  .peer-detail .pd-diff .diff-panel { margin: 0; padding: 0; background: transparent; }
+  .peer-detail .pd-diff .diff-panel::before { display: none; }
+  .peer-detail .diff-loading { font-size: 12px; color: var(--text-muted); }
 
   .event-row.new-row {
     animation: rowEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1);

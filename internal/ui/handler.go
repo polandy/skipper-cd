@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"strconv"
@@ -384,6 +385,38 @@ func PeersHandler(hosts func() any) http.Handler {
 		// The status header is implicitly 200; a failed body write cannot be
 		// reported to the client anymore.
 		_ = json.NewEncoder(w).Encode(map[string]any{"hosts": hosts()})
+	})
+}
+
+// PeerDiffsHandler serves GET /api/peers/{name}/events/{id}/diffs — it proxies a
+// peer's diff for one deploy event to the browser, which cannot reach the peer
+// cross-origin (ADR-0048). `resolve` maps a peer name + event id to the peer's
+// diff URL (false when name is not a configured peer); it is passed as a func so
+// this package need not import internal/peers. A peer that has evicted the event
+// answers a non-2xx, forwarded as-is so the UI falls back to its "open the peer"
+// link.
+func PeerDiffsHandler(resolve func(name, id string) (string, bool), hc *http.Client) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		url, ok := resolve(r.PathValue("name"), r.PathValue("id"))
+		if !ok {
+			http.Error(w, "unknown peer", http.StatusNotFound)
+			return
+		}
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
+		if err != nil {
+			http.Error(w, "bad peer request", http.StatusInternalServerError)
+			return
+		}
+		req.Header.Set("Accept", "application/json")
+		resp, err := hc.Do(req)
+		if err != nil {
+			http.Error(w, "peer unreachable", http.StatusBadGateway)
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
 	})
 }
 
