@@ -580,12 +580,10 @@
   .peer-detail {
     background: var(--bg-sunken);
     border-radius: 8px;
-    margin: 2px 0 4px;
     padding: 12px 16px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    border-left: 3px solid color-mix(in srgb, var(--overlay2) 30%, transparent);
   }
   .peer-detail .host-mono { display: inline-flex; }
   .peer-detail .pd-head { display: flex; align-items: center; gap: 10px; }
@@ -1418,22 +1416,22 @@
   }
 
   /* Variant-A binding (as for the health panel): the open row and its trailing
-     panels — diff, files, and the error detail — share a status-coloured left bar
-     + tint so they always read as tied to the row. --dc is the row's deploy-status
-     colour; a diff panel opened from a log line is unbound (no row to tie to) and
-     keeps the plain background. */
-  .event-row.diff-open[data-status="success"],              .diff-panel.bound[data-status="success"],              .files-list.bound[data-status="success"]              { --dc: var(--success); }
-  .event-row.diff-open[data-status="failed"],               .diff-panel.bound[data-status="failed"],               .files-list.bound[data-status="failed"]               { --dc: var(--danger); }
-  .event-row.diff-open[data-status="rolled_back"],          .diff-panel.bound[data-status="rolled_back"],          .files-list.bound[data-status="rolled_back"]          { --dc: var(--rollback); }
-  .event-row.diff-open[data-status="rolled_back_unhealthy"],.diff-panel.bound[data-status="rolled_back_unhealthy"],.files-list.bound[data-status="rolled_back_unhealthy"]{ --dc: var(--danger); }
-  .event-row.diff-open[data-status="queued"],               .diff-panel.bound[data-status="queued"],               .files-list.bound[data-status="queued"]               { --dc: var(--queued); }
-  .event-row.diff-open[data-status="deploying"],            .diff-panel.bound[data-status="deploying"],            .files-list.bound[data-status="deploying"]            { --dc: var(--accent); }
-  .event-row.diff-open[data-status="healed"],               .heal-panel.bound[data-status="healed"]                                                                     { --dc: var(--success); }
+     panels — diff, files, peer-detail, and the error detail — share a status-coloured
+     left bar + tint so they always read as tied to the row. --dc is the row's
+     deploy-status colour; a diff panel opened from a log line is unbound (no row to
+     tie to) and keeps the plain background. */
+  .event-row.diff-open[data-status="success"],              .diff-panel.bound[data-status="success"],              .files-list.bound[data-status="success"],              .peer-detail.bound[data-status="success"]              { --dc: var(--success); }
+  .event-row.diff-open[data-status="failed"],               .diff-panel.bound[data-status="failed"],               .files-list.bound[data-status="failed"],               .peer-detail.bound[data-status="failed"]               { --dc: var(--danger); }
+  .event-row.diff-open[data-status="rolled_back"],          .diff-panel.bound[data-status="rolled_back"],          .files-list.bound[data-status="rolled_back"],          .peer-detail.bound[data-status="rolled_back"]          { --dc: var(--rollback); }
+  .event-row.diff-open[data-status="rolled_back_unhealthy"],.diff-panel.bound[data-status="rolled_back_unhealthy"],.files-list.bound[data-status="rolled_back_unhealthy"],.peer-detail.bound[data-status="rolled_back_unhealthy"]{ --dc: var(--danger); }
+  .event-row.diff-open[data-status="queued"],               .diff-panel.bound[data-status="queued"],               .files-list.bound[data-status="queued"],               .peer-detail.bound[data-status="queued"]               { --dc: var(--queued); }
+  .event-row.diff-open[data-status="deploying"],            .diff-panel.bound[data-status="deploying"],            .files-list.bound[data-status="deploying"],            .peer-detail.bound[data-status="deploying"]            { --dc: var(--accent); }
+  .event-row.diff-open[data-status="healed"],               .heal-panel.bound[data-status="healed"],               .peer-detail.bound[data-status="healed"]                                                                     { --dc: var(--success); }
   .event-row.diff-open {
     background: color-mix(in srgb, var(--dc, var(--accent)) 8%, transparent);
     box-shadow: inset 3px 0 0 var(--dc, var(--accent));
   }
-  .diff-panel.bound, .files-list.bound, .heal-panel.bound {
+  .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound {
     background: color-mix(in srgb, var(--dc, var(--accent)) 5%, var(--bg-sunken));
     border-color: color-mix(in srgb, var(--dc, var(--accent)) 22%, var(--border));
     box-shadow: inset 3px 0 0 var(--dc, var(--accent));
@@ -1448,7 +1446,7 @@
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel, .heal-panel.bound {
+  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel, .heal-panel.bound, .peer-detail.bound {
     margin-top: -2px;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
@@ -1465,7 +1463,7 @@
      view). Bound, their top and left borders would sit beside the shared 3px status
      bar and double the line — offsetting the bar from the row's. Drop them so the
      bar is the left edge, exactly as the health panel (border-bottom only) does. */
-  .diff-panel.bound, .files-list.bound, .heal-panel.bound {
+  .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound {
     border-top: none;
     border-left: none;
   }
