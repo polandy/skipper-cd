@@ -851,6 +851,23 @@ unit-tested (`app-helpers.test.js`).
   host-tagged; a peer `roster-row` shows its status badge and host chip but no
   `jump-btn` / `clog-btn`, and the same chip-filter isolates the roster to one host.
 
+### 4.24 UI — Maske W: `_nixos` rebuild row (ADR-0025)
+
+The NixOS-rebuild pseudo-stack's deploy row. The harness (`nixosRebuild`) commits
+a `configuration.nix` and stubs `systemd-run` / `systemctl` to a fast success, so
+the startup sync runs a (fake) `nixos-rebuild` and emits a real `_nixos` row;
+`setNixConfig` + a webhook then pushes a second rebuild carrying a real git diff.
+No real switch. Behaviour-only.
+
+- **UW1 — Affordances.** The `_nixos` row has **no** `jump-btn` (it is not in the
+  Stacks roster) and **no** container-logs `clog-btn` (it is not a compose
+  project) — only its git diff and deploy history apply.
+- **UW2 — Click never dead-ends.** A diff-bearing `_nixos` row (`data-has-diffs=1`
+  + a `files-pill`) opens its diff/files panel on a row-body click. (A row with
+  nothing hashed falls back to the history panel — the general never-dead-end
+  rule, unit-covered by the click handler; here the realistic diff case is
+  asserted.)
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

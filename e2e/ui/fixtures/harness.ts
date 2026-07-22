@@ -235,6 +235,11 @@ export interface StartOptions {
    *  startSkipperOrdered: a stack deploys only after its dependencies, and a
    *  failed dependency blocks it (a `blocked` row). Maske P opts in. */
   dependsOn?: Record<string, string[]>;
+  /** Configure `nixos_rebuild` and commit a `configuration.nix` so the startup
+   *  sync runs a (stubbed) nixos-rebuild and emits a `_nixos` deploy row. The
+   *  rebuild's `systemd-run` / `systemctl` are stubbed to a fast success — no
+   *  real switch. Maske W. */
+  nixosRebuild?: boolean;
   /** This instance's own host label in the merged multi-host view (ADR-0048).
    *  Written as `host_name:`; defaults to the OS hostname otherwise. Maske V. */
   hostName?: string;
@@ -401,6 +406,11 @@ export class Skipper {
     if (stacks.length === 0) {
       writeFileSync(join(origin, '.keep'), '');
     }
+    // A tracked .nix file makes the startup sync detect a nix change and run the
+    // (stubbed) nixos-rebuild, emitting a `_nixos` row.
+    if (opts.nixosRebuild) {
+      writeFileSync(join(origin, 'configuration.nix'), '{ }\n');
+    }
     // ADR-0043: per-stack overrides go into the host config's stacks: list, not
     // an in-repo skipper.yaml (a leftover one is now a hard error). setRepoConfig
     // still writes one on purpose, to exercise that guard.
@@ -411,6 +421,16 @@ export class Skipper {
     const stubDir = join(base, 'stub-bin');
     mkdirSync(stubDir, { recursive: true });
     writeFileSync(join(stubDir, 'docker'), stubDockerScript, { mode: 0o755 });
+    // Stub the nixos-rebuild transition (ADR-0014): `systemd-run` starts the
+    // (fake) unit and returns; `systemctl is-active` reports it already gone and
+    // `is-failed` reports not-failed, so Rebuild sees an instant success without
+    // any real switch. Harmless when nixos_rebuild is not configured.
+    writeFileSync(join(stubDir, 'systemd-run'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeFileSync(
+      join(stubDir, 'systemctl'),
+      '#!/bin/sh\ncase " $* " in\n  *" is-active "*) exit 1 ;;\n  *" is-failed "*) exit 1 ;;\n  *) exit 0 ;;\nesac\n',
+      { mode: 0o755 },
+    );
 
     // Where setStackHealth writes per-stack `compose ps` output for the stub.
     const healthDir = join(base, 'health');
@@ -485,6 +505,7 @@ export class Skipper {
         ? `self_heal_cooldown_seconds: ${opts.selfHealCooldownSeconds}\n`
         : '') +
       `command_timeout_seconds: 30\n` +
+      (opts.nixosRebuild ? `nixos_rebuild:\n  flake: ".#test"\n` : '') +
       // source_url points at a closed local port so auto-match icon fetches fail
       // fast and deterministically (connection refused → 404 → monogram), keeping
       // the whole UI suite offline. Repo icon.svg overrides still resolve.
@@ -568,6 +589,14 @@ export class Skipper {
   /** release unblocks a held `up`. */
   release(): void {
     writeFileSync(this.holdFile, '');
+  }
+
+  /** setNixConfig rewrites the tracked configuration.nix and commits it, so the
+   *  next sync runs a nixos-rebuild whose `_nixos` row carries a real git diff
+   *  against the last deployed commit (has_diffs=true) — the realistic case. */
+  setNixConfig(content: string): void {
+    writeFileSync(join(this.origin, 'configuration.nix'), content);
+    git(this.origin, 'commit', '-am', 'update configuration.nix');
   }
 
   /** setStackImage rewrites a stack's compose to a new nginx tag and commits it,
