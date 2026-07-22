@@ -831,13 +831,13 @@ offline paths. Behaviour-only: the multi-host surface only appears when peers ar
 configured, so no existing snapshot shifts, and the colour assignment is
 unit-tested (`app-helpers.test.js`).
 
-- **UV1 — Merged feed + host dots.** The `hosts-btn` is enabled and reports
+- **UV1 — Merged feed + host chips.** The `hosts-btn` is enabled and reports
   `3/3`; the feed interleaves local (`host-a`) and peer (`host-b`) rows, each
-  tagged with a `host-dot-inline`. Peer rows are read-only mirrors — a dot but no
+  tagged with a `host-mono` chip. Peer rows are read-only mirrors — a chip but no
   `history-btn` / `jump-btn`. The two hosts' dots render distinct palette slots
   (`data-host-color`) and distinct computed colours (the merged view's point;
   the per-theme adjacent-slot distinctness is unit-tested in `app-helpers.test.js`).
-- **UV2 — Dot = click-to-filter toggle.** Clicking a `host-b` dot isolates the
+- **UV2 — Chip = click-to-filter toggle.** Clicking a `host-b` chip isolates the
   feed to `host-b` (local rows hidden, `deploys-table` gains `host-filter-active`,
   the badge reads `1/3`); clicking a dot again clears back to `3/3` and all rows.
 - **UV3 — Hosts drawer multi-select.** The drawer lists one `host-row` per host
@@ -848,8 +848,8 @@ unit-tested (`app-helpers.test.js`).
   the drawer `host-c`'s reachability dot reads `down` and `host-b`'s reads `up`, a
   peer carries an "open its own UI" `host-link` and `self` does not.
 - **UV5 — Merged roster.** The Stacks view lists local and peer stacks together,
-  host-tagged; a peer `roster-row` shows its status badge and dot but no
-  `jump-btn` / `clog-btn`, and the same dot-filter isolates the roster to one host.
+  host-tagged; a peer `roster-row` shows its status badge and host chip but no
+  `jump-btn` / `clog-btn`, and the same chip-filter isolates the roster to one host.
 
 ## 5. Visual snapshot strategy
 

@@ -217,6 +217,17 @@ test('hostColorIndex: independent of order/count (name-based, not positional)', 
   assert.equal(h.hostColorIndex('host-c'), solo);
 });
 
+test('hostMonogram: initials of a separated name, else first three letters', () => {
+  assert.equal(h.hostMonogram('nuc'), 'NUC');
+  assert.equal(h.hostMonogram('argoneon'), 'ARG');
+  assert.equal(h.hostMonogram('host-a'), 'HA');
+  assert.equal(h.hostMonogram('host-b'), 'HB');
+  assert.equal(h.hostMonogram('web_server_1'), 'WS1'); // up to three segments
+  assert.equal(h.hostMonogram('a'), 'A');
+  assert.equal(h.hostMonogram(''), '');
+  assert.equal(h.hostMonogram(undefined), '');
+});
+
 test('assignHostColors: never reuses a colour while the palette has free slots', () => {
   // Search for a name set that would collide on the raw hash, to prove the
   // set-aware assigner still hands each host a distinct slot.

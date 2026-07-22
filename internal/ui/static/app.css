@@ -483,43 +483,46 @@
     background: color-mix(in srgb, var(--overlay2) 6%, transparent);
   }
 
-  /* Host identity dot (multi-host fan-in) — a small colour dot leading the stack
-     cell, telling which host a row belongs to without a dedicated column. Shown
-     only when more than one host is in view (#deploy-table.show-hosts, via
-     showHostDots); with a single host in view the colour is redundant. It is
-     just another flex child of .cell-stack, so it flows inline on every width. */
-  .host-dot-inline {
+  /* Host identity chip (multi-host fan-in) — a small colour-tinted monogram
+     leading the stack cell, telling which host a row belongs to without a
+     dedicated column. A labelled chip, deliberately NOT a dot: a dot already
+     means deploy status here, so the identity channel takes a different shape.
+     Shown only with more than one host in view (#deploy-table/#stacks-view
+     .show-hosts). Just another flex child of the stack cell, so it flows inline
+     at every width. */
+  .host-mono {
     display: none;
-    position: relative;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
     flex: none;
-    background: var(--host-slot, var(--overlay1));
+    min-width: 23px;
+    height: 17px;
+    padding: 0 5px;
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
     cursor: pointer;
+    color: color-mix(in srgb, var(--host-slot) 85%, var(--text));
+    background: color-mix(in srgb, var(--host-slot) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--host-slot) 34%, transparent);
   }
-  /* Enlarge the tap/hover target well beyond the 8px dot, without changing its
-     visual size or the row layout — the invisible ::after captures the pointer
-     and its events still resolve to the dot. */
-  .host-dot-inline::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
-  .host-dot-inline:hover { box-shadow: 0 0 0 3px color-mix(in srgb, var(--host-slot) 24%, transparent); }
-  /* While a host filter is active, every (now single-host) dot wears a steady
-     selected-state halo — a gap ring in the host colour — so it is visible the
-     filter is on and any dot invites a re-click to clear it. Steady, not pulsing:
-     one dot per row pulsing at once reads as an alert, not a filter state. */
-  .host-filter-active .host-dot-inline {
-    box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px color-mix(in srgb, var(--host-slot) 55%, transparent);
+  .host-mono:hover { background: color-mix(in srgb, var(--host-slot) 26%, transparent); }
+  /* While a host filter is active the visible chips wear a steady selected-state
+     halo so it is clear the filter is on and any chip clears it on re-click.
+     Steady, not pulsing (a row of pulsing chips reads as an alert). */
+  .host-filter-active .host-mono {
+    border-color: color-mix(in srgb, var(--host-slot) 60%, transparent);
+    box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px color-mix(in srgb, var(--host-slot) 45%, transparent);
   }
-  .host-filter-active .host-dot-inline:hover {
-    box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 5px color-mix(in srgb, var(--host-slot) 75%, transparent);
-  }
-  .host-dot-inline[data-host-color="0"] { --host-slot: var(--host-0); }
-  .host-dot-inline[data-host-color="1"] { --host-slot: var(--host-1); }
-  .host-dot-inline[data-host-color="2"] { --host-slot: var(--host-2); }
-  .host-dot-inline[data-host-color="3"] { --host-slot: var(--host-3); }
-  .host-dot-inline[data-host-color="4"] { --host-slot: var(--host-4); }
-  .host-dot-inline[data-host-color="5"] { --host-slot: var(--host-5); }
-  .show-hosts .host-dot-inline { display: block; }
+  .host-mono[data-host-color="0"] { --host-slot: var(--host-0); }
+  .host-mono[data-host-color="1"] { --host-slot: var(--host-1); }
+  .host-mono[data-host-color="2"] { --host-slot: var(--host-2); }
+  .host-mono[data-host-color="3"] { --host-slot: var(--host-3); }
+  .host-mono[data-host-color="4"] { --host-slot: var(--host-4); }
+  .host-mono[data-host-color="5"] { --host-slot: var(--host-5); }
+  .show-hosts .host-mono { display: inline-flex; }
 
   /* A peer row whose host is unreachable shows its last-known data, dimmed, so
      an offline host is never silently blanked (only staler). Applies to both the

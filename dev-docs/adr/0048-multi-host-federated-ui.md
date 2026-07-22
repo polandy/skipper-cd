@@ -81,8 +81,9 @@ The host surfaces as: a **per-host identity colour** — six per-theme palette
 slots kept clear of the status hues, assigned by a deterministic name hash so
 a host keeps its colour everywhere, with collision-avoidance guaranteeing no
 two hosts share a colour until the six slots are exhausted (the config warns
-before that) — shown as a small host dot at the head of each merged-feed
-row's stack cell (a dedicated Host column was rejected for inflating every
+before that) — shown as a small colour-tinted **monogram chip** at the head of each
+merged-feed row's stack cell — a labelled chip, not a dot, since a dot already
+means deploy status (a dedicated Host column was rejected for inflating every
 row's width); and a compact **Hosts control** in the
 right-hand header group — the logo keeps the top-left corner — opening one
 popover that both multi-selects (filter the feed) and links out to each
@@ -109,19 +110,19 @@ merged view, silently dropping a host's rows is worse than an honest stale
 marker; this is the opposite call from the proxy design, correctly, because
 there you looked at one host at a time.)
 
-### The host indicator is a dot, and the dot is the filter
+### The host indicator is a monogram chip, and the chip is the filter
 
 The first build used a dedicated leading Host **column**; it was rejected for
 inflating every row's width (and overlapping the icon on a phone). The
-identity moved to a small per-row **dot** inside the existing stack cell — no
-layout cost, flows inline at every width. The dot then earned a second job:
+identity moved to a small per-row **monogram chip** inside the existing stack cell — no
+layout cost, flows inline at every width. The chip then earned a second job:
 **clicking it filters both merged views to that host, and clicking again
 clears back to all** (a toggle that complements the drawer's multi-select).
-Because a dot must stay clickable to clear the filter, the dots stay visible
+Because a chip must stay clickable to clear the filter, the chips stay visible
 even at a single host in view, and an active filter is signalled by a steady
-halo on the dots plus the lit Hosts control (a pulsing halo was tried and
-rejected as reading like an alert). The dot carries its hostname on hover
-(`title`) and tap (`data-taptip`), with an enlarged invisible hit area.
+halo on the chips plus the lit Hosts control (a pulsing halo was tried and
+rejected as reading like an alert). The chip carries its hostname on hover
+(`title`) and tap (`data-taptip`).
 
 ### Resolved during implementation
 

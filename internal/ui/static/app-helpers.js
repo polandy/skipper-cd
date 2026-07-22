@@ -196,6 +196,27 @@ function hostColorIndex(name) {
   return (hash >>> 0) % HOST_COLOR_COUNT;
 }
 
+// hostMonogram is the short uppercase label shown in a host's row chip — the
+// initials of a hyphen/underscore/dot/space-separated name (host-a -> HA), or
+// the first three letters of a single-token name (argoneon -> ARG, nuc -> NUC).
+// The chip's colour disambiguates hosts that share a monogram; the full name is
+// always in its title/tap-tip.
+function hostMonogram(name) {
+  const s = (name || '').trim();
+  if (!s) return '';
+  const parts = s.split(/[-_. ]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return parts
+      .slice(0, 3)
+      .map(function (p) {
+        return p[0];
+      })
+      .join('')
+      .toUpperCase();
+  }
+  return s.slice(0, 3).toUpperCase();
+}
+
 // assignHostColors maps each host name to a palette slot (0..HOST_COLOR_COUNT-1),
 // guaranteeing that no two hosts share a slot while free slots remain — distinct
 // hosts must stay distinguishable at a glance until the palette is genuinely
@@ -266,6 +287,7 @@ if (typeof module !== 'undefined' && module.exports) {
     logLineVisible,
     HOST_COLOR_COUNT,
     hostColorIndex,
+    hostMonogram,
     assignHostColors,
     hostFilterActive,
   };

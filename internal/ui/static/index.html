@@ -464,7 +464,7 @@
       row.dataset.stack = entry.name;
       row.dataset.host = selfHost; // local stacks belong to the primary host
       row.innerHTML =
-        `<span class="roster-stack">${hostDotHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}${(!entry.disabled && entry.hooks && hookCount(entry.hooks) > 0) ? hooksBadgeHTML(entry.name, entry.hooks) : ''}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
+        `<span class="roster-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}${(!entry.disabled && entry.hooks && hookCount(entry.hooks) > 0) ? hooksBadgeHTML(entry.name, entry.hooks) : ''}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
@@ -504,7 +504,7 @@
         row.dataset.stack = entry.name;
         row.dataset.host = p.name;
         row.innerHTML =
-          `<span class="roster-stack">${hostDotHTML(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span></span>` +
+          `<span class="roster-stack">${hostChipHTML(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span></span>` +
           `<span class="roster-status">${peerRosterStatusHTML(entry)}</span>` +
           `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
           `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
@@ -1371,7 +1371,7 @@
     const filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
-      `<span class="cell-stack">${hostDotHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
+      `<span class="cell-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="status-cell">${badgeHTML(evt.status)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
       `<span class="col-files">${filesCell}</span>`;
@@ -1882,16 +1882,17 @@
     hostColors = assignHostColors(hostList().map(function(h) { return h.name; }));
   }
 
-  // hostDotHTML renders a row's leading host-identity dot inside the stack cell —
-  // a small colour dot for the row's host. Empty (and hidden by CSS) on a
+  // hostChipHTML renders a row's leading host-identity chip inside the stack
+  // cell — a colour-tinted monogram for the row's host (a labelled chip, not a
+  // dot: a dot already means deploy status). Empty (and hidden by CSS) on a
   // single-host instance; CSS shows it only when more than one host is in view.
-  function hostDotHTML(hostName) {
+  function hostChipHTML(hostName) {
     if (!hostName) return '';
     const slot = hostColors[hostName];
     const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
     // title → native hover tooltip; data-taptip → the tap-tip bubble on touch,
-    // so the hostname appears whether the dot is hovered or tapped.
-    return '<span class="host-dot-inline"' + attr + ' data-taptip title="' + escapeAttr(hostName) + '"></span>';
+    // so the full hostname appears whether the chip is hovered or tapped.
+    return '<span class="host-mono"' + attr + ' data-taptip title="' + escapeAttr(hostName) + '">' + escapeHtml(hostMonogram(hostName)) + '</span>';
   }
 
   // createPeerRow builds one read-only deploy row from a peer's audit record.
@@ -1910,7 +1911,7 @@
     const files = n > 0 ? '<span class="peer-files">' + n + ' file' + (n === 1 ? '' : 's') + '</span>' : '';
     row.innerHTML =
       '<span class="cell-time" data-testid="time-cell" data-ts="' + escapeAttr(rec.timestamp) + '" title="' + escapeAttr(absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
-      '<span class="cell-stack">' + hostDotHTML(hostName) + '<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' + escapeHtml(rec.stack) + '</span></span>' +
+      '<span class="cell-stack">' + hostChipHTML(hostName) + '<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' + escapeHtml(rec.stack) + '</span></span>' +
       '<span class="status-cell">' + badgeHTML(rec.status) + '</span>' +
       '<span class="cell-duration" data-testid="duration-cell">' + formatDuration(rec.duration_ms) + '</span>' +
       '<span class="col-files">' + files + '</span>';
@@ -1951,11 +1952,11 @@
     items.forEach(function(it) { insertRowByTime(createPeerRow(it.rec, it.host, it.stale), it.rec.timestamp); });
   }
 
-  // setLeadingDot replaces (or clears) a stack cell's leading host dot in place.
-  function setLeadingDot(cell, hostName) {
-    const existing = cell.querySelector('.host-dot-inline');
+  // setLeadingChip replaces (or clears) a stack cell's leading host chip in place.
+  function setLeadingChip(cell, hostName) {
+    const existing = cell.querySelector('.host-mono');
     if (existing) existing.remove();
-    if (hostName) cell.insertAdjacentHTML('afterbegin', hostDotHTML(hostName));
+    if (hostName) cell.insertAdjacentHTML('afterbegin', hostChipHTML(hostName));
   }
 
   // retagLocalRows fills in the host dot + data-host on local rows created before
@@ -1965,12 +1966,12 @@
     tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function(row) {
       row.dataset.host = selfHost;
       const cell = row.querySelector('.cell-stack');
-      if (cell) setLeadingDot(cell, selfHost);
+      if (cell) setLeadingChip(cell, selfHost);
     });
     document.getElementById('roster-list').querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
       row.dataset.host = selfHost;
       const cell = row.querySelector('.roster-stack');
-      if (cell) setLeadingDot(cell, selfHost);
+      if (cell) setLeadingChip(cell, selfHost);
     });
   }
 
@@ -2413,10 +2414,10 @@
   }
 
   rosterList.addEventListener('click', function(e) {
-    // Host dot: quick-filter the merged view to this row's host (toggle). Before
-    // the peer-row guard and panel logic so it works on every row's dot.
-    const hostDot = e.target.closest('.host-dot-inline');
-    if (hostDot) { const r = hostDot.closest('[data-host]'); if (r) toggleHostFilterTo(r.dataset.host); return; }
+    // Host chip: quick-filter the merged view to this row's host (toggle). Before
+    // the peer-row guard and panel logic so it works on every row's chip.
+    const hostChip = e.target.closest('.host-mono');
+    if (hostChip) { const r = hostChip.closest('[data-host]'); if (r) toggleHostFilterTo(r.dataset.host); return; }
 
     // Cross-view jump button: hand off to Deploys. Handled before the row's
     // own click (which opens its history panel) so a tap never opens both.
@@ -3232,10 +3233,10 @@
   // Files panel — open/close as full-width sibling below the row.
   // When diffs are available, shows a diff panel; otherwise shows file list.
   tbody.addEventListener('click', function(e) {
-    // Host dot: quick-filter the merged view to this row's host (toggle). Before
-    // any panel logic so a tap on the dot never also opens the row's diff panel.
-    const hostDot = e.target.closest('.host-dot-inline');
-    if (hostDot) { const r = hostDot.closest('[data-host]'); if (r) toggleHostFilterTo(r.dataset.host); return; }
+    // Host chip: quick-filter the merged view to this row's host (toggle). Before
+    // any panel logic so a tap on the chip never also opens the row's diff panel.
+    const hostChip = e.target.closest('.host-mono');
+    if (hostChip) { const r = hostChip.closest('[data-host]'); if (r) toggleHostFilterTo(r.dataset.host); return; }
 
     // Diff panel collapse/expand controls (per-file header, multi-commit pill).
     if (handleDiffToggle(e.target)) return;

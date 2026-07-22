@@ -67,17 +67,17 @@ test('UV1: merged deploy feed shows peer rows with host dots', async ({ page, sk
 
   // Peer rows are read-only mirrors: a colour dot but no drill-down affordances.
   const gitea = page.locator('[data-testid="deploy-row"][data-host="host-b"][data-stack="gitea"]');
-  await expect(gitea.locator('.host-dot-inline')).toBeVisible();
+  await expect(gitea.locator('.host-mono')).toBeVisible();
   await expect(gitea.locator('[data-testid="history-btn"]')).toHaveCount(0);
   await expect(gitea.locator('[data-testid="jump-btn"]')).toHaveCount(0);
 
   // Local rows carry the dot too (dots are shown whenever peers are configured).
-  await expect(rowsFor(page, 'host-a').first().locator('.host-dot-inline')).toBeVisible();
+  await expect(rowsFor(page, 'host-a').first().locator('.host-mono')).toBeVisible();
 
   // Two hosts must render as visibly different colours (the merged view's whole
   // point): distinct palette slots and distinct computed dot colours.
-  const dotA = rowsFor(page, 'host-a').first().locator('.host-dot-inline');
-  const dotB = rowsFor(page, 'host-b').first().locator('.host-dot-inline');
+  const dotA = rowsFor(page, 'host-a').first().locator('.host-mono');
+  const dotB = rowsFor(page, 'host-b').first().locator('.host-mono');
   const slotA = await dotA.getAttribute('data-host-color');
   const slotB = await dotB.getAttribute('data-host-color');
   expect(slotA).not.toBeNull();
@@ -95,14 +95,14 @@ test('UV2: clicking a host dot filters to that host and toggles back', async ({ 
   await expect(rowsFor(page, 'host-b')).toHaveCount(2);
 
   // Click host-b's dot → only host-b rows remain; local rows hidden.
-  await rowsFor(page, 'host-b').first().locator('.host-dot-inline').click();
+  await rowsFor(page, 'host-b').first().locator('.host-mono').click();
   await expect(table(page)).toHaveClass(/host-filter-active/);
   await expect(rowsFor(page, 'host-a').first()).toBeHidden();
   await expect(rowsFor(page, 'host-b').first()).toBeVisible();
   await expect(page.locator('[data-testid="hosts-btn"] #hosts-count')).toHaveText('1/3');
 
   // Click a (visible, host-b) dot again → filter cleared, everything back.
-  await rowsFor(page, 'host-b').first().locator('.host-dot-inline').click();
+  await rowsFor(page, 'host-b').first().locator('.host-mono').click();
   await expect(table(page)).not.toHaveClass(/host-filter-active/);
   await expect(rowsFor(page, 'host-a').first()).toBeVisible();
   await expect(page.locator('[data-testid="hosts-btn"] #hosts-count')).toHaveText('3/3');
@@ -162,14 +162,14 @@ test('UV5: the merged roster shows peer stacks, read-only', async ({ page, skipp
 
   const gitea = page.locator('[data-testid="roster-row"][data-host="host-b"][data-stack="gitea"]');
   await expect(gitea).toBeVisible();
-  await expect(gitea.locator('.host-dot-inline')).toBeVisible();
+  await expect(gitea.locator('.host-mono')).toBeVisible();
   await expect(gitea.locator('[data-testid="status-badge"]')).toHaveText('success');
   // Read-only mirror: no jump / logs affordances on a peer's stack.
   await expect(gitea.locator('[data-testid="jump-btn"]')).toHaveCount(0);
   await expect(gitea.locator('[data-testid="clog-btn"]')).toHaveCount(0);
 
   // The host filter reaches the roster: isolate to host-b via its dot.
-  await gitea.locator('.host-dot-inline').click();
+  await gitea.locator('.host-mono').click();
   await expect(rosterFor(page, 'host-a').first()).toBeHidden();
   await expect(gitea).toBeVisible();
 });
