@@ -2,13 +2,19 @@
 // app.css (the `--host-0…5` slots, multi-host fan-in / ADR-0048). Run with
 // `node scripts/gen-host-colors.mjs` and paste the output into that block.
 //
-// The six hues are an evenly-spaced cool ramp (azure → magenta, ~190–320°) —
-// the arc of the wheel each theme's status colours (warm / green / teal / red)
-// leave free — so a host tint never reads as a deploy state, while still being
-// as distinct as that arc allows. A full-wheel variant was more distinct but
-// overlapped the status hues and read worse. Saturation follows each theme's
-// mood; lightness suits its ground (bright on dark, darker on light).
-const HUES = [190, 214, 240, 267, 294, 320];
+// The six hues sit on the cool arc (azure → magenta, ~190–320°) — the part of
+// the wheel each theme's status colours (warm / green / teal / red) leave free —
+// so a host tint never reads as a deploy state. A full-wheel variant was more
+// distinct but overlapped the status hues and read worse.
+//
+// The order below is INTERLEAVED, not the monotonic 190→320 ramp: slot indices
+// are what assignHostColors hands out, and it tends to hand out numerically
+// adjacent slots (collision probing steps +1). On a monotonic ramp two adjacent
+// slots are the two closest hues and read as the same colour; interleaving so
+// consecutive slots jump across the arc keeps every adjacent-slot pair ≥~50°
+// apart, so hosts stay distinguishable. Saturation follows each theme's mood;
+// lightness suits its ground (bright on dark, darker on light).
+const HUES = [190, 267, 214, 294, 240, 320];
 
 function hslToHex(h, s, l) {
   s /= 100;
