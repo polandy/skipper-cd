@@ -298,8 +298,11 @@ match the deploy-lifecycle lines:
    so no two hosts share a colour until the palette is exhausted. Per-theme
    contrast tuning of the concrete hues stays open for review; the mechanism
    is fixed.
-4. **Filter persistence.** *Resolved:* the selected host subset is **not**
-   persisted — it resets to "all hosts" on each load. The filter is a
-   transient view control, not a stored preference.
+4. **Filter persistence.** *Resolved (amended 2026-07-23, ADR-0048):* the
+   selected host subset **is** persisted per browser (`localStorage` key
+   `hostFilter`). It restores the first time the peers snapshot arrives
+   (the host set isn't known any earlier), reconciled against the current
+   host set — a saved host no longer present is dropped, and an empty or
+   now-complete intersection falls back to "all hosts."
 5. **Notifications host prefix.** Could derive from `peers` config instead
    of the current manual per-target prefix — orthogonal, leave as is for now.

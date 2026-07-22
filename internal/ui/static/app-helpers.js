@@ -252,6 +252,21 @@ function hostFilterActive(selectedCount, totalCount) {
   return totalCount > 0 && selectedCount > 0 && selectedCount < totalCount;
 }
 
+// reconcileHostFilter resolves a saved Hosts-filter selection (loaded from
+// localStorage) against the current host set, returning null ("all hosts")
+// or the array of names to select. A saved host no longer present is
+// dropped; if that leaves nothing, or leaves the full current set, the
+// filter normalizes back to null rather than restoring a stale or
+// redundant subset.
+function reconcileHostFilter(savedNames, currentNames) {
+  if (!savedNames || !savedNames.length) return null;
+  const restored = savedNames.filter(function (n) {
+    return currentNames.indexOf(n) !== -1;
+  });
+  if (!restored.length || restored.length === currentNames.length) return null;
+  return restored;
+}
+
 // logLineVisible reports whether a log line stays visible under the in-log
 // search filter (ADR-0037): an empty query shows every line, otherwise the line
 // must contain the query (case-insensitive). A non-empty query that matches is
@@ -290,5 +305,6 @@ if (typeof module !== 'undefined' && module.exports) {
     hostMonogram,
     assignHostColors,
     hostFilterActive,
+    reconcileHostFilter,
   };
 }

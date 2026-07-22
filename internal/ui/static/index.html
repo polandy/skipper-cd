@@ -384,11 +384,15 @@
   // label, the identity every local row is tagged with. hostColors maps each
   // host name to its palette slot (assignHostColors, collision-avoiding).
   // hostSelected is the set of in-view host names (the Hosts filter); null means
-  // all hosts — the filter resets to all on load, never persisted.
+  // all hosts. Persisted per browser (localStorage key hostFilter) and restored
+  // once, the first time the peers snapshot arrives (see applyPeers) — the host
+  // set isn't known any earlier — reconciled against it via reconcileHostFilter
+  // so a saved host that no longer exists can't strand the view.
   let peersSnap = null;
   let selfHost = '';
   let hostColors = {};
   let hostSelected = null;
+  let hostFilterRestored = false;
 
   // The reserved stack key for nixos-rebuild deploys (invariant 4). It is a
   // pseudo-stack, not a Docker Compose project and not in the Stacks roster, so
@@ -2164,6 +2168,11 @@
       banner.classList.remove('show');
     }
     renderHosts(); // keep the header badge counts in step with the filter
+
+    // Persist the selection per browser; "all hosts" clears the key so a later
+    // reload with no saved value behaves the same as a fresh instance.
+    if (hostSelected === null) localStorage.removeItem('hostFilter');
+    else localStorage.setItem('hostFilter', Array.from(hostSelected).join(','));
   }
 
   // toggleHostFilterTo is the dot-click shortcut: isolate the merged view to one
@@ -2201,6 +2210,12 @@
   function applyPeers(d) {
     peersSnap = d || null;
     selfHost = (peersSnap && peersSnap.self) || '';
+    if (!hostFilterRestored && peersSnap) {
+      hostFilterRestored = true; // once only — later refreshes must not override interactive picks
+      const saved = (localStorage.getItem('hostFilter') || '').split(',').filter(Boolean);
+      const restored = reconcileHostFilter(saved, hostList().map(function(h) { return h.name; }));
+      hostSelected = restored ? new Set(restored) : null;
+    }
     recomputeHostColors();
     retagLocalRows();
     renderPeerRows();       // deploy feed peer rows

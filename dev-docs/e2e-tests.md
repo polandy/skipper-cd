@@ -860,6 +860,12 @@ unit-tested (`app-helpers.test.js`).
   primary's proxy (`GET /api/peers/{name}/events/{id}/diffs`, stub-served by the
   harness `diffs`), rendered as a normal `diff-panel`. This is the case behind
   the "clicking the peer `_nixos` row does nothing" report.
+- **UV7 — Filter persists across a reload.** Narrowing to `host-b` via the
+  drawer, then reloading, restores the same narrowed view once the peers
+  snapshot re-arrives (`host-a` rows stay hidden, badge reads `1/3`);
+  clicking "Select all" and reloading again restores the unfiltered `3/3`
+  view, proving the cleared filter (`localStorage` key removed) also
+  survives a reload rather than resurrecting a stale narrow filter.
 
 ### 4.24 UI — Maske W: `_nixos` rebuild row (ADR-0025)
 

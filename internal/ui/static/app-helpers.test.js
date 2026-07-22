@@ -311,3 +311,12 @@ test('hostFilterActive: only a strict non-empty subset lights the control', () =
   assert.equal(h.hostFilterActive(0, 3), false); // none (guard, treated inactive)
   assert.equal(h.hostFilterActive(1, 1), false); // single host, all selected
 });
+
+test('reconcileHostFilter: restores a saved subset against the current host set', () => {
+  assert.equal(h.reconcileHostFilter(null, ['host-a', 'host-b']), null); // nothing saved
+  assert.equal(h.reconcileHostFilter([], ['host-a', 'host-b']), null); // nothing saved
+  assert.deepEqual(h.reconcileHostFilter(['host-b'], ['host-a', 'host-b', 'host-c']), ['host-b']); // subset restored
+  assert.equal(h.reconcileHostFilter(['host-x'], ['host-a', 'host-b']), null); // saved host gone → fall back to all
+  assert.deepEqual(h.reconcileHostFilter(['host-b', 'host-x'], ['host-a', 'host-b']), ['host-b']); // stale name pruned
+  assert.equal(h.reconcileHostFilter(['host-a', 'host-b'], ['host-a', 'host-b']), null); // full set → normalize to all
+});

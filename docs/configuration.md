@@ -466,7 +466,7 @@ peers:
 - **Only the primary needs `peers`.** A peer needs no extra config — just `ui_enabled: true` (it already serves the read API) and to be reachable from the primary.
 - `name` is the host's label and its identity colour in the merged view; `url` is its skipper base URL on the LAN.
 - `host_name` is the primary's own label (defaults to the OS hostname); set it to match how the hosts name each other.
-- **What you get:** the Deploys and Stacks views merge every host's rows, each tagged with a colour **host dot**. A **Hosts** control (top right) filters by host and links out to each host's own UI. Click a host dot to isolate the view to that host; click again to clear.
+- **What you get:** the Deploys and Stacks views merge every host's rows, each tagged with a colour **host dot**. A **Hosts** control (top right) filters by host and links out to each host's own UI. Click a host dot to isolate the view to that host; click again to clear. The filter is remembered per browser.
 - **Read-only peers.** Peer rows mirror state only — clicking one shows that deploy's commit and diff (loaded from the peer), but no local actions. To drill in further (logs, history) or watch a peer deploy live, open its own UI from the Hosts control.
 - **Reachability.** The merged view refreshes on the [health-poll](#stack-health) cadence, so it can lag a few seconds behind a peer's live deploy. An unreachable peer's last-known rows stay, dimmed, with a banner — never silently dropped.
 - **Access.** Peers must be reachable from the primary (server-to-server), not from the browser. Keep each peer's port on the LAN and firewall it to the primary's address.
