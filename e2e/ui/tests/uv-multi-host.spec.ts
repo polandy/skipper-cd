@@ -213,9 +213,10 @@ test('UV7: the host filter persists across a reload', async ({ page, skipper }) 
   await page.goto(`${skipper.baseURL}/`);
   await expect(rowsFor(page, 'host-b')).toHaveCount(2);
 
-  // Narrow to host-b via the drawer.
-  await hostsBtn(page).click();
-  await page.locator('[data-testid="host-row"][data-host="host-b"]').click();
+  // Isolate to host-b via its chip (the click-to-filter shortcut, see UV2) —
+  // a drawer row click toggles that host out of the full selection instead
+  // of isolating to it, which is not what this test wants.
+  await rowsFor(page, 'host-b').first().locator('.host-mono').click();
   await expect(rowsFor(page, 'host-a').first()).toBeHidden();
   expect(await page.evaluate(() => localStorage.getItem('hostFilter'))).toBe('host-b');
 
