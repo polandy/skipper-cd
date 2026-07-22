@@ -9,8 +9,9 @@ import type { Page } from '@playwright/test';
 // snapshot + audit) and an unreachable one (host-c, a dead port). Covers: the
 // merged deploy feed with per-row host dots (UV1), the dot as a click-to-filter
 // toggle (UV2), the Hosts drawer multi-select filter (UV3), an offline peer's
-// stale banner + reachability dot (UV4), and the merged roster with read-only
-// peer rows (UV5). Behaviour-only (no snapshot); the host-colour assignment is
+// stale banner + reachability dot (UV4), the merged roster with read-only
+// peer rows (UV5), a peer row's detail panel (UV6), and the filter surviving a
+// reload (UV7). Behaviour-only (no snapshot); the host-colour assignment is
 // unit-tested (app-helpers.test.js).
 
 const iso = (minsAgo: number) => new Date(Date.now() - minsAgo * 60_000).toISOString();
@@ -204,4 +205,34 @@ test('UV6: clicking a peer row opens a read-only detail with the peer diff inlin
   // Clicking again closes it.
   await peerRow.click();
   await expect(page.locator('[data-testid="peer-detail"]')).toHaveCount(0);
+});
+
+// UV7 — the Hosts filter is persisted per browser and restores once the peers
+// snapshot re-arrives after a reload, reconciled against the current host set.
+test('UV7: the host filter persists across a reload', async ({ page, skipper }) => {
+  await page.goto(`${skipper.baseURL}/`);
+  await expect(rowsFor(page, 'host-b')).toHaveCount(2);
+
+  // Narrow to host-b via the drawer.
+  await hostsBtn(page).click();
+  await page.locator('[data-testid="host-row"][data-host="host-b"]').click();
+  await expect(rowsFor(page, 'host-a').first()).toBeHidden();
+  expect(await page.evaluate(() => localStorage.getItem('hostFilter'))).toBe('host-b');
+
+  // The narrowed filter survives a reload once the peers snapshot re-arrives.
+  await page.reload();
+  await expect(rowsFor(page, 'host-b')).toHaveCount(2);
+  await expect(rowsFor(page, 'host-a').first()).toBeHidden();
+  await expect(page.locator('[data-testid="hosts-btn"] #hosts-count')).toHaveText('1/3');
+
+  // Clearing it ("Select all") also survives a reload — no stale narrow filter.
+  await hostsBtn(page).click();
+  await page.locator('[data-testid="hosts-all-btn"]').click();
+  await expect(rowsFor(page, 'host-a').first()).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('hostFilter'))).toBeNull();
+
+  await page.reload();
+  await expect(rowsFor(page, 'host-b')).toHaveCount(2);
+  await expect(rowsFor(page, 'host-a').first()).toBeVisible();
+  await expect(page.locator('[data-testid="hosts-btn"] #hosts-count')).toHaveText('3/3');
 });

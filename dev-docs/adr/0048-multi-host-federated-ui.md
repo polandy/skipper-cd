@@ -189,6 +189,27 @@ rejected as reading like an alert). The chip carries its hostname on hover
   popover links to the peer's own UI. Embedding the full peer UI was the
   root of the proxy design's problems and is deliberately given up.
 
+## Amendment (2026-07-23): host filter is persisted per browser
+
+The original "Filter persistence" decision above treated the Hosts filter as
+a transient view control that resets to all hosts on every load. In practice
+an operator who mostly cares about one host had to re-narrow it every visit,
+with no benefit to resetting it — the filter carries no server state and
+narrowing it is never destructive.
+
+The selected host subset is now saved to `localStorage` (key `hostFilter`,
+a comma-joined list of host names; absent/empty means "all hosts," matching
+the existing per-browser conventions for theme/colour-scheme/active-view).
+It cannot be restored synchronously at parse time because the host set
+itself is only known once the `peers` snapshot first arrives (fetch or SSE);
+restoring instead happens the first time `applyPeers` sees a non-null
+snapshot, via `reconcileHostFilter` (`app-helpers.js`): the saved names are
+intersected with the current host set, a host that no longer exists is
+dropped, and an empty or now-complete intersection falls back to "all
+hosts" rather than restoring a stale or redundant subset. Later peers
+refreshes never re-run the restore, so it can never clobber an interactive
+selection made after load.
+
 ## References
 
 - Spec: `dev-docs/multi-host-spec.md`
