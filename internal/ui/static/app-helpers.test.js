@@ -5,7 +5,32 @@
 // only that file), so it never ships in the binary.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const h = require('./app-helpers.js');
+
+// hexHue returns a #rrggbb colour's HSL hue in degrees (or -1 for a grey).
+function hexHue(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  if (d === 0) return -1;
+  let hue;
+  if (max === r) hue = ((g - b) / d) % 6;
+  else if (max === g) hue = (b - r) / d + 2;
+  else hue = (r - g) / d + 4;
+  hue *= 60;
+  return hue < 0 ? hue + 360 : hue;
+}
+
+// hueDist is the shortest distance between two hues on the 360° wheel.
+function hueDist(a, b) {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
 
 test('formatDuration', () => {
   assert.equal(h.formatDuration(0), '—');
@@ -228,6 +253,34 @@ test('assignHostColors: independent of input order and of which host is primary'
   const c1 = h.assignHostColors(['host-a', 'host-b', 'host-c']);
   const c2 = h.assignHostColors(['host-c', 'host-a', 'host-b']);
   assert.deepEqual(c1, c2);
+});
+
+test('host palette: adjacent colour slots stay visually distinct in every theme', () => {
+  // assignHostColors hands out numerically adjacent slots first (collision
+  // probing steps +1), so two hosts most often land on consecutive slots. On a
+  // monotonic hue ramp those are the two closest colours and read as the same;
+  // the slot order in app.css is interleaved to keep every adjacent pair far
+  // apart. Guard that invariant against a future re-monotonising edit.
+  const css = fs.readFileSync(path.join(__dirname, 'app.css'), 'utf8');
+  const re =
+    /--host-0:(#[0-9a-f]{6}); --host-1:(#[0-9a-f]{6}); --host-2:(#[0-9a-f]{6}); --host-3:(#[0-9a-f]{6}); --host-4:(#[0-9a-f]{6}); --host-5:(#[0-9a-f]{6});/g;
+  const blocks = [...css.matchAll(re)];
+  // 5 themes × dark + light = 10 palettes (the fallback :root shares the
+  // catppuccin-dark line).
+  assert.ok(blocks.length >= 10, `expected >= 10 host palettes in app.css, found ${blocks.length}`);
+  const MIN_DEG = 38;
+  for (const m of blocks) {
+    const hexes = m.slice(1, 7);
+    const hues = hexes.map(hexHue);
+    for (let i = 0; i < 5; i++) {
+      const dist = hueDist(hues[i], hues[i + 1]);
+      assert.ok(
+        dist >= MIN_DEG,
+        `adjacent slots ${i}/${i + 1} only ${dist.toFixed(0)}° apart (${hexes[i]} vs ${hexes[i + 1]})`,
+      );
+    }
+    assert.equal(new Set(hexes).size, 6, `six distinct host colours, got ${hexes.join(',')}`);
+  }
 });
 
 test('assignHostColors: beyond the palette size colours may repeat', () => {

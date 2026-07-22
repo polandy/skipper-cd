@@ -834,7 +834,9 @@ unit-tested (`app-helpers.test.js`).
 - **UV1 — Merged feed + host dots.** The `hosts-btn` is enabled and reports
   `3/3`; the feed interleaves local (`host-a`) and peer (`host-b`) rows, each
   tagged with a `host-dot-inline`. Peer rows are read-only mirrors — a dot but no
-  `history-btn` / `jump-btn`.
+  `history-btn` / `jump-btn`. The two hosts' dots render distinct palette slots
+  (`data-host-color`) and distinct computed colours (the merged view's point;
+  the per-theme adjacent-slot distinctness is unit-tested in `app-helpers.test.js`).
 - **UV2 — Dot = click-to-filter toggle.** Clicking a `host-b` dot isolates the
   feed to `host-b` (local rows hidden, `deploys-table` gains `host-filter-active`,
   the badge reads `1/3`); clicking a dot again clears back to `3/3` and all rows.

@@ -73,6 +73,19 @@ test('UV1: merged deploy feed shows peer rows with host dots', async ({ page, sk
 
   // Local rows carry the dot too (dots are shown whenever peers are configured).
   await expect(rowsFor(page, 'host-a').first().locator('.host-dot-inline')).toBeVisible();
+
+  // Two hosts must render as visibly different colours (the merged view's whole
+  // point): distinct palette slots and distinct computed dot colours.
+  const dotA = rowsFor(page, 'host-a').first().locator('.host-dot-inline');
+  const dotB = rowsFor(page, 'host-b').first().locator('.host-dot-inline');
+  const slotA = await dotA.getAttribute('data-host-color');
+  const slotB = await dotB.getAttribute('data-host-color');
+  expect(slotA).not.toBeNull();
+  expect(slotB).not.toBeNull();
+  expect(slotA).not.toEqual(slotB);
+  const colorA = await dotA.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const colorB = await dotB.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(colorA).not.toEqual(colorB);
 });
 
 // UV2 — clicking a host dot isolates the view to that host; clicking a dot again
