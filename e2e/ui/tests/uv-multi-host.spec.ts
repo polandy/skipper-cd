@@ -182,9 +182,10 @@ test('UV5: the merged roster shows peer stacks, read-only', async ({ page, skipp
 });
 
 // UV6 — a peer row is a read-only mirror, but a click never dead-ends: it opens
-// a compact detail (commit + file count) with a link to the peer's own UI. This
-// is the case behind the "clicking the peer _nixos row does nothing" report.
-test('UV6: clicking a peer row opens its read-only detail with a peer-UI link', async ({ page, skipper }) => {
+// a compact detail (commit + file count) and loads the peer's diff inline via the
+// primary's proxy. This is the case behind the "clicking the peer _nixos row does
+// nothing" report.
+test('UV6: clicking a peer row opens a read-only detail with the peer diff inline', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   const peerRow = page.locator('[data-testid="deploy-row"][data-host="host-b"][data-stack="gitea"]');
   await expect(peerRow).toBeVisible();
@@ -195,7 +196,6 @@ test('UV6: clicking a peer row opens its read-only detail with a peer-UI link', 
   await expect(detail).toHaveCount(1);
   await expect(detail).toContainText('aaa1111'); // the peer record's commit
   await expect(detail).toContainText('1 file changed');
-  await expect(detail.locator('[data-testid="peer-detail-link"]')).toHaveAttribute('href', /^http:\/\/127\.0\.0\.1/);
 
   // The peer's diff is fetched through the primary's proxy and rendered inline.
   await expect(detail.locator('[data-testid="peer-diff"] [data-testid="diff-panel"]')).toBeVisible();

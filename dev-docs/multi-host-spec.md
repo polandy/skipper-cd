@@ -178,8 +178,9 @@ no per-host reskin.
   changed-file count and status the fan-in carries, the **peer's diff loaded
   inline** (fetched through the primary's proxy `GET
   /api/peers/{name}/events/{id}/diffs`, since the browser can't reach the peer
-  cross-origin; the audit record now carries the deploy's event `id` for this),
-  and a link to the peer's own UI as a fallback when the diff was evicted. Local deploy rows
+  cross-origin; the audit record now carries the deploy's event `id` for this).
+  Opening the peer's own UI is the Hosts drawer's job, not repeated per row; an
+  evicted or unreachable diff simply leaves the read-only facts. Local deploy rows
   are inserted at the top as they arrive; peer rows are then re-slotted by
   timestamp (`schedulePeerReflow`) so the merge stays chronological. An active
   host filter is signalled by the lit Hosts control + the count badge + the

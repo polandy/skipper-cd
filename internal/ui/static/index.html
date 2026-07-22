@@ -1939,17 +1939,10 @@
     return row;
   }
 
-  // peerURL looks up a host's base URL from the current peers snapshot.
-  function peerURL(host) {
-    const p = peersSnap && (peersSnap.peers || []).find(function(x) { return x.name === host; });
-    return p && p.url;
-  }
-
   // createPeerDetailPanel is what a peer row expands to on click: the read-only
-  // facts the fan-in carries (commit, changed-file count, error) plus a link to
-  // the peer's own UI, where the full diff and drill-down live. The primary
-  // cannot fetch a peer's diff, so this is the honest "here is what I know, go
-  // there for more" — a click never dead-ends, even on a mirror row.
+  // facts the fan-in carries (commit, changed-file count, error) plus the peer's
+  // diff, loaded inline through the primary's proxy. A click never dead-ends,
+  // even on a mirror row.
   function createPeerDetailPanel(row) {
     const host = row.dataset.host;
     const el = document.createElement('div');
@@ -1963,16 +1956,15 @@
       const n = parseInt(row.dataset.changed, 10) || 0;
       facts += '<span class="pd-fact">' + n + ' file' + (n === 1 ? '' : 's') + ' changed</span>';
     }
-    const url = peerURL(host);
     const eventId = row.dataset.peerEventId;
     let html =
       '<div class="pd-head">' + hostChipHTML(host) + '<span class="pd-note">peer deploy · read-only mirror</span></div>' +
       (facts ? '<div class="pd-facts">' + facts + '</div>' : '');
     if (row.dataset.error) html += '<div class="pd-error">' + escapeHtml(row.dataset.error) + '</div>';
     // The diff is fetched from the peer through the primary's proxy (the browser
-    // can't reach the peer cross-origin) and rendered here on expand.
+    // can't reach the peer cross-origin) and rendered here on expand. (The
+    // per-host "open its own UI" affordance lives in the Hosts drawer, not here.)
     if (eventId) html += '<div class="pd-diff" data-testid="peer-diff"><div class="diff-loading">Loading diff…</div></div>';
-    if (url) html += '<a class="pd-link" href="' + escapeAttr(url) + '" target="_blank" rel="noopener" data-testid="peer-detail-link">Open ' + escapeHtml(host) + '’s UI ↗</a>';
     el.innerHTML = html;
     if (eventId) loadPeerDiff(el, host, eventId);
     return el;
@@ -1981,7 +1973,7 @@
   // loadPeerDiff fetches a peer deploy's diff via the primary's proxy
   // (/api/peers/{host}/events/{id}/diffs) and renders it into the panel's diff
   // slot. A peer that has evicted the event (or is unreachable) yields no diff —
-  // the slot is dropped and the "open the peer's UI" link stands in.
+  // the slot is dropped, leaving the panel's read-only facts.
   function loadPeerDiff(panel, host, id) {
     fetch('/api/peers/' + encodeURIComponent(host) + '/events/' + encodeURIComponent(id) + '/diffs')
       .then(function(r) { return r.ok ? r.json() : null; })

@@ -593,8 +593,6 @@
   .peer-detail .pd-facts { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--text-secondary); }
   .peer-detail .pd-sha { font-family: var(--font-mono); color: var(--text-primary); }
   .peer-detail .pd-error { font-family: var(--font-mono); font-size: 12px; color: var(--danger); white-space: pre-wrap; }
-  .peer-detail .pd-link { font-size: 13px; color: var(--accent); text-decoration: none; width: fit-content; }
-  .peer-detail .pd-link:hover { text-decoration: underline; }
   /* The proxied peer diff renders as a normal diff panel; flatten it into the
      peer-detail card (no second background/padding/margin) and hide its status
      bar (the peer-detail already carries the context). */
