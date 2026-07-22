@@ -509,6 +509,8 @@
         row.dataset.testid = 'roster-row';
         row.dataset.stack = entry.name;
         row.dataset.host = p.name;
+        row.dataset.status = entry.last_status || '';
+        if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
           `<span class="roster-stack">${hostChipHTML(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span></span>` +
           `<span class="roster-status">${peerRosterStatusHTML(entry)}</span>` +
@@ -1736,7 +1738,12 @@
     });
     document.addEventListener('click', function(e) {
       if (!opts.isOpen()) return;
-      if (opts.within.some(function(el) { return el.contains(e.target); })) return;
+      // composedPath() is captured when the event is dispatched, so it still
+      // names the surface even if the click's handler synchronously re-rendered
+      // and detached e.target (e.g. toggling a host in the Hosts drawer rebuilds
+      // its list) — a plain contains(e.target) would then miss and wrongly close.
+      const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+      if (opts.within.some(function(el) { return el.contains(e.target) || path.indexOf(el) !== -1; })) return;
       opts.close();
     });
   }
@@ -1903,8 +1910,9 @@
   }
 
   // createPeerRow builds one read-only deploy row from a peer's audit record.
-  // Peer rows carry no drill-down (no diff/hook/history/log affordances) and no
-  // expand panel — they are a cross-host glance, not an actionable local row.
+  // Peer rows carry no *local* drill-down (no diff/hook/history/log fetch), but a
+  // click opens a compact read-only detail (commit + file count + status) with a
+  // link to the peer's own UI for the full diff — a glance that never dead-ends.
   function createPeerRow(rec, hostName, stale) {
     const row = document.createElement('div');
     row.className = rowClass(rec.status, true) + ' peer-row' + (stale ? ' peer-stale' : '');
@@ -1912,6 +1920,9 @@
     row.dataset.stack = rec.stack;
     row.dataset.status = rec.status;
     row.dataset.host = hostName;
+    if (rec.commit_sha) row.dataset.commit = rec.commit_sha;
+    row.dataset.changed = String(rec.changed_files || 0);
+    if (rec.error) row.dataset.error = rec.error;
     const absTs = fullTime(rec.timestamp);
     const relTs = formatTime(rec.timestamp);
     const n = rec.changed_files || 0;
@@ -1925,6 +1936,52 @@
     if (rec.error) row.title = rec.stack + ' — ' + rec.error;
     populateIcon(row.querySelector('.stack-icon'), rec.stack);
     return row;
+  }
+
+  // peerURL looks up a host's base URL from the current peers snapshot.
+  function peerURL(host) {
+    const p = peersSnap && (peersSnap.peers || []).find(function(x) { return x.name === host; });
+    return p && p.url;
+  }
+
+  // createPeerDetailPanel is what a peer row expands to on click: the read-only
+  // facts the fan-in carries (commit, changed-file count, error) plus a link to
+  // the peer's own UI, where the full diff and drill-down live. The primary
+  // cannot fetch a peer's diff, so this is the honest "here is what I know, go
+  // there for more" — a click never dead-ends, even on a mirror row.
+  function createPeerDetailPanel(row) {
+    const host = row.dataset.host;
+    const el = document.createElement('div');
+    el.className = 'peer-detail bound';
+    el.dataset.testid = 'peer-detail';
+    el.dataset.status = row.dataset.status || '';
+    el.dataset.peerFor = host;
+    let facts = '';
+    if (row.dataset.commit) facts += '<span class="pd-fact">commit <span class="pd-sha">' + escapeHtml(shortSHA(row.dataset.commit)) + '</span></span>';
+    if (row.dataset.changed !== undefined) {
+      const n = parseInt(row.dataset.changed, 10) || 0;
+      facts += '<span class="pd-fact">' + n + ' file' + (n === 1 ? '' : 's') + ' changed</span>';
+    }
+    const url = peerURL(host);
+    let html =
+      '<div class="pd-head">' + hostChipHTML(host) + '<span class="pd-note">peer deploy · read-only mirror</span></div>' +
+      (facts ? '<div class="pd-facts">' + facts + '</div>' : '');
+    if (row.dataset.error) html += '<div class="pd-error">' + escapeHtml(row.dataset.error) + '</div>';
+    if (url) html += '<a class="pd-link" href="' + escapeAttr(url) + '" target="_blank" rel="noopener" data-testid="peer-detail-link">Open ' + escapeHtml(host) + '’s UI for the full diff ↗</a>';
+    el.innerHTML = html;
+    return el;
+  }
+
+  // togglePeerDetail opens or closes a peer row's read-only detail panel.
+  function togglePeerDetail(row) {
+    const next = row.nextElementSibling;
+    if (next && next.classList.contains('peer-detail')) {
+      next.remove();
+      row.classList.remove('diff-open');
+      return;
+    }
+    row.classList.add('diff-open'); // reuse the bound status bar/tint
+    row.after(createPeerDetailPanel(row));
   }
 
   // insertRowByTime places a row into the merged feed at its chronological spot:
@@ -1944,7 +2001,7 @@
   // into the local rows by timestamp. Local rows and their panels are never
   // touched; only peer rows (which have no panels) are removed and rebuilt.
   function renderPeerRows() {
-    tbody.querySelectorAll('.peer-row').forEach(function(r) { r.remove(); });
+    tbody.querySelectorAll('.peer-row, .peer-detail').forEach(function(r) { r.remove(); });
     if (!peersSnap) return;
     const items = [];
     (peersSnap.peers || []).forEach(function(p) {
@@ -1987,7 +2044,7 @@
   // the roster's equivalent of renderPeerRows for the deploy feed.
   function refreshPeerRosterRows() {
     const list = document.getElementById('roster-list');
-    list.querySelectorAll('.roster-row.peer-row').forEach(function(r) { r.remove(); });
+    list.querySelectorAll('.roster-row.peer-row, .peer-detail').forEach(function(r) { r.remove(); });
     renderPeerRosterRows(list);
   }
 
@@ -2453,7 +2510,7 @@
     if (e.target.closest('.link-btn')) return;
     const row = e.target.closest('.roster-row');
     if (!row || !rosterList.contains(row)) return;
-    if (row.classList.contains('peer-row')) return; // a peer's stack is a read-only mirror — no drill-down
+    if (row.classList.contains('peer-row')) { togglePeerDetail(row); return; } // read-only detail + link
     const next = row.nextElementSibling;
     const isOpen = next && (next.classList.contains('audit-panel') || next.classList.contains('health-panel'));
     closeRosterPanels();
@@ -3345,7 +3402,7 @@
     const pill = e.target.closest('.files-pill');
     const row = pill ? pill.closest('.event-row') : e.target.closest('.event-row');
     if (!row) return;
-    if (row.classList.contains('peer-row')) return; // peer rows have no local drill-down
+    if (row.classList.contains('peer-row')) { togglePeerDetail(row); return; } // read-only detail, not a local diff
     const pillEl = pill || row.querySelector('.files-pill');
     if (!pillEl) {
       // A row with no changed-files panel (e.g. a deploy with nothing hashed)

@@ -573,6 +573,29 @@
      like the local files pill's resting state. */
   .peer-files { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
 
+  /* Peer-row read-only detail (multi-host fan-in). A peer row cannot drill down
+     locally (the primary has no peer diffs), so a click opens this compact card:
+     what the fan-in knows (commit, file count, error) + a link to the peer's own
+     UI for the full diff. Sits below its row like the other expand panels. */
+  .peer-detail {
+    background: var(--bg-sunken);
+    border-radius: 8px;
+    margin: 2px 0 4px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-left: 3px solid color-mix(in srgb, var(--overlay2) 30%, transparent);
+  }
+  .peer-detail .host-mono { display: inline-flex; }
+  .peer-detail .pd-head { display: flex; align-items: center; gap: 10px; }
+  .peer-detail .pd-note { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.5px; }
+  .peer-detail .pd-facts { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--text-secondary); }
+  .peer-detail .pd-sha { font-family: var(--font-mono); color: var(--text-primary); }
+  .peer-detail .pd-error { font-family: var(--font-mono); font-size: 12px; color: var(--danger); white-space: pre-wrap; }
+  .peer-detail .pd-link { font-size: 13px; color: var(--accent); text-decoration: none; width: fit-content; }
+  .peer-detail .pd-link:hover { text-decoration: underline; }
+
   .event-row.new-row {
     animation: rowEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }

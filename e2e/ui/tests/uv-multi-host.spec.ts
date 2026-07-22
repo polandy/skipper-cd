@@ -173,3 +173,24 @@ test('UV5: the merged roster shows peer stacks, read-only', async ({ page, skipp
   await expect(rosterFor(page, 'host-a').first()).toBeHidden();
   await expect(gitea).toBeVisible();
 });
+
+// UV6 — a peer row is a read-only mirror, but a click never dead-ends: it opens
+// a compact detail (commit + file count) with a link to the peer's own UI. This
+// is the case behind the "clicking the peer _nixos row does nothing" report.
+test('UV6: clicking a peer row opens its read-only detail with a peer-UI link', async ({ page, skipper }) => {
+  await page.goto(`${skipper.baseURL}/`);
+  const peerRow = page.locator('[data-testid="deploy-row"][data-host="host-b"][data-stack="gitea"]');
+  await expect(peerRow).toBeVisible();
+  await expect(page.locator('[data-testid="peer-detail"]')).toHaveCount(0);
+
+  await peerRow.click();
+  const detail = page.locator('[data-testid="peer-detail"]');
+  await expect(detail).toHaveCount(1);
+  await expect(detail).toContainText('aaa1111'); // the peer record's commit
+  await expect(detail).toContainText('1 file changed');
+  await expect(detail.locator('[data-testid="peer-detail-link"]')).toHaveAttribute('href', /^http:\/\/127\.0\.0\.1/);
+
+  // Clicking again closes it.
+  await peerRow.click();
+  await expect(page.locator('[data-testid="peer-detail"]')).toHaveCount(0);
+});

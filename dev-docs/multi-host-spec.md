@@ -172,8 +172,11 @@ no per-host reskin.
     row pulsing at once read as an alert rather than a filter state.
 - **Merged feed.** Deploys/Stacks rows from all selected hosts interleave;
   each row carries its host chip. Peer deploy rows are read-only mirrors: the
-  usual row affordances (diff/history/health/logs/hooks drill-down) are
-  omitted, since the primary cannot act on a peer's stack. Local deploy rows
+  usual *local* fetches (diff/history/health/logs/hooks) are omitted, since the
+  primary has none of a peer's detail — but a click never dead-ends, it opens a
+  compact **peer-detail** panel (the commit, changed-file count and status the
+  fan-in carries, plus a link to the peer's own UI for the full diff;
+  `createPeerDetailPanel`). Local deploy rows
   are inserted at the top as they arrive; peer rows are then re-slotted by
   timestamp (`schedulePeerReflow`) so the merge stays chronological. An active
   host filter is signalled by the lit Hosts control + the count badge + the
