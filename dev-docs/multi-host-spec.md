@@ -226,11 +226,15 @@ match the deploy-lifecycle lines:
   `Hosts`), the `Client` seam + `NewHTTPClient` (reads each peer's
   `/api/v1/snapshot` curated to stacks/health/app_links + `/api/audit`
   best-effort, version-skew tolerant via `json.RawMessage`), the per-peer
-  reachability cache (keeps last-known + marks `Stale` on failure), and the
-  edge-triggered reachability logging. Wired in `cmd/skipper/main.go` under
-  the `ui_enabled` block (a `peers-fanin` poll loop republishing the `peers`
-  state on the health-poll cadence, `GET /api/peers`). No change inside
+  reachability cache (keeps last-known + marks `Stale` on failure), the
+  edge-triggered reachability logging, and `PeerDiffsURL` (resolves a peer's
+  diff endpoint for the on-demand diff proxy). Wired in `cmd/skipper/main.go`
+  under the `ui_enabled` block (a `peers-fanin` poll loop republishing the
+  `peers` state on the health-poll cadence, `GET /api/peers`, and the peer-diff
+  proxy `GET /api/peers/{name}/events/{id}/diffs`). No change inside
   `internal/deploy`.
+- `internal/audit`: `Record` gains the originating deploy event's `ID`, so a
+  fanned-in peer row can key the peer's diff endpoint for the proxy.
 - `internal/config`: the `Peer{Name,URL}` type + `peers:` slice with
   `validatePeers`, `host_name` (`config.HostName`, defaults to the OS
   hostname), and a `collectWarnings` entry when `len(peers)+1 > HostColorCount`.
@@ -240,9 +244,11 @@ match the deploy-lifecycle lines:
 - `internal/prettylog`: anchor-table entries for the fan-in startup + peer
   reachability lines.
 - `internal/ui`: `HostColorCount` (single Go source of truth), `PeersHandler`
-  (`GET /api/peers`, takes a `func() any` to avoid a ui→peers→config→ui import
-  cycle). The UI itself — Hosts control + drawer, the per-row host chip and its
-  click-filter, the merged deploy feed + roster — lives in the embedded
+  (`GET /api/peers`) and `PeerDiffsHandler` (the peer-diff proxy) — both take
+  funcs (`func() any` / a name→URL resolver) to avoid a ui→peers→config→ui
+  import cycle. The UI itself — Hosts control + drawer, the per-row host chip and
+  its click-filter, the merged deploy feed + roster, the peer-detail panel with
+  its inline diff — lives in the embedded
   `index.html` / `app.css`, with the pure host helpers (`assignHostColors`,
   `hostColorIndex`, `hostFilterActive`, `HOST_COLOR_COUNT`) in `app-helpers.js`.
 - Depends on ADR-0039's `/api/v1` existing on peers (and, for the merged
@@ -255,8 +261,12 @@ match the deploy-lifecycle lines:
 - `internal/peers`: fan-in client against `httptest`/fake peers — host
   tagging, merge ordering, a peer returning an error/timeout →
   last-known-kept + marked stale, recovery clears stale, an unknown future
-  field ignored (version-skew tolerance), and reachability edges logged once
-  per transition (down-from-first-poll once, reachable-first-contact silent).
+  field ignored (version-skew tolerance), reachability edges logged once
+  per transition (down-from-first-poll once, reachable-first-contact silent),
+  and `PeerDiffsURL` resolution (peer → diff endpoint; self/unknown → false).
+- `internal/ui`: `PeerDiffsHandler` proxies a peer's diff and forwards its
+  status (a peer 404 for an evicted event passes through; an unknown peer 404s
+  without a fetch).
 - `internal/config`: `host_name` default + override; peers validation; the
   palette-overflow warning derived from `ui.HostColorCount`.
 - `internal/prettylog`: the fan-in startup + peer up/down anchors render with
@@ -265,11 +275,12 @@ match the deploy-lifecycle lines:
   of order/count, hands distinct hosts distinct slots while the palette has
   room (repeating only past 6); `hostColorIndex` range/determinism;
   `hostFilterActive`.
-- UI e2e (one new mask, next free letter): the merged feed interleaves hosts
-  with the per-row chip; clicking a chip isolates to that host and re-clicking
-  clears; the Hosts drawer multi-select filters both views; an offline peer
-  shows the stale banner and dimmed last-known rows, not a blank. A stub
-  `/api/v1` peer (or a second instance) is started by the harness.
+- UI e2e (Maske V): the merged feed interleaves hosts with the per-row chip;
+  clicking a chip isolates to that host and re-clicking clears; the Hosts drawer
+  multi-select filters both views; an offline peer shows the stale banner and
+  dimmed last-known rows, not a blank; a peer row expands to its read-only
+  detail with the diff loaded inline through the proxy. A stub `/api/v1` peer
+  (serving snapshot / audit / diffs) is started by the harness.
 
 ## Open questions
 

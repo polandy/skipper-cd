@@ -97,8 +97,19 @@ rewrite, not guessed.
 The primary only ever consumes each peer's *read* API — it cannot expose a
 peer's write endpoints, so the scope leak of the byte-proxy is gone. To
 watch a peer deploy live (the one thing a merged, possibly-polled overview
-gives up), the Hosts popover links to that peer's own UI directly — a
+gives up), the Hosts drawer links to that peer's own UI directly — a
 hyperlink, no proxy.
+
+A peer deploy row is a read-only mirror, but expanding it is not a dead end:
+it shows the fanned-in facts (commit, changed-file count, status) and **loads
+that deploy's diff inline**. The diff is bulk data deliberately left out of the
+fan-in, so it is fetched *on demand* through a **narrow read-only proxy** on the
+primary — `GET /api/peers/{name}/events/{id}/diffs` → the peer's own
+`/api/events/{id}/diffs`. This is still strictly read (a single diff endpoint,
+not the byte-proxy's whole surface), and it is what the browser cannot do
+itself (cross-origin to the peer). The event id it needs rides on the fanned-in
+audit record; an evicted or unreachable diff falls back to the read-only facts.
+No per-row "open the peer" link — that affordance lives once, in the Hosts drawer.
 
 ### Poll first, stream later; unreachable is flagged, not blanked
 
@@ -162,8 +173,15 @@ rejected as reading like an alert). The chip carries its hostname on hover
 - **New `internal/peers` package**; no change to the deploy path or its
   invariants (the fan-in is strictly read, on the primary and on peers).
 - **Peer rows are read-only mirrors.** Peer deploy and roster rows drop the
-  drill-down affordances (diff/history/health/logs/hooks) and expand panels —
-  the primary can display a peer's state but cannot act on it.
+  *action/local-fetch* affordances (history/health/logs/hooks/jump) — the
+  primary can display a peer's state but cannot act on it. A click still
+  expands a read-only detail (facts + the peer's diff loaded inline via the
+  read-only proxy above), so it never dead-ends.
+- **The primary proxies one peer read endpoint on demand.** `/api/peers/{name}/
+  events/{id}/diffs` is the only per-peer proxy — a lean, read-only exception to
+  "fan in, don't proxy," justified because a diff is bulk data not worth fanning
+  in eagerly and the browser can't fetch it cross-origin. The deploy event `id`
+  it keys on now rides on `audit.Record`.
 - **The fan-in narrates itself in pretty-console mode** (ADR-0042): a startup
   line plus edge-triggered peer reachability (up/down logged once per
   transition). Useful in every log mode; pretty mode just styles it.
