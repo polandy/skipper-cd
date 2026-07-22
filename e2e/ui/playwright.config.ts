@@ -14,11 +14,13 @@ export default defineConfig({
   // kept flat (no platform suffix).
   snapshotPathTemplate: '__screenshots__/{testFileName}/{arg}{ext}',
   fullyParallel: true,
-  // Use every core in CI. Playwright defaults to half the logical CPUs (2 on a
-  // 4-core GitHub runner); each test drives its own isolated skipper binary on
-  // free ports, so nothing is shared and full parallelism is safe. Local runs
-  // keep the default so a dev's machine stays responsive.
-  workers: process.env.CI ? '100%' : undefined,
+  // Half the cores in CI (Playwright's own default, made explicit). Each worker
+  // drives an isolated skipper binary AND a Chromium — two CPU-hungry processes
+  // per worker — so '100%' oversubscribes a 4-core runner and starves the
+  // SSE/timer round-trips the timing-sensitive tests wait on, the amplifier
+  // behind their intermittent 10s-timeout flakes. '50%' keeps them isolated with
+  // headroom. Local runs keep the default so a dev's machine stays responsive.
+  workers: process.env.CI ? '50%' : undefined,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [['list'], ['html', { open: 'never' }]],

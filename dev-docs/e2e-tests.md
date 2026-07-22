@@ -819,6 +819,62 @@ so no baseline shifts and no new snapshot is added.
 - **UU4 — Phase in the roster.** The same running-hook phase renders on the
   Stacks `roster-row` for `web`, identical to the Deploys view.
 
+### 4.23 UI — Maske V: Multi-host federated UI (ADR-0048)
+
+The read-data fan-in: the primary (`host_name: host-a`) merges each peer's
+deploys, stacks and health into one UI. The harness stands up a **reachable stub
+peer** (`host-b`) — a small HTTP server serving its `/api/v1/snapshot` (curated
+to `stacks`/`health`/`app_links`) and `/api/audit` — plus an **unreachable
+peer** (`host-c`, a dead port), via the `peers` / `hostName` start options. No
+real second skipper; the stub is enough to exercise the merge, filter and
+offline paths. Behaviour-only: the multi-host surface only appears when peers are
+configured, so no existing snapshot shifts, and the colour assignment is
+unit-tested (`app-helpers.test.js`).
+
+- **UV1 — Merged feed + host chips.** The `hosts-btn` is enabled and reports
+  `3/3`; the feed interleaves local (`host-a`) and peer (`host-b`) rows, each
+  tagged with a `host-mono` chip. Peer rows are read-only mirrors — a chip but no
+  `history-btn` / `jump-btn`. The two hosts' dots render distinct palette slots
+  (`data-host-color`) and distinct computed colours (the merged view's point;
+  the per-theme adjacent-slot distinctness is unit-tested in `app-helpers.test.js`).
+- **UV2 — Chip = click-to-filter toggle.** Clicking a `host-b` chip isolates the
+  feed to `host-b` (local rows hidden, `deploys-table` gains `host-filter-active`,
+  the badge reads `1/3`); clicking a dot again clears back to `3/3` and all rows.
+- **UV3 — Hosts drawer multi-select.** The drawer lists one `host-row` per host
+  (self + 2 peers); deselecting `host-b` drops its rows while local rows stay;
+  `hosts-all-btn` ("Select all") restores every host.
+- **UV4 — Offline peer flagged, not blanked.** The unreachable `host-c` gives the
+  control the `has-offline` state and shows the `host-stale-banner` naming it; in
+  the drawer `host-c`'s reachability dot reads `down` and `host-b`'s reads `up`, a
+  peer carries an "open its own UI" `host-link` and `self` does not.
+- **UV5 — Merged roster.** The Stacks view lists local and peer stacks together,
+  host-tagged; a peer `roster-row` shows its status badge and host chip but no
+  `jump-btn` / `clog-btn`, and the same chip-filter isolates the roster to one host.
+
+- **UV6 — Peer row never dead-ends.** A peer row is a read-only mirror, but
+  clicking it opens a `peer-detail` panel (commit + file count + status) and
+  loads the peer's diff inline through the
+  primary's proxy (`GET /api/peers/{name}/events/{id}/diffs`, stub-served by the
+  harness `diffs`), rendered as a normal `diff-panel`. This is the case behind
+  the "clicking the peer `_nixos` row does nothing" report.
+
+### 4.24 UI — Maske W: `_nixos` rebuild row (ADR-0025)
+
+The NixOS-rebuild pseudo-stack's deploy row. The harness (`nixosRebuild`) commits
+a `configuration.nix` and stubs `systemd-run` / `systemctl` to a fast success, so
+the startup sync runs a (fake) `nixos-rebuild` and emits a real `_nixos` row;
+`setNixConfig` + a webhook then pushes a second rebuild carrying a real git diff.
+No real switch. Behaviour-only.
+
+- **UW1 — Affordances.** The `_nixos` row has **no** `jump-btn` (it is not in the
+  Stacks roster) and **no** container-logs `clog-btn` (it is not a compose
+  project) — only its git diff and deploy history apply.
+- **UW2 — Click never dead-ends.** A diff-bearing `_nixos` row (`data-has-diffs=1`
+  + a `files-pill`) opens its diff/files panel on a row-body click. (A row with
+  nothing hashed falls back to the history panel — the general never-dead-end
+  rule, unit-covered by the click handler; here the realistic diff case is
+  asserted.)
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

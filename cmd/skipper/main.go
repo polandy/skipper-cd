@@ -37,6 +37,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/metrics"
 	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/orphans"
+	"github.com/polandy/skipper-cd/internal/peers"
 	"github.com/polandy/skipper-cd/internal/prettylog"
 	"github.com/polandy/skipper-cd/internal/reconcile"
 	"github.com/polandy/skipper-cd/internal/roster"
@@ -54,6 +55,16 @@ const readHeaderTimeout = 10 * time.Second
 // shutdownTimeout bounds how long in-flight HTTP requests (e.g. open SSE
 // streams) may delay shutdown after a termination signal.
 const shutdownTimeout = 10 * time.Second
+
+const (
+	// peerPollTimeout bounds a single peer read (its snapshot + audit fetch) in
+	// the multi-host fan-in (ADR-0048), so one slow or hung peer cannot stall
+	// the poll loop.
+	peerPollTimeout = 10 * time.Second
+	// peerPollFallbackSeconds is the fan-in poll cadence used when the runtime
+	// health poll — whose cadence the fan-in normally rides — is disabled.
+	peerPollFallbackSeconds = 30
+)
 
 // Build identity surfaced in the UI header (GET /api/version), injected via
 // -ldflags at build time:
@@ -240,6 +251,7 @@ func main() {
 		healthPoller    *health.Poller
 		orphanDetector  *orphans.Detector
 		appLinkDetector *applink.Detector
+		peerRegistry    *peers.Registry
 		startEventID    int64
 		runPlanSink     func(deploy.RunPlan)
 		hookRunSink     func(deploy.HookRun)
@@ -269,6 +281,12 @@ func main() {
 		}
 		hookRunSink = func(h deploy.HookRun) {
 			stateB.Publish(events.StateEvent{Name: events.StateHookRun, Data: h})
+		}
+		// Multi-host fan-in (ADR-0048): when peers are configured, the primary
+		// reads each peer's `/api/v1` surface and merges it into one UI. The poll
+		// loop that refreshes it starts alongside the other loops below.
+		if len(cfg.Peers) > 0 {
+			peerRegistry = peers.New(cfg.HostName, cfg.Peers, peers.NewHTTPClient(&http.Client{Timeout: peerPollTimeout}), peerPollTimeout)
 		}
 		slog.Info("web UI enabled")
 	}
@@ -498,6 +516,31 @@ func main() {
 		slog.Info("periodic reconcile enabled", "interval_seconds", interval)
 	}
 
+	// Multi-host fan-in poll loop (ADR-0048): refresh every peer's read data on
+	// the health-poll cadence and republish the merged `peers` state over SSE.
+	// UI-only — it exists only when the UI is on and peers are configured.
+	if peerRegistry != nil {
+		interval := *cfg.RuntimeHealthPollIntervalSeconds
+		if interval <= 0 {
+			interval = peerPollFallbackSeconds
+		}
+		d := time.Duration(interval) * time.Second
+		safego.Go("peers-fanin", func() {
+			t := time.NewTicker(d)
+			defer t.Stop()
+			for {
+				peerRegistry.Poll(signalCtx)
+				stateB.Publish(events.StateEvent{Name: events.StatePeers, Data: peerRegistry.State()})
+				select {
+				case <-signalCtx.Done():
+					return
+				case <-t.C:
+				}
+			}
+		})
+		slog.Info("multi-host fan-in enabled", "peers", len(cfg.Peers), "poll_interval_seconds", interval)
+	}
+
 	as := &autosyncDeps{
 		ctrl:    autosyncCtrl,
 		queue:   autosyncQueue,
@@ -523,6 +566,7 @@ func main() {
 		healthWatcher:   healthWatcher,
 		orphanDetector:  orphanDetector,
 		appLinkDetector: appLinkDetector,
+		peerRegistry:    peerRegistry,
 		broadcaster:     broadcaster,
 		history:         history,
 		auditLog:        auditLog,
@@ -615,6 +659,7 @@ type webhookDeps struct {
 	healthWatcher   *healthwatch.Watcher
 	orphanDetector  *orphans.Detector
 	appLinkDetector *applink.Detector
+	peerRegistry    *peers.Registry
 	broadcaster     *events.Broadcaster[events.DeployEvent]
 	history         *events.History
 	auditLog        *audit.Log
@@ -749,6 +794,7 @@ func webhookMux(d webhookDeps) *http.ServeMux {
 			healthWatcher:   d.healthWatcher,
 			orphanDetector:  d.orphanDetector,
 			appLinkDetector: d.appLinkDetector,
+			peers:           d.peerRegistry,
 			auditLog:        d.auditLog,
 			autosync:        d.autosync,
 		}
@@ -789,6 +835,11 @@ func registerEventRoutes(mux *http.ServeMux, broadcaster *events.Broadcaster[eve
 	mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
 	mux.Handle("GET /api/audit", ui.AuditHandler(auditLog))
 	mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
+	if snap.peers != nil {
+		mux.Handle("GET /api/peers", ui.PeersHandler(func() any { return snap.peers.Hosts() }))
+		mux.Handle("GET /api/peers/{name}/events/{id}/diffs",
+			ui.PeerDiffsHandler(snap.peers.PeerDiffsURL, &http.Client{Timeout: peerPollTimeout}))
+	}
 }
 
 // registerIconRoutes wires per-stack icon resolution and the cache-refresh hook.
@@ -828,6 +879,7 @@ type stateSnapshot struct {
 	healthWatcher   *healthwatch.Watcher
 	orphanDetector  *orphans.Detector
 	appLinkDetector *applink.Detector
+	peers           *peers.Registry
 	auditLog        *audit.Log
 	autosync        *autosyncDeps
 }
@@ -857,6 +909,9 @@ func (s stateSnapshot) collect() []events.StateEvent {
 	}
 	if s.appLinkDetector != nil {
 		state = append(state, events.StateEvent{Name: events.StateAppLinks, Data: s.appLinkDetector.Current()})
+	}
+	if s.peers != nil {
+		state = append(state, events.StateEvent{Name: events.StatePeers, Data: s.peers.State()})
 	}
 	return state
 }

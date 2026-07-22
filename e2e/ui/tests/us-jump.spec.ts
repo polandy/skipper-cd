@@ -95,7 +95,12 @@ test.describe('cross-view jump', () => {
 
     // Stacks -> Deploys: filter Deploys down to "web" (api hidden), then leave
     // it filtered and switch to Stacks via the view toggle (not a jump).
+    // Wait for the rows first: type-to-search ignores keystrokes until a row
+    // exists (the `!hasRows` guard), so typing before the SSE snapshot lands drops
+    // the first key ("web" -> "eb") and 'api' stays visible — the US5 flake.
+    await expect(deployRows(page, 'api').first()).toBeVisible();
     await page.keyboard.type('web');
+    await expect(page.locator('[data-testid="deploy-filter"]')).toHaveValue('web');
     await expect(deployRows(page, 'api').first()).toBeHidden();
     await stacksBtn(page).click();
 
@@ -107,9 +112,11 @@ test.describe('cross-view jump', () => {
     await expect(page.locator('[data-testid="deploy-filter"]')).toHaveValue('');
 
     // Deploys -> Stacks: filter Stacks down to "web" (api hidden), leave it
-    // filtered and switch back to Deploys via the toggle.
+    // filtered and switch back to Deploys via the toggle. Same rows-first guard.
     await stacksBtn(page).click();
+    await expect(rosterRow(page, 'api')).toBeVisible();
     await page.keyboard.type('web');
+    await expect(page.locator('[data-testid="roster-filter"]')).toHaveValue('web');
     await expect(rosterRow(page, 'api')).toBeHidden();
     await deploysBtn(page).click();
 

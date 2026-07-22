@@ -685,3 +685,43 @@ func TestWriteSSE_Format(t *testing.T) {
 		t.Error("expected SSE double newline terminator")
 	}
 }
+
+func TestPeerDiffsHandler_ProxiesAndForwardsStatus(t *testing.T) {
+	// A stub peer serving one event's diff and 404 for anything else.
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/events/42/diffs" {
+			_, _ = io.WriteString(w, `{"diffs":{"x":"+a"}}`)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer peer.Close()
+
+	resolve := func(name, id string) (string, bool) {
+		if name != "host-b" {
+			return "", false
+		}
+		return peer.URL + "/api/events/" + id + "/diffs", true
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/peers/{name}/events/{id}/diffs", PeerDiffsHandler(resolve, peer.Client()))
+
+	do := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+
+	// Known peer + present event → the peer's body is forwarded verbatim.
+	if rec := do("/api/peers/host-b/events/42/diffs"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"diffs"`) {
+		t.Errorf("proxy = %d %q, want 200 with the peer diff", rec.Code, rec.Body.String())
+	}
+	// An event the peer has evicted → its 404 is forwarded (UI falls back to the link).
+	if rec := do("/api/peers/host-b/events/99/diffs"); rec.Code != http.StatusNotFound {
+		t.Errorf("evicted event: got %d, want 404", rec.Code)
+	}
+	// Unknown peer → 404 from the handler itself, no fetch.
+	if rec := do("/api/peers/nope/events/42/diffs"); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown peer: got %d, want 404", rec.Code)
+	}
+}

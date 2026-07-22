@@ -5,7 +5,32 @@
 // only that file), so it never ships in the binary.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const h = require('./app-helpers.js');
+
+// hexHue returns a #rrggbb colour's HSL hue in degrees (or -1 for a grey).
+function hexHue(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  if (d === 0) return -1;
+  let hue;
+  if (max === r) hue = ((g - b) / d) % 6;
+  else if (max === g) hue = (b - r) / d + 2;
+  else hue = (r - g) / d + 4;
+  hue *= 60;
+  return hue < 0 ? hue + 360 : hue;
+}
+
+// hueDist is the shortest distance between two hues on the 360° wheel.
+function hueDist(a, b) {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
 
 test('formatDuration', () => {
   assert.equal(h.formatDuration(0), '—');
@@ -173,4 +198,116 @@ test('logLineVisible: empty query shows all, else case-insensitive contains', ()
   assert.equal(h.logLineVisible('GET /api/health 200', 'API'), true); // case-insensitive
   assert.equal(h.logLineVisible('GET /api/health 200', 'wget'), false);
   assert.equal(h.logLineVisible('', 'x'), false);
+});
+
+test('hostColorIndex: deterministic function of the name, in palette range', () => {
+  // Same name → same slot every time, independent of any surrounding host set.
+  assert.equal(h.hostColorIndex('host-b'), h.hostColorIndex('host-b'));
+  // In-range for the palette.
+  for (const n of ['host-a', 'host-b', 'host-c', 'nuc', 'argoneon', '']) {
+    const i = h.hostColorIndex(n);
+    assert.ok(Number.isInteger(i) && i >= 0 && i < h.HOST_COLOR_COUNT, n + ' -> ' + i);
+  }
+});
+
+test('hostColorIndex: independent of order/count (name-based, not positional)', () => {
+  // Whatever slot host-c hashes to, it is the same whether it is the only host
+  // or one of many — the colour follows the name, not its position.
+  const solo = h.hostColorIndex('host-c');
+  assert.equal(h.hostColorIndex('host-c'), solo);
+});
+
+test('hostMonogram: initials of a separated name, else first three letters', () => {
+  assert.equal(h.hostMonogram('nuc'), 'NUC');
+  assert.equal(h.hostMonogram('argoneon'), 'ARG');
+  assert.equal(h.hostMonogram('host-a'), 'HA');
+  assert.equal(h.hostMonogram('host-b'), 'HB');
+  assert.equal(h.hostMonogram('web_server_1'), 'WS1'); // up to three segments
+  assert.equal(h.hostMonogram('a'), 'A');
+  assert.equal(h.hostMonogram(''), '');
+  assert.equal(h.hostMonogram(undefined), '');
+});
+
+test('assignHostColors: never reuses a colour while the palette has free slots', () => {
+  // Search for a name set that would collide on the raw hash, to prove the
+  // set-aware assigner still hands each host a distinct slot.
+  const names = [];
+  for (let i = 0; i < h.HOST_COLOR_COUNT; i++) names.push('host-' + i);
+  const colors = h.assignHostColors(names);
+  const slots = names.map((n) => colors[n]);
+  assert.equal(
+    new Set(slots).size,
+    names.length,
+    'all ' + names.length + ' hosts distinct: ' + slots.join(','),
+  );
+  for (const s of slots) assert.ok(s >= 0 && s < h.HOST_COLOR_COUNT);
+});
+
+test('assignHostColors: a colliding pair is separated onto different slots', () => {
+  // Two names that hash to the same raw slot must still get different colours.
+  let a, b;
+  outer: for (const x of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']) {
+    for (const y of ['l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v']) {
+      if (h.hostColorIndex(x) === h.hostColorIndex(y)) {
+        a = x;
+        b = y;
+        break outer;
+      }
+    }
+  }
+  assert.ok(a && b, 'found a colliding pair to test');
+  const colors = h.assignHostColors([a, b]);
+  assert.notEqual(colors[a], colors[b]);
+});
+
+test('assignHostColors: independent of input order and of which host is primary', () => {
+  const c1 = h.assignHostColors(['host-a', 'host-b', 'host-c']);
+  const c2 = h.assignHostColors(['host-c', 'host-a', 'host-b']);
+  assert.deepEqual(c1, c2);
+});
+
+test('host palette: adjacent colour slots stay visually distinct in every theme', () => {
+  // assignHostColors hands out numerically adjacent slots first (collision
+  // probing steps +1), so two hosts most often land on consecutive slots. On a
+  // monotonic hue ramp those are the two closest colours and read as the same;
+  // the slot order in app.css is interleaved to keep every adjacent pair far
+  // apart. Guard that invariant against a future re-monotonising edit.
+  const css = fs.readFileSync(path.join(__dirname, 'app.css'), 'utf8');
+  const re =
+    /--host-0:(#[0-9a-f]{6}); --host-1:(#[0-9a-f]{6}); --host-2:(#[0-9a-f]{6}); --host-3:(#[0-9a-f]{6}); --host-4:(#[0-9a-f]{6}); --host-5:(#[0-9a-f]{6});/g;
+  const blocks = [...css.matchAll(re)];
+  // 5 themes × dark + light = 10 palettes (the fallback :root shares the
+  // catppuccin-dark line).
+  assert.ok(blocks.length >= 10, `expected >= 10 host palettes in app.css, found ${blocks.length}`);
+  const MIN_DEG = 38;
+  for (const m of blocks) {
+    const hexes = m.slice(1, 7);
+    const hues = hexes.map(hexHue);
+    for (let i = 0; i < 5; i++) {
+      const dist = hueDist(hues[i], hues[i + 1]);
+      assert.ok(
+        dist >= MIN_DEG,
+        `adjacent slots ${i}/${i + 1} only ${dist.toFixed(0)}° apart (${hexes[i]} vs ${hexes[i + 1]})`,
+      );
+    }
+    assert.equal(new Set(hexes).size, 6, `six distinct host colours, got ${hexes.join(',')}`);
+  }
+});
+
+test('assignHostColors: beyond the palette size colours may repeat', () => {
+  const names = [];
+  for (let i = 0; i < h.HOST_COLOR_COUNT + 3; i++) names.push('overflow-host-' + i);
+  const colors = h.assignHostColors(names);
+  // Every host is assigned an in-range slot; distinctness is no longer possible.
+  const slots = names.map((n) => colors[n]);
+  assert.equal(slots.length, names.length);
+  for (const s of slots) assert.ok(s >= 0 && s < h.HOST_COLOR_COUNT);
+  assert.ok(new Set(slots).size <= h.HOST_COLOR_COUNT);
+});
+
+test('hostFilterActive: only a strict non-empty subset lights the control', () => {
+  assert.equal(h.hostFilterActive(3, 3), false); // all selected
+  assert.equal(h.hostFilterActive(2, 3), true); // subset
+  assert.equal(h.hostFilterActive(0, 3), false); // none (guard, treated inactive)
+  assert.equal(h.hostFilterActive(1, 1), false); // single host, all selected
 });

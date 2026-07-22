@@ -1,5 +1,6 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
+import { createServer as createHttpServer, type Server } from 'node:http';
 import { createHmac } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -234,6 +235,36 @@ export interface StartOptions {
    *  startSkipperOrdered: a stack deploys only after its dependencies, and a
    *  failed dependency blocks it (a `blocked` row). Maske P opts in. */
   dependsOn?: Record<string, string[]>;
+  /** Configure `nixos_rebuild` and commit a `configuration.nix` so the startup
+   *  sync runs a (stubbed) nixos-rebuild and emits a `_nixos` deploy row. The
+   *  rebuild's `systemd-run` / `systemctl` are stubbed to a fast success — no
+   *  real switch. Maske W. */
+  nixosRebuild?: boolean;
+  /** This instance's own host label in the merged multi-host view (ADR-0048).
+   *  Written as `host_name:`; defaults to the OS hostname otherwise. Maske V. */
+  hostName?: string;
+  /** Other skipper instances to fan in (ADR-0048). Each becomes a `peers:` entry
+   *  on a reserved local port; a reachable peer gets a stub HTTP server serving
+   *  its `/api/v1/snapshot` + `/api/audit`, an unreachable one points at a dead
+   *  port so the primary marks it offline. Maske V opts in. */
+  peers?: PeerSpec[];
+}
+
+/** PeerSpec is one stub peer the harness stands up for the multi-host fan-in. */
+export interface PeerSpec {
+  /** The peer's host label (matches a `peers[].name`). */
+  name: string;
+  /** The JSON the stub serves at `/api/v1/snapshot` — curated to the keys the
+   *  fan-in reads (`stacks`, `health`, `app_links`). */
+  snapshot?: Record<string, unknown>;
+  /** The audit records the stub serves at `/api/audit` (the peer's deploys). */
+  audit?: Array<Record<string, unknown>>;
+  /** Diffs the stub serves at `/api/events/{id}/diffs`, keyed by event id — what
+   *  the primary's peer-diff proxy fetches on a peer-row expand. */
+  diffs?: Record<string, unknown>;
+  /** false → no server is started; the peer URL points at a dead port so the
+   *  primary sees it unreachable (offline banner). Default true. */
+  reachable?: boolean;
 }
 
 /** OrphanContainer is one line of the stub's `docker ps -a` listing — a single
@@ -304,6 +335,7 @@ export class Skipper {
   private readonly healthDir: string;
   private readonly orphansDir: string;
   private readonly spawnEnv: NodeJS.ProcessEnv;
+  private readonly peerServers: Server[];
   private proc: ChildProcess;
   private out = '';
 
@@ -320,6 +352,7 @@ export class Skipper {
     healthDir: string;
     orphansDir: string;
     spawnEnv: NodeJS.ProcessEnv;
+    peerServers: Server[];
     proc: ChildProcess;
   }) {
     this.baseURL = init.baseURL;
@@ -334,6 +367,7 @@ export class Skipper {
     this.healthDir = init.healthDir;
     this.orphansDir = init.orphansDir;
     this.spawnEnv = init.spawnEnv;
+    this.peerServers = init.peerServers;
     this.attach(init.proc);
   }
 
@@ -375,6 +409,11 @@ export class Skipper {
     if (stacks.length === 0) {
       writeFileSync(join(origin, '.keep'), '');
     }
+    // A tracked .nix file makes the startup sync detect a nix change and run the
+    // (stubbed) nixos-rebuild, emitting a `_nixos` row.
+    if (opts.nixosRebuild) {
+      writeFileSync(join(origin, 'configuration.nix'), '{ }\n');
+    }
     // ADR-0043: per-stack overrides go into the host config's stacks: list, not
     // an in-repo skipper.yaml (a leftover one is now a hard error). setRepoConfig
     // still writes one on purpose, to exercise that guard.
@@ -385,6 +424,16 @@ export class Skipper {
     const stubDir = join(base, 'stub-bin');
     mkdirSync(stubDir, { recursive: true });
     writeFileSync(join(stubDir, 'docker'), stubDockerScript, { mode: 0o755 });
+    // Stub the nixos-rebuild transition (ADR-0014): `systemd-run` starts the
+    // (fake) unit and returns; `systemctl is-active` reports it already gone and
+    // `is-failed` reports not-failed, so Rebuild sees an instant success without
+    // any real switch. Harmless when nixos_rebuild is not configured.
+    writeFileSync(join(stubDir, 'systemd-run'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeFileSync(
+      join(stubDir, 'systemctl'),
+      '#!/bin/sh\ncase " $* " in\n  *" is-active "*) exit 1 ;;\n  *" is-failed "*) exit 1 ;;\n  *) exit 0 ;;\nesac\n',
+      { mode: 0o755 },
+    );
 
     // Where setStackHealth writes per-stack `compose ps` output for the stub.
     const healthDir = join(base, 'health');
@@ -399,9 +448,45 @@ export class Skipper {
     const orphansDir = join(base, 'orphans');
     mkdirSync(orphansDir, { recursive: true });
 
-    const [port, metricsPort] = await freePorts(2);
+    // Two ports for this instance, plus one per peer (reachable or dead).
+    const peerSpecs = opts.peers ?? [];
+    const ports = await freePorts(2 + peerSpecs.length);
+    const [port, metricsPort] = ports;
+    const peerPorts = ports.slice(2);
     const baseURL = `http://127.0.0.1:${port}`;
     const metricsURL = `http://127.0.0.1:${metricsPort}`;
+
+    // Stub peer servers for the multi-host fan-in (ADR-0048): a reachable peer
+    // serves its curated snapshot + audit; an unreachable one has no server, so
+    // its reserved port refuses connections and the primary marks it offline.
+    const peerServers: Server[] = [];
+    let peersCfg = '';
+    if (peerSpecs.length) {
+      peersCfg = 'peers:\n';
+      for (let i = 0; i < peerSpecs.length; i++) {
+        const spec = peerSpecs[i];
+        const peerPort = peerPorts[i];
+        peersCfg += `  - name: ${JSON.stringify(spec.name)}\n    url: ${JSON.stringify(`http://127.0.0.1:${peerPort}`)}\n`;
+        if (spec.reachable === false) continue; // dead port → unreachable
+        const server = createHttpServer((req, res) => {
+          const path = (req.url ?? '').split('?')[0];
+          res.setHeader('Content-Type', 'application/json');
+          if (path === '/api/v1/snapshot') return void res.end(JSON.stringify(spec.snapshot ?? {}));
+          if (path === '/api/audit') return void res.end(JSON.stringify(spec.audit ?? []));
+          const diffMatch = path.match(/^\/api\/events\/([^/]+)\/diffs$/);
+          if (diffMatch) {
+            const d = (spec.diffs ?? {})[diffMatch[1]];
+            if (d) return void res.end(JSON.stringify(d));
+            res.statusCode = 404;
+            return void res.end('{}');
+          }
+          res.statusCode = 404;
+          res.end('{}');
+        });
+        await new Promise<void>((r) => server.listen(peerPort, '127.0.0.1', () => r()));
+        peerServers.push(server);
+      }
+    }
 
     const cfg =
       `repo_url: ${JSON.stringify(origin)}\n` +
@@ -413,6 +498,8 @@ export class Skipper {
       `metrics_port: ${metricsPort}\n` +
       `ui_enabled: true\n` +
       (opts.themeSwitcher ? `ui_theme_switcher: true\n` : '') +
+      (opts.hostName ? `host_name: ${JSON.stringify(opts.hostName)}\n` : '') +
+      peersCfg +
       // Health polling off by default so masks predating it stay health-free;
       // Maske H opts in via healthPoll (ADR-0027).
       `runtime_health_poll_interval_seconds: ${opts.healthPoll ?? 0}\n` +
@@ -428,6 +515,7 @@ export class Skipper {
         ? `self_heal_cooldown_seconds: ${opts.selfHealCooldownSeconds}\n`
         : '') +
       `command_timeout_seconds: 30\n` +
+      (opts.nixosRebuild ? `nixos_rebuild:\n  flake: ".#test"\n` : '') +
       // source_url points at a closed local port so auto-match icon fetches fail
       // fast and deterministically (connection refused → 404 → monogram), keeping
       // the whole UI suite offline. Repo icon.svg overrides still resolve.
@@ -486,6 +574,7 @@ export class Skipper {
       healthDir,
       orphansDir,
       spawnEnv,
+      peerServers,
       proc,
     });
     if ((opts.readiness ?? 'deployed') === 'listening') {
@@ -510,6 +599,14 @@ export class Skipper {
   /** release unblocks a held `up`. */
   release(): void {
     writeFileSync(this.holdFile, '');
+  }
+
+  /** setNixConfig rewrites the tracked configuration.nix and commits it, so the
+   *  next sync runs a nixos-rebuild whose `_nixos` row carries a real git diff
+   *  against the last deployed commit (has_diffs=true) — the realistic case. */
+  setNixConfig(content: string): void {
+    writeFileSync(join(this.origin, 'configuration.nix'), content);
+    git(this.origin, 'commit', '-am', 'update configuration.nix');
   }
 
   /** setStackImage rewrites a stack's compose to a new nginx tag and commits it,
@@ -667,6 +764,8 @@ export class Skipper {
    *  abrupt drop is also the more faithful signal for the reconnect cases
    *  (UD2/UE): the SSE stream is cut immediately instead of lingering. */
   async stop(): Promise<void> {
+    for (const server of this.peerServers) server.close();
+    this.peerServers.length = 0;
     if (this.proc.exitCode !== null || this.proc.signalCode !== null) return;
     const exited = new Promise<void>((res) => this.proc.once('exit', () => res()));
     this.proc.kill('SIGKILL');

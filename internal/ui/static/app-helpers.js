@@ -175,6 +175,83 @@ function orphanMatchesQuery(o, q) {
   });
 }
 
+// HOST_COLOR_COUNT is how many distinct per-host identity colours the palette
+// provides (ADR-0048) — the app.css `[data-host-color="N"]` slots must match
+// this count per theme.
+const HOST_COLOR_COUNT = 6;
+
+// hostColorIndex assigns a host its identity-colour slot automatically and
+// deterministically from its name alone: a fixed FNV-1a hash of the name,
+// wrapped to the palette size. Hashing the name (not the host's position in the
+// set) means a host keeps the same colour regardless of host-set order, how
+// many peers exist, or which instance is the primary — "host-b is always the
+// same colour" holds everywhere it appears.
+function hostColorIndex(name) {
+  let hash = 0x811c9dc5; // FNV-1a 32-bit offset basis
+  const s = name || '';
+  for (let i = 0; i < s.length; i++) {
+    hash ^= s.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193); // FNV prime
+  }
+  return (hash >>> 0) % HOST_COLOR_COUNT;
+}
+
+// hostMonogram is the short uppercase label shown in a host's row chip — the
+// initials of a hyphen/underscore/dot/space-separated name (host-a -> HA), or
+// the first three letters of a single-token name (argoneon -> ARG, nuc -> NUC).
+// The chip's colour disambiguates hosts that share a monogram; the full name is
+// always in its title/tap-tip.
+function hostMonogram(name) {
+  const s = (name || '').trim();
+  if (!s) return '';
+  const parts = s.split(/[-_. ]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return parts
+      .slice(0, 3)
+      .map(function (p) {
+        return p[0];
+      })
+      .join('')
+      .toUpperCase();
+  }
+  return s.slice(0, 3).toUpperCase();
+}
+
+// assignHostColors maps each host name to a palette slot (0..HOST_COLOR_COUNT-1),
+// guaranteeing that no two hosts share a slot while free slots remain — distinct
+// hosts must stay distinguishable at a glance until the palette is genuinely
+// exhausted (a hard rule). Each host prefers its deterministic name-hash slot
+// (hostColorIndex), so a host keeps its colour across sessions and unrelated
+// host-set changes; when two hosts want the same slot and slots are still free,
+// the one later in a fixed name order is bumped forward to the next free slot by
+// linear probing. Beyond HOST_COLOR_COUNT hosts the palette is exhausted and
+// colours necessarily repeat (collectWarnings flags the config before that
+// point). The name order is a plain sort, so the mapping is independent of host
+// order, count, and which host is the primary. Returns a name -> slot object.
+function assignHostColors(names) {
+  const order = (names || []).slice().sort();
+  const taken = new Set();
+  const colors = {};
+  for (let i = 0; i < order.length; i++) {
+    const name = order[i];
+    let slot = hostColorIndex(name);
+    if (taken.size < HOST_COLOR_COUNT) {
+      // Free slots remain, so never reuse one: probe forward from the preferred
+      // slot until an unused slot is found.
+      while (taken.has(slot)) slot = (slot + 1) % HOST_COLOR_COUNT;
+    }
+    taken.add(slot);
+    colors[name] = slot;
+  }
+  return colors;
+}
+
+// hostFilterActive reports whether the Hosts filter is narrowing the view (a
+// strict subset is selected) — the signal that lights the Hosts control.
+function hostFilterActive(selectedCount, totalCount) {
+  return totalCount > 0 && selectedCount > 0 && selectedCount < totalCount;
+}
+
 // logLineVisible reports whether a log line stays visible under the in-log
 // search filter (ADR-0037): an empty query shows every line, otherwise the line
 // must contain the query (case-insensitive). A non-empty query that matches is
@@ -208,5 +285,10 @@ if (typeof module !== 'undefined' && module.exports) {
     containerMatchesQuery,
     orphanMatchesQuery,
     logLineVisible,
+    HOST_COLOR_COUNT,
+    hostColorIndex,
+    hostMonogram,
+    assignHostColors,
+    hostFilterActive,
   };
 }

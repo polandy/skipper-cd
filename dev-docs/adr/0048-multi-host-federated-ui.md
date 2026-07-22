@@ -1,7 +1,8 @@
 # ADR-0048: Multi-host federated UI (read-data fan-in, not a reverse proxy)
 
-Status: proposed
-Date: 2026-07-21 (reworked same day — supersedes the reverse-proxy version)
+Status: accepted
+Date: 2026-07-21 (reworked same day — supersedes the reverse-proxy version;
+implemented 2026-07-22)
 
 ## Context
 
@@ -76,9 +77,14 @@ chrome. Consequences for the two problems that sank the proxy design:
   peer-return-path question simply stops existing.
 - **No per-host reskin.** The primary renders peer data in its own theme.
 
-The host surfaces as: a **per-host identity colour** (a categorical palette
-kept clear of the status hues) on the host badge, so the merged feed's Host
-column is a scannable colour stripe; and a compact **Hosts control** in the
+The host surfaces as: a **per-host identity colour** — six per-theme palette
+slots kept clear of the status hues, assigned by a deterministic name hash so
+a host keeps its colour everywhere, with collision-avoidance guaranteeing no
+two hosts share a colour until the six slots are exhausted (the config warns
+before that) — shown as a small colour-tinted **monogram chip** at the head of each
+merged-feed row's stack cell — a labelled chip, not a dot, since a dot already
+means deploy status (a dedicated Host column was rejected for inflating every
+row's width); and a compact **Hosts control** in the
 right-hand header group — the logo keeps the top-left corner — opening one
 popover that both multi-selects (filter the feed) and links out to each
 host's own full UI for a live deep-dive. Placement, the compact-dropdown
@@ -91,8 +97,19 @@ rewrite, not guessed.
 The primary only ever consumes each peer's *read* API — it cannot expose a
 peer's write endpoints, so the scope leak of the byte-proxy is gone. To
 watch a peer deploy live (the one thing a merged, possibly-polled overview
-gives up), the Hosts popover links to that peer's own UI directly — a
+gives up), the Hosts drawer links to that peer's own UI directly — a
 hyperlink, no proxy.
+
+A peer deploy row is a read-only mirror, but expanding it is not a dead end:
+it shows the fanned-in facts (commit, changed-file count, status) and **loads
+that deploy's diff inline**. The diff is bulk data deliberately left out of the
+fan-in, so it is fetched *on demand* through a **narrow read-only proxy** on the
+primary — `GET /api/peers/{name}/events/{id}/diffs` → the peer's own
+`/api/events/{id}/diffs`. This is still strictly read (a single diff endpoint,
+not the byte-proxy's whole surface), and it is what the browser cannot do
+itself (cross-origin to the peer). The event id it needs rides on the fanned-in
+audit record; an evicted or unreachable diff falls back to the read-only facts.
+No per-row "open the peer" link — that affordance lives once, in the Hosts drawer.
 
 ### Poll first, stream later; unreachable is flagged, not blanked
 
@@ -104,18 +121,37 @@ merged view, silently dropping a host's rows is worse than an honest stale
 marker; this is the opposite call from the proxy design, correctly, because
 there you looked at one host at a time.)
 
+### The host indicator is a monogram chip, and the chip is the filter
+
+The first build used a dedicated leading Host **column**; it was rejected for
+inflating every row's width (and overlapping the icon on a phone). The
+identity moved to a small per-row **monogram chip** inside the existing stack cell — no
+layout cost, flows inline at every width. The chip then earned a second job:
+**clicking it filters both merged views to that host, and clicking again
+clears back to all** (a toggle that complements the drawer's multi-select).
+Because a chip must stay clickable to clear the filter, the chips stay visible
+even at a single host in view, and an active filter is signalled by a steady
+halo on the chips plus the lit Hosts control (a pulsing halo was tried and
+rejected as reading like an alert). The chip carries its hostname on hover
+(`title`) and tap (`data-taptip`).
+
+### Resolved during implementation
+
+- **Primary→peer auth** — network-layer for v1 (bind each peer's `/api/v1` to
+  the LAN, firewall it to the primary's IP; no app change). ADR-0039's
+  deferred bearer token remains the follow-up.
+- **Poll vs. SSE fan-in** — poll each peer's snapshot on the existing ticker;
+  SSE fan-in for a truly live merge is a documented later enhancement.
+- **Per-host colour palette** — six per-theme slots with a deterministic,
+  collision-avoiding assignment (above). Only the concrete per-theme hues
+  still want contrast tuning; the mechanism is fixed.
+- **Filter persistence** — the selected host subset is not persisted; it
+  resets to all hosts on each load (a transient view control).
+
 ## Open questions
 
-1. **Primary→peer auth.** Network-layer (bind peer `/api/v1` to LAN,
-   firewall to the primary's IP) is the homelab-simplest and needs no app
-   change; ADR-0039's deferred bearer token is the alternative, and
-   multi-host is the concrete consumer that would justify building it.
-2. **Poll vs. SSE fan-in for v1** — polling ships sooner and reuses the
-   ticker; SSE gives a live merged feed at the cost of a persistent peer
-   subscription. Proposed: poll for v1.
-3. **Per-host colour palette across themes** — a fixed categorical palette
-   keeps "host-a is blue" stable but needs a contrast check on every theme's
-   light and dark grounds.
+1. **Notifications host prefix** could derive from the `peers` config instead
+   of the current manual per-target prefix — orthogonal, left as is for now.
 
 ## Consequences
 
@@ -136,6 +172,19 @@ there you looked at one host at a time.)
   because `/api/v1` is a versioned, additive-only contract.
 - **New `internal/peers` package**; no change to the deploy path or its
   invariants (the fan-in is strictly read, on the primary and on peers).
+- **Peer rows are read-only mirrors.** Peer deploy and roster rows drop the
+  *action/local-fetch* affordances (history/health/logs/hooks/jump) — the
+  primary can display a peer's state but cannot act on it. A click still
+  expands a read-only detail (facts + the peer's diff loaded inline via the
+  read-only proxy above), so it never dead-ends.
+- **The primary proxies one peer read endpoint on demand.** `/api/peers/{name}/
+  events/{id}/diffs` is the only per-peer proxy — a lean, read-only exception to
+  "fan in, don't proxy," justified because a diff is bulk data not worth fanning
+  in eagerly and the browser can't fetch it cross-origin. The deploy event `id`
+  it keys on now rides on `audit.Record`.
+- **The fan-in narrates itself in pretty-console mode** (ADR-0042): a startup
+  line plus edge-triggered peer reachability (up/down logged once per
+  transition). Useful in every log mode; pretty mode just styles it.
 - **Live peer-deploy watching is a click away, not embedded** — the Hosts
   popover links to the peer's own UI. Embedding the full peer UI was the
   root of the proxy design's problems and is deliberately given up.

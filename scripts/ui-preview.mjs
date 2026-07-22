@@ -17,6 +17,7 @@
 // with the harness's.
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
 import { createHmac } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -140,6 +141,9 @@ function cleanup() {
   try {
     proc?.kill('SIGKILL');
   } catch {}
+  try {
+    peerServer?.close();
+  } catch {}
   rmSync(base, { recursive: true, force: true });
 }
 process.on('SIGINT', () => {
@@ -178,6 +182,59 @@ writeFileSync(join(origin, 'experiments', 'icon.svg'), icon);
 git(origin, 'add', '.');
 git(origin, 'commit', '-m', 'initial');
 
+// Multi-host fan-in (ADR-0048): stand up a stub peer serving the read API
+// (/api/v1/snapshot + /api/audit) so the merged view, Host column, per-host
+// colours and Hosts filter render with real cross-host data. A second peer is
+// pointed at a dead port to exercise the unreachable/offline path. Keeping the
+// stub here (rather than a full second skipper) keeps the preview lightweight.
+const peerAudit = (stack, minsAgo, status, files) => ({
+  stack,
+  timestamp: new Date(Date.now() - minsAgo * 60000).toISOString(),
+  status,
+  duration_ms: 1500 + minsAgo * 20,
+  changed_files: files,
+  commit_sha: 'abc' + minsAgo,
+});
+const peerRoster = (name, status, minsAgo) => ({
+  name,
+  disabled: false,
+  last_status: status,
+  last_at: status ? new Date(Date.now() - minsAgo * 60000).toISOString() : undefined,
+  last_commit: status ? 'def' + minsAgo + '0abc' : undefined,
+});
+const peerBData = {
+  snapshot: {
+    stacks: {
+      roster: [
+        peerRoster('gitea', 'success', 2),
+        peerRoster('postgres', 'failed', 15),
+        peerRoster('cache', 'success', 18),
+        peerRoster('worker', '', 0), // discovered but never deployed
+      ],
+      disabled: [],
+    },
+    health: { stacks: {} },
+    app_links: { stacks: {} },
+  },
+  audit: [
+    peerAudit('web', 2, 'success', 1),
+    peerAudit('api', 9, 'rolled_back', 2),
+    peerAudit('cache', 18, 'success', 1),
+    peerAudit('worker', 40, 'failed', 3),
+  ],
+};
+const peerServer = createHttpServer((req, res) => {
+  const url = req.url.split('?')[0];
+  res.setHeader('Content-Type', 'application/json');
+  if (url === '/api/v1/snapshot') return void res.end(JSON.stringify(peerBData.snapshot));
+  if (url === '/api/audit') return void res.end(JSON.stringify(peerBData.audit));
+  res.statusCode = 404;
+  res.end('{}');
+});
+const peerPort = await freePort();
+await new Promise((r) => peerServer.listen(peerPort, '127.0.0.1', r));
+const deadPeerPort = await freePort(); // nothing listens here → host-c is unreachable
+
 const metricsPort = await freePort();
 const cfg =
   `repo_url: ${JSON.stringify(origin)}\n` +
@@ -187,6 +244,12 @@ const cfg =
   `webhook_secret: ${JSON.stringify(SECRET)}\n` +
   `port: ${PORT}\n` +
   `metrics_port: ${metricsPort}\n` +
+  // Multi-host fan-in (ADR-0048): this instance is host-a; it fans in host-b
+  // (the stub above, reachable) and host-c (a dead port, unreachable).
+  `host_name: host-a\n` +
+  `peers:\n` +
+  `  - name: host-b\n    url: ${JSON.stringify(`http://127.0.0.1:${peerPort}`)}\n` +
+  `  - name: host-c\n    url: ${JSON.stringify(`http://127.0.0.1:${deadPeerPort}`)}\n` +
   `ui_enabled: true\n` +
   `ui_theme_switcher: true\n` +
   `health_poll_interval_seconds: 3\n` +

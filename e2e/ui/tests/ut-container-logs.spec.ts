@@ -3,21 +3,32 @@ import type { Page } from '@playwright/test';
 
 // Maske T: Container logs (ADR-0037). See dev-docs/e2e-tests.md §4.21.
 //
-// The health poller (healthPoll: 1) surfaces the per-container log icons on the
-// health panel's service lines and validates the {service} segment. The stub
-// docker answers `compose … logs` with a fixed backlog (see harness.ts): a
-// single service drops the compose prefix (--no-log-prefix), the whole stack
-// keeps it (`<stack>-1  | `). No real docker, no real containers.
+// The health poller surfaces the per-container log icons on the health panel's
+// service lines and validates the {service} segment. The stub docker answers
+// `compose … logs` with a fixed backlog (see harness.ts): a single service drops
+// the compose prefix (--no-log-prefix), the whole stack keeps it (`<stack>-1  | `).
+// No real docker, no real containers.
+//
+// Health is seeded via `initialHealth` (written before skipper starts), not
+// setStackHealth in the body: the startup deploy's first health poll would
+// otherwise run before the body writes the stub file, caching a `stopped` /
+// no-services snapshot that the client reads on connect — leaving the panel empty
+// ("No services reported") and no clog-btn to click. That boot race was UT2's flake.
+
+const APP_DB = [
+  { Service: 'app', State: 'running', Health: 'healthy' },
+  { Service: 'db', State: 'running', Health: 'healthy' },
+];
+const APP_ONLY = [{ Service: 'app', State: 'running', Health: 'healthy' }];
 
 const rowLogBtn = (page: Page, stack: string) =>
   page.locator(`[data-testid="deploy-row"][data-stack="${stack}"] [data-testid="clog-btn"]`);
 
 // UT1 — the row icon streams the whole stack's logs (services merged, prefixed).
 test.describe('UT1: per-stack log panel', () => {
-  test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
+  test.use({ startOptions: { stacks: ['web'], healthPoll: 1, initialHealth: { web: APP_ONLY } } });
 
   test('opens a live panel from the row icon and streams the backlog', async ({ page, skipper }) => {
-    skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
     await page.goto(`${skipper.baseURL}/`);
 
     const btn = rowLogBtn(page, 'web');
@@ -38,13 +49,9 @@ test.describe('UT1: per-stack log panel', () => {
 
 // UT2 — each health-panel service line opens that one container's logs.
 test.describe('UT2: per-container log panel', () => {
-  test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
+  test.use({ startOptions: { stacks: ['web'], healthPoll: 1, initialHealth: { web: APP_DB } } });
 
   test('a service line opens its single-service log', async ({ page, skipper }) => {
-    skipper.setStackHealth('web', [
-      { Service: 'app', State: 'running', Health: 'healthy' },
-      { Service: 'db', State: 'running', Health: 'healthy' },
-    ]);
     await page.goto(`${skipper.baseURL}/`);
 
     await page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="health-pill"]').click();
@@ -62,11 +69,11 @@ test.describe('UT2: per-container log panel', () => {
 
 // UT3 — only one log is open at a time; a new one replaces the old.
 test.describe('UT3: single log open', () => {
-  test.use({ startOptions: { stacks: ['web', 'db'], healthPoll: 1 } });
+  test.use({
+    startOptions: { stacks: ['web', 'db'], healthPoll: 1, initialHealth: { web: APP_ONLY, db: APP_ONLY } },
+  });
 
   test('opening a second log closes the first', async ({ page, skipper }) => {
-    skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
-    skipper.setStackHealth('db', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
     await page.goto(`${skipper.baseURL}/`);
 
     await rowLogBtn(page, 'web').click();
@@ -82,10 +89,9 @@ test.describe('UT3: single log open', () => {
 // UT4 — typing while a log is open searches inside it (overriding the stack
 // search): matching lines highlight, the rest hide, and a hit count shows.
 test.describe('UT4: in-log type-to-search', () => {
-  test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
+  test.use({ startOptions: { stacks: ['web'], healthPoll: 1, initialHealth: { web: APP_ONLY } } });
 
   test('typing filters the open log to matching lines', async ({ page, skipper }) => {
-    skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
     await page.goto(`${skipper.baseURL}/`);
 
     await rowLogBtn(page, 'web').click();

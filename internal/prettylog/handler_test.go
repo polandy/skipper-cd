@@ -241,6 +241,38 @@ func recordAt(t time.Time, level slog.Level, msg string) slog.Record {
 	return slog.NewRecord(t, level, msg, 0)
 }
 
+func TestHandler_MultiHostFanInStartupLine(t *testing.T) {
+	var buf bytes.Buffer
+	newTestLogger(&buf, false).Info("multi-host fan-in enabled", "peers", 2, "poll_interval_seconds", 3)
+
+	out := buf.String()
+	// Anchored: the narrated body, not a raw "peers=2 poll_interval_seconds=3".
+	if !strings.Contains(out, "⇢ multi-host fan-in") || !strings.Contains(out, "2 peers · poll 3s") {
+		t.Errorf("expected narrated fan-in startup line, got %q", out)
+	}
+	if strings.Contains(out, "peers=2") {
+		t.Errorf("expected attrs consumed by the anchor body, got raw attrs: %q", out)
+	}
+}
+
+func TestHandler_PeerReachabilityEdges(t *testing.T) {
+	var buf bytes.Buffer
+	log := newTestLogger(&buf, false)
+	log.Warn("peer unreachable", "peer", "host-c", "err", "dial tcp: refused")
+	log.Info("peer reachable again", "peer", "host-c")
+
+	out := buf.String()
+	if !strings.Contains(out, "▲ peer host-c  unreachable") {
+		t.Errorf("expected narrated unreachable edge, got %q", out)
+	}
+	if !strings.Contains(out, "— dial tcp: refused") {
+		t.Errorf("expected the failure reason appended, got %q", out)
+	}
+	if !strings.Contains(out, "✓ peer host-c  reachable again") {
+		t.Errorf("expected narrated recovery edge, got %q", out)
+	}
+}
+
 func TestColorEnabled_RespectsNoColorEnv(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	if colorEnabled(os.Stdout) {

@@ -19,6 +19,14 @@ const (
 // ValidThemes lists every built-in palette, in the order shown in docs.
 var ValidThemes = []string{ThemeCatppuccin, ThemeNord, ThemeSolarized, ThemeGruvbox, ThemeRosePine}
 
+// HostColorCount is how many distinct per-host identity colours the merged
+// multi-host UI provides (ADR-0048): each host's name is hashed deterministically
+// onto one of these slots, so beyond this many hosts two will share a colour.
+// Must stay in sync with HOST_COLOR_COUNT in static/app-helpers.js (the JS that
+// assigns the slot) and the per-theme `[data-host-color="0..N-1"]` rules in
+// static/app.css.
+const HostColorCount = 6
+
 // IsValidTheme reports whether name is a recognised built-in palette.
 func IsValidTheme(name string) bool {
 	return slices.Contains(ValidThemes, name)

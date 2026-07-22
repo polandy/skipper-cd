@@ -113,15 +113,19 @@ const (
 	// StateHookRun is the hook a deploy is currently executing, zero when none
 	// (ADR-0038).
 	StateHookRun = "hookrun"
+	// StatePeers is the merged multi-host read model — the primary's own label
+	// plus each configured peer's reachability and last-known read data
+	// (ADR-0048). Present only when peers are configured.
+	StatePeers = "peers"
 )
 
 // AllStateNames is every state-event name a snapshot or the SSE stream may
-// carry (the optional subsystems — health, orphans, app_links, healthwatch —
-// are only present when their component is enabled). Used to size the snapshot
-// map and to assert coverage in tests.
+// carry (the optional subsystems — health, orphans, app_links, healthwatch,
+// peers — are only present when their component is enabled). Used to size the
+// snapshot map and to assert coverage in tests.
 var AllStateNames = []string{
 	StateAutosync, StateQueue, StateStacks, StateUpcoming, StateHookRun,
-	StateHealth, StateHealthWatch, StateOrphans, StateAppLinks,
+	StateHealth, StateHealthWatch, StateOrphans, StateAppLinks, StatePeers,
 }
 
 // Broadcaster fans out values of type T to all connected subscribers.
