@@ -169,8 +169,8 @@ func TestRedactedURL(t *testing.T) {
 
 func TestNewRepoSync_UsesDefaultRepoDirWhenEmpty(t *testing.T) {
 	s := NewRepoSync("ssh://git@example.com/repo.git", "", "master", 0, nil)
-	if s.RepoDir() != defaultRepoDir {
-		t.Errorf("expected default clone dir %s, got %s", defaultRepoDir, s.RepoDir())
+	if s.RepoDir() != DefaultRepoDir {
+		t.Errorf("expected default clone dir %s, got %s", DefaultRepoDir, s.RepoDir())
 	}
 }
 

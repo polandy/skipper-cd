@@ -30,7 +30,7 @@ func TestLoad_SelfHealDefaultsOffWithPacingDefaults(t *testing.T) {
 func TestLoad_SelfHealCooldownExplicitZeroDisables(t *testing.T) {
 	cfg, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 self_heal_cooldown_seconds: 0
 `)
 	if err != nil {
@@ -44,7 +44,7 @@ self_heal_cooldown_seconds: 0
 func TestLoad_SelfHealGlobalOnAppliesToStacks(t *testing.T) {
 	cfg, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 self_heal: true
 stacks:
   - name: web
@@ -64,7 +64,7 @@ stacks:
 func TestLoad_SelfHealPerStackOverridesGlobal(t *testing.T) {
 	cfg, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 self_heal: true
 stacks:
   - name: web
@@ -88,7 +88,7 @@ stacks:
 func TestLoad_SelfHealPerStackOptInWithGlobalOff(t *testing.T) {
 	cfg, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: web
     self_heal: true
@@ -108,7 +108,7 @@ stacks:
 func TestLoad_SelfHealRequiresPositiveHealthPollInterval(t *testing.T) {
 	_, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 self_heal: true
 runtime_health_poll_interval_seconds: 0
 stacks:
@@ -123,7 +123,7 @@ func TestLoad_SelfHealRejectsNonPositivePacing(t *testing.T) {
 	for _, field := range []string{"self_heal_min_unhealthy_polls", "self_heal_max_attempts"} {
 		_, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 `+field+`: -1
 `)
 		if err == nil || !strings.Contains(err.Error(), field) {

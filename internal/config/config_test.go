@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/git"
 	"github.com/polandy/skipper-cd/internal/ui"
 )
 
 func TestLoad_ValidConfig(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 webhook_secret: secret123
 port: 9090
 metrics_port: 9999
@@ -41,7 +42,7 @@ stacks:
 func TestLoad_DefaultPorts(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -87,7 +88,7 @@ func TestLoad_RejectsNegativeCommandTimeout(t *testing.T) {
 func TestLoad_UIEnabledDefaultsTrue(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -100,7 +101,7 @@ stacks: []
 func TestLoad_UIEnabledExplicitFalse(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 ui_enabled: false
 stacks: []
 `
@@ -114,7 +115,7 @@ stacks: []
 func TestLoad_DefaultTimeoutAndBranch(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -130,7 +131,7 @@ stacks: []
 func TestLoad_CustomTimeoutAndBranch(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 command_timeout_seconds: 600
 branch: main
 stacks: []
@@ -147,7 +148,7 @@ stacks: []
 
 func TestLoad_MissingRepoURL(t *testing.T) {
 	content := `
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	_, err := loadStringToConfig(t, content)
@@ -156,22 +157,29 @@ stacks: []
 	}
 }
 
-func TestLoad_MissingProjectDirectoryWithoutBaseDir(t *testing.T) {
+func TestLoad_AllowsOmittedProjectDirectoryAndStacksBaseDir(t *testing.T) {
+	// With both omitted the stack's compose file is located at the repo root
+	// (<repo_dir>/<name>/docker-compose.yml) — a valid repo-root layout, no
+	// project_directory needed.
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
 stacks:
   - name: gitea
 `
-	_, err := loadStringToConfig(t, content)
-	if err == nil {
-		t.Error("expected error when project_directory and stacks_base_dir are both absent")
+	cfg, err := loadStringToConfig(t, content)
+	if err != nil {
+		t.Fatalf("omitting both project_directory and stacks_base_dir should be allowed: %v", err)
+	}
+	if cfg.StacksBaseDir != git.DefaultRepoDir {
+		t.Errorf("expected stacks_base_dir to resolve to the repo root %q, got %q", git.DefaultRepoDir, cfg.StacksBaseDir)
 	}
 }
 
 func TestLoad_RejectsDuplicateStackNames(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: gitea
   - name: gitea
@@ -186,7 +194,7 @@ func TestLoad_RejectsReservedStackName(t *testing.T) {
 	// "_nixos" is the reserved state key for NixOS rebuild hashes.
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: _nixos
 `
@@ -199,7 +207,7 @@ stacks:
 func TestLoad_RejectsEmptyStackName(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - env_files: [/etc/foo.env]
 `
@@ -212,7 +220,7 @@ stacks:
 func TestLoad_LogFormatDefaultsToPretty(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -225,7 +233,7 @@ stacks: []
 func TestLoad_LogFormatText(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 log_format: text
 stacks: []
 `
@@ -239,7 +247,7 @@ stacks: []
 func TestLoad_LogFormatJSON(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 log_format: json
 stacks: []
 `
@@ -253,7 +261,7 @@ stacks: []
 func TestLoad_RejectsUnknownLogFormat(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 log_format: xml
 stacks: []
 `
@@ -266,7 +274,7 @@ stacks: []
 func TestLoad_UIThemeDefaultsToCatppuccin(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -281,7 +289,7 @@ func TestLoad_UIThemeAcceptsEveryBuiltInTheme(t *testing.T) {
 		t.Run(theme, func(t *testing.T) {
 			content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 ui_theme: ` + theme + `
 stacks: []
 `
@@ -297,7 +305,7 @@ stacks: []
 func TestLoad_RejectsUnknownUITheme(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 ui_theme: monokai
 stacks: []
 `
@@ -310,7 +318,7 @@ stacks: []
 func TestLoad_UIThemeSwitcherDefaultsToFalse(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -323,7 +331,7 @@ stacks: []
 func TestLoad_UIThemeSwitcherEnabled(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 ui_theme_switcher: true
 stacks: []
 `
@@ -337,7 +345,7 @@ stacks: []
 func TestLoad_NixOSRebuild_OmittedSectionIsDisabled(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -350,7 +358,7 @@ stacks: []
 func TestLoad_NixOSRebuild_EnabledWithFlake(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 nixos_rebuild:
   flake: ".#host-a"
@@ -368,7 +376,7 @@ nixos_rebuild:
 func TestLoad_NixOSRebuild_ExplicitlyDisabled(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 nixos_rebuild:
   enabled: false
@@ -384,7 +392,7 @@ nixos_rebuild:
 func TestLoad_NixOSRebuild_MissingFlakeErrors(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 nixos_rebuild: {}
 `
@@ -397,7 +405,7 @@ nixos_rebuild: {}
 func TestLoad_IconDefaults(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -413,7 +421,7 @@ stacks: []
 func TestLoad_IconOverrides(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 icons:
   cache_dir: /custom/icons
   source_url: https://icons.example.com/svg
@@ -460,7 +468,7 @@ func loadStringToConfig(t *testing.T, content string) (*config.Config, error) {
 
 const minimalConfig = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 webhook_secret: secret123
 `
 
@@ -469,7 +477,7 @@ func TestLoad_RejectsMissingWebhookSecret(t *testing.T) {
 	// trigger, and an empty secret would leave it unauthenticated.
 	_, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 webhook_secret: ""
 `)
 	if err == nil || !strings.Contains(err.Error(), "webhook_secret") {
@@ -581,7 +589,7 @@ func TestLoad_AcceptsExistingVarsFile(t *testing.T) {
 func TestLoad_RejectsRelativeProjectDirectory(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks:
   - name: gitea
     project_directory: relative/path
@@ -642,7 +650,7 @@ stacks:
 func TestLoad_RejectsRelativeProjectDirectoryBase(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 project_directory_base: relative/modules
 `
 	_, err := loadStringToConfig(t, content)
@@ -714,20 +722,68 @@ func TestLoad_AcceptsAbsoluteRepoDir(t *testing.T) {
 
 func TestLoad_AcceptsOmittedRepoDir(t *testing.T) {
 	cfg := loadFromString(t, minimalConfig)
-	if cfg.RepoDir != "" {
-		t.Errorf("expected repo_dir to stay empty (default applied downstream), got %q", cfg.RepoDir)
+	if cfg.RepoDir != git.DefaultRepoDir {
+		t.Errorf("expected repo_dir to default to %q, got %q", git.DefaultRepoDir, cfg.RepoDir)
 	}
 }
 
-func TestLoad_RejectsRelativeStacksBaseDir(t *testing.T) {
+func TestLoad_ResolvesRelativeStacksBaseDirAgainstDefaultRepoDir(t *testing.T) {
+	// minimalConfig omits repo_dir and sets stacks_base_dir: modules.
+	cfg := loadFromString(t, minimalConfig)
+	if want := filepath.Join(git.DefaultRepoDir, "modules"); cfg.StacksBaseDir != want {
+		t.Errorf("expected stacks_base_dir %q, got %q", want, cfg.StacksBaseDir)
+	}
+}
+
+func TestLoad_ResolvesRelativeStacksBaseDirAgainstCustomRepoDir(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: relative/modules
+repo_dir: /srv/clone
+stacks_base_dir: stacks
+webhook_secret: secret123
+`
+	cfg := loadFromString(t, content)
+	if want := "/srv/clone/stacks"; cfg.StacksBaseDir != want {
+		t.Errorf("expected stacks_base_dir %q, got %q", want, cfg.StacksBaseDir)
+	}
+}
+
+func TestLoad_EmptyStacksBaseDirResolvesToRepoRoot(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+repo_dir: /srv/clone
+stack_discovery: false
+stacks:
+  - name: gitea
+    project_directory: /etc/nixos/modules/gitea
+`
+	cfg := loadFromString(t, content)
+	if want := "/srv/clone"; cfg.StacksBaseDir != want {
+		t.Errorf("expected empty stacks_base_dir to resolve to the repo root %q, got %q", want, cfg.StacksBaseDir)
+	}
+}
+
+func TestLoad_RejectsAbsoluteStacksBaseDir(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: /var/lib/skipper/repo/modules
 webhook_secret: secret123
 `
 	_, err := loadStringToConfig(t, content)
-	if err == nil || !strings.Contains(err.Error(), "stacks_base_dir") || !strings.Contains(err.Error(), "must be an absolute path") {
-		t.Fatalf("expected a stacks_base_dir-must-be-absolute error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "stacks_base_dir") || !strings.Contains(err.Error(), "must be relative") {
+		t.Fatalf("expected a stacks_base_dir-must-be-relative error, got %v", err)
+	}
+}
+
+func TestLoad_RejectsStacksBaseDirEscapingRepo(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: ../outside
+webhook_secret: secret123
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil || !strings.Contains(err.Error(), "stacks_base_dir") || !strings.Contains(err.Error(), "inside repo_dir") {
+		t.Fatalf("expected a stacks_base_dir-escape error, got %v", err)
 	}
 }
 
@@ -816,7 +872,7 @@ func TestLoad_AcceptsRelativeEnvFilesUnderDiscovery(t *testing.T) {
 	// sees the repo clone that would let it validate them.
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 webhook_secret: secret123
 stacks:
   - name: gitea
@@ -832,7 +888,7 @@ stacks:
 func TestLoad_WarnsWhenPerStackSelfHealDeadUnderDiscovery(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 webhook_secret: secret123
 stacks:
   - name: gitea
@@ -847,7 +903,7 @@ stacks:
 func TestLoad_NoSelfHealWarning_WhenGlobalSelfHealOn(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 webhook_secret: secret123
 self_heal: true
 stacks:
@@ -885,7 +941,7 @@ stacks:
 func TestLoad_WarnsWhenHookTimeoutExceedsCommandTimeout(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 webhook_secret: secret123
 command_timeout_seconds: 60
 stacks:
@@ -903,7 +959,7 @@ stacks:
 func TestLoad_NoHookTimeoutWarning_WhenWithinCommandTimeout(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 webhook_secret: secret123
 stacks:
   - name: gitea
@@ -920,7 +976,7 @@ stacks:
 func TestLoad_NoHookTimeoutWarning_WhenUnset(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 webhook_secret: secret123
 stacks:
   - name: gitea

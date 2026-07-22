@@ -10,7 +10,7 @@ import (
 func TestLoad_StackDiscoveryEnabled(t *testing.T) {
 	cfg := loadFromString(t, `
 repo_url: ssh://git@gitea.example.com/user/deploy.git
-stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks_base_dir: stacks
 stack_discovery: true
 `)
 	if !cfg.StackDiscovery {
@@ -22,7 +22,7 @@ func TestLoad_StackDiscoveryDefaultsTrue(t *testing.T) {
 	// An omitted stack_discovery enables discovery (ADR-0043).
 	cfg := loadFromString(t, `
 repo_url: ssh://git@gitea.example.com/user/deploy.git
-stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks_base_dir: stacks
 `)
 	if !cfg.StackDiscovery {
 		t.Error("stack_discovery should default to true when omitted")
@@ -50,7 +50,7 @@ func TestLoad_StackDiscoveryAllowsStacksListAsOverrides(t *testing.T) {
 	// conflicts with stack_discovery.
 	cfg, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/deploy.git
-stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks_base_dir: stacks
 stack_discovery: true
 stacks:
   - name: gitea
@@ -64,20 +64,26 @@ stacks:
 	}
 }
 
-func TestLoad_StackDiscoveryRequiresStacksBaseDir(t *testing.T) {
-	_, err := loadStringToConfig(t, `
+func TestLoad_StackDiscoveryOmittedStacksBaseDirScansRepoRoot(t *testing.T) {
+	// Omitted stacks_base_dir means the repo root itself is the stacks base,
+	// so discovery scans the clone root. It resolves to the effective repo_dir.
+	cfg, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/deploy.git
+repo_dir: /srv/clone
 stack_discovery: true
 `)
-	if err == nil || !strings.Contains(err.Error(), "stacks_base_dir") {
-		t.Fatalf("expected a stacks_base_dir error, got %v", err)
+	if err != nil {
+		t.Fatalf("omitted stacks_base_dir under discovery should be allowed: %v", err)
+	}
+	if cfg.StacksBaseDir != "/srv/clone" {
+		t.Errorf("expected stacks_base_dir to resolve to the repo root %q, got %q", "/srv/clone", cfg.StacksBaseDir)
 	}
 }
 
 func TestLoad_ReservedConfigStackNameRejected(t *testing.T) {
 	_, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/deploy.git
-stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks_base_dir: stacks
 stacks:
   - name: _config
 `)
@@ -91,7 +97,7 @@ func TestSelfHealActive_DiscoveryModeFollowsGlobalFlag(t *testing.T) {
 	// (and thus headless polling) follows the global flag alone.
 	on := loadFromString(t, `
 repo_url: ssh://git@gitea.example.com/user/deploy.git
-stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks_base_dir: stacks
 stack_discovery: true
 self_heal: true
 `)
@@ -100,7 +106,7 @@ self_heal: true
 	}
 	off := loadFromString(t, `
 repo_url: ssh://git@gitea.example.com/user/deploy.git
-stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks_base_dir: stacks
 stack_discovery: true
 `)
 	if off.SelfHealActive() {
@@ -111,7 +117,7 @@ stack_discovery: true
 func TestEffectiveSelfHeal_UsesExplicitStackSet(t *testing.T) {
 	cfg := loadFromString(t, `
 repo_url: ssh://git@gitea.example.com/user/deploy.git
-stacks_base_dir: /var/lib/skipper/repo/stacks
+stacks_base_dir: stacks
 stack_discovery: true
 self_heal: true
 `)

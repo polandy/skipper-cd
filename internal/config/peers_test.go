@@ -12,7 +12,7 @@ import (
 func TestLoad_HostNameDefaultsToOSHostname(t *testing.T) {
 	const content = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -28,7 +28,7 @@ stacks: []
 func TestLoad_HostNameOverride(t *testing.T) {
 	const content = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 host_name: host-a
 `
@@ -41,7 +41,7 @@ host_name: host-a
 func TestLoad_PeersParsed(t *testing.T) {
 	const content = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 peers:
   - name: host-b
@@ -64,7 +64,7 @@ peers:
 func TestLoad_PeersOmittedIsEmpty(t *testing.T) {
 	const content = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 `
 	cfg := loadFromString(t, content)
@@ -79,7 +79,7 @@ func TestLoad_WarnsWhenMoreHostsThanColours(t *testing.T) {
 	var b strings.Builder
 	b.WriteString(`
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 peers:
 `)
@@ -103,7 +103,7 @@ func TestLoad_NoColourWarningWithinPalette(t *testing.T) {
 	// This host + 2 peers = 3 hosts, well within the palette — no warning.
 	const content = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 peers:
   - name: host-b
@@ -149,7 +149,7 @@ func TestLoad_PeersValidation(t *testing.T) {
 
 	const base = `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules
 stacks: []
 peers:
 `
