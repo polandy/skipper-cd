@@ -196,30 +196,39 @@ function hostColorIndex(name) {
   return (hash >>> 0) % HOST_COLOR_COUNT;
 }
 
+// assignHostColors maps each host name to a palette slot (0..HOST_COLOR_COUNT-1),
+// guaranteeing that no two hosts share a slot while free slots remain — distinct
+// hosts must stay distinguishable at a glance until the palette is genuinely
+// exhausted (a hard rule). Each host prefers its deterministic name-hash slot
+// (hostColorIndex), so a host keeps its colour across sessions and unrelated
+// host-set changes; when two hosts want the same slot and slots are still free,
+// the one later in a fixed name order is bumped forward to the next free slot by
+// linear probing. Beyond HOST_COLOR_COUNT hosts the palette is exhausted and
+// colours necessarily repeat (collectWarnings flags the config before that
+// point). The name order is a plain sort, so the mapping is independent of host
+// order, count, and which host is the primary. Returns a name -> slot object.
+function assignHostColors(names) {
+  const order = (names || []).slice().sort();
+  const taken = new Set();
+  const colors = {};
+  for (let i = 0; i < order.length; i++) {
+    const name = order[i];
+    let slot = hostColorIndex(name);
+    if (taken.size < HOST_COLOR_COUNT) {
+      // Free slots remain, so never reuse one: probe forward from the preferred
+      // slot until an unused slot is found.
+      while (taken.has(slot)) slot = (slot + 1) % HOST_COLOR_COUNT;
+    }
+    taken.add(slot);
+    colors[name] = slot;
+  }
+  return colors;
+}
+
 // hostFilterActive reports whether the Hosts filter is narrowing the view (a
 // strict subset is selected) — the signal that lights the Hosts control.
 function hostFilterActive(selectedCount, totalCount) {
   return totalCount > 0 && selectedCount > 0 && selectedCount < totalCount;
-}
-
-// showHostColumn reports whether the merged feed's Host column is shown: only
-// when more than one host is selected. With exactly one host in view the column
-// is redundant (every row is that host), so it hides.
-function showHostColumn(selectedCount) {
-  return selectedCount > 1;
-}
-
-// hostFilterSummary is the one-line summary above the merged feed, e.g.
-// "12 deploys · all 3 hosts" or "5 deploys · host-a, host-c". selectedNames are
-// the in-view hosts; totalCount is the full host set size.
-function hostFilterSummary(count, selectedNames, totalCount) {
-  const noun = count === 1 ? 'deploy' : 'deploys';
-  const names = selectedNames || [];
-  const scope =
-    names.length >= totalCount && totalCount > 0
-      ? 'all ' + totalCount + ' hosts'
-      : names.join(', ');
-  return count + ' ' + noun + (scope ? ' · ' + scope : '');
 }
 
 // logLineVisible reports whether a log line stays visible under the in-log
@@ -257,8 +266,7 @@ if (typeof module !== 'undefined' && module.exports) {
     logLineVisible,
     HOST_COLOR_COUNT,
     hostColorIndex,
+    assignHostColors,
     hostFilterActive,
-    showHostColumn,
-    hostFilterSummary,
   };
 }

@@ -112,6 +112,12 @@
         </div>
       </div>
     </div>
+    <button class="hosts-btn" id="hosts-btn" data-testid="hosts-btn" type="button" aria-expanded="false" aria-haspopup="dialog" title="Hosts">
+      <svg class="hb-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="4" width="16" height="6" rx="1.5" stroke="currentColor" stroke-width="2"/><rect x="4" y="14" width="16" height="6" rx="1.5" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="7" r="1" fill="currentColor"/><circle cx="8" cy="17" r="1" fill="currentColor"/></svg>
+      <span class="hb-warn" aria-hidden="true"></span>
+      <span class="hb-count"><span id="hosts-count">1/1</span></span>
+      <svg class="hb-chev" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <div class="autosync-btn" id="autosync-btn" data-testid="autosync-btn" role="button" tabindex="0" aria-expanded="false" title="Autosync">
       <svg class="as-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M17 3v4h-4M7 21v-4h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>autosync</span>
@@ -151,6 +157,15 @@
   <span class="update-banner-text">A new version of skipper-cd is available.</span>
   <button class="update-banner-reload" id="update-banner-reload" data-testid="update-banner-reload">Reload</button>
   <button class="update-banner-close" id="update-banner-close" data-testid="update-banner-close" aria-label="Dismiss">&times;</button>
+</div>
+
+<div class="drawer" id="hosts-drawer" data-testid="hosts-drawer" role="dialog" aria-label="Hosts">
+  <div class="drawer-inner">
+    <div class="drawer-title">Hosts</div>
+    <div class="drawer-sub" id="hosts-sub">Filter the merged view by host.</div>
+    <div class="qlist" id="hosts-list"></div>
+    <button class="hosts-all-btn" id="hosts-all-btn" data-testid="hosts-all-btn" type="button">Select all</button>
+  </div>
 </div>
 
 <div class="drawer" id="autosync-drawer" data-testid="autosync-drawer" role="dialog" aria-label="Autosync">
@@ -207,6 +222,10 @@
       <input class="stack-filter" id="deploy-filter" data-testid="deploy-filter" type="text" placeholder="Filter stacks…" autocomplete="off" spellcheck="false" aria-label="Filter deploys by stack">
       <span class="stack-filter-count" id="deploy-filter-count"></span>
       <button class="stack-filter-clear" id="deploy-filter-clear" data-testid="deploy-filter-clear" type="button" aria-label="Clear filter">&times;</button>
+    </div>
+    <div class="host-stale-banner" id="host-stale-banner" data-testid="host-stale-banner" role="status">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.5" r="1.1" fill="currentColor"/><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      <span id="host-stale-text"></span>
     </div>
     <div class="event-list-header">
       <span>Time</span>
@@ -357,6 +376,20 @@
   // dev-docs/stack-roster-spec.md.
   let rosterSnap = [];
 
+  // Multi-host fan-in (ADR-0048). peersSnap is the 'peers' state payload
+  // ({self, peers:[{name,url,reachable,stale,last_seen,state,deploys}]}) or null
+  // on a single-host instance with no peers configured — in which case the whole
+  // multi-host surface (Hosts control, Host column, peer rows) stays hidden and
+  // the UI is exactly the single-host one. selfHost is the primary's own host
+  // label, the identity every local row is tagged with. hostColors maps each
+  // host name to its palette slot (assignHostColors, collision-avoiding).
+  // hostSelected is the set of in-view host names (the Hosts filter); null means
+  // all hosts — the filter resets to all on load, never persisted.
+  let peersSnap = null;
+  let selfHost = '';
+  let hostColors = {};
+  let hostSelected = null;
+
   // Traefik-routed hostnames per stack, from the 'app_links' SSE snapshot
   // (dev-docs/traefik-app-links-spec.md): stack name -> hostnames, absent
   // when none were discovered. Feeds the roster row's link icon.
@@ -367,6 +400,7 @@
   let openLinkWrap = null;
 
   const LINK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M10 14L20 4M18 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>';
+  const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
 
   // linkCellHTML renders the app-link icon for a stack: nothing when no host
   // was discovered, a plain external link for exactly one, or a button that
@@ -428,16 +462,56 @@
       row.className = entry.disabled ? 'roster-row disabled' : 'roster-row';
       row.dataset.testid = 'roster-row';
       row.dataset.stack = entry.name;
+      row.dataset.host = selfHost; // local stacks belong to the primary host
       row.innerHTML =
-        `<span class="roster-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}${(!entry.disabled && entry.hooks && hookCount(entry.hooks) > 0) ? hooksBadgeHTML(entry.name, entry.hooks) : ''}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
+        `<span class="roster-stack">${hostDotHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}${(!entry.disabled && entry.hooks && hookCount(entry.hooks) > 0) ? hooksBadgeHTML(entry.name, entry.hooks) : ''}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
       populateIcon(row.querySelector('.stack-icon'), entry.name);
       list.appendChild(row);
     });
+    renderPeerRosterRows(list); // append each peer's stacks, host-tagged + read-only
+    applyHostFilter(); // dots + host filtering on the rebuilt roster
     refilterRoster(); // a re-render drops open panels and rows; re-apply any active filter
     applyHookRun(); // re-paint a running hook's phase on the rebuilt roster rows
+  }
+
+  // peerRosterStatusHTML renders a peer stack's status without consulting local
+  // deploy state (deployingRows is the primary's own in-flight set).
+  function peerRosterStatusHTML(entry) {
+    if (entry.disabled) return `<span class="roster-flag">disabled</span>`;
+    if (!entry.last_status) return `<span class="roster-flag">never deployed</span>`;
+    return badgeHTML(entry.last_status);
+  }
+
+  // renderPeerRosterRows appends every peer's stacks to the roster, one read-only
+  // row each (host dot + icon + name, status, last deploy, commit) — no jump,
+  // logs, hooks or link affordances and no expand panel, since the primary
+  // cannot act on a peer's stack. Rows are grouped per host after the local set.
+  function renderPeerRosterRows(list) {
+    if (!peersSnap) return;
+    (peersSnap.peers || []).forEach(function(p) {
+      const roster = (p.state && p.state.stacks && p.state.stacks.roster) || [];
+      roster.forEach(function(entry) {
+        const showMeta = !entry.disabled && !!entry.last_status;
+        const when = showMeta && entry.last_at ? (absoluteTime ? fullTime(entry.last_at) : formatTime(entry.last_at)) : '';
+        const whenTitle = showMeta && entry.last_at ? (absoluteTime ? formatTime(entry.last_at) : fullTime(entry.last_at)) : '';
+        const sha = showMeta && entry.last_commit ? shortSHA(entry.last_commit) : '';
+        const row = document.createElement('div');
+        row.className = 'roster-row peer-row' + (entry.disabled ? ' disabled' : '') + (p.stale ? ' peer-stale' : '');
+        row.dataset.testid = 'roster-row';
+        row.dataset.stack = entry.name;
+        row.dataset.host = p.name;
+        row.innerHTML =
+          `<span class="roster-stack">${hostDotHTML(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span></span>` +
+          `<span class="roster-status">${peerRosterStatusHTML(entry)}</span>` +
+          `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
+          `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
+        populateIcon(row.querySelector('.stack-icon'), entry.name);
+        list.appendChild(row);
+      });
+    });
   }
 
   // Orphans (ADR-0036): compose projects the discovered stack set no longer
@@ -909,7 +983,7 @@
     // Stacks view: the roster row while it shows the live deploying state.
     const rlist = document.getElementById('roster-list');
     if (rlist && deployingRows[hr.stack]) {
-      const rrow = Array.from(rlist.querySelectorAll('.roster-row[data-stack]')).find(function(r) { return r.dataset.stack === hr.stack; });
+      const rrow = Array.from(rlist.querySelectorAll('.roster-row[data-stack]:not(.peer-row)')).find(function(r) { return r.dataset.stack === hr.stack; });
       if (rrow) {
         const rcell = rrow.querySelector('.roster-status');
         if (rcell) rcell.appendChild(hookPhaseNode(hr));
@@ -1286,6 +1360,7 @@
     row.dataset.stack = evt.stack;
     row.dataset.status = evt.status;
     row.dataset.eventId = evt.id;
+    row.dataset.host = selfHost; // local rows belong to the primary host
     if (evt.has_diffs) row.dataset.hasDiffs = '1';
 
     const absTs = fullTime(evt.timestamp);
@@ -1296,7 +1371,7 @@
     const filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
-      `<span class="cell-stack"><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
+      `<span class="cell-stack">${hostDotHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="status-cell">${badgeHTML(evt.status)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
       `<span class="col-files">${filesCell}</span>`;
@@ -1326,7 +1401,10 @@
   // health snapshot — a handful of rows.
   function updateStackAffordances() {
     const seen = {};
-    tbody.querySelectorAll('.event-row[data-stack]').forEach(function(row) {
+    // Peer rows are read-only mirrors — no health pill, history, logs or hooks
+    // affordances (those drive local actions the primary cannot perform on a
+    // peer), so they are excluded here.
+    tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function(row) {
       const stack = row.dataset.stack;
       const cell = row.querySelector('.cell-stack');
       if (!cell) return;
@@ -1777,6 +1855,275 @@
     reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
   }
 
+  // ── Multi-host fan-in (ADR-0048) ──
+  // A peer instance's read data, merged into the local views and tagged by host.
+  // Everything here is inert on a single-host instance (peersSnap null): the
+  // Hosts control, Host column and peer rows never appear.
+
+  // hostList is the effective host set: the primary (self) first, then each peer.
+  function hostList() {
+    const out = [{ name: selfHost, url: '', self: true, reachable: true, stale: false }];
+    if (peersSnap) {
+      (peersSnap.peers || []).forEach(function(p) {
+        out.push({ name: p.name, url: p.url, self: false, reachable: !!p.reachable, stale: !!p.stale });
+      });
+    }
+    return out;
+  }
+
+  // isHostSelected reports whether a host is in view. hostSelected null means the
+  // filter is off (all hosts shown); otherwise it is the selected-name set.
+  function isHostSelected(name) { return hostSelected === null || hostSelected.has(name); }
+
+  // recomputeHostColors reassigns palette slots whenever the host set changes,
+  // keeping the no-two-hosts-share-a-colour guarantee (assignHostColors).
+  function recomputeHostColors() {
+    if (!peersSnap) { hostColors = {}; return; }
+    hostColors = assignHostColors(hostList().map(function(h) { return h.name; }));
+  }
+
+  // hostDotHTML renders a row's leading host-identity dot inside the stack cell —
+  // a small colour dot for the row's host. Empty (and hidden by CSS) on a
+  // single-host instance; CSS shows it only when more than one host is in view.
+  function hostDotHTML(hostName) {
+    if (!hostName) return '';
+    const slot = hostColors[hostName];
+    const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
+    // title → native hover tooltip; data-taptip → the tap-tip bubble on touch,
+    // so the hostname appears whether the dot is hovered or tapped.
+    return '<span class="host-dot-inline"' + attr + ' data-taptip title="' + escapeAttr(hostName) + '"></span>';
+  }
+
+  // createPeerRow builds one read-only deploy row from a peer's audit record.
+  // Peer rows carry no drill-down (no diff/hook/history/log affordances) and no
+  // expand panel — they are a cross-host glance, not an actionable local row.
+  function createPeerRow(rec, hostName, stale) {
+    const row = document.createElement('div');
+    row.className = rowClass(rec.status, true) + ' peer-row' + (stale ? ' peer-stale' : '');
+    row.dataset.testid = 'deploy-row';
+    row.dataset.stack = rec.stack;
+    row.dataset.status = rec.status;
+    row.dataset.host = hostName;
+    const absTs = fullTime(rec.timestamp);
+    const relTs = formatTime(rec.timestamp);
+    const n = rec.changed_files || 0;
+    const files = n > 0 ? '<span class="peer-files">' + n + ' file' + (n === 1 ? '' : 's') + '</span>' : '';
+    row.innerHTML =
+      '<span class="cell-time" data-testid="time-cell" data-ts="' + escapeAttr(rec.timestamp) + '" title="' + escapeAttr(absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
+      '<span class="cell-stack">' + hostDotHTML(hostName) + '<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' + escapeHtml(rec.stack) + '</span></span>' +
+      '<span class="status-cell">' + badgeHTML(rec.status) + '</span>' +
+      '<span class="cell-duration" data-testid="duration-cell">' + formatDuration(rec.duration_ms) + '</span>' +
+      '<span class="col-files">' + files + '</span>';
+    if (rec.error) row.title = rec.stack + ' — ' + rec.error;
+    populateIcon(row.querySelector('.stack-icon'), rec.stack);
+    return row;
+  }
+
+  // insertRowByTime places a row into the merged feed at its chronological spot:
+  // before the first existing row that is older. ISO timestamps compare
+  // lexicographically, so a string compare is a chronological one.
+  function insertRowByTime(row, ts) {
+    const rows = tbody.querySelectorAll('.event-row');
+    for (let i = 0; i < rows.length; i++) {
+      const cell = rows[i].querySelector('.cell-time');
+      const ets = cell ? cell.dataset.ts : '';
+      if (ets && ets < ts) { tbody.insertBefore(row, rows[i]); return; }
+    }
+    tbody.appendChild(row);
+  }
+
+  // renderPeerRows rebuilds every peer row from the current snapshot, interleaved
+  // into the local rows by timestamp. Local rows and their panels are never
+  // touched; only peer rows (which have no panels) are removed and rebuilt.
+  function renderPeerRows() {
+    tbody.querySelectorAll('.peer-row').forEach(function(r) { r.remove(); });
+    if (!peersSnap) return;
+    const items = [];
+    (peersSnap.peers || []).forEach(function(p) {
+      (p.deploys || []).forEach(function(rec) {
+        if (rec.status === 'skipped') return; // an unchanged stack is not shown, as locally
+        items.push({ rec: rec, host: p.name, stale: !!p.stale });
+      });
+    });
+    // Newest first, so each insert-above-first-older builds a correct merge.
+    items.sort(function(a, b) { return a.rec.timestamp < b.rec.timestamp ? 1 : (a.rec.timestamp > b.rec.timestamp ? -1 : 0); });
+    if (items.length) showTable();
+    items.forEach(function(it) { insertRowByTime(createPeerRow(it.rec, it.host, it.stale), it.rec.timestamp); });
+  }
+
+  // setLeadingDot replaces (or clears) a stack cell's leading host dot in place.
+  function setLeadingDot(cell, hostName) {
+    const existing = cell.querySelector('.host-dot-inline');
+    if (existing) existing.remove();
+    if (hostName) cell.insertAdjacentHTML('afterbegin', hostDotHTML(hostName));
+  }
+
+  // retagLocalRows fills in the host dot + data-host on local rows created before
+  // the first peers snapshot set selfHost (deploy history and the roster are both
+  // painted just before it), across both merged views.
+  function retagLocalRows() {
+    tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function(row) {
+      row.dataset.host = selfHost;
+      const cell = row.querySelector('.cell-stack');
+      if (cell) setLeadingDot(cell, selfHost);
+    });
+    document.getElementById('roster-list').querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
+      row.dataset.host = selfHost;
+      const cell = row.querySelector('.roster-stack');
+      if (cell) setLeadingDot(cell, selfHost);
+    });
+  }
+
+  // refreshPeerRosterRows rebuilds only the peer roster rows (which carry no
+  // panels), leaving local roster rows and any open audit/health panel intact —
+  // the roster's equivalent of renderPeerRows for the deploy feed.
+  function refreshPeerRosterRows() {
+    const list = document.getElementById('roster-list');
+    list.querySelectorAll('.roster-row.peer-row').forEach(function(r) { r.remove(); });
+    renderPeerRosterRows(list);
+  }
+
+  // renderHosts paints the Hosts control (header badge + drawer list). Hidden
+  // entirely when no peers are configured.
+  function renderHosts() {
+    const btn = document.getElementById('hosts-btn');
+    const hosts = hostList();
+    const hasPeers = !!(peersSnap && (peersSnap.peers || []).length);
+    btn.classList.toggle('enabled', hasPeers);
+    if (!hasPeers) return;
+
+    const selCount = hosts.filter(function(h) { return isHostSelected(h.name); }).length;
+    document.getElementById('hosts-count').textContent = selCount + '/' + hosts.length;
+    btn.classList.toggle('filtered', hostFilterActive(selCount, hosts.length));
+    const anyOffline = hosts.some(function(h) { return !h.self && !h.reachable; });
+    btn.classList.toggle('has-offline', anyOffline);
+    document.getElementById('hosts-sub').textContent = anyOffline
+      ? 'Some hosts are unreachable — showing last-known data.'
+      : 'Filter the merged view by host.';
+
+    const list = document.getElementById('hosts-list');
+    list.innerHTML = '';
+    hosts.forEach(function(h) {
+      const row = document.createElement('div');
+      row.className = 'host-row' + (isHostSelected(h.name) ? ' selected' : '');
+      row.dataset.host = h.name;
+      row.dataset.testid = 'host-row';
+      const slot = hostColors[h.name];
+      const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
+      const dotClass = h.self || h.reachable ? 'up' : (h.stale ? 'stale' : 'down');
+      const dotTitle = h.self ? 'this host' : (h.reachable ? 'reachable' : (h.stale ? 'unreachable — showing last-known' : 'unreachable'));
+      const link = !h.self && h.url
+        ? '<a class="host-link" href="' + escapeAttr(h.url) + '" target="_blank" rel="noopener" title="Open ' + escapeAttr(h.name) + ' UI" data-testid="host-link">' + LINK_ICON + '</a>'
+        : '';
+      const selfBadge = h.self ? '<span class="hr-self">self</span>' : '';
+      row.innerHTML =
+        '<span class="host-check">' + CHECK_ICON + '</span>' +
+        '<span class="hr-name"><span class="host-tag"' + attr + '><span class="host-name">' + escapeHtml(h.name) + '</span></span>' + selfBadge + '</span>' +
+        '<span class="host-dot ' + dotClass + '" title="' + escapeAttr(dotTitle) + '"></span>' +
+        '<span class="host-link-slot">' + link + '</span>';
+      list.appendChild(row);
+    });
+  }
+
+  // hostHideRows hides deselected-host rows in one container (the deploy feed or
+  // the roster), carrying each row's visibility onto its trailing panel(s) — the
+  // same carry-over the stack filter uses, so host + stack filters compose.
+  function hostHideRows(container) {
+    let visible = true;
+    Array.prototype.forEach.call(container.children, function(el) {
+      const tid = el.dataset && el.dataset.testid;
+      if (tid === 'deploy-row' || tid === 'roster-row') visible = isHostSelected(el.dataset.host);
+      el.classList.toggle('host-hidden', !visible);
+    });
+  }
+
+  // applyHostFilter shows/hides rows by their host across both merged views,
+  // toggles the per-row host dots, and raises the stale banner for any in-view
+  // peer that is unreachable.
+  function applyHostFilter() {
+    const table = document.getElementById('deploy-table');
+    const stacksView = document.getElementById('stacks-view');
+    const banner = document.getElementById('host-stale-banner');
+    const roster = document.getElementById('roster-list');
+    if (!peersSnap || !(peersSnap.peers || []).length) {
+      table.classList.remove('show-hosts', 'host-filter-active');
+      stacksView.classList.remove('show-hosts', 'host-filter-active');
+      banner.classList.remove('show');
+      return;
+    }
+    // Dots stay visible whenever peers are configured — with a single host in
+    // view they are redundant as an indicator, but they double as the click
+    // target to clear the filter, so hiding them would strand the user.
+    table.classList.add('show-hosts');
+    stacksView.classList.add('show-hosts');
+
+    // While a filter is narrowing the view, highlight the (now single-host) dots
+    // so it is visible that a filter is on and re-clicking a dot clears it.
+    const hosts = hostList();
+    const active = hostFilterActive(hosts.filter(function(h) { return isHostSelected(h.name); }).length, hosts.length);
+    table.classList.toggle('host-filter-active', active);
+    stacksView.classList.toggle('host-filter-active', active);
+
+    hostHideRows(tbody);
+    hostHideRows(roster);
+
+    const staleSel = (peersSnap.peers || []).filter(function(p) { return isHostSelected(p.name) && (p.stale || !p.reachable); });
+    if (staleSel.length) {
+      const names = staleSel.map(function(p) { return p.name; }).join(', ');
+      document.getElementById('host-stale-text').textContent = staleSel.length === 1
+        ? names + ' is unreachable — showing its last-known deploys.'
+        : names + ' are unreachable — showing last-known deploys.';
+      banner.classList.add('show');
+    } else {
+      banner.classList.remove('show');
+    }
+    renderHosts(); // keep the header badge counts in step with the filter
+  }
+
+  // toggleHostFilterTo is the dot-click shortcut: isolate the merged view to one
+  // host, or — if that host is already the only one in view — clear the filter
+  // back to all. Complements the multi-select Hosts drawer.
+  function toggleHostFilterTo(name) {
+    if (!name) return;
+    const isolated = hostSelected !== null && hostSelected.size === 1 && hostSelected.has(name);
+    hostSelected = isolated ? null : new Set([name]);
+    renderPeerRows();
+    refreshPeerRosterRows();
+    applyHostFilter();
+    refilterDeploys();
+    refilterRoster();
+  }
+
+  // schedulePeerReflow re-interleaves peer rows after local deploy rows land.
+  // Local rows are inserted at the top (newest first); a burst of replayed
+  // history — or a fresh live deploy — therefore lands above the peer rows that
+  // were already merged in, so the peer rows must be re-slotted by timestamp
+  // afterwards. Coalesced to one pass per frame so a history replay reflows once.
+  let peerReflowScheduled = false;
+  function schedulePeerReflow() {
+    if (!peersSnap || peerReflowScheduled) return;
+    peerReflowScheduled = true;
+    setTimeout(function() {
+      peerReflowScheduled = false;
+      renderPeerRows();
+      applyHostFilter();
+      refilterDeploys();
+    }, 0);
+  }
+
+  // applyPeers ingests a fresh 'peers' snapshot end to end.
+  function applyPeers(d) {
+    peersSnap = d || null;
+    selfHost = (peersSnap && peersSnap.self) || '';
+    recomputeHostColors();
+    retagLocalRows();
+    renderPeerRows();       // deploy feed peer rows
+    refreshPeerRosterRows(); // roster peer rows (local roster rows + panels untouched)
+    applyHostFilter();      // dots + host filtering across both views; also renderHosts
+    refilterDeploys();      // re-apply any active stack search to the new peer rows
+    refilterRoster();       // and to the new peer roster rows
+  }
+
   // applyState routes one state snapshot (by its state-event name) to the same
   // handling whether it arrived from GET /api/v1/snapshot on (re)connect or as a
   // live SSE state event. State payloads are snapshots (full replacements), so
@@ -1833,6 +2180,9 @@
         if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
         else renderOrphans();
         break;
+      case 'peers':
+        applyPeers(d);
+        break;
     }
   }
 
@@ -1878,11 +2228,12 @@
       handleEvent(evt, false);
       refilterDeploys();
       updateStackAffordances(); // a new/mutated row may change which row is newest
+      schedulePeerReflow(); // re-slot peer rows below/among the just-inserted local row
       if (activeView === 'stacks') refreshRosterRow(evt.stack); // reflect in-flight/settled state live
     });
 
     // Live state changes reuse the same apply path as the snapshot fetch.
-    ['autosync', 'queue', 'upcoming', 'hookrun', 'health', 'healthwatch', 'stacks', 'app_links', 'orphans'].forEach(function(name) {
+    ['autosync', 'queue', 'upcoming', 'hookrun', 'health', 'healthwatch', 'stacks', 'app_links', 'orphans', 'peers'].forEach(function(name) {
       es.addEventListener(name, function(e) { applyState(name, JSON.parse(e.data)); });
     });
 
@@ -2050,7 +2401,7 @@
   // updates on the health-poll cadence, far more often than the 'stacks'
   // snapshot, and a full rebuild would drop any open audit/health panel.
   function updateAppLinks() {
-    rosterList.querySelectorAll('.roster-row[data-stack]').forEach(function(row) {
+    rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
       const cell = row.querySelector('.roster-stack');
       if (!cell) return;
       const old = cell.querySelector('.link-wrap');
@@ -2062,6 +2413,11 @@
   }
 
   rosterList.addEventListener('click', function(e) {
+    // Host dot: quick-filter the merged view to this row's host (toggle). Before
+    // the peer-row guard and panel logic so it works on every row's dot.
+    const hostDot = e.target.closest('.host-dot-inline');
+    if (hostDot) { const r = hostDot.closest('[data-host]'); if (r) toggleHostFilterTo(r.dataset.host); return; }
+
     // Cross-view jump button: hand off to Deploys. Handled before the row's
     // own click (which opens its history panel) so a tap never opens both.
     const jumpBtn = e.target.closest('.jump-btn');
@@ -2089,6 +2445,7 @@
     if (e.target.closest('.link-btn')) return;
     const row = e.target.closest('.roster-row');
     if (!row || !rosterList.contains(row)) return;
+    if (row.classList.contains('peer-row')) return; // a peer's stack is a read-only mirror — no drill-down
     const next = row.nextElementSibling;
     const isOpen = next && (next.classList.contains('audit-panel') || next.classList.contains('health-panel'));
     closeRosterPanels();
@@ -2179,7 +2536,7 @@
   // Live update of a single roster row's status (in-flight → settled) without a
   // full re-render, so an open history panel survives a deploy event.
   function refreshRosterRow(name) {
-    const row = rosterList.querySelector(`.roster-row[data-stack="${(window.CSS && CSS.escape) ? CSS.escape(name) : name}"]`);
+    const row = rosterList.querySelector(`.roster-row[data-stack="${(window.CSS && CSS.escape) ? CSS.escape(name) : name}"]:not(.peer-row)`);
     if (!row) return;
     const entry = rosterSnap.find(function(x) { return x.name === name; });
     const cell = row.querySelector('.roster-status');
@@ -2452,6 +2809,54 @@
   });
 
   renderAutosync(); // initial paint before the first SSE snapshot arrives
+
+  // ── Hosts drawer (multi-host fan-in) ──
+  const hostsBtn = document.getElementById('hosts-btn');
+  const hostsDrawer = document.getElementById('hosts-drawer');
+
+  function setHostsDrawer(open) {
+    if (open) { setViewOptions(false); setRunDrawer(false); setDrawer(false); } // surfaces are mutually exclusive
+    hostsDrawer.classList.toggle('open', open);
+    hostsBtn.classList.toggle('open', open);
+    hostsBtn.setAttribute('aria-expanded', String(open));
+  }
+
+  hostsBtn.addEventListener('click', function() { setHostsDrawer(!hostsDrawer.classList.contains('open')); });
+
+  // Toggling a host: the filter is the set of in-view hosts. Deselecting the last
+  // host is a no-op (an empty merged feed is never useful) — one host stays on.
+  function toggleHost(name) {
+    const hosts = hostList().map(function(h) { return h.name; });
+    if (hostSelected === null) hostSelected = new Set(hosts); // materialize "all" before narrowing
+    if (hostSelected.has(name)) {
+      if (hostSelected.size <= 1) return; // keep at least one host in view
+      hostSelected.delete(name);
+    } else {
+      hostSelected.add(name);
+    }
+    if (hostSelected.size === hosts.length) hostSelected = null; // back to "all"
+    renderPeerRows(); // membership unchanged, but keeps rows consistent after refilter
+    applyHostFilter();
+    refilterDeploys();
+  }
+
+  hostsDrawer.addEventListener('click', function(e) {
+    if (e.target.closest('.host-link')) return; // the external link opens normally
+    const row = e.target.closest('.host-row');
+    if (row) toggleHost(row.dataset.host);
+  });
+
+  document.getElementById('hosts-all-btn').addEventListener('click', function() {
+    hostSelected = null;
+    applyHostFilter();
+    refilterDeploys();
+  });
+
+  registerSurface({
+    isOpen: function() { return hostsDrawer.classList.contains('open'); },
+    close: function() { setHostsDrawer(false); },
+    within: [hostsDrawer, hostsBtn],
+  });
 
   // ── Logs view ──
   // The log stream connects lazily on first activation and stays open;
@@ -2827,6 +3232,11 @@
   // Files panel — open/close as full-width sibling below the row.
   // When diffs are available, shows a diff panel; otherwise shows file list.
   tbody.addEventListener('click', function(e) {
+    // Host dot: quick-filter the merged view to this row's host (toggle). Before
+    // any panel logic so a tap on the dot never also opens the row's diff panel.
+    const hostDot = e.target.closest('.host-dot-inline');
+    if (hostDot) { const r = hostDot.closest('[data-host]'); if (r) toggleHostFilterTo(r.dataset.host); return; }
+
     // Diff panel collapse/expand controls (per-file header, multi-commit pill).
     if (handleDiffToggle(e.target)) return;
 

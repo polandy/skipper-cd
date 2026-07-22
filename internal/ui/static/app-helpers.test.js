@@ -192,22 +192,58 @@ test('hostColorIndex: independent of order/count (name-based, not positional)', 
   assert.equal(h.hostColorIndex('host-c'), solo);
 });
 
+test('assignHostColors: never reuses a colour while the palette has free slots', () => {
+  // Search for a name set that would collide on the raw hash, to prove the
+  // set-aware assigner still hands each host a distinct slot.
+  const names = [];
+  for (let i = 0; i < h.HOST_COLOR_COUNT; i++) names.push('host-' + i);
+  const colors = h.assignHostColors(names);
+  const slots = names.map((n) => colors[n]);
+  assert.equal(
+    new Set(slots).size,
+    names.length,
+    'all ' + names.length + ' hosts distinct: ' + slots.join(','),
+  );
+  for (const s of slots) assert.ok(s >= 0 && s < h.HOST_COLOR_COUNT);
+});
+
+test('assignHostColors: a colliding pair is separated onto different slots', () => {
+  // Two names that hash to the same raw slot must still get different colours.
+  let a, b;
+  outer: for (const x of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']) {
+    for (const y of ['l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v']) {
+      if (h.hostColorIndex(x) === h.hostColorIndex(y)) {
+        a = x;
+        b = y;
+        break outer;
+      }
+    }
+  }
+  assert.ok(a && b, 'found a colliding pair to test');
+  const colors = h.assignHostColors([a, b]);
+  assert.notEqual(colors[a], colors[b]);
+});
+
+test('assignHostColors: independent of input order and of which host is primary', () => {
+  const c1 = h.assignHostColors(['host-a', 'host-b', 'host-c']);
+  const c2 = h.assignHostColors(['host-c', 'host-a', 'host-b']);
+  assert.deepEqual(c1, c2);
+});
+
+test('assignHostColors: beyond the palette size colours may repeat', () => {
+  const names = [];
+  for (let i = 0; i < h.HOST_COLOR_COUNT + 3; i++) names.push('overflow-host-' + i);
+  const colors = h.assignHostColors(names);
+  // Every host is assigned an in-range slot; distinctness is no longer possible.
+  const slots = names.map((n) => colors[n]);
+  assert.equal(slots.length, names.length);
+  for (const s of slots) assert.ok(s >= 0 && s < h.HOST_COLOR_COUNT);
+  assert.ok(new Set(slots).size <= h.HOST_COLOR_COUNT);
+});
+
 test('hostFilterActive: only a strict non-empty subset lights the control', () => {
   assert.equal(h.hostFilterActive(3, 3), false); // all selected
   assert.equal(h.hostFilterActive(2, 3), true); // subset
   assert.equal(h.hostFilterActive(0, 3), false); // none (guard, treated inactive)
   assert.equal(h.hostFilterActive(1, 1), false); // single host, all selected
-});
-
-test('showHostColumn: shown only with more than one host in view', () => {
-  assert.equal(h.showHostColumn(1), false); // redundant with one host
-  assert.equal(h.showHostColumn(2), true);
-  assert.equal(h.showHostColumn(3), true);
-});
-
-test('hostFilterSummary: all-hosts vs named subset', () => {
-  assert.equal(h.hostFilterSummary(12, ['host-a', 'host-b', 'host-c'], 3), '12 deploys · all 3 hosts');
-  assert.equal(h.hostFilterSummary(5, ['host-a', 'host-c'], 3), '5 deploys · host-a, host-c');
-  assert.equal(h.hostFilterSummary(1, ['host-a'], 3), '1 deploy · host-a'); // singular noun
-  assert.equal(h.hostFilterSummary(0, [], 3), '0 deploys'); // nothing selected → no scope
 });
