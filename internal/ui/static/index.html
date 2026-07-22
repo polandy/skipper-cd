@@ -390,6 +390,12 @@
   let hostColors = {};
   let hostSelected = null;
 
+  // The reserved stack key for nixos-rebuild deploys (invariant 4). It is a
+  // pseudo-stack, not a Docker Compose project and not in the Stacks roster, so
+  // it carries no container-logs button and no jump-to-Stacks button — only the
+  // affordances that apply to it (its git diff + deploy history).
+  const NIXOS_STACK = '_nixos';
+
   // Traefik-routed hostnames per stack, from the 'app_links' SSE snapshot
   // (dev-docs/traefik-app-links-spec.md): stack name -> hostnames, absent
   // when none were discovered. Feeds the roster row's link icon.
@@ -1371,7 +1377,7 @@
     const filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
-      `<span class="cell-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
+      `<span class="cell-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="status-cell">${badgeHTML(evt.status)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
       `<span class="col-files">${filesCell}</span>`;
@@ -1449,11 +1455,12 @@
         closeAuditPanel(row);
       }
 
-      // Container-logs button — per stack, on the newest row (ADR-0037).
+      // Container-logs button — per stack, on the newest row (ADR-0037). Not for
+      // _nixos: it is not a compose project, so it has no container logs.
       let clogBtn = cell.querySelector('.clog-btn:not(.hook-log-btn)');
-      if (newest && !clogBtn) {
+      if (newest && !clogBtn && stack !== NIXOS_STACK) {
         cell.appendChild(clogButton(stack, ''));
-      } else if (!newest && clogBtn) {
+      } else if ((!newest || stack === NIXOS_STACK) && clogBtn) {
         clogBtn.remove();
       }
 
@@ -3338,8 +3345,22 @@
     const pill = e.target.closest('.files-pill');
     const row = pill ? pill.closest('.event-row') : e.target.closest('.event-row');
     if (!row) return;
+    if (row.classList.contains('peer-row')) return; // peer rows have no local drill-down
     const pillEl = pill || row.querySelector('.files-pill');
-    if (!pillEl) return;
+    if (!pillEl) {
+      // A row with no changed-files panel (e.g. a deploy with nothing hashed)
+      // still has relevant info — its deploy history. Never dead-end a click:
+      // toggle the audit panel instead of doing nothing.
+      const anext = row.nextElementSibling;
+      if (anext && anext.classList.contains('audit-panel')) {
+        closeAuditPanel(row);
+      } else {
+        closeHealthPanel(row); closeHooksPanel(row); closeDiffPanel(row);
+        row.classList.add('audit-open');
+        row.after(createAuditPanel(row.dataset.stack));
+      }
+      return;
+    }
     const existing = row.nextElementSibling;
     if (existing && (existing.classList.contains('files-list') || existing.classList.contains('diff-panel'))) {
       closeDiffPanel(row);
