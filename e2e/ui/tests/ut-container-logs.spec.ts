@@ -3,18 +3,24 @@ import type { Page } from '@playwright/test';
 
 // Maske T: Container logs (ADR-0037). See dev-docs/e2e-tests.md §4.21.
 //
-// The health poller (healthPoll: 1) surfaces the per-container log icons on the
-// health panel's service lines and validates the {service} segment. The stub
-// docker answers `compose … logs` with a fixed backlog (see harness.ts): a
-// single service drops the compose prefix (--no-log-prefix), the whole stack
-// keeps it (`<stack>-1  | `). No real docker, no real containers.
+// The health poller surfaces the per-container log icons on the health panel's
+// service lines and validates the {service} segment. The stub docker answers
+// `compose … logs` with a fixed backlog (see harness.ts): a single service drops
+// the compose prefix (--no-log-prefix), the whole stack keeps it (`<stack>-1  | `).
+// No real docker, no real containers.
+//
+// healthPoll is wide (not 1s): the poller refreshes immediately on client connect
+// (cmd/skipper Poll()), so one poll populates the pill + service lines up front. A
+// 1s cadence instead re-runs updateStackAffordances every second, which can close
+// an open health panel (no-status tick) and detach a service line mid-click — the
+// churn that made UT2 flake past its retry.
 
 const rowLogBtn = (page: Page, stack: string) =>
   page.locator(`[data-testid="deploy-row"][data-stack="${stack}"] [data-testid="clog-btn"]`);
 
 // UT1 — the row icon streams the whole stack's logs (services merged, prefixed).
 test.describe('UT1: per-stack log panel', () => {
-  test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
+  test.use({ startOptions: { stacks: ['web'], healthPoll: 30 } });
 
   test('opens a live panel from the row icon and streams the backlog', async ({ page, skipper }) => {
     skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
@@ -38,7 +44,7 @@ test.describe('UT1: per-stack log panel', () => {
 
 // UT2 — each health-panel service line opens that one container's logs.
 test.describe('UT2: per-container log panel', () => {
-  test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
+  test.use({ startOptions: { stacks: ['web'], healthPoll: 30 } });
 
   test('a service line opens its single-service log', async ({ page, skipper }) => {
     skipper.setStackHealth('web', [
@@ -62,7 +68,7 @@ test.describe('UT2: per-container log panel', () => {
 
 // UT3 — only one log is open at a time; a new one replaces the old.
 test.describe('UT3: single log open', () => {
-  test.use({ startOptions: { stacks: ['web', 'db'], healthPoll: 1 } });
+  test.use({ startOptions: { stacks: ['web', 'db'], healthPoll: 30 } });
 
   test('opening a second log closes the first', async ({ page, skipper }) => {
     skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
@@ -82,7 +88,7 @@ test.describe('UT3: single log open', () => {
 // UT4 — typing while a log is open searches inside it (overriding the stack
 // search): matching lines highlight, the rest hide, and a hit count shows.
 test.describe('UT4: in-log type-to-search', () => {
-  test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
+  test.use({ startOptions: { stacks: ['web'], healthPoll: 30 } });
 
   test('typing filters the open log to matching lines', async ({ page, skipper }) => {
     skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);

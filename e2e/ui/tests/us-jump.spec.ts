@@ -96,6 +96,10 @@ test.describe('cross-view jump', () => {
     // Stacks -> Deploys: filter Deploys down to "web" (api hidden), then leave
     // it filtered and switch to Stacks via the view toggle (not a jump).
     await page.keyboard.type('web');
+    // Wait for the typed query to land before asserting the filter's effect: the
+    // search box reveals on the first keystroke, so racing that reveal can drop a
+    // key and leave 'api' visible (the US5 flake).
+    await expect(page.locator('[data-testid="deploy-filter"]')).toHaveValue('web');
     await expect(deployRows(page, 'api').first()).toBeHidden();
     await stacksBtn(page).click();
 
@@ -110,6 +114,7 @@ test.describe('cross-view jump', () => {
     // filtered and switch back to Deploys via the toggle.
     await stacksBtn(page).click();
     await page.keyboard.type('web');
+    await expect(page.locator('[data-testid="roster-filter"]')).toHaveValue('web');
     await expect(rosterRow(page, 'api')).toBeHidden();
     await deploysBtn(page).click();
 

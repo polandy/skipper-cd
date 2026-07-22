@@ -1,8 +1,18 @@
 name: CI
 
 on:
+  # Branch pushes are covered by their pull_request run; only main needs a push
+  # trigger. This stops every PR commit from running the whole suite twice (a
+  # push event + a pull_request event on the same SHA), where a flaky duplicate
+  # could show red on a PR whose other run was green.
   push:
+    branches: [main]
   pull_request:
+
+# One in-flight run per ref; a new push cancels the superseded one.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
