@@ -98,6 +98,8 @@ nixos_rebuild:
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
 | `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0; an explicit `0` disables the cooldown. |
 | `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `runtime_health_poll_interval_seconds` > 0. |
+| `host_name` | string | no | OS hostname | This instance's own label in the merged [multi-host](#multi-host) view. Only meaningful when other instances fan this one in, or when this one lists `peers`. |
+| `peers` | list | no | — | Other skipper instances whose read data this one fans into a single merged UI (see [Multi-host](#multi-host)). Each entry is `{ name, url }`. Omit for a single-host instance. |
 
 ## Pretty console output
 
@@ -444,6 +446,30 @@ ui_theme_switcher: true   # optional, default: false
 ```
 
 The picker is a **local, per-browser** override only: it never changes the deployment's `ui_theme` (there is no endpoint to do so) and only affects the browser that set it, applied instantly with no reload. While an override differs from the configured theme, a dismissible notice under the header points it out. Turning the flag back off hides the picker and re-pins every browser to the configured theme (a stale override left in a browser's `localStorage` simply lies dormant). See [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#theme-override) for the exact behaviour.
+
+## Multi-host
+
+Run skipper on several hosts and view them all in **one merged UI**. Every host keeps running its own independent skipper (own clone, own state, own webhook); one instance is additionally the **primary** that reads the others' data and renders it together. Deploys stay per-host and git-driven — the primary only ever *reads* from its peers, never deploys or controls them.
+
+```yaml
+# on the primary only
+host_name: host-a
+peers:
+  - name: host-b
+    url: http://host-b:8001
+  - name: host-c
+    url: http://host-c:8001
+```
+
+- **Only the primary needs `peers`.** A peer needs no extra config — just `ui_enabled: true` (it already serves the read API) and to be reachable from the primary.
+- `name` is the host's label and its identity colour in the merged view; `url` is its skipper base URL on the LAN.
+- `host_name` is the primary's own label (defaults to the OS hostname); set it to match how the hosts name each other.
+- **What you get:** the Deploys and Stacks views merge every host's rows, each tagged with a colour **host dot**. A **Hosts** control (top right) filters by host and links out to each host's own UI. Click a host dot to isolate the view to that host; click again to clear.
+- **Read-only peers.** Peer rows mirror state only — no diff/logs/history drill-down. To act on a peer (or watch it deploy live), open its own UI from the Hosts control.
+- **Reachability.** The merged view refreshes on the [health-poll](#stack-health) cadence, so it can lag a few seconds behind a peer's live deploy. An unreachable peer's last-known rows stay, dimmed, with a banner — never silently dropped.
+- **Access.** Peers must be reachable from the primary (server-to-server), not from the browser. Keep each peer's port on the LAN and firewall it to the primary's address.
+
+If the primary goes down, every host still deploys on its own webhook and serves its own UI at its own address — the primary is a convenience layer, not a dependency.
 
 ## Stack health
 
