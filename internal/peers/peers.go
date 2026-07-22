@@ -11,11 +11,25 @@ package peers
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/audit"
 	"github.com/polandy/skipper-cd/internal/config"
+)
+
+// Reachability-transition log messages, emitted once per edge (not every poll)
+// so a healthy fan-in stays quiet and only up/down flips are narrated. The
+// pretty-console renderer (internal/prettylog) styles these; any other log mode
+// prints them plainly. Exported so the emitter and its tests share one string.
+const (
+	// MsgPeerUnreachable is logged (Warn) when a peer stops responding — either
+	// a reachable peer going down, or a peer that is down from the first poll.
+	MsgPeerUnreachable = "peer unreachable"
+	// MsgPeerReachable is logged (Info) when a previously-unreachable peer
+	// starts responding again.
+	MsgPeerReachable = "peer reachable again"
 )
 
 // Client is the consumer-side seam over one peer's read API (its `/api/v1`
@@ -89,12 +103,15 @@ type Registry struct {
 
 // cacheEntry is one peer's last poll outcome. hasData stays true once any poll
 // has succeeded, so a later failure keeps the last-known data (marked stale)
-// instead of blanking the host.
+// instead of blanking the host. polled records whether the peer has been tried
+// at least once, so the first poll can distinguish a fresh start from a real
+// reachability transition when narrating up/down flips.
 type cacheEntry struct {
 	data      Data
 	lastSeen  time.Time
 	reachable bool
 	hasData   bool
+	polled    bool
 }
 
 // New builds a Registry for the given peers. self is the primary's own host
@@ -126,18 +143,31 @@ func (r *Registry) Poll(ctx context.Context) {
 			data, err := r.client.Fetch(fctx, p.URL)
 
 			r.mu.Lock()
-			defer r.mu.Unlock()
 			e := r.cache[p.Name]
+			wasReachable := e.reachable
+			firstPoll := !e.polled
+			e.polled = true
 			if err != nil {
 				// Unreachable: keep the last-known data and lastSeen; State()
 				// marks it stale. A never-yet-reached peer stays empty.
 				e.reachable = false
-				return
+			} else {
+				e.data = data
+				e.reachable = true
+				e.hasData = true
+				e.lastSeen = time.Now()
 			}
-			e.data = data
-			e.reachable = true
-			e.hasData = true
-			e.lastSeen = time.Now()
+			r.mu.Unlock()
+
+			// Narrate reachability edges once, outside the lock. A peer down from
+			// the first poll earns one line; a reachable peer on first contact is
+			// the normal case and stays silent.
+			switch {
+			case err != nil && (wasReachable || firstPoll):
+				slog.Warn(MsgPeerUnreachable, "peer", p.Name, "err", err)
+			case err == nil && !wasReachable && !firstPoll:
+				slog.Info(MsgPeerReachable, "peer", p.Name)
+			}
 		}(p)
 	}
 	wg.Wait()

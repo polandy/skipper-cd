@@ -1,11 +1,14 @@
 package peers_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -164,6 +167,43 @@ func TestState_RecoveryClearsStale(t *testing.T) {
 
 	if b := peerView(t, reg.State(), "host-b"); !b.Reachable || b.Stale {
 		t.Errorf("recovered peer reachable=%v stale=%v, want reachable/not-stale", b.Reachable, b.Stale)
+	}
+}
+
+func TestPoll_LogsReachabilityEdgesOncePerTransition(t *testing.T) {
+	prev := slog.Default()
+	var buf bytes.Buffer // slog's TextHandler guards its writer; Poll joins its goroutines before we read
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	defer slog.SetDefault(prev)
+
+	fc := &fakeClient{
+		data: map[string]peers.Data{"http://host-b:8001": dataWith(), "http://host-c:8001": dataWith()},
+		fail: map[string]bool{"http://host-c:8001": true}, // host-c down from the first poll
+	}
+	reg := peers.New("host-a", testPeers(), fc, time.Second)
+
+	reg.Poll(context.Background()) // host-c → one "unreachable"; host-b reachable on first contact stays silent
+	reg.Poll(context.Background()) // host-c still down → no repeat (edge-triggered)
+
+	afterDown := buf.String()
+	if got := strings.Count(afterDown, peers.MsgPeerUnreachable); got != 1 {
+		t.Fatalf("want 1 unreachable log (host-c), got %d in %q", got, afterDown)
+	}
+	if strings.Contains(afterDown, "peer=host-b") {
+		t.Errorf("a peer reachable from the first poll must log nothing, got %q", afterDown)
+	}
+
+	fc.fail = nil                                         // host-c recovers
+	reg.Poll(context.Background())                        // → one "reachable again" for host-c
+	fc.fail = map[string]bool{"http://host-b:8001": true} // host-b now drops
+	reg.Poll(context.Background())                        // → one "unreachable" for host-b
+
+	out := buf.String()
+	if got := strings.Count(out, peers.MsgPeerReachable); got != 1 {
+		t.Errorf("want 1 recovery log (host-c), got %d in %q", got, out)
+	}
+	if got := strings.Count(out, peers.MsgPeerUnreachable); got != 2 {
+		t.Errorf("want 2 unreachable logs total (host-c start + host-b drop), got %d in %q", got, out)
 	}
 }
 

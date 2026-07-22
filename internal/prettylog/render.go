@@ -65,6 +65,13 @@ var anchors = map[string]style{
 	"self-heal: restoring stack to its deployed running state": {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restoring")},
 	"self-heal: stack restored":                                {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restored")},
 	"file changed":                                             {glyph: "↳", indent: true, body: bodyFileChanged},
+
+	// Multi-host fan-in (ADR-0048): the startup line and per-peer reachability
+	// edges. Message text mirrors cmd/skipper and internal/peers by hand — same
+	// display-layer-owns-its-strings convention as the deploy lines above.
+	"multi-host fan-in enabled": {glyph: "⇢", color: ansiAccent, body: bodyFanIn},
+	"peer unreachable":          {glyph: "▲", color: ansiWarn, body: bodyPeer("unreachable", ansiWarn)},
+	"peer reachable again":      {glyph: "✓", color: ansiSuccess, body: bodyPeer("reachable again", ansiSuccess)},
 }
 
 // render renders one slog.Record as a single line (including its trailing
@@ -202,6 +209,25 @@ func bodyDeployHook(attrs []attr, color bool) string {
 
 func bodyFileChanged(attrs []attr, color bool) string {
 	return colorize(color, ansiDim, str(attrs, "file"))
+}
+
+// bodyFanIn narrates the multi-host startup line: how many peers are watched
+// and on what cadence.
+func bodyFanIn(attrs []attr, color bool) string {
+	return colorize(color, ansiBold, "multi-host fan-in") +
+		colorize(color, ansiDim, fmt.Sprintf("  · %s peers · poll %ss", str(attrs, "peers"), str(attrs, "poll_interval_seconds")))
+}
+
+// bodyPeer renders a per-peer reachability edge — the host name in bold, its new
+// state in the given tone, and (when going down) the failure reason.
+func bodyPeer(label, tone string) func([]attr, bool) string {
+	return func(attrs []attr, color bool) string {
+		line := colorize(color, ansiBold, "peer "+str(attrs, "peer")) + "  " + colorize(color, tone, label)
+		if e := str(attrs, "err"); e != "" {
+			line += colorize(color, ansiDim, "  — "+e)
+		}
+		return line
+	}
 }
 
 // runCompleteTone picks the summary line's icon/color from the worst outcome
