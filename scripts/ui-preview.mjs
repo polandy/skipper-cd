@@ -239,7 +239,8 @@ const metricsPort = await freePort();
 const cfg =
   `repo_url: ${JSON.stringify(origin)}\n` +
   `repo_dir: ${JSON.stringify(repoDir)}\n` +
-  `stacks_base_dir: ${JSON.stringify(repoDir)}\n` +
+  // stacks_base_dir omitted: stacks live at the repo root, and the field is
+  // relative to repo_dir (ADR-0043/#180) — omitting it means the repo root.
   `branch: main\n` +
   `webhook_secret: ${JSON.stringify(SECRET)}\n` +
   `port: ${PORT}\n` +
