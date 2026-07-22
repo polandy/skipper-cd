@@ -330,6 +330,7 @@ export class Skipper {
   private readonly stateDir: string;
   private readonly dockerLog: string;
   private readonly holdFile: string;
+  private readonly hookHoldFile: string;
   private readonly stacks: string[];
   private readonly cfgPath: string;
   private readonly healthDir: string;
@@ -347,6 +348,7 @@ export class Skipper {
     stateDir: string;
     dockerLog: string;
     holdFile: string;
+    hookHoldFile: string;
     stacks: string[];
     cfgPath: string;
     healthDir: string;
@@ -362,6 +364,7 @@ export class Skipper {
     this.stateDir = init.stateDir;
     this.dockerLog = init.dockerLog;
     this.holdFile = init.holdFile;
+    this.hookHoldFile = init.hookHoldFile;
     this.stacks = init.stacks;
     this.cfgPath = init.cfgPath;
     this.healthDir = init.healthDir;
@@ -391,6 +394,11 @@ export class Skipper {
     // The hold file gates the stub's `up`. Present = proceed, absent = block.
     // Pre-created so the startup deploy is not held; hold()/release() toggle it.
     const holdFile = join(base, 'hold');
+    // The hook-hold file gates a pre/post-deploy hook that waits on it (the
+    // running-hook tests). Absent = block, present = proceed — and it is NOT
+    // pre-created, so such a hook blocks from boot until releaseHook() creates
+    // it. This makes the running-hook phase observable with no wall-clock race.
+    const hookHoldFile = join(base, 'hook-hold');
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(holdFile, '');
 
@@ -552,6 +560,9 @@ export class Skipper {
       PATH: `${stubDir}:${process.env.PATH}`,
       DOCKER_LOG: dockerLog,
       STUB_DOCKER_HOLD_UP: holdFile,
+      // Inherited by hook commands (run via `sh -c` with os.Environ()); a hook
+      // can wait on this path to hold the running-hook phase deterministically.
+      SKIPPER_E2E_HOOK_HOLD: hookHoldFile,
       STUB_DOCKER_PS_DIR: healthDir,
       STUB_DOCKER_ORPHANS_DIR: orphansDir,
       ...opts.stubEnv,
@@ -569,6 +580,7 @@ export class Skipper {
       stateDir,
       dockerLog,
       holdFile,
+      hookHoldFile,
       stacks,
       cfgPath,
       healthDir,
@@ -599,6 +611,13 @@ export class Skipper {
   /** release unblocks a held `up`. */
   release(): void {
     writeFileSync(this.holdFile, '');
+  }
+
+  /** releaseHook unblocks a pre/post-deploy hook that waits on the hook-hold
+   *  file (a hook of `while [ ! -f "$SKIPPER_E2E_HOOK_HOLD" ]; do …; done`), so
+   *  the running-hook phase can be observed with no timeout, then let go. */
+  releaseHook(): void {
+    writeFileSync(this.hookHoldFile, '');
   }
 
   /** setNixConfig rewrites the tracked configuration.nix and commits it, so the

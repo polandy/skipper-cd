@@ -4,9 +4,10 @@ import { test, expect } from '../fixtures/test';
 //
 // Boots in discovery mode with a stack whose repo skipper.yaml declares
 // pre/post-deploy hooks. The commands are harmless `echo`s (they succeed and
-// their output is attributed to the stack in the log), plus a `sleep` for the
-// running-hook cases so the phase is observable. No real docker; hooks run via
-// real `sh -c`, so the stub docker is untouched.
+// their output is attributed to the stack in the log), plus a hook that blocks
+// on the harness hook-hold file for the running-hook cases so the phase stays
+// observable until the test releases it — no wall-clock race. No real docker;
+// hooks run via real `sh -c`, so the stub docker is untouched.
 
 // web has 2 pre + 1 post; the echoes succeed so the startup deploy settles.
 const WEB_HOOKS = `stacks:
@@ -19,16 +20,16 @@ const WEB_HOOKS = `stacks:
         - "echo verifying deploy"
 `;
 
-// A slow pre_deploy hook so the running-hook phase stays observable. sleep is
-// well under command_timeout (30s), so it runs to completion rather than being
-// killed. readiness:'listening' loads the page while this deploy is still in the
-// hook, giving a deterministic window.
-const WEB_SLOW = `stacks:
+// A pre_deploy hook that blocks on the harness hook-hold file so the
+// running-hook phase stays observable until the test calls releaseHook() — no
+// timing window that can close under CI load. readiness:'listening' loads the
+// page while the deploy is parked in this hook.
+const WEB_HELD = `stacks:
   web:
     hooks:
       pre_deploy:
         - "echo starting backup"
-        - "sleep 10"
+        - 'while [ ! -f "$SKIPPER_E2E_HOOK_HOLD" ]; do sleep 0.05; done'
 `;
 
 // UU1 — a stack with hooks shows the badge (split pre+post count); its panel
@@ -86,7 +87,7 @@ test.describe('UU2: hook output attributed in the log', () => {
 // and the console icon opens the hook log inline (no page jump).
 test.describe('UU3: running-hook phase + inline log', () => {
   test.use({
-    startOptions: { stacks: ['web'], discovery: { repoConfig: WEB_SLOW }, readiness: 'listening' },
+    startOptions: { stacks: ['web'], discovery: { repoConfig: WEB_HELD }, readiness: 'listening' },
   });
 
   test('the phase shows and the console icon opens an inline log panel', async ({ page, skipper }) => {
@@ -94,7 +95,7 @@ test.describe('UU3: running-hook phase + inline log', () => {
 
     const row = page.locator('[data-testid="deploy-row"][data-stack="web"]');
     const phase = row.locator('[data-testid="hook-phase"]');
-    await expect(phase).toBeVisible({ timeout: 15000 });
+    await expect(phase).toBeVisible();
     await expect(phase).toContainText('pre_deploy hook');
     // The hooks badge pulses while a hook runs.
     await expect(row.locator('[data-testid="hooks-badge"]')).toHaveAttribute('data-hook-active', '1');
@@ -106,6 +107,8 @@ test.describe('UU3: running-hook phase + inline log', () => {
     await expect(panel).toBeVisible();
     await expect(panel.locator('[data-testid="clog-body"]')).toContainText('starting backup');
     await expect(page.locator('[data-testid="deploys-table"]')).toBeVisible();
+
+    skipper.releaseHook(); // let the held hook finish so the deploy settles and teardown is clean
   });
 });
 
@@ -113,7 +116,7 @@ test.describe('UU3: running-hook phase + inline log', () => {
 // only the Deploys table.
 test.describe('UU4: running phase in the Stacks roster', () => {
   test.use({
-    startOptions: { stacks: ['web'], discovery: { repoConfig: WEB_SLOW }, readiness: 'listening' },
+    startOptions: { stacks: ['web'], discovery: { repoConfig: WEB_HELD }, readiness: 'listening' },
   });
 
   test('the roster row shows the same phase while a hook runs', async ({ page, skipper }) => {
@@ -121,9 +124,9 @@ test.describe('UU4: running phase in the Stacks roster', () => {
     await page.locator('[data-testid="view-toggle"] button[data-view="stacks"]').click();
 
     const rrow = page.locator('[data-testid="roster-row"][data-stack="web"]');
-    await expect(rrow.locator('[data-testid="hook-phase"]')).toContainText('pre_deploy hook', {
-      timeout: 15000,
-    });
+    await expect(rrow.locator('[data-testid="hook-phase"]')).toContainText('pre_deploy hook');
     await expect(rrow.locator('[data-testid="hooks-badge"]')).toHaveAttribute('data-hook-active', '1');
+
+    skipper.releaseHook(); // let the held hook finish so the deploy settles and teardown is clean
   });
 });
