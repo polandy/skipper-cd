@@ -303,6 +303,8 @@ When the web UI is enabled, each stack shows an icon in the deploy table for at-
 3. **Auto-match** — the stack name (slugified) looked up in the icon set, trying SVG, then PNG, then WebP.
 4. **Fallback** — a monogram (the stack's first letter) rendered in the UI when nothing matches or the source is unreachable.
 
+Browse available slugs at the [dashboard-icons repo](https://github.com/homarr-labs/dashboard-icons) before setting `icon:`.
+
 Icons from the set are fetched once and cached on disk; the UI serves them same-origin from `/api/icons/<stack>`. `POST /api/icons/refresh` clears the cache so renamed stacks and newly published icons are picked up on the next load (e.g. `curl -X POST …/api/icons/refresh`).
 
 The reserved NixOS pseudo-stack `_nixos` (see [NixOS](nixos.md)) is not a configured stack, so it resolves its icon by auto-matching the `nixos` slug — giving the rebuild a recognizable logo rather than a monogram.
