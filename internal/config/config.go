@@ -809,7 +809,7 @@ func validateConfig(cfg *Config) error {
 	// repo_dir is used verbatim for git clone/pull; a relative value would
 	// resolve against skipper's own process cwd, not the intended location.
 	if cfg.RepoDir != "" && !filepath.IsAbs(cfg.RepoDir) {
-		return fmt.Errorf("repo_dir %q must be an absolute path (start it with \"/\"), or leave it empty to use the default /var/lib/skipper/repo", cfg.RepoDir)
+		return fmt.Errorf("repo_dir %q must be an absolute path (start it with \"/\"), or leave it empty to use the default %s", cfg.RepoDir, git.DefaultRepoDir)
 	}
 
 	// A negative command_timeout_seconds would build an already-expired context,
