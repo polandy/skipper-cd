@@ -75,6 +75,14 @@
       <span class="ds-next" id="deploy-next" data-testid="deploy-next"></span>
       <span class="ds-count" id="deploy-count" data-testid="deploy-count"></span>
     </div>
+    <div class="health-beacon-wrap" id="health-beacon-wrap">
+      <button class="health-beacon" id="health-beacon" data-testid="health-beacon" type="button" hidden aria-haspopup="true" aria-expanded="false">
+        <span class="hb-icon" aria-hidden="true"></span>
+        <span class="hb-dot"></span>
+        <span class="hb-count" id="health-beacon-count" data-testid="health-beacon-count"></span>
+      </button>
+      <div class="beacon-pop" id="beacon-pop" data-testid="health-beacon-pop" role="menu" aria-label="Unhealthy stacks"></div>
+    </div>
     <div class="view-switch" id="view-switch">
       <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
         <button data-view="deploys" class="active" title="Deploys" aria-label="Deploys" aria-haspopup="true" aria-expanded="false">
@@ -227,6 +235,7 @@
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.5" r="1.1" fill="currentColor"/><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
       <span id="host-stale-text"></span>
     </div>
+    <div class="attention-band" id="attention-band" data-testid="attention-band" hidden></div>
     <div class="event-list-header">
       <span>Time</span>
       <span>Stack</span>
@@ -491,11 +500,31 @@
     return (h && h.status) ? healthPillHTML(stack, h.status) : '';
   }
 
+  // rosterAttentionRank floats an enabled, currently-unhealthy stack to the top
+  // (rank 0) so the Stacks view answers "what needs attention" at a glance — the
+  // inventory-view counterpart to the Deploys attention band. Legitimate here (a
+  // roster is inventory, not a chronological log, so reordering carries no
+  // meaning to lose). Same "only unhealthy floats" rule as attentionStacks.
+  function rosterAttentionRank(entry) {
+    const h = healthSnap[entry.name];
+    return !entry.disabled && h && h.status === HEALTH.UNHEALTHY ? 0 : 1;
+  }
+
+  // rosterOrdered stably sorts a copy of the snapshot by that rank, preserving
+  // the backend's enabled-first / alphabetical order within each group. Applied
+  // only at full render (view switch / roster snapshot), never on a live health
+  // poll, so rows never jump out from under an open panel.
+  function rosterOrdered() {
+    return rosterSnap.slice().sort(function(a, b) {
+      return rosterAttentionRank(a) - rosterAttentionRank(b);
+    });
+  }
+
   function renderRoster() {
     const list = document.getElementById('roster-list');
     list.textContent = '';
     openLinkWrap = null; // rebuilt rows drop any open app-link popover too
-    rosterSnap.forEach(function(entry) {
+    rosterOrdered().forEach(function(entry) {
       const deploying = !!deployingRows[entry.name];
       // Time + commit only apply to a real past deploy.
       const showMeta = !entry.disabled && !deploying && !!entry.last_status;
@@ -2339,6 +2368,7 @@
         healthSnap = (d && d.stacks) || {};
         updateStackAffordances();
         updateRosterHealth();
+        renderHealthAttention(); // beacon + band read the same snapshot
         break;
       case 'healthwatch':
         healthwatchSnap = (d && d.stacks) || {};
@@ -3410,6 +3440,111 @@
     target.classList.add('jump-target');
     setTimeout(function() { target.classList.remove('jump-target'); }, 1800);
   }
+
+  // ─── Live-health attention surface (ADR-0027 extension) ───
+  // Two always-consistent affordances that lift a currently-unhealthy stack out
+  // of the chronological deploy log — where its row-bound health pill can sit far
+  // down, or vanish once the row ages out of the bounded log: a header BEACON
+  // (present in every view) and, in the Deploys view, an attention BAND pinned
+  // above the log. Both render from attentionStacks(healthSnap) and jump to the
+  // stack's newest row on activate (degrading to a plain view switch when the
+  // stack has no row, exactly like jumpBtn).
+  const WARN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>';
+
+  const healthBeacon = document.getElementById('health-beacon');
+  const healthBeaconIcon = healthBeacon.querySelector('.hb-icon');
+  const healthBeaconCount = document.getElementById('health-beacon-count');
+  const beaconPop = document.getElementById('beacon-pop');
+  const attentionBand = document.getElementById('attention-band');
+  healthBeaconIcon.innerHTML = WARN_ICON;
+
+  // Shared, pluralised summary reused as the beacon title, aria-label and the
+  // popover heading, so the three never drift apart.
+  function attentionLabel(n) {
+    return n === 1 ? '1 stack unhealthy' : n + ' stacks unhealthy';
+  }
+
+  function setBeaconPop(open) {
+    beaconPop.classList.toggle('open', open);
+    healthBeacon.setAttribute('aria-expanded', String(open));
+  }
+
+  function renderHealthBeacon(att) {
+    const n = att.length;
+    healthBeacon.hidden = n === 0;
+    if (n === 0) {
+      setBeaconPop(false);
+      beaconPop.innerHTML = '';
+      return;
+    }
+    const label = attentionLabel(n);
+    healthBeaconCount.textContent = String(n);
+    healthBeacon.title = label;
+    healthBeacon.setAttribute('aria-label', label);
+    beaconPop.innerHTML =
+      '<div class="bp-head">' + escapeHtml(label) + '</div>' +
+      att.map(function(a) {
+        return '<button type="button" class="beacon-item" data-testid="health-beacon-item" data-stack="' + escapeAttr(a.stack) + '">' +
+          '<span class="bi-dot" data-health="' + escapeAttr(a.status) + '"></span>' +
+          '<span class="bi-name">' + escapeHtml(a.stack) + '</span></button>';
+      }).join('');
+  }
+
+  function renderAttentionBand(att) {
+    const n = att.length;
+    attentionBand.hidden = n === 0;
+    if (n === 0) {
+      attentionBand.innerHTML = '';
+      return;
+    }
+    attentionBand.innerHTML =
+      '<div class="att-head">' + WARN_ICON +
+        '<span class="att-title">Needs attention</span>' +
+        '<span class="att-count">' + n + '</span></div>' +
+      att.map(function(a) {
+        return '<button type="button" class="attention-row" data-testid="attention-row" data-stack="' + escapeAttr(a.stack) + '">' +
+          '<span class="stack-icon" data-testid="stack-icon"></span>' +
+          '<span class="att-name">' + escapeHtml(a.stack) + '</span>' +
+          '<span class="health-pill att-pill" data-health="' + escapeAttr(a.status) + '"><span class="hdot"></span><span class="hlabel">' + escapeHtml(a.status) + '</span></span>' +
+          '</button>';
+      }).join('');
+    attentionBand.querySelectorAll('.attention-row').forEach(function(row) {
+      populateIcon(row.querySelector('.stack-icon'), row.dataset.stack);
+    });
+  }
+
+  // Single entry point, called from applyState's 'health' case — the snapshot
+  // bootstrap and the live SSE stream both route through it.
+  function renderHealthAttention() {
+    const att = attentionStacks(healthSnap);
+    renderHealthBeacon(att);
+    renderAttentionBand(att);
+  }
+
+  healthBeacon.addEventListener('click', function(e) {
+    e.stopPropagation();
+    setBeaconPop(!beaconPop.classList.contains('open'));
+  });
+  beaconPop.addEventListener('click', function(e) {
+    const item = e.target.closest('.beacon-item');
+    if (!item) return;
+    setBeaconPop(false);
+    // Land in the current list view when it has stack rows (Stacks -> roster
+    // row), else fall back to Deploys — so a jump from Stacks doesn't yank the
+    // user out of the view they're triaging in.
+    jumpToStack(activeView === 'stacks' ? 'stacks' : 'deploys', item.dataset.stack);
+  });
+  attentionBand.addEventListener('click', function(e) {
+    const row = e.target.closest('.attention-row');
+    if (!row) return;
+    jumpToStack('deploys', row.dataset.stack);
+  });
+
+  registerSurface({
+    isOpen: function() { return beaconPop.classList.contains('open'); },
+    close: function() { setBeaconPop(false); },
+    within: [healthBeacon, beaconPop],
+  });
 
   registerSurface({
     isOpen: function() { return viewOptions.classList.contains('open'); },

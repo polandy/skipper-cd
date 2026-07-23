@@ -950,6 +950,87 @@
   @keyframes hpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
   @media (prefers-reduced-motion: reduce) { .health-pill .hdot { animation: none; } }
 
+  /* ── Live-health attention surface (ADR-0027 extension) ──
+     A header BEACON and a Deploys ATTENTION BAND that lift a currently-unhealthy
+     stack out of the chronological log. Both borrow the --danger tier so they
+     read as "something is wrong", distinct from the accent/deploy hues. */
+  .health-beacon-wrap { position: relative; display: flex; align-items: center; }
+
+  .health-beacon[hidden], .attention-band[hidden] { display: none; }
+  .health-beacon {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 600; font-family: var(--font-mono);
+    color: var(--danger); background: var(--danger-dim);
+    border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+    border-radius: 999px; padding: 4px 11px 4px 9px;
+    transition: background 0.16s, border-color 0.16s;
+  }
+  .health-beacon:hover { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+  .health-beacon:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
+  .health-beacon .hb-icon { display: grid; place-items: center; width: 14px; height: 14px; }
+  .health-beacon .hb-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--danger);
+    animation: hpulse 1.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .health-beacon .hb-dot { animation: none; } }
+
+  /* Beacon popover — same surface language as the run/view popovers. */
+  .beacon-pop {
+    position: absolute; top: calc(100% + 8px); right: 0; min-width: 220px;
+    background: var(--bg-base); border: 1px solid var(--border-lit);
+    border-radius: 10px; padding: 6px; z-index: 30;
+    box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.55);
+    display: none;
+  }
+  .beacon-pop.open { display: block; }
+  .beacon-pop .bp-head {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-muted); padding: 5px 8px 7px;
+  }
+  .beacon-item {
+    display: flex; align-items: center; gap: 9px; width: 100%; cursor: pointer;
+    font: inherit; text-align: left; background: none; border: 0;
+    border-radius: 7px; padding: 8px; color: var(--text-primary);
+  }
+  .beacon-item:hover { background: var(--bg-raised); }
+  .beacon-item:focus-visible { outline: 2px solid var(--danger); outline-offset: -2px; }
+  .beacon-item .bi-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--hc); }
+  .beacon-item .bi-dot[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .beacon-item .bi-name { font-weight: 600; font-size: 13px; }
+
+  /* Attention band — pinned above the deploy log, inside #deploy-table so it
+     hides with the view; borrows the host-stale-banner's placement idiom. */
+  .attention-band {
+    margin: 0 0 10px; border-radius: 10px; overflow: hidden;
+    background: color-mix(in srgb, var(--danger) 7%, var(--bg-base));
+    border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent);
+  }
+  .attention-band .att-head {
+    display: flex; align-items: center; gap: 9px; padding: 9px 14px;
+    color: var(--danger); font-weight: 600; font-size: 13px;
+    border-bottom: 1px solid color-mix(in srgb, var(--danger) 16%, transparent);
+  }
+  .attention-band .att-head svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .attention-band .att-title { color: var(--text-primary); }
+  .attention-band .att-count {
+    margin-left: auto; font-family: var(--font-mono); font-size: 11px;
+    color: var(--danger); background: var(--danger-dim);
+    border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent);
+    border-radius: 999px; padding: 1px 8px;
+  }
+  .attention-row {
+    display: flex; align-items: center; gap: 10px; width: 100%; cursor: pointer;
+    font: inherit; text-align: left; background: none; border: 0;
+    padding: 10px 14px; color: var(--text-primary);
+    border-top: 1px solid color-mix(in srgb, var(--danger) 10%, transparent);
+  }
+  .attention-row:first-of-type { border-top: 0; }
+  .attention-row:hover { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+  .attention-row:focus-visible { outline: 2px solid var(--danger); outline-offset: -2px; }
+  .attention-row .stack-icon { flex-shrink: 0; }
+  .attention-row .att-name { font-weight: 600; font-size: 14px; }
+  .attention-row .att-pill { margin-left: auto; cursor: inherit; }
+
   /* Variant A: the open row and its panel share a health-coloured left bar and a
      tint, and the panel repeats the stack + status — so it always reads as tied
      to its row, whatever its position. --hc is the row/stack's health colour. */

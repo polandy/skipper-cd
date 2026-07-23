@@ -49,7 +49,9 @@ func Build(stacks []config.Stack, disabled []string,
   monogram fallback all server-side), exactly like the deploy table.
 - **Order**: enabled stacks first (alphabetical), then disabled
   (alphabetical) — inventory reads as "what's live" then "what's parked",
-  stable across snapshots.
+  stable across snapshots. (The UI floats a currently-*unhealthy* enabled
+  stack to the top of this order at render time — a client-side concern, since
+  runtime health is not part of the roster snapshot; see `internal/ui/UI_SPEC.md`.)
 
 Wired into the existing `stacks` SSE snapshot (`stacksState`), which is
 published on connect and after every deploy run — the roster's natural
