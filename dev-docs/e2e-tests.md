@@ -909,6 +909,32 @@ snapshot shifts).
   panel); the fanned-in `healthwatch` renders the `health-history` /
   `health-phase` status timeline.
 
+### 4.26 UI — Maske Z: Unhealthy-stack visibility (ADR-0027 extension)
+
+The header **health beacon** and the Deploys **attention band** lift a currently-
+`unhealthy` stack out of the chronological log (where its row-bound pill can sit
+far down or age out). Both read the same live `health` snapshot via the pure
+`attentionStacks()` helper; the harness enables the poller (`healthPoll`) and
+scripts each stack's `docker compose ps` output. Behaviour-only: both surfaces
+are hidden whenever nothing is unhealthy, so no snapshot baseline shifts.
+
+- **UZ1 — Beacon counts unhealthy stacks.** With two of three stacks unhealthy,
+  the `health-beacon` is visible with a `health-beacon-count` of `2` and a
+  pluralised `aria-label`; its popover lists exactly those two stacks
+  (`health-beacon-item`), never the healthy one.
+- **UZ2 — Band jumps to the stack.** The `attention-band` lists the unhealthy
+  stack (with its `health-pill`) above the log; clicking the `attention-row`
+  lands on that stack's newest `deploy-row` (flashed via `.jump-target`).
+- **UZ3 — Cross-view presence + recovery.** The header beacon survives a switch
+  to the Stacks view while the Deploys-scoped band hides with it; when the last
+  unhealthy stack recovers, both the beacon and the band disappear.
+- **UZ4 — Stacks floats + marks unhealthy first.** The Stacks view has no band;
+  instead the unhealthy roster row sorts to the top (a stable sort keeps the
+  healthy remainder alphabetical) and wears a `data-health="unhealthy"` marker
+  (driving the severity bar + tint) a healthy row lacks; a beacon jump from the
+  Stacks view lands on that `roster-row` (flashed via `.jump-target`) rather than
+  switching to Deploys.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

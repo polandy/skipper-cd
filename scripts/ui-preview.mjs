@@ -313,9 +313,13 @@ if (!(await healthy())) {
 console.error('[ui-preview] healthy — seeding states…');
 
 // Health: healthy / degraded / stopped, so the pills and panel show variety.
+// `api` is deployed yet unhealthy (the ADR-0027 case: a green deploy whose
+// container crash-looped afterwards) so the health beacon + attention band have
+// a landable row to jump to; `worker` is unhealthy but never deployed, so it
+// also exercises the no-row jump degradation.
 const setHealth = (n, svcs) => writeFileSync(join(healthDir, `${n}.json`), JSON.stringify(svcs));
 setHealth('web', [{ Service: 'web', Name: 'web-1', State: 'running', Health: 'healthy' }]);
-setHealth('api', [{ Service: 'api', Name: 'api-1', State: 'running', Health: 'healthy' }]);
+setHealth('api', [{ Service: 'api', Name: 'api-1', State: 'restarting', Health: 'unhealthy' }]);
 setHealth('worker', [{ Service: 'worker', Name: 'worker-1', State: 'restarting', Health: 'unhealthy' }]);
 setHealth('database', [{ Service: 'database', Name: 'db-1', State: 'exited', ExitCode: 0 }]);
 
