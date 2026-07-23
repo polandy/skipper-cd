@@ -537,6 +537,11 @@
       row.dataset.testid = 'roster-row';
       row.dataset.stack = entry.name;
       row.dataset.host = selfHost; // local stacks belong to the primary host
+      // Mark the row with its live health so CSS can give an unhealthy row the
+      // same severity bar + tint as a failed deploy row (kept in sync live by
+      // updateRosterHealth). Only enabled locals — disabled stacks aren't polled.
+      const rowHealth = entry.disabled ? null : healthSnap[entry.name];
+      if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
         `<span class="roster-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}${(!entry.disabled && entry.hooks && hookCount(entry.hooks) > 0) ? hooksBadgeHTML(entry.name, entry.hooks) : ''}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, selfHost)}</span>` +
@@ -2632,6 +2637,10 @@
       const statusCell = row.querySelector('.roster-status');
       if (!statusCell || row.classList.contains('disabled')) return;
       const h = healthSnap[row.dataset.stack];
+      // Keep the row's health marker (drives the severity bar + tint) in sync
+      // in place — no re-sort, so a row never jumps out from under an open panel.
+      if (h && h.status) row.dataset.health = h.status;
+      else row.removeAttribute('data-health');
       let pill = statusCell.querySelector('.health-pill');
       if (h && h.status) {
         if (!pill) { statusCell.insertAdjacentHTML('beforeend', healthPillHTML(row.dataset.stack, h.status)); return; }

@@ -2456,6 +2456,19 @@
   }
   .roster-row:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
   .roster-row.disabled { opacity: 0.55; }
+
+  /* Unhealthy roster row — the same severity idiom as .event-row.failed-row, so
+     the Stacks view and the deploy log mark a bad row the same way (a red left
+     bar + faint tint), not just a small pill. Guarded so the jump flash and the
+     open-row accent bar still win; the extra :not() specificity also keeps the
+     tint through :hover, which is defined earlier and would otherwise override. */
+  .roster-row[data-health="unhealthy"]:not(.audit-open):not(.jump-target) {
+    background: var(--danger-dim);
+  }
+  .roster-row[data-health="unhealthy"]:not(.audit-open):not(.jump-target)::before {
+    content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 60%; background: var(--danger); border-radius: 0 2px 2px 0;
+  }
   .roster-list .filtered-out { display: none !important; }
   .roster-stack {
     display: flex; align-items: center; gap: 8px; min-width: 0;

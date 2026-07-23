@@ -156,6 +156,14 @@ test.describe('UZ4: Stacks roster floats unhealthy first', () => {
     await expect(rosterRows.nth(1)).toHaveAttribute('data-stack', 'alpha');
     await expect(rosterRows.nth(2)).toHaveAttribute('data-stack', 'mid');
 
+    // The unhealthy row wears the severity marker (drives the bar + tint); a
+    // healthy row carries none.
+    await expect(rosterRows.nth(0)).toHaveAttribute('data-health', 'unhealthy');
+    await expect(page.locator('[data-testid="roster-row"][data-stack="alpha"]')).not.toHaveAttribute(
+      'data-health',
+      'unhealthy',
+    );
+
     // The beacon is present in Stacks too; its jump lands on the roster row.
     await expect(beacon(page)).toBeVisible();
     await beacon(page).click();

@@ -928,10 +928,12 @@ are hidden whenever nothing is unhealthy, so no snapshot baseline shifts.
 - **UZ3 — Cross-view presence + recovery.** The header beacon survives a switch
   to the Stacks view while the Deploys-scoped band hides with it; when the last
   unhealthy stack recovers, both the beacon and the band disappear.
-- **UZ4 — Stacks floats unhealthy first.** The Stacks view has no band; instead
-  the unhealthy roster row sorts to the top (a stable sort keeps the healthy
-  remainder alphabetical), and a beacon jump from the Stacks view lands on that
-  `roster-row` (flashed via `.jump-target`) rather than switching to Deploys.
+- **UZ4 — Stacks floats + marks unhealthy first.** The Stacks view has no band;
+  instead the unhealthy roster row sorts to the top (a stable sort keeps the
+  healthy remainder alphabetical) and wears a `data-health="unhealthy"` marker
+  (driving the severity bar + tint) a healthy row lacks; a beacon jump from the
+  Stacks view lands on that `roster-row` (flashed via `.jump-target`) rather than
+  switching to Deploys.
 
 ## 5. Visual snapshot strategy
 
