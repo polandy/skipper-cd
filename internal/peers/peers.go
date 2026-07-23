@@ -41,7 +41,7 @@ type Client interface {
 
 // Data is one peer's fanned-in read data. State holds the curated subset of the
 // peer's snapshot the merged views need (keyed by state-event name, e.g.
-// "stacks", "health", "app_links"), passed through as raw JSON so a peer field
+// "stacks", "health", "healthwatch", "app_links"), passed through as raw JSON so a peer field
 // the primary does not know is ignored, never a parse break (version-skew
 // tolerance, ADR-0048). Deploys is the peer's recent audit history, newest
 // first, for the merged deploy feed.

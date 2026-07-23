@@ -173,10 +173,14 @@ rejected as reading like an alert). The chip carries its hostname on hover
 - **New `internal/peers` package**; no change to the deploy path or its
   invariants (the fan-in is strictly read, on the primary and on peers).
 - **Peer rows are read-only mirrors.** Peer deploy and roster rows drop the
-  *action/local-fetch* affordances (history/health/logs/hooks/jump) — the
-  primary can display a peer's state but cannot act on it. A click still
-  expands a read-only detail (facts + the peer's diff loaded inline via the
-  read-only proxy above), so it never dead-ends.
+  *action* affordances (hooks/jump) — the primary can display a peer's state but
+  cannot act on it. They do *display* the peer's fanned-in read state: a click
+  expands a read-only detail (facts + the peer's **containers/health** rendered
+  from the fanned-in `health`/`healthwatch`, and the diff loaded inline via the
+  read-only proxy above), and roster rows carry the peer's **app-link**. So a
+  peer reaches the same at-a-glance detail as a local stack. The one gap is live
+  container **logs** (SSE, cross-origin): they need a primary-side SSE proxy — a
+  sibling of the diff proxy — left as a follow-up.
 - **The primary proxies one peer read endpoint on demand.** `/api/peers/{name}/
   events/{id}/diffs` is the only per-peer proxy — a lean, read-only exception to
   "fan in, don't proxy," justified because a diff is bulk data not worth fanning

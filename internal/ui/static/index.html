@@ -394,6 +394,32 @@
   let hostSelected = null;
   let hostFilterRestored = false;
 
+  // peerViewFor returns the fanned-in PeerView for a non-self host, or null for
+  // the primary itself (and when no peers are configured). The health, health-
+  // watch and app-link lookups below use it to read a peer's own fanned-in state
+  // (ADR-0048) instead of the primary's live snapshot, so peer rows render the
+  // same container/health/app-link detail the primary shows for its own stacks.
+  function peerViewFor(host) {
+    if (!peersSnap || !host || host === selfHost) return null;
+    return (peersSnap.peers || []).find(function(p) { return p.name === host; }) || null;
+  }
+  // healthMapFor / healthwatchMapFor / appLinksMapFor resolve the per-stack map
+  // for a host: the primary's own live snapshot for self, else the peer's
+  // fanned-in state. Both carry the identical `{stacks:{<name>:…}}` shape, so a
+  // consumer keyed by stack name works unchanged for either.
+  function healthMapFor(host) {
+    const p = peerViewFor(host);
+    return p ? ((p.state && p.state.health && p.state.health.stacks) || {}) : healthSnap;
+  }
+  function healthwatchMapFor(host) {
+    const p = peerViewFor(host);
+    return p ? ((p.state && p.state.healthwatch && p.state.healthwatch.stacks) || {}) : healthwatchSnap;
+  }
+  function appLinksMapFor(host) {
+    const p = peerViewFor(host);
+    return p ? ((p.state && p.state.app_links && p.state.app_links.stacks) || {}) : appLinksSnap;
+  }
+
   // The reserved stack key for nixos-rebuild deploys (invariant 4). It is a
   // pseudo-stack, not a Docker Compose project and not in the Stacks roster, so
   // it carries no container-logs button and no jump-to-Stacks button — only the
@@ -415,8 +441,8 @@
   // linkCellHTML renders the app-link icon for a stack: nothing when no host
   // was discovered, a plain external link for exactly one, or a button that
   // opens a popover listing each when there are several.
-  function linkCellHTML(stack) {
-    const hosts = appLinksSnap[stack];
+  function linkCellHTML(stack, host) {
+    const hosts = appLinksMapFor(host)[stack];
     if (!hosts || !hosts.length) return '';
     if (hosts.length === 1) {
       const url = 'https://' + hosts[0];
@@ -456,6 +482,15 @@
     return badgeHTML(entry.last_status);
   }
 
+  // rosterHealthPillHTML is the live-health pill shown inline in a roster row's
+  // status cell (under the deploy badge), so the Stacks overview surfaces current
+  // container health without expanding — for local stacks and, host-scoped, for
+  // peers alike. Empty when the host reports no health for the stack.
+  function rosterHealthPillHTML(stack, host) {
+    const h = healthMapFor(host)[stack];
+    return (h && h.status) ? healthPillHTML(stack, h.status) : '';
+  }
+
   function renderRoster() {
     const list = document.getElementById('roster-list');
     list.textContent = '';
@@ -475,7 +510,7 @@
       row.dataset.host = selfHost; // local stacks belong to the primary host
       row.innerHTML =
         `<span class="roster-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}${(!entry.disabled && entry.hooks && hookCount(entry.hooks) > 0) ? hooksBadgeHTML(entry.name, entry.hooks) : ''}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
-        `<span class="roster-status">${rosterStatusHTML(entry)}</span>` +
+        `<span class="roster-status">${rosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, selfHost)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
       populateIcon(row.querySelector('.stack-icon'), entry.name);
@@ -496,9 +531,11 @@
   }
 
   // renderPeerRosterRows appends every peer's stacks to the roster, one read-only
-  // row each (host dot + icon + name, status, last deploy, commit) — no jump,
-  // logs, hooks or link affordances and no expand panel, since the primary
-  // cannot act on a peer's stack. Rows are grouped per host after the local set.
+  // row each (host chip + icon + name + app-link, status, last deploy, commit).
+  // The app-link opens the peer's own routed app directly (the browser can reach
+  // it); there is no jump/logs/hooks affordance, since the primary cannot act on
+  // a peer's stack. A click expands the row's read-only detail (containers, from
+  // the peer's fanned-in health). Rows are grouped per host after the local set.
   function renderPeerRosterRows(list) {
     if (!peersSnap) return;
     (peersSnap.peers || []).forEach(function(p) {
@@ -516,8 +553,8 @@
         row.dataset.status = entry.last_status || '';
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
-          `<span class="roster-stack">${hostChipHTML(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span></span>` +
-          `<span class="roster-status">${peerRosterStatusHTML(entry)}</span>` +
+          `<span class="roster-stack">${hostChipHTML(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${entry.disabled ? '' : linkCellHTML(entry.name, p.name)}</span>` +
+          `<span class="roster-status">${peerRosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, p.name)}</span>` +
           `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
           `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
         populateIcon(row.querySelector('.stack-icon'), entry.name);
@@ -914,6 +951,16 @@
     const tmp = document.createElement('template');
     tmp.innerHTML = clogBtnHTML(stack, service);
     return tmp.content.firstElementChild;
+  }
+
+  // healthPillHTML is the string form of the live-health pill (ADR-0027) — the
+  // same markup updateStackAffordances builds imperatively for a local Deploys
+  // row, so peer rows and roster rows show an identical at-a-glance pill. A click
+  // opens the row's containers panel (routed per row type in the click handlers).
+  function healthPillHTML(stack, status) {
+    return '<button class="health-pill" type="button" data-testid="health-pill" data-health="' + escapeAttr(status) +
+      '" data-stack="' + escapeAttr(stack) + '" title="' + escapeAttr(stack + ' — ' + status) +
+      '"><span class="hdot"></span><span class="hlabel">' + escapeHtml(status) + '</span></button>';
   }
 
   // ─── Deploy hooks (ADR-0038) ───
@@ -1432,19 +1479,16 @@
       const h = newest ? healthSnap[stack] : null;
       if (h && h.status) {
         if (!pill) {
-          // A real <button> like the files pill and history button, so the
-          // panel is keyboard-reachable (Tab + Enter/Space fire the click).
-          pill = document.createElement('button');
-          pill.type = 'button';
-          pill.className = 'health-pill';
-          pill.dataset.testid = 'health-pill';
-          pill.innerHTML = '<span class="hdot"></span><span class="hlabel"></span>';
-          statusCell.appendChild(pill);
+          // A real <button> (healthPillHTML) so the panel is keyboard-reachable
+          // (Tab + Enter/Space), and the pill markup has one source of truth.
+          statusCell.insertAdjacentHTML('beforeend', healthPillHTML(stack, h.status));
+          pill = statusCell.querySelector('.health-pill');
+        } else {
+          pill.dataset.health = h.status;
+          pill.dataset.stack = stack;
+          pill.querySelector('.hlabel').textContent = h.status;
+          pill.title = stack + ' — ' + h.status;
         }
-        pill.dataset.health = h.status;
-        pill.dataset.stack = stack;
-        pill.querySelector('.hlabel').textContent = h.status;
-        pill.title = stack + ' — ' + h.status;
       } else if (pill) {
         pill.remove();
         closeHealthPanel(row);
@@ -1577,8 +1621,8 @@
   // start, how long it held, and the deploy commit when correlated. Returns ''
   // when the watchdog is off — and for a service with only its baseline phase,
   // where a one-line timeline would just repeat the inline age.
-  function healthHistoryHTML(stack, svc) {
-    const phases = (healthwatchSnap[stack] || {})[svc];
+  function healthHistoryHTML(stack, svc, host) {
+    const phases = (healthwatchMapFor(host)[stack] || {})[svc];
     if (!phases || phases.length < 2) return '';
     let html = '<div class="hp-history" data-testid="health-history">';
     for (let i = 0; i < phases.length; i++) {
@@ -1598,12 +1642,19 @@
     return html + '</div>';
   }
 
-  function createHealthPanel(stack) {
+  // host is optional: omitted (or the primary's own name) reads the live local
+  // snapshot; a peer name reads that peer's fanned-in health (ADR-0048), so peer
+  // rows render the same containers panel. A peer's per-service log button is
+  // suppressed until the container-logs proxy exists — see PeerDiffsHandler's
+  // sibling proxy.
+  function createHealthPanel(stack, host) {
     const el = document.createElement('div');
     el.className = 'health-panel';
     el.dataset.testid = 'health-panel';
     el.dataset.healthFor = stack;
-    const h = healthSnap[stack];
+    if (host) el.dataset.host = host;
+    const isPeer = !!peerViewFor(host);
+    const h = healthMapFor(host)[stack];
     const status = (h && h.status) || 'unknown';
     el.dataset.health = status; // drives the shared --hc colour (variant A)
     // Header echoes the stack + status so the panel names its own row.
@@ -1626,7 +1677,7 @@
       const st = s.status || healthClass(s);
       // With the health watch on, the service line carries the current
       // phase's age and a status timeline below it (ADR-0031).
-      const phases = (healthwatchSnap[stack] || {})[s.name];
+      const phases = (healthwatchMapFor(host)[stack] || {})[s.name];
       const age = phases && phases.length
         ? ` <span class="hp-for">· ${escapeHtml(phaseDuration(Date.now() - new Date(phases[0].since).getTime()))}</span>`
         : '';
@@ -1641,8 +1692,8 @@
         `<span class="hp-name">${escapeHtml(s.name)}</span>` +
         `<span class="hp-state">${escapeHtml(state)}</span>` +
         `<span class="hp-status" data-health="${escapeAttr(st)}"><span class="hdot"></span>${escapeHtml(st)}${age}</span>` +
-        clogBtnHTML(stack, s.name) +
-        `</div>` + healthHistoryHTML(stack, s.name);
+        (isPeer ? '' : clogBtnHTML(stack, s.name)) +
+        `</div>` + healthHistoryHTML(stack, s.name, host);
     }).join('');
     return el;
   }
@@ -1921,7 +1972,11 @@
   // Peer rows carry no *local* drill-down (no diff/hook/history/log fetch), but a
   // click opens a compact read-only detail (commit + file count + status) with a
   // link to the peer's own UI for the full diff — a glance that never dead-ends.
-  function createPeerRow(rec, hostName, stale) {
+  //
+  // newest marks the newest deploy row for a (host, stack): only it carries the
+  // live health pill (health is a current per-stack value, not per-event — the
+  // same rule updateStackAffordances applies to local rows).
+  function createPeerRow(rec, hostName, stale, newest) {
     const row = document.createElement('div');
     row.className = rowClass(rec.status, true) + ' peer-row' + (stale ? ' peer-stale' : '');
     row.dataset.testid = 'deploy-row';
@@ -1936,10 +1991,12 @@
     const relTs = formatTime(rec.timestamp);
     const n = rec.changed_files || 0;
     const files = n > 0 ? '<span class="peer-files">' + n + ' file' + (n === 1 ? '' : 's') + '</span>' : '';
+    const h = newest ? healthMapFor(hostName)[rec.stack] : null;
+    const pill = (h && h.status) ? healthPillHTML(rec.stack, h.status) : '';
     row.innerHTML =
       '<span class="cell-time" data-testid="time-cell" data-ts="' + escapeAttr(rec.timestamp) + '" title="' + escapeAttr(absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
       '<span class="cell-stack">' + hostChipHTML(hostName) + '<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' + escapeHtml(rec.stack) + '</span></span>' +
-      '<span class="status-cell">' + badgeHTML(rec.status) + '</span>' +
+      '<span class="status-cell">' + badgeHTML(rec.status) + pill + '</span>' +
       '<span class="cell-duration" data-testid="duration-cell">' + formatDuration(rec.duration_ms) + '</span>' +
       '<span class="col-files">' + files + '</span>';
     if (rec.error) row.title = rec.stack + ' — ' + rec.error;
@@ -1974,6 +2031,16 @@
     // per-host "open its own UI" affordance lives in the Hosts drawer, not here.)
     if (eventId) html += '<div class="pd-diff" data-testid="peer-diff"><div class="diff-loading">Loading diff…</div></div>';
     el.innerHTML = html;
+    // Containers: the peer's fanned-in health for this stack, rendered with the
+    // same panel the primary uses for its own stacks so peers reach health
+    // parity. Inserted above the diff; omitted when the peer reported no health
+    // record for the stack (a never-deployed or health-less stack).
+    const stack = row.dataset.stack;
+    if (stack && healthMapFor(host)[stack]) {
+      const hp = createHealthPanel(stack, host);
+      const diffSlot = el.querySelector('.pd-diff');
+      if (diffSlot) el.insertBefore(hp, diffSlot); else el.appendChild(hp);
+    }
     if (eventId) loadPeerDiff(el, host, eventId);
     return el;
   }
@@ -2042,7 +2109,15 @@
     // Newest first, so each insert-above-first-older builds a correct merge.
     items.sort(function(a, b) { return a.rec.timestamp < b.rec.timestamp ? 1 : (a.rec.timestamp > b.rec.timestamp ? -1 : 0); });
     if (items.length) showTable();
-    items.forEach(function(it) { insertRowByTime(createPeerRow(it.rec, it.host, it.stale), it.rec.timestamp); });
+    // The first row seen per (host, stack) is the newest — it carries the live
+    // health pill (a current per-stack value), like the local newest row.
+    const seenNewest = {};
+    items.forEach(function(it) {
+      const perHost = seenNewest[it.host] || (seenNewest[it.host] = {});
+      const newest = !perHost[it.rec.stack];
+      perHost[it.rec.stack] = true;
+      insertRowByTime(createPeerRow(it.rec, it.host, it.stale, newest), it.rec.timestamp);
+    });
   }
 
   // setLeadingChip replaces (or clears) a stack cell's leading host chip in place.
@@ -2263,6 +2338,7 @@
       case 'health':
         healthSnap = (d && d.stacks) || {};
         updateStackAffordances();
+        updateRosterHealth();
         break;
       case 'healthwatch':
         healthwatchSnap = (d && d.stacks) || {};
@@ -2514,6 +2590,27 @@
       if (row.classList.contains('disabled')) return;
       const html = linkCellHTML(row.dataset.stack);
       if (html) cell.insertAdjacentHTML('beforeend', html);
+    });
+  }
+
+  // updateRosterHealth patches each local roster row's live-health pill in place
+  // from the health snapshot (peer rows refresh via refreshPeerRosterRows), so a
+  // health change shows on the Stacks overview without a full re-render that would
+  // drop an open panel. Mirrors updateStackAffordances' pill logic for the roster.
+  function updateRosterHealth() {
+    rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
+      const statusCell = row.querySelector('.roster-status');
+      if (!statusCell || row.classList.contains('disabled')) return;
+      const h = healthSnap[row.dataset.stack];
+      let pill = statusCell.querySelector('.health-pill');
+      if (h && h.status) {
+        if (!pill) { statusCell.insertAdjacentHTML('beforeend', healthPillHTML(row.dataset.stack, h.status)); return; }
+        pill.dataset.health = h.status;
+        pill.title = row.dataset.stack + ' — ' + h.status;
+        pill.querySelector('.hlabel').textContent = h.status;
+      } else if (pill) {
+        pill.remove();
+      }
     });
   }
 
@@ -3403,6 +3500,10 @@
     const hpill = e.target.closest('.health-pill');
     if (hpill) {
       const hrow = hpill.closest('.event-row');
+      // A peer row's pill is read-only: open its containers detail (host-scoped),
+      // never the local health panel (which would key the peer's stack name into
+      // the primary's own health).
+      if (hrow && hrow.classList.contains('peer-row')) { togglePeerDetail(hrow); return; }
       if (hrow) {
         const hnext = hrow.nextElementSibling;
         if (hnext && hnext.classList.contains('health-panel')) {

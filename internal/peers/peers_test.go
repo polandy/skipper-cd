@@ -249,10 +249,13 @@ func TestHTTPClient_FetchCuratesAndToleratesUnknownFields(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/snapshot":
-			// Includes a state the merge curates (health), one it drops
+			// Includes the states the merge curates (health, healthwatch,
+			// app_links — the containers/roster parity set), one it drops
 			// (autosync), and a future top-level key the primary must ignore.
 			_, _ = w.Write([]byte(`{
 				"health": {"stacks": {"gitea": {"status": "healthy"}}},
+				"healthwatch": {"stacks": {"gitea": {"web": []}}},
+				"app_links": {"stacks": {"gitea": ["gitea.example.com"]}},
 				"autosync": {"global": true},
 				"future_state_v99": {"anything": 1}
 			}`))
@@ -270,8 +273,10 @@ func TestHTTPClient_FetchCuratesAndToleratesUnknownFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if _, ok := data.State["health"]; !ok {
-		t.Errorf("curated state missing health: %v", data.State)
+	for _, name := range []string{"health", "healthwatch", "app_links"} {
+		if _, ok := data.State[name]; !ok {
+			t.Errorf("curated state missing %s: %v", name, data.State)
+		}
 	}
 	if _, ok := data.State["autosync"]; ok {
 		t.Errorf("autosync should be dropped from the merged view")
