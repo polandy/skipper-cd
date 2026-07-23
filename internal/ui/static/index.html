@@ -1419,12 +1419,16 @@
     tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function(row) {
       const stack = row.dataset.stack;
       const cell = row.querySelector('.cell-stack');
-      if (!cell) return;
+      const statusCell = row.querySelector('.status-cell');
+      if (!cell || !statusCell) return;
       const newest = !seen[stack];
       seen[stack] = true;
 
-      // Health pill — only when a health status is known for the stack.
-      let pill = cell.querySelector('.health-pill');
+      // Health pill — only when a health status is known for the stack. Lives
+      // in .status-cell (stacked under the SUCCESS/FAILED badge) rather than
+      // .cell-stack, so it reads as row state next to the other state badge
+      // instead of competing with the stack-name icon cluster.
+      let pill = statusCell.querySelector('.health-pill');
       const h = newest ? healthSnap[stack] : null;
       if (h && h.status) {
         if (!pill) {
@@ -1435,7 +1439,7 @@
           pill.className = 'health-pill';
           pill.dataset.testid = 'health-pill';
           pill.innerHTML = '<span class="hdot"></span><span class="hlabel"></span>';
-          cell.appendChild(pill);
+          statusCell.appendChild(pill);
         }
         pill.dataset.health = h.status;
         pill.dataset.stack = stack;
