@@ -241,8 +241,26 @@ const peerBData = {
     peerAudit('worker', 40, 'failed', 3),
   ],
 };
+// Canned container-log frames the peer streams as SSE, keyed by stack/service —
+// what the primary's peer-logs proxy forwards so a peer's per-service log button
+// shows something (ADR-0048).
+const peerLogs = {
+  'gitea/gitea': ['2026-07-23T09:59:58Z Server listening on :3000', '2026-07-23T10:00:02Z Repository indexer ready'],
+  'postgres/db': ['2026-07-23T09:59:55Z database system is ready to accept connections', '2026-07-23T10:00:07Z checkpoint complete'],
+  'cache/redis': ['2026-07-23T09:59:59Z Ready to accept connections tcp'],
+};
 const peerServer = createHttpServer((req, res) => {
   const url = req.url.split('?')[0];
+  const logMatch = url.match(/^\/api\/container-logs\/(.+)$/);
+  if (logMatch) {
+    const lines = peerLogs[decodeURIComponent(logMatch[1])];
+    if (!lines) { res.statusCode = 404; return void res.end('{}'); }
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.writeHead(200);
+    for (const ln of lines) res.write(`data: ${ln}\n\n`);
+    return; // hold open (a real follow); drops when the client disconnects
+  }
   res.setHeader('Content-Type', 'application/json');
   if (url === '/api/v1/snapshot') return void res.end(JSON.stringify(peerBData.snapshot));
   if (url === '/api/audit') return void res.end(JSON.stringify(peerBData.audit));

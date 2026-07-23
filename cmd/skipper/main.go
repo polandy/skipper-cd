@@ -839,6 +839,14 @@ func registerEventRoutes(mux *http.ServeMux, broadcaster *events.Broadcaster[eve
 		mux.Handle("GET /api/peers", ui.PeersHandler(func() any { return snap.peers.Hosts() }))
 		mux.Handle("GET /api/peers/{name}/events/{id}/diffs",
 			ui.PeerDiffsHandler(snap.peers.PeerDiffsURL, &http.Client{Timeout: peerPollTimeout}))
+		// The container-logs proxy streams an open-ended SSE follow, so its client
+		// carries no timeout (unlike the bounded diff fetch); the client's
+		// disconnect cancels the request context and tears the stream down.
+		logsProxyClient := &http.Client{}
+		mux.Handle("GET /api/peers/{name}/container-logs/{stack}",
+			ui.PeerContainerLogsHandler(snap.peers.PeerContainerLogsURL, logsProxyClient))
+		mux.Handle("GET /api/peers/{name}/container-logs/{stack}/{service}",
+			ui.PeerContainerLogsHandler(snap.peers.PeerContainerLogsURL, logsProxyClient))
 	}
 }
 

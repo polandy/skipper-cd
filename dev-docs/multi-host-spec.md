@@ -172,15 +172,15 @@ no per-host reskin.
     row pulsing at once read as an alert rather than a filter state.
 - **Merged feed.** Deploys/Stacks rows from all selected hosts interleave;
   each row carries its host chip. Peer deploy rows are read-only mirrors: the
-  purely-*local* fetches (history/hooks) and, for now, live logs are omitted,
-  since the primary has no seam for them — but a click never dead-ends, it opens
-  a compact **peer-detail** panel (`createPeerDetailPanel`): the commit,
-  changed-file count and status the fan-in carries, the **peer's containers
-  (health) panel** rendered from the peer's fanned-in `health`/`healthwatch`
-  state — the same `createHealthPanel` the primary uses for its own stacks, host-
-  scoped (`healthMapFor`/`healthwatchMapFor`), read-only (its per-service log
-  button is suppressed until the container-logs proxy lands) — and the **peer's
-  diff loaded inline** (fetched through the primary's proxy `GET
+  purely-*local* fetches (history/hooks) are omitted, since the primary has no
+  seam for them — but a click never dead-ends, it opens a compact **peer-detail**
+  panel (`createPeerDetailPanel`): the commit, changed-file count and status the
+  fan-in carries, the **peer's containers (health) panel** rendered from the
+  peer's fanned-in `health`/`healthwatch` state — the same `createHealthPanel` the
+  primary uses for its own stacks, host-scoped
+  (`healthMapFor`/`healthwatchMapFor`), its per-service log button streaming the
+  peer's container logs through the primary's proxy — and the **peer's diff loaded
+  inline** (fetched through the primary's proxy `GET
   /api/peers/{name}/events/{id}/diffs`, since the browser can't reach the peer
   cross-origin; the audit record now carries the deploy's event `id` for this).
   Opening the peer's own UI is the Hosts drawer's job, not repeated per row; an
@@ -202,9 +202,13 @@ no per-host reskin.
 - **Health parity fan-in.** `health`, `healthwatch` and `app_links` are curated
   into every peer's fanned-in `state` (`fannedStates`, `internal/peers/client.go`)
   precisely so peer rows reach the same containers/app-link detail as local ones.
-  Live container **logs** are the one gap left — they stream over SSE and the
-  browser can't reach a peer cross-origin, so they need a primary-side SSE proxy
-  (a sibling of the diff proxy), a follow-up.
+  Live container **logs** are not fanned in (they are an open-ended stream, not a
+  snapshot); instead the primary proxies a peer's container-logs SSE on demand at
+  `GET /api/peers/{name}/container-logs/{stack}[/{service}]` — the streaming
+  sibling of the diff proxy (`PeerContainerLogsURL` /
+  `PeerContainerLogsHandler`), forwarding frames with a flush and tearing the
+  upstream down when the browser disconnects. So a peer's per-service log button
+  behaves like a local one.
 - **Unreachable peer → flagged, not blanked.** In the merged view an
   unreachable peer's last-known rows stay but are dimmed (`.peer-stale`) and
   a stale banner names them ("host-c is unreachable — showing its last-known
@@ -240,11 +244,12 @@ match the deploy-lifecycle lines:
   `/api/v1/snapshot` curated to stacks/health/healthwatch/app_links + `/api/audit`
   best-effort, version-skew tolerant via `json.RawMessage`), the per-peer
   reachability cache (keeps last-known + marks `Stale` on failure), the
-  edge-triggered reachability logging, and `PeerDiffsURL` (resolves a peer's
-  diff endpoint for the on-demand diff proxy). Wired in `cmd/skipper/main.go`
+  edge-triggered reachability logging, and the on-demand proxy URL resolvers
+  `PeerDiffsURL` + `PeerContainerLogsURL`. Wired in `cmd/skipper/main.go`
   under the `ui_enabled` block (a `peers-fanin` poll loop republishing the
-  `peers` state on the health-poll cadence, `GET /api/peers`, and the peer-diff
-  proxy `GET /api/peers/{name}/events/{id}/diffs`). No change inside
+  `peers` state on the health-poll cadence, `GET /api/peers`, the peer-diff
+  proxy `GET /api/peers/{name}/events/{id}/diffs`, and the peer-logs SSE proxy
+  `GET /api/peers/{name}/container-logs/{stack}[/{service}]`). No change inside
   `internal/deploy`.
 - `internal/audit`: `Record` gains the originating deploy event's `ID`, so a
   fanned-in peer row can key the peer's diff endpoint for the proxy.

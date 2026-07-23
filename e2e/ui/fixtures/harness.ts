@@ -262,6 +262,12 @@ export interface PeerSpec {
   /** Diffs the stub serves at `/api/events/{id}/diffs`, keyed by event id — what
    *  the primary's peer-diff proxy fetches on a peer-row expand. */
   diffs?: Record<string, unknown>;
+  /** Container-log lines the stub streams as SSE at
+   *  `/api/container-logs/{stack}[/{service}]`, keyed by `stack` or
+   *  `stack/service` — what the primary's peer-logs proxy forwards to the
+   *  browser (ADR-0048). Each string is emitted as one `data:` frame and the
+   *  stream is left open (a real follow) until the client disconnects. */
+  containerLogs?: Record<string, string[]>;
   /** false → no server is started; the peer URL points at a dead port so the
    *  primary sees it unreachable (offline banner). Default true. */
   reachable?: boolean;
@@ -487,6 +493,22 @@ export class Skipper {
             if (d) return void res.end(JSON.stringify(d));
             res.statusCode = 404;
             return void res.end('{}');
+          }
+          const logMatch = path.match(/^\/api\/container-logs\/(.+)$/);
+          if (logMatch) {
+            const lines = (spec.containerLogs ?? {})[decodeURIComponent(logMatch[1])];
+            if (!lines) {
+              res.statusCode = 404;
+              return void res.end('{}');
+            }
+            // SSE follow: emit each line as a frame, then hold the stream open
+            // (the primary proxies it; it drops when the client disconnects or
+            // skipper is SIGKILLed at teardown, closing this socket).
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.writeHead(200);
+            for (const ln of lines) res.write(`data: ${ln}\n\n`);
+            return;
           }
           res.statusCode = 404;
           res.end('{}');
@@ -784,7 +806,12 @@ export class Skipper {
    *  abrupt drop is also the more faithful signal for the reconnect cases
    *  (UD2/UE): the SSE stream is cut immediately instead of lingering. */
   async stop(): Promise<void> {
-    for (const server of this.peerServers) server.close();
+    for (const server of this.peerServers) {
+      // closeAllConnections drops any held-open peer socket (an SSE container-log
+      // follow) so close() does not wait on it and hang teardown.
+      server.closeAllConnections?.();
+      server.close();
+    }
     this.peerServers.length = 0;
     if (this.proc.exitCode !== null || this.proc.signalCode !== null) return;
     const exited = new Promise<void>((res) => this.proc.once('exit', () => res()));

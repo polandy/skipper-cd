@@ -900,14 +900,29 @@ snapshot shifts).
   `roster-row` shows the `health-pill` and an `app-link-btn` inline; local roster
   rows now carry the pill too (the roster surfaced no live health for anyone
   before).
-- **UX3 — Peer expand → read-only containers.** Clicking a peer row opens the
-  `peer-detail` with the peer's `health-panel` inline (its `health-service` lines
-  from the fanned-in health), and **no** per-service `clog-btn` — read-only until
-  the container-logs proxy lands.
+- **UX3 — Peer expand → containers.** Clicking a peer row opens the `peer-detail`
+  with the peer's `health-panel` inline (its `health-service` lines from the
+  fanned-in health), each carrying a per-service `clog-btn` (its streaming
+  behaviour is Maske Y).
 - **UX4 — Healthwatch timeline + pill routing.** Clicking a peer row's
   `health-pill` opens its containers detail (never the primary's own local health
   panel); the fanned-in `healthwatch` renders the `health-history` /
   `health-phase` status timeline.
+
+### 4.26 UI — Maske Y: Peer container logs (ADR-0048)
+
+The last local-only affordance closed. The browser can't reach a peer
+cross-origin, so the primary proxies the peer's container-logs SSE stream at `GET
+/api/peers/{name}/container-logs/{stack}[/{service}]` (the streaming sibling of
+the diff proxy). The peer's containers panel now carries the same per-service log
+button local stacks have. The harness stub peer (`host-b`) streams canned SSE
+frames for `gitea/web` so the proxy has something to forward. Behaviour-only.
+
+- **UY1 — Peer container log streams through the proxy.** Expanding a peer row and
+  clicking a container's `clog-btn` opens the live `clog-panel`; its `clog-body`
+  fills with the peer's log lines, forwarded frame-by-frame through the proxy.
+- **UY2 — Toggle closed.** A second click on the same peer `clog-btn` closes the
+  panel, like a local container log.
 
 ## 5. Visual snapshot strategy
 

@@ -420,6 +420,73 @@ func PeerDiffsHandler(resolve func(name, id string) (string, bool), hc *http.Cli
 	})
 }
 
+// PeerContainerLogsHandler serves
+// GET /api/peers/{name}/container-logs/{stack}[/{service}] — the streaming
+// sibling of PeerDiffsHandler (ADR-0048). It proxies a peer's live container-logs
+// SSE stream to the browser, which cannot reach the peer cross-origin. Where a
+// diff is a bounded JSON body, logs are an open-ended event-stream, so this
+// forwards frames with a flush after each and stays open as long as the client
+// does. `resolve` maps peer name + stack + service to the peer's logs URL (false
+// when name is not a configured peer); the incoming query (tail/since) is passed
+// through. hc must have no timeout — an SSE follow is long-lived; a client
+// disconnect cancels the request context, which tears down the upstream stream
+// (and the peer's docker child) instead. The peer validates the stack/service, so
+// a non-2xx (unknown stack/service, peer UI off) is forwarded as-is.
+func PeerContainerLogsHandler(resolve func(name, stack, service string) (string, bool), hc *http.Client) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		target, ok := resolve(r.PathValue("name"), r.PathValue("stack"), r.PathValue("service"))
+		if !ok {
+			http.Error(w, "unknown peer", http.StatusNotFound)
+			return
+		}
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+		if err != nil {
+			http.Error(w, "bad peer request", http.StatusInternalServerError)
+			return
+		}
+		req.Header.Set("Accept", "text/event-stream")
+		resp, err := hc.Do(req)
+		if err != nil {
+			http.Error(w, "peer unreachable", http.StatusBadGateway)
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, "peer rejected the logs request", resp.StatusCode)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+		// Forward frames, flushing after each read so the browser gets events
+		// live. The read unblocks with an error when the client disconnects and
+		// r.Context() cancels the upstream request.
+		buf := make([]byte, 4096)
+		for {
+			n, rerr := resp.Body.Read(buf)
+			if n > 0 {
+				if _, werr := w.Write(buf[:n]); werr != nil {
+					return
+				}
+				flusher.Flush()
+			}
+			if rerr != nil {
+				return
+			}
+		}
+	})
+}
+
 // DiffHandler serves GET /api/events/{id}/diffs — returns the diff content
 // for a specific deploy event as JSON.
 func DiffHandler(history *events.History) http.Handler {

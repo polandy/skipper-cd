@@ -942,10 +942,13 @@
 
   // clogBtnHTML/clogButton build the logs icon that opens a log — a string
   // for template use (health-panel lines, roster rows) and a DOM node for the
-  // deploy row's action cell.
-  function clogBtnHTML(stack, service) {
+  // deploy row's action cell. host is optional: a peer's name tags the button
+  // with data-clog-host so clog.toggle streams through the primary's peer proxy
+  // (ADR-0048) instead of the local container-logs endpoint.
+  function clogBtnHTML(stack, service, host) {
     const label = service ? ('logs for ' + stack + ' / ' + service) : ('logs for ' + stack + ' (all services)');
-    return `<button class="clog-btn" type="button" data-testid="clog-btn" data-taptip data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
+    const hostAttr = host ? ` data-clog-host="${escapeAttr(host)}"` : '';
+    return `<button class="clog-btn" type="button" data-testid="clog-btn" data-taptip data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}"${hostAttr} title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
   }
   function clogButton(stack, service) {
     const tmp = document.createElement('template');
@@ -1054,7 +1057,7 @@
 
   const clog = (function() {
     let panel = null, es = null, btn = null, body = null, key = null;
-    let curService = '', curStack = '';
+    let curService = '', curStack = '', curHost = '';
     // 'container' streams docker compose logs; 'skipper' streams /api/logs
     // filtered to the stack — the hook output (ADR-0038), in the same panel.
     let mode = 'container';
@@ -1170,7 +1173,11 @@
         es.onopen = function() { if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : ''); };
         return;
       }
-      let url = '/api/container-logs/' + encodeURIComponent(curStack);
+      // A peer's logs stream through the primary's proxy (the browser can't reach
+      // the peer cross-origin, ADR-0048); a local stack hits the endpoint directly.
+      let url = curHost
+        ? '/api/peers/' + encodeURIComponent(curHost) + '/container-logs/' + encodeURIComponent(curStack)
+        : '/api/container-logs/' + encodeURIComponent(curStack);
       if (curService) url += '/' + encodeURIComponent(curService);
       url += '?tail=' + tail;
       es = new EventSource(url);
@@ -1269,11 +1276,11 @@
       }
     }
 
-    function open(button, stack, service) {
-      const newKey = stack + '\n' + (service || '');
+    function open(button, stack, service, host) {
+      const newKey = (host || '') + '\n' + stack + '\n' + (service || '');
       if (key === newKey) { close(); return; } // same icon → toggle closed
       close();
-      btn = button; key = newKey; curStack = stack; curService = service || '';
+      btn = button; key = newKey; curStack = stack; curService = service || ''; curHost = host || '';
       mode = 'container'; follow = true; paused = false; query = '';
       btn.classList.add('on');
       const scope = service ? (stack + ' / ' + service) : (stack + ' · all services');
@@ -1291,7 +1298,7 @@
       const newKey = `${stack}\n#hook`;
       if (key === newKey) { close(); return; }
       close();
-      btn = button; key = newKey; curStack = stack; curService = '';
+      btn = button; key = newKey; curStack = stack; curService = ''; curHost = '';
       mode = 'skipper'; follow = true; paused = false; query = '';
       if (btn) btn.classList.add('on');
       panel = buildPanel(`${stack} · deploy hook`);
@@ -1310,7 +1317,7 @@
       if (fsHolder) { if (fsHolder.parentNode) fsHolder.remove(); fsHolder = null; }
       if (panel) { panel.remove(); panel = null; }
       if (btn) { btn.classList.remove('on'); btn = null; }
-      body = null; key = null; query = ''; mode = 'container';
+      body = null; key = null; query = ''; mode = 'container'; curHost = '';
     }
 
     // Type-to-search: while a log is open, a printable key routes into the
@@ -1335,7 +1342,7 @@
     }, true);
 
     return {
-      toggle: function(button) { open(button, button.dataset.clogStack, button.dataset.clogService || ''); },
+      toggle: function(button) { open(button, button.dataset.clogStack, button.dataset.clogService || '', button.dataset.clogHost || ''); },
       openHookLog: function(button, stack) { openHookLog(button, stack); },
       close: close,
       escape: function() {
@@ -1644,16 +1651,14 @@
 
   // host is optional: omitted (or the primary's own name) reads the live local
   // snapshot; a peer name reads that peer's fanned-in health (ADR-0048), so peer
-  // rows render the same containers panel. A peer's per-service log button is
-  // suppressed until the container-logs proxy exists — see PeerDiffsHandler's
-  // sibling proxy.
+  // rows render the same containers panel. The per-service log button is
+  // host-aware: a peer's streams through the primary's peer-logs proxy.
   function createHealthPanel(stack, host) {
     const el = document.createElement('div');
     el.className = 'health-panel';
     el.dataset.testid = 'health-panel';
     el.dataset.healthFor = stack;
     if (host) el.dataset.host = host;
-    const isPeer = !!peerViewFor(host);
     const h = healthMapFor(host)[stack];
     const status = (h && h.status) || 'unknown';
     el.dataset.health = status; // drives the shared --hc colour (variant A)
@@ -1692,7 +1697,7 @@
         `<span class="hp-name">${escapeHtml(s.name)}</span>` +
         `<span class="hp-state">${escapeHtml(state)}</span>` +
         `<span class="hp-status" data-health="${escapeAttr(st)}"><span class="hdot"></span>${escapeHtml(st)}${age}</span>` +
-        (isPeer ? '' : clogBtnHTML(stack, s.name)) +
+        clogBtnHTML(stack, s.name, host) +
         `</div>` + healthHistoryHTML(stack, s.name, host);
     }).join('');
     return el;
