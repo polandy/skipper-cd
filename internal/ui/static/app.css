@@ -2645,8 +2645,11 @@
 
   /* Running-hook phase sub-label. :has() stacks the cell only when a phase is
      present, so idle rows (the snapshot baselines) keep their layout; both
-     views stack the same, so a running hook looks identical. */
+     views stack the same, so a running hook looks identical. Health pill
+     (ADR-0027) reuses the same stacking: it lives in .status-cell, under the
+     SUCCESS/FAILED badge, instead of competing with the .cell-stack icons. */
   .status-cell:has(.hook-phase),
+  .status-cell:has(.health-pill),
   .roster-status:has(.hook-phase) { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
   .hook-phase {
     display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;

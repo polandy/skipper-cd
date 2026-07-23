@@ -78,7 +78,7 @@ The reserved pseudo-stacks resolve to fixed slugs instead of the monogram: `_nix
 
 ### Stack health
 
-The Stack cell also carries a **health pill** (`data-testid="health-pill"`) right of the stack name — a small dot + label showing the stack's *current* runtime health, ArgoCD-style. It reflects the live [`health`](#event-lifecycle-sse) SSE snapshot, not the deploy outcome, and is a distinct axis from the [Status badge](#status-badges): a `success` deploy can still be `unhealthy` now (a container crash-looped afterwards), and a `deploying` stack can be `starting`. This is skipper-cd's own-stack health only (see [ADR-0027](../../dev-docs/adr/0027-live-stack-health-in-ui.md)); it is read-only and never restarts or redeploys anything.
+The Status cell also carries a **health pill** (`data-testid="health-pill"`) stacked below the deploy status badge — a small dot + label showing the stack's *current* runtime health, ArgoCD-style. It reflects the live [`health`](#event-lifecycle-sse) SSE snapshot, not the deploy outcome, and is a distinct axis from the [Status badge](#status-badges): a `success` deploy can still be `unhealthy` now (a container crash-looped afterwards), and a `deploying` stack can be `starting`. This is skipper-cd's own-stack health only (see [ADR-0027](../../dev-docs/adr/0027-live-stack-health-in-ui.md)); it is read-only and never restarts or redeploys anything.
 
 | Health | Colour | Meaning |
 |---|---|---|
@@ -301,7 +301,7 @@ A stack can declare `pre_deploy` / `post_deploy` shell hooks that run around its
 
 ### Hooks badge + panel (defined)
 
-A stack that declares any hook carries a small **hooks badge** (`data-testid="hooks-badge"`) on its stack cell — on the **newest deploy row** per stack (Deploys view) and the **roster row** (Stacks view), beside the [icon](#stack-icons) / [health pill](#stack-health) / [container-logs icon](#container-logs). Absent when the stack has no hooks. Its glyph is a **fishing hook**, deliberately distinct from the container-logs icon it sits next to. It shows the split **`pre+post` count** (e.g. `2+1`), not the sum, so the shape of the hooks reads at a glance.
+A stack that declares any hook carries a small **hooks badge** (`data-testid="hooks-badge"`) on its stack cell — on the **newest deploy row** per stack (Deploys view) and the **roster row** (Stacks view), beside the [icon](#stack-icons) / [container-logs icon](#container-logs). Absent when the stack has no hooks. Its glyph is a **fishing hook**, deliberately distinct from the container-logs icon it sits next to. It shows the split **`pre+post` count** (e.g. `2+1`), not the sum, so the shape of the hooks reads at a glance.
 
 Its **tooltip is two lines** — `pre-deploy hook: N` / `post-deploy hook: N` (a `\n` in the `title`; the tap-tip bubble renders it via `white-space: pre-line`). Because the UI is glyph-only, the badge also flashes the shared **tap-tip bubble** (`.tap-tip`) on a touch `pointerdown`, so a touch user (no native tooltip) still sees what it is.
 
@@ -408,7 +408,7 @@ assert on.
 | `deploy-row` | A deploy table row | `data-stack`, `data-status` |
 | `status-badge` | Status badge inside a row | |
 | `stack-icon` | Icon chip in the stack cell | |
-| `health-pill` | Stack health pill (a `<button>`) in the stack cell | Newest row per stack only; keyboard-operable; `data-health` = `healthy`/`unhealthy`/`starting`/`stopped`/`unknown`; opens `health-panel` |
+| `health-pill` | Stack health pill (a `<button>`) in the status cell | Newest row per stack only; keyboard-operable; `data-health` = `healthy`/`unhealthy`/`starting`/`stopped`/`unknown`; opens `health-panel` |
 | `health-panel` | Per-service health breakdown panel below the row | Sibling of the row, like `files-panel`; leads with a stack + status header; carries `data-health` (drives the shared left bar/tint); the open row gets `health-open` + `data-health` |
 | `health-service` | A service row inside `health-panel` | `data-health` per service |
 | `history-btn` | Deploy-history button in the stack cell | Newest row per stack only; opens `audit-panel` |
