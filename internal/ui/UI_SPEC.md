@@ -418,7 +418,7 @@ assert on.
 | `stack-icon` | Icon chip in the stack cell | |
 | `health-pill` | Stack health pill (a `<button>`) in the status cell | Newest row per stack only; keyboard-operable; `data-health` = `healthy`/`unhealthy`/`starting`/`stopped`/`unknown`; opens `health-panel` |
 | `health-beacon` | Header chip counting unhealthy stacks | Every view; `hidden` when none unhealthy; `<button>` with pulsing dot + `health-beacon-count`; pluralised `title`/`aria-label`; opens `health-beacon-pop` |
-| `health-beacon-pop` | Beacon popover listing unhealthy stacks | Each entry is a `health-beacon-item` (`data-stack`); activating jumps to the stack in Deploys; Escape / outside-click close |
+| `health-beacon-pop` | Beacon popover listing unhealthy stacks | Each entry is a `health-beacon-item` (`data-stack`); activating jumps to the stack in the current list view (roster row in Stacks, else newest deploy row); Escape / outside-click close |
 | `attention-band` | `--danger` card above the deploy log | Inside `#deploy-table` (hides with the view); `hidden` when none unhealthy; one `attention-row` per unhealthy stack |
 | `attention-row` | An unhealthy stack row inside `attention-band` | `data-stack`; icon + name + health pill; click jumps to the stack's newest deploy row |
 | `health-panel` | Per-service health breakdown panel below the row | Sibling of the row, like `files-panel`; leads with a stack + status header; carries `data-health` (drives the shared left bar/tint); the open row gets `health-open` + `data-health` |
