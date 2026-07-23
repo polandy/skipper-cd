@@ -121,6 +121,38 @@ test('healthClass maps state/health to the rollup vocabulary', () => {
   assert.equal(h.healthClass({ health: 'unhealthy', state: 'running' }), 'unhealthy');
 });
 
+test('HEALTH exposes the per-stack rollup status vocabulary', () => {
+  assert.equal(h.HEALTH.HEALTHY, 'healthy');
+  assert.equal(h.HEALTH.UNHEALTHY, 'unhealthy');
+  assert.equal(h.HEALTH.STARTING, 'starting');
+  assert.equal(h.HEALTH.STOPPED, 'stopped');
+  assert.equal(h.HEALTH.UNKNOWN, 'unknown');
+});
+
+test('attentionStacks returns only unhealthy stacks, sorted, as {stack,status}', () => {
+  assert.deepEqual(h.attentionStacks({}), []);
+  assert.deepEqual(h.attentionStacks(null), []);
+  assert.deepEqual(h.attentionStacks(undefined), []);
+
+  // Only 'unhealthy' qualifies — starting/stopped/healthy/unknown are the
+  // reporting-only states the beacon and band deliberately stay quiet about.
+  const snap = {
+    grafana: { status: 'healthy' },
+    mealie: { status: 'unhealthy' },
+    gitea: { status: 'starting' },
+    loki: { status: 'stopped' },
+    paperless: { status: 'unknown' },
+    immich: { status: 'unhealthy' },
+  };
+  assert.deepEqual(h.attentionStacks(snap), [
+    { stack: 'immich', status: 'unhealthy' },
+    { stack: 'mealie', status: 'unhealthy' },
+  ]);
+
+  // A missing, null, or empty status is not "unhealthy".
+  assert.deepEqual(h.attentionStacks({ x: {}, y: null, z: { status: '' } }), []);
+});
+
 test('levelClass clamps unknown levels to INFO', () => {
   for (const lvl of ['DEBUG', 'INFO', 'WARN', 'ERROR']) assert.equal(h.levelClass(lvl), lvl);
   assert.equal(h.levelClass('TRACE'), 'INFO');

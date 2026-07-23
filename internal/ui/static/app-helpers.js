@@ -100,14 +100,46 @@ function phaseSince(ts) {
   return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + time;
 }
 
+// HEALTH is the per-stack health rollup vocabulary (ADR-0027): the status
+// strings the backend emits per stack, the keys CSS matches on [data-health],
+// and the values the helpers below compare against. Hoisted so the literals
+// live in one place instead of being repeated across app-helpers.js/index.html.
+const HEALTH = {
+  HEALTHY: 'healthy',
+  UNHEALTHY: 'unhealthy',
+  STARTING: 'starting',
+  STOPPED: 'stopped',
+  UNKNOWN: 'unknown',
+};
+
 // healthClass maps one service to the same status vocabulary as the rollup, so
 // the per-service dot colour matches the pill's tier.
 function healthClass(s) {
-  if (s.health === 'unhealthy' || s.state === 'restarting' || s.state === 'dead')
-    return 'unhealthy';
-  if (s.health === 'starting' || s.state === 'created') return 'starting';
-  if (s.health === 'healthy' || s.state === 'running') return 'healthy';
-  return 'stopped';
+  if (s.health === HEALTH.UNHEALTHY || s.state === 'restarting' || s.state === 'dead')
+    return HEALTH.UNHEALTHY;
+  if (s.health === HEALTH.STARTING || s.state === 'created') return HEALTH.STARTING;
+  if (s.health === HEALTH.HEALTHY || s.state === 'running') return HEALTH.HEALTHY;
+  return HEALTH.STOPPED;
+}
+
+// attentionStacks distils the live health snapshot (stack -> {status,services})
+// down to just the stacks that need attention — currently only 'unhealthy',
+// deliberately excluding the reporting-only states (starting is transient mid-
+// deploy, stopped can be intended for on-demand stacks, unknown/healthy are not
+// problems). Returned sorted by name as {stack,status}, the single source the
+// header health beacon and the Deploys attention band both render from. Pure and
+// snapshot-driven, so it surfaces an unhealthy stack even when its newest deploy
+// row has aged out of the bounded event log (where the row-bound pill cannot).
+function attentionStacks(healthSnap) {
+  const snap = healthSnap || {};
+  return Object.keys(snap)
+    .filter(function (stack) {
+      return snap[stack] && snap[stack].status === HEALTH.UNHEALTHY;
+    })
+    .sort()
+    .map(function (stack) {
+      return { stack: stack, status: snap[stack].status };
+    });
 }
 
 // levelClass clamps a log level to the known set (unknown → INFO).
@@ -291,7 +323,9 @@ if (typeof module !== 'undefined' && module.exports) {
     auditStatusLabel,
     phaseDuration,
     phaseSince,
+    HEALTH,
     healthClass,
+    attentionStacks,
     levelClass,
     logTime,
     reasonFromSnap,
