@@ -75,7 +75,7 @@
       <span class="ds-next" id="deploy-next" data-testid="deploy-next"></span>
       <span class="ds-count" id="deploy-count" data-testid="deploy-count"></span>
     </div>
-    <div class="health-beacon-wrap" id="health-beacon-wrap">
+    <div class="health-beacon-wrap" id="health-beacon-wrap" hidden>
       <button class="health-beacon" id="health-beacon" data-testid="health-beacon" type="button" hidden aria-haspopup="true" aria-expanded="false">
         <span class="hb-icon" aria-hidden="true"></span>
         <span class="hb-dot"></span>
@@ -3460,6 +3460,7 @@
   // stack has no row, exactly like jumpBtn).
   const WARN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>';
 
+  const healthBeaconWrap = document.getElementById('health-beacon-wrap');
   const healthBeacon = document.getElementById('health-beacon');
   const healthBeaconIcon = healthBeacon.querySelector('.hb-icon');
   const healthBeaconCount = document.getElementById('health-beacon-count');
@@ -3481,6 +3482,8 @@
   function renderHealthBeacon(att) {
     const n = att.length;
     healthBeacon.hidden = n === 0;
+    // Collapse the wrapper too, so a hidden beacon leaves no status-area gap.
+    healthBeaconWrap.hidden = n === 0;
     if (n === 0) {
       setBeaconPop(false);
       beaconPop.innerHTML = '';

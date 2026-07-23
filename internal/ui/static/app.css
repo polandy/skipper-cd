@@ -955,6 +955,9 @@
      stack out of the chronological log. Both borrow the --danger tier so they
      read as "something is wrong", distinct from the accent/deploy hues. */
   .health-beacon-wrap { position: relative; display: flex; align-items: center; }
+  /* Collapse the wrap entirely when the beacon is hidden, so an empty flex slot
+     never adds a status-area gap (keeps the healthy-case header unchanged). */
+  .health-beacon-wrap[hidden] { display: none; }
 
   .health-beacon[hidden], .attention-band[hidden] { display: none; }
   .health-beacon {
