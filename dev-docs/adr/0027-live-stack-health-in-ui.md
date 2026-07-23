@@ -171,3 +171,18 @@ maintainer eyeballs the rendered pill before the e2e mask is finalized.
   open-ended event feed through the Runner abstraction — more moving parts than a
   cheap periodic `ps` for a homelab-scale stack count. Polling is revisited only
   if the interval ever needs to be near-real-time.
+
+## Amendment (2026-07-23): pill moves from the Stack cell to the Status cell
+
+The original ArgoCD-style "health beside the app name" placement put the pill in
+`.cell-stack`, appended after the jump button and ahead of the history button,
+container-logs button, and hooks badge (ADR-0038). On a narrow deploy row that
+whole cluster wraps, and the pill had no fixed position within it — it could land
+between two icon glyphs instead of reading as its own signal.
+
+The pill now renders in the Status cell, stacked below the deploy status badge
+(reusing the same `:has()` stacking rule ADR-0038's running-hook phase sub-label
+already uses), leaving `.cell-stack` to the name and its navigation/action icons.
+It still sits only on the newest row per stack, still opens the same per-service
+panel, still keeps the 5-column grid intact — only the column it occupies changed,
+not the "no dedicated Health column" decision itself.
