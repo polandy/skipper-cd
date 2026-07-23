@@ -18,10 +18,12 @@ import (
 const peerAuditLimit = 100
 
 // fannedStates is the curated subset of a peer's snapshot the merged read views
-// need: the stack roster, live health, and app links. Everything else in a
-// peer's snapshot (autosync, queue, …) is a per-host control concern the merged
-// overview does not surface, so it is dropped to keep the payload lean.
-var fannedStates = []string{events.StateStacks, events.StateHealth, events.StateAppLinks}
+// need: the stack roster, live health, the health-watch status timeline, and app
+// links — everything the primary renders in a peer's containers panel and roster
+// row for health parity (ADR-0048). Everything else in a peer's snapshot
+// (autosync, queue, …) is a per-host control concern the merged overview does
+// not surface, so it is dropped to keep the payload lean.
+var fannedStates = []string{events.StateStacks, events.StateHealth, events.StateHealthWatch, events.StateAppLinks}
 
 // httpClient fetches a peer's read data over HTTP. It is the production Client;
 // tests inject a fake peer instead.

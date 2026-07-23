@@ -884,6 +884,31 @@ No real switch. Behaviour-only.
   rule, unit-covered by the click handler; here the realistic diff case is
   asserted.)
 
+### 4.25 UI — Maske X: Peer health parity (ADR-0048)
+
+The fan-in curates each peer's `health` / `healthwatch` / `app_links` (not just
+its roster + deploys), so a peer's rows reach the same at-a-glance detail as a
+local stack. The harness stub peer (`host-b`) serves those states in its
+snapshot; local health is enabled with `healthPoll` so the parity shows on both
+sides. Behaviour-only (peer rows appear only when peers are configured, so no
+snapshot shifts).
+
+- **UX1 — Inline health pill on peer deploy rows.** A peer `deploy-row` carries a
+  `health-pill` with the fanned-in status (`gitea` healthy, `postgres` unhealthy)
+  without expanding — the same pill local rows carry.
+- **UX2 — Inline pill + app-link on peer roster rows.** In the Stacks view a peer
+  `roster-row` shows the `health-pill` and an `app-link-btn` inline; local roster
+  rows now carry the pill too (the roster surfaced no live health for anyone
+  before).
+- **UX3 — Peer expand → read-only containers.** Clicking a peer row opens the
+  `peer-detail` with the peer's `health-panel` inline (its `health-service` lines
+  from the fanned-in health), and **no** per-service `clog-btn` — read-only until
+  the container-logs proxy lands.
+- **UX4 — Healthwatch timeline + pill routing.** Clicking a peer row's
+  `health-pill` opens its containers detail (never the primary's own local health
+  panel); the fanned-in `healthwatch` renders the `health-history` /
+  `health-phase` status timeline.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

@@ -213,8 +213,26 @@ const peerBData = {
       ],
       disabled: [],
     },
-    health: { stacks: {} },
-    app_links: { stacks: {} },
+    // Fanned-in health/healthwatch/app_links (ADR-0048) so peer rows reach the
+    // same containers/app-link parity the primary shows for its own stacks.
+    health: {
+      stacks: {
+        gitea: { status: 'healthy', services: [{ name: 'gitea', state: 'running', status: 'healthy' }] },
+        postgres: { status: 'unhealthy', services: [{ name: 'db', state: 'restarting', status: 'unhealthy' }] },
+        cache: { status: 'healthy', services: [{ name: 'redis', state: 'running', status: 'healthy' }] },
+      },
+    },
+    healthwatch: {
+      stacks: {
+        postgres: {
+          db: [
+            { status: 'unhealthy', since: new Date(Date.now() - 4 * 60000).toISOString() },
+            { status: 'healthy', since: new Date(Date.now() - 30 * 60000).toISOString() },
+          ],
+        },
+      },
+    },
+    app_links: { stacks: { gitea: ['gitea.host-b.lan'] } },
   },
   audit: [
     peerAudit('web', 2, 'success', 1),

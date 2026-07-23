@@ -255,7 +255,7 @@ export interface PeerSpec {
   /** The peer's host label (matches a `peers[].name`). */
   name: string;
   /** The JSON the stub serves at `/api/v1/snapshot` — curated to the keys the
-   *  fan-in reads (`stacks`, `health`, `app_links`). */
+   *  fan-in reads (`stacks`, `health`, `healthwatch`, `app_links`). */
   snapshot?: Record<string, unknown>;
   /** The audit records the stub serves at `/api/audit` (the peer's deploys). */
   audit?: Array<Record<string, unknown>>;

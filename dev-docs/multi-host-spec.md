@@ -172,11 +172,15 @@ no per-host reskin.
     row pulsing at once read as an alert rather than a filter state.
 - **Merged feed.** Deploys/Stacks rows from all selected hosts interleave;
   each row carries its host chip. Peer deploy rows are read-only mirrors: the
-  usual *local* fetches (diff/history/health/logs/hooks) are omitted, since the
-  primary has none of a peer's detail — but a click never dead-ends, it opens a
-  compact **peer-detail** panel (`createPeerDetailPanel`): the commit,
-  changed-file count and status the fan-in carries, the **peer's diff loaded
-  inline** (fetched through the primary's proxy `GET
+  purely-*local* fetches (history/hooks) and, for now, live logs are omitted,
+  since the primary has no seam for them — but a click never dead-ends, it opens
+  a compact **peer-detail** panel (`createPeerDetailPanel`): the commit,
+  changed-file count and status the fan-in carries, the **peer's containers
+  (health) panel** rendered from the peer's fanned-in `health`/`healthwatch`
+  state — the same `createHealthPanel` the primary uses for its own stacks, host-
+  scoped (`healthMapFor`/`healthwatchMapFor`), read-only (its per-service log
+  button is suppressed until the container-logs proxy lands) — and the **peer's
+  diff loaded inline** (fetched through the primary's proxy `GET
   /api/peers/{name}/events/{id}/diffs`, since the browser can't reach the peer
   cross-origin; the audit record now carries the deploy's event `id` for this).
   Opening the peer's own UI is the Hosts drawer's job, not repeated per row; an
@@ -188,10 +192,19 @@ no per-host reskin.
 - **Merged roster (Stacks view).** The Stacks view is merged the same way:
   local stacks first, then each peer's stacks appended per host, every row
   carrying the host chip and obeying the same host filter. Peer roster rows
-  are read-only (host chip + icon + name, status, last deploy, commit) — no
-  jump / logs / hooks / app-link affordance and no expand panel. Only the
-  peer rows are rebuilt on a peers refresh (`refreshPeerRosterRows`), so an
-  open local audit/health panel is never collapsed by a background poll.
+  carry the host chip + icon + name + **app-link** (from the peer's fanned-in
+  `app_links`, opening the peer's own routed app directly), status, last deploy
+  and commit — no jump / logs / hooks affordance, since the primary cannot act on
+  a peer's stack. A click expands the same read-only **peer-detail** panel with
+  the peer's **containers (health)** shown inline. Only the peer rows (and their
+  panels) are rebuilt on a peers refresh (`refreshPeerRosterRows`), so an open
+  local audit/health panel is never collapsed by a background poll.
+- **Health parity fan-in.** `health`, `healthwatch` and `app_links` are curated
+  into every peer's fanned-in `state` (`fannedStates`, `internal/peers/client.go`)
+  precisely so peer rows reach the same containers/app-link detail as local ones.
+  Live container **logs** are the one gap left — they stream over SSE and the
+  browser can't reach a peer cross-origin, so they need a primary-side SSE proxy
+  (a sibling of the diff proxy), a follow-up.
 - **Unreachable peer → flagged, not blanked.** In the merged view an
   unreachable peer's last-known rows stay but are dimmed (`.peer-stale`) and
   a stale banner names them ("host-c is unreachable — showing its last-known
@@ -224,7 +237,7 @@ match the deploy-lifecycle lines:
 
 - New `internal/peers` package: the fan-in `Registry` (`Poll` / `State` /
   `Hosts`), the `Client` seam + `NewHTTPClient` (reads each peer's
-  `/api/v1/snapshot` curated to stacks/health/app_links + `/api/audit`
+  `/api/v1/snapshot` curated to stacks/health/healthwatch/app_links + `/api/audit`
   best-effort, version-skew tolerant via `json.RawMessage`), the per-peer
   reachability cache (keeps last-known + marks `Stale` on failure), the
   edge-triggered reachability logging, and `PeerDiffsURL` (resolves a peer's
