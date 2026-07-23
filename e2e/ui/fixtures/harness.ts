@@ -264,10 +264,9 @@ export interface PeerSpec {
   diffs?: Record<string, unknown>;
   /** Container-log lines the stub streams as SSE at
    *  `/api/container-logs/{stack}[/{service}]`, keyed by `stack` or
-   *  `stack/service` — what the primary's peer-logs proxy forwards to the
-   *  browser (ADR-0048). Each string is emitted as one `data:` frame and the
-   *  stream is left open (a real follow) until the client disconnects. */
-  containerLogs?: Record<string, string[]>;
+   *  `stack/service` (ADR-0048). Each string is emitted as one `data:` frame and
+   *  the stream is held open (a real follow) until the client disconnects. */
+  logsByStack?: Record<string, string[]>;
   /** false → no server is started; the peer URL points at a dead port so the
    *  primary sees it unreachable (offline banner). Default true. */
   reachable?: boolean;
@@ -388,7 +387,10 @@ export class Skipper {
   }
 
   /** start builds an origin with one dir per stack, launches the binary, waits
-   *  until healthy, and waits for the startup deploy of every stack to settle. */
+   *  until healthy, and waits for the startup deploy of every stack to settle.
+   *
+   *  TODO: this method is too long — split the origin/config scaffolding, the
+   *  peer-stub servers and the spawn/wait sequence into helpers. */
   static async start(opts: StartOptions = {}): Promise<Skipper> {
     const stacks = opts.stacks ?? ['web'];
     const stackIcons = opts.stackIcons ?? {};
@@ -496,7 +498,7 @@ export class Skipper {
           }
           const logMatch = path.match(/^\/api\/container-logs\/(.+)$/);
           if (logMatch) {
-            const lines = (spec.containerLogs ?? {})[decodeURIComponent(logMatch[1])];
+            const lines = (spec.logsByStack ?? {})[decodeURIComponent(logMatch[1])];
             if (!lines) {
               res.statusCode = 404;
               return void res.end('{}');

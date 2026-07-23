@@ -31,7 +31,7 @@ const hostB = {
   audit: [
     { stack: 'gitea', status: 'success', timestamp: iso(3), duration_ms: 1400, changed_files: 1, commit_sha: 'aaa1111', id: 42 },
   ],
-  containerLogs: {
+  logsByStack: {
     'gitea/web': ['2026-07-23T10:00:00Z web accepting connections', '2026-07-23T10:00:01Z web ready'],
   },
 };
