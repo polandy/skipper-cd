@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Thorough quality review of a pull request — docs/ADR sync, implementation quality, test coverage, UI docs + e2e tests, CI status (fix failures), and merging the target branch in if the PR is behind. Posts the verdict as a PR comment when done. Use when asked to review a PR by number or branch.
+description: Thorough quality review of a pull request — docs/ADR sync, conformance to the project coding guidelines (CLAUDE.md invariants, engineering principles, Go conventions), implementation quality, test coverage, UI docs + e2e tests, CI status (fix failures), and merging the target branch in if the PR is behind. Posts the verdict as a PR comment when done. Use when asked to review a PR by number or branch.
 argument-hint: <PR number or branch>
 ---
 
@@ -15,6 +15,7 @@ Work through **all** sections below in order. Collect findings as you go and fix
 - `gh pr view <PR> --json title,body,baseRefName,headRefName,mergeStateStatus,statusCheckRollup` for metadata and CI status.
 - `gh pr diff <PR>` for the full diff; check out the PR branch (or its worktree under `.claude/worktrees/` if one exists) so you can build and test.
 - Read the PR description and any linked ADR first — the review checks the implementation *against its stated intent*.
+- **Load the project coding guidelines as the review baseline**: read the repo's `CLAUDE.md` — its `## Invariants`, `## Testing`, `## Engineering principles`, and `## Don'ts & pointers` sections are the authoritative standard this review enforces (plus the reviewer's global principles). Section 3 below distills the highest-signal checks, but treat `CLAUDE.md` as the source of truth: if it changed in this PR or since this skill was written, the *file* wins, not this skill's summary. Also skim `.golangci.yml` for the enabled linters.
 
 ## 1. Documentation ↔ implementation sync
 
@@ -28,22 +29,24 @@ Work through **all** sections below in order. Collect findings as you go and fix
 - Does the PR contradict or supersede an **existing ADR**? If so, the ADR needs a status update (superseded/amended) or the PR needs to change.
 - If the PR ships an ADR, verify the ADR's decision section matches what the code actually does.
 
-## 3. Implementation quality
+## 3. Implementation quality — against the project coding guidelines
 
-- Clean, readable, small files; names reveal behavior; no dead code left "for later".
+`CLAUDE.md` §Engineering principles / §Invariants / §Packages / §Don'ts (loaded in §0) is the standard — don't re-derive it here, apply it to the diff. Flag freshly-introduced violations of the principles it lists: magic strings/numbers not hoisted to a constant, a discarded error that matters (`_ = fn()` on a state-persisting/safety-critical call), string-matched errors instead of `errors.Is`, `interface{}` for `any`, non-atomic writes of persisted state, an exported symbol without a doc comment, raw mutable maps/structs where a type-with-methods belongs, or a broken package boundary (`internal/nixos` free of docker/state/metrics knowledge; one shared compose parser; UI self-contained per ADR-0035). The review-specific judgment calls that go beyond a flat rule:
+
+- Clean, readable, small files; names reveal behavior; no dead code left "for later" (delete it — unused APIs are complexity, not future-proofing).
 - **Comment verbosity**: comments cover the essentials a developer new to the project needs — the non-obvious *what* plus the one *why*. Flag comments that over-explain, narrate the change, or restate what the code already says. When the code references an ADR, the comment can stay short: the rationale lives in the ADR, so don't duplicate it inline — a pointer (`// see ADR-00xx`) beats a paragraph. Also flag comments that become unnecessary once the value or logic is extracted into a well-named variable or method — prefer the self-documenting name over the comment.
-- Encapsulation: no raw mutable maps/structs passed around where a type with methods belongs; consumer-side interfaces (`Runner`, `CommitReader` style) instead of concrete coupling.
-- Go conventions: sentinel errors + `errors.Is` (never string matching), `any` not `interface{}`, atomic writes (temp file + rename) for persisted state.
-- **Error handling**: errors are handled at the call site, not silently dropped; wrapped with context via `%w` when propagated (not string-matched); sentinel errors + `errors.Is` for classification. Handling is consistent in *style* but appropriate to context — flag copy-paste `return err` that loses context, or a genuinely fatal error that's only logged.
-- Never touch or review `vendor/`; if `go.mod` changed, verify `go mod tidy && go mod vendor` was run and `vendor/` is in sync.
-- Respect package boundaries (e.g. `internal/nixos` must stay free of docker/state/metrics/events knowledge).
+- **Error handling** in context: consistent in *style* but appropriate to the call site — flag copy-paste `return err` that loses context (should wrap with `%w`), or a genuinely fatal error that's only logged.
+- **Invariant walk**: if the PR touches `internal/deploy`, `internal/config`, `internal/nixos`, or state persistence, walk the numbered `CLAUDE.md` §Invariants and confirm none is broken. A silently-broken invariant is a blocker even when tests pass.
+- If `go.mod` changed, verify `go mod tidy && go mod vendor` was run and `vendor/` is in sync (never review `vendor/` itself).
 
 ## 4. Unit test coverage
 
-- Every new behavior has table-style tests with behavior-revealing names (`TestDeployStack_SkipsWhenUnchanged` style); bug fixes include a test that would fail without the fix.
-- Tests inject fake runners (`command.Runner`) and assert exact argv — no real docker/git except the two sanctioned exceptions (`internal/command`, `internal/git/integration_test.go`).
+Enforce `CLAUDE.md` §Testing + §Engineering-principles-test-first against the diff; the review-specific checks:
+
+- **Test-first / behavior coverage**: every new behavior has a table-style test with a behavior-revealing name; each bug fix has a test that would fail without it; a safety/correctness invariant has its **failure paths** covered, not just the happy path. Missing any of these is a finding.
+- **No non-deterministic timing** (§Testing + the reviewer's global principle): flag any test that leans on sleeps, fixed waits for async work, or polling for an effect that only *probably* lands — the fix is a deterministic seam in the production code, not a longer wait.
 - Run `go test ./... -cover` and compare touched packages against `main` — flag coverage regressions.
-- Run the full local verify: `go build ./... && go vet ./... && go test ./... && test -z "$(gofmt -l cmd internal)"`.
+- Run the full local verify exactly as `CLAUDE.md` §Commands defines it: `go build ./... && go vet ./... && go test ./... && test -z "$(gofmt -l cmd internal)"`, plus `golangci-lint run ./...` (locally `nix run nixpkgs#golangci-lint -- run ./...`) and `go test -race ./...` — CI runs both, so a red lint or race is a fix-it, not an FYI (§6).
 
 ## 5. UI changes
 
