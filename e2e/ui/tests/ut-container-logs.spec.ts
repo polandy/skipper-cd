@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures/test';
+import { openRowMenu } from '../fixtures/menu';
 import type { Page } from '@playwright/test';
 
 // Maske T: Container logs (ADR-0037). See dev-docs/e2e-tests.md §4.21.
@@ -21,8 +22,16 @@ const APP_DB = [
 ];
 const APP_ONLY = [{ Service: 'app', State: 'running', Health: 'healthy' }];
 
+const deployRow = (page: Page, stack: string) =>
+  page.locator(`[data-testid="deploy-row"][data-stack="${stack}"]`);
+// The per-stack log icon lives inside the newest row's ⋯ overflow menu (T3.13),
+// so opening a row log means: open the menu, then click its Container-logs item.
 const rowLogBtn = (page: Page, stack: string) =>
-  page.locator(`[data-testid="deploy-row"][data-stack="${stack}"] [data-testid="clog-btn"]`);
+  deployRow(page, stack).locator('[data-testid="clog-btn"]');
+const openRowLog = async (page: Page, stack: string) => {
+  await openRowMenu(deployRow(page, stack));
+  await rowLogBtn(page, stack).click();
+};
 
 // UT1 — the row icon streams the whole stack's logs (services merged, prefixed).
 test.describe('UT1: per-stack log panel', () => {
@@ -31,8 +40,7 @@ test.describe('UT1: per-stack log panel', () => {
   test('opens a live panel from the row icon and streams the backlog', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
-    const btn = rowLogBtn(page, 'web');
-    await btn.click();
+    await openRowLog(page, 'web');
 
     const panel = page.locator('[data-testid="clog-panel"]');
     await expect(panel).toBeVisible();
@@ -41,8 +49,8 @@ test.describe('UT1: per-stack log panel', () => {
     await expect(body).toContainText('listening on :8080');
     await expect(body).toContainText('web-1'); // merged view keeps the service prefix
 
-    // Clicking the same icon closes it.
-    await btn.click();
+    // Clicking the same icon closes it (reopen the menu to reach it again).
+    await openRowLog(page, 'web');
     await expect(panel).toHaveCount(0);
   });
 });
@@ -76,11 +84,11 @@ test.describe('UT3: single log open', () => {
   test('opening a second log closes the first', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
-    await rowLogBtn(page, 'web').click();
+    await openRowLog(page, 'web');
     await expect(page.locator('[data-testid="clog-panel"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="clog-panel"]')).toContainText('web');
 
-    await rowLogBtn(page, 'db').click();
+    await openRowLog(page, 'db');
     await expect(page.locator('[data-testid="clog-panel"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="clog-panel"]')).toContainText('db');
   });
@@ -94,7 +102,7 @@ test.describe('UT4: in-log type-to-search', () => {
   test('typing filters the open log to matching lines', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
-    await rowLogBtn(page, 'web').click();
+    await openRowLog(page, 'web');
     const body = page.locator('[data-testid="clog-body"]');
     await expect(body.locator('.clog-ln')).not.toHaveCount(0);
 

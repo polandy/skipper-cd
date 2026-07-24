@@ -1021,6 +1021,30 @@ Behaviour + computed-style only (no snapshot).
   closes the popover and leaves both buttons `aria-expanded="false"` (no stale
   `true`, so the caret never reads open on a non-active button).
 
+### 4.31 UI — Maske AD: deploy-row ⋯ overflow menu (T3.13)
+
+The newest row per stack collapses its secondary actions — deploy history
+(§4.14), container logs (§4.21) and deploy hooks (§4.22) — behind a single `⋯`
+button (`more-btn`), so the resting row is identity + status + the still-visible
+cross-view jump action instead of a cluster of look-alike glyphs. The relocated
+action buttons keep their own testids and handlers inside the menu, so Maskes
+M/T/U open it (`openRowMenu`) before reaching them. Boots in discovery mode with
+a hooks-declaring `web` stack so all three actions appear. Behaviour-only.
+
+- **UAD1 — Collapsed + labelled.** The row shows a `more-btn` and the jump
+  button, with no history/clog/hooks glyph loose in the stack cell; the menu is
+  hidden (`aria-expanded="false"`) until clicked, then lists the three actions as
+  labelled rows (Deploy history / Container logs / Deploy hooks).
+- **UAD2 — Select runs + closes.** Picking Deploy history opens its `audit-panel`
+  (the row gains `audit-open`) and closes the menu.
+- **UAD3 — Container logs.** Picking Container logs opens the `clog-panel` and
+  closes the menu — the relocated clog button keeps its handler.
+- **UAD4 — Dismissal.** The menu closes on an outside click and on `Esc`, like
+  the app-link popover.
+- **UAD5 — Portrait safety.** On a 400px portrait viewport the open popover stays
+  within the viewport bounds (it flips right-aligned near the edge) — the density
+  fix never reintroduces an off-screen/overlapping menu.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
