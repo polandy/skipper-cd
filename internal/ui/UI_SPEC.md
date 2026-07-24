@@ -179,6 +179,10 @@ Every badge **leads with an icon** in a shared fixed slot (`svg.badge-ico`, 24×
 - **Heal detail** (`data-testid="heal-panel"`) — the healed-row counterpart of the files/diff panel, opened by the [self-heal badge](#self-heal) (`data-testid="heal-pill"`) or a tap anywhere on the row. A heal has no changed files, so instead of a file list the panel shows a one-line explanation (corrective `docker compose up -d`, no git change → no diff) and, when the `healed` event carries `heal_drift`, the **drifted services** it reacted to — each `name` with its degraded status chip. Bound to its row (variant A, teal `--dc`) so it shares the row's left bar; one panel per row (opening it closes an open health panel and vice versa). The drift is carried on the event's SSE payload, so there is no on-demand fetch.
 - **Error detail** — shown for `failed`, `rolled_back`, `rolled_back_unhealthy`, and `heal_exhausted` events with an `error` field. Monospace, `pre-wrap`. **Row binding (variant A)** — like the diff/health panels, the error box binds to the row above it: it carries `data-status` and both share a **status-coloured left bar** (`inset 3px`) and tint (`--ec`: failed / rolled_back_unhealthy / heal_exhausted→red, rolled_back→rosé). Its top margin is negative and its top corners square off, and the row squares its bottom corners while the error box trails it (`.event-row:has(+ .error-detail)`), so the message reads as attached to its deploy row rather than a card floating between rows. When a files/diff panel is open on an errored row, that panel sits between the row and the error and squares its own bottom (`.bound:has(+ .error-detail)`), keeping the left bar unbroken across `row → panel → error`.
 
+### Failed detail fetches
+
+The lazy detail fetches — [deploy history](#deploy-history) (`/api/audit`), a row's or log line's [diff](#expandable-panels) (`/api/events/{id}/diffs`) and a [peer's diff](#multi-host-federated-ui) (`/api/peers/{name}/events/{id}/diffs`) — used to render their genuine-empty (or silent-fallback) result when the fetch itself failed, so a network drop looked identical to "nothing here" (T4.16). Instead a failed fetch (network error or `5xx`) now shows a shared **load-error line** (`data-testid="load-error"`): an amber-caution glyph, a plain message (`Couldn't load deploy history.` / `Couldn't load the diff.` / `Couldn't reach <host> for the diff.`), and a **Retry** (`data-testid="load-retry"`) that re-runs just that one fetch in place. It is deliberately **amber, not the red** of the deploy [error panel](#status-badges) (`error-detail`): the *deploy* is fine — only the panel fetch failed — so it reads as transient, not as a failed deployment. A genuine 404 (an evicted event / a peer that dropped the event) is **not** an error: it keeps its old behaviour (fall back to the file list, or drop the peer diff slot for the "open the peer" link). In the audit and peer contexts the host panel's own bar is flattened so the amber line carries the whole treatment; in the deploy-row diff context it stands in for the bound diff panel.
+
 ### Deploys filter
 
 A **type-to-search** filter over the deploy rows by stack name, reusing the [Autosync drawer](#autosync)'s filter styling (magnifier + input + `×` clear). The bar is hidden until revealed, then **folds down** above the table (`data-testid="deploy-filter"`). It is revealed two ways: the **search trigger** — an always-visible quiet magnifier in the header, left of the [view switch](#layout) (`data-testid="stack-search-btn"`, T3.11) — opens/closes it with a click, and **type-to-search**: any printable key while the deploys view is active (with at least one row rendered) reveals it and seeds the first character (this is why the old single-key `i` icon-refresh hotkey was removed — see [Stack icons](#stack-icons)). The trigger carries `.active` + `aria-expanded` while the bar is open, is **view-aware** (opens the Deploys or Stacks filter for whichever view is active), and is hidden on the Logs view (which has its own in-panel search) and on mobile (where the popover entry below covers it).
@@ -227,9 +231,21 @@ every SSE (re)open — one JSON object of the current state snapshots keyed by
 name (`stacks`, `health`, `autosync`, …), built from the same collector the
 stream uses, so the two cannot drift. The `/api/events` stream itself no longer
 replays an initial state burst: on connect it replays the deploy-event history
-as `deploy` events, then streams live `deploy` events and live state-snapshot
-changes. Fetching the snapshot on every open (not just first load) is also how a
-reconnect resyncs state.
+as `deploy` events, then emits a **`synced` marker** and streams live `deploy`
+events and live state-snapshot changes. Fetching the snapshot on every open (not
+just first load) is also how a reconnect resyncs state.
+
+**Loading vs. empty (T4.17).** The deploy events are a *separate* channel from
+the `/api/v1/snapshot` baseline, so until the history has replayed the UI cannot
+tell "still connecting" from "no deploys". Rather than show the empty placeholder
+in both cases, the table starts as a **loading skeleton** (`data-testid="loading-state"`
+— a spinner + `Connecting to deployment stream…` over shimmer rows). It retires
+the instant the picture is known: the first replayed `deploy` event shows the
+table; if the history is empty, the `synced` marker reveals the genuine-empty
+state (`data-testid="empty-state"`, `No deployments yet`). A failed snapshot does
+**not** settle it — the skeleton stays until a live event or the next reconnect
+resolves, so a transient outage never reads as "no deployments". The `synced`
+marker is the deterministic seam this hangs on (no timers).
 
 | Transition | Behaviour |
 |---|---|
@@ -426,7 +442,10 @@ assert on.
 | `theme-notice` | Theme mismatch notice | Shown when `themeOverride` differs from `data-server-theme` |
 | `theme-notice-close` | Theme mismatch notice's dismiss button | |
 | `conn-indicator` | Connection indicator (chain-link glyph) | `data-state` = `connecting`/`connected`/`reconnecting` |
-| `empty-state` | Awaiting-events placeholder | |
+| `loading-state` | Loading skeleton for the deploy table | Spinner + shimmer rows shown until the first snapshot settles; retires on the first `deploy` event or the `synced` marker (T4.17) |
+| `empty-state` | Genuine-empty placeholder (`No deployments yet`) | Shown only once the `synced` marker confirms an empty history (T4.17) |
+| `load-error` | Amber "couldn't load" line for a failed detail fetch | Audit / diff / peer-diff; carries a `load-retry` button (T4.16) |
+| `load-retry` | Retry button inside a `load-error` | Re-runs just that fetch in place |
 | `a11y-announce` | Off-screen polite live region | Announces terminal deploy outcomes to screen readers (T2.8); `sr-only`, `role="status"` |
 | `deploys-table` | The deploys view container (header + rows) | Snapshot anchor (UA1) |
 | `deploy-row` | A deploy table row | `data-stack`, `data-status` |

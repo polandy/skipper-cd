@@ -494,6 +494,57 @@
     font-family: var(--font-mono);
     letter-spacing: -0.2px;
   }
+  /* Second line of the genuine-empty state (T4.17): a quieter hint under the
+     headline, shown only once the snapshot confirms there are no deploys. */
+  .empty-state p.empty-sub { font-size: 12px; opacity: 0.72; margin-top: 8px; }
+
+  /* ─── LOADING SKELETON (T4.17) ─── */
+  /* Shown from page load until the first snapshot settles, so "connecting"
+     never reads as "no deployments". Ghost rows shimmer where the real event
+     rows will land; on settle it yields to the table or the genuine-empty
+     state. Deterministic seam: driven by a flag, not a timer. */
+  .deploy-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px 0 28px;
+  }
+  .sk-status {
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    color: var(--text-muted); font-family: var(--font-mono); font-size: 12px;
+    padding: 4px 0 14px; letter-spacing: -0.2px;
+  }
+  .sk-spin {
+    width: 13px; height: 13px; border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  .sk-row {
+    display: grid;
+    grid-template-columns: 96px 1fr 84px 72px;
+    gap: 14px; align-items: center;
+    padding: 11px 14px; border-radius: 6px;
+    background: color-mix(in srgb, var(--overlay2) 4%, transparent);
+  }
+  .sk-bar {
+    height: 9px; border-radius: 4px;
+    background: linear-gradient(90deg,
+      color-mix(in srgb, var(--overlay2) 10%, transparent) 25%,
+      color-mix(in srgb, var(--overlay2) 20%, transparent) 50%,
+      color-mix(in srgb, var(--overlay2) 10%, transparent) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.3s ease-in-out infinite;
+  }
+  .sk-row:nth-child(3) .sk-bar { animation-delay: 0.15s; }
+  .sk-row:nth-child(4) .sk-bar { animation-delay: 0.30s; }
+  .sk-bar.sk-pill { height: 16px; border-radius: 20px; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
 
   /* ─── EVENT LIST ─── */
   .event-list {
@@ -1450,9 +1501,15 @@
     .files-list,
     .audit-panel,
     .heal-panel,
-    .error-detail {
+    .error-detail,
+    .load-error,
+    .sk-spin,
+    .sk-bar,
+    .load-error.busy .le-retry svg {
       animation: none;
     }
+    /* Static (non-shimmering) skeleton bars still read as placeholders. */
+    .sk-bar { background: color-mix(in srgb, var(--overlay2) 14%, transparent); }
   }
 
   .file-path {
@@ -1501,6 +1558,44 @@
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
+
+  /* ─── LOAD ERROR (T4.16) ─── */
+  /* A lazy detail fetch (deploy history, diff, peer diff) failed or returned
+     non-OK. Amber caution — deliberately NOT the red of .error-detail: the
+     *deploy* is fine, the UI just couldn't load a panel. Distinct from the
+     muted genuine-empty line, and retryable in place via .le-retry. */
+  .load-error {
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    padding: 9px 14px;
+    background: color-mix(in srgb, var(--queued) 6%, var(--bg-sunken));
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: inset 3px 0 0 var(--queued);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--text-secondary);
+    animation: expand 0.2s ease-out;
+  }
+  .load-error .le-ico { width: 14px; height: 14px; color: var(--queued); flex-shrink: 0; }
+  .load-error .le-msg { color: var(--text-secondary); word-break: break-word; }
+  .load-error .le-retry {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--font-mono); font-size: 11px; cursor: pointer;
+    background: transparent; color: var(--accent);
+    border: none; padding: 3px 5px; border-radius: 4px;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .load-error .le-retry:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); text-decoration: none; }
+  .load-error .le-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .load-error .le-retry svg { width: 12px; height: 12px; }
+  .load-error.busy .le-retry { color: var(--text-muted); pointer-events: none; text-decoration: none; }
+  .load-error.busy .le-retry svg { animation: spin 0.8s linear infinite; }
+
+  /* The load-error carries the whole visual when it stands in for a panel's
+     body: strip the host panel's own bar/tint/padding so the two bars don't
+     stack. Covers the audit panel and the peer-detail diff slot. */
+  .audit-panel:has(> .load-error) { padding: 0; background: transparent; border: none; box-shadow: none; }
+  .pd-diff > .load-error { margin-top: 6px; }
 
   /* ─── DIFF PANEL ─── */
   .diff-panel {

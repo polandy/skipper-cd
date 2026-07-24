@@ -489,6 +489,41 @@ func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 	}
 }
 
+// The end-of-replay marker (T4.17) must arrive after the replayed history so
+// the UI can tell "still replaying" from "caught up". An empty history still
+// emits it, which is exactly the genuine-empty signal the loading skeleton
+// waits on.
+func TestSSEHandler_EmitsSyncedMarkerAfterHistory(t *testing.T) {
+	broadcaster := events.NewBroadcaster()
+	history := events.NewHistory("")
+	history.Add(events.DeployEvent{ID: 1, Stack: "gitea", Status: events.StatusSuccess})
+
+	handler := SSEHandler(broadcaster, nil, history)
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+	body := serveSSE(t, handler, req, nil).Body.String()
+
+	if !strings.Contains(body, "event: synced\n") {
+		t.Fatalf("expected a synced marker, got:\n%s", body)
+	}
+	// It must trail the history, not precede it — the UI settles on it as
+	// "history done", so an early marker would defeat the skeleton.
+	if strings.Index(body, `"stack":"gitea"`) > strings.Index(body, "event: synced\n") {
+		t.Error("synced marker must come after the replayed history")
+	}
+}
+
+// An empty history still emits the synced marker — the signal that flips the
+// loading skeleton to the genuine-empty state (T4.17).
+func TestSSEHandler_EmitsSyncedMarkerForEmptyHistory(t *testing.T) {
+	handler := SSEHandler(events.NewBroadcaster(), nil, events.NewHistory(""))
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+	body := serveSSE(t, handler, req, nil).Body.String()
+
+	if !strings.Contains(body, "event: synced\n") {
+		t.Fatalf("expected a synced marker for empty history, got:\n%s", body)
+	}
+}
+
 func TestSSEHandler_FiltersHistoryByLastEventID(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")
