@@ -42,6 +42,19 @@ New here? The **[Getting Started walkthrough](https://polandy.github.io/skipper-
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
 
+## Why skipper-cd?
+
+**One static binary, one YAML file — no cluster, no database, no control plane.** Push to Git and only the stacks whose files changed redeploy, with automatic rollback and drift self-heal. On NixOS it rebuilds the host, too. That minimal footprint and narrow scope are the point:
+
+- **Docker Compose, not Kubernetes** — built for individual hosts and homelabs, not a cluster. A `.nix` change triggers `nixos-rebuild switch`, so one push updates the host and its containers together.
+- **One host or many** — run an instance per host, each fully autonomous (its own repo clone, state, deploys, and webhook); a primary can fan the others in for a single merged, read-only view.
+- **Near-zero config** — one YAML file, and stack discovery means most stacks need no per-stack entry at all.
+- **Git-only, no drift** — no imperative "redeploy" button and no in-UI editing; the repo is the only way to change what runs. SHA-256 hashing redeploys just the stacks that changed, a failed deploy rolls back, and drift is self-healed on a reconcile loop.
+
+skipper-cd reconciles each host to Git on a timer, with a webhook to make a push land in seconds rather than minutes.
+
+**Scope is deliberate.** Aimed at self-hosted homelab hosts, skipper-cd leaves several concerns to purpose-built tools: **secrets** (e.g. `sops` or `agenix`) and **multi-user access, RBAC, or SSO** (put skipper behind a reverse proxy or auth gateway). It's no central control plane either — several hosts link into a read-only merged view, each still deploying itself from Git. It does one thing: keep each host's Compose stacks — and, on NixOS, the host itself — in sync with Git.
+
 ## The Bigger Picture
 
 skipper-cd is the last automation link in a **self-driving, declarative NixOS homelab**. Keep your host configuration and your Docker Compose stacks in one Git repo, and let the machine maintain itself:
@@ -52,6 +65,8 @@ skipper-cd is the last automation link in a **self-driving, declarative NixOS ho
 4. Everything unchanged keeps running, untouched.
 
 The payoff: your homelab stays current and fully declarative with **Git as the single source of truth** — and you only step in for the changes that genuinely need a human (major bumps, breaking notes).
+
+> **Automerge minor and patch, not major.** skipper-cd deploys whatever lands on the branch, unattended — so scope Renovate's (or Dependabot's) automerge to **minor and patch** bumps, which respect semver's backward-compatibility promise. Leave **major** bumps for a human to merge: they can carry breaking config changes or one-way data migrations that an automatic rollback cannot undo.
 
 ## How It Works
 

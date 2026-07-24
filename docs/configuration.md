@@ -221,6 +221,9 @@ A failure in either stage triggers the regular rollback: the previous compose fi
 
 The rollback itself is verified through the same gate: its `up` also runs with `--wait`, and the HTTP probe (if configured) must pass again. So `rolled_back` guarantees the old version is actually healthy again. If the restored version *also* fails the gate — typically an environment problem such as a dead database or a broken secret — the deploy is marked **`rolled_back_unhealthy`** instead: the stack sits on the old compose file but needs attention *now*, because no version of it is verified healthy.
 
+!!! warning "Rollback restores the compose file, not your data"
+    A rollback only reverts the `docker-compose.yml` (image tag and config) to the last deployed commit — it does **not** roll back volumes, databases, or anything on disk. If the failed version already ran a **schema migration** or otherwise changed persistent data, the restored old image now runs against forward-migrated data. The health gate may still pass, so the stack looks `rolled_back` and healthy while being subtly broken — and many migrations can't be undone anyway. For stateful stacks, back up first with a [`pre_deploy` hook](#deploy-hooks) (e.g. `pg_dump`) and treat a rollback as a signal to intervene, not a guaranteed safe undo. See also [zero-downtime rollout](#zero-downtime-rollout) caveats for stacks that migrate on start.
+
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
