@@ -1070,6 +1070,29 @@ hooks-declaring `web` stack and a plain `api` stack. Behaviour-only.
 - **UAE5 — Portrait safety.** On a 400px portrait viewport the open popover stays
   within the viewport bounds (it flips right-aligned near the edge).
 
+### 4.33 UI — Maske AF: Status-badge icons + solid worst states (T3.14)
+
+Every status badge (§3, [Status badges](../internal/ui/UI_SPEC.md)) leads with an
+icon (`svg.badge-ico`) from the pure `statusIcon` helper, and the two worst
+terminal states — `rolled_back_unhealthy` / `heal_exhausted` — render as a solid
+danger chip instead of the smallest 9px two-line text, correcting the inverted
+hierarchy where the most attention-critical states were the quietest (T3.14). The
+spec drives the real self-heal loop (like §4.12) so `success`, `healed` and
+`heal_exhausted` badges all surface in one run. Behaviour-only; the solid look is
+also captured by the regenerated §5 snapshots.
+
+- **UAF1 — Success carries an icon.** The startup `success` badge contains one
+  `svg.badge-ico`; its text stays exactly `success` (the icon adds no text node,
+  so the existing text assertions across masks are unaffected).
+- **UAF2 — Healed carries an icon.** After the stack turns unhealthy the
+  corrective `healed` badge also leads with a `badge-ico`.
+- **UAF3 — Worst state is a solid two-line chip.** The `heal_exhausted` badge
+  carries the warning `badge-ico`, still shows both stacked label lines
+  (`self-heal` / `failed` inside `.badge-lbl`), and reads its wording.
+- **UAF4 — Solid vs dim.** The `heal_exhausted` badge's settled
+  `background-color` is opaque (alpha ≈ 1) while a dim badge (`success`) is
+  translucent (alpha < 0.9) — a deterministic computed-style read, no timing.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

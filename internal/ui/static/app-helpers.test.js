@@ -96,6 +96,41 @@ test('auditStatusLabel', () => {
   assert.equal(h.auditStatusLabel('success'), 'success');
 });
 
+test('statusIcon maps each terminal status to a distinct leading glyph', () => {
+  // Every terminal status a badge can carry gets an inline <svg> in the shared
+  // .badge-ico slot (T3.14). deploying keeps its spinner, so it — and any
+  // unknown/label-only status — returns '' (no icon markup).
+  const iconStatuses = [
+    'success',
+    'failed',
+    'rolled_back',
+    'rolled_back_unhealthy',
+    'healed',
+    'heal_exhausted',
+    'queued',
+    'blocked',
+  ];
+  for (const s of iconStatuses) {
+    const svg = h.statusIcon(s);
+    assert.match(svg, /^<svg class="badge-ico"/, `${s} should render a badge-ico svg`);
+    assert.match(svg, /aria-hidden="true"/, `${s} icon is decorative`);
+    assert.match(svg, /currentColor/, `${s} icon inherits the badge colour`);
+  }
+
+  // deploying (spinner) and unrecognised statuses are label-only.
+  assert.equal(h.statusIcon('deploying'), '');
+  assert.equal(h.statusIcon('skipped'), '');
+  assert.equal(h.statusIcon(''), '');
+  assert.equal(h.statusIcon(undefined), '');
+
+  // Icons are distinct where the states differ; the two worst states share the
+  // same warning glyph by design.
+  assert.notEqual(h.statusIcon('success'), h.statusIcon('failed'));
+  assert.notEqual(h.statusIcon('queued'), h.statusIcon('blocked'));
+  assert.notEqual(h.statusIcon('healed'), h.statusIcon('rolled_back'));
+  assert.equal(h.statusIcon('rolled_back_unhealthy'), h.statusIcon('heal_exhausted'));
+});
+
 test('phaseDuration coarse units', () => {
   assert.equal(h.phaseDuration(0), '0s');
   assert.equal(h.phaseDuration(500), '0s'); // < 1s

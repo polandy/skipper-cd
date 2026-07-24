@@ -890,6 +890,12 @@
     text-transform: uppercase;
   }
 
+  /* Every status badge leads with a small icon in a fixed slot, so the glyphs
+     read at one optical size regardless of the label (T3.14). deploying keeps
+     its .spinner. */
+  .badge-ico { flex: none; width: 13px; height: 13px; }
+  .badge-lbl { display: inline-flex; flex-direction: column; gap: 0; line-height: 1.15; }
+
   .badge-success {
     background: var(--success-dim);
     color: var(--success);
@@ -914,20 +920,26 @@
     border: 1px solid color-mix(in srgb, var(--rollback) 22%, transparent);
   }
 
-  /* Rollback ran but the restored version is also unhealthy — the worst
-     terminal state, so it borrows the failed (danger) colours. The full
-     wording overflows the status column on one line, so the label stacks
-     two lines at a reduced size (see badgeHTML). */
-  .badge-rolled_back_unhealthy {
-    background: var(--danger-dim);
-    color: var(--danger);
-    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
-    flex-direction: column;
-    gap: 0;
-    font-size: 9px;
-    line-height: 1.3;
-    padding: 2px 8px;
+  /* Rollback ran but the restored version is also unhealthy, and self-heal
+     giving up (.badge-heal_exhausted) — the two worst terminal states. They
+     lead with a warning icon on a SOLID danger fill so they are the loudest
+     chip in the status column, not the smallest as before (T3.14). The label
+     still stacks two lines (one line overflows the column) via .badge-lbl,
+     while the badge itself stays a row for the leading icon. */
+  .badge-rolled_back_unhealthy,
+  .badge-heal_exhausted {
+    background: var(--danger);
+    color: var(--crust);
+    border: 1px solid var(--danger);
+    gap: 5px;
+    font-size: 9.5px;
+    line-height: 1.2;
+    padding: 3px 9px 3px 7px;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 30%, transparent),
+                0 2px 8px color-mix(in srgb, var(--danger) 26%, transparent);
   }
+  .badge-rolled_back_unhealthy .badge-ico,
+  .badge-heal_exhausted .badge-ico { width: 14px; height: 14px; }
 
   .badge-queued, .badge-blocked {
     background: var(--queued-dim);
@@ -940,19 +952,6 @@
     background: var(--success-dim);
     color: var(--success);
     border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
-  }
-
-  /* Self-heal gave up — borrows the failed (danger) colours; the wording
-     stacks two lines at a reduced size like rolled_back_unhealthy. */
-  .badge-heal_exhausted {
-    background: var(--danger-dim);
-    color: var(--danger);
-    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
-    flex-direction: column;
-    gap: 0;
-    font-size: 9px;
-    line-height: 1.3;
-    padding: 2px 8px;
   }
 
   .spinner {
