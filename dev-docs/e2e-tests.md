@@ -1120,6 +1120,37 @@ why §5 needed no baseline churn.
   hidden even on a fresh browser and leaves `headerTourSeen` unset; widening the
   same session back to desktop reveals it (a desktop/tablet affordance).
 
+### 4.35 UI — Maske AH: Feedback & error states (T4.16 / T4.17)
+
+Two feedback gaps, both driven deterministically (route control, no timers) — see
+[Loading vs. empty](../internal/ui/UI_SPEC.md#event-lifecycle-sse) and
+[Failed detail fetches](../internal/ui/UI_SPEC.md#failed-detail-fetches). For T4.17,
+holding `/api/v1/snapshot` holds `openStream` too (it runs in the fetch's
+`.finally`), so the loading skeleton stays up until the test releases the gate;
+the SSE `synced` marker is what then reveals the empty state or the rows. For
+T4.16, a route that answers the first hit with an error status then continues
+exercises both the failure line and the Retry recovery in one flow.
+
+- **UAH1 — Skeleton → genuine-empty.** A stack-free instance: while the snapshot
+  is held, `loading-state` is visible and both the table and `empty-state` are
+  suppressed; on release the empty (`synced`) history flips it to `No deployments
+  yet`, table still hidden.
+- **UAH2 — Skeleton → table.** With a deploy present, the released history paints
+  the row and shows the table — the empty state never flashes.
+- **UAH3 — Audit history load-error + retry.** A `500` on `/api/audit` shows the
+  amber `load-error` (`Couldn't load deploy history`, not `No recorded deploys`);
+  Retry re-fetches and lists the record.
+- **UAH4 — Diff load-error + retry.** A `500` on `/api/events/*/diffs` shows the
+  `load-error` instead of a silent drop to the file list; Retry loads the real
+  diff panel.
+- **UAH5 — Peer-diff load-error + retry.** A `502` on the peer-diff proxy keeps
+  the peer detail's read-only facts and shows `Couldn't reach <host> for the
+  diff.`; Retry loads the peer diff inline.
+
+Behaviour-only (no snapshot): the states are structural (`data-testid` + text),
+and the skeleton shimmer / spinner are animations a visual baseline would have to
+freeze anyway.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

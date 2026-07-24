@@ -222,6 +222,15 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 				return
 			}
 		}
+		// End-of-replay marker: the deploy history (above) is a separate channel
+		// from the /api/v1/snapshot baseline, so the UI cannot otherwise tell
+		// "still replaying" from "caught up with zero deploys". This lets it
+		// retire the loading skeleton and reveal the genuine-empty state only once
+		// the history is known to be empty (T4.17). Re-sent on every reconnect;
+		// the UI settles on it once.
+		if _, err := fmt.Fprint(w, "event: synced\ndata: {}\n\n"); err != nil {
+			return
+		}
 		flusher.Flush()
 
 		// Subscribe to live deploy events, and state events when available.

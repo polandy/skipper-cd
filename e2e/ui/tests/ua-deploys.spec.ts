@@ -434,10 +434,11 @@ test.describe('UA9: error detail', () => {
 });
 
 // UA10 — Empty state. A stack-free instance never deploys, so no event is ever
-// emitted: the UI shows the `empty-state` placeholder and keeps the deploy table
-// hidden with zero rows. showTable() would flip both on the first event, so their
-// persistence *after the SSE stream connects and replays its (empty) history*
-// proves the empty path — not a pre-connect flash.
+// emitted: once the (empty) history replays and the `synced` marker lands, the
+// skeleton (T4.17) yields to the genuine-empty `empty-state` and the deploy
+// table stays hidden with zero rows. Its persistence *after the SSE stream
+// connects* proves the empty path — not a mid-connect flash. The skeleton→empty
+// transition itself is covered by Maske AH (UAH1).
 test.describe('UA10: empty state', () => {
   test.use({ startOptions: { stacks: [] } });
 
