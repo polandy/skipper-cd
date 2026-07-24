@@ -149,17 +149,19 @@ The [deploy search](#deploy-table) also scans orphans: an active query matches a
 
 ### Status badges
 
-| Status | Colour | Notes |
-|---|---|---|
-| `deploying` | `--accent` (peach) | Animated spinner dot |
-| `success` | `--success` (teal) | |
-| `failed` | `--danger` (red) | Error panel expanded below row |
-| `rolled_back` | `--rollback` (maroon) | Deploy failed but old containers restored and verified healthy; error panel shows details |
-| `rolled_back_unhealthy` | `--danger` (red) | Rollback ran but the restored version also failed the health gate — badge label stacks "rolled back" / "unhealthy" on two lines at a reduced font size (one line would overflow the status column); error panel shows details |
-| `queued` | `--queued` (yellow) | Deploy deferred — autosync paused, change waiting; tinted row with amber left bar and a `paused: <global\|stack>` tag on the stack cell. See [Autosync](#autosync). |
-| `blocked` | `--queued` (yellow) | Deploy held back — a `depends_on` dependency failed this run; shares the amber pending treatment of `queued` (tinted row, amber left bar) with a `blocked by <dep>` tag on the stack cell. Like `queued` it is a pending row keyed by stack, not a notification. See [Deploy ordering](configuration.md#deploy-ordering). |
-| `healed` | `--success` (teal) | Self-heal restored a degraded stack with a corrective redeploy (not a git deploy — no diffs); tinted row with a teal left bar. Its files cell carries a **self-heal badge** that expands the [heal detail panel](#expandable-panels) (what drifted). See [Self-heal](#self-heal). |
-| `heal_exhausted` | `--danger` (red) | Self-heal gave up after repeated redeploys did not restore the stack — badge label stacks "self-heal" / "failed" on two lines (like `rolled_back_unhealthy`); tinted row with a red left bar; error panel shows details. See [Self-heal](#self-heal). |
+Every badge **leads with an icon** in a shared fixed slot (`svg.badge-ico`, 24×24 stroke geometry matching the header icons; `currentColor`, so it inherits the badge's text colour) so the glyphs read at one optical size regardless of label width (T3.14). `deploying` keeps its animated spinner in that slot; unknown/label-only statuses render text alone. The icon markup comes from the pure `statusIcon` helper (`app-helpers.js`), so `badgeHTML` stays a string builder. The two worst terminal states — `rolled_back_unhealthy` and `heal_exhausted` — render as a **solid alert chip** (opaque `--danger` fill, `--crust` text + warning icon, a soft danger glow), the loudest chip in the status column rather than the smallest, correcting the earlier inverted hierarchy where the most attention-critical states were 9px two-line dim text (T3.14).
+
+| Status | Icon | Colour | Notes |
+|---|---|---|---|
+| `deploying` | spinner | `--accent` (peach) | Animated spinner dot |
+| `success` | check | `--success` (teal) | |
+| `failed` | cross | `--danger` (red) | Error panel expanded below row |
+| `rolled_back` | revert arrow | `--rollback` (maroon) | Deploy failed but old containers restored and verified healthy; error panel shows details |
+| `rolled_back_unhealthy` | warning | `--danger` (red, **solid**) | Rollback ran but the restored version also failed the health gate — a solid danger chip with a warning icon; the label still stacks "rolled back" / "unhealthy" on two lines (one line would overflow the status column); error panel shows details |
+| `queued` | clock | `--queued` (yellow) | Deploy deferred — autosync paused, change waiting; tinted row with amber left bar and a `paused: <global\|stack>` tag on the stack cell. See [Autosync](#autosync). |
+| `blocked` | no-entry | `--queued` (yellow) | Deploy held back — a `depends_on` dependency failed this run; shares the amber pending treatment of `queued` (tinted row, amber left bar) with a `blocked by <dep>` tag on the stack cell. Like `queued` it is a pending row keyed by stack, not a notification. See [Deploy ordering](configuration.md#deploy-ordering). |
+| `healed` | heal cross | `--success` (teal) | Self-heal restored a degraded stack with a corrective redeploy (not a git deploy — no diffs); tinted row with a teal left bar. Its files cell carries a **self-heal badge** that expands the [heal detail panel](#expandable-panels) (what drifted). See [Self-heal](#self-heal). |
+| `heal_exhausted` | warning | `--danger` (red, **solid**) | Self-heal gave up after repeated redeploys did not restore the stack — a solid danger chip with a warning icon; the label stacks "self-heal" / "failed" on two lines (like `rolled_back_unhealthy`); tinted row with a red left bar; error panel shows details. See [Self-heal](#self-heal). |
 
 ### Expandable panels
 

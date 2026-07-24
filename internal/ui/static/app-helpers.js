@@ -67,6 +67,37 @@ function statusText(status) {
   return status || '';
 }
 
+// STATUS_ICON_PATHS is the inner SVG geometry for each status badge's leading
+// glyph, drawn on a 24×24 grid to match the stroke-based header icons. The two
+// worst terminal states share the warning triangle by design (T3.14).
+const STATUS_ICON_PATHS = {
+  success: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  failed: '<path d="M7 7l10 10M17 7L7 17"/>',
+  rolled_back: '<path d="M8.5 5.5 4 10l4.5 4.5"/><path d="M4 10h9a6.5 6.5 0 0 1 0 13H8"/>',
+  rolled_back_unhealthy:
+    '<path d="M12 4.5 21 19.5H3z"/><path d="M12 10v4.5"/><path d="M12 17.4h.01"/>',
+  healed: '<path d="M12 6.5v11M6.5 12h11"/>',
+  heal_exhausted: '<path d="M12 4.5 21 19.5H3z"/><path d="M12 10v4.5"/><path d="M12 17.4h.01"/>',
+  queued: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3.2 2"/>',
+  blocked: '<circle cx="12" cy="12" r="8"/><path d="M6.3 6.3l11.4 11.4"/>',
+};
+
+// statusIcon returns the leading badge glyph for a deploy status as an inline
+// <svg> string (currentColor, so it inherits the badge's text colour), or ''
+// for statuses with no icon: deploying keeps its animated spinner, and unknown
+// or label-only statuses render text alone. Kept a pure string builder here so
+// the badge markup stays unit-testable without a DOM (T3.14).
+function statusIcon(status) {
+  const paths = STATUS_ICON_PATHS[status];
+  if (!paths) return '';
+  return (
+    '<svg class="badge-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    paths +
+    '</svg>'
+  );
+}
+
 // auditStatusLabel spells the two stacked-badge statuses on one line — the
 // history rows are compact, so the two-line badge wording is flattened here.
 function auditStatusLabel(status) {
@@ -337,6 +368,7 @@ if (typeof module !== 'undefined' && module.exports) {
     classifyDiffLine,
     shortSHA,
     statusText,
+    statusIcon,
     auditStatusLabel,
     phaseDuration,
     phaseSince,

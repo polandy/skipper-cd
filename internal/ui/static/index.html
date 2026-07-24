@@ -884,20 +884,23 @@
 
   function badgeHTML(status) {
     const cls = `badge badge-${status}`;
+    // deploying keeps its animated spinner as the leading glyph; every other
+    // status gets an icon from statusIcon (T3.14).
     if (status === 'deploying') return `<span class="${cls}" data-testid="status-badge"><span class="spinner"></span>deploying</span>`;
+    const icon = statusIcon(status);
     if (status === 'rolled_back_unhealthy') {
-      // Two stacked lines at a reduced size: the full wording must stay
-      // recognizable but overflows the status column on one line. Spans
-      // instead of <br> because the badge is a flex container (column).
-      return `<span class="${cls}" data-testid="status-badge"><span>rolled back</span><span>unhealthy</span></span>`;
+      // The worst terminal state: a warning icon on a solid danger fill (T3.14)
+      // — the loudest chip in the status column, not the smallest. The label
+      // still stacks two lines (one line overflows the column), wrapped in
+      // .badge-lbl so the badge stays a row for the leading icon.
+      return `<span class="${cls}" data-testid="status-badge">${icon}<span class="badge-lbl"><span>rolled back</span><span>unhealthy</span></span></span>`;
     }
     if (status === 'heal_exhausted') {
-      // Same stacked treatment as rolled_back_unhealthy — the wording overflows
-      // one line (ADR-0029).
-      return `<span class="${cls}" data-testid="status-badge"><span>self-heal</span><span>failed</span></span>`;
+      // Same solid two-line treatment as rolled_back_unhealthy (ADR-0029, T3.14).
+      return `<span class="${cls}" data-testid="status-badge">${icon}<span class="badge-lbl"><span>self-heal</span><span>failed</span></span></span>`;
     }
     const label = status === 'rolled_back' ? 'rolled back' : status;
-    return `<span class="${cls}" data-testid="status-badge">${label}</span>`;
+    return `<span class="${cls}" data-testid="status-badge">${icon}${label}</span>`;
   }
 
   function filesHTML(files) {
