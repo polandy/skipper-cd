@@ -2030,20 +2030,47 @@
     color: var(--accent);
     background: var(--accent-dim);
   }
-  /* The active view's button opens a small options popover (below); a subtle
-     caret hints at it. Absolutely positioned so toggling it never shifts the
-     button's width — nothing in the header hops. */
+  /* The active view button carries two distinct cues. A top bar marks it as the
+     active view (every view, Logs included): an intentional ::before rectangle
+     — not the earlier accident where the a11y sweep's touch-target box (on the
+     shared ::after at id-specificity) reshaped this caret's border into a bar.
+     And a caret marks that the view has an options popover: a real .vt-caret
+     child, because ::before is the bar and ::after is the touch target, so the
+     caret needs its own box. The caret shows only on views that have a popup
+     (not Logs) and flips up while it is open (aria-expanded). Both are
+     absolutely positioned, so nothing in the header shifts as they appear or
+     the popover toggles. */
   .view-toggle button { position: relative; }
-  .view-toggle button.active::after {
+  .view-toggle button.active::before {
     content: "";
     position: absolute;
+    left: 2px;
+    right: 2px;
+    top: -5px;
+    height: 3px;
+    background: currentColor;
+    opacity: 0.6;
+    border-radius: 2px;
+  }
+  .vt-caret {
+    position: absolute;
     left: 50%;
-    bottom: 1px;
+    bottom: -1px;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid currentColor;
+    opacity: 0;
     transform: translateX(-50%);
-    border-left: 3px solid transparent;
-    border-right: 3px solid transparent;
-    border-top: 3px solid currentColor;
-    opacity: 0.55;
+    transition: transform 0.18s ease;
+  }
+  body:not(.view-logs) .view-toggle button.active .vt-caret { opacity: 0.9; }
+  .view-toggle button.active[aria-expanded="true"] .vt-caret {
+    transform: translateX(-50%) rotate(180deg);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vt-caret { transition: none; }
   }
 
   /* ─── VIEW OPTIONS POPOVER ─── */
