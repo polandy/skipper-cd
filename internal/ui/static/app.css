@@ -1200,7 +1200,7 @@
     border-bottom: 1px solid var(--border);
     border-radius: var(--radius); /* top corners squared where bound (below) */
     box-shadow: inset 3px 0 0 var(--accent);
-    animation: slidein 0.18s ease;
+    animation: expand 0.2s ease-out;
   }
   .audit-panel .ap-head {
     display: flex; align-items: center; gap: 8px; padding: 0 0 8px;
@@ -1356,6 +1356,28 @@
   @keyframes expand {
     from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Reduced-motion guard for the always-on/enter animations shared across the
+     app: the connection + deploy indicators (breathe/reconnect-pulse), the
+     new-row entrance (rowEnter) and the panel-expand transitions. Each element's
+     rest state is its natural (visible) state, so disabling the animation just
+     shows it immediately. */
+  @media (prefers-reduced-motion: reduce) {
+    .indicator-dot.warn,
+    .indicator-dot.err,
+    .deploy-status.active .deploy-dot,
+    .spinner,
+    .pending-count .pc-dot,
+    .run-badge.ship,
+    .event-row.new-row,
+    .diff-panel,
+    .files-list,
+    .audit-panel,
+    .heal-panel,
+    .error-detail {
+      animation: none;
+    }
   }
 
   .file-path {
@@ -2547,7 +2569,7 @@
   }
 
   .log-level.ERROR { color: var(--danger); }
-  .log-level.WARN { color: var(--yellow); }
+  .log-level.WARN { color: var(--hunk); }
   .log-level.DEBUG { color: var(--skip); }
 
   .log-cmd {

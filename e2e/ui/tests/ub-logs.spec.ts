@@ -429,3 +429,31 @@ test.describe('UB9: Logs view live/pause pill', () => {
     await expect(lines).toHaveCount(before + 2);
   });
 });
+
+// UB10 — Live/pause pill is keyboard-operable. The pill is a `role="button"`
+// span (tabindex 0), so Enter and Space must toggle it exactly like a click —
+// AT users otherwise get a control that announces as a button but does nothing.
+test.describe('UB10: Logs view live/pause pill — keyboard', () => {
+  test.use({ startOptions: { stacks: ['web'] } });
+
+  test('Enter and Space toggle pause just like a click', async ({ page, skipper }) => {
+    const live = page.locator('[data-testid="logs-live"]');
+    const stat = page.locator('[data-testid="logs-stat"]');
+
+    await page.goto(`${skipper.baseURL}/`);
+    await openLogsView(page);
+    await expect(live).not.toHaveClass(/paused/);
+
+    // Focus the pill and press Enter: it pauses without any mouse click.
+    await live.focus();
+    await expect(live).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(live).toHaveClass(/paused/);
+    await expect(stat).toHaveText('paused');
+
+    // Space resumes it — proving both activation keys are wired, not just Enter.
+    await page.keyboard.press(' ');
+    await expect(live).not.toHaveClass(/paused/);
+    await expect(stat).toHaveText('live · streaming');
+  });
+});

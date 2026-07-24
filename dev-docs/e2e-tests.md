@@ -313,6 +313,10 @@ UI suite reuses.
   while paused and proven absent from the DOM (`log-line` count unchanged);
   going live again catches both up in one render. `logs-stat` tracks
   live/paused text in the panel footer.
+- **UB10 — Live/pause pill, keyboard.** `logs-live` is a `role="button"` span
+  (tabindex 0), so it must activate on Enter and Space, not only a mouse click.
+  The pill is focused, `Enter` pauses it (`paused` class + `logs-stat` text) and
+  `Space` resumes it — proving both activation keys are wired.
 
 ### 4.4 UI — Maske C: Autosync-Drawer
 
@@ -1029,6 +1033,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Log stream recovers from a fatal error | **UB7** |
 | Logs view panel controls, no popover | **UB8** |
 | Live/pause pill freezes without dropping | **UB9** |
+| Live/pause pill keyboard-operable (Enter/Space) | **UB10** |
 | Header autosync control reflects server state | **UC1** |
 | Pending count pill appears/hides | **UC2** |
 | Drawer open/close (click/Esc/outside) | **UC3** |
