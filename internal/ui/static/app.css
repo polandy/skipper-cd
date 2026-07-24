@@ -1921,6 +1921,100 @@
     .theme-notice { animation: none; }
   }
 
+  /* ─── FIRST-RUN HEADER TOUR (T3.15) ─── */
+  /* The header is glyph-only by design (the glyph migration); learnability
+     otherwise rests entirely on hover tooltips, which touch users never get.
+     On a fresh browser only, a caption sits under each control and a banner
+     explains it; "Got it"/Esc marks it seen for good. The seen state (default
+     for every returning browser, applied pre-paint) must be byte-identical to
+     the pre-tour header — so each caption wrapper is display:contents when seen,
+     collapsing to nothing, and only becomes a column during the one-time tour. */
+  .ht-cap { display: contents; }
+  .ht-lbl, .ht-lbl-row { display: none; }
+
+  /* First run = <html> without .header-tour-seen. Captions appear, controls
+     stack over their label, and the header grows to fit (var kept in sync so
+     the Logs fullscreen offset stays correct). */
+  html:not(.header-tour-seen) .ht-cap {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  html:not(.header-tour-seen) .view-switch {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  html:not(.header-tour-seen) .ht-lbl {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+    line-height: 1;
+    animation: ht-cap-in 0.22s ease;
+  }
+  html:not(.header-tour-seen) .ht-lbl-row {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+    gap: 6px;
+  }
+  html:not(.header-tour-seen) header { height: auto; min-height: 74px; }
+  html:not(.header-tour-seen) { --app-header-h: 74px; }
+  /* A caption whose control isn't currently rendered would float with no glyph
+     under it, so drop it: the search glyph is hidden on the Logs view, and the
+     Hosts control only exists on a multi-host instance (.hosts-btn.enabled). The
+     wrapper then has no visible child and collapses to nothing. */
+  html:not(.header-tour-seen) body.view-logs .ht-cap-search .ht-lbl { display: none; }
+  html:not(.header-tour-seen) .ht-cap-hosts:not(:has(.hosts-btn.enabled)) .ht-lbl { display: none; }
+
+  @keyframes ht-cap-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Dismiss banner — a slim strip under the header, styled from the accent like
+     an onboarding note (distinct from the top-right theme notice). Hidden once
+     the tour is seen. */
+  .header-tour {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 28px;
+    background: var(--accent-dim);
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    font-size: 12.5px;
+    color: var(--text-primary);
+    animation: ht-cap-in 0.22s ease;
+  }
+  .header-tour-seen .header-tour { display: none; }
+  .header-tour .ht-ico { width: 17px; height: 17px; flex-shrink: 0; color: var(--accent); }
+  .header-tour .ht-text { color: var(--text-secondary); margin-right: auto; }
+  .header-tour-dismiss {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--crust);
+    background: var(--accent);
+    border: none;
+    border-radius: 7px;
+    padding: 5px 13px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .header-tour-dismiss:hover { filter: brightness(1.08); }
+  .header-tour-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ht-lbl, .header-tour { animation: none; }
+  }
+
   /* PWA update banner — appears when a newer skipper-cd version is deployed and
      a new service worker is waiting. Bottom-centred so it never collides with
      the header (z 100) or the top-right theme notice; sits above the drawer
@@ -2794,6 +2888,21 @@
     .audit-row .ar-sha   { justify-self: end; text-align: right; }
     .audit-row .ar-files { display: none; }
     .audit-row .ar-err   { grid-column: 1 / -1; }
+
+    /* First-run tour: the compact phone header can't fit a caption under every
+       glyph, and a banner that names captions nobody can see is pointless — so
+       the whole tour is a desktop/tablet affordance. Reset the tour's column
+       layout + grown height and hide the banner (rules kept later than the base
+       tour rules so the cascade lands). A phone-only visitor never sets
+       headerTourSeen, so it still greets them the first time they open a wider
+       viewport. */
+    html:not(.header-tour-seen) .ht-cap { display: contents; }
+    html:not(.header-tour-seen) .view-switch { flex-direction: row; gap: 0; }
+    html:not(.header-tour-seen) .ht-lbl,
+    html:not(.header-tour-seen) .ht-lbl-row { display: none; }
+    html:not(.header-tour-seen) header { height: 48px; min-height: 0; }
+    html:not(.header-tour-seen) { --app-header-h: 48px; }
+    .header-tour { display: none; }
   }
 
   /* Portrait phones keep the build identity next to the logo. It clips with an

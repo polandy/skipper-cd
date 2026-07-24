@@ -1093,6 +1093,33 @@ also captured by the regenerated §5 snapshots.
   `background-color` is opaque (alpha ≈ 1) while a dim badge (`success`) is
   translucent (alpha < 0.9) — a deterministic computed-style read, no timing.
 
+### 4.34 UI — Maske AG: First-run header tour (T3.15)
+
+The glyph-only header teaches its controls once on a fresh browser: a caption
+under each control plus a dismiss banner (`data-testid="header-tour"`), gated on
+the `localStorage` key `headerTourSeen` and applied pre-paint as
+`.header-tour-seen` on `<html>` (§3, [First-run header tour](../internal/ui/UI_SPEC.md#first-run-header-tour)).
+Purely storage-gated — no timers — so shown/dismissed is deterministic. This spec
+opts out of the shared fixture's default `seedTourSeen` so it lands on a genuinely
+fresh browser; every other spec keeps the seed, so the steady-state header (not
+the one-time tour) is what all other baselines and behaviour tests see — which is
+why §5 needed no baseline churn.
+
+- **UAG1 — Fresh browser shows the tour.** On first load the banner and the
+  per-control captions (`Deploys`, `Autosync`) are visible, and `<html>` is not
+  yet marked `header-tour-seen`.
+- **UAG2 — Got it dismisses and persists.** Clicking **Got it** hides the banner
+  and captions, marks `<html>.header-tour-seen`, and sets `headerTourSeen='1'`; a
+  reload of the same context never re-shows the tour.
+- **UAG3 — Esc dismisses.** Pressing `Esc` is an equivalent dismiss (a keyboard
+  user is never trapped), and focus lands back on the active view button.
+- **UAG4 — Returning browser skips it.** With `headerTourSeen` pre-seeded the
+  tour never shows — not even for a frame — because the pre-paint class applies
+  before the header paints.
+- **UAG5 — Suppressed on mobile.** At ≤ 700 px the tour (banner + captions) is
+  hidden even on a fresh browser and leaves `headerTourSeen` unset; widening the
+  same session back to desktop reveals it (a desktop/tablet affordance).
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
