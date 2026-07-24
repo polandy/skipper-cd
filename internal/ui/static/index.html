@@ -90,9 +90,11 @@
       <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
         <button data-view="deploys" class="active" title="Deploys" aria-label="Deploys" aria-haspopup="true" aria-expanded="false">
           <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3.5 9.5h17M9 9.5V19" stroke="currentColor" stroke-width="2"/></svg>
+          <span class="vt-caret" aria-hidden="true"></span>
         </button>
         <button data-view="stacks" title="Stacks" aria-label="Stacks" aria-haspopup="true" aria-expanded="false">
           <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l8 4-8 4-8-4 8-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 12l8 4 8-4M4 16.5l8 4 8-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="vt-caret" aria-hidden="true"></span>
         </button>
         <button data-view="logs" title="Logs" aria-label="Logs" aria-haspopup="true" aria-expanded="false">
           <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12h4l2-6 3 12 2-8 2 4h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -3578,7 +3580,12 @@
     viewOptions.classList.toggle('open', open);
     let activeBtn = null;
     viewButtons.forEach(function(btn) {
-      if (btn.dataset.view === activeView) { btn.setAttribute('aria-expanded', String(open)); activeBtn = btn; }
+      // Keep aria-expanded honest on every button — only the active one can be
+      // open, the rest are always false — so the caret cue (CSS keys off it)
+      // never reads "open" on a stale non-active button.
+      const isActive = btn.dataset.view === activeView;
+      btn.setAttribute('aria-expanded', String(isActive && open));
+      if (isActive) activeBtn = btn;
     });
     // role=menu popover: focus the first option on open, return to the active
     // view button on keyboard close (no hard trap — Escape closes it). (T2.7)

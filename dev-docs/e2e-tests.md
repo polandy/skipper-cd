@@ -997,6 +997,30 @@ discoverable — before this it was type-to-search only, an easter egg. Behaviou
   first character, and the magnifier reflects a bar opened by typing (`.active`
   + `aria-expanded`); `Esc` folds it away and resets the trigger.
 
+### 4.30 UI — Maske AC: View-toggle active-bar + options caret (T3.12)
+
+The two cues on the active view button. A **top bar** (an intentional `::before`
+rectangle) marks the active view on every view, Logs included — it replaces the
+earlier accidental bar, where the a11y sweep's touch-target `::after` box had
+reshaped a caret's `border-top` into a full-width bar. A **caret** (the real
+`.vt-caret` child) marks that the view has an options popover: present only on
+views that have one (deploys/stacks, not Logs) and flipped up while open.
+Behaviour + computed-style only (no snapshot).
+
+- **UAC1 — Both cues on the active view only.** On default deploys the active
+  button shows the bar (`::before`, 3px) and a visible caret; the inactive
+  stacks button shows neither (no bar, caret hidden).
+- **UAC2 — Logs bar-only.** The active Logs button shows the bar (it is a valid
+  active view) but no caret (it has no popover — the false-affordance fix),
+  while the active Stacks button shows both; the caret gate is Logs-specific.
+- **UAC3 — Flip on open.** Opening the popover flips the caret (transform
+  `matrix(1,…)` → `matrix(-1,…)`), keyed off the active button's
+  `aria-expanded`; closing returns it to rest. The flip transition is disabled
+  in-test so the transform reads at its settled value, never mid-tween.
+- **UAC4 — Honest `aria-expanded`.** Opening on Deploys then switching to Stacks
+  closes the popover and leaves both buttons `aria-expanded="false"` (no stale
+  `true`, so the caret never reads open on a non-active button).
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
