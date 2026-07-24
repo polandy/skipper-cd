@@ -21,6 +21,11 @@
       if (override) el.setAttribute('data-theme', override);
     }
     if (localStorage.getItem('colorScheme') === 'light') el.classList.add('light');
+    // First-run header tour (T3.15): the glyph-only header teaches its controls
+    // once via captions + a banner, then tucks them away for good. Applying the
+    // "seen" class here — before paint — keeps returning browsers from flashing
+    // the tour and leaves their header layout byte-identical to the no-tour case.
+    if (localStorage.getItem('headerTourSeen') === '1') el.classList.add('header-tour-seen');
   })();
 </script>
 <link rel="icon" type="image/svg+xml" href="__FAVICON_URI__">
@@ -83,9 +88,12 @@
       </button>
       <div class="beacon-pop" id="beacon-pop" data-testid="health-beacon-pop" role="menu" aria-label="Unhealthy stacks"></div>
     </div>
+    <span class="ht-cap ht-cap-search">
     <button class="stack-search-btn" id="stack-search-btn" data-testid="stack-search-btn" type="button" title="Search stacks" aria-label="Search stacks" aria-expanded="false">
       <svg class="ss-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     </button>
+      <span class="ht-lbl" aria-hidden="true">Search</span>
+    </span>
     <div class="view-switch" id="view-switch">
       <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
         <button data-view="deploys" class="active" title="Deploys" aria-label="Deploys" aria-haspopup="true" aria-expanded="false">
@@ -100,6 +108,7 @@
           <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12h4l2-6 3 12 2-8 2 4h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
+      <div class="ht-lbl-row" aria-hidden="true"><span class="ht-lbl">Deploys</span><span class="ht-lbl">Stacks</span><span class="ht-lbl">Logs</span></div>
       <div class="view-options" id="view-options" data-testid="view-options" role="menu" aria-label="View options">
         <div class="vo-group" data-view="deploys">
           <button class="filter-toggle vo-search" id="deploy-search-open" data-testid="deploy-search" type="button" title="Search stacks">
@@ -125,17 +134,24 @@
         </div>
       </div>
     </div>
+    <span class="ht-cap ht-cap-hosts">
     <button class="hosts-btn" id="hosts-btn" data-testid="hosts-btn" type="button" aria-expanded="false" aria-haspopup="dialog" title="Hosts">
       <svg class="hb-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="4" width="16" height="6" rx="1.5" stroke="currentColor" stroke-width="2"/><rect x="4" y="14" width="16" height="6" rx="1.5" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="7" r="1" fill="currentColor"/><circle cx="8" cy="17" r="1" fill="currentColor"/></svg>
       <span class="hb-warn" aria-hidden="true"></span>
       <span class="hb-count"><span id="hosts-count">1/1</span></span>
       <svg class="hb-chev" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+      <span class="ht-lbl" aria-hidden="true">Hosts</span>
+    </span>
+    <span class="ht-cap">
     <div class="autosync-btn" id="autosync-btn" data-testid="autosync-btn" role="button" tabindex="0" aria-expanded="false" title="Autosync">
       <svg class="as-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M17 3v4h-4M7 21v-4h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>autosync</span>
       <span class="pending-count" data-testid="pending-pill"><span class="pc-dot"></span><span id="autosync-count">0</span></span>
     </div>
+      <span class="ht-lbl" aria-hidden="true">Autosync</span>
+    </span>
+    <span class="ht-cap">
     <div class="theme-picker" title="UI theme (this browser only — does not change the deployed environment's theme)">
       <svg class="tp-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-3.9-4-6.6-9-6.6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="7.5" cy="12" r="1.1" fill="currentColor"/><circle cx="9.5" cy="7.8" r="1.1" fill="currentColor"/><circle cx="14" cy="7.3" r="1.1" fill="currentColor"/><circle cx="17" cy="10.5" r="1.1" fill="currentColor"/></svg>
       <select class="theme-select" id="theme-select" data-testid="theme-select" title="UI theme (this browser only — does not change the deployed environment's theme)">
@@ -146,11 +162,16 @@
         <option value="rose-pine">Rosé Pine</option>
       </select>
     </div>
+      <span class="ht-lbl" aria-hidden="true">Theme</span>
+    </span>
+    <span class="ht-cap">
     <button class="filter-toggle" id="theme-toggle" data-testid="theme-toggle" title="Switch to light theme">
       <div class="toggle-track"><div class="toggle-thumb"></div></div>
       <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="tg-moon" d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><g class="tg-sun"><circle cx="12" cy="12" r="4.3" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.4 19.6l1.6-1.6M18 6l1.6-1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g></svg>
       <span>light</span>
     </button>
+      <span class="ht-lbl" aria-hidden="true">Light / Dark</span>
+    </span>
     <div class="indicator" data-testid="conn-indicator" data-state="connecting" role="status" aria-live="polite" aria-atomic="true">
       <div class="indicator-dot warn" id="conn-dot">
         <svg class="ci-ico ci-link" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -160,6 +181,15 @@
     </div>
   </div>
 </header>
+
+<!-- First-run header tour (T3.15): shown once on a fresh browser to teach the
+     glyph-only header, then dismissed for good (localStorage headerTourSeen).
+     Hidden whenever <html> carries .header-tour-seen — set pre-paint above. -->
+<div class="header-tour" id="header-tour" data-testid="header-tour" role="region" aria-label="Getting started">
+  <svg class="ht-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 11v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/></svg>
+  <span class="ht-text">New here? The labels name each header control — they tuck away once you're set.</span>
+  <button class="header-tour-dismiss" id="header-tour-dismiss" data-testid="header-tour-dismiss" type="button">Got it</button>
+</div>
 
 <!-- Off-screen live region: announces terminal deploy outcomes (success/failed/
      rolled_back/healed/…) to screen readers as SSE events land (T2.8). -->
@@ -3158,6 +3188,36 @@
 
     updateThemeNotice(); // show on load if a saved override already differs from the server theme
   }
+
+  // ── First-run header tour (T3.15) ──
+  // The header is glyph-only by design; on a fresh browser only, captions under
+  // each control plus the banner teach the mapping. "Got it" (or Esc) marks it
+  // seen — the class hides the captions/banner and persists so it never returns.
+  // Purely localStorage-gated (no timers), so the shown/dismissed states are
+  // deterministic. Returning browsers get .header-tour-seen pre-paint (see head).
+  (function() {
+    const root = document.documentElement;
+    const dismiss = document.getElementById('header-tour-dismiss');
+    if (!dismiss || root.classList.contains('header-tour-seen')) return;
+    function endTour() {
+      if (root.classList.contains('header-tour-seen')) return;
+      root.classList.add('header-tour-seen');
+      try {
+        localStorage.setItem('headerTourSeen', '1');
+      } catch (e) {
+        // Private-mode storage can throw; the class already hid the tour for
+        // this session, so log and carry on rather than leaving it half-applied.
+        console.warn('could not persist headerTourSeen', e);
+      }
+      // Keyboard users lose the vanished button; land them back in the header.
+      const nav = document.querySelector('.view-toggle button.active');
+      if (nav) nav.focus();
+    }
+    dismiss.addEventListener('click', endTour);
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') endTour();
+    });
+  })();
 
   // ── Autosync controls ──
   // State comes from the 'autosync' and 'queue' SSE events (initial snapshots
