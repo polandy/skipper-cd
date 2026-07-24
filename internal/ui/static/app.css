@@ -1265,7 +1265,7 @@
 
   /* History lists many statuses, so the open row uses the neutral accent bar,
      not a status colour. Shared with the roster's open row. */
-  .event-row.audit-open, .roster-row.audit-open {
+  .event-row.audit-open, .roster-row.audit-open, .roster-row.hooks-open {
     background: color-mix(in srgb, var(--accent) 7%, transparent);
     box-shadow: inset 3px 0 0 var(--accent);
   }
@@ -1624,7 +1624,7 @@
      an open row and all its bound trailers read as one card with an unbroken left
      bar. Applies to the health panel too — it shares the same binding. */
   .event-row.health-open, .event-row.diff-open, .event-row.audit-open,
-  .roster-row.audit-open {
+  .roster-row.audit-open, .roster-row.hooks-open {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
@@ -2826,7 +2826,6 @@
   .clog-btn:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
   .clog-btn.on { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
   .clog-btn svg { width: 12px; height: 12px; }
-  .roster-stack .clog-btn { margin-left: 7px; vertical-align: middle; }
 
   /* ── App-link icon (dev-docs/traefik-app-links-spec.md): opens a stack's
      Traefik-routed hostname, discovered live from container labels. A single
@@ -2882,8 +2881,8 @@
     border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
   .hooks-badge svg { width: 11px; height: 11px; }
   .hooks-badge .hk-count { font-variant-numeric: tabular-nums; }
-  .roster-stack .hooks-badge { margin-left: 7px; vertical-align: middle; }
   .event-row.hooks-open .hooks-badge,
+  .roster-row.hooks-open .hooks-badge,
   .hooks-badge[data-hook-active] { background: color-mix(in srgb, var(--accent) 22%, transparent);
     border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
   .hooks-badge[data-hook-active] { animation: hookpulse 1.4s ease-in-out infinite; }

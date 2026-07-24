@@ -585,6 +585,20 @@
     openMoreWrap = null;
   }
 
+  // buildRosterRowMore folds an enabled roster row's secondary actions (container
+  // logs, deploy hooks) into the same ⋯ overflow menu the Deploys row uses
+  // (T3.13b). The relocated buttons keep their classes, testids and handlers, so
+  // opening the log/hooks panels is unchanged; jump + app-link stay inline as
+  // primary navigation. Deploy history is not folded here — on the roster the
+  // whole row-body click already opens the health + history panel.
+  function buildRosterRowMore(cell, entry) {
+    const pop = ensureRowMore(cell, entry.name).querySelector('.more-pop');
+    pop.appendChild(moreMenuItem(clogButton(entry.name, ''), 'Container logs')); // ADR-0037
+    if (entry.hooks && hookCount(entry.hooks) > 0) { // ADR-0038
+      pop.appendChild(moreMenuItem(hooksBadgeButton(entry.name, entry.hooks), 'Deploy hooks'));
+    }
+  }
+
   // rosterStatusHTML picks the row's status: a live in-flight deploy wins, then
   // the parked/never-deployed synthetic flags, else the last terminal badge.
   function rosterStatusHTML(entry) {
@@ -625,6 +639,7 @@
 
   function renderRoster() {
     const list = document.getElementById('roster-list');
+    if (openMoreWrap && list.contains(openMoreWrap)) closeMoreMenu(); // the rebuild orphans an open roster ⋯ menu
     list.textContent = '';
     openLinkWrap = null; // rebuilt rows drop any open app-link popover too
     rosterOrdered().forEach(function(entry) {
@@ -646,11 +661,15 @@
       const rowHealth = entry.disabled ? null : healthSnap[entry.name];
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
-        `<span class="roster-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : clogBtnHTML(entry.name, '')}${(!entry.disabled && entry.hooks && hookCount(entry.hooks) > 0) ? hooksBadgeHTML(entry.name, entry.hooks) : ''}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
+        `<span class="roster-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, selfHost)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
       populateIcon(row.querySelector('.stack-icon'), entry.name);
+      // Fold container logs + deploy hooks into the row's ⋯ overflow menu
+      // (T3.13b), matching the Deploys row; jump + app-link stay inline as
+      // primary navigation. Disabled stacks have neither, so carry no menu.
+      if (!entry.disabled) buildRosterRowMore(row.querySelector('.roster-stack'), entry);
       list.appendChild(row);
     });
     renderPeerRosterRows(list); // append each peer's stacks, host-tagged + read-only
@@ -1190,8 +1209,12 @@
       if (rrow) {
         const rcell = rrow.querySelector('.roster-status');
         if (rcell) rcell.appendChild(hookPhaseNode(hr));
+        // Pulse rides the visible ⋯ button (the badge now sits inside the
+        // collapsed menu); the badge itself is still marked for when it opens.
         const rb = rrow.querySelector('.hooks-badge');
         if (rb) rb.dataset.hookActive = '1';
+        const rmb = rrow.querySelector('.more-btn');
+        if (rb && rmb) rmb.dataset.hookActive = '1';
       }
     }
   }
@@ -2829,8 +2852,8 @@
   // audit panel. One open at a time; the panel trails its row as a sibling, so
   // clicks inside it don't re-trigger the row.
   function closeRosterPanels() {
-    rosterList.querySelectorAll('.audit-panel, .health-panel').forEach(function(p) { p.remove(); });
-    rosterList.querySelectorAll('.roster-row.audit-open').forEach(function(r) { r.classList.remove('audit-open'); });
+    rosterList.querySelectorAll('.audit-panel, .health-panel, .hooks-panel').forEach(function(p) { p.remove(); });
+    rosterList.querySelectorAll('.roster-row.audit-open, .roster-row.hooks-open').forEach(function(r) { r.classList.remove('audit-open', 'hooks-open'); });
   }
 
   // updateAppLinks patches each already-rendered row's link icon in place from
@@ -2845,7 +2868,13 @@
       if (old) old.remove();
       if (row.classList.contains('disabled')) return;
       const html = linkCellHTML(row.dataset.stack);
-      if (html) cell.insertAdjacentHTML('beforeend', html);
+      if (html) {
+        // Keep the app-link before the ⋯ menu: a plain re-append would drop it
+        // after the ⋯ (the link is rebuilt on every health poll, the ⋯ is not).
+        const moreWrap = cell.querySelector('.row-more');
+        if (moreWrap) moreWrap.insertAdjacentHTML('beforebegin', html);
+        else cell.insertAdjacentHTML('beforeend', html);
+      }
     });
   }
 
@@ -2876,6 +2905,13 @@
 
   rosterList.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
   rosterList.addEventListener('click', function(e) {
+    // ⋯ overflow menu: toggle open/closed. Picking an action closes the menu,
+    // then falls through to that action's own handler below (the relocated
+    // buttons still carry their .clog-btn/.hooks-badge classes). Mirrors Deploys.
+    const moreBtn = e.target.closest('.more-btn');
+    if (moreBtn) { toggleMoreMenu(moreBtn.closest('.row-more')); return; }
+    if (e.target.closest('.more-item')) closeMoreMenu();
+
     // Host chip: quick-filter the merged view to this row's host (toggle). Before
     // the peer-row guard and panel logic so it works on every row's chip.
     const hostChip = e.target.closest('.host-mono');
@@ -2891,6 +2927,25 @@
     // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
     const hookLog = e.target.closest('.hook-log-btn');
     if (hookLog) { clog.openHookLog(hookLog, hookLog.dataset.hookLog); return; }
+    // Deploy hooks (ADR-0038): toggle the bound hooks panel (configured commands),
+    // like the Deploys hooks badge. On the roster the badge only acts from inside
+    // the ⋯ menu; a click elsewhere on the row opens the history panel instead.
+    const hbadge = e.target.closest('.hooks-badge');
+    if (hbadge) {
+      const hrow = hbadge.closest('.roster-row');
+      if (hrow) {
+        const hnext = hrow.nextElementSibling;
+        if (hnext && hnext.classList.contains('hooks-panel')) {
+          closeHooksPanel(hrow);
+        } else {
+          closeRosterPanels(); // one panel per row
+          hrow.classList.add('hooks-open');
+          hrow.after(createHooksPanel(hrow.dataset.stack));
+          refilterRoster(); // a freshly opened panel obeys an active filter
+        }
+      }
+      return;
+    }
     // Container-logs button (ADR-0037) — per stack on the row, per container on a
     // health-panel service line. Handled first so it never toggles the history panel.
     const clogB = e.target.closest('.clog-btn');

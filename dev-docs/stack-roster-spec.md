@@ -93,6 +93,16 @@ Only what is specific to the roster is listed here.
 
 ### Row interactions (parity with the deploys view)
 
+- **⋯ overflow menu (T3.13b).** An enabled row's secondary actions — **container
+  logs** (ADR-0037) and **deploy hooks** (ADR-0038) — fold behind the same `⋯`
+  button (`more-btn`) the deploy row uses, so the row sheds the look-alike glyph
+  cluster; the cross-view **jump** and the **app-link** stay inline as primary
+  navigation. Same shared `⋯` behaviour (one open at a time, outside-click / Esc
+  dismiss, portrait right-flip) and the relocated buttons keep their handlers.
+  No **Deploy history** item — the row-body click (below) already opens it. A
+  hooks-less stack still gets the `⋯`, holding container logs alone; disabled
+  rows have no secondary actions, so no menu. The running-hook pulse rides the
+  visible `⋯` (the badge sits inside the collapsed menu).
 - **Click a row → containers + deploy history.** Expanding a stack stacks two
   bound panels below the row as one accent card: the **containers** panel first
   (the stack's live health/services, `createHealthPanel`, from the `health`

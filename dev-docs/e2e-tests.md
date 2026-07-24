@@ -1045,6 +1045,31 @@ a hooks-declaring `web` stack so all three actions appear. Behaviour-only.
   within the viewport bounds (it flips right-aligned near the edge) — the density
   fix never reintroduces an off-screen/overlapping menu.
 
+### 4.32 UI — Maske AE: Stacks/roster row ⋯ overflow menu (T3.13b)
+
+The Stacks/roster row (§4.19) folds its secondary actions — container logs
+(§4.21) and deploy hooks (§4.22) — behind the same `⋯` button (`more-btn`), so it
+sheds the same look-alike glyph cluster the deploy row shed in §4.31, while the
+cross-view jump and the app-link stay inline as primary navigation. Unlike the
+deploy menu it has no Deploy history item: on the roster the row-body click
+already opens the health + history panel. The relocated buttons keep their own
+handlers (`openRowMenu` opens the menu first). Boots in discovery mode with a
+hooks-declaring `web` stack and a plain `api` stack. Behaviour-only.
+
+- **UAE1 — Collapsed + labelled.** The `web` row shows a `more-btn` and the jump
+  button, with no clog/hooks glyph loose in the stack cell; the menu is hidden
+  until clicked, then lists Container logs + Deploy hooks (and *not* Deploy
+  history). The hooks-less `api` row carries the same `⋯` with container logs
+  alone (the single-item menu keeps the roster consistent).
+- **UAE2 — Container logs.** Picking Container logs opens the `clog-panel` and
+  closes the menu — the relocated clog button keeps its handler.
+- **UAE3 — Deploy hooks.** Picking Deploy hooks opens the bound `hooks-panel`
+  (the row gains `hooks-open`) and closes the menu; a second selection toggles it
+  closed. On the roster the hooks badge is only actionable from inside the menu.
+- **UAE4 — Dismissal.** The menu closes on an outside click and on `Esc`.
+- **UAE5 — Portrait safety.** On a 400px portrait viewport the open popover stays
+  within the viewport bounds (it flips right-aligned near the edge).
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
