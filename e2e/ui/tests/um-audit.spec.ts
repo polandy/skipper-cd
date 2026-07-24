@@ -1,6 +1,10 @@
 import { test, expect } from '../fixtures/test';
+import { openRowMenu } from '../fixtures/menu';
 
 // Maske M: per-stack deploy history (audit log, ADR-0033). See dev-docs/e2e-tests.md §4.14.
+//
+// The history button lives inside the newest row's ⋯ overflow menu (T3.13), so
+// each history-btn interaction opens that menu first (openRowMenu).
 //
 // The newest row per stack carries a history button; clicking it opens a panel
 // listing that stack's durable terminal deploy outcomes, fetched from
@@ -30,6 +34,7 @@ test.describe('UM1: per-stack deploy history', () => {
     await twoDeploys(page, skipper);
 
     const newest = webRows(page).first();
+    await openRowMenu(newest);
     await newest.locator('[data-testid="history-btn"]').click();
 
     const panel = page.locator('[data-testid="audit-panel"]');
@@ -46,7 +51,8 @@ test.describe('UM1: per-stack deploy history', () => {
     await expect(rows.first().locator('.ar-sha')).not.toHaveText('—');
     await expect(rows.first().locator('.ar-status')).toContainText('success');
 
-    // Toggling the button again closes the panel.
+    // Toggling the button again closes the panel (reopen the menu to reach it).
+    await openRowMenu(newest);
     await newest.locator('[data-testid="history-btn"]').click();
     await expect(panel).toHaveCount(0);
     await expect(newest).not.toHaveClass(/audit-open/);
@@ -71,7 +77,9 @@ test.describe('UM3: history and diff panels are mutually exclusive', () => {
     const auditPanel = page.locator('[data-testid="audit-panel"]');
     const diffPanel = page.locator('[data-testid="diff-panel"]');
 
-    // History first, then diff: the diff panel replaces the history panel.
+    // History first, then diff: the diff panel replaces the history panel. The
+    // files pill stays on the row itself, so only history needs the menu opened.
+    await openRowMenu(newest);
     await newest.locator('[data-testid="history-btn"]').click();
     await expect(auditPanel).toHaveCount(1);
     await newest.locator('[data-testid="files-pill"]').click();
@@ -81,6 +89,7 @@ test.describe('UM3: history and diff panels are mutually exclusive', () => {
     await expect(newest).not.toHaveClass(/audit-open/);
 
     // Diff open, then history: the history panel replaces the diff panel.
+    await openRowMenu(newest);
     await newest.locator('[data-testid="history-btn"]').click();
     await expect(auditPanel).toHaveCount(1);
     await expect(diffPanel).toHaveCount(0);
@@ -103,6 +112,7 @@ test.describe('UM4: history panel does not outlive a queued row', () => {
     const queuedRow = page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="queued"]');
     await expect(queuedRow).toHaveCount(1);
 
+    await openRowMenu(queuedRow);
     await queuedRow.locator('[data-testid="history-btn"]').click();
     await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(1);
 

@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures/test';
+import { openRowMenu } from '../fixtures/menu';
 
 // Maske U: deploy hooks in the UI (ADR-0038). See dev-docs/e2e-tests.md §4.22.
 //
@@ -40,12 +41,15 @@ test.describe('UU1: hooks badge + panel', () => {
   test('badge shows pre+post and opens a panel of the commands', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
-    const badge = page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="hooks-badge"]');
+    // The hooks badge lives inside the newest row's ⋯ overflow menu (T3.13).
+    const webRow = page.locator('[data-testid="deploy-row"][data-stack="web"]');
+    await openRowMenu(webRow);
+    const badge = webRow.locator('[data-testid="hooks-badge"]');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('2+1'); // 2 pre-deploy, 1 post-deploy
     await expect(badge).toHaveAttribute('title', /pre-deploy hook: 2/);
 
-    // api is discovered but declares no hooks → no badge.
+    // api is discovered but declares no hooks → no hooks item in its menu.
     await expect(
       page.locator('[data-testid="deploy-row"][data-stack="api"] [data-testid="hooks-badge"]'),
     ).toHaveCount(0);
@@ -58,7 +62,8 @@ test.describe('UU1: hooks badge + panel', () => {
     await expect(cmds.nth(0)).toContainText('echo starting backup');
     await expect(cmds.nth(2)).toContainText('echo verifying deploy');
 
-    // Toggling the badge closes the panel (one-panel-per-row lifecycle).
+    // Toggling the badge closes the panel (reopen the menu to reach it again).
+    await openRowMenu(webRow);
     await badge.click();
     await expect(panel).toHaveCount(0);
   });
@@ -97,7 +102,10 @@ test.describe('UU3: running-hook phase + inline log', () => {
     const phase = row.locator('[data-testid="hook-phase"]');
     await expect(phase).toBeVisible();
     await expect(phase).toContainText('pre_deploy hook');
-    // The hooks badge pulses while a hook runs.
+    // The hooks badge now sits inside the collapsed ⋯ menu, so the running-hook
+    // pulse rides the visible ⋯ button; the badge itself is still marked for when
+    // the menu is opened.
+    await expect(row.locator('[data-testid="more-btn"]')).toHaveAttribute('data-hook-active', '1');
     await expect(row.locator('[data-testid="hooks-badge"]')).toHaveAttribute('data-hook-active', '1');
 
     // The console icon opens the container-logs panel in skipper mode, inline —

@@ -1223,9 +1223,9 @@
      surrounding whitespace/gaps — a full 44px (AAA) would overlap neighbours in
      this dense cluster (that needs the row redesign, T3.13), so this lifts them
      from ~18px to ≥24px (WCAG 2.5.8 AA) with nothing visible changing. */
-  .history-btn, .jump-btn, .clog-btn, .link-btn,
+  .history-btn, .jump-btn, .clog-btn, .link-btn, .more-btn,
   .health-pill, .hooks-badge, .files-pill, .heal-pill, .commits-pill { position: relative; }
-  .history-btn::after, .jump-btn::after, .clog-btn::after, .link-btn::after,
+  .history-btn::after, .jump-btn::after, .clog-btn::after, .link-btn::after, .more-btn::after,
   .health-pill::after, .hooks-badge::after, .files-pill::after,
   .heal-pill::after, .commits-pill::after {
     content: ''; position: absolute; top: 50%; left: 50%;
@@ -2892,6 +2892,71 @@
     50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); }
   }
   @media (prefers-reduced-motion: reduce) { .hooks-badge[data-hook-active] { animation: none; } }
+
+  /* ── Row overflow menu (⋯) — T3.13 ──
+     The newest deploy row's secondary actions (deploy history, container logs,
+     deploy hooks) collapse behind one ⋯, so the resting row is identity + status
+     + jump instead of a cluster of look-alike glyphs. Reuses the app-link popover
+     language; the relocated action buttons keep their handlers and render as
+     uniform labelled rows inside the menu. */
+  .row-more { position: relative; display: inline-flex; margin-left: 2px; }
+  .more-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 20px; padding: 0; flex: none;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: transparent; color: var(--text-muted); cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .more-btn svg { width: 15px; height: 15px; }
+  .more-btn:hover { color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .row-more.open .more-btn { color: var(--accent); background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  /* A running hook pulses the ⋯ itself, since the hooks badge it contains is
+     hidden while the menu is closed — the live signal stays on screen. */
+  .more-btn[data-hook-active] { color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    animation: hookpulse 1.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .more-btn[data-hook-active] { animation: none; } }
+  .roster-stack .more-btn { margin-left: 7px; vertical-align: middle; }
+
+  .more-pop {
+    display: none; position: absolute; top: 26px; left: 0; z-index: 6;
+    min-width: 208px; max-width: min(240px, 82vw);
+    background: var(--bg-base); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4); padding: 6px;
+  }
+  .more-pop.align-right { left: auto; right: 0; } /* flip near the viewport edge (portrait) */
+  .row-more.open .more-pop { display: block; }
+
+  /* The relocated icon buttons become uniform, full-width labelled menu rows —
+     these selectors outrank the buttons' own .history-btn/.clog-btn/.hooks-badge
+     rules (two classes vs one). */
+  .more-pop .more-item {
+    appearance: none; box-sizing: border-box;
+    width: 100%; height: auto; min-height: 34px; margin: 0; padding: 8px 10px;
+    display: flex; align-items: center; gap: 10px; justify-content: flex-start;
+    border: 0; border-radius: 7px; background: transparent; cursor: pointer;
+    font-family: var(--font-mono); font-size: 12px; font-weight: 500; line-height: 1.3;
+    letter-spacing: -0.2px; color: var(--text-primary); text-align: left;
+  }
+  .more-pop .more-item:hover,
+  .more-pop .more-item.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .more-pop .more-item svg { width: 14px; height: 14px; flex: none; color: var(--text-muted); }
+  .more-pop .more-item:hover svg,
+  .more-pop .more-item.on svg { color: var(--accent); }
+  .more-pop .mi-label { flex: 1 1 auto; }
+  /* Deploy-hooks row: keep the pre+post count as a trailing chip; drop the pill's
+     own rounding/tint/pulse now that it is a flat menu row. */
+  .more-pop .hooks-badge { border-radius: 7px; }
+  .more-pop .hooks-badge[data-hook-active] { animation: none; }
+  .more-pop .hooks-badge .hk-count {
+    flex: none; margin-left: auto; padding: 1px 7px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  }
 
   /* Running-hook phase sub-label. :has() stacks the cell only when a phase is
      present, so idle rows (the snapshot baselines) keep their layout; both

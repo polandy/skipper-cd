@@ -510,10 +510,80 @@
   }
   document.addEventListener('click', function(e) {
     if (openLinkWrap && !openLinkWrap.contains(e.target)) closeAppLinkPopover();
+    if (openMoreWrap && !openMoreWrap.contains(e.target)) closeMoreMenu();
   });
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeAppLinkPopover();
+    if (e.key === 'Escape') { closeAppLinkPopover(); closeMoreMenu(); }
   });
+
+  // ── Row overflow menu (⋯) — T3.13 ──
+  // The newest deploy row folds its secondary actions (deploy history, container
+  // logs, deploy hooks) behind one ⋯ button, so the row rests at identity +
+  // status + the jump action instead of a cluster of look-alike glyphs. Same
+  // one-open-at-a-time behaviour as the app-link popover; the action buttons
+  // inside keep their own classes, testids and click handlers — they are only
+  // relocated, so nothing about opening the panels changes.
+  const MORE_ICON = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>';
+  let openMoreWrap = null;
+
+  // ensureRowMore returns the row's ⋯ wrapper, creating it (button + empty
+  // popover) on first use. The action buttons are appended into its .more-pop.
+  function ensureRowMore(cell, stack) {
+    let wrap = cell.querySelector('.row-more');
+    if (!wrap) {
+      wrap = document.createElement('span');
+      wrap.className = 'row-more';
+      wrap.innerHTML =
+        '<button class="more-btn" type="button" data-testid="more-btn" aria-haspopup="true" aria-expanded="false"' +
+        ' title="More actions" aria-label="' + escapeAttr('more actions for ' + stack) + '">' + MORE_ICON + '</button>' +
+        '<div class="more-pop" data-testid="more-pop"></div>';
+      cell.appendChild(wrap);
+    }
+    return wrap;
+  }
+
+  // moreMenuItem turns a relocated icon button into a labelled full-width menu
+  // row: the icon keeps its meaning, the text names the action (so the row no
+  // longer relies on look-alike glyphs), and any trailing count (hooks) stays put.
+  function moreMenuItem(btn, label) {
+    btn.classList.add('more-item');
+    btn.removeAttribute('data-taptip'); // the visible label replaces the tap-tip
+    const lbl = document.createElement('span');
+    lbl.className = 'mi-label';
+    lbl.textContent = label;
+    const count = btn.querySelector('.hk-count');
+    if (count) btn.insertBefore(lbl, count); else btn.appendChild(lbl);
+    return btn;
+  }
+
+  // Keep the popover on-screen: it opens left-aligned under the ⋯, but flips to
+  // right-aligned when that would spill past the viewport edge — the portrait-
+  // phone case, where the stack cell sits close to the right edge.
+  function positionMorePop(wrap) {
+    const pop = wrap.querySelector('.more-pop');
+    pop.classList.remove('align-right');
+    const r = wrap.getBoundingClientRect();
+    if (r.left + pop.offsetWidth > window.innerWidth - 8) pop.classList.add('align-right');
+  }
+  function toggleMoreMenu(wrap) {
+    const wasOpen = wrap === openMoreWrap;
+    closeMoreMenu();
+    if (!wasOpen) {
+      wrap.classList.add('open');
+      const btn = wrap.querySelector('.more-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+      positionMorePop(wrap); // measured after .open makes the popover laid-out
+      openMoreWrap = wrap;
+    }
+  }
+  function closeMoreMenu() {
+    if (openMoreWrap) {
+      openMoreWrap.classList.remove('open');
+      const btn = openMoreWrap.querySelector('.more-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+    openMoreWrap = null;
+  }
 
   // rosterStatusHTML picks the row's status: a live in-flight deploy wins, then
   // the parked/never-deployed synthetic flags, else the last terminal badge.
@@ -1096,17 +1166,21 @@
   // views; clear it when hookRunSnap has no stack.
   function applyHookRun() {
     document.querySelectorAll('.hook-phase').forEach(function(n) { n.remove(); });
-    document.querySelectorAll('.hooks-badge[data-hook-active]').forEach(function(b) { b.removeAttribute('data-hook-active'); });
+    document.querySelectorAll('.hooks-badge[data-hook-active], .more-btn[data-hook-active]').forEach(function(b) { b.removeAttribute('data-hook-active'); });
     const hr = hookRunSnap;
     if (!hr || !hr.stack) return;
 
-    // Deploys view: the stack's newest row while deploying.
+    // Deploys view: the stack's newest row while deploying. The hooks badge now
+    // lives inside the collapsed ⋯ menu, so the running-hook pulse rides the
+    // visible ⋯ button instead (the badge itself is still marked for when it opens).
     const drow = Array.from(tbody.querySelectorAll('.event-row[data-stack]')).find(function(r) { return r.dataset.stack === hr.stack; });
     if (drow && drow.dataset.status === 'deploying') {
       const cell = drow.querySelector('.status-cell');
       if (cell) cell.appendChild(hookPhaseNode(hr));
       const b = drow.querySelector('.hooks-badge');
       if (b) b.dataset.hookActive = '1';
+      const mb = drow.querySelector('.more-btn');
+      if (b && mb) mb.dataset.hookActive = '1';
     }
 
     // Stacks view: the roster row while it shows the live deploying state.
@@ -1572,38 +1646,49 @@
         closeHealthPanel(row);
       }
 
-      // History button — always on the newest row (independent of health).
-      let hist = cell.querySelector('.history-btn');
-      if (newest && !hist) {
-        hist = document.createElement('button');
-        hist.className = 'history-btn';
-        hist.dataset.testid = 'history-btn';
-        hist.title = 'deploy history for ' + stack;
-        hist.setAttribute('aria-label', 'deploy history for ' + stack);
-        hist.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.4 1.5"/></svg>';
-        cell.appendChild(hist);
-      } else if (!newest && hist) {
-        hist.remove();
-        closeAuditPanel(row);
-      }
+      // Secondary per-stack actions (history, container logs, deploy hooks) live
+      // in a single ⋯ overflow menu on the newest row (T3.13), so the row rests
+      // calm. Non-newest rows carry no menu; drop it (and close its panels).
+      if (!newest) {
+        const staleWrap = cell.querySelector('.row-more');
+        if (staleWrap) {
+          if (openMoreWrap === staleWrap) closeMoreMenu();
+          staleWrap.remove();
+          closeAuditPanel(row);
+          closeHooksPanel(row);
+        }
+      } else {
+        const pop = ensureRowMore(cell, stack).querySelector('.more-pop');
 
-      // Container-logs button — per stack, on the newest row (ADR-0037). Not for
-      // _nixos: it is not a compose project, so it has no container logs.
-      let clogBtn = cell.querySelector('.clog-btn:not(.hook-log-btn)');
-      if (newest && !clogBtn && stack !== NIXOS_STACK) {
-        cell.appendChild(clogButton(stack, ''));
-      } else if ((!newest || stack === NIXOS_STACK) && clogBtn) {
-        clogBtn.remove();
-      }
+        // History — always present (independent of health).
+        if (!pop.querySelector('.history-btn')) {
+          const hist = document.createElement('button');
+          hist.className = 'history-btn';
+          hist.type = 'button';
+          hist.dataset.testid = 'history-btn';
+          hist.setAttribute('aria-label', 'deploy history for ' + stack);
+          hist.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.4 1.5"/></svg>';
+          pop.appendChild(moreMenuItem(hist, 'Deploy history'));
+        }
 
-      // Hooks badge on the newest row when the stack declares any hook (ADR-0038).
-      const hooks = newest ? hooksFor(stack) : null;
-      let hbadge = cell.querySelector('.hooks-badge');
-      if (hooks && hookCount(hooks) > 0) {
-        if (!hbadge) cell.appendChild(hooksBadgeButton(stack, hooks));
-      } else if (hbadge) {
-        hbadge.remove();
-        closeHooksPanel(row);
+        // Container logs — per stack (ADR-0037). Not for _nixos: it is not a
+        // compose project, so it has no container logs.
+        const clogBtn = pop.querySelector('.clog-btn:not(.hook-log-btn)');
+        if (!clogBtn && stack !== NIXOS_STACK) {
+          pop.appendChild(moreMenuItem(clogButton(stack, ''), 'Container logs'));
+        } else if (stack === NIXOS_STACK && clogBtn) {
+          clogBtn.remove();
+        }
+
+        // Deploy hooks — only when the stack declares any (ADR-0038).
+        const hooks = hooksFor(stack);
+        const hbadge = pop.querySelector('.hooks-badge');
+        if (hooks && hookCount(hooks) > 0) {
+          if (!hbadge) pop.appendChild(moreMenuItem(hooksBadgeButton(stack, hooks), 'Deploy hooks'));
+        } else if (hbadge) {
+          hbadge.remove();
+          closeHooksPanel(row);
+        }
       }
     });
     applyHookRun(); // re-paint a running hook's phase after rows/affordances changed
@@ -3771,6 +3856,13 @@
   // When diffs are available, shows a diff panel; otherwise shows file list.
   tbody.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
   tbody.addEventListener('click', function(e) {
+    // ⋯ overflow menu: toggle it open/closed. Picking an action inside closes the
+    // menu, then falls through to that action's own handler below (the relocated
+    // buttons still carry their .history-btn/.clog-btn/.hooks-badge classes).
+    const moreBtn = e.target.closest('.more-btn');
+    if (moreBtn) { toggleMoreMenu(moreBtn.closest('.row-more')); return; }
+    if (e.target.closest('.more-item')) closeMoreMenu();
+
     // Host chip: quick-filter the merged view to this row's host (toggle). Before
     // any panel logic so a tap on the chip never also opens the row's diff panel.
     const hostChip = e.target.closest('.host-mono');

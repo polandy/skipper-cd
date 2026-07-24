@@ -415,11 +415,14 @@ test.describe('UD11: tap-tip opt-in on non-header controls', () => {
     await page.clock.install(); // before navigation, so the bubble's own setTimeout is captured
     await page.goto(`${skipper.baseURL}/`);
 
-    const clogBtn = page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="clog-btn"]');
+    // The cross-view jump glyph is a non-header, always-visible row control that
+    // opts into the tap-tip (the container-logs glyph now sits inside the ⋯ menu,
+    // labelled, so it no longer carries a tap-tip — T3.13).
+    const jumpBtn = page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="jump-btn"]');
     const tip = page.locator('.tap-tip');
-    const title = await clogBtn.getAttribute('title');
+    const title = await jumpBtn.getAttribute('title');
 
-    await clogBtn.dispatchEvent('pointerdown', { pointerType: 'touch' });
+    await jumpBtn.dispatchEvent('pointerdown', { pointerType: 'touch' });
     await expect(tip).toHaveClass(/\bshow\b/);
     await expect(tip).toHaveText(title!);
 
@@ -427,7 +430,7 @@ test.describe('UD11: tap-tip opt-in on non-header controls', () => {
     await expect(tip).not.toHaveClass(/\bshow\b/);
 
     // Mouse/pen keep the native tooltip only — no bubble.
-    await clogBtn.dispatchEvent('pointerdown', { pointerType: 'mouse' });
+    await jumpBtn.dispatchEvent('pointerdown', { pointerType: 'mouse' });
     await expect(tip).not.toHaveClass(/\bshow\b/);
   });
 
