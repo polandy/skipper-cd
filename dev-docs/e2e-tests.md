@@ -980,6 +980,23 @@ overlays leave the rendered pixels unchanged).
   `role="button"` quick filter; `Enter` on a focused chip isolates the view to
   that host, like a click.
 
+### 4.29 UI — Maske AB: Always-visible search trigger (T3.11)
+
+The header magnifier (`stack-search-btn`) that makes the desktop stack filter
+discoverable — before this it was type-to-search only, an easter egg. Behaviour
+-only. Three startup deploys (`web`/`api`/`db`) give rows to filter.
+
+- **UAB1 — Deploys open/close.** The magnifier is visible on desktop deploys;
+  clicking it reveals the filter, focuses the input, and sets `.active` +
+  `aria-expanded="true"`; a second click folds the bar away and clears both.
+- **UAB2 — Stacks.** On the Stacks view the same magnifier opens the roster
+  filter (`roster-filter-wrap`) and focuses it — the trigger is view-aware.
+- **UAB3 — Logs hidden.** The magnifier is hidden on the Logs view (which has
+  its own in-panel search) and returns when switching back to Deploys.
+- **UAB4 — Type-to-search parity.** Typing still reveals the bar and seeds the
+  first character, and the magnifier reflects a bar opened by typing (`.active`
+  + `aria-expanded`); `Esc` folds it away and resets the trigger.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

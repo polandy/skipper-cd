@@ -2093,6 +2093,28 @@
      type-to-search); shown via the media query in the responsive section. */
   .view-options .vo-search { display: none; }
 
+  /* Always-visible search trigger (T3.11) — the deploys/stacks filter was
+     desktop-invisible (type-to-search only, an easter egg); this quiet magnifier
+     sits by the view switch and opens the same bar with a click. Hidden on Logs
+     (its own in-panel search covers it) and on mobile (the view-options popover
+     carries the entry there — see the responsive media query). */
+  .stack-search-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: color 0.15s, background 0.15s;
+  }
+  .stack-search-btn:hover { color: var(--text-secondary); }
+  .stack-search-btn.active { color: var(--accent); }
+  .stack-search-btn .ss-ico { display: block; width: 18px; height: 18px; }
+  body.view-logs .stack-search-btn { display: none; }
+
   /* ─── AUTOSYNC HEADER CONTROL ─── */
   /* Icon-only, like the filter toggles: no box or label. Muted by default
      (nothing special happening); the glyph's colour only changes for a real
@@ -2706,6 +2728,9 @@
        view-options popover carries a "Search" entry that reveals and focuses the
        filter (hidden on desktop, where type-to-search covers it). */
     .view-options .vo-search { display: flex; }
+    /* The always-visible header magnifier is a desktop affordance; on mobile the
+       popover "Search" row above is the entry point, so hide the glyph. (T3.11) */
+    .stack-search-btn { display: none; }
 
     .event-row {
       grid-template-columns: 1fr auto;
