@@ -83,6 +83,9 @@
       </button>
       <div class="beacon-pop" id="beacon-pop" data-testid="health-beacon-pop" role="menu" aria-label="Unhealthy stacks"></div>
     </div>
+    <button class="stack-search-btn" id="stack-search-btn" data-testid="stack-search-btn" type="button" title="Search stacks" aria-label="Search stacks" aria-expanded="false">
+      <svg class="ss-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
     <div class="view-switch" id="view-switch">
       <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
         <button data-view="deploys" class="active" title="Deploys" aria-label="Deploys" aria-haspopup="true" aria-expanded="false">
@@ -327,6 +330,7 @@
   const emptyState = document.getElementById('empty-state');
   const connDot = document.getElementById('conn-dot');
   const connText = document.getElementById('conn-text');
+  const stackSearchBtn = document.getElementById('stack-search-btn');
   const a11yAnnounce = document.getElementById('a11y-announce');
   // announce voices a message through the off-screen polite live region (T2.8).
   // The region is cleared first, then set on the next frame, so two identical
@@ -2654,7 +2658,7 @@
     if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
   }
 
-  function revealDeployFilter(on) { deployFilterWrap.classList.toggle('revealed', on); }
+  function revealDeployFilter(on) { deployFilterWrap.classList.toggle('revealed', on); syncStackSearchBtn(); }
 
   function clearDeployFilter(hide) {
     deployFilter.value = '';
@@ -2841,7 +2845,7 @@
   function refilterRoster() {
     if (rosterFilterWrap.classList.contains('has-value')) applyRosterFilter();
   }
-  function revealRosterFilter(on) { rosterFilterWrap.classList.toggle('revealed', on); }
+  function revealRosterFilter(on) { rosterFilterWrap.classList.toggle('revealed', on); syncStackSearchBtn(); }
   function clearRosterFilter(hide) {
     rosterFilter.value = '';
     applyRosterFilter();
@@ -2865,6 +2869,28 @@
     setViewOptions(false);
     revealRosterFilter(true);
     rosterFilter.focus();
+  });
+
+  // T3.11 — always-visible search trigger. The stack filter used to be
+  // desktop-invisible (type-to-search only, an easter egg); this header magnifier
+  // opens the same bar for the active view. View-aware, and hidden on Logs (which
+  // has its own in-panel search) and on mobile (the popover entry covers it there)
+  // via CSS. syncStackSearchBtn reflects the bar's open state on the trigger.
+  function syncStackSearchBtn() {
+    const open = activeView === 'deploys' ? deployFilterWrap.classList.contains('revealed')
+      : activeView === 'stacks' ? rosterFilterWrap.classList.contains('revealed')
+      : false;
+    stackSearchBtn.classList.toggle('active', open);
+    stackSearchBtn.setAttribute('aria-expanded', String(open));
+  }
+  stackSearchBtn.addEventListener('click', function() {
+    if (activeView === 'deploys') {
+      if (deployFilterWrap.classList.contains('revealed')) clearDeployFilter(true);
+      else { revealDeployFilter(true); deployFilter.focus(); }
+    } else if (activeView === 'stacks') {
+      if (rosterFilterWrap.classList.contains('revealed')) clearRosterFilter(true);
+      else { revealRosterFilter(true); rosterFilter.focus(); }
+    }
   });
 
   // Type-to-search on the stacks view, matching the deploys behaviour.
@@ -3518,6 +3544,7 @@
       renderLogWindow();
     }
     if (activeView === 'stacks') renderRoster();
+    syncStackSearchBtn(); // the trigger is view-aware + logs-hidden (T3.11)
   }
 
   // View-specific options (time mode / sort / follow) live in a popover behind
