@@ -466,7 +466,7 @@ assert on.
 | `hooks-cmd` | A configured hook command line inside `hooks-panel` | Verbatim (`$`-prefixed), rendered as literal text |
 | `hook-phase` | Phase sub-label on a `deploying` row (both views) | Present only while a hook runs (`pre_deploy hook 1/2` / `post_deploy hook`); carries a `clog-btn.hook-log-btn` logs icon that opens the inline hook log (the container-logs panel in skipper mode) |
 | `logs-panel` | The Log view, styled as a page-sized `clog-panel` | `#log-view`; gets `.clog-fullscreen` in fullscreen |
-| `logs-live` | Live/pause pill in the Log view's own header | `.paused` when paused; pausing freezes the pane, buffering continues |
+| `logs-live` | Live/pause pill in the Log view's own header | `role="button"`, keyboard-operable (`Enter`/`Space`); `.paused` when paused; pausing freezes the pane, buffering continues |
 | `logs-stat` | Connection status text in the Log view's footer | "live · streaming" / "paused" / "reconnecting…" |
 | `log-search`, `log-wrap`, `follow-logs`, `log-fs` | Search/wrap/auto-scroll/fullscreen tools in the Log view's own header | `.clog-tool`s; `.on` when engaged; clicking `log-search` again closes it and clears the query |
 | `log-filter-wrap` / `log-filter` | Logs in-view search bar / input | Same reveal + type-to-search behaviour as `deploy-filter`; no separate clear button — closing the search tool clears it |

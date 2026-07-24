@@ -1250,11 +1250,15 @@
     }
 
     function wire() {
-      panel.querySelector('.clog-live').addEventListener('click', function() {
+      const live = panel.querySelector('.clog-live');
+      live.addEventListener('click', function() {
         paused = !paused;
         this.classList.toggle('paused', paused);
         this.querySelector('.clog-ltxt').textContent = paused ? 'paused' : 'live';
         setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : '');
+      });
+      live.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); live.click(); }
       });
       panel.querySelectorAll('.clog-tool[data-clog]').forEach(function(b) {
         b.addEventListener('click', function() {
@@ -3330,6 +3334,9 @@
     if (logsPaused) { setLogsStat('paused', 'paused'); return; }
     setLogsStat('live · streaming');
     renderLogWindow(); // catch up everything buffered while paused
+  });
+  logsLive.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); logsLive.click(); }
   });
 
   logPane.addEventListener('scroll', function() {
