@@ -137,9 +137,9 @@ test.describe('host operability (multi-host)', () => {
     await page.goto(`${skipper.baseURL}/`);
     await hostsBtn(page).click();
     await expect(hostsDrawer(page)).toHaveClass(/\bopen\b/);
-    // The drawer auto-focuses its first row on open (T2.7); wait for that to
-    // land before targeting host-b, so it doesn't steal focus mid-test.
-    await expect.poll(() => activeTestId(page)).toBe('host-row');
+    // The drawer auto-focuses its first host row on open (T2.7). Focus is placed
+    // deterministically on open, so this asserts directly — no settle poll.
+    await expect(hostsDrawer(page).locator('[data-testid="host-row"]').first()).toBeFocused();
 
     const b = hostRow(page, 'host-b');
     await expect(b).toHaveAttribute('role', 'checkbox');
@@ -151,7 +151,7 @@ test.describe('host operability (multi-host)', () => {
     await expect(hostRow(page, 'host-b')).toHaveAttribute('aria-checked', 'false');
     await expect(table(page)).toHaveClass(/host-filter-active/);
     // Focus was restored onto the rebuilt host-b row.
-    await expect.poll(() => activeTestId(page)).toBe('host-row');
+    await expect(hostRow(page, 'host-b')).toBeFocused();
   });
 
   // UAA5 — Host-mono chip keyboard. The per-row identity chip doubles as a
