@@ -954,6 +954,32 @@ are hidden whenever nothing is unhealthy, so no snapshot baseline shifts.
   Stacks view lands on that `roster-row` (flashed via `.jump-target`) rather than
   switching to Deploys.
 
+### 4.28 UI — Maske AA: Accessibility sweep (Tier 2)
+
+The keyboard/AT-facing guarantees the a11y sweep added (see UI_SPEC.md
+"Accessibility"). Behaviour-only — the contrast retune (T2.5) and the
+transparent touch-target overlays (T2.9) have no behavioural surface, so they
+carry no assertion here (contrast is verified by construction against WCAG, the
+overlays leave the rendered pixels unchanged).
+
+- **UAA1 — Keyboard focus ring.** The first keyboard `Tab` lands on a header
+  control that must show a non-`none` outline with a positive width — the
+  `:focus-visible` ring that was absent on the glyph-only controls before.
+- **UAA2 — Drawer focus management.** Opening the autosync drawer from the
+  keyboard pulls focus onto its first control (`global-switch`); `Escape` closes
+  it and returns focus to the opener (`autosync-btn`). The drawer is `aria-modal`.
+- **UAA3 — Live region.** The `a11y-announce` region is empty at boot (the
+  startup deploy is history), then a live webhook deploy fills it with the spoken
+  outcome (`web deployed successfully`) — proving live outcomes announce and the
+  history replay stays silent.
+- **UAA4 — Host-row checkbox (multi-host).** Each drawer `host-row` is
+  `role="checkbox"` with `aria-checked` = in-view; `Space` on the focused row
+  toggles it (narrowing the merged feed, `host-filter-active`) and focus is
+  restored onto the same host's rebuilt row.
+- **UAA5 — Host-mono chip keyboard (multi-host).** The per-row identity chip is a
+  `role="button"` quick filter; `Enter` on a focused chip isolates the view to
+  that host, like a click.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -997,8 +1023,10 @@ masked the pane's layout diffs run-to-run. UB2's value — the level-badge mappi
   it in, then update snapshots:
 
   ```sh
-  VER=$(jq -r '."."' .release-please-manifest.json)
-  CGO_ENABLED=0 go build -ldflags "-X main.version=$VER -X main.commit=e2ee2ee" -o .pw-bin/skipper ./cmd/skipper
+  # The version/commit MUST match the harness constants (buildVersion/buildCommit
+  # in fixtures/harness.ts), not the release manifest — the header label is baked
+  # into the full-page snapshots, and UD5 asserts it against those fixed values.
+  CGO_ENABLED=0 go build -buildvcs=false -ldflags "-X main.version=10.10.10 -X main.commit=e2ee2ee" -o .pw-bin/skipper ./cmd/skipper
   docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
     -v "$PWD":/work -w /work/e2e/ui \
     -e SKIPPER_E2E_BIN=/work/.pw-bin/skipper -e CI=1 -e RUN_SNAPSHOTS=1 \

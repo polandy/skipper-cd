@@ -308,6 +308,23 @@ function logLineVisible(text, q) {
   return (text || '').toLowerCase().indexOf(q.toLowerCase()) !== -1;
 }
 
+// deployAnnouncement builds the screen-reader phrase for a terminal deploy
+// outcome, so the a11y-live region can voice what a sighted user reads off the
+// row (T2.8). Returns null for non-terminal statuses (deploying/queued/blocked/
+// skipped) and for a missing stack — the caller only announces a real string.
+function deployAnnouncement(status, stack) {
+  if (!stack) return null;
+  const phrase = {
+    success: 'deployed successfully',
+    healed: 'self-healed',
+    failed: 'deploy failed',
+    rolled_back: 'deploy failed, rolled back',
+    rolled_back_unhealthy: 'rolled back, still unhealthy',
+    heal_exhausted: 'self-heal failed',
+  }[status];
+  return phrase ? stack + ' ' + phrase : null;
+}
+
 // Dual-use export: in the browser this file loads as a plain <script>, so the
 // functions above are already globals and `module` is undefined — the export is
 // skipped. Under `node --test` `module` exists, so the helpers are exported for
@@ -334,6 +351,7 @@ if (typeof module !== 'undefined' && module.exports) {
     containerMatchesQuery,
     orphanMatchesQuery,
     logLineVisible,
+    deployAnnouncement,
     HOST_COLOR_COUNT,
     hostColorIndex,
     hostMonogram,

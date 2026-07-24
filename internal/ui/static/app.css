@@ -18,7 +18,7 @@
      ever missing. */
   :root {
     --crust: #11111b; --mantle: #181825; --base: #1e1e2e; --surface0: #313244;
-    --overlay1: #7f849c; --overlay2: #9399b2; --subtext0: #a6adc8; --text: #cdd6f4;
+    --overlay1: #82879e; --overlay2: #9399b2; --subtext0: #a6adc8; --text: #cdd6f4;
     --raw-accent: #fab387; --raw-success: #94e2d5; --raw-danger: #f38ba8;
     --raw-rollback: #eba0ac; --raw-diffadd: #a6e3a1; --raw-queued: #f9e2af;
     color-scheme: dark;
@@ -27,14 +27,14 @@
   /* Catppuccin — Mocha (dark) / Latte (light). The original default. */
   :root[data-theme="catppuccin"] {
     --crust: #11111b; --mantle: #181825; --base: #1e1e2e; --surface0: #313244;
-    --overlay1: #7f849c; --overlay2: #9399b2; --subtext0: #a6adc8; --text: #cdd6f4;
+    --overlay1: #82879e; --overlay2: #9399b2; --subtext0: #a6adc8; --text: #cdd6f4;
     --raw-accent: #fab387; --raw-success: #94e2d5; --raw-danger: #f38ba8;
     --raw-rollback: #eba0ac; --raw-diffadd: #a6e3a1; --raw-queued: #f9e2af;
     color-scheme: dark;
   }
   :root[data-theme="catppuccin"].light {
     --crust: #dce0e8; --mantle: #e6e9ef; --base: #eff1f5; --surface0: #ccd0da;
-    --overlay1: #8c8fa1; --overlay2: #7c7f93; --subtext0: #6c6f85; --text: #4c4f69;
+    --overlay1: #686c80; --overlay2: #7c7f93; --subtext0: #5c5f71; --text: #4c4f69;
     --raw-accent: #fe640b; --raw-success: #179299; --raw-danger: #d20f39;
     --raw-rollback: #e64553; --raw-diffadd: #40a02b; --raw-queued: #df8e1d;
     color-scheme: light;
@@ -43,14 +43,14 @@
   /* Nord — arctic blue-greys, single frost-blue accent. */
   :root[data-theme="nord"] {
     --crust: #252a33; --mantle: #2e3440; --base: #3b4252; --surface0: #434c5e;
-    --overlay1: #4c566a; --overlay2: #616e88; --subtext0: #d8dee9; --text: #eceff4;
+    --overlay1: #a8b0c0; --overlay2: #616e88; --subtext0: #d8dee9; --text: #eceff4;
     --raw-accent: #88c0d0; --raw-success: #a3be8c; --raw-danger: #bf616a;
     --raw-rollback: #b48ead; --raw-diffadd: #a3be8c; --raw-queued: #ebcb8b;
     color-scheme: dark;
   }
   :root[data-theme="nord"].light {
     --crust: #dbe1ea; --mantle: #e5e9f0; --base: #eceff4; --surface0: #d8dee9;
-    --overlay1: #9aa5b1; --overlay2: #7b8494; --subtext0: #4c566a; --text: #2e3440;
+    --overlay1: #5f6d7b; --overlay2: #7b8494; --subtext0: #4c566a; --text: #2e3440;
     --raw-accent: #4c6f96; --raw-success: #4c8f6b; --raw-danger: #b3434f;
     --raw-rollback: #966a92; --raw-diffadd: #4c8f6b; --raw-queued: #a6790a;
     color-scheme: light;
@@ -59,14 +59,14 @@
   /* Solarized — the low-contrast terminal classic. */
   :root[data-theme="solarized"] {
     --crust: #00212a; --mantle: #002b36; --base: #073642; --surface0: #0a4552;
-    --overlay1: #586e75; --overlay2: #657b83; --subtext0: #839496; --text: #93a1a1;
+    --overlay1: #879ea5; --overlay2: #657b83; --subtext0: #aeb9bb; --text: #d2d8d8;
     --raw-accent: #268bd2; --raw-success: #2aa198; --raw-danger: #dc322f;
     --raw-rollback: #d33682; --raw-diffadd: #859900; --raw-queued: #b58900;
     color-scheme: dark;
   }
   :root[data-theme="solarized"].light {
     --crust: #f5eeda; --mantle: #f8f1dd; --base: #fdf6e3; --surface0: #eee8d5;
-    --overlay1: #93a1a1; --overlay2: #839496; --subtext0: #657b83; --text: #586e75;
+    --overlay1: #647373; --overlay2: #839496; --subtext0: #4b5c62; --text: #38474b;
     --raw-accent: #268bd2; --raw-success: #2aa198; --raw-danger: #dc322f;
     --raw-rollback: #d33682; --raw-diffadd: #728a00; --raw-queued: #956f00;
     color-scheme: light;
@@ -75,14 +75,14 @@
   /* Gruvbox — warm retro-groove browns, orange accent. */
   :root[data-theme="gruvbox"] {
     --crust: #1d2021; --mantle: #282828; --base: #32302f; --surface0: #3c3836;
-    --overlay1: #7c6f64; --overlay2: #928374; --subtext0: #bdae93; --text: #ebdbb2;
+    --overlay1: #a3978d; --overlay2: #928374; --subtext0: #bdae93; --text: #ebdbb2;
     --raw-accent: #fe8019; --raw-success: #8ec07c; --raw-danger: #fb4934;
     --raw-rollback: #d3869b; --raw-diffadd: #b8bb26; --raw-queued: #fabd2f;
     color-scheme: dark;
   }
   :root[data-theme="gruvbox"].light {
     --crust: #f2e5bc; --mantle: #f9f5d7; --base: #fbf1c7; --surface0: #ebdbb2;
-    --overlay1: #a89984; --overlay2: #7c6f64; --subtext0: #504945; --text: #3c3836;
+    --overlay1: #796a56; --overlay2: #7c6f64; --subtext0: #504945; --text: #3c3836;
     --raw-accent: #af3a03; --raw-success: #427b58; --raw-danger: #9d0006;
     --raw-rollback: #8f3f71; --raw-diffadd: #79740e; --raw-queued: #b57614;
     color-scheme: light;
@@ -91,14 +91,14 @@
   /* Rosé Pine — muted rose and iris-purple on a plum-black base. */
   :root[data-theme="rose-pine"] {
     --crust: #14121f; --mantle: #191724; --base: #1f1d2e; --surface0: #26233a;
-    --overlay1: #6e6a86; --overlay2: #908caa; --subtext0: #908caa; --text: #e0def4;
+    --overlay1: #88849e; --overlay2: #908caa; --subtext0: #908caa; --text: #e0def4;
     --raw-accent: #c4a7e7; --raw-success: #9ccfd8; --raw-danger: #eb6f92;
     --raw-rollback: #ebbcba; --raw-diffadd: #9ccfd8; --raw-queued: #f6c177;
     color-scheme: dark;
   }
   :root[data-theme="rose-pine"].light {
     --crust: #f2e9e1; --mantle: #faf4ed; --base: #fffaf3; --surface0: #f2e9e1;
-    --overlay1: #9893a5; --overlay2: #797593; --subtext0: #797593; --text: #575279;
+    --overlay1: #756f86; --overlay2: #797593; --subtext0: #66627d; --text: #575279;
     --raw-accent: #907aa9; --raw-success: #56949f; --raw-danger: #b4637a;
     --raw-rollback: #d7827e; --raw-diffadd: #56949f; --raw-queued: #ea9d34;
     color-scheme: light;
@@ -167,6 +167,10 @@
     --rollback: var(--raw-rollback);
     --skip: var(--overlay1);
     --queued: var(--raw-queued);   /* Queued/deferred deploy, autosync paused */
+    /* Queued amber rendered as a TEXT/label colour (tags, badges, counts). The
+       amber that reads fine as a bar/dot fails WCAG on a light ground, so light
+       themes darken this below; dark themes inherit --queued unchanged. */
+    --queued-text: var(--queued);
     --diff-add: var(--raw-diffadd);
     --hunk: var(--raw-queued);
     /* Stack health (ADR-0027) — its own tier, derived from existing raws so it
@@ -188,6 +192,16 @@
     --app-header-h: 56px; /* the sticky header height; the Logs fullscreen fills below it */
   }
 
+  /* Light themes: darken the queued amber used as text so tag/badge/count
+     labels clear WCAG AA (≥4.6:1) on the --queued-dim tint. Calibrated per
+     theme against that tinted background (the worst case for dark text). The
+     bar/dot/glyph uses of --queued stay the brighter amber (non-text, ≥3:1). */
+  :root[data-theme="catppuccin"].light { --queued-text: #8d5a12; }
+  :root[data-theme="nord"].light       { --queued-text: #7d5b08; }
+  :root[data-theme="solarized"].light  { --queued-text: #805f00; }
+  :root[data-theme="gruvbox"].light    { --queued-text: #88590f; }
+  :root[data-theme="rose-pine"].light  { --queued-text: #985e10; }
+
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
@@ -197,6 +211,28 @@
     line-height: 1.5;
     min-height: 100vh;
     overflow-x: hidden;
+  }
+
+  /* Keyboard focus ring (T2.6) — one consistent, theme-aware indicator for
+     every interactive control. :focus-visible fires only on keyboard focus, so
+     pointer users never see it. The glyph-only header controls, the
+     role=button/switch custom controls and the host chips (a <span>/<div> given
+     tabindex) are all covered via the element/role/attribute selectors. This
+     sits EARLY on purpose: the few controls with a tuned ring (deploy
+     indicator, health beacon, …) declare their own :focus-visible later and win
+     on source order at equal specificity, so they keep their bespoke offset. */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible,
+  [role="button"]:focus-visible,
+  [role="switch"]:focus-visible,
+  [role="menuitem"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   /* Subtle grid pattern overlay */
@@ -311,8 +347,21 @@
     color: var(--text-secondary);
     font-family: var(--font-mono);
   }
-  /* State text lives in the element's title tooltip; only the link glyph shows. */
-  .indicator span { display: none; }
+  /* Screen-reader-only: visually hidden but kept in the accessibility tree, so a
+     live region announces it. (T2.8) Distinct from display:none, which drops the
+     node from the a11y tree and would never announce. */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+    white-space: nowrap; border: 0;
+  }
+  /* Only the link glyph shows; the state word stays sr-only so the indicator's
+     aria-live region can announce connection changes (T2.8). */
+  .indicator span {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+    white-space: nowrap; border: 0;
+  }
 
   /* Connection state as a chain-link glyph: closed link when up, broken link
      when reconnecting. Colour carries the state (success/accent/danger); the
@@ -739,7 +788,7 @@
     font-weight: 600;
     letter-spacing: 0.4px;
     text-transform: uppercase;
-    color: var(--queued);
+    color: var(--queued-text);
     background: var(--queued-dim);
     border: 1px solid color-mix(in srgb, var(--queued) 26%, transparent);
     padding: 1px 5px;
@@ -882,7 +931,7 @@
 
   .badge-queued, .badge-blocked {
     background: var(--queued-dim);
-    color: var(--queued);
+    color: var(--queued-text);
     border: 1px solid color-mix(in srgb, var(--queued) 30%, transparent);
   }
 
@@ -1166,6 +1215,33 @@
     background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
   .jump-btn svg { width: 12px; height: 12px; }
+
+  /* ─── TOUCH TARGETS (T2.9) ───
+     The row-cluster glyph buttons and status pills render small by design, but
+     their *tappable* area is enlarged with a transparent ::after overlay so a
+     finger (esp. on iPad) lands reliably. The overlay grows only into the
+     surrounding whitespace/gaps — a full 44px (AAA) would overlap neighbours in
+     this dense cluster (that needs the row redesign, T3.13), so this lifts them
+     from ~18px to ≥24px (WCAG 2.5.8 AA) with nothing visible changing. */
+  .history-btn, .jump-btn, .clog-btn, .link-btn,
+  .health-pill, .hooks-badge, .files-pill, .heal-pill, .commits-pill { position: relative; }
+  .history-btn::after, .jump-btn::after, .clog-btn::after, .link-btn::after,
+  .health-pill::after, .hooks-badge::after, .files-pill::after,
+  .heal-pill::after, .commits-pill::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%; height: 100%; min-width: 24px; min-height: 24px;
+  }
+  /* Header controls have vertical room (56px, 48px mobile), so their tap area
+     grows tall as well as into the gaps — a glyph is never an ~18px target. */
+  #theme-toggle, #autosync-btn, #hosts-btn,
+  #view-toggle button, [data-testid="conn-indicator"] { position: relative; }
+  #theme-toggle::after, #autosync-btn::after, #hosts-btn::after,
+  #view-toggle button::after, [data-testid="conn-indicator"]::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%; height: 100%; min-width: 30px; min-height: 40px;
+  }
 
   /* Landing flash: a temporary accent pulse on the row a jump lands on, so the
      eye finds it immediately without leaving a permanent state change behind
@@ -2044,7 +2120,7 @@
     align-items: center;
     gap: 5px;
     font-weight: 600;
-    color: var(--queued);
+    color: var(--queued-text);
     background: var(--queued-dim);
     border: 1px solid color-mix(in srgb, var(--queued) 32%, transparent);
     border-radius: 20px;
@@ -2168,7 +2244,7 @@
     padding: 8px 12px;
     border-radius: 8px;
     font-size: 12px;
-    color: var(--queued);
+    color: var(--queued-text);
     background: var(--queued-dim);
     border: 1px solid color-mix(in srgb, var(--queued) 30%, transparent);
   }
@@ -2200,7 +2276,7 @@
   .drawer-inner { padding: 14px 16px 16px; }
   .drawer-title { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.3px; color: var(--text-primary); text-transform: uppercase; }
   .drawer-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
-  .drawer-sub b { color: var(--queued); font-weight: 600; }
+  .drawer-sub b { color: var(--queued-text); font-weight: 600; }
 
   .global-row {
     display: flex;
@@ -2229,7 +2305,7 @@
     color: var(--text-muted);
   }
   .sec-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-  .sec-label .sec-count { color: var(--queued); }
+  .sec-label .sec-count { color: var(--queued-text); }
 
   .qlist { display: flex; flex-direction: column; gap: 2px; }
   .qempty { font-size: 12.5px; color: var(--text-muted); padding: 8px 4px 4px; font-family: var(--font-mono); }
@@ -2250,6 +2326,9 @@
   }
   .stack-filter::placeholder { color: var(--text-muted); }
   .stack-filter:focus { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  /* Keyboard focus keeps a visible ring even though the mouse-focus outline is
+     suppressed above (T2.6); offset inward so the drawer's clip can't hide it. */
+  .stack-filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .stack-filter-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; display: none; border-radius: 4px; }
   .stack-filter-clear:hover { color: var(--text-primary); }
   .stack-filter-wrap.has-value .stack-filter-clear { display: block; }
@@ -2380,12 +2459,12 @@
     transition: background 0.15s;
   }
   .stack-row:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
-  .qpos { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--queued); background: var(--queued-dim); border-radius: 5px; text-align: center; line-height: 20px; height: 20px; }
+  .qpos { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--queued-text); background: var(--queued-dim); border-radius: 5px; text-align: center; line-height: 20px; height: 20px; }
   .qpos.blank { background: none; color: var(--text-muted); }
   .stack-meta { min-width: 0; }
   .stack-name { font-family: var(--font-mono); font-size: 13px; font-weight: 500; letter-spacing: -0.2px; display: flex; align-items: center; gap: 7px; }
   .stack-detail { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stack-detail .warn { color: var(--queued); }
+  .stack-detail .warn { color: var(--queued-text); }
 
   .reason { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; }
   .reason-global { color: var(--accent); background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent); }
@@ -2853,6 +2932,8 @@
   .clog-search .clog-sic svg { width: 14px; height: 14px; }
   .clog-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none;
     color: var(--text-primary); font-family: var(--font-mono); font-size: 12px; }
+  /* Restore a keyboard focus ring on the borderless search input (T2.6). */
+  .clog-search input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
   .clog-search input::placeholder { color: var(--text-muted); }
   .clog-search .clog-hits { font-family: var(--font-mono); font-size: 10px; color: var(--accent); white-space: nowrap; }
 
