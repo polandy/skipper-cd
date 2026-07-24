@@ -146,7 +146,7 @@
       <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="tg-moon" d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><g class="tg-sun"><circle cx="12" cy="12" r="4.3" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.4 19.6l1.6-1.6M18 6l1.6-1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g></svg>
       <span>light</span>
     </button>
-    <div class="indicator" data-testid="conn-indicator" data-state="connecting">
+    <div class="indicator" data-testid="conn-indicator" data-state="connecting" role="status" aria-live="polite" aria-atomic="true">
       <div class="indicator-dot warn" id="conn-dot">
         <svg class="ci-ico ci-link" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <svg class="ci-ico ci-broken" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.17 11.75l-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 2v2M2 8h2M16 20v2M20 16h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -155,6 +155,10 @@
     </div>
   </div>
 </header>
+
+<!-- Off-screen live region: announces terminal deploy outcomes (success/failed/
+     rolled_back/healed/…) to screen readers as SSE events land (T2.8). -->
+<div class="sr-only" id="a11y-announce" data-testid="a11y-announce" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <div class="theme-notice" id="theme-notice" data-testid="theme-notice" role="status" hidden>
   <span id="theme-notice-text"></span>
@@ -167,7 +171,7 @@
   <button class="update-banner-close" id="update-banner-close" data-testid="update-banner-close" aria-label="Dismiss">&times;</button>
 </div>
 
-<div class="drawer" id="hosts-drawer" data-testid="hosts-drawer" role="dialog" aria-label="Hosts">
+<div class="drawer" id="hosts-drawer" data-testid="hosts-drawer" role="dialog" aria-modal="true" aria-label="Hosts" tabindex="-1">
   <div class="drawer-inner">
     <div class="drawer-title">Hosts</div>
     <div class="drawer-sub" id="hosts-sub">Filter the merged view by host.</div>
@@ -176,7 +180,7 @@
   </div>
 </div>
 
-<div class="drawer" id="autosync-drawer" data-testid="autosync-drawer" role="dialog" aria-label="Autosync">
+<div class="drawer" id="autosync-drawer" data-testid="autosync-drawer" role="dialog" aria-modal="true" aria-label="Autosync" tabindex="-1">
   <div class="drawer-inner">
     <div class="drawer-title">Autosync</div>
     <div class="drawer-sub" id="autosync-sub">All stacks in sync.</div>
@@ -202,7 +206,7 @@
   </div>
 </div>
 
-<div class="drawer" id="run-drawer" data-testid="run-drawer" role="dialog" aria-label="This deploy run">
+<div class="drawer" id="run-drawer" data-testid="run-drawer" role="dialog" aria-modal="true" aria-label="This deploy run" tabindex="-1">
   <div class="drawer-inner">
     <div class="drawer-title">This deploy run</div>
     <div class="drawer-sub" id="run-sub">Nothing deploying.</div>
@@ -323,6 +327,29 @@
   const emptyState = document.getElementById('empty-state');
   const connDot = document.getElementById('conn-dot');
   const connText = document.getElementById('conn-text');
+  const a11yAnnounce = document.getElementById('a11y-announce');
+  // announce voices a message through the off-screen polite live region (T2.8).
+  // The region is cleared first, then set on the next frame, so two identical
+  // consecutive outcomes (e.g. two stacks both "deploy failed") still re-fire.
+  function announce(msg) {
+    if (!a11yAnnounce || !msg) return;
+    a11yAnnounce.textContent = '';
+    requestAnimationFrame(function() { a11yAnnounce.textContent = msg; });
+  }
+  // The `/api/events` stream replays the deploy-event backlog through the same
+  // handler as live events, so announcements must be suppressed until that burst
+  // has settled — otherwise every (re)connect would read the whole history aloud
+  // (T2.8). Each connect arms a one-shot gate: the replay burst (rendered within
+  // a frame or two) lands while it is closed, then it opens and stays open, so
+  // every later live deploy announces. Not reset by incoming events — a live
+  // deploy arriving soon after connect must not keep pushing the gate shut.
+  let announceReady = false;
+  let announceSettleTimer = null;
+  function armAnnounceGate() {
+    announceReady = false;
+    clearTimeout(announceSettleTimer);
+    announceSettleTimer = setTimeout(function() { announceReady = true; }, 700);
+  }
   const deployStatus = document.getElementById('deploy-status');
   const dsActive = deployStatus.querySelector('.ds-active');
   const dsNext = document.getElementById('deploy-next');
@@ -1818,6 +1845,7 @@
     if (open) { setViewOptions(false); setDrawer(false); }
     runDrawer.classList.toggle('open', open);
     deployStatus.setAttribute('aria-expanded', String(open));
+    manageSurfaceFocus(runDrawer, deployStatus, open);
   }
 
   deployStatus.addEventListener('click', function() {
@@ -1849,6 +1877,56 @@
       opts.close();
     });
   }
+
+  // --- Pop-out focus management (T2.7) -----------------------------------
+  // Keyboard users must be pulled into a drawer/popover when it opens and
+  // returned to the opener when it closes; the role="dialog" drawers must also
+  // trap Tab so it can't wander behind the open panel.
+  const FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled]),' +
+    'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  function focusablesIn(el) {
+    return Array.prototype.filter.call(el.querySelectorAll(FOCUSABLE_SEL), function(n) {
+      // Skip hidden controls (a collapsed vo-group, a display:none clear button).
+      return n.offsetWidth > 0 || n.offsetHeight > 0 || n.getClientRects().length > 0;
+    });
+  }
+  // manageSurfaceFocus moves focus into `surface` on open and restores it to
+  // `opener` on close. Restore only fires when focus is still inside the surface
+  // (Escape / keyboard close) — an outside click already moved focus elsewhere,
+  // so yanking it back would be wrong. Focus is set after a frame because a
+  // surface often renders its contents at open time.
+  function manageSurfaceFocus(surface, opener, open) {
+    if (open) {
+      surface._opener = opener;
+      // Two frames: the drawer animates open from max-height:0, so a control is
+      // not reliably focusable until layout has settled past the first frame.
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          if (!surface.classList.contains('open')) return; // toggled off already
+          const f = focusablesIn(surface);
+          (f[0] || surface).focus();
+        });
+      });
+    } else {
+      const ae = document.activeElement;
+      const returnFocus = surface._opener && (!ae || ae === document.body || surface.contains(ae));
+      const opener = surface._opener;
+      surface._opener = null;
+      if (returnFocus && opener && typeof opener.focus === 'function') opener.focus();
+    }
+  }
+  // trapFocus keeps Tab/Shift+Tab within an open dialog (wraps at the ends).
+  function trapFocus(dialog) {
+    dialog.addEventListener('keydown', function(e) {
+      if (e.key !== 'Tab' || !dialog.classList.contains('open')) return;
+      const f = focusablesIn(dialog);
+      if (!f.length) { e.preventDefault(); dialog.focus(); return; }
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+  }
+  trapFocus(runDrawer); // asDrawer/hostsDrawer are trapped in their own sections (declared later)
 
   registerSurface({
     isOpen: function() { return runDrawer.classList.contains('open'); },
@@ -1890,6 +1968,11 @@
     if (evt.status === 'skipped') return;
 
     showTable();
+
+    // Voice terminal outcomes to screen readers as they land live. The
+    // post-connect replay burst lands while the gate is closed, so a reconnect
+    // never announces the backlog. (T2.8)
+    if (announceReady) announce(deployAnnouncement(evt.status, evt.stack));
 
     if (evt.status === 'queued' || evt.status === 'blocked') {
       // Both are pending, leave-dirty states re-emitted every sync/reconcile
@@ -2008,7 +2091,19 @@
     const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
     // title → native hover tooltip; data-taptip → the tap-tip bubble on touch,
     // so the full hostname appears whether the chip is hovered or tapped.
-    return '<span class="host-mono"' + attr + ' data-taptip title="' + escapeAttr(hostName) + '">' + escapeHtml(hostMonogram(hostName)) + '</span>';
+    // role/tabindex/aria-label make the quick-filter chip keyboard-operable
+    // (T2.10) — Enter/Space fire the same toggle as a click (hostChipKeydown).
+    return '<span class="host-mono" role="button" tabindex="0" aria-label="Filter view to host ' + escapeAttr(hostName) + '"' + attr + ' data-taptip title="' + escapeAttr(hostName) + '">' + escapeHtml(hostMonogram(hostName)) + '</span>';
+  }
+  // hostChipKeydown activates a focused host chip from the keyboard (T2.10),
+  // mirroring the click delegation on the deploy feed and roster.
+  function hostChipKeydown(e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const chip = e.target.closest && e.target.closest('.host-mono');
+    if (!chip) return;
+    e.preventDefault();
+    const r = chip.closest('[data-host]');
+    if (r) toggleHostFilterTo(r.dataset.host);
   }
 
   // createPeerRow builds one read-only deploy row from a peer's audit record.
@@ -2220,6 +2315,12 @@
       row.className = 'host-row' + (isHostSelected(h.name) ? ' selected' : '');
       row.dataset.host = h.name;
       row.dataset.testid = 'host-row';
+      // Multi-select filter row: a keyboard-operable checkbox (T2.10). The
+      // check glyph is decorative; aria-checked carries the selection state.
+      row.setAttribute('role', 'checkbox');
+      row.tabIndex = 0;
+      row.setAttribute('aria-checked', String(isHostSelected(h.name)));
+      row.setAttribute('aria-label', h.name + (h.self ? ' (this host)' : ''));
       const slot = hostColors[h.name];
       const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
       const dotClass = h.self || h.reachable ? 'up' : (h.stale ? 'stale' : 'down');
@@ -2434,6 +2535,7 @@
     connText.textContent = 'connecting';
     connDot.parentElement.dataset.state = 'connecting';
     connDot.parentElement.title = 'connecting';
+    armAnnounceGate(); // re-hydrate silently; the replay burst must not announce (T2.8)
     fetchSnapshot().finally(openStream);
   }
 
@@ -2662,6 +2764,7 @@
     });
   }
 
+  rosterList.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
   rosterList.addEventListener('click', function(e) {
     // Host chip: quick-filter the merged view to this row's host (toggle). Before
     // the peer-row guard and panel logic so it works on every row's chip.
@@ -3018,7 +3121,9 @@
     asDrawer.classList.toggle('open', open);
     asBtn.classList.toggle('open', open);
     asBtn.setAttribute('aria-expanded', String(open));
+    manageSurfaceFocus(asDrawer, asBtn, open);
   }
+  trapFocus(asDrawer);
 
   asBtn.addEventListener('click', function() { setDrawer(!asDrawer.classList.contains('open')); });
   asBtn.addEventListener('keydown', function(e) {
@@ -3069,7 +3174,9 @@
     hostsDrawer.classList.toggle('open', open);
     hostsBtn.classList.toggle('open', open);
     hostsBtn.setAttribute('aria-expanded', String(open));
+    manageSurfaceFocus(hostsDrawer, hostsBtn, open);
   }
+  trapFocus(hostsDrawer);
 
   hostsBtn.addEventListener('click', function() { setHostsDrawer(!hostsDrawer.classList.contains('open')); });
 
@@ -3094,6 +3201,19 @@
     if (e.target.closest('.host-link')) return; // the external link opens normally
     const row = e.target.closest('.host-row');
     if (row) toggleHost(row.dataset.host);
+  });
+  // Keyboard-operate the host-row checkboxes (T2.10). toggleHost rebuilds the
+  // list, so re-focus the same host's fresh row afterwards to keep the caret put.
+  hostsDrawer.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.closest('.host-link')) return;
+    const row = e.target.closest('.host-row');
+    if (!row) return;
+    e.preventDefault();
+    const host = row.dataset.host;
+    toggleHost(host);
+    const again = hostsDrawer.querySelector('.host-row[data-host="' + (window.CSS && CSS.escape ? CSS.escape(host) : host) + '"]');
+    if (again) again.focus();
   });
 
   document.getElementById('hosts-all-btn').addEventListener('click', function() {
@@ -3410,9 +3530,13 @@
   function setViewOptions(open) {
     if (open) { setDrawer(false); setRunDrawer(false); } // surfaces are mutually exclusive
     viewOptions.classList.toggle('open', open);
+    let activeBtn = null;
     viewButtons.forEach(function(btn) {
-      if (btn.dataset.view === activeView) btn.setAttribute('aria-expanded', String(open));
+      if (btn.dataset.view === activeView) { btn.setAttribute('aria-expanded', String(open)); activeBtn = btn; }
     });
+    // role=menu popover: focus the first option on open, return to the active
+    // view button on keyboard close (no hard trap — Escape closes it). (T2.7)
+    manageSurfaceFocus(viewOptions, activeBtn, open);
   }
 
   viewButtons.forEach(function(btn) {
@@ -3592,6 +3716,7 @@
 
   // Files panel — open/close as full-width sibling below the row.
   // When diffs are available, shows a diff panel; otherwise shows file list.
+  tbody.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
   tbody.addEventListener('click', function(e) {
     // Host chip: quick-filter the merged view to this row's host (toggle). Before
     // any panel logic so a tap on the chip never also opens the row's diff panel.

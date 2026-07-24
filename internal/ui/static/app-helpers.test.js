@@ -352,3 +352,20 @@ test('reconcileHostFilter: restores a saved subset against the current host set'
   assert.deepEqual(h.reconcileHostFilter(['host-b', 'host-x'], ['host-a', 'host-b']), ['host-b']); // stale name pruned
   assert.equal(h.reconcileHostFilter(['host-a', 'host-b'], ['host-a', 'host-b']), null); // full set → normalize to all
 });
+
+test('deployAnnouncement: only terminal outcomes get a spoken phrase (T2.8)', () => {
+  assert.equal(h.deployAnnouncement('success', 'gitea'), 'gitea deployed successfully');
+  assert.equal(h.deployAnnouncement('failed', 'gitea'), 'gitea deploy failed');
+  assert.equal(h.deployAnnouncement('rolled_back', 'gitea'), 'gitea deploy failed, rolled back');
+  assert.equal(
+    h.deployAnnouncement('rolled_back_unhealthy', 'gitea'),
+    'gitea rolled back, still unhealthy',
+  );
+  assert.equal(h.deployAnnouncement('healed', 'gitea'), 'gitea self-healed');
+  assert.equal(h.deployAnnouncement('heal_exhausted', 'gitea'), 'gitea self-heal failed');
+  // Non-terminal statuses are never announced.
+  for (const s of ['deploying', 'queued', 'blocked', 'skipped', '', undefined]) {
+    assert.equal(h.deployAnnouncement(s, 'gitea'), null);
+  }
+  assert.equal(h.deployAnnouncement('success', ''), null); // no stack → nothing to say
+});
