@@ -835,11 +835,27 @@ func registerEventRoutes(mux *http.ServeMux, broadcaster *events.Broadcaster[eve
 	mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
 	mux.Handle("GET /api/audit", ui.AuditHandler(auditLog))
 	mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
-	if snap.peers != nil {
-		mux.Handle("GET /api/peers", ui.PeersHandler(func() any { return snap.peers.Hosts() }))
-		mux.Handle("GET /api/peers/{name}/events/{id}/diffs",
-			ui.PeerDiffsHandler(snap.peers.PeerDiffsURL, &http.Client{Timeout: peerPollTimeout}))
+	registerPeerRoutes(mux, snap.peers)
+}
+
+// registerPeerRoutes wires the multi-host fan-in proxies (ADR-0048): the merged
+// peer list, the per-peer diff fetch and the per-peer container-logs SSE follow.
+// A no-op when no peers are configured (reg is nil).
+func registerPeerRoutes(mux *http.ServeMux, reg *peers.Registry) {
+	if reg == nil {
+		return
 	}
+	mux.Handle("GET /api/peers", ui.PeersHandler(func() any { return reg.Hosts() }))
+	mux.Handle("GET /api/peers/{name}/events/{id}/diffs",
+		ui.PeerDiffsHandler(reg.PeerDiffsURL, &http.Client{Timeout: peerPollTimeout}))
+	// The container-logs proxy streams an open-ended SSE follow, so its client
+	// carries no timeout (unlike the bounded diff fetch); the client's
+	// disconnect cancels the request context and tears the stream down.
+	logsProxyClient := &http.Client{}
+	mux.Handle("GET /api/peers/{name}/container-logs/{stack}",
+		ui.PeerContainerLogsHandler(reg.PeerContainerLogsURL, logsProxyClient))
+	mux.Handle("GET /api/peers/{name}/container-logs/{stack}/{service}",
+		ui.PeerContainerLogsHandler(reg.PeerContainerLogsURL, logsProxyClient))
 }
 
 // registerIconRoutes wires per-stack icon resolution and the cache-refresh hook.

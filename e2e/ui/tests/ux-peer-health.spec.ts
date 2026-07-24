@@ -8,10 +8,11 @@ import type { Page } from '@playwright/test';
 // roster + deploys), so a peer's rows reach the same at-a-glance detail as a
 // local stack: a live health pill inline on the overview (no expand needed), an
 // app-link on the roster row, and — on expand — the containers panel rendered
-// from the peer's fanned-in health, read-only (no per-service log button, since
-// the container-logs proxy is a follow-up). The harness stub peer (host-b) now
-// serves health/healthwatch/app_links in its snapshot; local health is enabled
-// with healthPoll so the parity is visible on both sides. Behaviour-only.
+// from the peer's fanned-in health. The harness stub peer (host-b) now serves
+// health/healthwatch/app_links in its snapshot; local health is enabled with
+// healthPoll so the parity is visible on both sides. Behaviour-only. (The
+// per-service log button that rides the peer's containers is proxied — its
+// streaming behaviour is Maske UY.)
 
 const iso = (minsAgo: number) => new Date(Date.now() - minsAgo * 60_000).toISOString();
 
@@ -118,8 +119,9 @@ test('UX3: expanding a peer row shows its containers, read-only', async ({ page,
   await expect(health).toBeVisible();
   await expect(health.locator('[data-testid="health-service"]')).toHaveCount(1);
   await expect(health).toContainText('gitea');
-  // Read-only mirror: no per-service log button on a peer's containers.
-  await expect(health.locator('[data-testid="clog-btn"]')).toHaveCount(0);
+  // A per-service log button rides the peer's containers too (its stream is
+  // proxied — the button's behaviour is exercised in Maske UY).
+  await expect(health.locator('[data-testid="clog-btn"]')).toHaveCount(1);
 });
 
 // UX4 — the peer's healthwatch timeline fans in too, so an expanded peer stack

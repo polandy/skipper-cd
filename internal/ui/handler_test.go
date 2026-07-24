@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -722,6 +723,63 @@ func TestPeerDiffsHandler_ProxiesAndForwardsStatus(t *testing.T) {
 	}
 	// Unknown peer → 404 from the handler itself, no fetch.
 	if rec := do("/api/peers/nope/events/42/diffs"); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown peer: got %d, want 404", rec.Code)
+	}
+}
+
+func TestPeerContainerLogsHandler_StreamsAndForwardsStatus(t *testing.T) {
+	// A stub peer that streams two SSE frames for a known stack, echoing the tail
+	// query so the test can assert it is forwarded; 404 for an unknown stack.
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/container-logs/gitea" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprintf(w, "data: tail=%s\n\n", r.URL.Query().Get("tail"))
+		_, _ = io.WriteString(w, "data: second line\n\n")
+	}))
+	defer peer.Close()
+
+	resolve := func(name, stack, service string) (string, bool) {
+		if name != "host-b" {
+			return "", false
+		}
+		u := peer.URL + "/api/container-logs/" + stack
+		if service != "" {
+			u += "/" + service
+		}
+		return u, true
+	}
+	mux := http.NewServeMux()
+	h := PeerContainerLogsHandler(resolve, peer.Client())
+	mux.Handle("GET /api/peers/{name}/container-logs/{stack}", h)
+	mux.Handle("GET /api/peers/{name}/container-logs/{stack}/{service}", h)
+
+	do := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+
+	// Known peer + stack → the SSE frames stream through as event-stream, and the
+	// tail query is forwarded to the peer.
+	rec := do("/api/peers/host-b/container-logs/gitea?tail=50")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("proxy = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want text/event-stream", ct)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "data: tail=50") || !strings.Contains(body, "data: second line") {
+		t.Errorf("proxied body = %q, want the peer's SSE frames with the forwarded tail", body)
+	}
+	// A stack the peer does not know → its 404 is forwarded (UI surfaces the error).
+	if rec := do("/api/peers/host-b/container-logs/nope"); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown stack: got %d, want 404", rec.Code)
+	}
+	// Unknown peer → 404 from the handler itself, no fetch.
+	if rec := do("/api/peers/nope/container-logs/gitea"); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown peer: got %d, want 404", rec.Code)
 	}
 }

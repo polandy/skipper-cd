@@ -178,14 +178,17 @@ rejected as reading like an alert). The chip carries its hostname on hover
   expands a read-only detail (facts + the peer's **containers/health** rendered
   from the fanned-in `health`/`healthwatch`, and the diff loaded inline via the
   read-only proxy above), and roster rows carry the peer's **app-link**. So a
-  peer reaches the same at-a-glance detail as a local stack. The one gap is live
-  container **logs** (SSE, cross-origin): they need a primary-side SSE proxy — a
-  sibling of the diff proxy — left as a follow-up.
-- **The primary proxies one peer read endpoint on demand.** `/api/peers/{name}/
-  events/{id}/diffs` is the only per-peer proxy — a lean, read-only exception to
-  "fan in, don't proxy," justified because a diff is bulk data not worth fanning
-  in eagerly and the browser can't fetch it cross-origin. The deploy event `id`
-  it keys on now rides on `audit.Record`.
+  peer reaches the same at-a-glance detail as a local stack. Live container
+  **logs** are served the same read-only way, through the on-demand SSE proxy
+  below, so a peer's per-service log button works like a local one.
+- **The primary proxies peer read endpoints on demand.** Two per-peer proxies —
+  the diff `/api/peers/{name}/events/{id}/diffs` and the container-logs SSE
+  `/api/peers/{name}/container-logs/{stack}[/{service}]` — are lean, read-only
+  exceptions to "fan in, don't proxy," justified because each is bulk or
+  open-ended data not worth fanning in eagerly and the browser can't fetch it
+  cross-origin. The deploy event `id` the diff proxy keys on now rides on
+  `audit.Record`; the logs proxy forwards frames with a flush and tears the
+  upstream down on client disconnect.
 - **The fan-in narrates itself in pretty-console mode** (ADR-0042): a startup
   line plus edge-triggered peer reachability (up/down logged once per
   transition). Useful in every log mode; pretty mode just styles it.
