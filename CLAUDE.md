@@ -46,6 +46,8 @@ Table-style tests with `t.TempDir()` and real files on disk; inject `recordingRu
 
 Two deliberate exceptions run real commands: `internal/command` tests (the process boundary — faking exec there would test nothing) and `internal/git/integration_test.go` (real `git` against a local repo, catches argv mistakes the fakes cannot; skips when git is missing).
 
+**No non-deterministic timing constraints in tests** (backend and frontend alike). A test must never depend on wall-clock timing that only *probably* holds — arbitrary sleeps, waiting a fixed duration for async work, or polling for an effect that might not land. If a test can only be made to pass by waiting-and-hoping, the fault is in the production code: give it a deterministic seam — expose a settled state, signal completion, or accept an injected clock/synchronisation point — so the test asserts the outcome directly instead of racing it.
+
 ## Engineering principles
 
 Priorities for all work in this repo:

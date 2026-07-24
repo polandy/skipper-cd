@@ -1888,29 +1888,48 @@
   // trap Tab so it can't wander behind the open panel.
   const FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled]),' +
     'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  // Upper bound on frames the open-focus keeps re-trying while a surface settles
+  // (see manageSurfaceFocus). Comfortably longer than the 0.22s open transition
+  // (~14 frames at 60fps) so focus always lands within the animation.
+  const FOCUS_SETTLE_FRAMES = 30;
   function focusablesIn(el) {
     return Array.prototype.filter.call(el.querySelectorAll(FOCUSABLE_SEL), function(n) {
       // Skip hidden controls (a collapsed vo-group, a display:none clear button).
       return n.offsetWidth > 0 || n.offsetHeight > 0 || n.getClientRects().length > 0;
     });
   }
+  // focusRestsInside reports whether focus already sits on a real control within
+  // `surface` — the bare surface fallback (its tabindex=-1 container) doesn't
+  // count. Lets the open-focus bow out once the observer has moved focus inside.
+  function focusRestsInside(surface) {
+    const ae = document.activeElement;
+    return !!ae && ae !== surface && surface.contains(ae);
+  }
   // manageSurfaceFocus moves focus into `surface` on open and restores it to
   // `opener` on close. Restore only fires when focus is still inside the surface
   // (Escape / keyboard close) — an outside click already moved focus elsewhere,
-  // so yanking it back would be wrong. Focus is set after a frame because a
-  // surface often renders its contents at open time.
+  // so yanking it back would be wrong.
+  //
+  // On open the first attempt is synchronous, so focus has landed by the time
+  // the caller's "surface is open" await resolves — no observer has to wait out
+  // the open animation. Should the surface not be focusable yet (contents
+  // rendered at open time, a live list still rebuilding, or visibility:hidden
+  // still settling), it retries each frame until focus rests on a real control,
+  // bounded by FOCUS_SETTLE_FRAMES. Retrying stops the instant focus is inside —
+  // whether we placed it or the user moved there first — so it can neither be
+  // lost to the open animation nor yank focus back from where the user went next.
   function manageSurfaceFocus(surface, opener, open) {
     if (open) {
       surface._opener = opener;
-      // Two frames: the drawer animates open from max-height:0, so a control is
-      // not reliably focusable until layout has settled past the first frame.
-      requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-          if (!surface.classList.contains('open')) return; // toggled off already
-          const f = focusablesIn(surface);
-          (f[0] || surface).focus();
-        });
-      });
+      let tries = FOCUS_SETTLE_FRAMES;
+      (function settle() {
+        if (!surface.classList.contains('open')) return; // toggled off already
+        if (focusRestsInside(surface)) return;           // observer moved focus in — don't override
+        const target = focusablesIn(surface)[0] || surface;
+        target.focus();
+        if (document.activeElement === target || --tries <= 0) return;
+        requestAnimationFrame(settle);
+      })();
     } else {
       const ae = document.activeElement;
       const returnFocus = surface._opener && (!ae || ae === document.body || surface.contains(ae));
