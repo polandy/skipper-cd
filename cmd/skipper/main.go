@@ -861,12 +861,13 @@ func registerIconRoutes(mux *http.ServeMux, cfg *config.Config, stacks func() []
 	iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 	iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
 	mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg, stacks)))
-	mux.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
+	mux.Handle("POST /api/icons/refresh", ui.RequireSameOrigin(icons.RefreshHandler(iconSvc)))
 }
 
 // registerAutosyncRoutes wires the autosync toggle and the deploy-queue view.
 func registerAutosyncRoutes(mux *http.ServeMux, as *autosyncDeps) {
-	autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)
+	// The guard passes GET through untouched; only the POST override is gated.
+	autosyncH := ui.RequireSameOrigin(ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger))
 	mux.Handle("GET /api/autosync", autosyncH)
 	mux.Handle("POST /api/autosync", autosyncH)
 	mux.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
