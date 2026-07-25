@@ -36,7 +36,7 @@ The directory name is the stack name — skipper-cd discovers it automatically, 
 # skipper.yml
 repo_url: https://gitea.example.com/user/deploy-repo.git
 stacks_base_dir: modules                         # relative to the repo clone; omit for the repo root
-webhook_secret: "a-long-random-string"           # you'll paste this into the webhook too
+webhook_secret: "a-long-random-string"           # optional; only for the push webhook in Step 3 (reconcile runs without it)
 ui_enabled: true                                 # live web UI on the webhook port
 ```
 

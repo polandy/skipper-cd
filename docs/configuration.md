@@ -13,7 +13,7 @@ The smallest working config. Stack discovery is on by default, so every `<stacks
 ```yaml
 repo_url: ssh://git@gitea.example.com/user/deploy.git
 stacks_base_dir: stacks                  # relative to repo_dir; omit for the repo root
-webhook_secret: "your-secret-here"
+# webhook_secret: "your-secret-here"     # optional — enables the push webhook; reconcile runs without it
 ```
 
 skipper clones the repo and deploys every discovered stack, then keeps it converged with a [reconcile loop](#periodic-reconcile) that re-syncs on a timer and redeploys only what changed; the signed webhook is an optional accelerator that makes a push land in seconds instead of at the next tick. `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `deploy_health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
@@ -31,7 +31,7 @@ command_timeout_seconds: 300            # optional, default: 300
 log_format: pretty                      # optional, default: pretty (colored console); "text" or "json" for machine-readable logs
 stacks_base_dir: modules                # relative to repo_dir (the clone); omit for the repo root
 project_directory_base: /etc/nixos/modules    # optional; see project_directory_base below
-webhook_secret: "your-secret-here"
+webhook_secret: "your-secret-here"      # optional — enables the /webhook accelerator; reconcile runs without it
 port: 8080
 metrics_port: 9120
 ui_enabled: true                        # optional, default: true (live web UI on the webhook port)

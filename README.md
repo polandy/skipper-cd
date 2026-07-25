@@ -23,7 +23,7 @@ Point skipper-cd at your deploy repo — that's the whole config:
 # skipper.yml
 repo_url: ssh://git@gitea.example.com/user/deploy.git
 stacks_base_dir: modules                 # relative to the repo clone; omit for the repo root
-webhook_secret: "your-secret-here"
+# webhook_secret: "your-secret-here"     # optional — enables the push webhook; reconcile runs without it
 ```
 
 Every `<stacks_base_dir>/<name>/docker-compose.yml` in the repo is a stack — skipper-cd discovers them automatically. A reconcile loop pulls, diffs, and redeploys only what changed on a timer, keeping every host converged to the repo. Wire up the (HMAC-signed) push webhook and a merge lands in seconds instead of at the next tick.
