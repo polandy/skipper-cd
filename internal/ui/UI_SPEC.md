@@ -52,7 +52,7 @@ The state is a single `localStorage` key `headerTourSeen` (`'1'` once dismissed)
 
 The view-specific toggles live in a small popover anchored under the view toggle (styled like the [Autosync drawer](#autosync)), **not** in the header row — so switching views never makes a header control appear or disappear. Only Deploys and Stacks carry one (Logs' controls live inline in its own panel header instead — see [Log view](#log-view)). It is opened by clicking the already-active view button (the `▾` hint), and dismisses on outside-click or `Esc`; it and the Autosync drawer are mutually exclusive. Inside, each option is a full row (glyph + label + switch track). Contents by active view:
 
-- **Deploys** → **Time mode** — switches the Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). `localStorage` key `timeMode`. On **mobile only**, the group is preceded by a **"Search stacks"** action row that reveals and focuses the [Deploys filter](#deploys-filter) (the touch entry point for type-to-search).
+- **Deploys** → **Time mode** — switches the Time column between relative (`Xs ago`) and absolute (`toLocaleString()`). Default: inactive (relative). `localStorage` key `timeMode`. Plus **Version changes** (`data-testid="image-delta-toggle"`) — shows/hides the [Version column](#image-delta). Default: **active** (shown); a per-browser choice, so only the *off* state is stored (`localStorage` key `imageDelta` = `off`; absent means on). Flipping it collapses or restores the whole column (header included) on every rendered row live, no reload. On **mobile only**, the group is preceded by a **"Search stacks"** action row that reveals and focuses the [Deploys filter](#deploys-filter) (the touch entry point for type-to-search).
 - **Stacks** → **Time mode** — the same shared toggle as Deploys (one `timeMode`; flipping it re-renders both views). Plus, on **mobile only**, a **"Search stacks"** action row that reveals and focuses the [Stacks filter](#stacks-view) (the touch entry point for its type-to-search).
 
 ### Theme override
@@ -70,9 +70,9 @@ The theme picker is **opt-in**: it renders only when `ui_theme_switcher: true`. 
 
 ## Deploy table
 
-5-column grid (`160px 1fr 110px 80px 100px`): **Time · Stack · Status · Duration · Files**
+6-column grid (`150px minmax(0,1.15fr) minmax(0,1fr) 110px 76px 96px`): **Time · Stack · Version · Status · Duration · Files**. The columns live in a `--deploy-cols` variable on `#deploy-table` so the header and the rows stay in lockstep; `.no-version` swaps in the 5-column set when the [Version column](#image-delta) is toggled off.
 
-Rows are prepended (newest first) with a slide-in animation. Time cells show relative or absolute time depending on the header toggle. Relative times refresh every 30 s; tooltip always shows the other format.
+Rows are prepended (newest first) with a slide-in animation and are **top-aligned** (`align-items: start`) with a hairline separator between them: the [Version column](#image-delta) is routinely taller than one line, so centring would drag Time/Stack/Status to its middle and cost the row its common starting line, and the spacing alone would no longer show where one row ends. Time cells show relative or absolute time depending on the header toggle. Relative times refresh every 30 s; tooltip always shows the other format. A row that changed one or more service images names them in its **Version** column — the [image delta](#image-delta).
 
 ### Stack icons
 
@@ -81,6 +81,19 @@ The Stack cell carries a small icon chip (18 px, fixed box, `object-fit: contain
 The reserved pseudo-stacks resolve to fixed slugs instead of the monogram: `_nixos` (the NixOS rebuild) auto-matches the `nixos` icon and `_config` (file-level stack-config failures in stack-discovery mode, ADR-0034/ADR-0043) the `git` icon.
 
 **Refreshing icons.** The server-side icon cache is cleared by `POST /api/icons/refresh` (e.g. `curl -X POST …/api/icons/refresh`); the next load of each icon then picks up renamed stacks and newly published icons. It is an **ops endpoint** — there is deliberately no header control and no keyboard trigger (the single-key `i` hotkey was removed so type-to-search in the deploys view can own printable keys — see [Deploys filter](#deploys-filter)).
+
+### Image delta
+
+A deploy row surfaces **which service(s) it updated, and to what**, without opening the diff. When the event carries `image_changes`, the row's **Version column** (`.col-version`) holds a chip per changed service (`.tag-delta`, wrapped in `data-testid="svc-delta"`), **stacked one per line** — a column, rather than a note beside the stack name, so the versions line up down the table and can be scanned vertically. Each chip shows the **service name** (always — it names which service moved, so a `caddy` service in a `web` stack, or several services, each stays identifiable), then the change. The change reduces the image reference to the shortest tokens that actually differ:
+
+- a **tag bump** shows the tags (`ghcr.io/acme/api:1.5.0` → `ghcr.io/acme/api:1.6.0` renders `1.5.0 → 1.6.0`);
+- a **same-tag rebuild** (only the pinned digest moved) shows the shared tag plus a `↻` **rebuilt** marker (`nginx:1.25@sha256:aa…` → `…bb…` renders `1.25 ↻`), not two unreadable hex digests — the full digests are on the chip's tooltip/label.
+
+The registry and repository are dropped from the visible chip — the service name already identifies the image. Each chip carries `role="img"` + an `aria-label` announcing the change as one phrase (`web updated from 1.25 to 1.26`) and a `title` with the **full** `old → new` reference (registry + repo + digest — progressive disclosure). The chip itself is low-chroma (a neutral fill, only the new tag in the diff-add accent) so it does not compete with the status colour, the log's primary scan signal. An empty `old` reads as the service's first image (no left side); an empty `new` reads as **removed**. **Every** changed service is listed — the column is the answer to "what moved", so nothing is folded behind a count. Only services whose image reference actually changed are listed, so a config-only deploy shows no delta.
+
+The data rides the `image_changes` field on the event's SSE payload (small, like `heal_drift`) — no extra fetch, so the column fills the moment the row renders, and also when a live `deploying` row settles (its `deploying` event carries no `image_changes`). A **healed** row leaves the cell empty (self-heal re-applies the same version), as does a **peer row** (the fan-in's audit records carry no image changes) — both still emit the cell so the grid stays aligned.
+
+**Width and responsive.** Stack keeps the larger share of the free width; a chip that outgrows the column **wraps within itself** rather than truncating, so a narrow column costs height, never the service name. On **mobile** there are no columns (the row is a 2×2 block), so the Version column becomes a **full-width row** beneath the name/time, keeping its stacked chips and staying left of the row-tap centre. The column is toggleable per browser via the Deploys [**Version changes** view-option](#view-options-popover) (default on); switching it off collapses the column entirely — chips, cell width and the `Version` header — rather than leaving an empty column behind.
 
 ### Stack health
 

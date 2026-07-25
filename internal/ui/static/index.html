@@ -120,6 +120,11 @@
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>Absolute time</span>
           </button>
+          <button class="filter-toggle" id="image-delta-toggle" data-testid="image-delta-toggle" title="Hide version changes on deploy rows">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13.5l6.5 6.5L20 10.5V4h-6.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="15" cy="9" r="1.5" fill="currentColor"/></svg>
+            <span>Version changes</span>
+          </button>
         </div>
         <div class="vo-group" data-view="stacks">
           <button class="filter-toggle vo-search" id="roster-search-open" data-testid="roster-search" type="button" title="Search stacks">
@@ -291,6 +296,7 @@
     <div class="event-list-header">
       <span>Time</span>
       <span>Stack</span>
+      <span class="col-version">Version</span>
       <span>Status</span>
       <span>Duration</span>
       <span>Files</span>
@@ -417,6 +423,11 @@
   const queuedRows = {};
   let hasRows = false;
   let absoluteTime = localStorage.getItem('timeMode') === 'absolute';
+  // Per-service image delta on deploy rows (ADR-none: a view preference). On by
+  // default; a per-browser toggle in the Deploys view-options persists an off
+  // choice in localStorage. Only the explicit 'off' hides it, so a first-time
+  // visitor sees it.
+  let imageDeltaOn = localStorage.getItem('imageDelta') !== 'off';
 
   // Autosync state, populated from the 'autosync' and 'queue' SSE events.
   let autosyncSnap = null;                    // GET /api/autosync shape
@@ -959,6 +970,52 @@
     }
     const label = status === 'rolled_back' ? 'rolled back' : status;
     return `<span class="${cls}" data-testid="status-badge">${icon}${label}</span>`;
+  }
+
+  // imageDeltaHTML renders the per-service image change(s) a deploy carried as
+  // `service old\u2192new` chips for the row's Version column \u2014 one per line, so the
+  // versions line up down the table and which service updated (and to what) reads
+  // at a glance without opening the diff. The data rides the event
+  // (image_changes); only services whose image ref actually changed are listed.
+  // Each chip names its service (a stack often has several), then the change: an
+  // empty Old is a service's first image (nothing on the left); an empty New is a
+  // service removed from the stack. Every changed service is listed — a deploy
+  // that touched five services says so, rather than hiding the rest behind a
+  // count the reader would have to open the diff to resolve.
+  function imageDeltaHTML(changes) {
+    if (!changes || changes.length === 0) return '';
+    const shown = changes.map(function (c) {
+      // Each chip carries a role=img + aria-label so a screen reader announces
+      // the change as one phrase ("web updated from 1.25 to 1.26"), and a title
+      // with the full old\u2192new reference (registry + repo + digest are dropped
+      // from the visible chip but kept here \u2014 progressive disclosure).
+      let body, aria;
+      if (!c.old) {
+        // First image for this service \u2014 nothing to compare against.
+        body = `<span class="td-new">${escapeHtml(shortImageTag(c.new))}</span>`;
+        aria = `${c.service} set to ${c.new}`;
+      } else if (!c.new) {
+        // Service removed from the stack.
+        body = `<span class="td-old">${escapeHtml(shortImageTag(c.old))}</span><span class="td-arr" aria-hidden="true">\u2192</span><span class="td-gone">removed</span>`;
+        aria = `${c.service} removed (was ${c.old})`;
+      } else {
+        const d = imageDelta(c.old, c.new);
+        if (d.tag) {
+          // Same tag, only the pinned digest moved: a rebuild. Two hex digests
+          // are near-impossible to eyeball, so show a \u21bb rebuilt marker with the
+          // shared tag; the full digests live in the title/aria.
+          body = `<span class="td-ctx">${escapeHtml(d.tag)}</span><span class="td-rebuilt" aria-hidden="true">\u21bb</span>`;
+          aria = `${c.service} rebuilt, tag ${d.tag} unchanged`;
+        } else {
+          // A tag bump: show the tags that differ.
+          body = `<span class="td-old">${escapeHtml(d.from)}</span><span class="td-arr" aria-hidden="true">\u2192</span><span class="td-new">${escapeHtml(d.to)}</span>`;
+          aria = `${c.service} updated from ${d.from} to ${d.to}`;
+        }
+      }
+      const title = `${c.service}: ${c.old || '(first image)'} \u2192 ${c.new || '(removed)'}`;
+      return `<span class="tag-delta" role="img" aria-label="${escapeAttr(aria)}" title="${escapeAttr(title)}"><span class="td-svc">${escapeHtml(c.service)}</span>${body}</span>`;
+    }).join('');
+    return `<span class="svc-delta" data-testid="svc-delta">${shown}</span>`;
   }
 
   function filesHTML(files) {
@@ -1763,9 +1820,18 @@
     // A healed row has no changed files; its files cell instead carries the
     // self-heal badge, which expands the corrective-redeploy detail (ADR-0029).
     const filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
+    // A healed row applied no image change (self-heal re-applies the same
+    // version); every other row names which service(s) moved, and to what, in the
+    // Version column. Stash the changes on the row so the view-options toggle can
+    // fill/empty the column live without a reload.
+    if (evt.status !== 'healed' && evt.image_changes && evt.image_changes.length) {
+      row.dataset.imageChanges = JSON.stringify(evt.image_changes);
+    }
+    const delta = (imageDeltaOn && evt.status !== 'healed') ? imageDeltaHTML(evt.image_changes) : '';
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
       `<span class="cell-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
+      `<span class="col-version">${delta}</span>` +
       `<span class="status-cell">${badgeHTML(evt.status)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
       `<span class="col-files">${filesCell}</span>`;
@@ -2327,6 +2393,15 @@
       if (evt.changed_files && evt.changed_files.length > 0) {
         existing.querySelector('.col-files').innerHTML = filesHTML(evt.changed_files);
       }
+      // The terminal event carries image_changes (the preceding deploying event
+      // does not), so fill the Version column as the row settles — otherwise a
+      // live deploy would show it only after a reload. Stash the changes for the
+      // toggle; writing the cell wholesale keeps a re-emitted event idempotent.
+      if (evt.image_changes && evt.image_changes.length) {
+        existing.dataset.imageChanges = JSON.stringify(evt.image_changes);
+      }
+      const versionCell = existing.querySelector('.col-version');
+      if (versionCell) versionCell.innerHTML = imageDeltaOn ? imageDeltaHTML(evt.image_changes) : '';
       if (evt.error) {
         existing.after(createErrorDetail(evt));
       }
@@ -2449,6 +2524,9 @@
     row.innerHTML =
       '<span class="cell-time" data-testid="time-cell" data-ts="' + escapeAttr(rec.timestamp) + '" title="' + escapeAttr(absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
       '<span class="cell-stack">' + hostChipHTML(hostName) + '<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' + escapeHtml(rec.stack) + '</span></span>' +
+      // Empty Version cell: the fan-in's audit records carry no image_changes, but
+      // the peer row shares the deploy grid, so the cell must exist to stay aligned.
+      '<span class="col-version"></span>' +
       '<span class="status-cell">' + badgeHTML(rec.status) + pill + '</span>' +
       '<span class="cell-duration" data-testid="duration-cell">' + formatDuration(rec.duration_ms) + '</span>' +
       '<span class="col-files">' + files + '</span>';
@@ -2938,6 +3016,43 @@
   });
 
   applyTimeMode();
+
+  // Per-service image delta toggle (Deploys popover). Reflects the toggle state,
+  // collapses the whole Version column when off (.no-version — an empty column
+  // would keep taking width, and its header would lie), and fills/empties every
+  // already-rendered row's cell from its stashed image_changes, so flipping it
+  // takes effect live without a reload. New rows honour imageDeltaOn in
+  // createRow / the settle path.
+  const imageDeltaBtn = document.getElementById('image-delta-toggle');
+  const deployTable = document.getElementById('deploy-table');
+
+  function applyImageDelta() {
+    if (imageDeltaBtn) {
+      imageDeltaBtn.classList.toggle('active', imageDeltaOn);
+      imageDeltaBtn.title = imageDeltaOn ? 'Hide the Version column' : 'Show the Version column';
+    }
+    if (deployTable) deployTable.classList.toggle('no-version', !imageDeltaOn);
+    tbody.querySelectorAll('.event-row[data-stack]').forEach(function(row) {
+      const cell = row.querySelector('.col-version');
+      if (!cell) return;
+      cell.innerHTML = (imageDeltaOn && row.dataset.imageChanges)
+        ? imageDeltaHTML(JSON.parse(row.dataset.imageChanges))
+        : '';
+    });
+  }
+
+  if (imageDeltaBtn) {
+    imageDeltaBtn.addEventListener('click', function() {
+      imageDeltaOn = !imageDeltaOn;
+      // Store only the off choice; absence means the default (on), so a cleared
+      // browser and a first-time visitor both get the delta.
+      if (imageDeltaOn) localStorage.removeItem('imageDelta');
+      else localStorage.setItem('imageDelta', 'off');
+      applyImageDelta();
+    });
+  }
+
+  applyImageDelta();
 
   // Deploys filter (type-to-search) — a substring filter over the deploy rows by
   // stack name. There is no header control: the bar is hidden until the user

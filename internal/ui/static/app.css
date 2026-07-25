@@ -555,7 +555,7 @@
 
   .event-list-header {
     display: grid;
-    grid-template-columns: 160px 1fr 110px 80px 100px;
+    grid-template-columns: var(--deploy-cols);
     gap: 12px;
     padding: 0 20px 10px;
     font-family: var(--font-mono);
@@ -568,15 +568,42 @@
     margin-bottom: 4px;
   }
 
+  /* Deploy-table columns: Time · Stack · Version · Status · Duration · Files.
+     Held in a variable because the header and the rows must stay in lockstep, and
+     the Version column collapses away when its view-option is off (.no-version) —
+     an empty column would otherwise keep taking width. Stack and Version share
+     the free width (minmax(0,…) so both can shrink instead of overflowing). */
+  /* Stack keeps the larger share: the name must stay readable, while a too-narrow
+     Version chip degrades gracefully (its service name ellipsizes, the versions
+     stay). The other columns are trimmed slightly to buy the Version column its
+     width. */
+  #deploy-table { --deploy-cols: 150px minmax(0, 1.15fr) minmax(0, 1fr) 110px 76px 96px; }
+  #deploy-table.no-version { --deploy-cols: 160px minmax(0, 1fr) 110px 80px 100px; }
+  #deploy-table.no-version .col-version { display: none; }
+
   .event-row {
     display: grid;
-    grid-template-columns: 160px 1fr 110px 80px 100px;
+    grid-template-columns: var(--deploy-cols);
     gap: 12px;
-    align-items: center;
+    /* Top-aligned, not centred: the Version column is routinely taller than one
+       line, and centring would let it drag Time/Stack/Status to its middle — the
+       row would lose a common starting line and the eye would have to re-find it
+       on every row. Aligned to the top, one row reads as a single horizontal run
+       (time → stack → first version → status) with the extra service chips
+       hanging beneath it. */
+    align-items: start;
     padding: 12px 20px;
     border-radius: var(--radius);
     transition: background 0.2s, transform 0.2s;
     position: relative;
+  }
+
+  /* With variable row heights the spacing alone no longer says where one row ends
+     and the next begins, so rows carry a hairline separator. Not on the first row,
+     and the rule applies after an expanded panel too — there the line marks the
+     return to the log. */
+  .event-list > .event-row:not(:first-child) {
+    border-top: 1px solid color-mix(in srgb, var(--overlay2) 10%, transparent);
   }
 
   .event-row:hover {
@@ -1410,6 +1437,56 @@
     border-color: color-mix(in srgb, var(--success) 45%, var(--border));
   }
   .heal-pill svg { width: 12px; height: 12px; opacity: 0.8; }
+
+  /* ─── PER-SERVICE IMAGE DELTA (Version column) ─── */
+  /* A `service old→new` chip per changed service, in the deploy table's own
+     Version column so the versions line up down the page — the point of a column
+     over an inline note. Chips stack one per line, all of them (a stack often
+     changes several services at once). Deliberately low-chroma — a neutral chip
+     so it does not compete with the status colour
+     (the log's primary scan signal); only the new tag carries the diff-add
+     accent, the one small "this is the new version" cue. */
+  .col-version {
+    display: flex;
+    min-width: 0; /* let the chips ellipsize rather than overflow the column */
+  }
+  .svc-delta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+  }
+  /* A chip never outgrows its column. It wraps within itself rather than
+     truncating: the service name is the point of the column, so nothing is
+     ellipsized away — a narrow column costs height, not information. */
+  .col-version .tag-delta { max-width: 100%; flex-wrap: wrap; }
+  .tag-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--overlay2) 9%, transparent);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .tag-delta .td-svc { color: var(--text-primary); font-weight: 600; }
+  /* Shared tag shown as context on a digest-only change, so `1.25 ↻` reads as
+     "same 1.25, image rebuilt" rather than a bare digest pair. */
+  .tag-delta .td-ctx { color: var(--text-secondary); }
+  .tag-delta .td-old {
+    color: var(--text-muted);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+  .tag-delta .td-arr { color: var(--text-muted); }
+  .tag-delta .td-new { color: var(--diff-add); font-weight: 500; }
+  .tag-delta .td-gone { color: var(--danger); }
+  /* The ↻ rebuilt marker for a same-tag digest change — muted, not an accent. */
+  .tag-delta .td-rebuilt { color: var(--text-secondary); font-weight: 600; }
 
   .heal-panel {
     padding: 11px 14px 12px 16px;
@@ -2959,6 +3036,12 @@
     .status-cell { grid-column: 2; grid-row: 1; }
     .cell-duration { grid-column: 2; grid-row: 2; text-align: right; }
     .col-files { display: none; }
+    /* A phone has no columns — the row is a 2×2 block — so the Version column
+       becomes a full-width third row under the name/time, keeping its stacked
+       chips. It sits left of the tap centre, so tapping the row still opens the
+       diff/files panel. */
+    .col-version { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
+    #deploy-table.no-version .col-version { display: none; }
     .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
 
     /* Roster collapses to the deploy-row 2×2: stack/status on top, time/commit below. */

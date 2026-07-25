@@ -58,6 +58,62 @@ function shortSHA(sha) {
   return (sha || '').slice(0, 7);
 }
 
+// parseImageRef splits an image reference into its {tag, digest} — either may be
+// '' — dropping the registry/repository (the service name already identifies the
+// image). The tag is the part after the last ':' that follows the last '/' (a
+// ':' before it is a registry host:port, not a tag); the digest is the part
+// after '@', with the sha256: prefix stripped.
+function parseImageRef(ref) {
+  const r = ref || '';
+  let rest = r;
+  let digest = '';
+  const at = r.indexOf('@');
+  if (at !== -1) {
+    digest = r.slice(at + 1).replace(/^sha256:/, '');
+    rest = r.slice(0, at);
+  }
+  let tag = '';
+  const colon = rest.lastIndexOf(':');
+  if (colon > rest.lastIndexOf('/')) tag = rest.slice(colon + 1);
+  return { tag: tag, digest: digest };
+}
+
+// shortImageTag reduces a full image reference to the shortest token that still
+// identifies it: its tag (`ghcr.io/app:1.5.0` → `1.5.0`), or a short digest when
+// the reference is only digest-pinned (`app@sha256:ab34cd90…` → `ab34cd90`), or
+// the reference unchanged when it has neither. Used for a first-deploy image
+// (which has no old to compare against) and as the fallback in imageDelta.
+function shortImageTag(ref) {
+  if (!ref) return '';
+  const { tag, digest } = parseImageRef(ref);
+  if (tag) return tag;
+  if (digest) return digest.slice(0, 8);
+  return ref;
+}
+
+// imageDelta reduces an old→new image-reference change to the shortest pair of
+// tokens that actually differ, so a deploy row shows what moved:
+//   - a tag bump           (`app:1.25`        → `app:1.26`)        → 1.25 → 1.26
+//   - a same-tag rebuild   (`app:1.25@sha…aa` → `app:1.25@sha…bb`) → aa… → bb…,
+//     with the shared tag (1.25) returned as `tag` context, since the tag alone
+//     would read as "1.25 → 1.25" and hide that anything changed
+//   - anything else (e.g. a repository change under an equal tag) falls back to
+//     the shortest identifying token of each side.
+// Returns { from, to, tag } — `tag` is '' except for the digest-only case.
+function imageDelta(oldRef, newRef) {
+  const a = parseImageRef(oldRef);
+  const b = parseImageRef(newRef);
+  if (a.tag && b.tag && a.tag !== b.tag) return { from: a.tag, to: b.tag, tag: '' };
+  if (a.digest !== b.digest && (a.digest || b.digest)) {
+    return {
+      from: a.digest.slice(0, 8) || shortImageTag(oldRef),
+      to: b.digest.slice(0, 8) || shortImageTag(newRef),
+      tag: a.tag === b.tag ? a.tag : '',
+    };
+  }
+  return { from: shortImageTag(oldRef), to: shortImageTag(newRef), tag: '' };
+}
+
 // statusText renders a deploy status as the short label shown on the diff
 // panel's echo pill (mirrors badge wording without the stacked layout).
 function statusText(status) {
@@ -367,6 +423,9 @@ if (typeof module !== 'undefined' && module.exports) {
     fullTime,
     classifyDiffLine,
     shortSHA,
+    parseImageRef,
+    shortImageTag,
+    imageDelta,
     statusText,
     statusIcon,
     auditStatusLabel,

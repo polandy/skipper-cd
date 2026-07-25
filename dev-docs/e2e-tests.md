@@ -1154,6 +1154,42 @@ Behaviour-only (no snapshot): the states are structural (`data-testid` + text),
 and the skeleton shimmer / spinner are animations a visual baseline would have to
 freeze anyway.
 
+### 4.36 UI — Maske AI: Per-service image delta
+
+A deploy carries `image_changes` (service, old, new) on its SSE payload; the row
+surfaces which service updated — and to what — in its **Version column** (a
+full-width row on a phone), without opening the diff. See
+[Image delta](../internal/ui/UI_SPEC.md#image-delta). Each case rewrites a stack's
+compose (`setStackImage` / `setStackServices`) and fires a signed webhook, so the
+deploy runs for real against stub docker and the delta renders from the actual
+image change — no hand-fed events.
+
+- **UAI1 — Tag bump.** A one-service `nginx:1.25 → 1.26` bump shows the service
+  name (`app`) with the old tag struck through and the new tag in the add colour,
+  in the Version column — right of the Stack cell and flush with the `Version`
+  header (the alignment that makes a column worth it) — plus the `aria-label`
+  (`app updated from 1.25 to 1.26`) and the full-reference `title`.
+- **UAI2 — Service always labelled.** A lone service named after its own stack
+  (`worker` in stack `worker`) still shows its service label — the chip names
+  which service moved, not the stack — rendering `worker 2.0 → 2.1`.
+- **UAI3 — Every changed service listed.** Four changed services render four
+  chips, stacked one per line (asserted by bounding box: each below the previous,
+  sharing a left edge) — nothing is hidden behind a count.
+- **UAI4 — Digest-only rebuild.** A same-tag digest change (`nginx:1.25@sha256:…`)
+  shows the shared tag `1.25` plus a `↻` rebuilt marker (no raw digest pair); the
+  full digest is on the chip's `title`.
+- **UAI5 — Responsive.** On a 390 px viewport the Version column becomes a
+  full-width row **beneath** the name (asserted by bounding box) instead of
+  squeezing it — the name still renders in full (no ellipsis).
+- **UAI6 — View-options toggle.** The Deploys popover's **Version changes** toggle
+  (on by default) collapses the whole column when flipped off — no chips *and* no
+  `Version` header; the off choice persists across a reload (`localStorage`), and
+  toggling back on restores both.
+
+Behaviour-only (no snapshot): the delta is structural (`data-testid="svc-delta"` +
+per-part text), and the per-reference token logic is exhaustively covered by the
+`app-helpers` unit layer (`imageDelta` / `parseImageRef` / `shortImageTag`).
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
