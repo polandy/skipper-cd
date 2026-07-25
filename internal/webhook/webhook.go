@@ -46,9 +46,10 @@ type deployTrigger interface {
 // Method enforcement is left to the mux route pattern ("POST /webhook").
 func Handler(cfg *config.Config, deployer deployTrigger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Defense in depth: webhook_secret is required at config load, but reject
-		// an empty one here too — verifying against an empty secret would accept
-		// a trivially forgeable signature.
+		// webhook_secret is optional (reconcile is the convergence baseline), so an
+		// empty one disables the endpoint here rather than at config load: reject
+		// with 403, since verifying against an empty secret would accept a
+		// trivially forgeable signature.
 		if cfg.WebhookSecret == "" {
 			metrics.WebhooksRejected.WithLabelValues(rejectReasonDisabled).Inc()
 			http.Error(w, "webhook disabled: set webhook_secret to enable push-triggered deploys", http.StatusForbidden)
