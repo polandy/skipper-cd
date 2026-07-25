@@ -437,6 +437,16 @@ test('reconcileHostFilter: restores a saved subset against the current host set'
   assert.equal(h.reconcileHostFilter(['host-a', 'host-b'], ['host-a', 'host-b']), null); // full set → normalize to all
 });
 
+test('clogStreamStatus: a closed stream never promises a retry it will not make', () => {
+  // 0 CONNECTING / 1 OPEN — EventSource retries these itself.
+  assert.equal(h.clogStreamStatus(0).text, 'reconnecting…');
+  assert.equal(h.clogStreamStatus(1).text, 'reconnecting…');
+  // 2 CLOSED — a non-2xx (404 stack gone, 429 stream cap) ends the stream.
+  assert.match(h.clogStreamStatus(2).text, /closed/);
+  assert.match(h.clogStreamStatus(2).text, /retry/);
+  assert.equal(h.clogStreamStatus(2).cls, 'err');
+});
+
 test('deployAnnouncement: only terminal outcomes get a spoken phrase (T2.8)', () => {
   assert.equal(h.deployAnnouncement('success', 'gitea'), 'gitea deployed successfully');
   assert.equal(h.deployAnnouncement('failed', 'gitea'), 'gitea deploy failed');

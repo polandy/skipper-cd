@@ -70,8 +70,14 @@ GET /api/container-logs/{stack}?tail=200&services=api[,db][&since=<ts>]      # S
 
 - **One follow child per viewer.** The "one log open at a time" rule means the
   server runs at most one `docker compose logs --follow` per client. Opening a
-  new log cancels the previous request context → its child is killed. No
-  concurrent-stream limit or queue needed.
+  new log cancels the previous request context → its child is killed.
+- **A server-side cap all the same** (`maxConcurrentStreams`, 16). The
+  one-per-viewer rule is a property of skipper's own UI, not of the endpoint:
+  it is unauthenticated like the rest of the read surface, so anything that can
+  reach it can open streams in a loop and pin the host's process table. Beyond
+  the cap a request is refused with `429` (plus `Retry-After`) instead of
+  spawning another child; the slot is taken after validation (a 404 costs
+  nothing) and released when the client disconnects.
 - **Disconnect** cancels the request context (context exec), killing the child.
 - **Shutdown** never blocks on a stream: the child is tied to the request
   context and abandoned (ADR-0014 rule).

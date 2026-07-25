@@ -1530,7 +1530,7 @@
           if (((entry.attrs && entry.attrs.stack) || '') !== curStack) return;
           appendSkipperLine(entry);
         });
-        es.onerror = function() { if (panel) setStat('reconnecting…', 'err'); };
+        es.onerror = function(ev) { if (panel) { const s = clogStreamStatus(ev.target.readyState); setStat(s.text, s.cls); } };
         es.onopen = function() { if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : ''); };
         return;
       }
@@ -1546,7 +1546,7 @@
         if (!panel || !panel.isConnected) { close(); return; } // dropped by a re-render
         appendLine(ev.data);
       };
-      es.onerror = function() { if (panel) setStat('reconnecting…', 'err'); };
+      es.onerror = function(ev) { if (panel) { const s = clogStreamStatus(ev.target.readyState); setStat(s.text, s.cls); } };
       es.onopen = function() { if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : ''); };
     }
 
