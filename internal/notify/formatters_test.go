@@ -97,6 +97,50 @@ func TestSignalFormatter_EmptyPrefixIsOmitted(t *testing.T) {
 	}
 }
 
+func TestSignalFormatter_NamesChangedServiceVersions(t *testing.T) {
+	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}}
+	ev := events.DeployEvent{
+		Stack: "web", Status: events.StatusSuccess, DurationMs: 1500,
+		ImageChanges: []events.ServiceImageChange{
+			{Service: "app", Old: "nginx:1.25", New: "nginx:1.27"},
+			{Service: "cache", Old: "", New: "redis:7.4"},
+		},
+	}
+	msg, _ := bodyOf(t, mustFormat(t, f, ev))["message"].(string)
+	if !strings.Contains(msg, "app: nginx:1.25 → nginx:1.27") {
+		t.Errorf("message should name the changed service with old → new, got %q", msg)
+	}
+	if !strings.Contains(msg, "cache: redis:7.4") {
+		t.Errorf("message should name the added service with its new image, got %q", msg)
+	}
+}
+
+func TestSignalFormatter_NoImageChangesKeepsStackOnlyMessage(t *testing.T) {
+	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}}
+	ev := events.DeployEvent{Stack: "web", Status: events.StatusSuccess, DurationMs: 1500}
+	msg, _ := bodyOf(t, mustFormat(t, f, ev))["message"].(string)
+	if strings.Contains(msg, "•") {
+		t.Errorf("no image changes should leave the message stack-only, got %q", msg)
+	}
+}
+
+func TestGenericFormatter_CarriesImageChanges(t *testing.T) {
+	f := genericFormatter{url: "https://ntfy.example/skipper"}
+	ev := events.DeployEvent{
+		Stack: "web", Status: events.StatusSuccess,
+		ImageChanges: []events.ServiceImageChange{{Service: "app", Old: "nginx:1.25", New: "nginx:1.27"}},
+	}
+	body := bodyOf(t, mustFormat(t, f, ev))
+	changes, ok := body["image_changes"].([]any)
+	if !ok || len(changes) != 1 {
+		t.Fatalf("generic body should carry image_changes, got %v", body["image_changes"])
+	}
+	first, _ := changes[0].(map[string]any)
+	if first["service"] != "app" || first["old"] != "nginx:1.25" || first["new"] != "nginx:1.27" {
+		t.Errorf("image_changes entry missing fields: %v", first)
+	}
+}
+
 func TestIsTerminal_IncludesRolledBackUnhealthy(t *testing.T) {
 	if !isTerminal(events.StatusRolledBackUnhealthy) {
 		t.Error("rolled_back_unhealthy must be a terminal status so it can be delivered")

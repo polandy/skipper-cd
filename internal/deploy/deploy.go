@@ -244,9 +244,10 @@ func (r stackRun) resolveEnv() ([]string, error) {
 // their git context (diffs and commits since the last deployed commit). The
 // zero value means "no change context" (e.g. a skipped stack).
 type changeSet struct {
-	files   []string
-	diffs   map[string]string
-	commits []events.CommitInfo
+	files        []string
+	diffs        map[string]string
+	commits      []events.CommitInfo
+	imageChanges []events.ServiceImageChange
 }
 
 // collectChange gathers the full change context for the given changed files:
@@ -303,6 +304,7 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		ChangedFiles: d.repoRelativePaths(cs.files),
 		Diffs:        d.repoRelativeDiffs(cs.diffs),
 		Commits:      cs.commits,
+		ImageChanges: cs.imageChanges,
 	})
 	return id
 }
@@ -670,8 +672,10 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	run.stack.DeployHealthCheck = resolveHealthCheck(stack, compose)
 
 	var dockerfilePaths []string
+	var currentImages serviceImageByName
 	if compose != nil {
 		dockerfilePaths = compose.dockerfilePaths(repoDir)
+		currentImages = compose.images()
 	}
 
 	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
@@ -713,6 +717,11 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.publishUpcomingAfter(stack.Name)
 	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", run.projectDir, "changed_files", d.repoRelativePaths(changed))
 	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
+	// Name the services whose image reference changed (old → new) so terminal
+	// events — and the notifications built from them — report what updated, not
+	// just the stack. Captured before the deploy runs so the deferred failure
+	// path carries the same list a success does.
+	cs.imageChanges = imageChanges(currentImages, state.imagesFor(stack.Name))
 	// From here the stack is actually deploying: any error returned below emits
 	// the matching terminal event with the change context gathered above. The
 	// success path emits StatusSuccess and returns nil, so this never double-fires.
@@ -729,11 +738,6 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// emitDeployFailure sees a plain error and emits `failed`.
 	if err := d.runHooks(ctx, run, hookPhasePre, stack.Hooks.PreDeploy); err != nil {
 		return err
-	}
-
-	var currentImages serviceImageByName
-	if compose != nil {
-		currentImages = compose.images()
 	}
 
 	if err := d.pullIfImagesChanged(ctx, run, compose, currentImages, state.imagesFor(stack.Name)); err != nil {

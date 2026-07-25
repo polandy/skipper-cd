@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -393,6 +394,43 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 	}
 	if len(successEvt.Commits) != 1 || successEvt.Commits[0].Subject != "feat: bump gitea image" {
 		t.Errorf("expected commit metadata in success event, got %+v", successEvt.Commits)
+	}
+}
+
+func TestDeployStack_SuccessEventNamesChangedServiceVersions(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.27"))
+
+	runner := &recordingRunner{}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
+
+	var successEvt *events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Status == events.StatusSuccess {
+			successEvt = &e
+		}
+	})
+
+	stack := config.Stack{Name: "gitea"}
+	state := &persistedState{
+		Stacks: map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
+		// Previously deployed image differs, so the deploy reports old → new.
+		Images: map[string]serviceImageByName{"gitea": {"app": "nginx:1.25"}},
+	}
+
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if successEvt == nil {
+		t.Fatal("expected success event")
+	}
+	want := []events.ServiceImageChange{{Service: "app", Old: "nginx:1.25", New: "nginx:1.27"}}
+	if !reflect.DeepEqual(successEvt.ImageChanges, want) {
+		t.Errorf("success event ImageChanges = %+v, want %+v", successEvt.ImageChanges, want)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/polandy/skipper-cd/internal/compose"
+	"github.com/polandy/skipper-cd/internal/events"
 )
 
 // serviceImageByName maps each compose service name to its image reference.
@@ -169,6 +170,32 @@ func (cf *composeFile) warnUnmatchedOnDemandContainers(stackName string, contain
 				"stack", stackName, "container", name)
 		}
 	}
+}
+
+// imageChanges returns the per-service image reference changes between the
+// previously deployed images and the current ones, sorted by service name. A
+// service present only in current is reported with an empty Old (no previously
+// recorded image); one present only in previous with an empty New (removed).
+// Unchanged services — and build: services with no image: ref, absent from both
+// maps — are omitted. Feeds the deploy event so notifications name what updated.
+func imageChanges(current, previous serviceImageByName) []events.ServiceImageChange {
+	names := make(map[string]struct{}, len(current)+len(previous))
+	for name := range current {
+		names[name] = struct{}{}
+	}
+	for name := range previous {
+		names[name] = struct{}{}
+	}
+	var changes []events.ServiceImageChange
+	for name := range names {
+		oldImg, newImg := previous[name], current[name]
+		if oldImg == newImg {
+			continue
+		}
+		changes = append(changes, events.ServiceImageChange{Service: name, Old: oldImg, New: newImg})
+	}
+	sort.Slice(changes, func(i, j int) bool { return changes[i].Service < changes[j].Service })
+	return changes
 }
 
 // hasAnyImageChanged returns true if the current images differ from the previous ones.
