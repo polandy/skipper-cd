@@ -854,8 +854,6 @@ func registerPeerRoutes(mux *http.ServeMux, reg *peers.Registry) {
 	logsProxyClient := &http.Client{}
 	mux.Handle("GET /api/peers/{name}/container-logs/{stack}",
 		ui.PeerContainerLogsHandler(reg.PeerContainerLogsURL, logsProxyClient))
-	mux.Handle("GET /api/peers/{name}/container-logs/{stack}/{service}",
-		ui.PeerContainerLogsHandler(reg.PeerContainerLogsURL, logsProxyClient))
 }
 
 // registerIconRoutes wires per-stack icon resolution and the cache-refresh hook.

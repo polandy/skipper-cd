@@ -36,12 +36,11 @@ func (f fakeResolver) Resolve(string) (Invocation, []string, bool, error) {
 	return f.inv, f.services, f.known, f.err
 }
 
-// serve routes a request through a mux so {stack}/{service} path values resolve.
+// serve routes a request through a mux so the {stack} path value resolves;
+// service selection rides the ?service= query.
 func serve(streamer LogStreamer, resolver Resolver, target string) *httptest.ResponseRecorder {
 	mux := http.NewServeMux()
-	h := Handler(streamer, resolver)
-	mux.Handle("GET /api/container-logs/{stack}", h)
-	mux.Handle("GET /api/container-logs/{stack}/{service}", h)
+	mux.Handle("GET /api/container-logs/{stack}", Handler(streamer, resolver))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
 	return rec
@@ -57,9 +56,9 @@ func okResolver(services ...string) fakeResolver {
 	}
 }
 
-func TestHandler_PerServiceArgv(t *testing.T) {
+func TestHandler_SingleServiceArgv_DropsPrefix(t *testing.T) {
 	fs := &fakeStreamer{}
-	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web/api?tail=200")
+	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?service=api&tail=200")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -79,9 +78,23 @@ func TestHandler_PerServiceArgv(t *testing.T) {
 	}
 }
 
+func TestHandler_MultiServiceArgv_KeepsPrefix(t *testing.T) {
+	fs := &fakeStreamer{}
+	// two ?service= params → that subset, service labels retained (no --no-log-prefix)
+	serve(fs, okResolver("api", "db", "web"), "/api/container-logs/web?service=api&service=db&tail=200")
+
+	want := []string{
+		"compose", "-f", "/repo/web/docker-compose.yml", "--project-directory", "/srv/web",
+		"logs", "--no-color", "--timestamps", "--follow", "--tail", "200", "api", "db",
+	}
+	if got := strings.Join(fs.args, " "); got != strings.Join(want, " ") {
+		t.Errorf("args =\n  %v\nwant\n  %v", fs.args, want)
+	}
+}
+
 func TestHandler_MergedStackArgv_KeepsServicePrefix(t *testing.T) {
 	fs := &fakeStreamer{}
-	// no {service} segment → whole stack, service labels retained (no --no-log-prefix, no trailing service)
+	// no ?service= → whole stack, service labels retained (no --no-log-prefix, no trailing service)
 	serve(fs, okResolver("api", "db"), "/api/container-logs/web?tail=200")
 
 	want := []string{
@@ -148,12 +161,24 @@ func TestHandler_UnknownStack404(t *testing.T) {
 
 func TestHandler_UnknownService404(t *testing.T) {
 	fs := &fakeStreamer{}
-	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web/ghost")
+	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?service=ghost")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 	if fs.args != nil {
 		t.Errorf("streamer must not run for unknown service: %v", fs.args)
+	}
+}
+
+func TestHandler_UnknownServiceInSubset404(t *testing.T) {
+	fs := &fakeStreamer{}
+	// one valid, one unknown → the whole request is rejected, nothing streams
+	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?service=api&service=ghost")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if fs.args != nil {
+		t.Errorf("streamer must not run when any selected service is unknown: %v", fs.args)
 	}
 }
 
@@ -167,7 +192,7 @@ func TestHandler_ResolverError500(t *testing.T) {
 
 func TestHandler_StreamsLinesAsSSE(t *testing.T) {
 	fs := &fakeStreamer{lines: []string{"2026-07-19T14:00:00Z hello", "world"}}
-	rec := serve(fs, okResolver("api"), "/api/container-logs/web/api")
+	rec := serve(fs, okResolver("api"), "/api/container-logs/web?service=api")
 
 	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
 		t.Errorf("content-type = %q, want text/event-stream", ct)

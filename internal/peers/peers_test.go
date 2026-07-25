@@ -225,18 +225,14 @@ func TestPeerDiffsURL(t *testing.T) {
 func TestPeerContainerLogsURL(t *testing.T) {
 	reg := peers.New("host-a", []config.Peer{{Name: "host-b", URL: "http://host-b:8001/"}}, &fakeClient{}, time.Second)
 
-	// Whole-stack logs: no service segment.
-	if u, ok := reg.PeerContainerLogsURL("host-b", "gitea", ""); !ok || u != "http://host-b:8001/api/container-logs/gitea" {
-		t.Errorf("PeerContainerLogsURL(host-b, gitea, \"\") = %q, %v; want the peer's stack logs endpoint", u, ok)
+	// Stack logs endpoint; service selection rides the proxied ?service= query, not the path.
+	if u, ok := reg.PeerContainerLogsURL("host-b", "gitea"); !ok || u != "http://host-b:8001/api/container-logs/gitea" {
+		t.Errorf("PeerContainerLogsURL(host-b, gitea) = %q, %v; want the peer's stack logs endpoint", u, ok)
 	}
-	// A single service adds the service segment.
-	if u, ok := reg.PeerContainerLogsURL("host-b", "gitea", "db"); !ok || u != "http://host-b:8001/api/container-logs/gitea/db" {
-		t.Errorf("PeerContainerLogsURL(host-b, gitea, db) = %q, %v; want the per-service logs endpoint", u, ok)
-	}
-	if _, ok := reg.PeerContainerLogsURL("host-a", "gitea", ""); ok {
+	if _, ok := reg.PeerContainerLogsURL("host-a", "gitea"); ok {
 		t.Error("PeerContainerLogsURL resolved self, want false")
 	}
-	if _, ok := reg.PeerContainerLogsURL("nope", "gitea", ""); ok {
+	if _, ok := reg.PeerContainerLogsURL("nope", "gitea"); ok {
 		t.Error("PeerContainerLogsURL resolved an unknown host, want false")
 	}
 }

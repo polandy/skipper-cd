@@ -320,14 +320,16 @@ Received lines are held in a bounded client-side buffer (2000 entries, oldest dr
 
 ## Container logs
 
-A **logs icon** (`clog-btn`) opens a live `docker compose logs` panel for a stack or a single service ([ADR-0037](../../dev-docs/adr/0037-container-logs-in-ui.md)). It appears in both views:
+A **logs icon** (`clog-btn`) opens a live `docker compose logs` panel for a stack, filterable to a subset of its services ([ADR-0037](../../dev-docs/adr/0037-container-logs-in-ui.md)). It appears in both views:
 
 - **Deploys view** — in the newest row's [⋯ overflow menu](#row-overflow-menu) (per stack, services merged) and on each service line of the [health panel](#stack-health) (per container, directly on the line).
 - **Stacks view** — in the roster row's [⋯ overflow menu](#row-overflow-menu) (per stack) and, when the row is expanded, on each container line of its health panel (per container).
 
 Clicking it opens a panel (`clog-panel`) that trails the row/line it was opened from and streams from `/api/container-logs`: an initial backlog then a live follow. **Only one log is open at a time** — opening another closes the previous one (and stops its stream), so a viewer holds at most one follow stream. The same panel component has a second **"skipper" mode** ([Deploy hooks](#deploy-hooks), ADR-0038): opened from a running hook's logs icon it streams `/api/logs` filtered to the stack instead of `docker compose logs`, reusing the same header controls and single-log rule.
 
-The panel header carries: a **live/pause** pill (`clog-live`; pause freezes the stream), **auto-scroll** (follow the tail), **line-wrap**, **in-log search**, a **backlog selector** (`clog-tail`: 50/200/1000, default 200), and **fullscreen** (`clog-fullscreen`; the panel reparents to `<body>` to overlay above the sticky header, restoring its place on exit; Esc exits). The body (`clog-body`) renders each line with a dimmed timestamp; the whole-stack view prefixes each line with its compose service, tinting `warn`/`error` lines. While a log is open, **typing routes into its search** (overriding the deploys/stacks type-to-search): matching lines highlight, the rest hide, and a hit count shows.
+The panel header carries: a **live/pause** pill (`clog-live`; pause freezes the stream), **auto-scroll** (follow the tail), **line-wrap**, **in-log search**, a **per-service filter** (see below), a **backlog selector** (`clog-tail`: 50/200/1000, default 200), and **fullscreen** (`clog-fullscreen`; the panel reparents to `<body>` to overlay above the sticky header, restoring its place on exit; Esc exits). The body (`clog-body`) renders each line with a dimmed timestamp; the whole-stack and multi-service views prefix each line with its compose service, tinting `warn`/`error` lines. While a log is open, **typing routes into its search** (overriding the deploys/stacks type-to-search): matching lines highlight, the rest hide, and a hit count shows.
+
+**Per-service filter.** The filter tool (funnel glyph) toggles a collapsible chip row (`clog-svcs`) under the head: an **all** chip plus one per service. Chips are multi-select toggles — tap to add a service, tap again to drop it, **all** clears back to the merged stream. The header scope reflects the selection (`stack · all services` → `stack / api` → `stack / api + db` → `stack / N services`). Selecting exactly one service drops the compose prefix (the scope is unambiguous); zero or several keep it so each line stays labelled. The selection rides the stream as repeated `?service=` params; changing it re-pulls the backlog. Suppressed entirely for a stack with fewer than two services (nothing to filter) and in hook (skipper) mode.
 
 ---
 
@@ -496,6 +498,7 @@ assert on.
 | `clog-live` | Live/pause pill in the panel header | `.paused` when paused |
 | `clog-search` | In-log search row inside the panel | Revealed by the search tool or by typing; holds the input + `.clog-hits` count |
 | `clog-tail` | Backlog-size selector (50/200/1000) | |
+| `clog-svcs` | Per-service filter chip row | Collapsible under the head (funnel tool toggles it); `all` + one `.clog-chip` per service, multi-select toggles; absent for a <2-service stack or hook mode |
 | `hooks-badge` | Fishing-hook badge (ADR-0038) | Inside the `⋯` menu on both the newest deploy row and the roster row; present only when the stack declares hooks; shows the `pre+post` count; `<button>`, opens `hooks-panel`; two-line `title`; `data-hook-active` while a hook runs (in both views the `more-btn` carries the visible pulse) |
 | `hooks-panel` | Configured-hooks panel below the row | Bound (variant A, accent bar); commands come inline on the `stacks` snapshot (no fetch); one-panel-per-row with health/diff/audit/heal |
 | `hooks-cmd` | A configured hook command line inside `hooks-panel` | Verbatim (`$`-prefixed), rendered as literal text |

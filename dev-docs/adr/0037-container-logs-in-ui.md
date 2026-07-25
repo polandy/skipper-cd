@@ -33,8 +33,9 @@ pill reads as stale, and skipper already has the SSE plumbing to do better.
 ### Transport: SSE, one endpoint
 
 ```
-GET /api/container-logs/{stack}/{service}?tail=200          # backlog + follow (SSE)
-GET /api/container-logs/{stack}?tail=200                    # whole stack, services merged
+GET /api/container-logs/{stack}?tail=200                          # whole stack, services merged
+GET /api/container-logs/{stack}?tail=200&service=api              # one service (compose prefix dropped)
+GET /api/container-logs/{stack}?tail=200&service=api&service=db   # a subset (prefix kept)
 ```
 
 `text/event-stream`; each `data:` frame is one log line. The initial tail is
@@ -133,3 +134,16 @@ oldest-first), so all log surfaces share one control set.
 - No new config beyond the existing `ui_enabled` gate.
 - Phase-2 space intentionally left: download/export and a merged multi-stack
   view remain out; Loki stays the answer for retention and search-at-scale.
+
+## Amendment (2026-07-25): multi-service filter
+
+The per-service scope moved from a `/{service}` path segment to a repeatable
+`?service=` query param, so a viewer can narrow the merged stream to **several**
+services at once (`docker compose logs` accepts multiple service args), not just
+one. The prefix rule generalises: exactly one selected service drops
+`--no-log-prefix` (unambiguous scope), while zero or several keep the compose
+prefix so each line stays labelled. Query over path means the multi-host peer
+proxy forwards the selection for free (it already passes the query string
+through), and it collapses the previous path-form + whole-stack routes into one
+endpoint. The UI surfaces it as a collapsible chip row (`clog-svcs`) behind a
+funnel tool, suppressed for stacks with fewer than two services.

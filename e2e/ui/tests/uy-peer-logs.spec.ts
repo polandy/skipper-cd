@@ -7,7 +7,8 @@ import type { Page } from '@playwright/test';
 // The last local-only affordance closed: a peer's container logs. The browser
 // can't reach a peer cross-origin, so the primary proxies the peer's
 // container-logs SSE stream at GET /api/peers/{name}/container-logs/{stack}
-// [/{service}] (the streaming sibling of the diff proxy). In the UI the peer's
+// (service selection rides ?service=; the streaming sibling of the diff proxy).
+// In the UI the peer's
 // containers panel now carries the same per-service log button local stacks have;
 // clicking it opens the live log panel, fed through the proxy. The harness stub
 // peer (host-b) streams canned SSE frames for gitea/web so the proxy has
@@ -32,7 +33,8 @@ const hostB = {
     { stack: 'gitea', status: 'success', timestamp: iso(3), duration_ms: 1400, changed_files: 1, commit_sha: 'aaa1111', id: 42 },
   ],
   logsByStack: {
-    'gitea/web': ['2026-07-23T10:00:00Z web accepting connections', '2026-07-23T10:00:01Z web ready'],
+    // Service selection rides ?service= now, so the proxied path is just the stack.
+    gitea: ['2026-07-23T10:00:00Z web accepting connections', '2026-07-23T10:00:01Z web ready'],
   },
 };
 
