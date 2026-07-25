@@ -664,6 +664,19 @@ export class Skipper {
     git(this.origin, 'commit', '-am', `bump ${stack} to ${tag}`);
   }
 
+  /** setStackServices rewrites a stack's compose to an explicit service→image map
+   *  and commits it, simulating a pushed change. Unlike setStackImage (one `app`
+   *  service on an nginx tag), this drives multi-service and digest-pinned image
+   *  changes, so the deploy's `image_changes` — and the row's per-service image
+   *  delta — can be exercised across those shapes. */
+  setStackServices(stack: string, services: Record<string, string>): void {
+    const body = Object.entries(services)
+      .map(([name, image]) => `  ${name}:\n    image: ${image}`)
+      .join('\n');
+    writeFileSync(join(this.origin, stack, 'docker-compose.yml'), `services:\n${body}\n`);
+    git(this.origin, 'commit', '-am', `update ${stack} services`);
+  }
+
   /** setStackHealth scripts the stub's `docker compose ps` output for a stack, so
    *  the health poller (enable with the `healthPoll` start option) reports the
    *  given services on its next poll. */

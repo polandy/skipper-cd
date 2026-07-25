@@ -80,6 +80,55 @@ test('shortSHA', () => {
   assert.equal(h.shortSHA(undefined), '');
 });
 
+test('parseImageRef splits tag and digest, dropping registry/repo', () => {
+  assert.deepEqual(h.parseImageRef('ghcr.io/acme/api:1.5.0'), { tag: '1.5.0', digest: '' });
+  assert.deepEqual(h.parseImageRef('app@sha256:ab34cd90ef56'), { tag: '', digest: 'ab34cd90ef56' });
+  assert.deepEqual(h.parseImageRef('app:1.25@sha256:ab34cd90ef56'), {
+    tag: '1.25',
+    digest: 'ab34cd90ef56',
+  });
+  // a ':' in a registry host:port is not a tag
+  assert.deepEqual(h.parseImageRef('registry:5000/app'), { tag: '', digest: '' });
+  assert.deepEqual(h.parseImageRef('registry:5000/app:2.0'), { tag: '2.0', digest: '' });
+  assert.deepEqual(h.parseImageRef(''), { tag: '', digest: '' });
+});
+
+test('shortImageTag — shortest identifying token of one reference', () => {
+  assert.equal(h.shortImageTag('ghcr.io/acme/api:1.5.0'), '1.5.0');
+  assert.equal(h.shortImageTag('app@sha256:ab34cd90ef56'), 'ab34cd90');
+  assert.equal(h.shortImageTag('busybox'), 'busybox');
+  assert.equal(h.shortImageTag(''), '');
+  assert.equal(h.shortImageTag(null), '');
+});
+
+test('imageDelta — shows the tokens that actually differ', () => {
+  // plain tag bump
+  assert.deepEqual(h.imageDelta('nginx:1.25', 'nginx:1.26'), {
+    from: '1.25',
+    to: '1.26',
+    tag: '',
+  });
+  // tag bump on digest-pinned refs — the TAG is the meaningful change, not the digest
+  assert.deepEqual(h.imageDelta('nginx:1.25@sha256:aaaa1111', 'nginx:1.26@sha256:bbbb2222'), {
+    from: '1.25',
+    to: '1.26',
+    tag: '',
+  });
+  // same tag, only the digest moved (a rebuild) — show short digests, keep the
+  // shared tag as context so it doesn't read as "1.25 → 1.25"
+  assert.deepEqual(h.imageDelta('nginx:1.25@sha256:aaaa1111ff', 'nginx:1.25@sha256:bbbb2222ff'), {
+    from: 'aaaa1111',
+    to: 'bbbb2222',
+    tag: '1.25',
+  });
+  // digest-only refs with no tag at all
+  assert.deepEqual(h.imageDelta('nginx@sha256:aaaa1111ff', 'nginx@sha256:bbbb2222ff'), {
+    from: 'aaaa1111',
+    to: 'bbbb2222',
+    tag: '',
+  });
+});
+
 test('statusText flattens the stacked statuses', () => {
   assert.equal(h.statusText('rolled_back'), 'rolled back');
   assert.equal(h.statusText('rolled_back_unhealthy'), 'rolled back · unhealthy');

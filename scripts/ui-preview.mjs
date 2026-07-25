@@ -28,7 +28,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 3000);
 const SECRET = 'ui-preview-secret';
-const stacks = ['web', 'api', 'worker', 'database'];
+const stacks = ['immich', 'nextcloud', 'paperless', 'gitea'];
 
 // Stub docker: records nothing, succeeds at everything, and answers four
 // reads — `compose ps --format json` per stack for the health poller, bare
@@ -169,15 +169,46 @@ execFileSync(
 // Origin repo: one committed compose (+ a coloured icon) per stack.
 git(base, 'init', '-b', 'main', origin);
 const icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#7aa2f7"><rect width="24" height="24" rx="5"/></svg>';
+// Real-world compose shapes (multi-service, realistic images) so the per-service
+// image delta shows meaningful service labels: immich is multi-service (a deploy
+// names several changed services + the "+N more" cap), paperless is digest-pinned
+// (a same-tag rebuild exercises the digest path).
+const composeYaml = (services) =>
+  'services:\n' + services.map(([svc, image]) => `  ${svc}:\n    image: ${image}\n`).join('');
+// paperless webserver is digest-pinned so a later same-tag rebuild (below) moves
+// only the digest — the image delta then shows the shared tag + short digests.
+const PAPERLESS_DIGEST_OLD = 'sha256:1111111111111111111111111111111111111111111111111111111111111111';
+const initCompose = {
+  immich: composeYaml([
+    ['immich-server', 'ghcr.io/immich-app/immich-server:v1.118.0'],
+    ['machine-learning', 'ghcr.io/immich-app/immich-machine-learning:v1.118.0'],
+    ['redis', 'redis:7.2'],
+    ['database', 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.3.0'],
+  ]),
+  nextcloud: composeYaml([
+    ['app', 'nextcloud:30.0.1'],
+    ['db', 'postgres:16'],
+    ['redis', 'redis:7.2'],
+  ]),
+  paperless: composeYaml([
+    ['webserver', `ghcr.io/paperless-ngx/paperless-ngx:2.13.0@${PAPERLESS_DIGEST_OLD}`],
+    ['broker', 'redis:7.2'],
+    ['db', 'postgres:16'],
+  ]),
+  gitea: composeYaml([
+    ['server', 'gitea/gitea:1.22.3'],
+    ['db', 'postgres:16'],
+  ]),
+};
 for (const n of stacks) {
   mkdirSync(join(origin, n), { recursive: true });
-  writeFileSync(join(origin, n, 'docker-compose.yml'), `services:\n  ${n}:\n    image: nginx:1.25\n`);
+  writeFileSync(join(origin, n, 'docker-compose.yml'), initCompose[n]);
   writeFileSync(join(origin, n, 'icon.svg'), icon);
 }
 // A parked stack: a real compose directory kept out of deploys via
 // disabled: true in the repo skipper.yaml — so the roster shows a disabled row.
 mkdirSync(join(origin, 'experiments'), { recursive: true });
-writeFileSync(join(origin, 'experiments', 'docker-compose.yml'), `services:\n  experiments:\n    image: nginx:1.25\n`);
+writeFileSync(join(origin, 'experiments', 'docker-compose.yml'), composeYaml([['app', 'alpine:3.20']]));
 writeFileSync(join(origin, 'experiments', 'icon.svg'), icon);
 git(origin, 'add', '.');
 git(origin, 'commit', '-m', 'initial');
@@ -296,16 +327,16 @@ const cfg =
   // overrides still resolve, so the preview stays fully offline.
   `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
   // Stack discovery (ADR-0034): the stack set comes from the repo dirs. Per-stack
-  // overrides live in this one config's stacks: list (ADR-0043) — api keeps its
-  // health-check gate + hooks, web has hooks, experiments is parked. worker and
-  // database are discovered but never pushed → they show as "never deployed".
+  // overrides live in this one config's stacks: list (ADR-0043) — nextcloud keeps
+  // a health-check gate + hooks, immich has hooks, experiments is parked. The
+  // rest are discovered.
   `stack_discovery: true\n` +
   `stacks:\n` +
-  `  - name: api\n` +
+  `  - name: nextcloud\n` +
   `    health_check:\n      timeout_seconds: 1\n` +
-  `    hooks:\n      pre_deploy:\n        - "echo dumping api database"\n      post_deploy:\n        - "echo smoke test ok"\n` +
-  `  - name: web\n` +
-  `    hooks:\n      pre_deploy:\n        - "echo starting backup"\n        - "sleep 4"\n      post_deploy:\n        - "echo verifying deploy"\n` +
+  `    hooks:\n      pre_deploy:\n        - "echo backing up nextcloud database"\n      post_deploy:\n        - "echo occ upgrade complete"\n` +
+  `  - name: immich\n` +
+  `    hooks:\n      pre_deploy:\n        - "echo pausing backups"\n        - "sleep 4"\n      post_deploy:\n        - "echo verifying immich"\n` +
   `  - name: experiments\n    disabled: true\n`;
 const cfgPath = join(base, 'skipper.yml');
 writeFileSync(cfgPath, cfg);
@@ -331,15 +362,26 @@ if (!(await healthy())) {
 console.error('[ui-preview] healthy — seeding states…');
 
 // Health: healthy / degraded / stopped, so the pills and panel show variety.
-// `api` is deployed yet unhealthy (the ADR-0027 case: a green deploy whose
-// container crash-looped afterwards) so the health beacon + attention band have
-// a landable row to jump to; `worker` is unhealthy but never deployed, so it
-// also exercises the no-row jump degradation.
+// nextcloud and gitea are deployed yet unhealthy (the ADR-0027 case: a green
+// deploy whose container crash-looped afterwards) so the health beacon +
+// attention band have landable rows to jump to; paperless is stopped.
 const setHealth = (n, svcs) => writeFileSync(join(healthDir, `${n}.json`), JSON.stringify(svcs));
-setHealth('web', [{ Service: 'web', Name: 'web-1', State: 'running', Health: 'healthy' }]);
-setHealth('api', [{ Service: 'api', Name: 'api-1', State: 'restarting', Health: 'unhealthy' }]);
-setHealth('worker', [{ Service: 'worker', Name: 'worker-1', State: 'restarting', Health: 'unhealthy' }]);
-setHealth('database', [{ Service: 'database', Name: 'db-1', State: 'exited', ExitCode: 0 }]);
+setHealth('immich', [
+  { Service: 'immich-server', Name: 'immich-server-1', State: 'running', Health: 'healthy' },
+  { Service: 'machine-learning', Name: 'immich-machine-learning-1', State: 'running', Health: 'healthy' },
+  { Service: 'redis', Name: 'immich-redis-1', State: 'running', Health: 'healthy' },
+  { Service: 'database', Name: 'immich-database-1', State: 'running', Health: 'healthy' },
+]);
+setHealth('nextcloud', [
+  { Service: 'app', Name: 'nextcloud-app-1', State: 'running', Health: 'healthy' },
+  { Service: 'db', Name: 'nextcloud-db-1', State: 'restarting', Health: 'unhealthy' },
+  { Service: 'redis', Name: 'nextcloud-redis-1', State: 'running', Health: 'healthy' },
+]);
+setHealth('paperless', [{ Service: 'webserver', Name: 'paperless-webserver-1', State: 'exited', ExitCode: 0 }]);
+setHealth('gitea', [
+  { Service: 'server', Name: 'gitea-server-1', State: 'restarting', Health: 'unhealthy' },
+  { Service: 'db', Name: 'gitea-db-1', State: 'running', Health: 'healthy' },
+]);
 
 // Orphan detection listing (one line per container, columns per psColumns:
 // project, working_dir, config_file, name, service, image, state, status,
@@ -363,38 +405,79 @@ writeFileSync(
 // note: the removed stack's data that prune keeps.
 writeFileSync(
   join(healthDir, 'volumes.txt'),
-  ['legacy-cache\tlegacy-cache_redis-data', 'legacy-cache\tlegacy-cache_backups', 'web\tweb_data'].join('\n') + '\n',
+  ['legacy-cache\tlegacy-cache_redis-data', 'legacy-cache\tlegacy-cache_backups', 'nextcloud\tnextcloud_data'].join('\n') + '\n',
 );
 
-// App-link detection (ADR-0041): web gets a single discovered host (icon = a
-// plain link), api gets two via one variadic Host() call (icon = a popover) —
-// worker/database carry no Traefik labels, so they show no icon at all.
+// App-link detection (ADR-0041): nextcloud gets a single discovered host (icon =
+// a plain link), immich gets two via one variadic Host() call (icon = a popover)
+// — paperless/gitea carry no Traefik labels, so they show no icon at all.
 writeFileSync(
   join(healthDir, 'applink-ps.txt'),
-  [`web-c1\t${join(repoDir, 'web')}`, `api-c1\t${join(repoDir, 'api')}`].join('\n') + '\n',
+  [`nextcloud-c1\t${join(repoDir, 'nextcloud')}`, `immich-c1\t${join(repoDir, 'immich')}`].join('\n') + '\n',
 );
 writeFileSync(
-  join(healthDir, 'labels-web-c1.json'),
-  JSON.stringify({ 'traefik.enable': 'true', 'traefik.http.routers.web.rule': 'Host(`web.example.com`)' }),
+  join(healthDir, 'labels-nextcloud-c1.json'),
+  JSON.stringify({ 'traefik.enable': 'true', 'traefik.http.routers.nextcloud.rule': 'Host(`cloud.example.com`)' }),
 );
 writeFileSync(
-  join(healthDir, 'labels-api-c1.json'),
+  join(healthDir, 'labels-immich-c1.json'),
   JSON.stringify({
     'traefik.enable': 'true',
-    'traefik.http.routers.api.rule': 'Host(`api.example.com`,`api-internal.example.com`)',
+    'traefik.http.routers.immich.rule': 'Host(`photos.example.com`,`immich-internal.example.com`)',
   }),
 );
 
-// A pushed change → a deploy row carrying a real git diff + commit metadata.
-const bump = (n, tag, msg) => {
-  writeFileSync(join(origin, n, 'docker-compose.yml'), `services:\n  ${n}:\n    image: nginx:${tag}\n`);
-  git(origin, 'commit', '-am', msg);
-};
-bump('web', '1.26', 'feat(web): bump nginx to 1.26');
+// Pushed changes → deploy rows carrying real git diffs + commit metadata, each
+// shaped to show a different image-delta case.
+// nextcloud: a single-service tag bump.
+writeFileSync(
+  join(origin, 'nextcloud', 'docker-compose.yml'),
+  composeYaml([
+    ['app', 'nextcloud:30.0.2'],
+    ['db', 'postgres:16'],
+    ['redis', 'redis:7.2'],
+  ]),
+);
+git(origin, 'commit', '-am', 'feat(nextcloud): bump app to 30.0.2');
 await webhook();
 await sleep(1500);
-bump('api', '1.27', 'fix(api): pin nginx 1.27 for CVE');
-bump('api', '1.27.1', 'chore(api): patch bump'); // two commits → the multi-commit diff head
+// immich: several services change across two commits in one deploy — the delta
+// names each changed service (four services → three chips + "+1 more"), and the
+// diff head shows the multi-commit range.
+writeFileSync(
+  join(origin, 'immich', 'docker-compose.yml'),
+  composeYaml([
+    ['immich-server', 'ghcr.io/immich-app/immich-server:v1.119.0'],
+    ['machine-learning', 'ghcr.io/immich-app/immich-machine-learning:v1.118.0'],
+    ['redis', 'redis:7.2'],
+    ['database', 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.3.0'],
+  ]),
+);
+git(origin, 'commit', '-am', 'feat(immich): bump server to v1.119.0');
+writeFileSync(
+  join(origin, 'immich', 'docker-compose.yml'),
+  composeYaml([
+    ['immich-server', 'ghcr.io/immich-app/immich-server:v1.119.0'],
+    ['machine-learning', 'ghcr.io/immich-app/immich-machine-learning:v1.119.0'],
+    ['redis', 'redis:7.4'],
+    ['database', 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.4.0'],
+  ]),
+);
+git(origin, 'commit', '-am', 'chore(immich): bump ml, redis, database');
+await webhook();
+await sleep(1500);
+// paperless: a same-tag rebuild — only the pinned digest of webserver moves, so
+// the delta shows the shared tag as context plus a short-digest old→new.
+const PAPERLESS_DIGEST_NEW = 'sha256:2222222222222222222222222222222222222222222222222222222222222222';
+writeFileSync(
+  join(origin, 'paperless', 'docker-compose.yml'),
+  composeYaml([
+    ['webserver', `ghcr.io/paperless-ngx/paperless-ngx:2.13.0@${PAPERLESS_DIGEST_NEW}`],
+    ['broker', 'redis:7.2'],
+    ['db', 'postgres:16'],
+  ]),
+);
+git(origin, 'commit', '-am', 'chore(paperless): rebuild webserver (digest bump, same tag)');
 await webhook();
 await sleep(1500);
 
