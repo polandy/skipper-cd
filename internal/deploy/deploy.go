@@ -608,6 +608,11 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		gate.record(se.Stack, depBlocked)
 	}
 	for _, stack := range ordered {
+		// Resolve the effective rollback policy here, where the global default is
+		// in scope, so the deploy path (rollBackFailedDeploy) can honor an opt-out
+		// without carrying the global config down (ADR-0050).
+		rollback := cfg.RollbackEnabled(stack.Name)
+		stack.Rollback = &rollback
 		outcome := d.deployStackGated(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state, gate.decide(stack.DependsOn))
 		gate.record(stack.Name, outcome)
 	}

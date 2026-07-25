@@ -31,6 +31,16 @@ var ErrRollbackUnhealthy = errors.New("rolled back but still unhealthy")
 // the restored version also fails the health gate, and failed otherwise
 // (errors.Is on ErrRolledBack / ErrRollbackUnhealthy).
 func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, state *persistedState, stage string, cause error) error {
+	// Rollback opt-out (ADR-0050): when disabled for this stack, fail loud
+	// instead of restoring the previous compose version. The failed containers
+	// are left running for inspection, the deploy is marked failed, and the
+	// change stays pending so the next sync retries. For stateful stacks whose
+	// forward migrations make restoring the old image over migrated data unsafe.
+	if run.stack.Rollback != nil && !*run.stack.Rollback {
+		slog.Error(stage+" failed; automatic rollback is disabled for this stack, leaving the failed version running for inspection", "stack", run.stack.Name, "err", cause)
+		return fmt.Errorf("%s: %w", stage, cause)
+	}
+
 	slog.Error(stage+" failed, attempting rollback", "stack", run.stack.Name, "err", cause)
 
 	if rbErr := d.rollbackStack(ctx, run, state); rbErr != nil {
