@@ -120,7 +120,7 @@
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>Absolute time</span>
           </button>
-          <button class="filter-toggle" id="image-delta-toggle" data-testid="image-delta-toggle" title="Hide version changes on deploy rows">
+          <button class="filter-toggle" id="image-delta-toggle" data-testid="image-delta-toggle" title="Hide the Version column">
             <div class="toggle-track"><div class="toggle-thumb"></div></div>
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13.5l6.5 6.5L20 10.5V4h-6.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="15" cy="9" r="1.5" fill="currentColor"/></svg>
             <span>Version changes</span>
@@ -423,10 +423,9 @@
   const queuedRows = {};
   let hasRows = false;
   let absoluteTime = localStorage.getItem('timeMode') === 'absolute';
-  // Per-service image delta on deploy rows (ADR-none: a view preference). On by
-  // default; a per-browser toggle in the Deploys view-options persists an off
-  // choice in localStorage. Only the explicit 'off' hides it, so a first-time
-  // visitor sees it.
+  // Whether the deploy table's Version column is shown. On by default; the
+  // Deploys view-options toggle persists an off choice per browser. Only the
+  // explicit 'off' hides it, so a first-time visitor sees the column.
   let imageDeltaOn = localStorage.getItem('imageDelta') !== 'off';
 
   // Autosync state, populated from the 'autosync' and 'queue' SSE events.
@@ -2395,10 +2394,13 @@
       }
       // The terminal event carries image_changes (the preceding deploying event
       // does not), so fill the Version column as the row settles — otherwise a
-      // live deploy would show it only after a reload. Stash the changes for the
-      // toggle; writing the cell wholesale keeps a re-emitted event idempotent.
+      // live deploy would show it only after a reload. Stash and cell are both
+      // written from this event, so a re-emitted one stays idempotent and the
+      // toggle can never restore a delta the cell no longer shows.
       if (evt.image_changes && evt.image_changes.length) {
         existing.dataset.imageChanges = JSON.stringify(evt.image_changes);
+      } else {
+        delete existing.dataset.imageChanges;
       }
       const versionCell = existing.querySelector('.col-version');
       if (versionCell) versionCell.innerHTML = imageDeltaOn ? imageDeltaHTML(evt.image_changes) : '';

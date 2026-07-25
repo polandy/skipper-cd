@@ -94,15 +94,25 @@ test.describe('UI6: view-options toggle', () => {
 
     const header = page.locator('.event-list-header .col-version');
     await expect(header).toBeVisible();
+    // The row separators belong to the column: they exist because a Version cell
+    // makes rows variable-height, so they come and go with it.
+    const separated = () =>
+      page
+        .locator('[data-testid="deploy-row"]')
+        .nth(1)
+        .evaluate((r) => getComputedStyle(r).borderTopWidth !== '0px');
+    expect(await separated()).toBe(true);
 
     // Flip it off from the popover: the whole column collapses — no chips left,
-    // and the Version header goes with it (an empty column would keep its width).
+    // the Version header goes with it (an empty column would keep its width), and
+    // the separators go too (every row is a single line again).
     await openDeploysMenu(page);
     const toggle = page.getByTestId('image-delta-toggle');
     await expect(toggle).toHaveClass(/active/); // on by default
     await toggle.click();
     await expect(anyDelta(page)).toHaveCount(0);
     await expect(header).toBeHidden();
+    expect(await separated()).toBe(false);
 
     // The off choice survives a reload.
     await page.reload();
@@ -110,11 +120,13 @@ test.describe('UI6: view-options toggle', () => {
     await expect(anyDelta(page)).toHaveCount(0);
     await expect(header).toBeHidden();
 
-    // Toggling back on restores column and chips (and clears the stored override).
+    // Toggling back on restores column, chips and separators (and clears the
+    // stored override).
     await openDeploysMenu(page);
     await page.getByTestId('image-delta-toggle').click();
     await expect(delta(page, 'web')).toBeVisible();
     await expect(header).toBeVisible();
+    expect(await separated()).toBe(true);
   });
 });
 

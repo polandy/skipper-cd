@@ -1182,9 +1182,10 @@ image change — no hand-fed events.
   full-width row **beneath** the name (asserted by bounding box) instead of
   squeezing it — the name still renders in full (no ellipsis).
 - **UAI6 — View-options toggle.** The Deploys popover's **Version changes** toggle
-  (on by default) collapses the whole column when flipped off — no chips *and* no
-  `Version` header; the off choice persists across a reload (`localStorage`), and
-  toggling back on restores both.
+  (on by default) collapses the whole column when flipped off — no chips, no
+  `Version` header, and no row separators (they exist only because the column
+  makes rows variable-height); the off choice persists across a reload
+  (`localStorage`), and toggling back on restores all three.
 
 Behaviour-only (no snapshot): the delta is structural (`data-testid="svc-delta"` +
 per-part text), and the per-reference token logic is exhaustively covered by the

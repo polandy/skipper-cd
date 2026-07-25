@@ -579,9 +579,8 @@
      an empty column would otherwise keep taking width. Stack and Version share
      the free width (minmax(0,…) so both can shrink instead of overflowing). */
   /* Stack keeps the larger share: the name must stay readable, while a too-narrow
-     Version chip degrades gracefully (its service name ellipsizes, the versions
-     stay). The other columns are trimmed slightly to buy the Version column its
-     width. */
+     Version chip degrades gracefully by wrapping (see .col-version .tag-delta).
+     The other columns are trimmed slightly to buy the Version column its width. */
   #deploy-table { --deploy-cols: 150px minmax(0, 1.15fr) minmax(0, 1fr) 110px 76px 96px; }
   #deploy-table.no-version { --deploy-cols: 160px minmax(0, 1fr) 110px 80px 100px; }
   #deploy-table.no-version .col-version { display: none; }
@@ -606,8 +605,9 @@
   /* With variable row heights the spacing alone no longer says where one row ends
      and the next begins, so rows carry a hairline separator. Not on the first row,
      and the rule applies after an expanded panel too — there the line marks the
-     return to the log. */
-  .event-list > .event-row:not(:first-child) {
+     return to the log. Tied to the Version column: with it off every row is a
+     single line again, so the separators are chrome the spacing already provides. */
+  #deploy-table:not(.no-version) .event-list > .event-row:not(:first-child) {
     border-top: 1px solid color-mix(in srgb, var(--overlay2) 10%, transparent);
   }
 
@@ -1453,7 +1453,7 @@
      accent, the one small "this is the new version" cue. */
   .col-version {
     display: flex;
-    min-width: 0; /* let the chips ellipsize rather than overflow the column */
+    min-width: 0; /* let the chips wrap rather than overflow the column */
   }
   .svc-delta {
     display: flex;
@@ -3044,9 +3044,9 @@
     /* A phone has no columns — the row is a 2×2 block — so the Version column
        becomes a full-width third row under the name/time, keeping its stacked
        chips. It sits left of the tap centre, so tapping the row still opens the
-       diff/files panel. */
+       diff/files panel. (The .no-version collapse is the base rule's job; its
+       higher specificity applies here too.) */
     .col-version { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
-    #deploy-table.no-version .col-version { display: none; }
     .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
 
     /* Roster collapses to the deploy-row 2×2: stack/status on top, time/commit below. */
