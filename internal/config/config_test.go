@@ -1026,3 +1026,33 @@ stacks:
 		t.Errorf("expected no warnings, got %v", cfg.Warnings)
 	}
 }
+
+func TestLoad_InitialDeployDefaultsToFull(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig)
+	if cfg.InitialDeploy != config.InitialDeployFull {
+		t.Errorf("initial_deploy = %q, want %q by default", cfg.InitialDeploy, config.InitialDeployFull)
+	}
+	if cfg.AdoptsInitialState() {
+		t.Error("the default must not adopt: a first start has to deploy the stacks")
+	}
+}
+
+func TestLoad_InitialDeployAdopt(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig+"initial_deploy: adopt\n")
+	if !cfg.AdoptsInitialState() {
+		t.Errorf("initial_deploy: adopt should adopt, got %q", cfg.InitialDeploy)
+	}
+}
+
+func TestLoad_RejectsUnknownInitialDeploy(t *testing.T) {
+	_, err := loadStringToConfig(t, minimalConfig+"initial_deploy: sometimes\n")
+	if err == nil {
+		t.Fatal("expected an error for an unknown initial_deploy value")
+	}
+	// The message must list what is valid, not just reject the input.
+	for _, want := range []string{"full", "adopt", "sometimes"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got: %v", want, err)
+		}
+	}
+}

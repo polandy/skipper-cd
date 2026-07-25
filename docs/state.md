@@ -14,7 +14,7 @@ stacks:
 
 A `project_dirs` map records each stack's compose project directory (its `project_directory`, or the compose file's own directory) from its last successful deploy. It lets skipper recognise a stack's running compose project by the `com.docker.compose.project.working_dir` label even after the stack is removed from the repo — the basis for [orphan detection](#orphaned-stacks).
 
-If the state file is absent or cannot be parsed (e.g. after a fresh install or corruption), all stacks are redeployed on the next run.
+If the state file is absent or cannot be parsed (e.g. after a fresh install or corruption), all stacks are redeployed on the next run — which also re-pulls their images. **Back this directory up** with the rest of your host state; on a host whose stacks are already running, [`initial_deploy: adopt`](configuration.md#first-run-and-state-loss) records them instead of redeploying them all.
 
 NixOS rebuild state (when [configured](nixos.md#nixos-rebuild)) is tracked under the reserved stack key `_nixos`. State is written atomically (temp file + rename).
 
