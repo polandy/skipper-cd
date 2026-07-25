@@ -9,7 +9,7 @@
 <p align="center">📖 <b><a href="https://polandy.github.io/skipper-cd/">Documentation</a></b></p>
 <br>
 
-A lightweight CD tool that listens for push webhooks, maintains a local clone of a Git repository, and redeploys only the Docker Compose stacks whose files actually changed. On NixOS it can also run `nixos-rebuild switch` when your `.nix` files change — closing the GitOps loop for the whole host. Pair it with automated dependency updates (e.g. [Renovate](https://docs.renovatebot.com/)) — which can even automerge routine minor and patch bumps — and the loop runs itself: each merge rebuilds the NixOS host and redeploys only the stacks it changed, with no manual steps. Unchanged stacks are skipped automatically.
+A lightweight CD tool that maintains a local clone of a Git repository and reconciles your Docker Compose stacks to it on a timer, redeploying only the stacks whose files actually changed — with an optional push webhook to make a change land in seconds instead of at the next tick. On NixOS it can also run `nixos-rebuild switch` when your `.nix` files change — closing the GitOps loop for the whole host. Pair it with automated dependency updates (e.g. [Renovate](https://docs.renovatebot.com/)) — which can even automerge routine minor and patch bumps — and the loop runs itself: each merge rebuilds the NixOS host and redeploys only the stacks it changed, with no manual steps. Unchanged stacks are skipped automatically.
 
 Supported webhook signatures: **Gitea** (`X-Gitea-Signature`) and **GitHub/Forgejo** (`X-Hub-Signature-256`).
 
@@ -26,7 +26,7 @@ stacks_base_dir: modules                 # relative to the repo clone; omit for 
 webhook_secret: "your-secret-here"
 ```
 
-Every `<stacks_base_dir>/<name>/docker-compose.yml` in the repo is a stack — skipper-cd discovers them automatically. Push to the repo, your Git host fires the (HMAC-signed) webhook, and skipper-cd pulls, diffs, and redeploys only what changed. A reconcile loop re-syncs on a timer as a safety net for any missed webhook.
+Every `<stacks_base_dir>/<name>/docker-compose.yml` in the repo is a stack — skipper-cd discovers them automatically. A reconcile loop pulls, diffs, and redeploys only what changed on a timer, keeping every host converged to the repo. Wire up the (HMAC-signed) push webhook and a merge lands in seconds instead of at the next tick.
 
 New here? The **[Getting Started walkthrough](https://polandy.github.io/skipper-cd/getting-started/)** covers the whole loop end to end — repo layout, running the service, and wiring up the webhook. Run it **[on NixOS](docs/nixos.md)** as a declarative systemd service, or **[with Docker](docs/docker.md)** as a container; the full configuration reference is in **[docs/configuration.md](docs/configuration.md)**.
 
@@ -60,8 +60,8 @@ skipper-cd reconciles each host to Git on a timer, with a webhook to make a push
 skipper-cd is the last automation link in a **self-driving, declarative NixOS homelab**. Keep your host configuration and your Docker Compose stacks in one Git repo, and let the machine maintain itself:
 
 1. **[Renovate](https://docs.renovatebot.com/)** (or Dependabot) opens PRs for image tags, flake inputs, and other dependency bumps — and **automerges** the routine minor and patch ones.
-2. The merge fires a **push webhook**.
-3. skipper-cd pulls, runs `nixos-rebuild switch` if any `.nix` file changed, then redeploys **only** the stacks whose files changed.
+2. skipper-cd picks the merge up on its next **reconcile** tick — or instantly, if a **push webhook** is wired up.
+3. It pulls, runs `nixos-rebuild switch` if any `.nix` file changed, then redeploys **only** the stacks whose files changed.
 4. Everything unchanged keeps running, untouched.
 
 The payoff: your homelab stays current and fully declarative with **Git as the single source of truth** — and you only step in for the changes that genuinely need a human (major bumps, breaking notes).
@@ -70,7 +70,7 @@ The payoff: your homelab stays current and fully declarative with **Git as the s
 
 ## How It Works
 
-On each incoming webhook (or on startup), skipper-cd:
+On each reconcile tick — or on an incoming webhook or at startup — skipper-cd:
 
 1. Checks the push payload's `ref`: only pushes to the configured `branch` trigger a deploy (payloads without a `ref`, e.g. a manual `curl`, always trigger one).
 2. Pulls the latest commits from the configured repository.

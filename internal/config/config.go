@@ -252,10 +252,13 @@ type Config struct {
 	ProjectDirectoryBase string `yaml:"project_directory_base"`
 
 	// WebhookSecret is the shared HMAC-SHA256 secret push webhooks are signed
-	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Required:
-	// push webhooks are skipper's primary deploy trigger (the reconcile loop is
-	// a safety net, not a substitute), so it must be set and every request is
-	// signature-verified.
+	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Optional: the
+	// reconcile loop is skipper's convergence baseline and the webhook only
+	// accelerates it, so leaving this empty is valid — it disables the /webhook
+	// endpoint (which then rejects every request) rather than erroring. When set,
+	// every request is signature-verified. Load rejects only the dead
+	// combination of an empty secret AND reconcile disabled, where nothing would
+	// deploy after startup.
 	WebhookSecret string `yaml:"webhook_secret"`
 
 	// Port is the webhook/UI HTTP port. Defaults to 8080.
@@ -789,10 +792,15 @@ func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
 		return fmt.Errorf("repo_url is required")
 	}
-	if cfg.WebhookSecret == "" {
-		// The webhook is skipper's primary deploy trigger (reconcile is a safety
-		// net), so require a secret — the endpoint is never open to unsigned pushes.
-		return fmt.Errorf("webhook_secret is required")
+	// webhook_secret is optional: reconcile is skipper's convergence baseline and
+	// the webhook only accelerates it. An empty secret disables the /webhook
+	// endpoint (it rejects with 403) rather than erroring — as long as reconcile
+	// can still converge the host. With both the webhook off AND reconcile
+	// disabled, nothing would deploy past the startup sync, so reject that dead
+	// combination. ReconcileIntervalSeconds is defaulted before validateConfig
+	// runs, so a nil here means it was never defaulted (on) — treat it as on.
+	if cfg.WebhookSecret == "" && cfg.ReconcileIntervalSeconds != nil && *cfg.ReconcileIntervalSeconds == 0 {
+		return fmt.Errorf("webhook_secret is empty (which disables the /webhook endpoint) and reconcile_interval_seconds is 0, so nothing would deploy after startup — set webhook_secret to enable push-triggered deploys, or set reconcile_interval_seconds > 0 (default 300) to converge on a timer")
 	}
 
 	// vars_file is a host path, available before any repo clone — check it now

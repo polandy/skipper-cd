@@ -453,9 +453,9 @@ func loadFromString(t *testing.T, content string) *config.Config {
 
 func loadStringToConfig(t *testing.T, content string) (*config.Config, error) {
 	t.Helper()
-	// webhook_secret is required (push webhooks are the primary trigger). Most
-	// tests aren't about it, so inject a default when absent; a test exercising
-	// the requirement sets webhook_secret explicitly (e.g. to "").
+	// webhook_secret is optional, but most tests want a working push endpoint and
+	// aren't about it, so inject a default when absent; a test exercising the
+	// empty-secret behaviour sets webhook_secret explicitly (e.g. to "").
 	if !strings.Contains(content, "webhook_secret") {
 		content = "webhook_secret: test-secret\n" + content
 	}
@@ -472,16 +472,54 @@ stacks_base_dir: modules
 webhook_secret: secret123
 `
 
-func TestLoad_RejectsMissingWebhookSecret(t *testing.T) {
-	// webhook_secret is required — the webhook is skipper's primary deploy
-	// trigger, and an empty secret would leave it unauthenticated.
-	_, err := loadStringToConfig(t, `
+func TestLoad_AllowsEmptyWebhookSecretWhenReconcileConverges(t *testing.T) {
+	// An empty webhook_secret is valid: it disables the /webhook endpoint, and
+	// reconcile (on by default at 300s) remains the convergence baseline.
+	cfg, err := loadStringToConfig(t, `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: modules
 webhook_secret: ""
 `)
-	if err == nil || !strings.Contains(err.Error(), "webhook_secret") {
-		t.Fatalf("expected a webhook_secret required error, got %v", err)
+	if err != nil {
+		t.Fatalf("empty webhook_secret with reconcile on should load, got %v", err)
+	}
+	if cfg.WebhookSecret != "" {
+		t.Fatalf("expected empty webhook_secret, got %q", cfg.WebhookSecret)
+	}
+	if cfg.ReconcileIntervalSeconds == nil || *cfg.ReconcileIntervalSeconds != 300 {
+		t.Fatalf("expected reconcile default 300, got %v", cfg.ReconcileIntervalSeconds)
+	}
+}
+
+func TestLoad_AllowsEmptyWebhookSecretWithExplicitReconcile(t *testing.T) {
+	// Empty secret paired with an explicit positive reconcile interval is the
+	// canonical reconcile-only setup and must load.
+	if _, err := loadStringToConfig(t, `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: modules
+webhook_secret: ""
+reconcile_interval_seconds: 120
+`); err != nil {
+		t.Fatalf("empty webhook_secret with reconcile_interval_seconds: 120 should load, got %v", err)
+	}
+}
+
+func TestLoad_RejectsEmptyWebhookSecretWithReconcileDisabled(t *testing.T) {
+	// The dead combination: no webhook (empty secret disables the endpoint) AND
+	// reconcile off means nothing deploys past the startup sync — reject it.
+	_, err := loadStringToConfig(t, `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: modules
+webhook_secret: ""
+reconcile_interval_seconds: 0
+`)
+	if err == nil {
+		t.Fatal("expected an error for empty webhook_secret + reconcile disabled, got nil")
+	}
+	for _, want := range []string{"webhook_secret", "reconcile_interval_seconds"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error should name %q, got %v", want, err)
+		}
 	}
 }
 
