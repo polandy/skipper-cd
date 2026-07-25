@@ -225,7 +225,7 @@ func TestPeerDiffsURL(t *testing.T) {
 func TestPeerContainerLogsURL(t *testing.T) {
 	reg := peers.New("host-a", []config.Peer{{Name: "host-b", URL: "http://host-b:8001/"}}, &fakeClient{}, time.Second)
 
-	// Stack logs endpoint; service selection rides the proxied ?service= query, not the path.
+	// Stack logs endpoint; service selection rides the proxied ?services= query, not the path.
 	if u, ok := reg.PeerContainerLogsURL("host-b", "gitea"); !ok || u != "http://host-b:8001/api/container-logs/gitea" {
 		t.Errorf("PeerContainerLogsURL(host-b, gitea) = %q, %v; want the peer's stack logs endpoint", u, ok)
 	}

@@ -209,7 +209,7 @@ func (r *Registry) PeerDiffsURL(name, eventID string) (string, bool) {
 // PeerContainerLogsURL resolves a configured peer's container-logs SSE endpoint
 // for a stack, used by the primary to proxy a peer's live logs on demand — the
 // streaming sibling of PeerDiffsURL (ADR-0048). Service selection rides the
-// proxied query string (?service=), so it needs no path segment here. The stack
+// proxied query string (?services=), so it needs no path segment here. The stack
 // path segment is escaped so a name with a URL-special char joins cleanly. The
 // second return is false when name is not a peer.
 func (r *Registry) PeerContainerLogsURL(name, stack string) (string, bool) {

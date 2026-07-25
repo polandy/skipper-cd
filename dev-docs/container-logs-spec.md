@@ -47,7 +47,7 @@ One control set across all log surfaces.
 
 ```
 GET /api/container-logs/{stack}?tail=200[&since=<ts>]                       # SSE, services merged
-GET /api/container-logs/{stack}?tail=200&service=api[&service=db][&since=<ts>]  # SSE, selected subset
+GET /api/container-logs/{stack}?tail=200&services=api[,db][&since=<ts>]      # SSE, selected subset
 ```
 
 - `text/event-stream`; each `data:` frame is one log line (timestamps included,

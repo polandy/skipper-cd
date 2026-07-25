@@ -264,7 +264,7 @@ export interface PeerSpec {
   diffs?: Record<string, unknown>;
   /** Container-log lines the stub streams as SSE at
    *  `/api/container-logs/{stack}`, keyed by `stack` (ADR-0048; service selection
-   *  rides the stripped `?service=` query, so the path is stack-only). Each string
+   *  rides the stripped `?services=` query, so the path is stack-only). Each string
    *  is emitted as one `data:` frame and the stream is held open (a real follow)
    *  until the client disconnects. */
   logsByStack?: Record<string, string[]>;

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -42,9 +43,9 @@ type Resolver interface {
 	Resolve(stack string) (inv Invocation, services []string, ok bool, err error)
 }
 
-// Handler serves GET /api/container-logs/{stack}. With no ?service= it streams
-// the whole stack (services merged, each line labelled); one or more repeated
-// ?service= params narrow the stream to that subset. It streams the backlog
+// Handler serves GET /api/container-logs/{stack}. With no ?services= it streams
+// the whole stack (services merged, each line labelled); a comma-separated
+// ?services=a,b list narrows the stream to that subset. It streams the backlog
 // then the live follow as SSE. One log streams per request; the UI keeps at
 // most one open, so a viewer holds at most one follow child — a disconnect
 // cancels the request context, killing that child.
@@ -56,7 +57,7 @@ func Handler(streamer LogStreamer, resolver Resolver) http.Handler {
 			return
 		}
 		stack := r.PathValue("stack")
-		selected := r.URL.Query()["service"] // repeatable; empty = whole stack
+		selected := parseServices(r) // comma-separated ?services=; empty = whole stack
 
 		inv, services, known, err := resolver.Resolve(stack)
 		if err != nil {
@@ -119,6 +120,25 @@ func logsArgs(projectArgs []string, services []string, tail int, since string) [
 		args = append(args, "--tail", strconv.Itoa(tail))
 	}
 	return append(args, services...)
+}
+
+// parseServices reads the comma-separated ?services= list into the selected
+// subset, trimming whitespace and dropping empty tokens so a bare ?services= or
+// a stray trailing comma degrades to the whole stack rather than validating an
+// empty service name to a 404. An unknown non-empty name is still rejected by
+// the caller.
+func parseServices(r *http.Request) []string {
+	raw := r.URL.Query().Get("services")
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, s := range strings.Split(raw, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // tailParam reads ?tail, clamped to [minTail, maxTail]; absent or unparseable

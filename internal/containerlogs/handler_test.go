@@ -37,7 +37,7 @@ func (f fakeResolver) Resolve(string) (Invocation, []string, bool, error) {
 }
 
 // serve routes a request through a mux so the {stack} path value resolves;
-// service selection rides the ?service= query.
+// service selection rides the ?services= query.
 func serve(streamer LogStreamer, resolver Resolver, target string) *httptest.ResponseRecorder {
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/container-logs/{stack}", Handler(streamer, resolver))
@@ -58,7 +58,7 @@ func okResolver(services ...string) fakeResolver {
 
 func TestHandler_SingleServiceArgv_DropsPrefix(t *testing.T) {
 	fs := &fakeStreamer{}
-	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?service=api&tail=200")
+	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?services=api&tail=200")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -80,8 +80,8 @@ func TestHandler_SingleServiceArgv_DropsPrefix(t *testing.T) {
 
 func TestHandler_MultiServiceArgv_KeepsPrefix(t *testing.T) {
 	fs := &fakeStreamer{}
-	// two ?service= params → that subset, service labels retained (no --no-log-prefix)
-	serve(fs, okResolver("api", "db", "web"), "/api/container-logs/web?service=api&service=db&tail=200")
+	// comma-separated ?services= subset → service labels retained (no --no-log-prefix)
+	serve(fs, okResolver("api", "db", "web"), "/api/container-logs/web?services=api,db&tail=200")
 
 	want := []string{
 		"compose", "-f", "/repo/web/docker-compose.yml", "--project-directory", "/srv/web",
@@ -94,7 +94,7 @@ func TestHandler_MultiServiceArgv_KeepsPrefix(t *testing.T) {
 
 func TestHandler_MergedStackArgv_KeepsServicePrefix(t *testing.T) {
 	fs := &fakeStreamer{}
-	// no ?service= → whole stack, service labels retained (no --no-log-prefix, no trailing service)
+	// no ?services= → whole stack, service labels retained (no --no-log-prefix, no trailing service)
 	serve(fs, okResolver("api", "db"), "/api/container-logs/web?tail=200")
 
 	want := []string{
@@ -161,7 +161,7 @@ func TestHandler_UnknownStack404(t *testing.T) {
 
 func TestHandler_UnknownService404(t *testing.T) {
 	fs := &fakeStreamer{}
-	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?service=ghost")
+	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?services=ghost")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
@@ -172,13 +172,42 @@ func TestHandler_UnknownService404(t *testing.T) {
 
 func TestHandler_UnknownServiceInSubset404(t *testing.T) {
 	fs := &fakeStreamer{}
-	// one valid, one unknown → the whole request is rejected, nothing streams
-	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?service=api&service=ghost")
+	// one valid, one unknown in the comma list → the whole request is rejected, nothing streams
+	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?services=api,ghost")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 	if fs.args != nil {
 		t.Errorf("streamer must not run when any selected service is unknown: %v", fs.args)
+	}
+}
+
+// A bare ?services= or stray empty tokens (e.g. a trailing comma) are not
+// service names: empties are dropped, so the request degrades to the surviving
+// subset (or the whole stack) instead of validating "" to a false 404.
+func TestHandler_EmptyServiceTokensDropped(t *testing.T) {
+	// "?services=" alone → whole stack (no trailing service arg).
+	fs := &fakeStreamer{}
+	rec := serve(fs, okResolver("api", "db"), "/api/container-logs/web?services=")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("empty services= status = %d, want 200", rec.Code)
+	}
+	if argHas(fs.args, "api") || argHas(fs.args, "db") {
+		t.Errorf("empty services= must stream the whole stack, got trailing service arg: %v", fs.args)
+	}
+
+	// "api,," → the empties drop out, leaving the single valid service.
+	fs = &fakeStreamer{}
+	rec = serve(fs, okResolver("api", "db"), "/api/container-logs/web?services=api,,")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("trailing-comma services status = %d, want 200", rec.Code)
+	}
+	want := []string{
+		"compose", "-f", "/repo/web/docker-compose.yml", "--project-directory", "/srv/web",
+		"logs", "--no-color", "--timestamps", "--follow", "--no-log-prefix", "--tail", "200", "api",
+	}
+	if got := strings.Join(fs.args, " "); got != strings.Join(want, " ") {
+		t.Errorf("args =\n  %v\nwant\n  %v", fs.args, want)
 	}
 }
 
@@ -192,7 +221,7 @@ func TestHandler_ResolverError500(t *testing.T) {
 
 func TestHandler_StreamsLinesAsSSE(t *testing.T) {
 	fs := &fakeStreamer{lines: []string{"2026-07-19T14:00:00Z hello", "world"}}
-	rec := serve(fs, okResolver("api"), "/api/container-logs/web?service=api")
+	rec := serve(fs, okResolver("api"), "/api/container-logs/web?services=api")
 
 	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
 		t.Errorf("content-type = %q, want text/event-stream", ct)

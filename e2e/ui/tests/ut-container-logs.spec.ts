@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 // Maske T: Container logs (ADR-0037). See dev-docs/e2e-tests.md §4.21.
 //
 // The health poller surfaces the per-container log icons on the health panel's
-// service lines and the per-service filter chips, and validates the ?service=
+// service lines and the per-service filter chips, and validates the ?services=
 // selection. The stub docker answers `compose … logs` with a fixed backlog (see
 // harness.ts): a single service drops the compose prefix (--no-log-prefix), the
 // whole stack and a multi-service subset keep it (`<stack>-1  | `). No real

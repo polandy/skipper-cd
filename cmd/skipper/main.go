@@ -873,7 +873,7 @@ func registerAutosyncRoutes(mux *http.ServeMux, as *autosyncDeps) {
 }
 
 // registerContainerLogRoutes wires the live container-log stream for a stack,
-// narrowable to a subset of its services via repeated ?service= params
+// narrowable to a subset of its services via a comma-separated ?services= list
 // (ADR-0037). UI-only; skipped without a health poller, whose snapshot the
 // resolver needs to validate the selected services.
 func registerContainerLogRoutes(mux *http.ServeMux, cfg *config.Config, deployer *deploy.Deployer, hp *health.Poller) {

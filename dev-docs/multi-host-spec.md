@@ -205,7 +205,7 @@ no per-host reskin.
   Live container **logs** are not fanned in (they are an open-ended stream, not a
   snapshot); instead the primary proxies a peer's container-logs SSE on demand at
   `GET /api/peers/{name}/container-logs/{stack}` (service selection rides
-  `?service=`) — the streaming sibling of the diff proxy (`PeerContainerLogsURL` /
+  `?services=`) — the streaming sibling of the diff proxy (`PeerContainerLogsURL` /
   `PeerContainerLogsHandler`), forwarding frames with a flush and tearing the
   upstream down when the browser disconnects. So a peer's per-service log button
   behaves like a local one.
@@ -250,7 +250,7 @@ match the deploy-lifecycle lines:
   `peers` state on the health-poll cadence, `GET /api/peers`, the peer-diff
   proxy `GET /api/peers/{name}/events/{id}/diffs`, and the peer-logs SSE proxy
   `GET /api/peers/{name}/container-logs/{stack}` (service selection rides
-  `?service=`)). No change inside
+  `?services=`)). No change inside
   `internal/deploy`.
 - `internal/audit`: `Record` gains the originating deploy event's `ID`, so a
   fanned-in peer row can key the peer's diff endpoint for the proxy.

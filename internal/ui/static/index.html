@@ -1491,7 +1491,7 @@
         ? '/api/peers/' + encodeURIComponent(curHost) + '/container-logs/' + encodeURIComponent(curStack)
         : '/api/container-logs/' + encodeURIComponent(curStack);
       url += '?tail=' + tail;
-      selected.forEach(function(s) { url += '&service=' + encodeURIComponent(s); });
+      if (selected.length) url += '&services=' + selected.map(encodeURIComponent).join(',');
       es = new EventSource(url);
       es.onmessage = function(ev) {
         if (!panel || !panel.isConnected) { close(); return; } // dropped by a re-render

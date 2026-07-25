@@ -772,7 +772,7 @@ snapshot, but the jump-btn's footprint on every row required regenerating
 
 A live `docker compose logs` panel opened from a logs icon, per stack (merged)
 and per container. Boots with `healthPoll: 1` and `setStackHealth` so the
-per-container icons appear on the health-panel service lines and the `?service=`
+per-container icons appear on the health-panel service lines and the `?services=`
 selection validates; the stub `docker` answers `compose … logs` with a fixed
 backlog (a single service drops the compose prefix, the whole stack and a
 multi-service subset keep `<stack>-1  | `). Behaviour-only (no new snapshot
@@ -923,7 +923,7 @@ snapshot shifts).
 
 The last local-only affordance closed. The browser can't reach a peer
 cross-origin, so the primary proxies the peer's container-logs SSE stream at `GET
-/api/peers/{name}/container-logs/{stack}` (service selection rides `?service=`;
+/api/peers/{name}/container-logs/{stack}` (service selection rides `?services=`;
 the streaming sibling of the diff proxy). The peer's containers panel now carries
 the same per-service log button local stacks have. The harness stub peer
 (`host-b`) streams canned SSE frames for `gitea` so the proxy has something to

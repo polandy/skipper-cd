@@ -773,7 +773,7 @@ func TestPeerContainerLogsHandler_StreamsAndForwardsStatus(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = fmt.Fprintf(w, "data: tail=%s services=%s\n\n",
-			r.URL.Query().Get("tail"), strings.Join(r.URL.Query()["service"], ","))
+			r.URL.Query().Get("tail"), r.URL.Query().Get("services"))
 		_, _ = io.WriteString(w, "data: second line\n\n")
 	}))
 	defer peer.Close()
@@ -795,7 +795,7 @@ func TestPeerContainerLogsHandler_StreamsAndForwardsStatus(t *testing.T) {
 
 	// Known peer + stack → the SSE frames stream through as event-stream, and the
 	// tail + service selection query is forwarded to the peer verbatim.
-	rec := do("/api/peers/host-b/container-logs/gitea?tail=50&service=web&service=db")
+	rec := do("/api/peers/host-b/container-logs/gitea?tail=50&services=web,db")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("proxy = %d, want 200", rec.Code)
 	}

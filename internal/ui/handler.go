@@ -436,7 +436,7 @@ func PeerDiffsHandler(resolve func(name, id string) (string, bool), hc *http.Cli
 // diff is a bounded JSON body, logs are an open-ended event-stream, so this
 // forwards frames with a flush after each and stays open as long as the client
 // does. `resolve` maps peer name + stack to the peer's logs URL (false when
-// name is not a configured peer); the incoming query (?service=/tail/since) is
+// name is not a configured peer); the incoming query (?services=/tail/since) is
 // passed through, so service selection needs no path segment. hc must have no
 // timeout — an SSE follow is long-lived; a client disconnect cancels the
 // request context, which tears down the upstream stream (and the peer's docker
