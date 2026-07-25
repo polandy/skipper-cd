@@ -395,6 +395,31 @@ function logLineVisible(text, q) {
   return (text || '').toLowerCase().indexOf(q.toLowerCase()) !== -1;
 }
 
+// watchedSummary phrases the change-detection panel's lead line for a roster
+// entry: what skipper watches for this stack, and — the question the panel
+// exists to answer — why nothing has happened for it.
+//
+// The "unchanged since" claim is only made after a clean deploy. A stack whose
+// last outcome was failed/queued/blocked has a change *pending*, so saying
+// nothing changed since then would be exactly backwards.
+const WATCHED_SETTLED = ['success', 'healed'];
+function watchedSummary(status, commit, count, disabled) {
+  if (disabled) {
+    return 'Parked with disabled: true — skipper neither watches nor deploys this stack.';
+  }
+  if (!count) {
+    return 'Nothing tracked yet — this stack has not deployed, so every input counts as changed.';
+  }
+  const deploys =
+    count === 1
+      ? 'A deploy runs when this file changes:'
+      : 'A deploy runs when any of these change:';
+  if (commit && WATCHED_SETTLED.indexOf(status) !== -1) {
+    return 'Unchanged since ' + shortSHA(commit) + '. ' + deploys;
+  }
+  return deploys;
+}
+
 // deployAnnouncement builds the screen-reader phrase for a terminal deploy
 // outcome, so the a11y-live region can voice what a sighted user reads off the
 // row (T2.8). Returns null for non-terminal statuses (deploying/queued/blocked/
@@ -442,6 +467,7 @@ if (typeof module !== 'undefined' && module.exports) {
     containerMatchesQuery,
     orphanMatchesQuery,
     logLineVisible,
+    watchedSummary,
     deployAnnouncement,
     HOST_COLOR_COUNT,
     hostColorIndex,

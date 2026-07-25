@@ -2004,6 +2004,36 @@
     return el;
   }
 
+  // createWatchedPanel returns the change-detection panel: the input files whose
+  // hashes decide whether this stack redeploys, and — after a clean deploy — the
+  // commit nothing has changed since. It answers "I pushed and this stack did
+  // nothing, why?", which every other surface leaves to state.yaml on the host.
+  // The data rides the `stacks` snapshot, so unlike the history panel beside it
+  // there is no fetch and no loading state.
+  function createWatchedPanel(stack) {
+    const entry = rosterSnap.find(function(r) { return r.name === stack; }) || {};
+    const files = entry.watched || [];
+    // The stack's own settings are hashed too, but under a synthetic key rather
+    // than a file (ADR-0043 moved that config host-side). It gets its own,
+    // clearly non-path entry so nobody goes looking for a file that isn't there.
+    const items = files.map(function(f) {
+      return `<li class="wp-file" data-testid="watched-file">${escapeHtml(f)}</li>`;
+    });
+    if (entry.watched_config) {
+      items.push('<li class="wp-file wp-config" data-testid="watched-config">' +
+        'this stack&rsquo;s settings in the host <code>skipper.yml</code></li>');
+    }
+    const el = document.createElement('div');
+    el.className = 'watched-panel';
+    el.dataset.testid = 'watched-panel';
+    el.dataset.watchedFor = stack;
+    el.innerHTML =
+      `<div class="wp-head"><span class="wp-label">change detection</span></div>` +
+      `<div class="wp-lead" data-testid="watched-lead">${escapeHtml(watchedSummary(entry.last_status || '', entry.last_commit || '', items.length, entry.disabled))}</div>` +
+      (items.length ? `<ul class="wp-files">${items.join('')}</ul>` : '');
+    return el;
+  }
+
   function renderAuditRecords(el, stack, records, err) {
     // Fetch failed (network / 5xx): an amber load-error with a retry that
     // re-runs the same fetch, distinct from a stack that genuinely has no
@@ -3167,7 +3197,7 @@
   // audit panel. One open at a time; the panel trails its row as a sibling, so
   // clicks inside it don't re-trigger the row.
   function closeRosterPanels() {
-    rosterList.querySelectorAll('.audit-panel, .health-panel, .hooks-panel').forEach(function(p) { p.remove(); });
+    rosterList.querySelectorAll('.audit-panel, .health-panel, .hooks-panel, .watched-panel').forEach(function(p) { p.remove(); });
     rosterList.querySelectorAll('.roster-row.audit-open, .roster-row.hooks-open').forEach(function(r) { r.classList.remove('audit-open', 'hooks-open'); });
   }
 
@@ -3293,7 +3323,11 @@
         anchor.after(health);
         anchor = health;
       }
-      anchor.after(createAuditPanel(stack));
+      const audit = createAuditPanel(stack);
+      anchor.after(audit);
+      // Change detection last: it explains why the history above ends where it
+      // does — which inputs are watched, and that none has changed since.
+      audit.after(createWatchedPanel(stack));
       refilterRoster(); // freshly opened panels obey an active filter
     }
   });

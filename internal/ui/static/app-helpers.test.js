@@ -437,6 +437,25 @@ test('reconcileHostFilter: restores a saved subset against the current host set'
   assert.equal(h.reconcileHostFilter(['host-a', 'host-b'], ['host-a', 'host-b']), null); // full set → normalize to all
 });
 
+test('watchedSummary: only a settled stack claims nothing changed', () => {
+  // A clean last deploy: the commit is the answer to "why is nothing happening".
+  assert.match(h.watchedSummary('success', 'a1b2c3d4e5', 3), /^Unchanged since a1b2c3d\./);
+  assert.match(h.watchedSummary('healed', 'a1b2c3d4e5', 3), /^Unchanged since a1b2c3d\./);
+  // A failed/queued/blocked stack has a change pending — the opposite claim.
+  for (const s of ['failed', 'rolled_back', 'queued', 'blocked', 'heal_exhausted']) {
+    assert.doesNotMatch(h.watchedSummary(s, 'a1b2c3d4e5', 3), /Unchanged/);
+  }
+  // No commit recorded — nothing to be unchanged since.
+  assert.doesNotMatch(h.watchedSummary('success', '', 3), /Unchanged/);
+  // Never deployed: no tracked inputs at all.
+  assert.match(h.watchedSummary('', '', 0), /has not deployed/);
+  // Singular vs plural.
+  assert.match(h.watchedSummary('', '', 1), /this file changes/);
+  assert.match(h.watchedSummary('', '', 2), /any of these change/);
+  // A parked stack is not watched at all — whatever it recorded before.
+  assert.match(h.watchedSummary('success', 'a1b2c3d4e5', 3, true), /^Parked/);
+});
+
 test('deployAnnouncement: only terminal outcomes get a spoken phrase (T2.8)', () => {
   assert.equal(h.deployAnnouncement('success', 'gitea'), 'gitea deployed successfully');
   assert.equal(h.deployAnnouncement('failed', 'gitea'), 'gitea deploy failed');

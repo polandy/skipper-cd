@@ -1366,6 +1366,33 @@
   }
   .audit-panel .ap-count { color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
   .audit-panel .ap-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
+  /* Change detection: the last card of the roster's expand stack, same bound
+     accent frame as the history panel above it. */
+  .watched-panel {
+    padding: 9px 14px 12px;
+    background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: inset 3px 0 0 var(--accent);
+    animation: expand 0.2s ease-out;
+  }
+  .watched-panel .wp-head { padding: 0 0 8px; font-family: var(--font-mono); font-size: 11px; }
+  .watched-panel .wp-label { color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+  .watched-panel .wp-lead { color: var(--text-secondary); font-size: 12px; padding-bottom: 8px; }
+  .watched-panel .wp-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .watched-panel .wp-file {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-primary);
+    background: color-mix(in srgb, var(--overlay2) 7%, transparent);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px;
+    overflow-x: auto; white-space: nowrap;
+  }
+  /* Not a path — the stack's own settings, hashed under a synthetic key. Muted
+     and non-mono so it never reads as a file you could open. */
+  .watched-panel .wp-config {
+    font-family: var(--font-sans); color: var(--text-muted); border-style: dashed;
+  }
+  .watched-panel .wp-config code { font-family: var(--font-mono); font-size: 10.5px; }
   .audit-row {
     display: grid;
     grid-template-columns: 150px 116px 66px 76px 1fr;
@@ -1582,6 +1609,7 @@
     .diff-panel,
     .files-list,
     .audit-panel,
+    .watched-panel,
     .heal-panel,
     .error-detail,
     .load-error,
@@ -1804,7 +1832,8 @@
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel, .heal-panel.bound, .peer-detail.bound {
+  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel, .heal-panel.bound, .peer-detail.bound,
+  .watched-panel {
     margin-top: -2px;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
@@ -1813,7 +1842,8 @@
      last card: square its bottom too so the bar runs straight into the error box. */
   .diff-panel.bound:has(+ .error-detail),
   .files-list.bound:has(+ .error-detail),
-  .health-panel:has(+ .audit-panel) {
+  .health-panel:has(+ .audit-panel),
+  .audit-panel:has(+ .watched-panel) {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
