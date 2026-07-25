@@ -464,10 +464,15 @@
   .deploy-status .ds-count:empty { display: none; }
 
   /* ─── MAIN ─── */
+  /* Shared by every view, so they stay one column width. 1180px is set by the
+     widest thing the deploy table has to fit on one line: a Version chip like
+     `machine-learning v1.118.0 → v1.119.0` wants ~236px, and at this width the
+     column gets ~283px — headroom for longer service names without wrapping.
+     Still a centred column on a 13" laptop (~1440px viewport), not edge-to-edge. */
   main {
     position: relative;
     z-index: 1;
-    max-width: 1040px;
+    max-width: 1180px;
     margin: 32px auto;
     padding: 0 20px;
   }
