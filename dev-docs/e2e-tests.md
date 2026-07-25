@@ -772,11 +772,11 @@ snapshot, but the jump-btn's footprint on every row required regenerating
 
 A live `docker compose logs` panel opened from a logs icon, per stack (merged)
 and per container. Boots with `healthPoll: 1` and `setStackHealth` so the
-per-container icons appear on the health-panel service lines and the `{service}`
-segment validates; the stub `docker` answers `compose … logs` with a fixed
-backlog (a single service drops the compose prefix, the whole stack keeps
-`<stack>-1  | `). Behaviour-only (no new snapshot beyond the shared deploy-table
-baselines the row icon already shifts).
+per-container icons appear on the health-panel service lines and the `?services=`
+selection validates; the stub `docker` answers `compose … logs` with a fixed
+backlog (a single service drops the compose prefix, the whole stack and a
+multi-service subset keep `<stack>-1  | `). Behaviour-only (no new snapshot
+beyond the shared deploy-table baselines the row icon already shifts).
 
 - **UT1 — Per-stack panel.** The row's `clog-btn` opens a `clog-panel` that
   streams the backlog (the merged view keeps the `web-1` service prefix) and
@@ -792,6 +792,12 @@ baselines the row icon already shifts).
   (UT5/UT6, the Logs view's own search/wrap/fullscreen/live controls, moved to
   §4.3 as UB8/UB9 once the view became a page-sized `clog-panel` with those
   controls inline in its own header instead of a popover.)
+- **UT7 — Per-service filter.** On a two-service stack, the funnel tool reveals
+  the `clog-svcs` chip row (`all` + one per service). Selecting one service names
+  the scope (`web / app`) and drops the compose prefix; adding a second gives a
+  subset scope (`web / app + db`) with the prefix back; `all` returns to the
+  merged stream. A single-service stack shows no filter tool (UT1 asserts its
+  absence).
 
 ### 4.22 UI — Maske U: Deploy hooks (ADR-0038)
 
@@ -917,10 +923,11 @@ snapshot shifts).
 
 The last local-only affordance closed. The browser can't reach a peer
 cross-origin, so the primary proxies the peer's container-logs SSE stream at `GET
-/api/peers/{name}/container-logs/{stack}[/{service}]` (the streaming sibling of
-the diff proxy). The peer's containers panel now carries the same per-service log
-button local stacks have. The harness stub peer (`host-b`) streams canned SSE
-frames for `gitea/web` so the proxy has something to forward. Behaviour-only.
+/api/peers/{name}/container-logs/{stack}` (service selection rides `?services=`;
+the streaming sibling of the diff proxy). The peer's containers panel now carries
+the same per-service log button local stacks have. The harness stub peer
+(`host-b`) streams canned SSE frames for `gitea` so the proxy has something to
+forward. Behaviour-only.
 
 - **UY1 — Peer container log streams through the proxy.** Expanding a peer row and
   clicking a container's `clog-btn` opens the live `clog-panel`; its `clog-body`

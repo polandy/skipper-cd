@@ -263,9 +263,10 @@ export interface PeerSpec {
    *  the primary's peer-diff proxy fetches on a peer-row expand. */
   diffs?: Record<string, unknown>;
   /** Container-log lines the stub streams as SSE at
-   *  `/api/container-logs/{stack}[/{service}]`, keyed by `stack` or
-   *  `stack/service` (ADR-0048). Each string is emitted as one `data:` frame and
-   *  the stream is held open (a real follow) until the client disconnects. */
+   *  `/api/container-logs/{stack}`, keyed by `stack` (ADR-0048; service selection
+   *  rides the stripped `?services=` query, so the path is stack-only). Each string
+   *  is emitted as one `data:` frame and the stream is held open (a real follow)
+   *  until the client disconnects. */
   logsByStack?: Record<string, string[]>;
   /** false → no server is started; the peer URL points at a dead port so the
    *  primary sees it unreachable (offline banner). Default true. */

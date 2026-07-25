@@ -5,10 +5,11 @@ import type { Page } from '@playwright/test';
 // Maske T: Container logs (ADR-0037). See dev-docs/e2e-tests.md §4.21.
 //
 // The health poller surfaces the per-container log icons on the health panel's
-// service lines and validates the {service} segment. The stub docker answers
-// `compose … logs` with a fixed backlog (see harness.ts): a single service drops
-// the compose prefix (--no-log-prefix), the whole stack keeps it (`<stack>-1  | `).
-// No real docker, no real containers.
+// service lines and the per-service filter chips, and validates the ?services=
+// selection. The stub docker answers `compose … logs` with a fixed backlog (see
+// harness.ts): a single service drops the compose prefix (--no-log-prefix), the
+// whole stack and a multi-service subset keep it (`<stack>-1  | `). No real
+// docker, no real containers.
 //
 // Health is seeded via `initialHealth` (written before skipper starts), not
 // setStackHealth in the body: the startup deploy's first health poll would
@@ -48,6 +49,9 @@ test.describe('UT1: per-stack log panel', () => {
     const body = panel.locator('[data-testid="clog-body"]');
     await expect(body).toContainText('listening on :8080');
     await expect(body).toContainText('web-1'); // merged view keeps the service prefix
+
+    // A single-service stack has nothing to filter → no filter tool.
+    await expect(panel.locator('[data-clog="svcfilter"]')).toHaveCount(0);
 
     // Clicking the same icon closes it (reopen the menu to reach it again).
     await openRowLog(page, 'web');
@@ -123,3 +127,40 @@ test.describe('UT4: in-log type-to-search', () => {
 // UT5/UT6 (the Logs view's own search/wrap/fullscreen/live controls) moved to
 // ub-logs.spec.ts as UB8/UB9 once the view became a page-sized clog-panel with
 // those controls inline in its own header instead of a popover.
+
+// UT7 — the per-service filter narrows the merged stream to a chosen subset
+// (multi-select). One service drops the compose prefix; two keep it.
+test.describe('UT7: per-service filter', () => {
+  test.use({ startOptions: { stacks: ['web'], healthPoll: 1, initialHealth: { web: APP_DB } } });
+
+  test('filter chips narrow the stream to one or several services', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    await openRowLog(page, 'web');
+    const panel = page.locator('[data-testid="clog-panel"]');
+    const body = panel.locator('[data-testid="clog-body"]');
+    await expect(body).toContainText('web-1'); // merged view keeps the prefix
+
+    // The filter tool reveals the chip row (collapsed by default): all + one per service.
+    const svcs = panel.locator('[data-testid="clog-svcs"]');
+    await expect(svcs).toBeHidden();
+    await panel.locator('[data-clog="svcfilter"]').click();
+    await expect(svcs).toBeVisible();
+    await expect(svcs.locator('.clog-chip')).toHaveText(['all', 'app', 'db']);
+
+    // One service → scope names it and the compose prefix drops.
+    await svcs.locator('.clog-chip', { hasText: 'app' }).click();
+    await expect(panel.locator('.clog-scope')).toContainText('web / app');
+    await expect(body).toContainText('listening on :8080'); // the re-pulled backlog arrived
+    await expect(body).not.toContainText('web-1');
+
+    // Add a second service → subset scope, and the prefix returns (lines need labelling).
+    await svcs.locator('.clog-chip', { hasText: 'db' }).click();
+    await expect(panel.locator('.clog-scope')).toContainText('web / app + db');
+    await expect(body).toContainText('web-1');
+
+    // "all" clears back to the merged stream.
+    await svcs.locator('.clog-chip', { hasText: 'all' }).click();
+    await expect(panel.locator('.clog-scope')).toContainText('web · all services');
+  });
+});

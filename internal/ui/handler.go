@@ -430,25 +430,26 @@ func PeerDiffsHandler(resolve func(name, id string) (string, bool), hc *http.Cli
 }
 
 // PeerContainerLogsHandler serves
-// GET /api/peers/{name}/container-logs/{stack}[/{service}] — the streaming
-// sibling of PeerDiffsHandler (ADR-0048). It proxies a peer's live container-logs
-// SSE stream to the browser, which cannot reach the peer cross-origin. Where a
+// GET /api/peers/{name}/container-logs/{stack} — the streaming sibling of
+// PeerDiffsHandler (ADR-0048). It proxies a peer's live container-logs SSE
+// stream to the browser, which cannot reach the peer cross-origin. Where a
 // diff is a bounded JSON body, logs are an open-ended event-stream, so this
 // forwards frames with a flush after each and stays open as long as the client
-// does. `resolve` maps peer name + stack + service to the peer's logs URL (false
-// when name is not a configured peer); the incoming query (tail/since) is passed
-// through. hc must have no timeout — an SSE follow is long-lived; a client
-// disconnect cancels the request context, which tears down the upstream stream
-// (and the peer's docker child) instead. The peer validates the stack/service, so
-// a non-2xx (unknown stack/service, peer UI off) is forwarded as-is.
-func PeerContainerLogsHandler(resolve func(name, stack, service string) (string, bool), hc *http.Client) http.Handler {
+// does. `resolve` maps peer name + stack to the peer's logs URL (false when
+// name is not a configured peer); the incoming query (?services=/tail/since) is
+// passed through, so service selection needs no path segment. hc must have no
+// timeout — an SSE follow is long-lived; a client disconnect cancels the
+// request context, which tears down the upstream stream (and the peer's docker
+// child) instead. The peer validates the stack/services, so a non-2xx (unknown
+// stack/service, peer UI off) is forwarded as-is.
+func PeerContainerLogsHandler(resolve func(name, stack string) (string, bool), hc *http.Client) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 			return
 		}
-		target, ok := resolve(r.PathValue("name"), r.PathValue("stack"), r.PathValue("service"))
+		target, ok := resolve(r.PathValue("name"), r.PathValue("stack"))
 		if !ok {
 			http.Error(w, "unknown peer", http.StatusNotFound)
 			return

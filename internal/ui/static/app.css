@@ -3245,6 +3245,19 @@
     padding: 3px 8px; color: var(--text-muted); background: transparent; border: 0; cursor: pointer; }
   .clog-tail button.active { background: var(--surface0); color: var(--text-primary); }
 
+  /* Per-service filter (ADR-0037): a collapsible chip row under the head. Chips
+     are multi-select toggles; "all" clears the set. Suppressed for a stack with
+     fewer than two services (nothing to filter). */
+  .clog-svcs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px 12px;
+    background: var(--base); border-bottom: 1px solid var(--border); }
+  .clog-svcs .clog-svcs-lbl { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-right: 2px; }
+  .clog-chip { font-family: var(--font-mono); font-size: 10px; font-weight: 500; padding: 3px 10px;
+    border-radius: 20px; border: 1px solid var(--border-lit); background: transparent; color: var(--text-muted);
+    cursor: pointer; white-space: nowrap; }
+  .clog-chip:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 34%, transparent); }
+  .clog-chip.active { color: var(--accent); background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+
   .clog-search { display: flex; align-items: center; gap: 8px; padding: 7px 12px;
     background: var(--base); border-bottom: 1px solid var(--border); }
   .clog-search .clog-sic { display: inline-flex; color: var(--text-muted); }

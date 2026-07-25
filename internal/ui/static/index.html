@@ -1197,6 +1197,7 @@
     wrap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h13a3 3 0 0 1 0 6h-4"/><path d="M16 15l-3 3 3 3"/><path d="M4 18h6"/></svg>',
     scroll: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>',
     fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+    filter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
   };
 
   // clogBtnHTML/clogButton build the logs icon that opens a log — a string
@@ -1324,7 +1325,7 @@
 
   const clog = (function() {
     let panel = null, es = null, btn = null, body = null, key = null;
-    let curService = '', curStack = '', curHost = '';
+    let selected = [], curStack = '', curHost = '';   // selected = [] → whole stack; else the chosen service subset
     // 'container' streams docker compose logs; 'skipper' streams /api/logs
     // filtered to the stack — the hook output (ADR-0038), in the same panel.
     let mode = 'container';
@@ -1337,12 +1338,56 @@
       if (s) { s.textContent = text; s.className = 'clog-stat' + (cls ? ' ' + cls : ''); }
     }
 
+    // The stack's services, from the (peer-aware) health snapshot at open time.
+    function servicesFor() {
+      const h = healthMapFor(curHost)[curStack];
+      return (h && h.services) || [];
+    }
+    // A stack with fewer than two services has nothing to filter, so the
+    // per-service control is suppressed (only in container mode, never hooks).
+    function hasServiceFilter() { return mode === 'container' && servicesFor().length >= 2; }
+
+    // The scope label in the header: whole stack, one service, a short list, or
+    // an "N services" count once the list would get long.
+    function scopeText() {
+      if (!selected.length) return curStack + ' · all services';
+      if (selected.length === 1) return curStack + ' / ' + selected[0];
+      if (selected.length <= 3) return curStack + ' / ' + selected.join(' + ');
+      return curStack + ' / ' + selected.length + ' services';
+    }
+
+    // The collapsible chip row: an "all" chip plus one per service; empty string
+    // when there is nothing to filter (so the head shows no filter tool either).
+    function svcRowHTML() {
+      if (!hasServiceFilter()) return '';
+      const chips = servicesFor().map(function(s) {
+        const on = selected.indexOf(s.name) !== -1;
+        return '<button class="clog-chip' + (on ? ' active' : '') + '" type="button" data-svc="' +
+          escapeAttr(s.name) + '">' + escapeHtml(s.name) + '</button>';
+      }).join('');
+      return '<div class="clog-svcs clog-hide" data-testid="clog-svcs">' +
+        '<span class="clog-svcs-lbl">service</span>' +
+        '<button class="clog-chip' + (selected.length ? '' : ' active') + '" type="button" data-svc="">all</button>' +
+        chips + '</div>';
+    }
+
+    // Reflect the current selection onto the chips + scope label after a toggle.
+    function syncChips() {
+      if (!panel) return;
+      panel.querySelectorAll('.clog-svcs .clog-chip').forEach(function(x) {
+        const svc = x.dataset.svc;
+        x.classList.toggle('active', svc === '' ? selected.length === 0 : selected.indexOf(svc) !== -1);
+      });
+      const sc = panel.querySelector('.clog-scope');
+      if (sc) sc.textContent = '· ' + scopeText();
+    }
+
     // decorate splits a compose log line into service prefix (merged view),
     // leading RFC3339 timestamp (--timestamps) and message, colouring each and
     // tinting error/warn lines. Everything is escaped — no HTML from the child.
     function decorate(data) {
       let svc = '', rest = data;
-      if (!curService) {
+      if (selected.length !== 1) {   // merged + multi keep the compose prefix; a single service drops it
         const m = rest.match(/^([^|]{1,60}?)\s+\|\s?(.*)$/);
         if (m) { svc = m[1]; rest = m[2]; }
       }
@@ -1445,8 +1490,8 @@
       let url = curHost
         ? '/api/peers/' + encodeURIComponent(curHost) + '/container-logs/' + encodeURIComponent(curStack)
         : '/api/container-logs/' + encodeURIComponent(curStack);
-      if (curService) url += '/' + encodeURIComponent(curService);
       url += '?tail=' + tail;
+      if (selected.length) url += '&services=' + selected.map(encodeURIComponent).join(',');
       es = new EventSource(url);
       es.onmessage = function(ev) {
         if (!panel || !panel.isConnected) { close(); return; } // dropped by a re-render
@@ -1466,6 +1511,7 @@
           '<span class="clog-live" data-testid="clog-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>' +
           '<span class="clog-grow"></span>' +
           '<button class="clog-tool" data-clog="search" type="button" title="Search in log">' + CLOG_ICONS.search + '</button>' +
+          (hasServiceFilter() ? '<button class="clog-tool" data-clog="svcfilter" type="button" title="Filter by service">' + CLOG_ICONS.filter + '</button>' : '') +
           '<button class="clog-tool" data-clog="wrap" type="button" title="Wrap long lines">' + CLOG_ICONS.wrap + '</button>' +
           '<button class="clog-tool on" data-clog="scroll" type="button" title="Auto-scroll — follow the tail">' + CLOG_ICONS.scroll + '</button>' +
           '<span class="clog-tail" data-testid="clog-tail">' +
@@ -1475,6 +1521,7 @@
           '</span>' +
           '<button class="clog-tool" data-clog="fs" type="button" title="Fullscreen">' + CLOG_ICONS.fs + '</button>' +
         '</div>' +
+        svcRowHTML() +
         '<div class="clog-search clog-hide" data-testid="clog-search"><span class="clog-sic">' + CLOG_ICONS.search + '</span>' +
           '<input type="text" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log"><span class="clog-hits"></span></div>' +
         '<div class="clog-body" data-testid="clog-body"></div>' +
@@ -1499,6 +1546,10 @@
           if (k === 'wrap') { b.classList.toggle('on', body.classList.toggle('wrap')); }
           else if (k === 'scroll') { follow = b.classList.toggle('on'); if (follow) toBottom(); }
           else if (k === 'fs') { fullscreen(!panel.classList.contains('clog-fullscreen')); }
+          else if (k === 'svcfilter') {
+            const row = panel.querySelector('.clog-svcs');
+            if (row) b.classList.toggle('on', row.classList.toggle('clog-hide') === false);
+          }
           else if (k === 'search') {
             const box = panel.querySelector('.clog-search');
             const show = box.classList.toggle('clog-hide') === false;
@@ -1515,6 +1566,20 @@
           b.classList.add('active');
           tail = parseInt(b.dataset.tail, 10) || 200;
           body.innerHTML = ''; connect(); // re-pull the backlog at the new size
+        });
+      });
+      // Service chips toggle membership in the selected set; "all" clears it.
+      // Each change re-pulls the backlog at the new scope (like the tail buttons).
+      panel.querySelectorAll('.clog-svcs .clog-chip').forEach(function(c) {
+        c.addEventListener('click', function() {
+          const svc = c.dataset.svc;
+          if (svc === '') { selected = []; }
+          else {
+            const i = selected.indexOf(svc);
+            if (i === -1) selected.push(svc); else selected.splice(i, 1);
+          }
+          syncChips();
+          body.innerHTML = ''; connect();
         });
       });
     }
@@ -1551,11 +1616,10 @@
       const newKey = (host || '') + '\n' + stack + '\n' + (service || '');
       if (key === newKey) { close(); return; } // same icon → toggle closed
       close();
-      btn = button; key = newKey; curStack = stack; curService = service || ''; curHost = host || '';
+      btn = button; key = newKey; curStack = stack; selected = service ? [service] : []; curHost = host || '';
       mode = 'container'; follow = true; paused = false; query = '';
       btn.classList.add('on');
-      const scope = service ? (stack + ' / ' + service) : (stack + ' · all services');
-      panel = buildPanel(scope);
+      panel = buildPanel(scopeText());
       const anchor = button.closest('.hp-svc') || button.closest('.event-row') || button.closest('.roster-row') || button;
       anchor.after(panel);
       body = panel.querySelector('.clog-body');
@@ -1569,7 +1633,7 @@
       const newKey = `${stack}\n#hook`;
       if (key === newKey) { close(); return; }
       close();
-      btn = button; key = newKey; curStack = stack; curService = ''; curHost = '';
+      btn = button; key = newKey; curStack = stack; selected = []; curHost = '';
       mode = 'skipper'; follow = true; paused = false; query = '';
       if (btn) btn.classList.add('on');
       panel = buildPanel(`${stack} · deploy hook`);
@@ -1588,7 +1652,7 @@
       if (fsHolder) { if (fsHolder.parentNode) fsHolder.remove(); fsHolder = null; }
       if (panel) { panel.remove(); panel = null; }
       if (btn) { btn.classList.remove('on'); btn = null; }
-      body = null; key = null; query = ''; mode = 'container'; curHost = '';
+      body = null; key = null; query = ''; mode = 'container'; curHost = ''; selected = [];
     }
 
     // Type-to-search: while a log is open, a printable key routes into the

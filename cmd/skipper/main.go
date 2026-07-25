@@ -854,8 +854,6 @@ func registerPeerRoutes(mux *http.ServeMux, reg *peers.Registry) {
 	logsProxyClient := &http.Client{}
 	mux.Handle("GET /api/peers/{name}/container-logs/{stack}",
 		ui.PeerContainerLogsHandler(reg.PeerContainerLogsURL, logsProxyClient))
-	mux.Handle("GET /api/peers/{name}/container-logs/{stack}/{service}",
-		ui.PeerContainerLogsHandler(reg.PeerContainerLogsURL, logsProxyClient))
 }
 
 // registerIconRoutes wires per-stack icon resolution and the cache-refresh hook.
@@ -874,16 +872,16 @@ func registerAutosyncRoutes(mux *http.ServeMux, as *autosyncDeps) {
 	mux.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
 }
 
-// registerContainerLogRoutes wires the live container-log stream, per stack and
-// per service (ADR-0037). UI-only; skipped without a health poller, whose
-// snapshot the resolver needs to validate the service segment.
+// registerContainerLogRoutes wires the live container-log stream for a stack,
+// narrowable to a subset of its services via a comma-separated ?services= list
+// (ADR-0037). UI-only; skipped without a health poller, whose snapshot the
+// resolver needs to validate the selected services.
 func registerContainerLogRoutes(mux *http.ServeMux, cfg *config.Config, deployer *deploy.Deployer, hp *health.Poller) {
 	if hp == nil {
 		return
 	}
 	h := containerlogs.Handler(containerlogs.ExecStreamer{}, containerLogResolver{cfg: cfg, deployer: deployer, health: hp})
 	mux.Handle("GET /api/container-logs/{stack}", h)
-	mux.Handle("GET /api/container-logs/{stack}/{service}", h)
 }
 
 // stateSnapshot gathers the current state of every subsystem the UI mirrors,
