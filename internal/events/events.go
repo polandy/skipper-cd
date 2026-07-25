@@ -64,6 +64,20 @@ type DriftedService struct {
 	Status string `json:"status" yaml:"status"`
 }
 
+// ServiceImageChange records that one service's image reference changed in the
+// deploy an event describes, as old → new (name:tag[@digest]). An empty Old
+// means the service had no previously deployed image (first deploy of the
+// service, or state was reset); an empty New means it was removed from the
+// stack. Services whose image is unchanged — and build: services with no image:
+// ref — are not listed. Carried so a notification can name what actually
+// updated, not just the stack; small enough to ride the SSE payload like
+// HealDrift.
+type ServiceImageChange struct {
+	Service string `json:"service" yaml:"service"`
+	Old     string `json:"old,omitempty" yaml:"old,omitempty"`
+	New     string `json:"new,omitempty" yaml:"new,omitempty"`
+}
+
 // DeployEvent represents a single deployment status change.
 type DeployEvent struct {
 	ID           int64             `json:"id" yaml:"id"`
@@ -80,6 +94,10 @@ type DeployEvent struct {
 	// on healed events. Unlike Diffs it is kept on the SSE payload (it is small and
 	// there is no on-demand endpoint for it).
 	HealDrift []DriftedService `json:"heal_drift,omitempty" yaml:"heal_drift,omitempty"`
+	// ImageChanges lists the services whose image reference changed in this deploy
+	// (old → new), set on deploy attempts so notifications and the UI can name what
+	// updated. Kept on the SSE payload like HealDrift.
+	ImageChanges []ServiceImageChange `json:"image_changes,omitempty" yaml:"image_changes,omitempty"`
 }
 
 // SSEPayload returns a copy suitable for SSE streaming: diffs and commits are

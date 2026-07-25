@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/polandy/skipper-cd/internal/events"
 )
 
 func mustParseCompose(t *testing.T, path string) *composeFile {
@@ -181,6 +184,45 @@ func TestImagesChanged_NilPreviousIsChanged(t *testing.T) {
 	current := map[string]string{"app": "redis:7.2"}
 	if !hasAnyImageChanged(current, nil) {
 		t.Error("expected nil previous to be detected as changed")
+	}
+}
+
+func TestImageChanges_ReportsChangedAddedRemovedSorted(t *testing.T) {
+	current := map[string]string{
+		"web": "nginx:1.27",  // changed
+		"api": "myapi:2.0",   // added (no previous)
+		"db":  "postgres:16", // unchanged — must be omitted
+	}
+	previous := map[string]string{
+		"web":   "nginx:1.25",
+		"db":    "postgres:16",
+		"cache": "redis:7.2", // removed (no current)
+	}
+
+	got := imageChanges(current, previous)
+	want := []events.ServiceImageChange{
+		{Service: "api", Old: "", New: "myapi:2.0"},
+		{Service: "cache", Old: "redis:7.2", New: ""},
+		{Service: "web", Old: "nginx:1.25", New: "nginx:1.27"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("imageChanges() = %+v, want %+v", got, want)
+	}
+}
+
+func TestImageChanges_NilWhenNothingChanged(t *testing.T) {
+	images := map[string]string{"app": "redis:7.2", "db": "postgres:16"}
+	if got := imageChanges(images, images); got != nil {
+		t.Errorf("expected no changes, got %+v", got)
+	}
+}
+
+func TestImageChanges_FirstDeployReportsAllAsAdded(t *testing.T) {
+	current := map[string]string{"app": "redis:7.2"}
+	got := imageChanges(current, nil)
+	want := []events.ServiceImageChange{{Service: "app", Old: "", New: "redis:7.2"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("imageChanges() = %+v, want %+v", got, want)
 	}
 }
 

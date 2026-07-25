@@ -374,6 +374,8 @@ Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back`, `
 
 Delivery is **fire-and-forget**: sending runs in the background with its own 10-second per-request timeout, never blocking or delaying a deploy. A failed or slow target is logged and dropped — there is no retry queue, so a notification can be lost if the target is down. For guaranteed history, read the persisted events or scrape metrics instead.
 
+When a deploy changes any service's `image:` reference, the message names each changed service with its old → new image, so you see *what* updated, not just which stack. A `signal` message appends one `• <service>: <old> → <new>` line per service (a first-time image shows just the new ref; a removed service shows `<old> (removed)`); the `generic` payload carries the same list as `image_changes`. Services with no `image:` (built from `build:`) are not version-tracked.
+
 ```yaml
 notifications:
   # Signal via the signal-cli-rest-api stack.
@@ -409,7 +411,7 @@ notifications:
 | Format | Body sent | Use for |
 |---|---|---|
 | `signal` | `{"message": …, "number": …, "recipients": […]}` to `<url>/v2/send` | The `bbernhard/signal-cli-rest-api` service. |
-| `generic` | The full deploy event as JSON (diffs and commit metadata stripped), plus any `headers` | ntfy, Gotify, or your own endpoint. |
+| `generic` | The full deploy event as JSON (diffs and commit metadata stripped; changed services under `image_changes`), plus any `headers` | ntfy, Gotify, or your own endpoint. |
 
 > **Reachability.** `url` must be reachable from wherever skipper-cd runs. As a **host service** (e.g. the [NixOS module](nixos.md)), a container's host-published port is `http://localhost:8020` — reaching it directly, bypassing any reverse proxy/auth. When skipper-cd itself runs **in a container**, `localhost` is the container, not the host (see [Docker](docker.md)).
 

@@ -76,18 +76,44 @@ func renderMessage(prefix string, ev events.DeployEvent) string {
 		return "[" + prefix + "] " + renderMessage("", ev)
 	}
 	dur := (time.Duration(ev.DurationMs) * time.Millisecond).Round(time.Millisecond)
+	services := renderImageChanges(ev.ImageChanges)
 	switch ev.Status {
 	case events.StatusSuccess:
-		return fmt.Sprintf("✅ deploy succeeded: %s (%s)", ev.Stack, dur)
+		return fmt.Sprintf("✅ deploy succeeded: %s (%s)", ev.Stack, dur) + services
 	case events.StatusFailed:
-		return fmt.Sprintf("❌ deploy failed: %s (%s) — %s", ev.Stack, dur, ev.Error)
+		return fmt.Sprintf("❌ deploy failed: %s (%s) — %s", ev.Stack, dur, ev.Error) + services
 	case events.StatusRolledBack:
-		return fmt.Sprintf("↩️ deploy rolled back: %s (%s) — %s", ev.Stack, dur, ev.Error)
+		return fmt.Sprintf("↩️ deploy rolled back: %s (%s) — %s", ev.Stack, dur, ev.Error) + services
 	case events.StatusRolledBackUnhealthy:
-		return fmt.Sprintf("🚨 deploy rolled back but still unhealthy: %s (%s) — %s", ev.Stack, dur, ev.Error)
+		return fmt.Sprintf("🚨 deploy rolled back but still unhealthy: %s (%s) — %s", ev.Stack, dur, ev.Error) + services
 	case events.StatusHealExhausted:
 		return fmt.Sprintf("🚨 self-heal gave up: %s is still unhealthy after repeated redeploys — %s", ev.Stack, ev.Error)
 	default:
 		return fmt.Sprintf("deploy %s: %s", ev.Status, ev.Stack)
 	}
+}
+
+// renderImageChanges renders the per-service image changes as indented lines
+// appended to a deploy message, or "" when there are none. Each line reads
+// "\n  • <service>: <old> → <new>"; a service with no recorded previous image
+// (first deploy) shows just the new ref, a removed service "<old> (removed)".
+func renderImageChanges(changes []events.ServiceImageChange) string {
+	if len(changes) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, c := range changes {
+		b.WriteString("\n  • ")
+		b.WriteString(c.Service)
+		b.WriteString(": ")
+		switch {
+		case c.New == "":
+			b.WriteString(c.Old + " (removed)")
+		case c.Old == "":
+			b.WriteString(c.New)
+		default:
+			b.WriteString(c.Old + " → " + c.New)
+		}
+	}
+	return b.String()
 }
