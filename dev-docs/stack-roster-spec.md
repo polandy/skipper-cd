@@ -93,16 +93,17 @@ Only what is specific to the roster is listed here.
 
 ### Row interactions (parity with the deploys view)
 
-- **⋯ overflow menu (T3.13b).** An enabled row's secondary actions — **container
-  logs** (ADR-0037) and **deploy hooks** (ADR-0038) — fold behind the same `⋯`
-  button (`more-btn`) the deploy row uses, so the row sheds the look-alike glyph
-  cluster; the cross-view **jump** and the **app-link** stay inline as primary
-  navigation. Same shared `⋯` behaviour (one open at a time, outside-click / Esc
-  dismiss, portrait right-flip) and the relocated buttons keep their handlers.
-  No **Deploy history** item — the row-body click (below) already opens it. A
-  hooks-less stack still gets the `⋯`, holding container logs alone; disabled
-  rows have no secondary actions, so no menu. The running-hook pulse rides the
-  visible `⋯` (the badge sits inside the collapsed menu).
+- **Inline secondary actions.** An enabled row's secondary actions sit inline in
+  the stack cell, beside the cross-view **jump** and the **app-link**: the
+  **container-logs** icon (ADR-0037) always, the **deploy-hooks** badge
+  (ADR-0038) only when the stack declares hooks. Each keeps its own handler — the
+  logs icon opens the log panel, the hooks badge the bound hooks panel. Earlier
+  these folded behind a `⋯` overflow menu (as the deploy row still does), but on
+  the roster the row-body click already opens the health + history panel, so the
+  menu usually wrapped a single action (logs) — an extra click for no density
+  gain. No **Deploy history** item — the row-body click (below) owns it. Disabled
+  rows have no secondary actions; peer rows are read-only (logs reachable only via
+  the expanded containers panel). The running-hook pulse rides the inline badge.
 - **Click a row → containers + deploy history.** Expanding a stack stacks two
   bound panels below the row as one accent card: the **containers** panel first
   (the stack's live health/services, `createHealthPanel`, from the `health`

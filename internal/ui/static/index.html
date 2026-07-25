@@ -629,18 +629,18 @@
     openMoreWrap = null;
   }
 
-  // buildRosterRowMore folds an enabled roster row's secondary actions (container
-  // logs, deploy hooks) into the same ⋯ overflow menu the Deploys row uses
-  // (T3.13b). The relocated buttons keep their classes, testids and handlers, so
-  // opening the log/hooks panels is unchanged; jump + app-link stay inline as
-  // primary navigation. Deploy history is not folded here — on the roster the
-  // whole row-body click already opens the health + history panel.
-  function buildRosterRowMore(cell, entry) {
-    const pop = ensureRowMore(cell, entry.name).querySelector('.more-pop');
-    pop.appendChild(moreMenuItem(clogButton(entry.name, ''), 'Container logs')); // ADR-0037
-    if (entry.hooks && hookCount(entry.hooks) > 0) { // ADR-0038
-      pop.appendChild(moreMenuItem(hooksBadgeButton(entry.name, entry.hooks), 'Deploy hooks'));
-    }
+  // rosterRowActionsHTML surfaces an enabled roster row's secondary actions
+  // inline in the stack cell, beside the jump + app-link icons: the container-
+  // logs icon (ADR-0037) always, the deploy-hooks badge (ADR-0038) only when the
+  // stack declares hooks. Formerly folded behind the same ⋯ overflow menu the
+  // Deploys row uses (T3.13b), but on the roster the row-body click already opens
+  // the health + history panel, so the menu usually wrapped a single action
+  // (logs) — an extra click for no density gain. Disabled stacks carry neither.
+  function rosterRowActionsHTML(entry) {
+    if (entry.disabled) return '';
+    let html = clogBtnHTML(entry.name, ''); // container logs
+    if (entry.hooks && hookCount(entry.hooks) > 0) html += hooksBadgeHTML(entry.name, entry.hooks);
+    return html;
   }
 
   // rosterStatusHTML picks the row's status: a live in-flight deploy wins, then
@@ -683,7 +683,6 @@
 
   function renderRoster() {
     const list = document.getElementById('roster-list');
-    if (openMoreWrap && list.contains(openMoreWrap)) closeMoreMenu(); // the rebuild orphans an open roster ⋯ menu
     list.textContent = '';
     openLinkWrap = null; // rebuilt rows drop any open app-link popover too
     rosterOrdered().forEach(function(entry) {
@@ -705,15 +704,11 @@
       const rowHealth = entry.disabled ? null : healthSnap[entry.name];
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
-        `<span class="roster-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCellHTML(entry.name)}</span>` +
+        `<span class="roster-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCellHTML(entry.name)}${rosterRowActionsHTML(entry)}</span>` +
         `<span class="roster-status">${rosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, selfHost)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
       populateIcon(row.querySelector('.stack-icon'), entry.name);
-      // Fold container logs + deploy hooks into the row's ⋯ overflow menu
-      // (T3.13b), matching the Deploys row; jump + app-link stay inline as
-      // primary navigation. Disabled stacks have neither, so carry no menu.
-      if (!entry.disabled) buildRosterRowMore(row.querySelector('.roster-stack'), entry);
       list.appendChild(row);
     });
     renderPeerRosterRows(list); // append each peer's stacks, host-tagged + read-only
@@ -1313,12 +1308,10 @@
       if (rrow) {
         const rcell = rrow.querySelector('.roster-status');
         if (rcell) rcell.appendChild(hookPhaseNode(hr));
-        // Pulse rides the visible ⋯ button (the badge now sits inside the
-        // collapsed menu); the badge itself is still marked for when it opens.
+        // The hooks badge sits inline on the roster row, so the running-hook
+        // pulse rides the badge itself.
         const rb = rrow.querySelector('.hooks-badge');
         if (rb) rb.dataset.hookActive = '1';
-        const rmb = rrow.querySelector('.more-btn');
-        if (rb && rmb) rmb.dataset.hookActive = '1';
       }
     }
   }

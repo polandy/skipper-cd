@@ -3121,7 +3121,6 @@
     border-color: color-mix(in srgb, var(--accent) 55%, transparent);
     animation: hookpulse 1.4s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce) { .more-btn[data-hook-active] { animation: none; } }
-  .roster-stack .more-btn { margin-left: 7px; vertical-align: middle; }
 
   .more-pop {
     display: none; position: absolute; top: 26px; left: 0; z-index: 6;
