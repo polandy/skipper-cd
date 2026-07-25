@@ -923,10 +923,11 @@ snapshot shifts).
 
 The last local-only affordance closed. The browser can't reach a peer
 cross-origin, so the primary proxies the peer's container-logs SSE stream at `GET
-/api/peers/{name}/container-logs/{stack}[/{service}]` (the streaming sibling of
-the diff proxy). The peer's containers panel now carries the same per-service log
-button local stacks have. The harness stub peer (`host-b`) streams canned SSE
-frames for `gitea/web` so the proxy has something to forward. Behaviour-only.
+/api/peers/{name}/container-logs/{stack}` (service selection rides `?service=`;
+the streaming sibling of the diff proxy). The peer's containers panel now carries
+the same per-service log button local stacks have. The harness stub peer
+(`host-b`) streams canned SSE frames for `gitea` so the proxy has something to
+forward. Behaviour-only.
 
 - **UY1 — Peer container log streams through the proxy.** Expanding a peer row and
   clicking a container's `clog-btn` opens the live `clog-panel`; its `clog-body`

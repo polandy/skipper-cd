@@ -46,8 +46,8 @@ One control set across all log surfaces.
 ## HTTP surface (only when `ui_enabled: true`)
 
 ```
-GET /api/container-logs/{stack}/{service}?tail=200[&since=<ts>]     # SSE
-GET /api/container-logs/{stack}?tail=200[&since=<ts>]               # SSE, services merged
+GET /api/container-logs/{stack}?tail=200[&since=<ts>]                       # SSE, services merged
+GET /api/container-logs/{stack}?tail=200&service=api[&service=db][&since=<ts>]  # SSE, selected subset
 ```
 
 - `text/event-stream`; each `data:` frame is one log line (timestamps included,
