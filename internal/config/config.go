@@ -70,6 +70,15 @@ type Stack struct {
 	// corrective redeploy. See ADR-0029.
 	SelfHeal *bool `yaml:"self_heal"`
 
+	// Rollback overrides the global rollback for this stack. nil means inherit
+	// the global setting (which defaults to on). When off, a failed deploy is
+	// not restored to the previous compose version: it is marked failed, the
+	// failed containers are left running for inspection, and the change stays
+	// pending. Use it for stateful stacks whose forward migrations make
+	// restoring the old image over migrated data unsafe. See ADR-0050. Never
+	// hashed — a runtime failure policy, so toggling it does not itself redeploy.
+	Rollback *bool `yaml:"rollback"`
+
 	// DependsOn lists stacks that must deploy before this one. Within a run,
 	// a failed dependency blocks this stack (it stays dirty and retries on the
 	// next sync) and a queued dependency queues it. Entries must name other
@@ -291,6 +300,11 @@ type Config struct {
 	// See docs/autosync.md.
 	Autosync *bool `yaml:"autosync"`
 
+	// Rollback is the global default for whether a failed deploy is rolled back
+	// to the previous compose version. nil means true (on). A per-stack Rollback
+	// overrides it. See RollbackEnabled and ADR-0050.
+	Rollback *bool `yaml:"rollback"`
+
 	// NixOSRebuild configures automatic nixos-rebuild when nix files change.
 	// Omit the section entirely to disable. When present without an explicit
 	// "enabled" key, it defaults to enabled.
@@ -417,6 +431,30 @@ func (c *Config) EffectiveSelfHeal(stacks []Stack, name string) bool {
 		}
 	}
 	return c.SelfHeal != nil && *c.SelfHeal
+}
+
+// RollbackEnabled reports whether automatic rollback is effective for the named
+// stack: the per-stack override when set, otherwise the global default, which
+// is on unless explicitly disabled. An unknown name falls back to the global
+// default. See ADR-0050.
+func (c *Config) RollbackEnabled(name string) bool {
+	return c.EffectiveRollback(c.Stacks, name)
+}
+
+// EffectiveRollback is RollbackEnabled over an explicit stack set — the
+// discovered stacks in stack-discovery mode, where c.Stacks is empty
+// (ADR-0034). The default is on: rollback happens unless a per-stack or the
+// global rollback is explicitly false.
+func (c *Config) EffectiveRollback(stacks []Stack, name string) bool {
+	for _, s := range stacks {
+		if s.Name == name {
+			if s.Rollback != nil {
+				return *s.Rollback
+			}
+			break
+		}
+	}
+	return c.Rollback == nil || *c.Rollback
 }
 
 // SelfHealActive reports whether self-heal is effective for at least one stack.

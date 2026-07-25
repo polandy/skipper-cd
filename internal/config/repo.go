@@ -107,6 +107,7 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 			Autosync:           ov.Autosync,
 			DeployHealthCheck:  ov.DeployHealthCheck,
 			SelfHeal:           ov.SelfHeal,
+			Rollback:           ov.Rollback,
 			DependsOn:          ov.DependsOn,
 			Hooks:              ov.Hooks,
 			Rollout:            ov.Rollout,
@@ -290,7 +291,7 @@ func dropDependencyCycles(stacks []Stack) ([]Stack, []StackError) {
 // stackDeployInputs are the fields of a stack's effective config that shape
 // what a deploy produces; they feed the stack's ConfigHash so a config edit
 // redeploys exactly the affected stack. Display-only (icon), runtime-only
-// (self_heal), ordering-only (depends_on), side-effect (hooks), and
+// (self_heal, rollback), ordering-only (depends_on), side-effect (hooks), and
 // deploy-mechanism (rollout) fields are deliberately excluded — editing them
 // must never redeploy.
 type stackDeployInputs struct {

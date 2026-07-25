@@ -207,6 +207,23 @@ func TestLoadRepoStacks_AppliesAutosyncOverride(t *testing.T) {
 	}
 }
 
+func TestLoadRepoStacks_AppliesRollbackOverride(t *testing.T) {
+	// A per-stack rollback opt-out (ADR-0050) must survive discovery's
+	// override merge, not be silently dropped.
+	repoDir := writeRepo(t, map[string]string{
+		"stacks/web/docker-compose.yml": minimalCompose,
+	})
+	overrides := []Stack{{Name: "web", Rollback: boolPtr(false)}}
+
+	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
+	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
+		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
+	}
+	if r := repo.Stacks[0].Rollback; r == nil || *r {
+		t.Errorf("Rollback override not applied: %+v", r)
+	}
+}
+
 func TestLoadRepoStacks_DisabledStackExcluded(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
@@ -433,6 +450,11 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	// autosync is a runtime toggle (ADR-0043) → never hashed.
 	if withAutosync := hashFor(t, &Stack{Autosync: boolPtr(false)}); withAutosync != base {
 		t.Error("ConfigHash must ignore autosync")
+	}
+	// rollback is a runtime failure policy (ADR-0050) → never hashed; toggling
+	// the opt-out must not redeploy an otherwise-unchanged stack.
+	if withRollback := hashFor(t, &Stack{Rollback: boolPtr(false)}); withRollback != base {
+		t.Error("ConfigHash must ignore rollback")
 	}
 	// deploy_health_check shapes the deploy (--wait gate) → hashed. An explicit
 	// off-switch (ADR-0049) must hash distinctly from absence, so toggling it

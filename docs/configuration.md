@@ -97,6 +97,7 @@ nixos_rebuild:
 | `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce). Must be ≥ 1. |
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
 | `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0; an explicit `0` disables the cooldown. |
+| `rollback` | bool | no | `true` | Global default for whether a failed deploy is rolled back to the previous compose version. A per-stack `rollback` overrides it. Set `false` to make failures fail loud instead (see [Disabling rollback](#disabling-rollback)). |
 | `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `runtime_health_poll_interval_seconds` > 0. |
 | `host_name` | string | no | OS hostname | This instance's own label in the merged [multi-host](#multi-host) view. Only meaningful when other instances fan this one in, or when this one lists `peers`. |
 | `peers` | list | no | — | Other skipper instances whose read data this one fans into a single merged UI (see [Multi-host](#multi-host)). Each entry is `{ name, url }`. Omit for a single-host instance. |
@@ -134,6 +135,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
 | `deploy_health_check` | section or bool | no | automatic if the compose file has a `healthcheck:` (except on-demand stacks) | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this as a section to change the timeout or add an HTTP probe. A stack with `on_demand_containers` is never auto-gated. The scalar `false` explicitly disables the gate (keep a compose `healthcheck:` without gating on it); `true` enables it at the defaults. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
+| `rollback` | bool | no | *inherit* | Overrides the global `rollback` for this stack (in both directions). When unset, the stack follows the global setting (on). Set `false` for a stateful stack that must not be reverted over forward-migrated data. See [Disabling rollback](#disabling-rollback). |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
 | `rollout` | section | no | — | Deploy the named services with a zero-downtime cutover (new container alongside the old, then drain) instead of an in-place recreate. Needs a reverse proxy in front of the service (only Traefik tested). Never hash-tracked. See [Zero-downtime rollout](#zero-downtime-rollout). |
@@ -222,7 +224,7 @@ A failure in either stage triggers the regular rollback: the previous compose fi
 The rollback itself is verified through the same gate: its `up` also runs with `--wait`, and the HTTP probe (if configured) must pass again. So `rolled_back` guarantees the old version is actually healthy again. If the restored version *also* fails the gate — typically an environment problem such as a dead database or a broken secret — the deploy is marked **`rolled_back_unhealthy`** instead: the stack sits on the old compose file but needs attention *now*, because no version of it is verified healthy.
 
 !!! warning "Rollback restores the compose file, not your data"
-    A rollback only reverts the `docker-compose.yml` (image tag and config) to the last deployed commit — it does **not** roll back volumes, databases, or anything on disk. If the failed version already ran a **schema migration** or otherwise changed persistent data, the restored old image now runs against forward-migrated data. The health gate may still pass, so the stack looks `rolled_back` and healthy while being subtly broken — and many migrations can't be undone anyway. For stateful stacks, back up first with a [`pre_deploy` hook](#deploy-hooks) (e.g. `pg_dump`) and treat a rollback as a signal to intervene, not a guaranteed safe undo. See also [zero-downtime rollout](#zero-downtime-rollout) caveats for stacks that migrate on start.
+    A rollback only reverts the `docker-compose.yml` (image tag and config) to the last deployed commit — it does **not** roll back volumes, databases, or anything on disk. If the failed version already ran a **schema migration** or otherwise changed persistent data, the restored old image now runs against forward-migrated data. The health gate may still pass, so the stack looks `rolled_back` and healthy while being subtly broken — and many migrations can't be undone anyway. For stateful stacks, back up first with a [`pre_deploy` hook](#deploy-hooks) (e.g. `pg_dump`), and consider [disabling rollback](#disabling-rollback) so a failure fails loud instead of reverting over migrated data. See also [zero-downtime rollout](#zero-downtime-rollout) caveats for stacks that migrate on start.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -230,6 +232,26 @@ The rollback itself is verified through the same gate: its `up` also runs with `
 | `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
 
 > **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Stacks with `on_demand_containers` are excluded from the automatic gate for this reason; for a deliberate one-shot container on a non-on-demand stack, set `deploy_health_check: false` to opt out (even if the compose file has a `healthcheck:`), or model the one-shot as a [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependency.
+
+## Disabling rollback
+
+Rollback is on by default. For a **stateful stack that runs irreversible, forward-only migrations**, reverting the compose file over already-migrated data is usually worse than the failed deploy — so you can turn rollback off and have a failure **fail loud** instead:
+
+```yaml
+stacks:
+  - name: nextcloud
+    rollback: false          # don't revert; a failed deploy stays failed
+```
+
+Set it globally with a top-level `rollback: false` (a per-stack `rollback: true` then opts a stack back in).
+
+When rollback is off and a deploy fails (`up`, health gate, or a `post_deploy` hook):
+
+- The deploy is marked **`failed`** — events, metrics and [notifications](#notifications) all see that status.
+- The **failed containers are left running** for inspection (skipper does not stop them); read their logs or `exec` in to diagnose.
+- The change stays **pending**, so the next push or [reconcile](#periodic-reconcile) retries once the fix lands.
+
+This only disables the compose-file restore. Keep `deploy_health_check` alongside it if you still want failures **detected** and reported (just not reverted).
 
 ## Deploy hooks
 
