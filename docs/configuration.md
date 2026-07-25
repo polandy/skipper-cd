@@ -98,6 +98,7 @@ nixos_rebuild:
 | `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
 | `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
 | `stacks` | list | no | — | List of Docker Compose stacks (see [Stack Fields](#stack-fields)). Under discovery (the default) it is optional and holds only per-stack overrides, matched to discovered directories by `name`. With `stack_discovery: false` this list *is* the stack set. |
+| `initial_deploy` | string | no | `full` | What a run does when it finds **no recorded state at all** — a first start, a new host, or a lost `state.yaml`: `full` deploys every stack, `adopt` records the running stacks as deployed without running anything. See [First run and state loss](#first-run-and-state-loss). |
 | `stack_discovery` | bool | no | `true` | Discover the stack set from the deploy repo: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack; per-stack overrides come from the optional `stacks:` list above (see [Stack discovery](#stack-discovery)). Set `false` to list the stacks in this file yourself. |
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
@@ -152,6 +153,26 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
 | `rollout` | section | no | — | Deploy the named services with a zero-downtime cutover (new container alongside the old, then drain) instead of an in-place recreate. Needs a reverse proxy in front of the service (only Traefik tested). Never hash-tracked. See [Zero-downtime rollout](#zero-downtime-rollout). |
+
+## First run and state loss
+
+skipper decides what to deploy by comparing each stack's files against the hashes in [`state.yaml`](state.md). With nothing recorded — a first start, a new host, a lost or corrupt state file — every stack counts as changed and deploys.
+
+That is right when nothing is running yet. It is not what you want when the stacks are **already up and already on the repo's version**: migrating a host from hand-run `docker compose`, or restoring one whose state file is gone. Redeploying then also runs `docker compose pull`, so under a floating tag (`:latest`, `:2`) every stack on the host can jump to a newer image at once, unattended.
+
+```yaml
+initial_deploy: adopt      # optional, default: full
+```
+
+- **`full`** (default) — deploy every stack. Keep this unless the stacks are already running.
+- **`adopt`** — record each stack's current files as deployed **without running anything**. The next repo change deploys normally.
+
+Adopting applies only to a run that finds *nothing* recorded, and only to stacks — a configured `nixos_rebuild` still runs, since re-applying a configuration the host already has is a no-op. A stack added to the repo later is unaffected: by then state exists, so it deploys normally.
+
+!!! warning
+    `adopt` takes your word for it. A stack that is *not* actually running, or is running something other than the repo's version, stays that way until one of its files changes. The run logs a warning naming every adopted stack.
+
+Back up `state.yaml` (and the rest of `/var/lib/skipper`) along with your other host state — it is what keeps a restart from being a full redeploy.
 
 ## Stack discovery
 

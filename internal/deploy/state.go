@@ -52,6 +52,14 @@ func newEmptyState() *persistedState {
 	}
 }
 
+// isEmpty reports whether nothing at all has been recorded yet: a first start,
+// a new host, or a lost/corrupt state file. It is what initial_deploy keys off
+// (ADR-0051), so it must be read before the nixos phase, which records its own
+// hashes into the state ahead of the stack phase.
+func (s *persistedState) isEmpty() bool {
+	return s.LastDeployedCommit == "" && len(s.Stacks) == 0
+}
+
 // hashesFor returns the per-file hashes recorded for a stack (nil when unknown).
 func (s *persistedState) hashesFor(stack string) stackFileHashes {
 	return s.Stacks[stack]

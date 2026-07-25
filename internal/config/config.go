@@ -246,6 +246,13 @@ type Config struct {
 	// logs (e.g. for Loki ingestion).
 	LogFormat string `yaml:"log_format"`
 
+	// InitialDeploy decides what a run does when it finds no recorded state at
+	// all — a first start, a new host, or a lost state.yaml: "full" (the
+	// default) deploys every stack, since nothing is known to be running;
+	// "adopt" records the current inputs as deployed without running anything,
+	// for a host whose stacks are already up and match the repo (ADR-0051).
+	InitialDeploy string `yaml:"initial_deploy"`
+
 	// StacksBaseDir is the directory inside the repo clone that holds one
 	// subdirectory per stack (<stacks_base_dir>/<name>/docker-compose.yml).
 	// Change detection and the compose file always come from here. It is a path
@@ -651,6 +658,9 @@ func Load(path string) (*Config, error) {
 	if cfg.LogFormat == "" {
 		cfg.LogFormat = LogFormatPretty
 	}
+	if cfg.InitialDeploy == "" {
+		cfg.InitialDeploy = InitialDeployFull
+	}
 	if cfg.Icons.CacheDir == "" {
 		cfg.Icons.CacheDir = defaultIconCacheDir
 	}
@@ -791,6 +801,22 @@ const (
 	LogFormatText   = "text"
 	LogFormatJSON   = "json"
 )
+
+// Valid values for the initial_deploy config field (ADR-0051).
+const (
+	// InitialDeployFull deploys every stack when no state is recorded — the
+	// default, and the only safe choice for a host where nothing runs yet.
+	InitialDeployFull = "full"
+	// InitialDeployAdopt records the current inputs as deployed instead, for a
+	// host whose stacks are already running the repo's version.
+	InitialDeployAdopt = "adopt"
+)
+
+// AdoptsInitialState reports whether a run that finds no recorded state should
+// adopt the running stacks instead of deploying them all.
+func (c *Config) AdoptsInitialState() bool {
+	return c.InitialDeploy == InitialDeployAdopt
+}
 
 // Defaults for the icons section. SourceURL is the icon-set root; icons are
 // fetched from <source_url>/<format>/<slug>.<format> (svg, then png, webp).
@@ -991,6 +1017,10 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.LogFormat != LogFormatPretty && cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {
 		return fmt.Errorf("log_format must be %q, %q or %q, got %q", LogFormatPretty, LogFormatText, LogFormatJSON, cfg.LogFormat)
+	}
+
+	if cfg.InitialDeploy != InitialDeployFull && cfg.InitialDeploy != InitialDeployAdopt {
+		return fmt.Errorf("initial_deploy must be %q or %q, got %q — use %q on a host whose stacks already run the repo's version, otherwise leave it unset", InitialDeployFull, InitialDeployAdopt, cfg.InitialDeploy, InitialDeployAdopt)
 	}
 
 	if cfg.RuntimeHealthPollIntervalSeconds != nil && *cfg.RuntimeHealthPollIntervalSeconds < 0 {

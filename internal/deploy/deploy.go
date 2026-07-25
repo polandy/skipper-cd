@@ -133,6 +133,7 @@ type Deployer struct {
 	// touched while it is held.
 	mu                     sync.Mutex
 	plan                   []string          // stacks planned to deploy this run, in order
+	adoptRun               bool              // this run records the running state instead of deploying it (ADR-0051)
 	prober                 *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
 	rolloutPollInterval    time.Duration     // 0 = default; tests set a small value for the canary wait
 	rolloutTimeoutOverride time.Duration     // 0 = derive from config; tests set a short canary-wait deadline
@@ -558,6 +559,16 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		state = newEmptyState()
 	}
 
+	// initial_deploy: adopt (ADR-0051) — with nothing recorded, take the
+	// running stacks to be the repo's version and record them instead of
+	// deploying every one of them. Decided here, before the nixos phase, which
+	// records its own hashes into the state and would otherwise make an empty
+	// state look non-empty by the time the stacks are reached.
+	d.adoptRun = cfg.AdoptsInitialState() && state.isEmpty()
+	if d.adoptRun {
+		slog.Warn("no deploy state recorded and initial_deploy is \"adopt\": recording the running stacks as deployed without running docker compose up — a stack that is not actually running, or not on the repo's version, stays that way until its files change")
+	}
+
 	if cfg.NixOSRebuild.IsEnabled() && !d.rebuildNixOSIfChanged(ctx, cfg, state) {
 		return
 	}
@@ -593,7 +604,9 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// this run, so the header can show what is coming next. Skipped when the UI
 	// is off (no sink). The loop below re-evaluates each stack independently and
 	// remains the source of truth for what actually deploys.
-	if d.runPlanSink != nil {
+	// An adopting run deploys nothing, so the look-ahead would otherwise
+	// announce every stack as about to deploy.
+	if d.runPlanSink != nil && !d.adoptRun {
 		d.plan = d.computeRunPlan(cfg, state)
 	} else {
 		d.plan = nil
@@ -692,6 +705,23 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		d.clearQueued(stack.Name) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
 		d.emit(events.StatusSkipped, stack.Name, 0, "", changeSet{})
+		return nil
+	}
+
+	// Adopt gate (ADR-0051): nothing is recorded, so every input reads as
+	// changed — but the operator has declared the stack already runs this
+	// version. Record it as deployed and move on; from the next run it is an
+	// ordinary stack whose files are up to date.
+	if d.adoptRun {
+		state.recordStack(stack.Name, currentHashes)
+		if currentImages != nil {
+			state.recordImages(stack.Name, currentImages)
+		}
+		state.recordProjectDir(stack.Name, run.effectiveProjectDir())
+		d.clearQueued(stack.Name)
+		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
+		d.emit(events.StatusSkipped, stack.Name, 0, "", changeSet{})
+		slog.Warn("adopted stack without deploying", "stack", stack.Name, "tracked_files", len(currentHashes))
 		return nil
 	}
 
