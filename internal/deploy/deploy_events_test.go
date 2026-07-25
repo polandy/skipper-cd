@@ -434,6 +434,46 @@ func TestDeployStack_SuccessEventNamesChangedServiceVersions(t *testing.T) {
 	}
 }
 
+func TestDeployStack_UnparseableComposeReportsNoImageRemovals(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Invalid YAML: the compose file fails to parse, so the deploy degrades
+	// gracefully (pull all, no build tracking). currentImages is nil here — the
+	// image diff must be skipped rather than reporting every prior service as
+	// removed, which would produce a misleading "svc: old (removed)" notification.
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), "services: [this is not valid compose")
+
+	runner := &recordingRunner{}
+	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
+
+	var terminalEvt *events.DeployEvent
+	d.SetEventSink(func(e events.DeployEvent) {
+		if e.Status == events.StatusSuccess || e.Status == events.StatusFailed {
+			terminalEvt = &e
+		}
+	})
+
+	stack := config.Stack{Name: "gitea"}
+	state := &persistedState{
+		Stacks: map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
+		// A previously deployed image exists; the naive diff would report it removed.
+		Images: map[string]serviceImageByName{"gitea": {"app": "nginx:1.25"}},
+	}
+
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if terminalEvt == nil {
+		t.Fatal("expected a terminal event")
+	}
+	if len(terminalEvt.ImageChanges) != 0 {
+		t.Errorf("expected no image changes when compose failed to parse, got %+v", terminalEvt.ImageChanges)
+	}
+}
+
 func TestRebuildNixOS_SuccessEventIncludesDiffs(t *testing.T) {
 	baseDir := t.TempDir()
 	nixFile := filepath.Join(baseDir, "configuration.nix")

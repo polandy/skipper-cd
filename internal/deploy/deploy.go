@@ -720,8 +720,12 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// Name the services whose image reference changed (old → new) so terminal
 	// events — and the notifications built from them — report what updated, not
 	// just the stack. Captured before the deploy runs so the deferred failure
-	// path carries the same list a success does.
-	cs.imageChanges = imageChanges(currentImages, state.imagesFor(stack.Name))
+	// path carries the same list a success does. Skipped when the compose file
+	// failed to parse (compose == nil): currentImages would be nil and every
+	// prior service would be reported as removed — a misleading notification.
+	if compose != nil {
+		cs.imageChanges = imageChanges(currentImages, state.imagesFor(stack.Name))
+	}
 	// From here the stack is actually deploying: any error returned below emits
 	// the matching terminal event with the change context gathered above. The
 	// success path emits StatusSuccess and returns nil, so this never double-fires.
