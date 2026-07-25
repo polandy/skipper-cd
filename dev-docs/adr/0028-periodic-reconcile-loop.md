@@ -146,3 +146,17 @@ A single `reconcile_interval_seconds` (global, in the style of
   protocol support — far more moving parts than a `time.Ticker` for a homelab that
   already has webhooks for the low-latency path. The interval is the safety net, not
   the primary channel, so near-real-time is not a goal.
+
+## Amendment (2026-07-25): reconcile is the baseline, the webhook is optional
+
+This ADR framed reconcile as the correctness guarantee and the webhook as a
+latency optimization, but still assumed a webhook is always configured (the "0
+disables the loop, restoring pure webhook-plus-startup" wording above). That
+assumption is now dropped: since reconcile alone converges the host, `webhook_secret`
+becomes **optional**. An empty secret disables the `/webhook` endpoint (it already
+rejects with 403) instead of failing config load, so a host can run reconcile-only.
+
+The one illegal combination is guarded at load: an empty `webhook_secret` **and**
+`reconcile_interval_seconds: 0` leaves nothing to deploy past the startup sync, and
+is rejected with an actionable error. No new trigger surface, no runtime-state
+inspection — the scope boundary above is unchanged.

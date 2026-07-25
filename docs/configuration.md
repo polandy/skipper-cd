@@ -13,10 +13,10 @@ The smallest working config. Stack discovery is on by default, so every `<stacks
 ```yaml
 repo_url: ssh://git@gitea.example.com/user/deploy.git
 stacks_base_dir: stacks                  # relative to repo_dir; omit for the repo root
-webhook_secret: "your-secret-here"
+# webhook_secret: "your-secret-here"     # optional — enables the push webhook; reconcile runs without it
 ```
 
-skipper clones the repo and deploys every discovered stack; a git push then fires the signed webhook and it redeploys only what changed (a [reconcile loop](#periodic-reconcile) re-syncs on a timer as a safety net). `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `deploy_health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
+skipper clones the repo and deploys every discovered stack, then keeps it converged with a [reconcile loop](#periodic-reconcile) that re-syncs on a timer and redeploys only what changed; the signed webhook is an optional accelerator that makes a push land in seconds instead of at the next tick. `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `deploy_health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
 
 ---
 
@@ -31,7 +31,7 @@ command_timeout_seconds: 300            # optional, default: 300
 log_format: pretty                      # optional, default: pretty (colored console); "text" or "json" for machine-readable logs
 stacks_base_dir: modules                # relative to repo_dir (the clone); omit for the repo root
 project_directory_base: /etc/nixos/modules    # optional; see project_directory_base below
-webhook_secret: "your-secret-here"
+webhook_secret: "your-secret-here"      # optional — enables the /webhook accelerator; reconcile runs without it
 port: 8080
 metrics_port: 9120
 ui_enabled: true                        # optional, default: true (live web UI on the webhook port)
@@ -79,7 +79,7 @@ nixos_rebuild:
 | `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
 | `stacks_base_dir` | string | no | repo root | Base directory holding one subdirectory per stack (`<stacks_base_dir>/<name>/docker-compose.yml`); always the source of the compose file and change detection. Relative to `repo_dir` (the clone) — e.g. `stacks`, not `/var/lib/skipper/repo/stacks`. Omit it for the repo root itself. An absolute value, or one escaping the clone via `../`, is rejected at startup. |
 | `project_directory_base` | string | no | — | Base directory a stack's `project_directory` is derived from as `<project_directory_base>/<name>` when the stack does not set its own `project_directory` (see [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity)). Avoids repeating a common prefix (e.g. a NixOS modules directory) across stacks. Must be absolute — checked at startup. |
-| `webhook_secret` | string | **yes** | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Required — the webhook is skipper's primary deploy trigger, so every request is signature-verified; an empty secret is rejected at startup. |
+| `webhook_secret` | string | no | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Optional: the webhook only accelerates the [reconcile loop](#periodic-reconcile), so leaving it empty is valid and disables the `/webhook` endpoint (it then rejects every request); when set, every request is signature-verified. Rejected only if it's empty **and** `reconcile_interval_seconds` is `0`, since then nothing would deploy after startup. |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. Must be 1–65535 and differ from `port`. |
 | `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
@@ -92,7 +92,7 @@ nixos_rebuild:
 | `ui_theme` | string | no | `catppuccin` | Web UI colour palette: one of `catppuccin`, `nord`, `solarized`, `gruvbox`, `rose-pine` (see [Web UI Theme](#web-ui-theme)). |
 | `ui_theme_switcher` | bool | no | `false` | Show the in-UI theme picker so a browser can try other palettes locally. Off by default — the deployed `ui_theme` is then fixed (see [Web UI Theme](#web-ui-theme)). |
 | `runtime_health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
-| `reconcile_interval_seconds` | int | no | `300` | How often skipper re-runs its git sync + deploy on a timer, so a missed webhook cannot leave the host drifted (see [Periodic reconcile](#periodic-reconcile)). `0` disables it (pure webhook + startup). Runs headless — not tied to the UI. |
+| `reconcile_interval_seconds` | int | no | `300` | How often skipper re-runs its git sync + deploy on a timer — the convergence baseline that keeps each host caught up to the repo with or without a webhook (see [Periodic reconcile](#periodic-reconcile)). `0` disables it, leaving the webhook + startup as the only triggers (valid only when `webhook_secret` is set). Runs headless — not tied to the UI. |
 | `self_heal` | bool | no | `false` | Global default for whether a stack the health poller finds degraded is automatically restored to its running state by a corrective redeploy (see [Self-heal](#self-heal)). A per-stack `self_heal` overrides it. Requires `runtime_health_poll_interval_seconds` > 0. |
 | `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce). Must be ≥ 1. |
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
@@ -546,14 +546,14 @@ Within a run, a dependency's outcome gates its dependents:
 
 ## Periodic reconcile
 
-Deploys are normally driven by push webhooks. The webhook is a single point of delivery, though: if one is lost — skipper was down or restarting when the push landed, a network blip, a misconfigured hook, or a change that reached the branch some other way — the running stacks stay drifted from the deploy repo until the *next* push or a restart.
+Reconcile is skipper's convergence loop: it re-runs its git sync + deploy on a timer so the running stacks always catch up to the deploy repo, whether or not a webhook ever fired. Each tick fetches the branch tip and deploys only what actually changed (via the same hash-based change detection as a webhook), so a reconcile against an unchanged repo is a cheap no-op: no compose command runs and no event is emitted. It reconciles against **git desired state only** — it does not inspect or restart containers.
 
-To close that gap, skipper also re-runs its git sync + deploy on a timer. Each tick fetches the branch tip and deploys only what actually changed (via the same hash-based change detection as a webhook), so a reconcile against an unchanged repo is a cheap no-op: no compose command runs and no event is emitted. It reconciles against **git desired state only** — it does not inspect or restart containers.
+The [webhook](#top-level-fields) is an optional accelerator on top of this loop: it makes a push land in seconds instead of at the next tick. It is not the baseline, and it is not a single point of failure — if a webhook is lost (skipper was down when the push landed, a network blip, a misconfigured hook, or a change that reached the branch some other way), the next reconcile tick converges the host anyway. Run reconcile-only by leaving `webhook_secret` empty.
 
 `reconcile_interval_seconds` controls the cadence:
 
-- **default `300`** — reconcile every 5 minutes. On by default, so a missed webhook self-corrects within one interval.
-- **`0`** — disable the loop entirely, restoring pure webhook + startup behaviour.
+- **default `300`** — reconcile every 5 minutes. On by default, so the host converges within one interval even with no webhook.
+- **`0`** — disable the loop entirely. Only valid alongside a configured `webhook_secret`; with both off, nothing would deploy after startup (rejected at load).
 - Unlike the health poll, it is **not** tied to the UI — it runs headless, since it is a correctness feature rather than a display feed.
 
 A tick is skipped while a deploy is already in flight (a reconcile carries no unique information, so it is dropped rather than queued behind the running deploy), and it flows through the same per-stack deploy gate as a webhook — so a stack with `autosync` off is queued, not force-deployed.

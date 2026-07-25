@@ -27,7 +27,7 @@
             # Surface the deployed build identity in the UI header (/api/version).
             ldflags = [ "-X main.version=${version}" "-X main.commit=${commit}" ];
             meta = {
-              description = "Lightweight Docker Compose CD triggered by Git webhooks";
+              description = "Lightweight GitOps CD for Docker Compose";
               homepage = "https://github.com/polandy/skipper-cd";
               license = nixpkgs.lib.licenses.mit;
               mainProgram = "skipper";
