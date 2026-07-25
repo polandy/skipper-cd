@@ -1206,7 +1206,9 @@ place: which inputs are watched, and the commit nothing has changed since. See
   and lists the stack's compose file **repo-relative** (the path the operator
   edits and commits, not the clone's absolute location). Closing the row removes
   it with the rest of the card. The stack's hashed *config* renders as its own
-  non-path entry (`watched-config`), never as a file.
+  non-path entry (`watched-config`), never as a file. The lead's reference point
+  is the deploy itself on a stack's *first* deploy (no prior commit to diff
+  against); **UAJ1b** pushes a change and asserts the SHA form once one exists.
 - **UAJ2 — Parked stack.** A stack with `disabled: true` reports that skipper
   neither watches nor deploys it, and lists no files — rather than showing
   whatever its last deploy happened to record.

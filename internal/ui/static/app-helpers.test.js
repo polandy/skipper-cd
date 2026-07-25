@@ -445,8 +445,10 @@ test('watchedSummary: only a settled stack claims nothing changed', () => {
   for (const s of ['failed', 'rolled_back', 'queued', 'blocked', 'heal_exhausted']) {
     assert.doesNotMatch(h.watchedSummary(s, 'a1b2c3d4e5', 3), /Unchanged/);
   }
-  // No commit recorded — nothing to be unchanged since.
-  assert.doesNotMatch(h.watchedSummary('success', '', 3), /Unchanged/);
+  // A first deploy has no prior commit to diff against, so the audit record
+  // carries none — the fact still holds, the reference point is just the
+  // deploy itself.
+  assert.match(h.watchedSummary('success', '', 3), /^Unchanged since the last deploy\./);
   // Never deployed: no tracked inputs at all.
   assert.match(h.watchedSummary('', '', 0), /has not deployed/);
   // Singular vs plural.

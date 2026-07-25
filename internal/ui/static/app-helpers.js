@@ -414,8 +414,12 @@ function watchedSummary(status, commit, count, disabled) {
     count === 1
       ? 'A deploy runs when this file changes:'
       : 'A deploy runs when any of these change:';
-  if (commit && WATCHED_SETTLED.indexOf(status) !== -1) {
-    return 'Unchanged since ' + shortSHA(commit) + '. ' + deploys;
+  if (WATCHED_SETTLED.indexOf(status) !== -1) {
+    // A stack's very first deploy has no prior commit to diff against, so the
+    // audit record carries none — the "unchanged" fact still holds, only the
+    // reference point is the deploy itself rather than a SHA.
+    const since = commit ? shortSHA(commit) : 'the last deploy';
+    return 'Unchanged since ' + since + '. ' + deploys;
   }
   return deploys;
 }

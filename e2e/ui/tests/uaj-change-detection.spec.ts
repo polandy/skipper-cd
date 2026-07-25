@@ -49,9 +49,9 @@ test('UAJ1: a deployed stack shows what is watched and since which commit', asyn
   const watchedBox = (await watched(page).boundingBox())!;
   expect(watchedBox.y).toBeGreaterThan(auditBox.y);
 
-  // The stack deployed cleanly at startup, so the lead names the commit its
-  // inputs have not changed since.
-  await expect(lead(page)).toContainText(/^Unchanged since [0-9a-f]{7}\./);
+  // The stack deployed cleanly at startup — the first deploy has no prior
+  // commit to diff against, so the reference point is the deploy itself.
+  await expect(lead(page)).toContainText(/^Unchanged since the last deploy\./);
 
   // Its compose file is listed, repo-relative — the path the operator edits and
   // commits, not the clone's absolute location on the host.
@@ -70,6 +70,25 @@ test('UAJ1: a deployed stack shows what is watched and since which commit', asyn
   // Closing the row takes the panel with it — no card left behind.
   await row(page, 'api').click();
   await expect(watched(page)).toHaveCount(0);
+});
+
+// UAJ1b — once a stack has deployed a pushed change, the lead names the commit
+// its inputs have not changed since. This is the answer to "I pushed and this
+// stack did nothing": the SHA it is already at.
+test('UAJ1b: after a deployed change the lead names the commit', async ({ page, skipper }) => {
+  await page.goto(`${skipper.baseURL}/`);
+
+  skipper.setStackImage('api', '1.26');
+  expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+  // The success row appearing is the signal that the run finished and the
+  // `stacks` snapshot has been republished — no waiting on the clock.
+  await expect(
+    page.locator('[data-testid="deploy-row"][data-stack="api"][data-status="success"]').first(),
+  ).toBeVisible();
+
+  await stacksBtn(page).click();
+  await row(page, 'api').click();
+  await expect(lead(page)).toContainText(/^Unchanged since [0-9a-f]{7}\./);
 });
 
 // UAJ2 — a parked stack is not watched at all, so the panel says so instead of
