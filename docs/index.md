@@ -6,7 +6,7 @@
 
 *Simple, fast GitOps CD for Docker Compose — push to Git, redeploy only what changed*
 
-![skipper-cd's Deploys view — a live, newest-first feed of every deploy with its status and health](assets/screenshots/deploys.png)
+![skipper-cd's Deploys view — a live, newest-first feed of every deploy with the service versions it changed, its status and health, and the commit's diff](assets/screenshots/deploys.png)
 
 skipper-cd is a lightweight CD tool that maintains a local clone of a Git repository and reconciles your Docker Compose stacks to it on a timer, redeploying only the stacks whose files actually changed — with an optional push webhook to make a change land in seconds instead of at the next tick. On NixOS it can also run `nixos-rebuild switch` when your `.nix` files change — closing the GitOps loop for the whole host. Pair it with automated dependency updates (e.g. [Renovate](https://docs.renovatebot.com/)) — which can even automerge routine minor and patch bumps — and the loop runs itself: each merge rebuilds the NixOS host and redeploys only the stacks it changed, with no manual steps. Unchanged stacks are skipped automatically.
 
@@ -38,11 +38,11 @@ New here? The **[Getting Started walkthrough](getting-started.md)** covers the w
 - **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([details](autosync.md)).
 - **Periodic reconcile** — the convergence baseline: re-syncs and redeploys on a timer (default every 5 minutes) so each host catches up to the repo with or without a webhook ([details](configuration.md#periodic-reconcile)).
 - **Orphan detection** — surfaces compose projects still running on the host that your current stack set no longer covers, e.g. a stack directory removed from the repo ([details](state.md#orphaned-stacks)).
-- **Web UI** — a single embedded page with live deploy status, a **Stacks inventory** (every stack skipper owns, its last outcome and containers, one click away from any deploy row and back), **live container logs** (per stack, filterable to any subset of its services, streamed from a logs icon), service icons, an event log, and installable as a PWA.
+- **Web UI** — a single embedded page with live deploy status, a **Stacks inventory** (every stack skipper owns, its last outcome, the version each service runs, and its containers, one click away from any deploy row and back), **live container logs** (per stack, filterable to any subset of its services, streamed from a logs icon), service icons, an event log, and installable as a PWA.
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
 
-![skipper-cd's Stacks view — every stack skipper owns, with its last outcome, health, and deployed commit](assets/screenshots/stacks.png)
+![skipper-cd's Stacks view — every stack skipper owns, with its last outcome, health, running service version, and deployed commit](assets/screenshots/stacks.png)
 
 ## Why skipper-cd?
 
