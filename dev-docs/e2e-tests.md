@@ -1296,9 +1296,11 @@ explicitly (`FORGE_URL`); the degradation case opts back out with
   the expand panel; clicking the link must not also open it. The navigation is
   cancelled in the capture phase, so what is asserted is purely the row
   handler's guard — and the row still expands when clicked anywhere else.
-- **UAL3 — Panels and the diff header too.** The deploy-history rows (`.ar-sha`)
-  and the diff panel's commit header (`commit-sha`) link the same way: one
-  helper renders every SHA, so they either all link or none do.
+- **UAL3 — Panels, prose and the diff header too.** The deploy-history rows
+  (`.ar-sha`), the diff panel's commit header (`commit-sha`) and the
+  change-detection lead's `Unchanged since <sha>` link the same way: one helper
+  renders every SHA, so they either all link or none do. The lead is prose, so
+  the assertion also pins the sentence around the link.
 - **UAL4 — A peer links to its own forge.** A peer's roster row uses the
   `repo_web_url` from *that peer's* fanned-in snapshot, not the primary's —
   each host tracks its own deploy repo, so the primary's forge never had those

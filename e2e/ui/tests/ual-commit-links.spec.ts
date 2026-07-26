@@ -118,6 +118,15 @@ test('UAL3: deploy-history and diff-header SHAs link to the same forge', async (
   const auditSha = page.locator('[data-testid="audit-row"] .ar-sha').first();
   await expect(auditSha).toBeVisible();
   expectForgeCommitHref(await auditSha.getAttribute('href'));
+
+  // Change detection: the commit the lead prose names ("Unchanged since <sha>")
+  // is a SHA on screen like any other, so it links too — and the sentence around
+  // it is untouched.
+  const lead = page.locator('[data-testid="watched-lead"]');
+  await expect(lead).toContainText(/^Unchanged since [0-9a-f]{7}\./);
+  const leadSha = lead.locator('a.sha-link');
+  await expect(leadSha).toHaveCount(1);
+  expectForgeCommitHref(await leadSha.getAttribute('href'));
 });
 
 // UAL4 — a peer tracks its own deploy repo on its own forge. Linking its commits
