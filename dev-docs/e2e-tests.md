@@ -672,6 +672,15 @@ fails the dependency's redeploy after the two startup deploys. Behaviour-only
   the literal `blocked by dep<img>x` and contains no injected `<img>` element,
   and the dependency's own row shows the hostile name verbatim in its stack
   cell.
+- **UP2 — The tag yields before the stack name.** `.stack-name` carries
+  `overflow: hidden`, which resolves its automatic flex minimum to zero, so it
+  used to be the *only* shrinkable item in the cell while the `nowrap` tag
+  refused to give way — a long dependency name clipped the stack name past its
+  own ellipsis (measured: 20px against a 47px need, still clipped at a 1400px
+  viewport). The name now stays whole at 1400, 1100 and 900px; the tag
+  ellipsises instead and is dropped below the 1000px breakpoint, where it had
+  nothing useful left to say — it shrank to a one-letter stub, which reads worse
+  than absent.
 
 ### 4.18 UI — Maske Q: orphan detection (ADR-0036)
 
