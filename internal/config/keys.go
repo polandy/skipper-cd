@@ -24,9 +24,6 @@ var renamedKeys = map[string]string{
 // otherwise fail with a bare "unknown key", leaving the operator to work out
 // that the setting still exists under a new name.
 func checkRenamedKeys(node *yaml.Node) error {
-	if node == nil {
-		return nil
-	}
 	switch node.Kind {
 	case yaml.DocumentNode, yaml.SequenceNode:
 		for _, child := range node.Content {
