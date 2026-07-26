@@ -553,6 +553,11 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// changed — but the operator has declared the stack already runs this
 	// version. Record it as deployed and move on; from the next run it is an
 	// ordinary stack whose files are up to date.
+	//
+	// Ahead of the autosync gate on purpose: adopting touches nothing on the
+	// host, so a pause has nothing to hold back, and queueing instead would
+	// leave the stack dirty to deploy for real on resume — the opposite of
+	// what adopt was asked to do.
 	if d.adoptRun {
 		state.recordStack(stack.Name, currentHashes)
 		if currentImages != nil {

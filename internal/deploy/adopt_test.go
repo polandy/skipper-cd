@@ -173,3 +173,50 @@ func TestDeployAllStacks_AdoptDoesNotSwallowAStackAddedLater(t *testing.T) {
 		t.Errorf("cache statuses = %v, want a real deploy", got)
 	}
 }
+
+// Dependency ordering sequences deploys, and an adopting run performs none.
+// Holding a stack back because a sibling's compose file is broken would leave
+// it unrecorded — so it would deploy for real on a later run, which is the
+// unattended pull-everything adopt exists to avoid.
+func TestDeployAllStacks_AdoptDoesNotBlockOnAFailedDependency(t *testing.T) {
+	baseDir := t.TempDir()
+	for name, compose := range map[string]string{
+		"broken": "services: [this is not a mapping",
+		"app":    composeWithImage("nginx:1.25"),
+	} {
+		dir := filepath.Join(baseDir, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(dir, "docker-compose.yml"), compose)
+	}
+
+	runner := &recordingRunner{}
+	stateDir := t.TempDir()
+	d := &Deployer{runner: runner, commitReader: &fakeCommitReader{}, repoDir: baseDir, stateDir: stateDir}
+	emitted := &[]events.DeployEvent{}
+	d.SetEventSink(func(e events.DeployEvent) { *emitted = append(*emitted, e) })
+
+	cfg := &config.Config{
+		RepoURL:        "ssh://git@example.com/repo.git",
+		StacksBaseDir:  baseDir,
+		StackDiscovery: true,
+		InitialDeploy:  config.InitialDeployAdopt,
+		Stacks:         []config.Stack{{Name: "app", DependsOn: []string{"broken"}}},
+	}
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	for _, ev := range *emitted {
+		if ev.Stack == "app" && ev.Status == events.StatusBlocked {
+			t.Fatal("app must not be blocked on an adopting run — nothing is being ordered")
+		}
+	}
+	state, err := loadPersistedDeployState(stateDir)
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if len(state.hashesFor("app")) == 0 {
+		t.Error("app should have been adopted despite its dependency's config error")
+	}
+}
