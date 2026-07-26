@@ -885,6 +885,13 @@
     text-overflow: ellipsis;
   }
 
+  /* Narrower than this the tag has no room to say anything useful — it shrank
+     to a one-letter stub, which reads worse than absent. The status badge still
+     says BLOCKED or QUEUED and the full reason stays in the autosync drawer. */
+  @media (max-width: 1000px) {
+    .paused-tag { display: none; }
+  }
+
   .event-row.success-row::before {
     content: '';
     position: absolute;
@@ -923,20 +930,19 @@
     letter-spacing: -0.3px;
   }
 
-  /* The name is the row's identity, the pending tag beside it is context — so
-     the tag gives way first. Without the floor the name is the only shrinkable
-     item in the cell (its overflow:hidden resolves the automatic minimum to
-     zero) while the nowrap tag refuses to shrink at all, which clipped `backup`
-     to `bac` — past the ellipsis, so not even visibly truncated — next to a
-     `blocked by vaultwarden`. */
+  /* The name is the row's identity, the pending tag beside it is context, so
+     the tag gives way first. Left to itself the opposite happens: overflow:hidden
+     resolves the name's automatic flex minimum to zero, making it the only
+     shrinkable item while the nowrap tag refuses to give way at all — which
+     clipped `backup` to `bac`, past its own ellipsis, next to a
+     `blocked by vaultwarden`. flex-shrink (not a min-width, which would pad
+     short names out and shift every row, tagged or not) keeps the box at the
+     name's own width; the cap only catches a pathological name, which then
+     ellipsises as it always did. */
   .stack-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    /* Not a min-width: that would pad short names out to the floor and shift
-       every row, tag or not. flex-shrink keeps the box at the name's own width
-       and hands the shrinking to the tag; the cap only catches a pathological
-       name, which then ellipsises as before. */
     flex-shrink: 0;
     max-width: 24ch;
   }
@@ -3092,11 +3098,6 @@
        explicitly placed here — on the desktop grid the auto-placed cells after it
        would slide into the freed track. */
     .roster-row .col-version:empty { display: none; }
-
-    /* Below this the tag has no room to say anything useful — it shrank to a
-       one-letter stub, which is worse than absent. The status badge still reads
-       BLOCKED or QUEUED and the full reason stays in the autosync drawer. */
-    .paused-tag { display: none; }
   }
 
   @media (max-width: 700px) {
