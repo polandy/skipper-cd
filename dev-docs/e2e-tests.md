@@ -1191,6 +1191,40 @@ Behaviour-only (no snapshot): the delta is structural (`data-testid="svc-delta"`
 per-part text), and the per-reference token logic is exhaustively covered by the
 `app-helpers` unit layer (`imageDelta` / `parseImageRef` / `shortImageTag`).
 
+### 4.37 UI — Maske AK: Service versions in the Stacks view
+
+`compose ps` reports the image each container runs, which rides the `health`
+snapshot: a roster row's **Version** cell names the service the stack is named
+after plus its running version, and the expanded containers panel carries every
+service's version — the same chip the Deploys Version column renders (Maske AI).
+See [Service versions](../internal/ui/UI_SPEC.md#service-versions). Health is
+seeded per stack (`initialHealth` / `setStackHealth` now carry `Image`), so the
+versions render from a real snapshot.
+
+- **UAK1 — Lead version on the row.** A three-service `immich` shows one chip:
+  `immich-server v1.119.0` (the shorter of the two name matches, never the
+  alphabetically-first `database`) plus `+2`, with the `aria-label`
+  (`immich-server running v1.119.0`), the full-reference `title`, and no `→`
+  (a running version is a fact, not a change). Its own column between Stack and
+  Status, asserted by bounding box.
+- **UAK2 — No arbitrary lead.** A role-named stack (`monitoring` over
+  prometheus/grafana) gets no chip at all — the cell reads `2 services` and defers
+  to the panel.
+- **UAK3 — Every version in the panel.** Expanding lists all three versions
+  (`data-testid="health-version"`) beside the state/status the panel already
+  showed, the panel carrying `has-versions`; the chip drops its service label
+  there, since the line already names it.
+- **UAK4 — Degrades to nothing.** A snapshot without `Image` (an older skipper, or
+  a peer of one) leaves the cell empty and the panel without the version column —
+  never an empty chip or an empty track.
+- **UAK5 — Patched in place.** A later poll carrying a new image updates the cell
+  (`v1.120.0`, count gone) while the row's open panel survives — the versions
+  arrive with health, not with the roster snapshot.
+
+Behaviour-only (no snapshot): the cell is structural, and the lead-service and
+token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
+`imageRepoName` / `shortImageTag`).
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
