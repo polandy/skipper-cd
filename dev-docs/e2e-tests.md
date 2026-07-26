@@ -1281,7 +1281,18 @@ the `app-helpers` unit layer (`watchedSummary`).
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
-lean set of high-value per-mask anchors, not every case. The landed baselines:
+lean set of high-value per-mask anchors, not every case.
+
+They are tracked with **Git LFS** ([ADR-0052](adr/0052-binary-assets-out-of-git-history.md)):
+a UI tweak regenerates up to six full PNGs and a PNG never delta-compresses, so
+history keeps a pointer and the bytes live in LFS. Working on this suite therefore
+needs `git-lfs` on PATH — `nix develop` provides it, otherwise install it and run
+`git lfs install && git lfs pull` once per clone. Without it the baselines check
+out as pointer text and every pixel compare fails. CI fetches them in a small
+`baselines` job and hands them to `e2e-ui` as an artifact, because Playwright's
+pinned container ships no git-lfs (§7).
+
+The landed baselines:
 
 | Baseline | Anchor case | Target | Masked |
 | --- | --- | --- | --- |
@@ -1463,6 +1474,10 @@ already pins actions:
   `RUN_SNAPSHOTS=1` turns on the pixel compares against the committed baselines
   (§5). Uploads the Playwright HTML report + `test-results/` (traces and snapshot
   diffs) on failure.
+
+- **baselines**: fetches the LFS-tracked visual baselines on a runner that has
+  git-lfs and uploads them as an artifact, which `e2e-ui` unpacks over the pointer
+  files its in-container checkout wrote (ADR-0052).
 
 A third job lives in `.github/workflows/docs.yml`, not here:
 
