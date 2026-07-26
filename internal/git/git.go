@@ -85,20 +85,25 @@ func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
 // reused here so a masked username reads the same way.
 const redactedPlaceholder = "xxxxx"
 
+// sshScheme carries a login name rather than a credential in its userinfo,
+// so it is the one scheme exempt from masking a lone username.
+const sshScheme = "ssh"
+
 // RedactURL returns rawURL with any credential in its userinfo masked, for
 // logging and for the -validate report.
 //
-// A password is always masked. A lone username is masked too on http(s),
-// where a bare userinfo is in practice an access token
-// (https://<token>@host/repo.git). ssh:// keeps its username — there it is a
-// login name (git@), not a secret. URLs the parser rejects (e.g. scp-like
+// A password is always masked. A lone username is masked too — a bare
+// userinfo is in practice an access token (https://<token>@host/repo.git) —
+// except on ssh://, where it is a login name (git@) and not a secret. The
+// exemption is the allow-list rather than the masking, so a scheme not
+// considered here errs towards hiding. URLs the parser rejects (e.g. scp-like
 // syntax) are returned unchanged: they cannot carry a password.
 func RedactURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return rawURL
 	}
-	if u.User != nil && (u.Scheme == "http" || u.Scheme == "https") {
+	if u.User != nil && u.Scheme != sshScheme {
 		if _, hasPassword := u.User.Password(); !hasPassword {
 			u.User = url.User(redactedPlaceholder)
 		}

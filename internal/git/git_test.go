@@ -157,7 +157,9 @@ func TestRedactURL(t *testing.T) {
 		{"masks password", "https://user:sekrit@example.com/repo.git", "https://user:xxxxx@example.com/repo.git"},
 		{"masks token as sole https userinfo", "https://ghp_sekrit@github.com/user/repo.git", "https://xxxxx@github.com/user/repo.git"},
 		{"masks token as sole http userinfo", "http://ghp_sekrit@example.com/user/repo.git", "http://xxxxx@example.com/user/repo.git"},
+		{"masks token under an unrecognised scheme", "git+https://ghp_sekrit@example.com/user/repo.git", "git+https://xxxxx@example.com/user/repo.git"},
 		{"keeps ssh login name", "ssh://git@example.com:1022/user/repo.git", "ssh://git@example.com:1022/user/repo.git"},
+		{"masks ssh password", "ssh://andy:sekrit@example.com/user/repo.git", "ssh://andy:xxxxx@example.com/user/repo.git"},
 		{"keeps scp-like syntax", "git@example.com:user/repo.git", "git@example.com:user/repo.git"},
 		{"keeps url without userinfo", "https://example.com/user/repo.git", "https://example.com/user/repo.git"},
 	}
