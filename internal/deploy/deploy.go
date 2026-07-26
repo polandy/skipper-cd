@@ -133,6 +133,7 @@ type Deployer struct {
 	// touched while it is held.
 	mu                     sync.Mutex
 	plan                   []string          // stacks planned to deploy this run, in order
+	bootstrapRun           bool              // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
 	prober                 *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
 	rolloutPollInterval    time.Duration     // 0 = default; tests set a small value for the canary wait
 	rolloutTimeoutOverride time.Duration     // 0 = derive from config; tests set a short canary-wait deadline
@@ -571,6 +572,19 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		state = newEmptyState()
 	}
 
+	// Bootstrap run (ADR-0051): nothing is recorded, so every input reads as
+	// changed and every stack is deployed. `up` converges what actually
+	// differs, but a forced `pull` would also move every floating tag on the
+	// host at once — so images are left as they are and only the missing ones
+	// are fetched (compose does that itself when it creates a container).
+	// Decided here, before the nixos phase, which records its own hashes into
+	// the state and would otherwise make an empty state look non-empty by the
+	// time the stacks are reached.
+	d.bootstrapRun = state.isEmpty()
+	if d.bootstrapRun {
+		slog.Info("no deploy state recorded: converging every stack without refreshing images already on the host")
+	}
+
 	if cfg.NixOSRebuild.IsEnabled() && !d.rebuildNixOSIfChanged(ctx, cfg, state) {
 		return
 	}
@@ -768,7 +782,13 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	if len(dockerfilePaths) > 0 {
 		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", dockerfilePaths)
-		if err := d.runDockerCompose(ctx, run, "build", "--pull"); err != nil {
+		buildArgs := []string{"build"}
+		if !d.bootstrapRun {
+			// --pull refreshes each Dockerfile's base image. On a bootstrap run
+			// that is the same unasked-for jump a forced pull would be.
+			buildArgs = append(buildArgs, "--pull")
+		}
+		if err := d.runDockerCompose(ctx, run, buildArgs...); err != nil {
 			return fmt.Errorf("docker compose build: %w", err)
 		}
 	}
@@ -842,6 +862,15 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 // pull; when the compose file could not be parsed (compose == nil), every
 // service is pulled as a safe fallback.
 func (d *Deployer) pullIfImagesChanged(ctx context.Context, run stackRun, compose *composeFile, currentImages, previousImages serviceImageByName) error {
+	if d.bootstrapRun {
+		// Nothing is recorded, so every image reads as changed and this would
+		// pull the whole host at once — moving every floating tag (`:latest`,
+		// `:2`) to whatever it resolves to today, unattended. `up` still
+		// creates whatever is missing, and compose fetches an image the host
+		// does not have, so a fresh install is unaffected (ADR-0051).
+		slog.Info("skipping pull, bootstrap run", "stack", run.stack.Name)
+		return nil
+	}
 	if currentImages != nil && !hasAnyImageChanged(currentImages, previousImages) {
 		slog.Info("skipping pull, no image changes", "stack", run.stack.Name)
 		return nil

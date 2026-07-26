@@ -153,6 +153,22 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
 | `rollout` | section | no | — | Deploy the named services with a zero-downtime cutover (new container alongside the old, then drain) instead of an in-place recreate. Needs a reverse proxy in front of the service (only Traefik tested). Never hash-tracked. See [Zero-downtime rollout](#zero-downtime-rollout). |
 
+## First run and state loss
+
+skipper decides what to deploy by comparing each stack's files against the hashes in [`state.yaml`](state.md). With nothing recorded — a first start, a new host, a lost or corrupt state file — every stack counts as changed and is deployed.
+
+That run **converges the host but does not refresh images already on it**: `docker compose pull` is skipped, and a `build:` service builds without `--pull`. Nothing else changes.
+
+Why: `docker compose up -d` recreates nothing when a container already matches, so re-deploying a stack that is already correct is harmless. A forced `pull` is not — under a floating tag (`:latest`, `:2`) it would move **every service on the host** to whatever it resolves to today, unattended, in one run.
+
+- **Fresh install** — the images aren't on the host, so compose fetches each one when it creates the container. Unchanged.
+- **Stacks already running the repo's version** (migrating a host to skipper, or restoring a lost `state.yaml`) — nothing is pulled and nothing is recreated. The run is a no-op.
+- **The repo has moved on** — the stack is recreated from the image already on the host, so it converges without a surprise version jump. The next change to it pulls normally.
+
+No configuration: this applies to any run that starts from an empty state, and only to that run.
+
+Back up `state.yaml` (and the rest of `/var/lib/skipper`) along with your other host state — it is what keeps a restart from re-deploying every stack.
+
 ## Stack discovery
 
 Stack discovery is **on by default** (`stack_discovery: true`; set `false` to list the stacks yourself). The **stack set** is discovered from the deploy repo — every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack — so adding or removing a stack is a single git push. Per-stack **overrides** live in this one config's optional `stacks:` list, matched to discovered directories by `name`:

@@ -104,7 +104,10 @@ func TestDeployAllStacks_EmitsFailedEventOnError(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
-	runner := &recordingRunner{errOnCommand: "pull"}
+	// `up`, not `pull`: this is a first run over an empty state, and a
+	// bootstrap run deliberately skips the pull (ADR-0051). The test is about
+	// a failing docker command producing a failed event, whichever it is.
+	runner := &recordingRunner{errOnCommand: "up"}
 	d := &Deployer{runner: runner, stateDir: t.TempDir()}
 
 	var emitted []events.DeployEvent

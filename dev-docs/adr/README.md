@@ -55,3 +55,4 @@ One file per decision, numbered sequentially (see
 | [0048](0048-multi-host-federated-ui.md) | Multi-host federated UI (read-data fan-in over /api/v1, merged view; proposed) |
 | [0049](0049-explicit-deploy-health-check-opt-out.md) | Suppress the auto deploy gate for on-demand stacks + explicit `deploy_health_check: false` opt-out |
 | [0050](0050-rollback-opt-out.md) | Per-stack (and global) `rollback: false` opt-out for stateful/migrating stacks (fail loud, leave failed containers running) |
+| [0051](0051-bootstrap-run-does-not-refresh-images.md) | A run with no recorded state converges the host but does not `pull` — no floating tag moves unattended |
