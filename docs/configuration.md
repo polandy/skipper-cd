@@ -6,6 +6,19 @@ For a guided walkthrough see the [Quickstart](index.md#quickstart). This page is
 
 ---
 
+## Checking a Config
+
+```bash
+skipper -config /etc/skipper/skipper.yml -validate
+```
+
+Loads the config, prints what skipper would run with, and exits `0` (valid) or `1` (invalid) — no server, no deploy. When the repo clone already exists it also resolves the stack set, so a broken compose file or an invalid per-stack override shows up here instead of on the next push.
+
+- Unknown keys are **rejected**, not ignored: a typo like `env_file` for `env_files` fails the load rather than silently dropping the setting.
+- A key renamed in an earlier version fails with its current name: `working_dir` → `project_directory`, `health_check` → `deploy_health_check`, `health_poll_interval_seconds` → `runtime_health_poll_interval_seconds`.
+
+---
+
 ## Minimal Example
 
 The smallest working config. Stack discovery is on by default, so every `<stacks_base_dir>/<name>/docker-compose.yml` in the deploy repo is a stack — no `stacks:` list needed:

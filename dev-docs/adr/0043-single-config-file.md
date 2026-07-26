@@ -156,3 +156,33 @@ Concretely:
   (see Decision). Only two single-admin hosts, migrated atomically.
 - **Per-stack `autosync` override is enabled** (default on, per-stack
   `autosync: false` opts out). The self-heal-activation limitation is left as-is.
+
+## Amendment (2026-07-26): unknown keys are rejected, not ignored
+
+The loader decoded with `yaml.Unmarshal`, which silently drops any key the
+config struct has no field for. That undercut this ADR's own migration
+guarantee: a leftover in-repo `skipper.yaml` is a hard error precisely so
+un-migrated config *never silently reverts* — but a stale key inside the host
+config did exactly that, one level down. The two retired-rename cases
+(`working_dir` → `project_directory`, ADR-0045; `health_check` →
+`deploy_health_check` and `health_poll_interval_seconds` →
+`runtime_health_poll_interval_seconds`, ADR-0047) were each declared a "clean
+break, no alias" — and a clean break that is silently ignored is not a break at
+all, just a setting that stops working. The expensive one is `working_dir`:
+dropping it changes the compose project identity, so the stack ends up running
+twice and surfaces much later as an orphan warning rather than as a config
+error. Ordinary typos (`env_file` for `env_files`) had the same shape.
+
+**Decision: `KnownFields(true)`.** An unknown key fails the load. The three
+retired names are checked first so the error names the current key rather than
+reporting a nameless unknown field.
+
+**Error, not warning.** A warning would preserve the failure mode this fixes —
+skipper running with a setting the operator believes is in effect — and this
+config is applied unattended. The cost is that a host whose config carries a
+stale key now refuses to start where it previously started misconfigured; that
+is the intended trade, and `skipper -validate` exists so the check can be run
+against every host *before* the new binary is rolled out.
+
+Nested structs inherit the strictness, except `deploy_health_check`, which
+decodes through its own `UnmarshalYAML` (ADR-0049) — noted at the call site.
