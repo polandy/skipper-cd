@@ -374,6 +374,13 @@ const cfg =
   // rather than one every few seconds.
   `self_heal: true\nself_heal_min_unhealthy_polls: 2\nself_heal_cooldown_seconds: 3600\n` +
   `command_timeout_seconds: 120\n` +
+  // Reconcile off. The seeded failure states are deliberately transient in
+  // product terms — a rolled-back stack stays dirty and retries, a blocked one
+  // unblocks once its dependency succeeds — so a reconcile tick would quietly
+  // resolve them a few minutes after the preview starts and leave whoever opens
+  // it later looking at an all-green board. Deploys here come from the seeding's
+  // own webhooks, which is enough to keep the spread stable for the session.
+  `reconcile_interval_seconds: 0\n` +
   // Dead source_url → auto-match icon fetches fail fast; committed icon.svg
   // overrides still resolve, so the preview stays fully offline.
   `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
