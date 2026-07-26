@@ -46,6 +46,32 @@ func TestParsePS_MalformedIsError(t *testing.T) {
 	}
 }
 
+func TestParsePS_CarriesImage(t *testing.T) {
+	out := []byte(`{"Service":"app","Image":"nextcloud:30.0.2","State":"running","Health":"healthy"}`)
+	lines, err := parsePS(out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(lines))
+	}
+	if lines[0].Image != "nextcloud:30.0.2" {
+		t.Errorf("image = %q, want nextcloud:30.0.2", lines[0].Image)
+	}
+}
+
+func TestParsePS_MissingImageIsEmpty(t *testing.T) {
+	// An older compose (or a `ps` output without the field) must degrade to an
+	// empty image, never a parse error — the UI then simply shows no version.
+	lines, err := parsePS([]byte(`{"Service":"app","State":"running"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(lines) != 1 || lines[0].Image != "" {
+		t.Errorf("expected one line with an empty image, got %+v", lines)
+	}
+}
+
 func TestRollup(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -134,11 +160,11 @@ func TestRollup(t *testing.T) {
 }
 
 func TestServicesOf(t *testing.T) {
-	svcs := servicesOf([]psLine{{Service: "app", State: "running", Health: "healthy"}})
+	svcs := servicesOf([]psLine{{Service: "app", Image: "nextcloud:30.0.2", State: "running", Health: "healthy"}})
 	if len(svcs) != 1 {
 		t.Fatalf("expected 1 service, got %d", len(svcs))
 	}
-	if svcs[0] != (ServiceHealth{Name: "app", State: "running", Health: "healthy", Status: Healthy}) {
+	if svcs[0] != (ServiceHealth{Name: "app", Image: "nextcloud:30.0.2", State: "running", Health: "healthy", Status: Healthy}) {
 		t.Errorf("unexpected service: %+v", svcs[0])
 	}
 	if servicesOf(nil) != nil {

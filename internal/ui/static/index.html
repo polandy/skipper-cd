@@ -319,6 +319,7 @@
     </div>
     <div class="roster-list-header">
       <span>Stack</span>
+      <span class="rh-ver">Version</span>
       <span>Status</span>
       <span>Last deploy</span>
       <span>Commit</span>
@@ -653,6 +654,38 @@
     return html;
   }
 
+  // rosterVersionInnerHTML fills a Stacks row's Version cell from the live health
+  // snapshot: the running version of the service the stack is named after, plus a
+  // muted "+N" for the rest — the glance. The full per-service list lives one
+  // click away in the containers panel, so the row stays a single line (unlike
+  // the Deploys Version column, which lists every changed service: a deploy
+  // touches a few services, while a stack HAS all of them).
+  // Empty while no health data exists for the stack (parked, stopped, or the
+  // first health poll still outstanding — updateRosterHealth fills it in then).
+  function rosterVersionInnerHTML(stack, host) {
+    const h = healthMapFor(host)[stack];
+    const v = rosterVersion(stack, h && h.services);
+    if (!v) return '';
+    // No lead service: naming one of several equals would be arbitrary, so the
+    // cell only says how many there are and defers to the panel.
+    if (!v.service) {
+      const label = v.more + (v.more === 1 ? ' service' : ' services');
+      return `<span class="ver-count" title="No single main service — open the row for every version">${label}</span>`;
+    }
+    const more = v.more > 0
+      ? `<span class="ver-count" title="${escapeAttr(v.more + ' more service' + (v.more === 1 ? '' : 's') + ' — open the row for every version')}">+${v.more}</span>`
+      : '';
+    return serviceVersionHTML(v.service, v.image) + more;
+  }
+
+  // rosterVersionCellHTML wraps that in the cell every row emits — including a
+  // parked stack, whose cell stays empty (it is never polled, so it has no running
+  // version) so the grid still lines up.
+  function rosterVersionCellHTML(stack, host, disabled) {
+    const inner = disabled ? '' : rosterVersionInnerHTML(stack, host);
+    return `<span class="col-version" data-testid="roster-version">${inner}</span>`;
+  }
+
   // rosterStatusHTML picks the row's status: a live in-flight deploy wins, then
   // the parked/never-deployed synthetic flags, else the last terminal badge.
   function rosterStatusHTML(entry) {
@@ -715,6 +748,7 @@
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
         `<span class="roster-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCellHTML(entry.name)}${rosterRowActionsHTML(entry)}</span>` +
+        rosterVersionCellHTML(entry.name, selfHost, entry.disabled) +
         `<span class="roster-status">${rosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, selfHost)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
@@ -759,6 +793,7 @@
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
           `<span class="roster-stack">${hostChipHTML(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${entry.disabled ? '' : linkCellHTML(entry.name, p.name)}</span>` +
+          rosterVersionCellHTML(entry.name, p.name, entry.disabled) +
           `<span class="roster-status">${peerRosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, p.name)}</span>` +
           `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
           `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
@@ -1012,9 +1047,33 @@
         }
       }
       const title = `${c.service}: ${c.old || '(first image)'} \u2192 ${c.new || '(removed)'}`;
-      return `<span class="tag-delta" role="img" aria-label="${escapeAttr(aria)}" title="${escapeAttr(title)}"><span class="td-svc">${escapeHtml(c.service)}</span>${body}</span>`;
+      return versionChipHTML(c.service, body, aria, title);
     }).join('');
     return `<span class="svc-delta" data-testid="svc-delta">${shown}</span>`;
+  }
+
+  // versionChipHTML is THE version chip \u2014 every version in the UI is rendered
+  // with it, so one reads the same wherever it appears: a Deploys row's change
+  // (old\u2192new), a Stacks row's lead version, a containers-panel line. Callers
+  // supply the version tokens (body) plus the accessible phrasing; the chip owns
+  // the frame and the service label. An empty service drops that label, for a
+  // caller whose surrounding line already names the service.
+  function versionChipHTML(service, body, aria, title) {
+    const label = service ? `<span class="td-svc">${escapeHtml(service)}</span>` : '';
+    return `<span class="tag-delta" role="img" aria-label="${escapeAttr(aria)}" title="${escapeAttr(title)}">${label}${body}</span>`;
+  }
+
+  // serviceVersionHTML is the same chip in its current-value mode: one token, no
+  // arrow, and deliberately neutral \u2014 the add-green in a delta chip means "this
+  // is the new version", while a running version is a fact, not a change. The
+  // title carries the full reference the visible token drops (registry, repo,
+  // digest). Pass labelled=false in the containers panel, whose line already
+  // names the service in its own column (the aria/title still name it).
+  function serviceVersionHTML(service, image, labelled) {
+    const tag = shortImageTag(image);
+    const body = `<span class="td-cur">${escapeHtml(tag)}</span>`;
+    return versionChipHTML(labelled === false ? '' : service, body,
+      `${service} running ${tag}`, `${service}: ${image}`);
   }
 
   function filesHTML(files) {
@@ -2129,6 +2188,11 @@
       el.innerHTML = head + '<div class="hp-empty">No services reported for this stack.</div>';
       return el;
     }
+    // Versions get their own column only when the snapshot carries images at all
+    // (a stack of stopped containers, or a peer running an older skipper, reports
+    // none) — an empty column would otherwise indent every line for nothing.
+    const withVersions = svcs.some(function(s) { return !!s.image; });
+    if (withVersions) el.classList.add('has-versions');
     el.innerHTML = head + svcs.map(function(s) {
       // One status per line: the classified per-service status (backend field,
       // healthClass as fallback for older snapshots). The raw `health:` value is
@@ -2149,8 +2213,14 @@
       const svcTitle = s.on_demand
         ? ' title="on-demand container: stopped by skipper after the deploy, started by the scheduler on request"'
         : '';
+      // The running version, as the same chip the Deploys column and the roster
+      // row use. A service without an image (nothing running) keeps an empty cell
+      // so the lines stay aligned.
+      const ver = withVersions
+        ? `<span class="hp-ver" data-testid="health-version">${s.image ? serviceVersionHTML(s.name, s.image, false) : ''}</span>`
+        : '';
       return `<div class="hp-svc" data-testid="health-service"${svcTitle}>` +
-        `<span class="hp-name">${escapeHtml(s.name)}</span>` +
+        `<span class="hp-name">${escapeHtml(s.name)}</span>` + ver +
         `<span class="hp-state">${escapeHtml(state)}</span>` +
         `<span class="hp-status" data-health="${escapeAttr(st)}"><span class="hdot"></span>${escapeHtml(st)}${age}</span>` +
         clogBtnHTML(stack, s.name, host) +
@@ -3223,14 +3293,20 @@
     });
   }
 
-  // updateRosterHealth patches each local roster row's live-health pill in place
-  // from the health snapshot (peer rows refresh via refreshPeerRosterRows), so a
-  // health change shows on the Stacks overview without a full re-render that would
-  // drop an open panel. Mirrors updateStackAffordances' pill logic for the roster.
+  // updateRosterHealth patches each local roster row's live-health pill and
+  // Version cell in place from the health snapshot (peer rows refresh via
+  // refreshPeerRosterRows), so a health change — or the first poll after the
+  // roster rendered — shows on the Stacks overview without a full re-render that
+  // would drop an open panel. Mirrors updateStackAffordances' pill logic for the
+  // roster.
   function updateRosterHealth() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
       const statusCell = row.querySelector('.roster-status');
       if (!statusCell || row.classList.contains('disabled')) return;
+      const verCell = row.querySelector('.col-version');
+      // The versions ride the health snapshot, so the cell is refreshed here
+      // rather than only at render — on connect the roster arrives first.
+      if (verCell) verCell.innerHTML = rosterVersionInnerHTML(row.dataset.stack, row.dataset.host);
       const h = healthSnap[row.dataset.stack];
       // Keep the row's health marker (drives the severity bar + tint) in sync
       // in place — no re-sort, so a row never jumps out from under an open panel.

@@ -129,6 +129,85 @@ test('imageDelta — shows the tokens that actually differ', () => {
   });
 });
 
+test('imageRepoName — bare repository name, registry and tag dropped', () => {
+  assert.equal(h.imageRepoName('ghcr.io/immich-app/immich-server:v1.119.0'), 'immich-server');
+  assert.equal(h.imageRepoName('nextcloud:30.0.2'), 'nextcloud');
+  assert.equal(h.imageRepoName('localhost:5000/app:1.0'), 'app');
+  assert.equal(h.imageRepoName('paperless-ngx@sha256:aaaa1111'), 'paperless-ngx');
+  assert.equal(h.imageRepoName(''), '');
+});
+
+test('rosterVersion — leads with the service the stack is named after', () => {
+  // Image repository mentions the stack, service names do not.
+  assert.deepEqual(
+    h.rosterVersion('nextcloud', [
+      { name: 'app', image: 'nextcloud:30.0.2' },
+      { name: 'db', image: 'postgres:16' },
+      { name: 'redis', image: 'redis:7.2' },
+    ]),
+    { service: 'app', image: 'nextcloud:30.0.2', more: 2 },
+  );
+  // Two services mention it — the shorter name wins, not `compose ps` order
+  // (which is alphabetical and would crown `database`).
+  assert.deepEqual(
+    h.rosterVersion('immich', [
+      { name: 'database', image: 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.3.0' },
+      {
+        name: 'immich-machine-learning',
+        image: 'ghcr.io/immich-app/immich-machine-learning:v1.119.0',
+      },
+      { name: 'immich-server', image: 'ghcr.io/immich-app/immich-server:v1.119.0' },
+      { name: 'redis', image: 'redis:7.2' },
+    ]),
+    { service: 'immich-server', image: 'ghcr.io/immich-app/immich-server:v1.119.0', more: 3 },
+  );
+  // An exact service-name match wins over any mention.
+  assert.deepEqual(
+    h.rosterVersion('gitea', [
+      { name: 'gitea-runner', image: 'gitea/act_runner:0.2.11' },
+      { name: 'gitea', image: 'gitea/gitea:1.22.3' },
+    ]),
+    { service: 'gitea', image: 'gitea/gitea:1.22.3', more: 1 },
+  );
+  // A digest-pinned lead falls back to the short digest.
+  assert.deepEqual(h.rosterVersion('app', [{ name: 'app', image: 'app@sha256:ab34cd90ef' }]), {
+    service: 'app',
+    image: 'app@sha256:ab34cd90ef',
+    more: 0,
+  });
+});
+
+test('rosterVersion — a single service is the lead whatever it is called', () => {
+  assert.deepEqual(
+    h.rosterVersion('monitoring', [{ name: 'grafana', image: 'grafana/grafana:11.3.0' }]),
+    {
+      service: 'grafana',
+      image: 'grafana/grafana:11.3.0',
+      more: 0,
+    },
+  );
+});
+
+test('rosterVersion — no lead when the stack name identifies none of the services', () => {
+  // A role-named stack: picking one of three peers would be arbitrary, so the
+  // row reports the count and the panel carries the versions.
+  assert.deepEqual(
+    h.rosterVersion('monitoring', [
+      { name: 'prometheus', image: 'prom/prometheus:v3.0.0' },
+      { name: 'grafana', image: 'grafana/grafana:11.3.0' },
+      { name: 'loki', image: 'grafana/loki:3.2.1' },
+    ]),
+    { service: '', image: '', more: 3 },
+  );
+});
+
+test('rosterVersion — null when no service reports an image', () => {
+  assert.equal(h.rosterVersion('gitea', []), null);
+  assert.equal(h.rosterVersion('gitea', null), null);
+  // A snapshot from a skipper too old to carry images.
+  assert.equal(h.rosterVersion('gitea', [{ name: 'server', state: 'running' }]), null);
+});
+
 test('statusText flattens the stacked statuses', () => {
   assert.equal(h.statusText('rolled_back'), 'rolled back');
   assert.equal(h.statusText('rolled_back_unhealthy'), 'rolled back · unhealthy');

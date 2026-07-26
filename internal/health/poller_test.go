@@ -68,6 +68,26 @@ func TestPoller_PollOnceReportsRollupPerStack(t *testing.T) {
 	}
 }
 
+func TestPoller_ProbeReportsRunningImagePerService(t *testing.T) {
+	stacks := []StackRef{{Name: "nextcloud", ComposePath: "/repo/nextcloud/docker-compose.yml"}}
+	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) {
+		return []byte(`{"Service":"app","Image":"nextcloud:30.0.2","State":"running","Health":"healthy"}
+{"Service":"db","Image":"postgres:16","State":"running","Health":"healthy"}`), nil
+	}}
+
+	var got Snapshot
+	p := newTestPoller(out, stacks, func(s Snapshot) { got = s }, nil)
+	p.pollOnce(context.Background())
+
+	svcs := got.Stacks["nextcloud"].Services
+	if len(svcs) != 2 {
+		t.Fatalf("expected 2 services, got %+v", svcs)
+	}
+	if svcs[0].Image != "nextcloud:30.0.2" || svcs[1].Image != "postgres:16" {
+		t.Errorf("images not carried into the snapshot: %+v", svcs)
+	}
+}
+
 func TestPoller_ProbeUsesComposeIdentityWithProjectDir(t *testing.T) {
 	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
 	p := newTestPoller(out, nil, nil, nil)
