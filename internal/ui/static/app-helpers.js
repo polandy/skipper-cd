@@ -480,9 +480,9 @@ function logLineVisible(text, q) {
 function clogStreamStatus(readyState) {
   // 2 === EventSource.CLOSED; the constant is not available under node --test.
   if (readyState === 2) {
-    return { text: 'stream closed — reopen the log to retry', cls: 'err' };
+    return { text: 'stream closed — reopen the log to retry', cls: 'err', closed: true };
   }
-  return { text: 'reconnecting…', cls: 'err' };
+  return { text: 'reconnecting…', cls: 'err', closed: false };
 }
 
 // deployAnnouncement builds the screen-reader phrase for a terminal deploy

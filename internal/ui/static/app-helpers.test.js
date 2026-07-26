@@ -524,6 +524,11 @@ test('clogStreamStatus: a closed stream never promises a retry it will not make'
   assert.match(h.clogStreamStatus(2).text, /closed/);
   assert.match(h.clogStreamStatus(2).text, /retry/);
   assert.equal(h.clogStreamStatus(2).cls, 'err');
+  // `closed` drives the live/pause pill too, so the header cannot keep saying
+  // "live" while the footer says the stream is gone.
+  assert.equal(h.clogStreamStatus(2).closed, true);
+  assert.equal(h.clogStreamStatus(0).closed, false);
+  assert.equal(h.clogStreamStatus(1).closed, false);
 });
 
 test('deployAnnouncement: only terminal outcomes get a spoken phrase (T2.8)', () => {

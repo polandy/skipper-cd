@@ -3386,6 +3386,10 @@
   @keyframes clogpulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
   .clog-live.paused { color: var(--text-muted); border-color: var(--border-lit); background: transparent; }
   .clog-live.paused .clog-dot { background: var(--text-muted); animation: none; }
+  /* The server closed the stream: the control is inert, so it must stop
+     claiming the stream is live. Danger dot to match the footer's message. */
+  .clog-live.dead { color: var(--text-muted); border-color: var(--border-lit); background: transparent; cursor: default; }
+  .clog-live.dead .clog-dot { background: var(--danger); animation: none; }
 
   .clog-tool { display: inline-flex; align-items: center; justify-content: center;
     width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent;
