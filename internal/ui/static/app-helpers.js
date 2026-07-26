@@ -91,6 +91,81 @@ function shortImageTag(ref) {
   return ref;
 }
 
+// imageRepoName is the bare repository name of an image reference — registry,
+// path and tag/digest dropped (`ghcr.io/immich-app/immich-server:v1.1` →
+// `immich-server`). Used to recognise the service a stack is named after.
+function imageRepoName(ref) {
+  const repo = (ref || '').split('@')[0];
+  const slash = repo.lastIndexOf('/');
+  const base = slash === -1 ? repo : repo.slice(slash + 1);
+  const colon = base.lastIndexOf(':');
+  return colon === -1 ? base : base.slice(0, colon);
+}
+
+// rosterVersion picks the one service version a Stacks row shows, plus how many
+// further services it stands for — the glance; the expanded containers panel
+// carries every version.
+//
+// A stack is normally named after its main image, so the lead service is the one
+// whose own name or image repository mentions the stack name, shortest name
+// first (`immich-server` beats `immich-machine-learning`); a stack of exactly one
+// service needs no guess at all. When nothing matches — a stack named for its
+// role rather than an app, say `monitoring` over prometheus/grafana/loki — no
+// single version can speak for the stack, so `service` comes back '' and the row
+// reports only the count (`more`) rather than picking arbitrarily.
+//
+// Returns { service, image, more } — the raw image reference, so the caller
+// renders the same shortened token (and full-reference tooltip) as everywhere
+// else — or null when no service reports an image (nothing running, or a snapshot
+// from a skipper too old to carry one), so the caller renders an empty cell.
+function rosterVersion(stack, services) {
+  const all = (services || []).filter(function (s) {
+    return s && s.name;
+  });
+  if (
+    !all.some(function (s) {
+      return s.image;
+    })
+  ) {
+    return null;
+  }
+  const lead = leadService(stack, all);
+  return {
+    service: lead ? lead.name : '',
+    image: lead ? lead.image : '',
+    more: all.length - (lead ? 1 : 0),
+  };
+}
+
+// leadService resolves rosterVersion's "the service this stack is named after",
+// or null when the name identifies none of them.
+function leadService(stack, services) {
+  const key = (stack || '').toLowerCase();
+  const named = services.filter(function (s) {
+    return s.image;
+  });
+  if (!key || !named.length) return null;
+  const exact = named.filter(function (s) {
+    return s.name.toLowerCase() === key;
+  });
+  if (exact.length) return exact[0];
+  const mentions = named.filter(function (s) {
+    return (
+      s.name.toLowerCase().indexOf(key) !== -1 ||
+      imageRepoName(s.image).toLowerCase().indexOf(key) !== -1
+    );
+  });
+  if (mentions.length) {
+    // Shortest name wins, then alphabetical — a stable pick, never render order
+    // (`compose ps` sorts alphabetically, which would crown `database` for
+    // immich).
+    return mentions.slice().sort(function (a, b) {
+      return a.name.length - b.name.length || a.name.localeCompare(b.name);
+    })[0];
+  }
+  return named.length === 1 ? named[0] : null;
+}
+
 // imageDelta reduces an old→new image-reference change to the shortest pair of
 // tokens that actually differ, so a deploy row shows what moved:
 //   - a tag bump           (`app:1.25`        → `app:1.26`)        → 1.25 → 1.26
@@ -441,6 +516,8 @@ if (typeof module !== 'undefined' && module.exports) {
     parseImageRef,
     shortImageTag,
     imageDelta,
+    imageRepoName,
+    rosterVersion,
     statusText,
     statusIcon,
     auditStatusLabel,
