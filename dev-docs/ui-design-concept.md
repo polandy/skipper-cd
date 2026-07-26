@@ -64,8 +64,12 @@ duplicated.
   across rows (auto/`1fr`-only grids self-size per row and look ragged). Each
   view has a header (`.event-list-header`, `.roster-list-header`) with the same
   type treatment (10 px uppercase, muted, bottom rule).
-  - Deploys: `Time · Stack · Status · Duration · Files`.
-  - Stacks: `Stack · Status · Last deploy · Commit`.
+  - Deploys: `Time · Stack · Version · Status · Duration · Files`.
+  - Stacks: `Stack · Version · Status · Last deploy · Commit`.
+- **One version chip everywhere** (`.tag-delta`): both views render versions with
+  the same component — a deploy's `old → new` change in Deploys, a stack's running
+  version in Stacks, each line of the containers panel. Never a second chip built
+  per surface.
 - **Mobile (≤ 700 px)**: the header hides and each row collapses to a **2×2**
   grid (identity + status on top, a time + one metric below); the least
   important column (Files / Commit-less metrics) is dropped, never truncated

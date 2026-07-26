@@ -129,6 +129,85 @@ test('imageDelta — shows the tokens that actually differ', () => {
   });
 });
 
+test('imageRepoName — bare repository name, registry and tag dropped', () => {
+  assert.equal(h.imageRepoName('ghcr.io/immich-app/immich-server:v1.119.0'), 'immich-server');
+  assert.equal(h.imageRepoName('nextcloud:30.0.2'), 'nextcloud');
+  assert.equal(h.imageRepoName('localhost:5000/app:1.0'), 'app');
+  assert.equal(h.imageRepoName('paperless-ngx@sha256:aaaa1111'), 'paperless-ngx');
+  assert.equal(h.imageRepoName(''), '');
+});
+
+test('rosterVersion — leads with the service the stack is named after', () => {
+  // Image repository mentions the stack, service names do not.
+  assert.deepEqual(
+    h.rosterVersion('nextcloud', [
+      { name: 'app', image: 'nextcloud:30.0.2' },
+      { name: 'db', image: 'postgres:16' },
+      { name: 'redis', image: 'redis:7.2' },
+    ]),
+    { service: 'app', image: 'nextcloud:30.0.2', more: 2 },
+  );
+  // Two services mention it — the shorter name wins, not `compose ps` order
+  // (which is alphabetical and would crown `database`).
+  assert.deepEqual(
+    h.rosterVersion('immich', [
+      { name: 'database', image: 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.3.0' },
+      {
+        name: 'immich-machine-learning',
+        image: 'ghcr.io/immich-app/immich-machine-learning:v1.119.0',
+      },
+      { name: 'immich-server', image: 'ghcr.io/immich-app/immich-server:v1.119.0' },
+      { name: 'redis', image: 'redis:7.2' },
+    ]),
+    { service: 'immich-server', image: 'ghcr.io/immich-app/immich-server:v1.119.0', more: 3 },
+  );
+  // An exact service-name match wins over any mention.
+  assert.deepEqual(
+    h.rosterVersion('gitea', [
+      { name: 'gitea-runner', image: 'gitea/act_runner:0.2.11' },
+      { name: 'gitea', image: 'gitea/gitea:1.22.3' },
+    ]),
+    { service: 'gitea', image: 'gitea/gitea:1.22.3', more: 1 },
+  );
+  // A digest-pinned lead falls back to the short digest.
+  assert.deepEqual(h.rosterVersion('app', [{ name: 'app', image: 'app@sha256:ab34cd90ef' }]), {
+    service: 'app',
+    image: 'app@sha256:ab34cd90ef',
+    more: 0,
+  });
+});
+
+test('rosterVersion — a single service is the lead whatever it is called', () => {
+  assert.deepEqual(
+    h.rosterVersion('monitoring', [{ name: 'grafana', image: 'grafana/grafana:11.3.0' }]),
+    {
+      service: 'grafana',
+      image: 'grafana/grafana:11.3.0',
+      more: 0,
+    },
+  );
+});
+
+test('rosterVersion — no lead when the stack name identifies none of the services', () => {
+  // A role-named stack: picking one of three peers would be arbitrary, so the
+  // row reports the count and the panel carries the versions.
+  assert.deepEqual(
+    h.rosterVersion('monitoring', [
+      { name: 'prometheus', image: 'prom/prometheus:v3.0.0' },
+      { name: 'grafana', image: 'grafana/grafana:11.3.0' },
+      { name: 'loki', image: 'grafana/loki:3.2.1' },
+    ]),
+    { service: '', image: '', more: 3 },
+  );
+});
+
+test('rosterVersion — null when no service reports an image', () => {
+  assert.equal(h.rosterVersion('gitea', []), null);
+  assert.equal(h.rosterVersion('gitea', null), null);
+  // A snapshot from a skipper too old to carry images.
+  assert.equal(h.rosterVersion('gitea', [{ name: 'server', state: 'running' }]), null);
+});
+
 test('statusText flattens the stacked statuses', () => {
   assert.equal(h.statusText('rolled_back'), 'rolled back');
   assert.equal(h.statusText('rolled_back_unhealthy'), 'rolled back · unhealthy');
@@ -435,6 +514,42 @@ test('reconcileHostFilter: restores a saved subset against the current host set'
   assert.equal(h.reconcileHostFilter(['host-x'], ['host-a', 'host-b']), null); // saved host gone → fall back to all
   assert.deepEqual(h.reconcileHostFilter(['host-b', 'host-x'], ['host-a', 'host-b']), ['host-b']); // stale name pruned
   assert.equal(h.reconcileHostFilter(['host-a', 'host-b'], ['host-a', 'host-b']), null); // full set → normalize to all
+});
+
+test('clogStreamStatus: a closed stream never promises a retry it will not make', () => {
+  // 0 CONNECTING / 1 OPEN — EventSource retries these itself.
+  assert.equal(h.clogStreamStatus(0).text, 'reconnecting…');
+  assert.equal(h.clogStreamStatus(1).text, 'reconnecting…');
+  // 2 CLOSED — a non-2xx (404 stack gone, 429 stream cap) ends the stream.
+  assert.match(h.clogStreamStatus(2).text, /closed/);
+  assert.match(h.clogStreamStatus(2).text, /retry/);
+  assert.equal(h.clogStreamStatus(2).cls, 'err');
+  // `closed` drives the live/pause pill too, so the header cannot keep saying
+  // "live" while the footer says the stream is gone.
+  assert.equal(h.clogStreamStatus(2).closed, true);
+  assert.equal(h.clogStreamStatus(0).closed, false);
+  assert.equal(h.clogStreamStatus(1).closed, false);
+});
+
+test('watchedSummary: only a settled stack claims nothing changed', () => {
+  // A clean last deploy: the commit is the answer to "why is nothing happening".
+  assert.match(h.watchedSummary('success', 'a1b2c3d4e5', 3), /^Unchanged since a1b2c3d\./);
+  assert.match(h.watchedSummary('healed', 'a1b2c3d4e5', 3), /^Unchanged since a1b2c3d\./);
+  // A failed/queued/blocked stack has a change pending — the opposite claim.
+  for (const s of ['failed', 'rolled_back', 'queued', 'blocked', 'heal_exhausted']) {
+    assert.doesNotMatch(h.watchedSummary(s, 'a1b2c3d4e5', 3), /Unchanged/);
+  }
+  // A first deploy has no prior commit to diff against, so the audit record
+  // carries none — the fact still holds, the reference point is just the
+  // deploy itself.
+  assert.match(h.watchedSummary('success', '', 3), /^Unchanged since the last deploy\./);
+  // Never deployed: no tracked inputs at all.
+  assert.match(h.watchedSummary('', '', 0), /has not deployed/);
+  // Singular vs plural.
+  assert.match(h.watchedSummary('', '', 1), /this file changes/);
+  assert.match(h.watchedSummary('', '', 2), /any of these change/);
+  // A parked stack is not watched at all — whatever it recorded before.
+  assert.match(h.watchedSummary('success', 'a1b2c3d4e5', 3, true), /^Parked/);
 });
 
 test('deployAnnouncement: only terminal outcomes get a spoken phrase (T2.8)', () => {

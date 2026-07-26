@@ -139,11 +139,12 @@ type Deployer struct {
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64
-	lastSyncErr      atomic.Pointer[syncOutcome]       // nil until the first run
-	currentRunPlan   atomic.Pointer[RunPlan]           // latest published plan, for late joiners
-	currentHookRun   atomic.Pointer[HookRun]           // latest published hook-run state, for late joiners
-	discoveredStacks atomic.Pointer[config.RepoStacks] // stack-discovery result, nil when stacks are listed explicitly
-	projectDirs      atomic.Pointer[map[string]string] // recorded stack→project-dir, for orphan detection
+	lastSyncErr      atomic.Pointer[syncOutcome]         // nil until the first run
+	currentRunPlan   atomic.Pointer[RunPlan]             // latest published plan, for late joiners
+	currentHookRun   atomic.Pointer[HookRun]             // latest published hook-run state, for late joiners
+	discoveredStacks atomic.Pointer[config.RepoStacks]   // stack-discovery result, nil when stacks are listed explicitly
+	projectDirs      atomic.Pointer[map[string]string]   // recorded stack→project-dir, for orphan detection
+	trackedFiles     atomic.Pointer[map[string][]string] // recorded stack→hashed input paths, for the roster
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -175,6 +176,18 @@ func New(cfg Config) *Deployer {
 		hookRunSink:  cfg.HookRunSink,
 	}
 	d.nextEventID.Store(cfg.StartEventID)
+
+	// Seed the tracked-file view from the persisted state, so the roster can
+	// answer "what is watched here" from the moment the UI is up rather than
+	// only after a run completes. A failed git sync returns before the deploy
+	// phase, and every stack would otherwise read as never deployed — the one
+	// wrong answer that surface exists to prevent.
+	if state, err := loadPersistedDeployState(stateDir); err != nil {
+		slog.Warn("could not read deploy state to seed the tracked-file view", "err", err)
+	} else {
+		tracked := state.trackedFiles()
+		d.trackedFiles.Store(&tracked)
+	}
 	return d
 }
 
@@ -499,6 +512,11 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	dirs := state.projectDirs()
 	d.projectDirs.Store(&dirs)
 
+	// Publish the hashed input paths so the roster can show what change
+	// detection actually watches per stack.
+	tracked := state.trackedFiles()
+	d.trackedFiles.Store(&tracked)
+
 	// After the run, let the wiring publish autosync/queue snapshots and refresh
 	// gauges (queue depth may have changed via defer/clear this run).
 	if d.postRunHook != nil {
@@ -688,11 +706,9 @@ func (d *Deployer) pullIfImagesChanged(ctx context.Context, run stackRun, compos
 	if d.bootstrapRun {
 		// Nothing is recorded, so every image reads as changed and this would
 		// pull the whole host at once — moving every floating tag (`:latest`,
-		// `:2`) to whatever it resolves to today, unattended, in one run. On a
-		// host that is merely being adopted or recovered, none of that was
-		// asked for. `up` below still creates whatever is missing, and compose
-		// fetches an image it does not have locally, so a genuinely fresh
-		// install is unaffected (ADR-0051).
+		// `:2`) to whatever it resolves to today, unattended. `up` still
+		// creates whatever is missing, and compose fetches an image the host
+		// does not have, so a fresh install is unaffected (ADR-0051).
 		slog.Info("skipping pull, bootstrap run", "stack", run.stack.Name)
 		return nil
 	}

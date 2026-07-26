@@ -45,6 +45,18 @@ func (d *Deployer) CurrentProjectDirs() map[string]string {
 	return map[string]string{}
 }
 
+// CurrentTrackedFiles returns the recorded stack→hashed-path map: for each
+// stack, the input files whose hashes decide whether it redeploys. It answers
+// the roster's "what does skipper watch here, and why has nothing happened"
+// from the same state the decision reads. Paths are as recorded (absolute);
+// empty before the first run. Concurrent-safe.
+func (d *Deployer) CurrentTrackedFiles() map[string][]string {
+	if p := d.trackedFiles.Load(); p != nil {
+		return *p
+	}
+	return map[string][]string{}
+}
+
 // effectiveStack resolves a stack by name from the effective set: the
 // discovered stacks in discovery mode, else the host config's list.
 func (d *Deployer) effectiveStack(cfg *config.Config, name string) (config.Stack, bool) {

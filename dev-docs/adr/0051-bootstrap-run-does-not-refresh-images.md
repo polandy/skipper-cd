@@ -66,14 +66,9 @@ and skipping it would risk leaving the host unconverged.
 
 ## Consequences
 
-- **No new config key.** An earlier draft of this ADR added
-  `initial_deploy: full|adopt`, where `adopt` recorded every stack as deployed
-  without running anything. It was dropped: it required the operator to make a
-  promise ("these stacks already run the repo's version") that skipper can
-  simply avoid needing, and it was **less** correct — a stack whose compose
-  file had genuinely moved on would have been recorded as current and never
-  converged. Suppressing only the pull keeps convergence intact and removes the
-  decision.
+- **Nothing to configure.** The host converges the same way on every run; only
+  the image refresh is held back, and only while nothing is recorded. There is
+  no mode to select and no state for the operator to vouch for.
 - **Suppression lasts exactly one run.** Once state exists, `pull` follows the
   ordinary rule (Invariant 5): it runs when an `image:` reference changed.
 - **A bootstrap run can leave an image slightly stale.** If the repo has moved
@@ -93,7 +88,13 @@ and skipping it would risk leaving the host unconverged.
   depend on a live docker query whose failure mode ("could not read the project
   → deploy it after all") reintroduces the problem, and it re-implements a
   comparison `up` already performs correctly.
-- **An `initial_deploy` config key** — see Consequences above.
+- **A config key** — `initial_deploy: full|adopt`, where `adopt` records every
+  stack as deployed without running anything, for a host the operator declares
+  is already on the repo's version. Rejected on both counts: it asks for a
+  promise skipper can avoid needing, and it is **less** correct — a stack whose
+  compose file has genuinely moved on would be recorded as current and never
+  converged, turning the reconciler off for it. Suppressing only the pull keeps
+  convergence intact and removes the question.
 - **Suppressing the deploy entirely on bootstrap.** Rejected: it leaves a stack
   that is *not* running stopped, and a stack that has drifted unconverged,
   which is the opposite of what a reconciler is for.

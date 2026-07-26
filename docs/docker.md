@@ -26,6 +26,9 @@ volumes:
 
 The Docker socket mount is required — skipper-cd uses it to manage compose stacks. The `skipper-data` volume persists the cloned repository and deploy state across restarts.
 
+!!! warning "The socket mount is root on the host"
+    Anything that can talk to `/var/run/docker.sock` can start a container that mounts the host filesystem, so it is equivalent to root on the host — for skipper-cd and for anything that gets into its container. This is inherent to driving Compose from a container, not specific to skipper-cd; the non-root user and `cap_drop` below reduce the blast radius *inside* the container but do not change it. Treat the container as a privileged one: keep its config and the deploy repo's write access as tightly held as root itself.
+
 Container notes:
 
 - **Mount referenced paths at identical paths.** skipper-cd drives the *host's* Docker daemon through the socket, so every path the config references — [`project_directory`](configuration.md#stack-fields), `vars_file`, `env_files` — must be mounted (read-only) at the same path inside the container as on the host.

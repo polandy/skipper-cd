@@ -248,9 +248,12 @@ const peerBData = {
     // same containers/app-link parity the primary shows for its own stacks.
     health: {
       stacks: {
-        gitea: { status: 'healthy', services: [{ name: 'gitea', state: 'running', status: 'healthy' }] },
-        postgres: { status: 'unhealthy', services: [{ name: 'db', state: 'restarting', status: 'unhealthy' }] },
-        cache: { status: 'healthy', services: [{ name: 'redis', state: 'running', status: 'healthy' }] },
+        // A peer's services carry their running image too, so a peer row shows the
+        // same version cell the primary's own rows do (the fan-in forwards health
+        // verbatim).
+        gitea: { status: 'healthy', services: [{ name: 'gitea', image: 'gitea/gitea:1.22.1', state: 'running', status: 'healthy' }] },
+        postgres: { status: 'unhealthy', services: [{ name: 'db', image: 'postgres:16', state: 'restarting', status: 'unhealthy' }] },
+        cache: { status: 'healthy', services: [{ name: 'redis', image: 'redis:7.2', state: 'running', status: 'healthy' }] },
       },
     },
     healthwatch: {
@@ -320,7 +323,7 @@ const cfg =
   `  - name: host-c\n    url: ${JSON.stringify(`http://127.0.0.1:${deadPeerPort}`)}\n` +
   `ui_enabled: true\n` +
   `ui_theme_switcher: true\n` +
-  `health_poll_interval_seconds: 3\n` +
+  `runtime_health_poll_interval_seconds: 3\n` +
   `health_watch:\n  debounce_polls: 1\n` +
   `command_timeout_seconds: 120\n` +
   // Dead source_url → auto-match icon fetches fail fast; committed icon.svg
@@ -328,12 +331,12 @@ const cfg =
   `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
   // Stack discovery (ADR-0034): the stack set comes from the repo dirs. Per-stack
   // overrides live in this one config's stacks: list (ADR-0043) — nextcloud keeps
-  // a health-check gate + hooks, immich has hooks, experiments is parked. The
+  // a deploy-health gate + hooks, immich has hooks, experiments is parked. The
   // rest are discovered.
   `stack_discovery: true\n` +
   `stacks:\n` +
   `  - name: nextcloud\n` +
-  `    health_check:\n      timeout_seconds: 1\n` +
+  `    deploy_health_check:\n      timeout_seconds: 1\n` +
   `    hooks:\n      pre_deploy:\n        - "echo backing up nextcloud database"\n      post_deploy:\n        - "echo occ upgrade complete"\n` +
   `  - name: immich\n` +
   `    hooks:\n      pre_deploy:\n        - "echo pausing backups"\n        - "sleep 4"\n      post_deploy:\n        - "echo verifying immich"\n` +
@@ -365,22 +368,35 @@ console.error('[ui-preview] healthy — seeding states…');
 // nextcloud and gitea are deployed yet unhealthy (the ADR-0027 case: a green
 // deploy whose container crash-looped afterwards) so the health beacon +
 // attention band have landable rows to jump to; paperless is stopped.
+// Each container also reports the Image it runs — what the Stacks view shows as
+// the service's live version (and what the roster row's lead version is picked
+// from): immich has two services mentioning the stack name (the shorter,
+// immich-server, leads), nextcloud's and gitea's leads are found via their image
+// repository, and paperless is digest-pinned on top of its tag.
 const setHealth = (n, svcs) => writeFileSync(join(healthDir, `${n}.json`), JSON.stringify(svcs));
 setHealth('immich', [
-  { Service: 'immich-server', Name: 'immich-server-1', State: 'running', Health: 'healthy' },
-  { Service: 'machine-learning', Name: 'immich-machine-learning-1', State: 'running', Health: 'healthy' },
-  { Service: 'redis', Name: 'immich-redis-1', State: 'running', Health: 'healthy' },
-  { Service: 'database', Name: 'immich-database-1', State: 'running', Health: 'healthy' },
+  { Service: 'immich-server', Name: 'immich-server-1', Image: 'ghcr.io/immich-app/immich-server:v1.119.0', State: 'running', Health: 'healthy' },
+  { Service: 'machine-learning', Name: 'immich-machine-learning-1', Image: 'ghcr.io/immich-app/immich-machine-learning:v1.119.0', State: 'running', Health: 'healthy' },
+  { Service: 'redis', Name: 'immich-redis-1', Image: 'redis:7.4', State: 'running', Health: 'healthy' },
+  { Service: 'database', Name: 'immich-database-1', Image: 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.4.0', State: 'running', Health: 'healthy' },
 ]);
 setHealth('nextcloud', [
-  { Service: 'app', Name: 'nextcloud-app-1', State: 'running', Health: 'healthy' },
-  { Service: 'db', Name: 'nextcloud-db-1', State: 'restarting', Health: 'unhealthy' },
-  { Service: 'redis', Name: 'nextcloud-redis-1', State: 'running', Health: 'healthy' },
+  { Service: 'app', Name: 'nextcloud-app-1', Image: 'nextcloud:30.0.2', State: 'running', Health: 'healthy' },
+  { Service: 'db', Name: 'nextcloud-db-1', Image: 'postgres:16', State: 'restarting', Health: 'unhealthy' },
+  { Service: 'redis', Name: 'nextcloud-redis-1', Image: 'redis:7.2', State: 'running', Health: 'healthy' },
 ]);
-setHealth('paperless', [{ Service: 'webserver', Name: 'paperless-webserver-1', State: 'exited', ExitCode: 0 }]);
+setHealth('paperless', [
+  {
+    Service: 'webserver',
+    Name: 'paperless-webserver-1',
+    Image: 'ghcr.io/paperless-ngx/paperless-ngx:2.13.0@sha256:2222222222222222222222222222222222222222222222222222222222222222',
+    State: 'exited',
+    ExitCode: 0,
+  },
+]);
 setHealth('gitea', [
-  { Service: 'server', Name: 'gitea-server-1', State: 'restarting', Health: 'unhealthy' },
-  { Service: 'db', Name: 'gitea-db-1', State: 'running', Health: 'healthy' },
+  { Service: 'server', Name: 'gitea-server-1', Image: 'gitea/gitea:1.22.3', State: 'restarting', Health: 'unhealthy' },
+  { Service: 'db', Name: 'gitea-db-1', Image: 'postgres:16', State: 'running', Health: 'healthy' },
 ]);
 
 // Orphan detection listing (one line per container, columns per psColumns:

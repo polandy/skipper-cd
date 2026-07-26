@@ -164,3 +164,36 @@ test.describe('UT7: per-service filter', () => {
     await expect(panel.locator('.clog-scope')).toContainText('web · all services');
   });
 });
+
+// UT8 — a stream the server refuses is reported as closed, not as reconnecting.
+// EventSource never retries a non-2xx, so the panel must not promise one — and
+// the live/pause pill has to follow, or the header keeps saying "live" over a
+// footer saying the stream is gone. The refusal is staged by intercepting the
+// request in the browser (the 429 the stream cap returns), which needs no seam
+// in the server and no waiting on the clock.
+test.describe('UT8: a refused stream', () => {
+  test('reads as closed, and the live pill stops claiming otherwise', async ({ page, skipper }) => {
+    await page.route('**/api/container-logs/**', (route) =>
+      route.fulfill({ status: 429, headers: { 'Retry-After': '5' }, body: 'too many streams' }),
+    );
+
+    await page.goto(`${skipper.baseURL}/`);
+    await openRowLog(page, 'web');
+
+    const panel = page.locator('[data-testid="clog-panel"]');
+    await expect(panel).toBeVisible();
+
+    // The footer states the terminal fact rather than a retry that never comes.
+    const stat = panel.locator('.clog-stat');
+    await expect(stat).toHaveText(/stream closed/);
+    await expect(stat).not.toHaveText(/reconnecting/);
+
+    // The pill follows: muted, labelled closed, and inert — clicking it must not
+    // put "live · streaming" back on a stream that is gone.
+    const live = panel.locator('[data-testid="clog-live"]');
+    await expect(live).toHaveClass(/dead/);
+    await expect(live.locator('.clog-ltxt')).toHaveText('closed');
+    await live.click();
+    await expect(stat).toHaveText(/stream closed/);
+  });
+});

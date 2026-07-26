@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 
@@ -53,7 +54,7 @@ func newEmptyState() *persistedState {
 }
 
 // isEmpty reports whether nothing at all has been recorded yet: a first start,
-// a new host, or a lost/corrupt state file. It is what initial_deploy keys off
+// a new host, or a lost/corrupt state file. It marks the run a bootstrap run
 // (ADR-0051), so it must be read before the nixos phase, which records its own
 // hashes into the state ahead of the stack phase.
 func (s *persistedState) isEmpty() bool {
@@ -120,6 +121,24 @@ func (s *persistedState) projectDirs() map[string]string {
 	out := make(map[string]string, len(s.ProjectDirs))
 	for k, v := range s.ProjectDirs {
 		out[k] = v
+	}
+	return out
+}
+
+// trackedFiles returns a copy of the recorded stack→hashed-path map, each
+// stack's paths sorted, for out-of-run consumers (the roster's change-detection
+// panel). These are exactly the inputs whose hashes decide whether a stack
+// redeploys, so the UI can answer "what does skipper watch here" from the same
+// source the decision is made from. Never nil.
+func (s *persistedState) trackedFiles() map[string][]string {
+	out := make(map[string][]string, len(s.Stacks))
+	for stack, hashes := range s.Stacks {
+		paths := make([]string, 0, len(hashes))
+		for p := range hashes {
+			paths = append(paths, p)
+		}
+		sort.Strings(paths)
+		out[stack] = paths
 	}
 	return out
 }
