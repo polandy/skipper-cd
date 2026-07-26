@@ -66,8 +66,16 @@ test.describe('UP2: the pending tag yields before the stack name', () => {
 
   test('the name stays whole while the tag gives way', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
-    const blocked = page.locator('[data-testid="deploy-row"][data-stack="app"]').first();
-    await expect(blocked.locator('[data-testid="status-badge"]')).toContainText('blocked');
+
+    // Same trigger as UP1: change both stacks so the dependency's `up` fails
+    // and `app` is held back. Locating by data-status waits for that row rather
+    // than picking whichever row is newest at the time.
+    skipper.setStackImage(DEP, '1.26');
+    skipper.setStackImage('app', '1.26');
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    const blocked = page.locator('[data-testid="deploy-row"][data-stack="app"][data-status="blocked"]');
+    await expect(blocked).toHaveCount(1);
 
     const name = blocked.locator('.stack-name');
     const tag = blocked.locator('.paused-tag');

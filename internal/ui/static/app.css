@@ -933,7 +933,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    min-width: 8ch;
+    /* Not a min-width: that would pad short names out to the floor and shift
+       every row, tag or not. flex-shrink keeps the box at the name's own width
+       and hands the shrinking to the tag; the cap only catches a pathological
+       name, which then ellipsises as before. */
+    flex-shrink: 0;
+    max-width: 24ch;
   }
 
   /* Recognizable per-stack icon; falls back to a monogram (.mono) when no
