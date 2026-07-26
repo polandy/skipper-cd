@@ -20,7 +20,7 @@ the same tunnel) can open `http://<host>:<port>/` too.
 
 ## What it seeds
 
-Nine stacks, each with a coloured icon, arranged so that **every state the UI can
+Ten stacks, each with a coloured icon, arranged so that **every state the UI can
 render is reachable** — the point being that a UI change to a failure path can be
 eyeballed here, not only asserted in the e2e suite.
 
@@ -31,6 +31,7 @@ eyeballed here, not only asserted in the e2e suite.
 | `nextcloud` | `success` | single-service tag bump; hooks + a deploy-health gate |
 | `immich` | `success` | four services changed across two commits — the multi-commit diff head and the per-service version delta |
 | `paperless` | `success` | same-tag rebuild: only the pinned digest moves |
+| `gitea` | `success` | deployed and green, but its container is degraded — the ADR-0027 case a health pill exists for |
 | `vaultwarden` | `rolled_back` | its `up` fails once, the rollback restores the previous compose — error panel + diff |
 | `wiki` | `failed` | `up` always fails and `rollback: false`, so the failed containers are deliberately left running |
 | `backup` | `blocked` | `depends_on: vaultwarden`, held back in the same run |
