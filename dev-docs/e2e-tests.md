@@ -1199,6 +1199,7 @@ Behaviour-only (no snapshot): the delta is structural (`data-testid="svc-delta"`
 per-part text), and the per-reference token logic is exhaustively covered by the
 `app-helpers` unit layer (`imageDelta` / `parseImageRef` / `shortImageTag`).
 
+<<<<<<< HEAD
 ### 4.37 UI — Maske AK: Service versions in the Stacks view
 
 `compose ps` reports the image each container runs, which rides the `health`
@@ -1232,7 +1233,42 @@ versions render from a real snapshot.
 Behaviour-only (no snapshot): the cell is structural, and the lead-service and
 token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
 `imageRepoName` / `shortImageTag`).
+>>>>>>> origin/main
 
+### 4.38 UI — Maske AJ: Roster change detection
+
+skipper redeploys a stack only when one of its hashed inputs changes
+(Invariant 2), so the most common operator question is not "what happened" but
+**"why did nothing happen"**. The roster's third expand panel answers it in
+place: which inputs are watched, and the commit nothing has changed since. See
+[Change detection](../internal/ui/UI_SPEC.md#change-detection). Data rides the
+`stacks` snapshot, so there is no fetch and no loading state.
+
+- **UAJ1 — Watched inputs + since-commit.** Expanding a cleanly deployed stack
+  adds `watched-panel` as the **last** card of the expand stack (asserted by
+  bounding box: below `audit-panel`), leads with `Unchanged since <7-char sha>.`,
+  and lists the stack's compose file **repo-relative** (the path the operator
+  edits and commits, not the clone's absolute location). Closing the row removes
+  it with the rest of the card. The stack's hashed *config* renders as its own
+  non-path entry (`watched-config`), never as a file. The lead's reference point
+  is the deploy itself on a stack's *first* deploy (no prior commit to diff
+  against).
+- **UAJ1b — Since-commit after a real change.** A pushed compose bump deploys
+  for real, and the lead then names the short SHA the stack is at — the actual
+  answer to "I pushed, why is this stack quiet". Gated on the success row
+  appearing (the run finished and the `stacks` snapshot was republished), not
+  on a wait.
+- **UAJ2 — Parked stack.** A stack with `disabled: true` reports that skipper
+  neither watches nor deploys it, and lists no files — rather than showing
+  whatever its last deploy happened to record.
+- **UAJ3 — Filter parity.** The panel hides and reappears with its row under the
+  roster search filter, like every other trailing panel.
+
+Behaviour-only (no snapshot): the panel is structural text, and the lead-line
+phrasing across every deploy status (a `failed`/`queued`/`blocked` stack has a
+change *pending* and must never claim "unchanged") is exhaustively covered by
+the `app-helpers` unit layer (`watchedSummary`).
+=======
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

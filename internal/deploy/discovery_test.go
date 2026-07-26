@@ -195,3 +195,38 @@ func TestHealStack_DiscoveryUsesDiscoveredStacks(t *testing.T) {
 		t.Error("HealStack(ghost) should fail for an undiscovered stack")
 	}
 }
+
+// The roster reads tracked files out of band, so they must be known as soon as
+// the deployer exists: a failed git sync returns before the deploy phase, and
+// an empty view would tell the operator that a long-running stack has never
+// deployed — the one wrong answer that surface exists to prevent.
+func TestNew_SeedsTrackedFilesFromPersistedState(t *testing.T) {
+	stateDir := t.TempDir()
+	writeFile(t, filepath.Join(stateDir, "state.yaml"), `
+last_deployed_commit: abc123
+stacks:
+  web:
+    /repo/web/docker-compose.yml: hash-a
+    /run/secrets/compose.env: hash-b
+`)
+
+	d := New(Config{Runner: &recordingRunner{}, StateDir: stateDir})
+
+	got := d.CurrentTrackedFiles()
+	if len(got["web"]) != 2 {
+		t.Fatalf("web tracked files = %v, want 2 entries before any run", got["web"])
+	}
+	// Sorted, so the UI renders a stable list across restarts.
+	if got["web"][0] != "/repo/web/docker-compose.yml" || got["web"][1] != "/run/secrets/compose.env" {
+		t.Errorf("tracked files not sorted: %v", got["web"])
+	}
+}
+
+// A brand-new install has no state file; that is not an error and must not
+// leave the accessor nil.
+func TestNew_TrackedFilesEmptyWithoutState(t *testing.T) {
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
+	if got := d.CurrentTrackedFiles(); len(got) != 0 {
+		t.Errorf("tracked files = %v, want empty for a fresh install", got)
+	}
+}

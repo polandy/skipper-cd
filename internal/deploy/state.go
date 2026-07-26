@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 
@@ -112,6 +113,24 @@ func (s *persistedState) projectDirs() map[string]string {
 	out := make(map[string]string, len(s.ProjectDirs))
 	for k, v := range s.ProjectDirs {
 		out[k] = v
+	}
+	return out
+}
+
+// trackedFiles returns a copy of the recorded stack→hashed-path map, each
+// stack's paths sorted, for out-of-run consumers (the roster's change-detection
+// panel). These are exactly the inputs whose hashes decide whether a stack
+// redeploys, so the UI can answer "what does skipper watch here" from the same
+// source the decision is made from. Never nil.
+func (s *persistedState) trackedFiles() map[string][]string {
+	out := make(map[string][]string, len(s.Stacks))
+	for stack, hashes := range s.Stacks {
+		paths := make([]string, 0, len(hashes))
+		for p := range hashes {
+			paths = append(paths, p)
+		}
+		sort.Strings(paths)
+		out[stack] = paths
 	}
 	return out
 }

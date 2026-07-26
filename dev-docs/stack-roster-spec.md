@@ -38,12 +38,30 @@ type Entry struct {
     LastStatus events.Status `json:"last_status,omitempty"` // empty = never deployed
     LastAt     *time.Time    `json:"last_at,omitempty"`
     LastCommit string        `json:"last_commit,omitempty"`
+    Hooks      *Hooks        `json:"hooks,omitempty"`    // declared deploy hooks
+    Watched       []string   `json:"watched,omitempty"`        // hashed input paths
+    WatchedConfig bool       `json:"watched_config,omitempty"` // config hash tracked
 }
 
 func Build(stacks []config.Stack, disabled []string,
-    last func(name string) (audit.Record, bool)) []Entry
+    last func(name string) (audit.Record, bool),
+    watched func(name string) []string) []Entry
 ```
 
+- **`Watched`**: the input paths whose hashes decide whether the stack
+  redeploys (Invariant 2), as recorded by its last successful deploy
+  (`Deployer.CurrentTrackedFiles`, published after every run like the project
+  dirs orphan detection reads). It is what lets the UI answer "why did nothing
+  happen for this stack" without an operator opening `state.yaml` on the host.
+  Empty for a stack that has never deployed, and deliberately omitted for a
+  parked (`disabled: true`) one — skipper is not watching it, whatever its last
+  deploy recorded. `cmd/skipper` renders a path inside the repo clone
+  repo-relative before it ships (`splitTrackedPaths`); host paths stay absolute.
+- **`WatchedConfig`**: the stack's deploy-shaping config is hashed as well
+  (`Stack.ConfigHash`), but under a *synthetic* `<stacks_base_dir>/skipper.yaml`
+  key — ADR-0043 moved that config host-side, so no such file exists. It travels
+  as a flag rather than inside `Watched` so the UI can render it as prose; a
+  path would send an operator looking for a file that is not there.
 - No `icon` field: the frontend resolves each stack's icon from its **name**
   via the existing `/api/icons/<name>` endpoint (override + repo icon +
   monogram fallback all server-side), exactly like the deploy table.
