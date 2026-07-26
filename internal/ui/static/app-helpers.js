@@ -470,6 +470,21 @@ function logLineVisible(text, q) {
   return (text || '').toLowerCase().indexOf(q.toLowerCase()) !== -1;
 }
 
+// clogStreamStatus maps an EventSource readyState after an error to the status
+// line the container-log panel shows. EventSource retries a dropped connection
+// on its own (CONNECTING), but a non-2xx response — a 404 for a stack that went
+// away, a 429 when the server is already running its maximum number of log
+// follows — closes it for good (CLOSED). Reporting "reconnecting…" for that
+// case would promise a retry that never comes, so a closed stream reads as
+// closed and points at the way to try again.
+function clogStreamStatus(readyState) {
+  // 2 === EventSource.CLOSED; the constant is not available under node --test.
+  if (readyState === 2) {
+    return { text: 'stream closed — reopen the log to retry', cls: 'err', closed: true };
+  }
+  return { text: 'reconnecting…', cls: 'err', closed: false };
+}
+
 // watchedSummary phrases the change-detection panel's lead line for a roster
 // entry: what skipper watches for this stack, and — the question the panel
 // exists to answer — why nothing has happened for it.
@@ -548,6 +563,7 @@ if (typeof module !== 'undefined' && module.exports) {
     containerMatchesQuery,
     orphanMatchesQuery,
     logLineVisible,
+    clogStreamStatus,
     watchedSummary,
     deployAnnouncement,
     HOST_COLOR_COUNT,

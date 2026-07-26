@@ -799,6 +799,14 @@ beyond the shared deploy-table baselines the row icon already shifts).
   merged stream. A single-service stack shows no filter tool (UT1 asserts its
   absence).
 
+- **UT8 — A refused stream reads as closed.** The container-log request is
+  intercepted in the browser and answered `429` (the stream cap's refusal), so
+  the terminal case is staged without a server seam and without waiting on the
+  clock. The footer must say `stream closed`, never `reconnecting` — `EventSource`
+  does not retry a non-2xx — and the live/pause pill must follow it: `.dead`,
+  labelled `closed`, and inert, so a click cannot put `live · streaming` back on
+  a stream that is gone.
+
 ### 4.22 UI — Maske U: Deploy hooks (ADR-0038)
 
 The hooks UI surface: the per-stack **hooks badge** + command panel, the hook

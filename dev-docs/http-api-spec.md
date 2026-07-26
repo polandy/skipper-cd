@@ -22,6 +22,13 @@ bypasses git. The push webhook remains the sole deploy trigger.
   stream `GET /api/events` carries "what changed." Live push stays SSE.
 - **JSON only.** `Content-Type: application/json`, UTF-8. Errors use standard
   HTTP status codes with a `{"error": "..."}` body.
+- **Writes are same-origin only.** The two `POST`s carry no token of their own,
+  so a request a browser makes from *another site* is refused with `403`
+  (`Sec-Fetch-Site`, falling back to `Origin`). Without this, any page a viewer
+  opens could pause autosync globally — a change whose effect (nothing deploys
+  any more) stays invisible until someone notices. Non-browser clients send
+  neither header and are unaffected, so the documented `curl` calls keep
+  working. Reads are never gated.
 
 ## Endpoint summary
 
