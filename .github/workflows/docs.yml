@@ -28,11 +28,6 @@ permissions:
   pages: write
   id-token: write
 
-# Never run two Pages deploys at once; let an in-flight one finish.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -55,6 +50,14 @@ jobs:
     needs: build
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    # Never run two Pages deploys at once; let an in-flight one finish. Scoped
+    # to this job, not the workflow: a shared workflow-level group also holds
+    # every PR's strict-build gate, and GitHub keeps only one *pending* run per
+    # group — so two PRs pushed close together cancel each other's docs check,
+    # which then reports as absent rather than failed.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
