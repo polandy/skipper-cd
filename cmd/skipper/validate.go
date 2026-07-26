@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/git"
 )
 
 // Exit codes returned by validateConfigFile, so `skipper -validate` can gate a
@@ -68,7 +69,7 @@ func checkConfigFile(path string, r *report) int {
 	}
 
 	r.linef("config OK: %s", path)
-	r.linef("  repo:            %s (branch %s)", cfg.RepoURL, cfg.Branch)
+	r.linef("  repo:            %s (branch %s)", git.RedactURL(cfg.RepoURL), cfg.Branch)
 	r.linef("  stacks_base_dir: %s", cfg.StacksBaseDir)
 	r.linef("  stack_discovery: %t", cfg.StackDiscovery)
 

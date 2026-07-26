@@ -60,7 +60,7 @@ func (s *RepoSync) RepoDir() string {
 }
 
 func (s *RepoSync) cloneRepository(ctx context.Context) error {
-	slog.Info("cloning repository", "url", redactedURL(s.repoURL), "dir", s.repoDir, "branch", s.branch)
+	slog.Info("cloning repository", "url", RedactURL(s.repoURL), "dir", s.repoDir, "branch", s.branch)
 	if err := os.MkdirAll(s.repoDir, 0o755); err != nil {
 		return fmt.Errorf("create repo dir: %w", err)
 	}
@@ -81,13 +81,27 @@ func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
 	return s.runner.Run(ctx, s.repoDir, nil, "git", "reset", "--hard", "origin/"+s.branch)
 }
 
-// redactedURL returns rawURL with any userinfo password masked, for logging.
-// URLs the parser rejects (e.g. scp-like syntax) are returned unchanged —
-// they cannot carry a password.
-func redactedURL(rawURL string) string {
+// redactedPlaceholder is what net/url's Redacted substitutes for a password;
+// reused here so a masked username reads the same way.
+const redactedPlaceholder = "xxxxx"
+
+// RedactURL returns rawURL with any credential in its userinfo masked, for
+// logging and for the -validate report.
+//
+// A password is always masked. A lone username is masked too on http(s),
+// where a bare userinfo is in practice an access token
+// (https://<token>@host/repo.git). ssh:// keeps its username — there it is a
+// login name (git@), not a secret. URLs the parser rejects (e.g. scp-like
+// syntax) are returned unchanged: they cannot carry a password.
+func RedactURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return rawURL
+	}
+	if u.User != nil && (u.Scheme == "http" || u.Scheme == "https") {
+		if _, hasPassword := u.User.Password(); !hasPassword {
+			u.User = url.User(redactedPlaceholder)
+		}
 	}
 	return u.Redacted()
 }

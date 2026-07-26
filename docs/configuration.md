@@ -16,6 +16,7 @@ Loads the config, prints what skipper would run with, and exits `0` (valid) or `
 
 - Unknown keys are **rejected**, not ignored: a typo like `env_file` for `env_files` fails the load rather than silently dropping the setting.
 - A key renamed in an earlier version fails with its current name: `working_dir` → `project_directory`, `health_check` → `deploy_health_check`, `health_poll_interval_seconds` → `runtime_health_poll_interval_seconds`.
+- A credential embedded in `repo_url` is masked in the report (`https://user:xxxxx@…`, and `https://xxxxx@…` for a bare access token), so the output is safe to paste into an issue.
 
 ---
 
