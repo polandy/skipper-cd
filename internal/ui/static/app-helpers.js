@@ -510,6 +510,11 @@ function clogStreamStatus(readyState) {
 // last outcome was failed/queued/blocked has a change *pending*, so saying
 // nothing changed since then would be exactly backwards.
 const WATCHED_SETTLED = ['success', 'healed'];
+
+// UNCHANGED_SINCE opens the settled lead, immediately followed by the commit.
+// index.html finds that commit by this prefix to turn it into a link, so the two
+// must agree — hence one shared constant rather than the phrase written twice.
+const UNCHANGED_SINCE = 'Unchanged since ';
 function watchedSummary(status, commit, count, disabled) {
   if (disabled) {
     return 'Parked with disabled: true — skipper neither watches nor deploys this stack.';
@@ -526,7 +531,7 @@ function watchedSummary(status, commit, count, disabled) {
     // audit record carries none — the "unchanged" fact still holds, only the
     // reference point is the deploy itself rather than a SHA.
     const since = commit ? shortSHA(commit) : 'the last deploy';
-    return 'Unchanged since ' + since + '. ' + deploys;
+    return UNCHANGED_SINCE + since + '. ' + deploys;
   }
   return deploys;
 }
@@ -583,6 +588,7 @@ if (typeof module !== 'undefined' && module.exports) {
     logLineVisible,
     clogStreamStatus,
     watchedSummary,
+    UNCHANGED_SINCE,
     deployAnnouncement,
     HOST_COLOR_COUNT,
     hostColorIndex,

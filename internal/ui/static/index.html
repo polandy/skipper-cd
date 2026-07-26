@@ -1326,10 +1326,11 @@
   // no browse URL can be derived from degrades to the previous rendering.
   // The element keeps its caller's class and only gains `sha-link` when it is
   // actually a link, so the inert case cannot pick up a link's affordance.
-  // opts: {cls, base, title, testid, text} — text defaults to the short SHA.
+  // opts: {cls, base, title, testid}. The label is always the short SHA — every
+  // site prints that form; only the href carries the full one.
   function commitLinkHTML(sha, opts) {
     const o = opts || {};
-    const label = o.text !== undefined ? o.text : shortSHA(sha);
+    const label = shortSHA(sha);
     const href = commitURL(o.base, sha);
     const cls = href ? ((o.cls ? o.cls + ' ' : '') + 'sha-link') : (o.cls || '');
     const attrs =
@@ -2127,15 +2128,15 @@
   // watchedSummary stays a pure, unit-tested string: only the SHA token it
   // already produced is swapped for a link, after escaping — a short SHA is
   // `[0-9a-f]{7}`, so it survives escaping unchanged and matches unambiguously.
-  // Should the wording ever move on, the lookup simply misses and the lead
-  // renders as the plain text it is today.
+  // The lead only names a commit in its settled form (UNCHANGED_SINCE, shared
+  // with the helper); any other phrasing misses the lookup and stays plain text.
   function leadHTML(entry, fileCount) {
     const text = escapeHtml(watchedSummary(entry.last_status || '', entry.last_commit || '', fileCount, entry.disabled));
     const commit = entry.last_commit || '';
     if (!commit) return text;
-    const token = 'Unchanged since ' + shortSHA(commit);
+    const token = UNCHANGED_SINCE + shortSHA(commit);
     if (text.indexOf(token) === -1) return text;
-    return text.replace(token, 'Unchanged since ' + commitLinkHTML(commit, { base: repoWebURL, title: commit }));
+    return text.replace(token, UNCHANGED_SINCE + commitLinkHTML(commit, { base: repoWebURL, title: commit }));
   }
 
   // createWatchedPanel returns the change-detection panel: the input files whose

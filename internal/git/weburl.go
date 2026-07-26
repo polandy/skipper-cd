@@ -66,16 +66,14 @@ func parseSCPLike(raw string) (host, path string, ok bool) {
 }
 
 // buildWebURL assembles the browse URL from the parts worth keeping, trimming
-// the ".git" clone suffix and any trailing slash. An empty repo path yields ""
-// — there is nothing to browse.
+// the ".git" clone suffix and any trailing slash. path always arrives rooted —
+// url.Parse yields a leading "/" and parseSCPLike prepends one. A path that
+// trims away to nothing (say "/.git") yields "": there is nothing to browse.
 func buildWebURL(scheme, host, path string) string {
 	path = strings.TrimSuffix(strings.TrimRight(path, "/"), ".git")
 	path = strings.TrimRight(path, "/")
 	if host == "" || path == "" || path == "/" {
 		return ""
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
 	}
 	return scheme + "://" + host + path
 }
