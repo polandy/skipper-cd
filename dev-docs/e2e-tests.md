@@ -1198,6 +1198,13 @@ image change — no hand-fed events.
 - **UAI5 — Responsive.** On a 390 px viewport the Version column becomes a
   full-width row **beneath** the name (asserted by bounding box) instead of
   squeezing it — the name still renders in full (no ellipsis).
+- **UAI7 — Tablet.** On a 744 px viewport (iPad-mini portrait) the column drops
+  to its own full-width line — the `Version` header is hidden, the delta sits
+  below and left of the name, and a two-service deploy's chips flow **side by
+  side** rather than stacking (the desktop one-per-line rule, UAI3, is what the
+  width paid for). The row keeps its remaining columns: the stack cell ends at
+  or before the status cell begins, which is what the six-column layout broke —
+  it printed the name over the chips.
 - **UAI6 — View-options toggle.** The Deploys popover's **Version changes** toggle
   (on by default) collapses the whole column when flipped off — no chips, no
   `Version` header, and no row separators (they exist only because the column
@@ -1208,7 +1215,6 @@ Behaviour-only (no snapshot): the delta is structural (`data-testid="svc-delta"`
 per-part text), and the per-reference token logic is exhaustively covered by the
 `app-helpers` unit layer (`imageDelta` / `parseImageRef` / `shortImageTag`).
 
-<<<<<<< HEAD
 ### 4.37 UI — Maske AK: Service versions in the Stacks view
 
 `compose ps` reports the image each container runs, which rides the `health`
@@ -1242,7 +1248,6 @@ versions render from a real snapshot.
 Behaviour-only (no snapshot): the cell is structural, and the lead-service and
 token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
 `imageRepoName` / `shortImageTag`).
->>>>>>> origin/main
 
 ### 4.38 UI — Maske AJ: Roster change detection
 
@@ -1277,7 +1282,6 @@ Behaviour-only (no snapshot): the panel is structural text, and the lead-line
 phrasing across every deploy status (a `failed`/`queued`/`blocked` stack has a
 change *pending* and must never claim "unchanged") is exhaustively covered by
 the `app-helpers` unit layer (`watchedSummary`).
-=======
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
