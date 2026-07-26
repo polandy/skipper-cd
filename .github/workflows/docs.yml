@@ -4,7 +4,7 @@
 #
 # The landing-page screenshots are NOT committed — they are rendered here, from a
 # seeded instance of the very UI in this commit, and only then does mkdocs build
-# (see the screenshots job and dev-docs/e2e-tests.md §6). That keeps a churning
+# (see the screenshots job and dev-docs/e2e-tests.md §5.1). That keeps a churning
 # binary out of git history: a PNG never delta-compresses, so committing one per
 # UI change would grow the repo without bound.
 #

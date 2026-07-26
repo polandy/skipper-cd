@@ -84,8 +84,9 @@ docker-build:
 # (`cd e2e/ui && npx playwright install chromium`); on a host whose bundled
 # Chromium cannot run, set PW_CHROMIUM_EXECUTABLE.
 docs-screenshots:
+	V=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); \
 	CGO_ENABLED=0 go build -buildvcs=false \
-	  -ldflags "-X main.version=$(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 0.0.0) -X main.commit=$(shell git rev-parse --short HEAD)" \
+	  -ldflags "-X main.version=$${V:-0.0.0} -X main.commit=$$(git rev-parse --short HEAD)" \
 	  -o e2e/ui/.docs-shot-bin ./cmd/skipper
 	cd e2e/ui && SKIPPER_E2E_BIN=$(CURDIR)/e2e/ui/.docs-shot-bin \
 	  npx playwright test --config screenshots/shots.config.ts

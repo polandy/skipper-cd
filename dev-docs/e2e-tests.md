@@ -1463,3 +1463,9 @@ already pins actions:
   `RUN_SNAPSHOTS=1` turns on the pixel compares against the committed baselines
   (§5). Uploads the Playwright HTML report + `test-results/` (traces and snapshot
   diffs) on failure.
+
+A third job lives in `.github/workflows/docs.yml`, not here:
+
+- **screenshots**: renders the docs landing-page images (§5.1) in the same pinned
+  container and hands them to the docs build as an artifact. It asserts nothing
+  about the product — it exists so those PNGs never have to be committed.
