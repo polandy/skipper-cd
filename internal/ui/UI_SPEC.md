@@ -70,7 +70,7 @@ The theme picker is **opt-in**: it renders only when `ui_theme_switcher: true`. 
 
 ## Deploy table
 
-6-column grid (`150px minmax(0,1.15fr) minmax(0,1fr) 110px 76px 96px`): **Time · Stack · Version · Status · Duration · Files**. The columns live in a `--deploy-cols` variable on `#deploy-table` so the header and the rows stay in lockstep; `.no-version` swaps in the 5-column set when the [Version column](#image-delta) is toggled off.
+6-column grid (`150px minmax(0,1.15fr) minmax(0,1fr) 110px 76px 96px`): **Time · Stack · Version · Status · Duration · Files**. The columns live in a `--deploy-cols` variable on `#deploy-table` so the header and the rows stay in lockstep; `.no-version` swaps in the 5-column set when the [Version column](#image-delta) is toggled off, as does the [tablet layout](#responsive--tablet--1000-px), which moves that column out of the grid entirely.
 
 Rows are prepended (newest first) with a slide-in animation and are **top-aligned** (`align-items: start`) with a hairline separator between them: the [Version column](#image-delta) is routinely taller than one line, so centring would drag Time/Stack/Status to its middle and cost the row its common starting line, and the spacing alone would no longer show where one row ends. The separators are tied to that column — with it toggled off every row is a single line again, so they disappear with it. Time cells show relative or absolute time depending on the header toggle. Relative times refresh every 30 s; tooltip always shows the other format. A row that changed one or more service images names them in its **Version** column — the [image delta](#image-delta).
 
@@ -95,7 +95,7 @@ The data rides the `image_changes` field on the event's SSE payload (small, like
 
 The chip itself (`versionChipHTML`) is the UI's **one** version component: the same frame and colours render a deploy's change here, a stack's running version in the [Stacks view](#service-versions), and each line of the [containers panel](#stack-health). Only the tokens inside differ — old→new here, a single current token there.
 
-**Width and responsive.** Stack keeps the larger share of the free width; a chip that outgrows the column **wraps within itself** rather than truncating, so a narrow column costs height, never the service name. On **mobile** there are no columns (the row is a 2×2 block), so the Version column becomes a **full-width row** beneath the name/time, keeping its stacked chips and staying left of the row-tap centre. The column is toggleable per browser via the Deploys [**Version changes** view-option](#view-options-popover) (default on); switching it off collapses the column entirely — chips, cell width and the `Version` header — rather than leaving an empty column behind.
+**Width and responsive.** Stack keeps the larger share of the free width; a chip that outgrows the column **wraps within itself** rather than truncating, so a narrow column costs height, never the service name. Below **1000 px** six columns no longer fit — the Version track fell to ~80 px, which wrapped every chip over three lines and let the Stack cell print over them — so the column drops to a **full-width line beneath the row** and its chips **flow and wrap** side by side there (a four-service deploy costs one or two lines instead of four); the `Version` header goes with it, and an empty cell (healed/peer rows) takes no line at all. See [Responsive — tablet](#responsive--tablet--1000-px). On **mobile** there are no columns at all (the row is a 2×2 block), so that line becomes the row's **third row** beneath the name/time, staying left of the row-tap centre. The column is toggleable per browser via the Deploys [**Version changes** view-option](#view-options-popover) (default on); switching it off collapses the column entirely — chips, cell width and the `Version` header — rather than leaving an empty column behind.
 
 ### Stack health
 
@@ -585,6 +585,15 @@ The UI targets WCAG 2.1 AA. Beyond the per-component semantics noted above (the 
 - **Live regions** — the connection indicator is a `role="status"` `aria-live="polite"` region (its state word is `sr-only`, not `display:none`, so it announces), and terminal deploy outcomes are voiced through the off-screen `a11y-announce` region as they land **live** (never on the history replay).
 - **Touch targets** — small glyph buttons and status pills carry a transparent `::after` hit-area overlay lifting them to ≥24px (WCAG 2.5.8 AA) without changing anything visible; header controls grow taller (the header has the room). A full 44px (AAA) in the dense row cluster awaits the row-density redesign.
 - **Multi-host** — the drawer host rows are keyboard-operable `role="checkbox"`es (`aria-checked` = in-view, Space toggles, focus is restored across the toggle rebuild) and the per-row `host-mono` identity chip is a keyboard-operable `role="button"` quick-filter.
+
+## Responsive — tablet (≤ 1000 px)
+
+A tablet still has columns, just not as many: both tables carry a Stack cell with a host chip, an icon, the name and up to four inline affordances, and six columns squeeze that cell — and the [Version column](#image-delta) beside it — past the point where either says anything.
+
+- **Both tables drop the Version column to a full-width line under the row** (the [deploy table](#deploy-table) and the [Stacks roster](#service-versions) alike), header label included, so the remaining columns stay in lockstep with their header. On that line the chips flow and wrap instead of stacking. An empty cell takes no line.
+- **The fixed columns are trimmed** to what their own content needs (Time, Duration and Files on Deploys; Last deploy on Stacks), and the freed width goes to the Stack cell — the one that runs out first.
+- **The pending `paused:`/`blocked by` tag is dropped** (see the [event table](#event-lifecycle-sse)): at this width it shrank to a stub, and the badge still names the state.
+- With the tag gone, the **stack name may shrink and ellipsise** again rather than overflow its column — nothing is left for it to yield to.
 
 ## Responsive (≤ 700 px)
 

@@ -206,3 +206,49 @@ test.describe('UI5: responsive', () => {
     expect(clipped).toBe(false);
   });
 });
+
+// UI7 — a tablet still has columns, but not six of them: the Version track fell
+// to ~80px there, which wrapped every chip over three lines and let the stack
+// cell (which cannot shrink while a pending tag is beside it) print straight
+// over the chips. Below 1000px the column drops to a full-width line of its own,
+// the same move the phone makes one step further down.
+test.describe('UI7: tablet', () => {
+  test('the Version column drops to its own line and the row keeps its columns', async ({ page, skipper }) => {
+    await page.setViewportSize({ width: 744, height: 1000 }); // iPad-mini portrait
+    await page.goto(`${skipper.baseURL}/`);
+
+    // Two services so the chips' own flow is observable.
+    skipper.setStackServices('api', { app: 'nginx:1.26', cache: 'redis:7' });
+    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+    const row = successRow(page, 'api');
+    const d = delta(page, 'api');
+    await expect(d).toBeVisible();
+
+    // The column is gone from the header — the rows no longer have that track,
+    // and an empty header cell would leave the remaining five out of lockstep.
+    await expect(page.locator('.event-list-header .col-version')).toBeHidden();
+
+    // Its own line, beneath the name and starting left of it.
+    const nameBox = (await row.locator('.stack-name').boundingBox())!;
+    const deltaBox = (await d.boundingBox())!;
+    expect(nameBox && deltaBox).toBeTruthy();
+    expect(deltaBox.y).toBeGreaterThan(nameBox.y + nameBox.height - 2);
+    expect(deltaBox.x).toBeLessThan(nameBox.x);
+
+    // On a full-width line the chips flow side by side instead of stacking (the
+    // desktop column's one-per-line rule, UI3, is what the width paid for).
+    const chips = d.locator('.tag-delta');
+    await expect(chips).toHaveCount(2);
+    const boxes = await chips.evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ x: r.x, y: r.y })));
+    expect(Math.abs(boxes[1].y - boxes[0].y)).toBeLessThan(2);
+    expect(boxes[1].x).toBeGreaterThan(boxes[0].x);
+
+    // The remaining columns still are columns: the stack cell stays inside its
+    // track rather than printing over the status badge beside it.
+    const stackBox = (await row.locator('.cell-stack').boundingBox())!;
+    const statusBox = (await row.locator('.status-cell').boundingBox())!;
+    expect(stackBox && statusBox).toBeTruthy();
+    expect(stackBox.x + stackBox.width).toBeLessThanOrEqual(statusBox.x);
+  });
+});
