@@ -1,5 +1,12 @@
 # Builds the MkDocs Material site from docs/ and deploys it to GitHub Pages.
-# Runs only when the docs, the MkDocs config, or this workflow change.
+# Runs when the docs, the MkDocs config, this workflow, or anything the rendered
+# screenshots depend on (the web UI and the render harness) changes.
+#
+# The landing-page screenshots are NOT committed — they are rendered here, from a
+# seeded instance of the very UI in this commit, and only then does mkdocs build
+# (see the screenshots job and dev-docs/e2e-tests.md §5.1). That keeps a churning
+# binary out of git history: a PNG never delta-compresses, so committing one per
+# UI change would grow the repo without bound.
 #
 # On pull requests the build job runs `mkdocs build --strict` as a gate so a
 # broken link or bad nav fails the PR instead of surfacing only after merge;
@@ -16,11 +23,15 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - ".github/workflows/docs.yml"
+      - "internal/ui/**"
+      - "e2e/ui/**"
   pull_request:
     paths:
       - "docs/**"
       - "mkdocs.yml"
       - ".github/workflows/docs.yml"
+      - "internal/ui/**"
+      - "e2e/ui/**"
 
 # Allow the deploy job to publish to Pages via OIDC.
 permissions:
@@ -29,10 +40,61 @@ permissions:
   id-token: write
 
 jobs:
+  # Renders docs/assets/screenshots/*.png from a seeded skipper, in Playwright's
+  # pinned container (browsers and fonts preinstalled — the same image the UI e2e
+  # job uses, so the rendering is identical). Only Go is added on top, to build
+  # the binary the render harness drives.
+  screenshots:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Tags, so the header in the shot shows a real version rather than a
+          # bare commit.
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build skipper for the renderer
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+          CGO_ENABLED=0 go build -buildvcs=false \
+            -ldflags "-X main.version=${VERSION:-0.0.0} -X main.commit=$(git rev-parse --short HEAD)" \
+            -o e2e/ui/.docs-shot-bin ./cmd/skipper
+      - name: Install UI E2E deps
+        working-directory: e2e/ui
+        run: npm ci
+      - name: Render the screenshots
+        working-directory: e2e/ui
+        env:
+          SKIPPER_E2E_BIN: ${{ github.workspace }}/e2e/ui/.docs-shot-bin
+        run: npx playwright test --config screenshots/shots.config.ts
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docs-screenshots
+          path: docs/assets/screenshots/*.png
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: docs-screenshots-report
+          path: e2e/ui/test-results/
+          retention-days: 7
+
   build:
+    needs: screenshots
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # The rendered images the docs embed; without them `mkdocs build --strict`
+      # fails on the missing files, which is the intended gate.
+      - uses: actions/download-artifact@v7
+        with:
+          name: docs-screenshots
+          path: docs/assets/screenshots
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"

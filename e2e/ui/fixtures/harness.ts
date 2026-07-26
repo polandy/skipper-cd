@@ -151,8 +151,18 @@ async function freePorts(n: number): Promise<number[]> {
   return ports;
 }
 
-function git(dir: string, ...args: string[]): void {
-  const full = ['-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', ...args];
+/** Identity the harness commits as. Overridable per instance
+ *  (StartOptions.commitAuthor) so a rendered diff header can name a realistic
+ *  author instead of the test default. */
+export interface CommitIdentity {
+  name: string;
+  email: string;
+}
+
+const defaultIdentity: CommitIdentity = { name: 'e2e', email: 'e2e@example.com' };
+
+function gitAs(id: CommitIdentity, dir: string, ...args: string[]): void {
+  const full = ['-c', `user.name=${id.name}`, '-c', `user.email=${id.email}`, ...args];
   execFileSync('git', dir ? ['-C', dir, ...full] : full, { stdio: 'pipe' });
 }
 
@@ -175,6 +185,16 @@ export interface StartOptions {
    * at a dead address (see start) — 404s, driving the UI's monogram fallback.
    */
   stackIcons?: Record<string, string>;
+  /** Per-stack initial `docker-compose.yml` body, keyed by stack name; stacks
+   *  without an entry get the default one-service placeholder. Lets a run start
+   *  from realistic multi-service composes, so the FIRST deploy is already the
+   *  real thing — used by the docs-screenshot renderer, where a
+   *  placeholder-to-real migration would show up as junk rows in the feed. */
+  initialCompose?: Record<string, string>;
+  /** Identity the harness commits as (default `e2e <e2e@example.com>`). The
+   *  docs-screenshot renderer sets Renovate, since a Renovate-driven bump is the
+   *  loop skipper exists for and the diff panel shows the author. */
+  commitAuthor?: CommitIdentity;
   /** Extra env for the stub docker (e.g. STUB_DOCKER_FAIL_NTH_UP, or
    *  STUB_DOCKER_ECHO=<line> to print a line to stdout on `up` so the captured
    *  child-process output reaches the log ring). */
@@ -347,6 +367,7 @@ export class Skipper {
   private readonly holdFile: string;
   private readonly hookHoldFile: string;
   private readonly stacks: string[];
+  private readonly author: CommitIdentity;
   private readonly cfgPath: string;
   private readonly healthDir: string;
   private readonly orphansDir: string;
@@ -365,6 +386,7 @@ export class Skipper {
     holdFile: string;
     hookHoldFile: string;
     stacks: string[];
+    author: CommitIdentity;
     cfgPath: string;
     healthDir: string;
     orphansDir: string;
@@ -381,6 +403,7 @@ export class Skipper {
     this.holdFile = init.holdFile;
     this.hookHoldFile = init.hookHoldFile;
     this.stacks = init.stacks;
+    this.author = init.author;
     this.cfgPath = init.cfgPath;
     this.healthDir = init.healthDir;
     this.orphansDir = init.orphansDir;
@@ -404,6 +427,8 @@ export class Skipper {
   static async start(opts: StartOptions = {}): Promise<Skipper> {
     const stacks = opts.stacks ?? ['web'];
     const stackIcons = opts.stackIcons ?? {};
+    const initialCompose = opts.initialCompose ?? {};
+    const author = opts.commitAuthor ?? defaultIdentity;
     const base = mkdtempSync(join(tmpdir(), 'skipper-ui-e2e-'));
     const origin = join(base, 'origin');
     const repoDir = join(base, 'state', 'repo');
@@ -421,10 +446,10 @@ export class Skipper {
     writeFileSync(holdFile, '');
 
     // Origin repo with one committed compose per stack.
-    git('', 'init', '-b', 'main', origin);
+    gitAs(author, '', 'init', '-b', 'main', origin);
     for (const name of stacks) {
       mkdirSync(join(origin, name), { recursive: true });
-      writeFileSync(join(origin, name, 'docker-compose.yml'), defaultCompose);
+      writeFileSync(join(origin, name, 'docker-compose.yml'), initialCompose[name] ?? defaultCompose);
       if (stackIcons[name] !== undefined) {
         writeFileSync(join(origin, name, 'icon.svg'), stackIcons[name]);
       }
@@ -443,8 +468,8 @@ export class Skipper {
     // ADR-0043: per-stack overrides go into the host config's stacks: list, not
     // an in-repo skipper.yaml (a leftover one is now a hard error). setRepoConfig
     // still writes one on purpose, to exercise that guard.
-    git(origin, 'add', '.');
-    git(origin, 'commit', '-m', 'initial');
+    gitAs(author, origin, 'add', '.');
+    gitAs(author, origin, 'commit', '-m', 'initial');
 
     // Stub docker on its own dir, prepended to PATH.
     const stubDir = join(base, 'stub-bin');
@@ -617,6 +642,7 @@ export class Skipper {
       holdFile,
       hookHoldFile,
       stacks,
+      author,
       cfgPath,
       healthDir,
       orphansDir,
@@ -660,17 +686,22 @@ export class Skipper {
    *  against the last deployed commit (has_diffs=true) — the realistic case. */
   setNixConfig(content: string): void {
     writeFileSync(join(this.origin, 'configuration.nix'), content);
-    git(this.origin, 'commit', '-am', 'update configuration.nix');
+    gitAs(this.author, this.origin, 'commit', '-am', 'update configuration.nix');
   }
 
-  /** setStackImage rewrites a stack's compose to a new nginx tag and commits it,
-   *  simulating a pushed change. */
+  /** setStackImage retags the FIRST service in a stack's compose and commits it,
+   *  simulating a pushed version bump. On the default one-service placeholder that
+   *  is `nginx:<tag>`, as it always was; on a realistic multi-service compose
+   *  (initialCompose / setStackServices) it moves just that one tag, so the pushed
+   *  diff is the single line a dependency bot would write. */
   setStackImage(stack: string, tag: string): void {
-    writeFileSync(
-      join(this.origin, stack, 'docker-compose.yml'),
-      `services:\n  app:\n    image: nginx:${tag}\n`,
-    );
-    git(this.origin, 'commit', '-am', `bump ${stack} to ${tag}`);
+    const path = join(this.origin, stack, 'docker-compose.yml');
+    const current = readFileSync(path, 'utf8');
+    // Only the tag after the last ':' of the first image line — a registry
+    // `host:port` earlier in the reference must survive.
+    const bumped = current.replace(/^(\s+image: \S*?)(?::[^:/\s]+)?$/m, `$1:${tag}`);
+    writeFileSync(path, bumped);
+    gitAs(this.author, this.origin, 'commit', '-am', `bump ${stack} to ${tag}`);
   }
 
   /** setStackServices rewrites a stack's compose to an explicit service→image map
@@ -683,7 +714,7 @@ export class Skipper {
       .map(([name, image]) => `  ${name}:\n    image: ${image}`)
       .join('\n');
     writeFileSync(join(this.origin, stack, 'docker-compose.yml'), `services:\n${body}\n`);
-    git(this.origin, 'commit', '-am', `update ${stack} services`);
+    gitAs(this.author, this.origin, 'commit', '-am', `update ${stack} services`);
   }
 
   /** setStackHealth scripts the stub's `docker compose ps` output for a stack, so
@@ -720,8 +751,8 @@ export class Skipper {
    *  ADR-0034) and commits it, simulating a pushed config change. */
   setRepoConfig(content: string): void {
     writeFileSync(join(this.origin, 'skipper.yaml'), content);
-    git(this.origin, 'add', 'skipper.yaml');
-    git(this.origin, 'commit', '-m', 'update skipper.yaml');
+    gitAs(this.author, this.origin, 'add', 'skipper.yaml');
+    gitAs(this.author, this.origin, 'commit', '-m', 'update skipper.yaml');
   }
 
   /** sendWebhook posts a correctly signed push payload for ref, returning the status. */
