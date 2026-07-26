@@ -2,7 +2,10 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -598,12 +601,31 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
 
+	// Retired keys are checked before decoding so an un-migrated config is told
+	// what its setting is called now, rather than getting the generic
+	// unknown-key error the strict decode below would produce.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("parse config file: %w", err)
+	}
+	if err := checkRenamedKeys(&doc); err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		Port:        8080,
 		MetricsPort: 9120,
 	}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("parse config file: %w", err)
+	// KnownFields rejects keys the config has no field for. A typo (env_file
+	// for env_files) or a key left over from an older version would otherwise
+	// be dropped in silence, and skipper would run with a setting the operator
+	// believes is in effect. Nested structs inherit the strictness, except
+	// deploy_health_check, which decodes through its own UnmarshalYAML.
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(cfg); err != nil && !errors.Is(err, io.EOF) {
+		// io.EOF is an empty document — no keys to apply, defaults stand.
+		return nil, fmt.Errorf("parse config file: %w — check the key spelling and value types against docs/configuration.md; unknown keys are rejected rather than ignored", err)
 	}
 
 	// stack_discovery defaults to true (ADR-0043). The field is a plain bool, so
