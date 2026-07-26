@@ -51,6 +51,14 @@ two-host popover), a second host fanned in over `peers:` plus one that is
 unreachable, the autosync drawer with a pending count, the logs view, and the
 theme switcher.
 
+**Reconcile is off** (`reconcile_interval_seconds: 0`). The failure states are
+transient in product terms — a rolled-back stack stays dirty and retries, a
+blocked one unblocks once its dependency succeeds — so a reconcile tick would
+resolve them a few minutes in and leave whoever opens the preview later looking
+at an all-green board. Deploys here come from the seeding's own webhooks
+instead, which keeps the spread stable for the session. Push to the throwaway
+origin yourself and hit `/webhook` if you want another run.
+
 **Not reachable here:** `rolled_back_unhealthy` and `heal_exhausted`. Both need a
 stack to keep failing across several attempts, which would make the fixture slow
 and noisy for two badges; the e2e masks cover them.
