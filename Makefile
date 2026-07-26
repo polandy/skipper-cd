@@ -2,7 +2,7 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview
+.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview docs-screenshots
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
@@ -77,6 +77,19 @@ docs:
 docker-build:
 	docker build -t skipper-cd:ci .
 	trivy image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 skipper-cd:ci
+
+## --- docs screenshots (rendered, never committed) -------------------------
+# Renders docs/assets/screenshots/*.png from a seeded instance, exactly as the
+# docs workflow does before `mkdocs build`. Needs the Playwright browsers
+# (`cd e2e/ui && npx playwright install chromium`); on a host whose bundled
+# Chromium cannot run, set PW_CHROMIUM_EXECUTABLE.
+docs-screenshots:
+	V=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); \
+	CGO_ENABLED=0 go build -buildvcs=false \
+	  -ldflags "-X main.version=$${V:-0.0.0} -X main.commit=$$(git rev-parse --short HEAD)" \
+	  -o e2e/ui/.docs-shot-bin ./cmd/skipper
+	cd e2e/ui && SKIPPER_E2E_BIN=$(CURDIR)/e2e/ui/.docs-shot-bin \
+	  npx playwright test --config screenshots/shots.config.ts
 
 ## --- ui-preview (not a CI job) --------------------------------------------
 # Boot a seeded skipper instance for manually eyeballing the web UI, then stay

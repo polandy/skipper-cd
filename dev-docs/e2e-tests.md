@@ -1293,7 +1293,21 @@ the `app-helpers` unit layer (`watchedSummary`).
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
-lean set of high-value per-mask anchors, not every case. The landed baselines:
+lean set of high-value per-mask anchors, not every case.
+
+They are tracked with **Git LFS** ([ADR-0052](adr/0052-binary-assets-out-of-git-history.md)):
+a UI tweak regenerates up to six full PNGs and a PNG never delta-compresses, so
+history keeps a pointer and the bytes live in LFS.
+
+`git-lfs` on PATH (`nix develop` provides it) is needed in exactly two situations:
+**regenerating** a baseline — `git add` fails without it — and running with
+`RUN_SNAPSHOTS=1`, which compares against the real PNGs. A plain local
+`make e2e-ui` leaves the compares off (below), so pointer files are harmless
+there. To get the real files: `git lfs install && git lfs pull`. CI fetches them
+in a small `baselines` job and hands them to `e2e-ui` as an artifact, because
+Playwright's pinned container ships no git-lfs (§7).
+
+The landed baselines:
 
 | Baseline | Anchor case | Target | Masked |
 | --- | --- | --- | --- |
@@ -1345,6 +1359,45 @@ masked the pane's layout diffs run-to-run. UB2's value — the level-badge mappi
   ```
 
   Then review the changed PNGs before committing. (`.pw-bin/` is gitignored.)
+
+### 5.1 Docs screenshots — rendered, never committed
+
+The two images the docs landing page embeds
+(`docs/assets/screenshots/{deploys,stacks}.png`) are **not** in git. A screenshot
+of the UI is derived from the UI, and a PNG never delta-compresses — committing
+one on every UI change would grow the repo without bound. They are rendered from
+a seeded instance instead, by `screenshots/docs-shots.spec.ts` under its own
+config (`screenshots/shots.config.ts`, kept out of the suite's `testDir`):
+
+```sh
+make docs-screenshots     # builds the binary, renders into docs/assets/screenshots/
+```
+
+`.github/workflows/docs.yml` runs the same renderer in Playwright's pinned
+container, hands the PNGs to the `build` job as an artifact, and only then runs
+`mkdocs build --strict` — so a missing or broken render fails the docs gate. The
+workflow's path filter therefore covers `internal/ui/**` and `e2e/ui/**` too: a UI
+change must refresh the published images.
+
+It is a **renderer, not a test** — it asserts only enough to know the page is
+ready to photograph. What it stages, and why:
+
+- Six stacks named after real self-hosted apps, whose logos it fetches from the
+  icon set skipper auto-matches against (a fetch failure is not fatal — the rows
+  fall back to monogram chips rather than breaking the docs build).
+- `initialCompose` gives each stack a realistic multi-service compose from the
+  start, so the first deploy is already the real thing rather than a
+  placeholder-to-real migration.
+- `commitAuthor` makes the pushes Renovate-authored, since the diff panel names
+  the author and a bot-driven bump is the loop skipper exists for.
+- Three staged pushes: a version bump whose row's diff is the focal point, a
+  second push **held** at `compose up` so the top row stays `deploying`, then the
+  remaining stacks bumped so every roster row carries a commit — with each bumped
+  stack's `setStackHealth` updated to match, so the Stacks view's versions agree
+  with its commits.
+
+Because the images are gitignored, a local `mkdocs build --strict` fails on the
+missing files until `make docs-screenshots` has run once.
 
 ## 6. Traceability
 
@@ -1436,3 +1489,13 @@ already pins actions:
   `RUN_SNAPSHOTS=1` turns on the pixel compares against the committed baselines
   (§5). Uploads the Playwright HTML report + `test-results/` (traces and snapshot
   diffs) on failure.
+
+- **baselines**: fetches the LFS-tracked visual baselines on a runner that has
+  git-lfs and uploads them as an artifact, which `e2e-ui` unpacks over the pointer
+  files its in-container checkout wrote (ADR-0052).
+
+A third job lives in `.github/workflows/docs.yml`, not here:
+
+- **screenshots**: renders the docs landing-page images (§5.1) in the same pinned
+  container and hands them to the docs build as an artifact. It asserts nothing
+  about the product — it exists so those PNGs never have to be committed.

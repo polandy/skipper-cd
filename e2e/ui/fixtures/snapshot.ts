@@ -6,7 +6,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 // rasterise differently, so the pixel compare is opt-in via RUN_SNAPSHOTS,
 // which the `e2e-ui` CI job (and the baseline-generation run) sets. When it is
 // unset the behaviour assertions still run; only the screenshot is skipped, so
-// `docs/e2e-tests.md` §5 holds: local runs compare behaviour, CI compares pixels.
+// `dev-docs/e2e-tests.md` §5 holds: local runs compare behaviour, CI compares pixels.
 export const snapshotsEnabled = !!process.env.RUN_SNAPSHOTS;
 
 type ScreenshotOptions = Parameters<ReturnType<typeof expect<Locator>>['toHaveScreenshot']>[1];
