@@ -34,6 +34,45 @@ const validCompose = `services:
     image: nginx:1.27
 `
 
+func TestValidateConfigFile_RedactsRepoURLCredentials(t *testing.T) {
+	tests := []struct {
+		name, repoURL, wantIn string
+	}{
+		{
+			name:    "password in userinfo",
+			repoURL: "https://user:sekrit-token@example.com/user/deploy.git",
+			wantIn:  "https://user:xxxxx@example.com/user/deploy.git",
+		},
+		{
+			name:    "token as sole userinfo",
+			repoURL: "https://sekrit-token@example.com/user/deploy.git",
+			wantIn:  "https://xxxxx@example.com/user/deploy.git",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeConfig(t, dir, `
+repo_url: `+tt.repoURL+`
+repo_dir: `+filepath.Join(dir, "repo")+`
+stacks_base_dir: modules
+webhook_secret: test-secret
+`)
+
+			var out strings.Builder
+			if code := validateConfigFile(path, &out); code != validateOK {
+				t.Fatalf("expected exit code %d, got %d — output:\n%s", validateOK, code, out.String())
+			}
+			if strings.Contains(out.String(), "sekrit-token") {
+				t.Errorf("report leaked the credential, got:\n%s", out.String())
+			}
+			if !strings.Contains(out.String(), tt.wantIn) {
+				t.Errorf("report should show the redacted URL %q, got:\n%s", tt.wantIn, out.String())
+			}
+		})
+	}
+}
+
 func TestValidateConfigFile_ValidConfigWithCloneReportsStacks(t *testing.T) {
 	dir := t.TempDir()
 	repoDir := filepath.Join(dir, "repo")
