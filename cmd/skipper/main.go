@@ -469,7 +469,7 @@ func main() {
 		if stateB != nil {
 			stateB.Publish(events.StateEvent{Name: events.StateAutosync, Data: snap})
 			stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: autosyncQueue.View(order())})
-			stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), auditLog)})
+			stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), auditLog, deployer.CurrentTrackedFiles(), repoSync.RepoDir())})
 		}
 	}
 	deployer = deploy.New(deploy.Config{
@@ -628,8 +628,9 @@ type stacksState struct {
 }
 
 // buildStacksState assembles the `stacks` snapshot from the effective stack
-// set, the parked (disabled) names, and each stack's newest audit record.
-func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.Log) stacksState {
+// set, the parked (disabled) names, each stack's newest audit record, and the
+// input paths its change detection watches.
+func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.Log, tracked map[string][]string, repoDir string) stacksState {
 	last := func(name string) (audit.Record, bool) {
 		recs := auditLog.Stack(name, 1)
 		if len(recs) == 0 {
@@ -637,10 +638,37 @@ func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.
 		}
 		return recs[0], true
 	}
+	watched := func(name string) ([]string, bool) { return splitTrackedPaths(tracked[name], repoDir) }
 	return stacksState{
 		Disabled: disabled,
-		Roster:   roster.Build(stacks, disabled, last),
+		Roster:   roster.Build(stacks, disabled, last, watched),
 	}
+}
+
+// splitTrackedPaths renders a stack's tracked input paths for the UI and
+// separates out the one entry that is not a file.
+//
+// Files: a path inside the repo clone shows repo-relative (the form the
+// operator edits and commits), while a host path — an env file, a vars file —
+// stays absolute, since that is where it actually lives.
+//
+// Config: a stack's deploy-shaping config is hashed under a synthetic
+// <stacks_base_dir>/skipper.yaml key (ADR-0043 moved that config host-side, so
+// no such file exists). Reporting it as a watched path would send an operator
+// looking for a file that is not there, so it is returned as a flag instead.
+func splitTrackedPaths(paths []string, repoDir string) (files []string, configHashed bool) {
+	for _, p := range paths {
+		if filepath.Base(p) == config.RepoConfigFileName {
+			configHashed = true
+			continue
+		}
+		if rel, err := filepath.Rel(repoDir, p); err == nil && !strings.HasPrefix(rel, "..") {
+			files = append(files, rel)
+			continue
+		}
+		files = append(files, p)
+	}
+	return files, configHashed
 }
 
 // autosyncDeps bundles the autosync wiring the UI handlers need.
@@ -802,6 +830,7 @@ func webhookMux(d webhookDeps) *http.ServeMux {
 			peers:           d.peerRegistry,
 			auditLog:        d.auditLog,
 			autosync:        d.autosync,
+			repoDir:         d.cfg.RepoDir,
 		}
 		registerAppRoutes(mux, d.cfg, d.build)
 		registerEventRoutes(mux, d.broadcaster, d.history, d.auditLog, d.logRing, snap)
@@ -866,12 +895,13 @@ func registerIconRoutes(mux *http.ServeMux, cfg *config.Config, stacks func() []
 	iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 	iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
 	mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg, stacks)))
-	mux.Handle("POST /api/icons/refresh", icons.RefreshHandler(iconSvc))
+	mux.Handle("POST /api/icons/refresh", ui.RequireSameOrigin(icons.RefreshHandler(iconSvc)))
 }
 
 // registerAutosyncRoutes wires the autosync toggle and the deploy-queue view.
 func registerAutosyncRoutes(mux *http.ServeMux, as *autosyncDeps) {
-	autosyncH := ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger)
+	// The guard passes GET through untouched; only the POST override is gated.
+	autosyncH := ui.RequireSameOrigin(ui.AutosyncHandler(as.ctrl, as.order, as.publish, as.trigger))
 	mux.Handle("GET /api/autosync", autosyncH)
 	mux.Handle("POST /api/autosync", autosyncH)
 	mux.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
@@ -901,6 +931,7 @@ type stateSnapshot struct {
 	peers           *peers.Registry
 	auditLog        *audit.Log
 	autosync        *autosyncDeps
+	repoDir         string // to render tracked input paths repo-relative
 }
 
 // collect returns the current state events. As a side effect it polls the
@@ -914,7 +945,7 @@ func (s stateSnapshot) collect() []events.StateEvent {
 		{Name: events.StateQueue, Data: as.queue.View(as.order())},
 		{Name: events.StateUpcoming, Data: s.deployer.CurrentRunPlan()},
 		{Name: events.StateHookRun, Data: s.deployer.CurrentHookRun()},
-		{Name: events.StateStacks, Data: buildStacksState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog)},
+		{Name: events.StateStacks, Data: buildStacksState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repoDir)},
 	}
 	if s.healthPoller != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealth, Data: s.healthPoller.Current()})

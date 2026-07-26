@@ -8,12 +8,15 @@ import (
 
 // psLine mirrors the fields skipper needs from one object of
 // `docker compose ps --format json` output. Name is the container name — the
-// identifier on_demand_containers uses. onDemand is not part of the compose
-// output; probe marks it from the stack's config so classification can treat
-// an intentionally stopped on-demand container as stopped, not unhealthy.
+// identifier on_demand_containers uses. Image is the reference the container
+// actually runs, which is what the UI shows as the service's live version.
+// onDemand is not part of the compose output; probe marks it from the stack's
+// config so classification can treat an intentionally stopped on-demand
+// container as stopped, not unhealthy.
 type psLine struct {
 	Service  string `json:"Service"`
 	Name     string `json:"Name"`
+	Image    string `json:"Image"`
 	State    string `json:"State"`
 	Health   string `json:"Health"`
 	ExitCode int    `json:"ExitCode"`
@@ -126,7 +129,7 @@ func servicesOf(lines []psLine) []ServiceHealth {
 	}
 	svcs := make([]ServiceHealth, 0, len(lines))
 	for _, l := range lines {
-		svcs = append(svcs, ServiceHealth{Name: l.Service, State: l.State, Health: l.Health, Status: serviceStatus(l), OnDemand: l.onDemand})
+		svcs = append(svcs, ServiceHealth{Name: l.Service, Image: l.Image, State: l.State, Health: l.Health, Status: serviceStatus(l), OnDemand: l.onDemand})
 	}
 	return svcs
 }
