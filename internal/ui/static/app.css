@@ -1387,10 +1387,12 @@
     border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px;
     overflow-x: auto; white-space: nowrap;
   }
-  /* Not a path — the stack's own settings, hashed under a synthetic key. Muted
-     and non-mono so it never reads as a file you could open. */
+  /* Not a path — the stack's own settings, hashed under a synthetic key. A
+     plain muted line rather than a boxed entry: sharing the file box's shape
+     made it read as a second file, and a border style alone is too weak a
+     signal to carry that in the light variant. */
   .watched-panel .wp-config {
-    font-family: var(--font-sans); color: var(--text-muted); border-style: dashed;
+    padding: 2px 2px 0; font-size: 11.5px; color: var(--text-muted);
   }
   .watched-panel .wp-config code { font-family: var(--font-mono); font-size: 10.5px; }
   .audit-row {

@@ -2020,8 +2020,8 @@
       return `<li class="wp-file" data-testid="watched-file">${escapeHtml(f)}</li>`;
     });
     if (entry.watched_config) {
-      items.push('<li class="wp-file wp-config" data-testid="watched-config">' +
-        'this stack&rsquo;s settings in the host <code>skipper.yml</code></li>');
+      items.push('<li class="wp-config" data-testid="watched-config">' +
+        'plus this stack&rsquo;s settings in the host <code>skipper.yml</code></li>');
     }
     const el = document.createElement('div');
     el.className = 'watched-panel';
