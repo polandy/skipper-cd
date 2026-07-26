@@ -54,7 +54,7 @@ func newEmptyState() *persistedState {
 }
 
 // isEmpty reports whether nothing at all has been recorded yet: a first start,
-// a new host, or a lost/corrupt state file. It is what initial_deploy keys off
+// a new host, or a lost/corrupt state file. It marks the run a bootstrap run
 // (ADR-0051), so it must be read before the nixos phase, which records its own
 // hashes into the state ahead of the stack phase.
 func (s *persistedState) isEmpty() bool {

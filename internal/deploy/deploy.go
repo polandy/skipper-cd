@@ -865,11 +865,9 @@ func (d *Deployer) pullIfImagesChanged(ctx context.Context, run stackRun, compos
 	if d.bootstrapRun {
 		// Nothing is recorded, so every image reads as changed and this would
 		// pull the whole host at once — moving every floating tag (`:latest`,
-		// `:2`) to whatever it resolves to today, unattended, in one run. On a
-		// host that is merely being adopted or recovered, none of that was
-		// asked for. `up` below still creates whatever is missing, and compose
-		// fetches an image it does not have locally, so a genuinely fresh
-		// install is unaffected (ADR-0051).
+		// `:2`) to whatever it resolves to today, unattended. `up` still
+		// creates whatever is missing, and compose fetches an image the host
+		// does not have, so a fresh install is unaffected (ADR-0051).
 		slog.Info("skipping pull, bootstrap run", "stack", run.stack.Name)
 		return nil
 	}
