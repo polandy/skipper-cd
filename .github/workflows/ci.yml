@@ -73,6 +73,24 @@ jobs:
       - run: go vet -tags e2e ./e2e
       - run: go test -tags e2e -v -count=1 ./e2e
 
+  # Skipper's startup smoke test: boot the binary with the richest config in the
+  # repo (discovery + peers + hooks + icons + health watch + self-heal together)
+  # and assert it serves and still produces its spread of deploy outcomes. No
+  # path filter on purpose — the last time this fixture broke it was a rename in
+  # internal/config, not an edit to the script, so anything narrower would have
+  # missed it.
+  ui-preview-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: make ui-preview-smoke
+
   # UI end-to-end tests: Playwright drives the embedded web UI in a real browser
   # against the same skipper binary (built in globalSetup). It runs inside
   # Playwright's pinned container (matching @playwright/test in the lockfile) so

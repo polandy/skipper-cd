@@ -6,7 +6,7 @@
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
-ci: test vendor-check ui-fmt ui-lint ui-unit lint govulncheck e2e docs e2e-ui
+ci: test vendor-check ui-fmt ui-lint ui-unit lint govulncheck e2e docs e2e-ui ui-preview-smoke
 
 ## --- test job -------------------------------------------------------------
 build:
@@ -84,3 +84,8 @@ docker-build:
 # Override the port with PORT=… (default 3000). See dev-docs/ui-preview.md.
 ui-preview:
 	node scripts/ui-preview.mjs
+
+# Boot the seeded preview, assert it serves and still produces its spread of
+# deploy outcomes, then clean up. Run in CI as skipper's startup smoke test.
+ui-preview-smoke:
+	node scripts/ui-preview.mjs --smoke
