@@ -320,7 +320,7 @@ const cfg =
   `  - name: host-c\n    url: ${JSON.stringify(`http://127.0.0.1:${deadPeerPort}`)}\n` +
   `ui_enabled: true\n` +
   `ui_theme_switcher: true\n` +
-  `health_poll_interval_seconds: 3\n` +
+  `runtime_health_poll_interval_seconds: 3\n` +
   `health_watch:\n  debounce_polls: 1\n` +
   `command_timeout_seconds: 120\n` +
   // Dead source_url → auto-match icon fetches fail fast; committed icon.svg
@@ -328,12 +328,12 @@ const cfg =
   `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
   // Stack discovery (ADR-0034): the stack set comes from the repo dirs. Per-stack
   // overrides live in this one config's stacks: list (ADR-0043) — nextcloud keeps
-  // a health-check gate + hooks, immich has hooks, experiments is parked. The
+  // a deploy-health gate + hooks, immich has hooks, experiments is parked. The
   // rest are discovered.
   `stack_discovery: true\n` +
   `stacks:\n` +
   `  - name: nextcloud\n` +
-  `    health_check:\n      timeout_seconds: 1\n` +
+  `    deploy_health_check:\n      timeout_seconds: 1\n` +
   `    hooks:\n      pre_deploy:\n        - "echo backing up nextcloud database"\n      post_deploy:\n        - "echo occ upgrade complete"\n` +
   `  - name: immich\n` +
   `    hooks:\n      pre_deploy:\n        - "echo pausing backups"\n        - "sleep 4"\n      post_deploy:\n        - "echo verifying immich"\n` +
