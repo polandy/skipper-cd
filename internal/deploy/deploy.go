@@ -177,6 +177,18 @@ func New(cfg Config) *Deployer {
 		hookRunSink:  cfg.HookRunSink,
 	}
 	d.nextEventID.Store(cfg.StartEventID)
+
+	// Seed the tracked-file view from the persisted state, so the roster can
+	// answer "what is watched here" from the moment the UI is up rather than
+	// only after a run completes. A failed git sync returns before the deploy
+	// phase, and every stack would otherwise read as never deployed — the one
+	// wrong answer that surface exists to prevent.
+	if state, err := loadPersistedDeployState(stateDir); err != nil {
+		slog.Warn("could not read deploy state to seed the tracked-file view", "err", err)
+	} else {
+		tracked := state.trackedFiles()
+		d.trackedFiles.Store(&tracked)
+	}
 	return d
 }
 

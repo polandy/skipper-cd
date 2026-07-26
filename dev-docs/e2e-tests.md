@@ -1208,7 +1208,12 @@ place: which inputs are watched, and the commit nothing has changed since. See
   it with the rest of the card. The stack's hashed *config* renders as its own
   non-path entry (`watched-config`), never as a file. The lead's reference point
   is the deploy itself on a stack's *first* deploy (no prior commit to diff
-  against); **UAJ1b** pushes a change and asserts the SHA form once one exists.
+  against).
+- **UAJ1b — Since-commit after a real change.** A pushed compose bump deploys
+  for real, and the lead then names the short SHA the stack is at — the actual
+  answer to "I pushed, why is this stack quiet". Gated on the success row
+  appearing (the run finished and the `stacks` snapshot was republished), not
+  on a wait.
 - **UAJ2 — Parked stack.** A stack with `disabled: true` reports that skipper
   neither watches nor deploys it, and lists no files — rather than showing
   whatever its last deploy happened to record.
