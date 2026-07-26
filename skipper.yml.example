@@ -1,9 +1,9 @@
 repo_url: ssh://git@gitea.example.com/user/nixos-config.git
 repo_dir: /var/lib/skipper/repo         # optional, default: /var/lib/skipper/repo
 branch: main                            # optional, default: main
-vars_file: /etc/skipper/vars.env        # optional, changes trigger redeploy
+# vars_file: /etc/skipper/vars.env      # optional, changes trigger redeploy
 command_timeout_seconds: 300            # optional, default: 300 (5 minutes)
-stacks_base_dir: /var/lib/skipper/repo/modules
+stacks_base_dir: modules                # relative to repo_dir (the clone); omit for the repo root
 webhook_secret: "your-secret-here"
 port: 8080
 metrics_port: 9120
@@ -14,7 +14,7 @@ ui_enabled: false                      # enable the real-time web UI on the webh
 # ui_theme_switcher: false             # optional, default: false. When true, shows an in-UI
                                         # palette picker (a per-browser override) — handy for
                                         # trying themes out; off keeps the deployed theme fixed.
-# health_poll_interval_seconds: 30       # optional, default: 30. How often the UI polls its
+# runtime_health_poll_interval_seconds: 30  # optional, default: 30. How often the UI polls its
                                         # stacks' runtime health (docker compose ps). 0 disables
                                         # the health view. Only polls while a browser is connected.
 
@@ -29,8 +29,11 @@ stacks:
     # Optional post-deploy health gate → rollback on failure. `up` runs with
     # --wait, so it waits for the service's compose `healthcheck:` (which runs
     # INSIDE the container — no published port needed). `url` adds an extra HTTP
-    # probe FROM THE HOST, only for endpoints reachable there. See docs/configuration.md.
-    # health_check:
+    # probe FROM THE HOST, only for endpoints reachable there. A stack whose
+    # compose file declares a healthcheck: gets this gate automatically, so set
+    # it only to override the defaults (or to `false` to opt out entirely).
+    # See docs/configuration.md.
+    # deploy_health_check:
     #   timeout_seconds: 60                # optional, default: 60
     #   # url: http://localhost:3000/healthz # optional; host-reachable endpoints only
 
@@ -39,10 +42,12 @@ stacks:
       - /run/secrets/rendered/skipper/compose.env
     icon: grafana    # optional web-UI icon slug; overrides the auto-match on the stack name
 
-  # Set working_dir when a NixOS systemd service also manages this stack,
-  # so Docker Compose uses the same project identity for both.
+  # Set project_directory when a NixOS systemd service also manages this stack,
+  # so Docker Compose uses the same project identity for both. It is NOT where
+  # the compose file is read from — that is always <stacks_base_dir>/<name> in
+  # the repo clone.
   - name: nextcloud
-    working_dir: /etc/nixos/modules/nextcloud
+    project_directory: /etc/nixos/modules/nextcloud
     env_files:
       - /run/secrets/rendered/skipper/compose.env
 
