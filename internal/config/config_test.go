@@ -1026,4 +1026,3 @@ stacks:
 		t.Errorf("expected no warnings, got %v", cfg.Warnings)
 	}
 }
-
