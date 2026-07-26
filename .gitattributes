@@ -6,7 +6,9 @@
 # PWA icons) stay in git as normal: they cost their size once. See
 # dev-docs/adr/0052-binary-assets-out-of-git-history.md.
 #
-# Working on the UI suite needs git-lfs on PATH (`nix develop` provides it):
+# git-lfs on PATH (`nix develop` provides it) is needed to REGENERATE a baseline —
+# `git add` fails without it — and for any run that compares pixels
+# (`RUN_SNAPSHOTS=1`, i.e. the e2e-ui CI job). A plain local `make e2e-ui` skips the
+# compares, so pointer files are harmless there. To get the real PNGs:
 #   git lfs install && git lfs pull
-# Without it the baselines check out as pointer text and the pixel compares fail.
 e2e/ui/__screenshots__/**/*.png filter=lfs diff=lfs merge=lfs -text

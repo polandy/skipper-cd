@@ -1285,12 +1285,15 @@ lean set of high-value per-mask anchors, not every case.
 
 They are tracked with **Git LFS** ([ADR-0052](adr/0052-binary-assets-out-of-git-history.md)):
 a UI tweak regenerates up to six full PNGs and a PNG never delta-compresses, so
-history keeps a pointer and the bytes live in LFS. Working on this suite therefore
-needs `git-lfs` on PATH — `nix develop` provides it, otherwise install it and run
-`git lfs install && git lfs pull` once per clone. Without it the baselines check
-out as pointer text and every pixel compare fails. CI fetches them in a small
-`baselines` job and hands them to `e2e-ui` as an artifact, because Playwright's
-pinned container ships no git-lfs (§7).
+history keeps a pointer and the bytes live in LFS.
+
+`git-lfs` on PATH (`nix develop` provides it) is needed in exactly two situations:
+**regenerating** a baseline — `git add` fails without it — and running with
+`RUN_SNAPSHOTS=1`, which compares against the real PNGs. A plain local
+`make e2e-ui` leaves the compares off (below), so pointer files are harmless
+there. To get the real files: `git lfs install && git lfs pull`. CI fetches them
+in a small `baselines` job and hands them to `e2e-ui` as an artifact, because
+Playwright's pinned container ships no git-lfs (§7).
 
 The landed baselines:
 

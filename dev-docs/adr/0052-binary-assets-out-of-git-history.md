@@ -90,11 +90,18 @@ packages into it at run time would undermine that.
 
 - The repository stops accumulating screenshot bytes: ~700 KB per docs
   regeneration and ~175 KB per baseline regeneration no longer land in the pack.
-- **Working on the UI suite now requires `git-lfs`.** `nix develop` provides it;
-  otherwise `git lfs install && git lfs pull` once per clone. Without it the
-  baselines check out as ~130-byte pointer text and the pixel compares fail — a
-  confusing failure mode, so it is called out in `.gitattributes`,
-  `dev-docs/e2e-tests.md` §5 and `CLAUDE.md`.
+- **`git-lfs` becomes a requirement in two situations, not everywhere.**
+  Regenerating a baseline needs it (`git add` fails with "external filter git-lfs
+  not available"), and so does a pixel-comparing run — `RUN_SNAPSHOTS=1`, i.e. the
+  `e2e-ui` CI job. A plain local `make e2e-ui` leaves the compares off, so pointer
+  files are harmless there. `nix develop` provides git-lfs; otherwise
+  `git lfs install && git lfs pull`. The distinction is called out in
+  `.gitattributes`, `dev-docs/e2e-tests.md` §5 and `CLAUDE.md`, because a pointer
+  file mistaken for a PNG is a confusing failure.
+- **Consumers that fetch this repo as a tarball get pointer files**, not images —
+  GitHub's source archives and nix flake inputs do not run the LFS filters. Nothing
+  in the build reads a baseline (`nix build` verified), so this is inert; it is
+  recorded here so it is not rediscovered as a surprise.
 - A local `mkdocs build --strict` needs one `make docs-screenshots` run first,
   since the images it embeds are no longer in the tree.
 - CI grows two small jobs (`screenshots` in the docs workflow, `baselines` in

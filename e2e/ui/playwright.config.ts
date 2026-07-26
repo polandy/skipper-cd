@@ -9,7 +9,8 @@ export default defineConfig({
   // Build the skipper binary once before any test runs.
   globalSetup: './global-setup.ts',
   // Visual-snapshot baselines live under e2e/ui/__screenshots__/ (reviewed like
-  // code; see docs/e2e-tests.md §5). Generation and comparison happen only in the
+  // code — GitHub renders them in the diff — but Git LFS-tracked, ADR-0052; see
+  // dev-docs/e2e-tests.md §5). Generation and comparison happen only in the
   // pinned container, so the linux/chromium platform never varies — the path is
   // kept flat (no platform suffix).
   snapshotPathTemplate: '__screenshots__/{testFileName}/{arg}{ext}',
