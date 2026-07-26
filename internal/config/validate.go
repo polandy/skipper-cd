@@ -1,3 +1,7 @@
+// Config validation: what makes a loaded config invalid (refuse to start) or
+// merely suspicious (start, but warn). config.go holds the shape and the
+// loading; everything that rejects or flags a value lives here.
+
 package config
 
 import (
