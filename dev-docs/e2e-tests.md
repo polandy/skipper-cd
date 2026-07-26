@@ -1195,18 +1195,18 @@ image change — no hand-fed events.
 - **UAI4 — Digest-only rebuild.** A same-tag digest change (`nginx:1.25@sha256:…`)
   shows the shared tag `1.25` plus a `↻` rebuilt marker (no raw digest pair); the
   full digest is on the chip's `title`.
-- **UAI5 — Responsive.** On a 390 px viewport the Version column becomes a
-  full-width row **beneath** the name (asserted by bounding box) instead of
-  squeezing it — the name still renders in full (no ellipsis).
-- **UAI7 — Tablet.** On a 744 px viewport (iPad-mini portrait) the column drops
-  to its own line — the `Version` header is hidden, the delta sits below and
-  left of the name, and a two-service deploy's chips flow **side by side**
-  rather than stacking (the desktop one-per-line rule, UAI3, is what the width
-  paid for). The row keeps its remaining columns: the stack cell ends at or
-  before the status cell begins, which is what the six-column layout broke — it
-  printed the name over the chips. The line is **level with the health pill**
-  (seeded health gives the status cell its second line): measured against the
-  pill's own top, it was 33 px below it while the line sat under the whole row.
+- **UAI5 — Responsive.** On a 390 px viewport the row is two lines and the
+  Version cell shares the second one with the time — below the name, beside the
+  time (asserted by bounding box, all boxes read in **one** measurement pass so
+  a prepended row cannot have two reads describe different rows). Duration and
+  Files are hidden; the name still renders in full (no ellipsis).
+- **UAI7 — Tablet.** On a 744 px viewport (iPad-mini portrait) **Duration and
+  Files give up their tracks** — hidden in the rows *and* in the header — so
+  Version keeps the first line: level with the name, right of the stack cell,
+  ending before the status cell begins, chips still stacked one per line. Seeded
+  health (`healthPoll: 1` + `initialHealth`) gives the status cell its second
+  line, the widest state the row reaches. The stack name is asserted present:
+  squeezing all six columns rendered an icon cluster with no stack behind it.
 - **UAI6 — View-options toggle.** The Deploys popover's **Version changes** toggle
   (on by default) collapses the whole column when flipped off — no chips, no
   `Version` header, and no row separators (they exist only because the column
@@ -1246,6 +1246,12 @@ versions render from a real snapshot.
 - **UAK5 — Patched in place.** A later poll carrying a new image updates the cell
   (`v1.120.0`, count gone) while the row's open panel survives — the versions
   arrive with health, not with the roster snapshot.
+- **UAK6 — Tablet.** On an 820 px viewport **Commit** gives up its column —
+  header label and cells — so Version keeps the row's first line beside the
+  name (asserted by bounding box, read in one measurement pass). The stack name
+  is asserted present and non-zero: `immich`'s cell also carries a change chip,
+  an app link and the log/jump glyphs, which wrap to a second line inside the
+  cell rather than squeezing the row's identity away.
 
 Behaviour-only (no snapshot): the cell is structural, and the lead-service and
 token logic are covered by the `app-helpers` unit layer (`rosterVersion` /

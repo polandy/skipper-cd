@@ -182,10 +182,12 @@ test.describe('UI4: digest-only rebuild', () => {
   });
 });
 
-// UI5 — a phone has no columns (the row is a 2×2 block), so the Version column
-// becomes a full-width row beneath the name/time rather than squeezing the name.
+// UI5 — a phone has no columns to spare, so the row is two lines: name and
+// status on the first, time · version on the second. The version rides as high
+// as the width allows (Duration and Files are dropped for it, as on a tablet)
+// without ever squeezing the name, the row's identity.
 test.describe('UI5: responsive', () => {
-  test('the Version column becomes its own row on a phone', async ({ page, skipper }) => {
+  test('the Version cell shares the phone row\'s second line with the time', async ({ page, skipper }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto(`${skipper.baseURL}/`);
 
@@ -195,26 +197,42 @@ test.describe('UI5: responsive', () => {
     const row = successRow(page, 'web');
     const d = delta(page, 'web');
     await expect(d).toBeVisible();
-    const nameBox = await row.locator('.stack-name').boundingBox();
-    const deltaBox = await d.boundingBox();
-    expect(nameBox && deltaBox).toBeTruthy();
-    // Below the name (its own row), starting at the row's left edge — not inline.
-    expect(deltaBox!.y).toBeGreaterThan(nameBox!.y + nameBox!.height - 2);
-    expect(deltaBox!.x).toBeLessThan(nameBox!.x);
+    // One measurement pass over the settled row: reading each box through its
+    // own locator re-resolves `.first()` every time, and a row prepended between
+    // two reads would have them describe different rows.
+    const { nameBox, timeBox, deltaBox } = await row.evaluate((r) => {
+      const box = (sel: string) => {
+        const el = r.querySelector(sel) as HTMLElement;
+        const b = el.getBoundingClientRect();
+        return { x: b.x, y: b.y, width: b.width, height: b.height };
+      };
+      return {
+        nameBox: box('.stack-name'),
+        timeBox: box('[data-testid="time-cell"]'),
+        deltaBox: box('[data-testid="svc-delta"]'),
+      };
+    });
+    // Second line: below the name, beside the time rather than under it.
+    expect(deltaBox.y).toBeGreaterThan(nameBox.y + nameBox.height - 2);
+    expect(Math.abs(deltaBox.y - timeBox.y)).toBeLessThan(6);
+    expect(deltaBox.x).toBeGreaterThan(timeBox.x + timeBox.width - 2);
+    // Duration and Files give up their space for it (both stay in the panel).
+    await expect(row.locator('.cell-duration')).toBeHidden();
+    await expect(row.locator('.col-files')).toBeHidden();
     // The name still renders in full (nothing was squeezed to make room).
     const clipped = await row.locator('.stack-name').evaluate((el) => el.scrollWidth > el.clientWidth + 1);
     expect(clipped).toBe(false);
   });
 });
 
-// UI7 — a tablet still has columns, but not six of them: the Version track fell
-// to ~80px there, which wrapped every chip over three lines and let the stack
-// cell (which cannot shrink while a pending tag is beside it) print straight
-// over the chips. Below 1000px the column drops to a full-width line of its own,
-// the same move the phone makes one step further down.
+// UI7 — a tablet has columns, just not six of them. Squeezing all six left the
+// Version track ~80px, which wrapped every chip over three lines and let the
+// stack cell print straight over them; so Duration and Files give up their
+// tracks instead and Version keeps its place on the first line, in front of the
+// status, where a column of versions can still be scanned down the page.
 test.describe('UI7: tablet', () => {
-  // Seeded health gives the status cell its second line (badge over health
-  // pill) — the line the version line has to be level with.
+  // Seeded health gives the status cell its second line, the widest state the
+  // row reaches — the layout has to hold with it.
   test.use({
     startOptions: {
       stacks: ['web', 'api', 'worker', 'database'],
@@ -223,11 +241,11 @@ test.describe('UI7: tablet', () => {
     },
   });
 
-  test('the Version column drops to its own line and the row keeps its columns', async ({ page, skipper }) => {
+  test('Version keeps the first line while Duration and Files give up theirs', async ({ page, skipper }) => {
     await page.setViewportSize({ width: 744, height: 1000 }); // iPad-mini portrait
     await page.goto(`${skipper.baseURL}/`);
 
-    // Two services so the chips' own flow is observable.
+    // Two services so the column's own stacking is observable.
     skipper.setStackServices('api', { app: 'nginx:1.26', cache: 'redis:7' });
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
 
@@ -235,38 +253,47 @@ test.describe('UI7: tablet', () => {
     const d = delta(page, 'api');
     await expect(d).toBeVisible();
 
-    // The column is gone from the header — the rows no longer have that track,
-    // and an empty header cell would leave the remaining five out of lockstep.
-    await expect(page.locator('.event-list-header .col-version')).toBeHidden();
+    // Version stays a real column, header included; Duration and Files are the
+    // two that go — from the rows and from the header, so the four that remain
+    // stay in lockstep.
+    await expect(page.locator('.event-list-header .col-version')).toBeVisible();
+    await expect(page.locator('.event-list-header .eh-dur')).toBeHidden();
+    await expect(page.locator('.event-list-header .eh-files')).toBeHidden();
+    await expect(row.locator('.cell-duration')).toBeHidden();
+    await expect(row.locator('.col-files')).toBeHidden();
 
-    // Its own line, beneath the name and starting left of it.
-    const nameBox = (await row.locator('.stack-name').boundingBox())!;
-    const deltaBox = (await d.boundingBox())!;
-    expect(nameBox && deltaBox).toBeTruthy();
-    expect(deltaBox.y).toBeGreaterThan(nameBox.y + nameBox.height - 2);
-    expect(deltaBox.x).toBeLessThan(nameBox.x);
-
-    // On a full-width line the chips flow side by side instead of stacking (the
-    // desktop column's one-per-line rule, UI3, is what the width paid for).
+    // On the first line, between the name and the status. One measurement pass
+    // over the settled row: reading each box through its own locator re-resolves
+    // `.first()` every time, and a row prepended between two reads would have
+    // them describe different rows.
     const chips = d.locator('.tag-delta');
     await expect(chips).toHaveCount(2);
-    const boxes = await chips.evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ x: r.x, y: r.y })));
-    expect(Math.abs(boxes[1].y - boxes[0].y)).toBeLessThan(2);
-    expect(boxes[1].x).toBeGreaterThan(boxes[0].x);
+    const { nameBox, stackBox, statusBox, deltaBox, chipBoxes } = await row.evaluate((r) => {
+      const rect = (el: Element) => {
+        const b = el.getBoundingClientRect();
+        return { x: b.x, y: b.y, width: b.width, height: b.height };
+      };
+      const box = (sel: string) => rect(r.querySelector(sel) as HTMLElement);
+      return {
+        nameBox: box('.stack-name'),
+        stackBox: box('.cell-stack'),
+        statusBox: box('.status-cell'),
+        deltaBox: box('[data-testid="svc-delta"]'),
+        chipBoxes: [...r.querySelectorAll('.tag-delta')].map(rect),
+      };
+    });
+    expect(Math.abs(deltaBox.y - nameBox.y)).toBeLessThan(6);
+    expect(deltaBox.x).toBeGreaterThan(stackBox.x + stackBox.width - 2);
+    expect(deltaBox.x + deltaBox.width).toBeLessThanOrEqual(statusBox.x + 1);
 
-    // The remaining columns still are columns: the stack cell stays inside its
-    // track rather than printing over the status badge beside it.
-    const stackBox = (await row.locator('.cell-stack').boundingBox())!;
-    const statusBox = (await row.locator('.status-cell').boundingBox())!;
-    expect(stackBox && statusBox).toBeTruthy();
-    expect(stackBox.x + stackBox.width).toBeLessThanOrEqual(statusBox.x);
+    // Still a column: the chips stack one per line, as they do on a desktop.
+    expect(chipBoxes[1].y).toBeGreaterThan(chipBoxes[0].y);
+    expect(Math.abs(chipBoxes[1].x - chipBoxes[0].x)).toBeLessThan(2);
 
-    // Level with the status cell's own second line: the health pill. The status
-    // cell is two lines tall while Time and Stack are one, so a version line
-    // placed under the whole row left a band of empty row above it and pushed
-    // the versions away from the row they describe.
-    const pillBox = (await row.locator('[data-testid="health-pill"]').boundingBox())!;
-    expect(pillBox).toBeTruthy();
-    expect(Math.abs(deltaBox.y - pillBox.y)).toBeLessThan(4);
+    // The name keeps its floor rather than being squeezed away by the cell's
+    // own affordances — the row must never render an icon cluster with no stack
+    // behind it.
+    await expect(row.locator('.stack-name')).toHaveText('api');
+    expect(nameBox.width).toBeGreaterThan(0);
   });
 });

@@ -3092,67 +3092,48 @@
   }
 
   /* ─── RESPONSIVE ─── */
-  /* Tablet/narrow desktop: five roster columns don't fit. The stack cell carries
-     a host chip, icon, name and up to four inline affordances, so squeezing it to
-     buy the Version column its width ellipsizes the stack NAME — the row's
-     identity — away. Instead the Version cell drops to a full-width second line
-     under the row (the same move the phone layout makes one step further down),
-     which costs height but keeps every column's content intact. Its header label
-     goes with it, so the remaining four stay in lockstep with the rows. */
-  @media (max-width: 1000px) {
-    /* Last deploy is trimmed to what `48s ago` needs (absolute mode ellipsises,
-       as it does on a phone) so the width goes to the Stack cell — with a
-       change chip and an app-link beside the name it was losing characters
-       while the column next to it sat half empty. */
-    .roster-list-header, .roster-row { grid-template-columns: 1fr 130px 104px 84px; }
-    .roster-list-header .rh-ver { display: none; }
-    /* Level with the status cell's second line (its health pill), not below the
-       whole cell — see the deploy table's rule below for why. */
-    .roster-row { row-gap: 4px; }
-    .roster-row .col-version { grid-column: 1 / 2; grid-row: 2; }
-    .roster-row .roster-status { grid-column: 2; grid-row: 1 / span 2; }
-    /* A stack with no versions (parked, or nothing running) drops the line
-       entirely rather than leaving an empty one. Safe because the cell is
-       explicitly placed here — on the desktop grid the auto-placed cells after it
-       would slide into the freed track. */
-    .roster-row .col-version:empty { display: none; }
+  /* Tablet/narrow desktop: not every column fits, so both views drop their two
+     least essential ones and keep Version on the row's first line, in front of
+     the status — Deploys drops Duration and Files, Stacks drops Commit. The
+     version is the answer to "what moved / what runs", which is worth more per
+     pixel than a duration, a file count or a SHA; those stay reachable (the
+     duration and files in the row's own panel, the commit in the deploy
+     history). Hiding a column, rather than squeezing all of them, is what keeps
+     the stack NAME — the row's identity — whole. */
+  @media (min-width: 701px) and (max-width: 1000px) {
+    /* Commit goes; Last deploy is trimmed to what `48s ago` needs (absolute
+       mode ellipsises, as it does on a phone) so the width goes to Stack and
+       Version. */
+    .roster-list-header, .roster-row { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) 130px 104px; }
+    .roster-list-header .rh-sha, .roster-row .roster-sha { display: none; }
 
-    /* The deploy table makes the same move for the same reason — its Stack cell
-       carries the identical host-chip/icon/name/affordance cluster. Six columns
-       left the Version track ~80px on a tablet: every chip wrapped over three
-       lines (`pg16-v0.3.0` / `→` / `pg16-v0.4.0`), and the stack name, which
-       cannot shrink while a pending tag is beside it, printed straight over the
-       chips. On its own line both fit whole. */
-    /* Time/Duration/Files are trimmed to what their own content needs
-       (`22h ago`, `1m 24s`, `2 files`) so the freed width goes to the Stack
-       cell, which is the one that runs out first. */
-    #deploy-table { --deploy-cols: 110px minmax(0, 1fr) 124px 60px 84px; }
-    .event-list-header .col-version { display: none; }
-    /* The second line starts beside the health pill, not below the whole status
-       cell: the status cell is two lines tall (badge over pill) while Time and
-       Stack are one, so a full-width line under everything left a band of empty
-       row and pushed the versions far from the row they belong to. Spanning the
-       status cell over both lines lets its pill sit on the version line instead,
-       and the versions take the width the two one-line columns leave free. */
-    /* Row gap tightened to the 4px the status cell puts between its badge and
-       its pill, so the version line lands level with that pill rather than a
-       column-gap below it — the two second lines read as one. */
-    .event-row { row-gap: 4px; }
-    .event-row .col-version { grid-column: 1 / 3; grid-row: 2; }
-    /* Column pinned as well as the row: an explicitly placed item with an auto
-       column is placed at the first free one, which threw the badge into the
-       Time track and pushed every other cell one column right. */
-    .event-row .status-cell { grid-column: 3; grid-row: 1 / span 2; }
-    /* Healed and peer rows emit an empty cell — no blank second line for them. */
-    .event-row .col-version:empty { display: none; }
-    /* A full-width line is no longer a column to scan down, so the chips flow
-       and wrap instead of stacking: a four-service deploy costs one or two
-       lines instead of four. */
-    .event-row .col-version .svc-delta { flex-direction: row; flex-wrap: wrap; }
+    /* Deploys: Duration and Files go, Time is trimmed to `22h ago`, and the two
+       that carry the row's meaning — Stack and Version — take what is freed. */
+    #deploy-table { --deploy-cols: 92px minmax(0, 1.05fr) minmax(0, 1fr) 124px; }
+    #deploy-table.no-version { --deploy-cols: 92px minmax(0, 1fr) 124px; }
+    .event-list-header .eh-dur, .event-list-header .eh-files,
+    .event-row .cell-duration, .event-row .col-files { display: none; }
+    /* With the files pill gone the row itself is the way into the diff (the
+       handler already falls back to the row's own pill), so it says so — the
+       same affordance the phone layout has. */
+    .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
+
+  }
+
+  /* Both narrow layouts, tablet and phone. */
+  @media (max-width: 1000px) {
     /* The pending tag is dropped at this width (see .paused-tag), so nothing is
        left for the name to yield to — it shrinks and ellipsises inside its own
        column again instead of overflowing into the next one. */
     .cell-stack .stack-name { flex-shrink: 1; }
+    /* But never to nothing: a row carrying a change chip, an app link and the
+       log/jump glyphs ran the name out of width entirely, leaving an icon
+       cluster with no stack behind it. The floor is the row's identity — below
+       it the affordances wrap to a second line inside the cell instead, since
+       they are the part that can move. Only here: the desktop grid has the
+       width, and a floor there would pad short names out and shift every row. */
+    .cell-stack, .roster-stack { flex-wrap: wrap; }
+    .cell-stack .stack-name, .roster-stack .roster-name { min-width: 7ch; }
   }
 
   @media (max-width: 700px) {
@@ -3188,48 +3169,50 @@
        popover "Search" row above is the entry point, so hide the glyph. (T3.11) */
     .stack-search-btn { display: none; }
 
+    /* Name and status on the first line, time · version · duration on the
+       second. The version rides as high as a phone allows: three cells on the
+       first line (name, version, status) is what a tablet has the width for and
+       a 390px row does not — the name, the row's identity, was squeezed to
+       nothing between them. On the second line it still sits in front of the
+       status column, one line up from the row of its own it used to get. */
     .event-row {
-      grid-template-columns: 1fr auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-rows: auto auto;
       gap: 4px 12px;
       padding: 10px 14px;
     }
 
     .cell-time { grid-column: 1; grid-row: 2; font-size: 11px; }
-    .cell-stack { grid-column: 1; grid-row: 1; }
-    /* Scoped to .event-row to outrank the tablet rule's two-row span, not just
-       follow it in source order — the phone block is a plain 2×2. */
-    .event-row .status-cell { grid-column: 2; grid-row: 1; }
-    .cell-duration { grid-column: 2; grid-row: 2; text-align: right; }
-    .col-files { display: none; }
-    /* A phone has no columns — the row is a 2×2 block — so the Version column
-       becomes a full-width third row under the name/time, keeping the wrapping
-       chip flow the tablet rules give it. It sits left of the tap centre, so
-       tapping the row still opens the diff/files panel. (The .no-version
-       collapse is the base rule's job; its higher specificity applies here too.)
-       Scoped to .event-row to outrank the tablet rule's row 2, not just follow
-       it in source order. */
-    .event-row .col-version { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
+    .cell-stack { grid-column: 1 / 3; grid-row: 1; }
+    .event-row .col-version { grid-column: 2; grid-row: 2; }
+    /* Spanning both lines, so the cell's second line — the health pill — sits
+       level with the version line rather than above it (same reason as the
+       tablet layout, where Stack is one line and Status two). */
+    .event-row .status-cell { grid-column: 3; grid-row: 1 / span 2; }
+    /* Duration and Files go, exactly as they do on a tablet: the version is
+       worth more on a narrow row than a `0s` and a file count, and the status
+       cell now owns the right-hand column across both lines. Both stay in the
+       row's own panel. */
+    .cell-duration, .col-files { display: none; }
+    /* The files pill is gone, so the row itself opens the diff/files panel. */
     .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
 
-    /* Roster collapses to the deploy-row 2×2: stack/status on top, time/commit below. */
+    /* Roster takes the same shape as the deploy row: name/version/status on the
+       first line, time and commit on the second. */
     .roster-list-header { display: none; }
     .roster-row {
-      grid-template-columns: 1fr auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-rows: auto auto;
       gap: 4px 12px;
       padding: 10px 14px;
     }
-    .roster-stack  { grid-column: 1; grid-row: 1; }
-    /* Scoped like .event-row's, to outrank the tablet rule's two-row span. */
-    .roster-row .roster-status { grid-column: 2; grid-row: 1; justify-self: end; }
+    .roster-stack  { grid-column: 1 / 3; grid-row: 1; }
+    .roster-row .col-version { grid-column: 2; grid-row: 2; }
+    .roster-row .roster-status { grid-column: 3; grid-row: 1 / span 2; justify-self: end; }
     .roster-when   { grid-column: 1; grid-row: 2; font-size: 11px; }
-    .roster-sha    { grid-column: 2; grid-row: 2; justify-self: end; }
-    /* The Version cell becomes a third full-width row under name/time, exactly as
-       it does on a deploy row — one row further down than the tablet layout, which
-       has no time/commit line above it (and whose roster-scoped rule would
-       otherwise still win here on specificity). */
-    .roster-row .col-version { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
+    /* Commit goes, as on a tablet — the status column now spans both lines, and
+       the SHA is in the row's deploy history. */
+    .roster-sha    { display: none; }
 
     /* Containers panel: five cells on one line overflow a phone (the version chip
        cannot ellipsize — a half-shown tag is worse than none), so the version

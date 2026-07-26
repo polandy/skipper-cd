@@ -160,22 +160,35 @@ test('UAK5: a new image on the next poll updates the cell without dropping a pan
   await expect(row(page, 'immich')).toHaveClass(/audit-open/);
 });
 
-// UAK6 — no room for five columns below 1000 px: the cell drops to its own line
-// under the row rather than squeezing the stack name away.
-test('UAK6: the version drops to its own line on a narrow viewport', async ({ page, skipper }) => {
+// UAK6 — no room for five columns below 1000 px: Commit gives up its track so
+// Version can keep its place on the row's first line, between name and status.
+test('UAK6: Commit gives up its column so Version keeps the first line', async ({ page, skipper }) => {
   await page.setViewportSize({ width: 820, height: 900 });
   await openStacks(page, skipper.baseURL);
 
-  // The column header sheds its Version label, so the remaining four stay in
-  // lockstep with the rows.
-  await expect(page.locator('.roster-list-header .rh-ver')).toBeHidden();
+  // The Commit column goes — header label and cells — so the four that remain
+  // stay in lockstep.
+  await expect(page.locator('.roster-list-header .rh-ver')).toBeVisible();
+  await expect(page.locator('.roster-list-header .rh-sha')).toBeHidden();
+  await expect(row(page, 'immich').locator('.roster-sha')).toBeHidden();
 
-  const stackCell = row(page, 'immich').locator('.roster-stack');
-  const cell = versionCell(page, 'immich');
-  const [stackBox, verBox] = await Promise.all([stackCell.boundingBox(), cell.boundingBox()]);
-  // Below the name, not beside it — and starting at the same left edge.
-  expect(verBox!.y).toBeGreaterThan(stackBox!.y + stackBox!.height - 2);
-  expect(Math.abs(verBox!.x - stackBox!.x)).toBeLessThan(2);
-  // The stack name still renders in full (nothing was squeezed away for it).
+  // Version keeps its own column on the first line, beside the name.
+  const { stackBox, verBox, nameWidth } = await row(page, 'immich').evaluate((r) => {
+    const rect = (sel: string) => {
+      const b = (r.querySelector(sel) as HTMLElement).getBoundingClientRect();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    };
+    return {
+      stackBox: rect('.roster-stack'),
+      verBox: rect('[data-testid="roster-version"]'),
+      nameWidth: rect('.roster-name').width,
+    };
+  });
+  expect(Math.abs(verBox.y - stackBox.y)).toBeLessThan(6);
+  expect(verBox.x).toBeGreaterThan(stackBox.x + stackBox.width - 2);
+  // The stack name still renders in full: its cell carries a change chip, an
+  // app link and the log/jump glyphs, which wrap to a second line inside the
+  // cell rather than squeezing the row's identity away.
   await expect(row(page, 'immich').locator('.roster-name')).toHaveText('immich');
+  expect(nameWidth).toBeGreaterThan(0);
 });
