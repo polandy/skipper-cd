@@ -77,7 +77,8 @@ Only what is specific to the roster is listed here.
   gains the `stacks` value (persisted in `localStorage`). The roster container
   shows for the stacks view and hides the deploy table + logs pane (and back).
 - **Aligned table**, same fixed-grid + header treatment as the deploy table
-  (`.roster-list-header`): columns `Stack · Status · Last deploy · Commit`. The
+  (`.roster-list-header`): columns `Stack · Version · Status · Last deploy ·
+  Commit`. The
   Stack cell is icon (`/api/icons/<name>`) + name, like the deploy table's Stack
   cell. Rows are the deploy table's frame **without** the status left bar
   (status is the badge). Mobile collapses to the same 2×2 shape.
@@ -86,6 +87,14 @@ Only what is specific to the roster is listed here.
   **disabled** (`disabled: true`, muted row, no badge). Time/commit are shown
   only for a real past deploy (suppressed while deploying, parked, or never
   deployed) and reuse `formatTime` / `fullTime` / `shortSHA`.
+- **Version** shows the running version of the stack's lead service plus a `+N`
+  for the rest — the glance; the containers panel below carries every service's
+  version. It reads the image each container actually runs
+  (`health.ServiceHealth.Image`, from the `compose ps` the health poller already
+  runs), so it is *live* state, not what the compose file declares. Rendered with
+  the same version chip as the Deploys view's per-service image delta, in its
+  current-value mode. Details (lead-service rule, degradation, mobile) in
+  `internal/ui/UI_SPEC.md`.
 - **No title line.** The roster starts straight at the column header — no count
   or mode hint, matching the deploy table (which has none either).
 - Re-renders on each `stacks` snapshot. A live `deploying` event refreshes only
@@ -126,6 +135,9 @@ Only what is specific to the roster is listed here.
 
 - `internal/roster`: table tests — merge/sort, never-deployed (no record),
   disabled ordering + parking, empty set.
+- The Version column has its own coverage: `internal/health` (the image reaches
+  the snapshot), the `app-helpers` unit layer (`rosterVersion` picks the lead) and
+  Playwright Maske AK (`uak-service-versions.spec.ts`).
 - Frontend: Playwright Maske R (`ur-roster.spec.ts`) — view switch + deployed/
   disabled rows + aligned column header (UR1), click-a-row → containers +
   history (UR2), search incl. the mobile popover entry (UR3/UR4), and the shared
