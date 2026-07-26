@@ -200,6 +200,10 @@ func main() {
 	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch, timeout, sink)
 	repoReader := git.NewRepoReader(repoSync.RepoDir(), timeout, sink)
 	stateDir := filepath.Dir(repoSync.RepoDir())
+	// Deriving from repo_url strips any credentials, so a repo_url holding a
+	// token stays out of the UI (the browse URL only ever reaches the browser as
+	// a link target).
+	repo := repoRef{dir: repoSync.RepoDir(), webURL: cfg.EffectiveRepoWebURL()}
 
 	// The deployer is constructed below via deploy.New once all its
 	// collaborators are built — deploy.Config wires everything at construction.
@@ -469,7 +473,7 @@ func main() {
 		if stateB != nil {
 			stateB.Publish(events.StateEvent{Name: events.StateAutosync, Data: snap})
 			stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: autosyncQueue.View(order())})
-			stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), auditLog, deployer.CurrentTrackedFiles(), repoSync.RepoDir())})
+			stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), auditLog, deployer.CurrentTrackedFiles(), repo)})
 		}
 	}
 	deployer = deploy.New(deploy.Config{
@@ -578,6 +582,7 @@ func main() {
 		logRing:         logRing,
 		autosync:        as,
 		build:           build,
+		repo:            repo,
 	}))
 
 	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
@@ -625,12 +630,26 @@ func metricsMux() *http.ServeMux {
 type stacksState struct {
 	Disabled []string       `json:"disabled"`
 	Roster   []roster.Entry `json:"roster"`
+	// RepoWebURL is the deploy repo's forge browse URL, so the UI can turn every
+	// commit SHA it shows into a link to that commit. Empty when none can be
+	// derived from repo_url — the UI then renders SHAs as plain text. It rides
+	// on this state (rather than a dedicated endpoint) so the multi-host fan-in
+	// carries each peer's own forge along with that peer's roster (ADR-0048).
+	RepoWebURL string `json:"repo_web_url,omitempty"`
+}
+
+// repoRef identifies the deploy repo for the UI: the local clone directory (to
+// render tracked input paths repo-relative) and the forge browse URL derived
+// from repo_url (to link commit SHAs). Both are fixed for a process lifetime.
+type repoRef struct {
+	dir    string
+	webURL string
 }
 
 // buildStacksState assembles the `stacks` snapshot from the effective stack
 // set, the parked (disabled) names, each stack's newest audit record, and the
 // input paths its change detection watches.
-func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.Log, tracked map[string][]string, repoDir string) stacksState {
+func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.Log, tracked map[string][]string, repo repoRef) stacksState {
 	last := func(name string) (audit.Record, bool) {
 		recs := auditLog.Stack(name, 1)
 		if len(recs) == 0 {
@@ -638,10 +657,11 @@ func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.
 		}
 		return recs[0], true
 	}
-	watched := func(name string) ([]string, bool) { return splitTrackedPaths(tracked[name], repoDir) }
+	watched := func(name string) ([]string, bool) { return splitTrackedPaths(tracked[name], repo.dir) }
 	return stacksState{
-		Disabled: disabled,
-		Roster:   roster.Build(stacks, disabled, last, watched),
+		Disabled:   disabled,
+		Roster:     roster.Build(stacks, disabled, last, watched),
+		RepoWebURL: repo.webURL,
 	}
 }
 
@@ -699,6 +719,7 @@ type webhookDeps struct {
 	logRing         *logbuf.Log
 	autosync        *autosyncDeps
 	build           ui.BuildInfo
+	repo            repoRef
 }
 
 // deployReconciler adapts the deployer to reconcile.Reconciler, binding the
@@ -830,7 +851,7 @@ func webhookMux(d webhookDeps) *http.ServeMux {
 			peers:           d.peerRegistry,
 			auditLog:        d.auditLog,
 			autosync:        d.autosync,
-			repoDir:         d.cfg.RepoDir,
+			repo:            d.repo,
 		}
 		registerAppRoutes(mux, d.cfg, d.build)
 		registerEventRoutes(mux, d.broadcaster, d.history, d.auditLog, d.logRing, snap)
@@ -931,7 +952,7 @@ type stateSnapshot struct {
 	peers           *peers.Registry
 	auditLog        *audit.Log
 	autosync        *autosyncDeps
-	repoDir         string // to render tracked input paths repo-relative
+	repo            repoRef // clone dir for repo-relative paths, forge URL for commit links
 }
 
 // collect returns the current state events. As a side effect it polls the
@@ -945,7 +966,7 @@ func (s stateSnapshot) collect() []events.StateEvent {
 		{Name: events.StateQueue, Data: as.queue.View(as.order())},
 		{Name: events.StateUpcoming, Data: s.deployer.CurrentRunPlan()},
 		{Name: events.StateHookRun, Data: s.deployer.CurrentHookRun()},
-		{Name: events.StateStacks, Data: buildStacksState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repoDir)},
+		{Name: events.StateStacks, Data: buildStacksState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo)},
 	}
 	if s.healthPoller != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealth, Data: s.healthPoller.Current()})

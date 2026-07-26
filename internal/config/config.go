@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -223,6 +224,15 @@ type Config struct {
 	// absolute — checked at Load, since internal/git uses it verbatim.
 	RepoDir string `yaml:"repo_dir"`
 
+	// RepoWebURL is the repository's page on the forge, e.g.
+	// https://forge.example.com/owner/repo — the UI links every commit SHA it
+	// shows to <RepoWebURL>/commit/<sha>. Optional: when empty it is derived
+	// from RepoURL, which covers the usual case where the clone URL and the web
+	// UI share a host. Set it when they do not (a mirror, an SSH host that is
+	// not the web host, a clone from a local path). Must be http(s) — checked
+	// at Load, since the value ends up in a link the browser follows.
+	RepoWebURL string `yaml:"repo_web_url"`
+
 	// Branch is the Git branch to track. Defaults to "main".
 	Branch string `yaml:"branch"`
 
@@ -399,6 +409,17 @@ type Config struct {
 	// but suspicious setups that don't warrant refusing to start. Populated by
 	// Load; never read from YAML. The caller is expected to log each one.
 	Warnings []string `yaml:"-"`
+}
+
+// EffectiveRepoWebURL returns the forge browse URL the UI links commit SHAs
+// through: the explicit repo_web_url when set, else one derived from repo_url.
+// Empty when neither yields one — the UI then shows SHAs as plain text. Any
+// trailing slash is trimmed so callers append a path verbatim.
+func (c *Config) EffectiveRepoWebURL() string {
+	if c.RepoWebURL != "" {
+		return strings.TrimRight(c.RepoWebURL, "/")
+	}
+	return git.WebURL(c.RepoURL)
 }
 
 // StackByName returns the configured stack with the given name.

@@ -39,6 +39,7 @@ skipper clones the repo and deploys every discovered stack, then keeps it conver
 ```yaml
 repo_url: ssh://git@gitea.example.com/user/nixos-config.git
 repo_dir: /var/lib/skipper/repo        # optional, this is the default
+repo_web_url: https://gitea.example.com/user/nixos-config   # optional; derived from repo_url when omitted
 branch: main                            # optional, default: main
 vars_file: /etc/skipper/vars.env        # optional
 command_timeout_seconds: 300            # optional, default: 300
@@ -87,6 +88,7 @@ nixos_rebuild:
 |---|---|---|---|---|
 | `repo_url` | string | yes | — | URL of the Git repository to clone and pull (supports SSH and HTTPS). |
 | `repo_dir` | string | no | `/var/lib/skipper/repo` | Local directory where the repository is cloned. skipper-cd manages this directory independently of any live checkout. Must be absolute when set. |
+| `repo_web_url` | string | no | derived from `repo_url` | The repository's page on the forge, e.g. `https://forge.example.com/owner/repo`. Every commit SHA in the web UI links to `<repo_web_url>/commit/<sha>` (Gitea and GitHub path shape). Left empty it is derived from `repo_url` — credentials, `.git` and any SSH port are dropped, and SSH forms become `https://`. Set it when the clone URL is not the web address (a mirror, a clone from a local path); when neither yields a URL, SHAs render as plain text. Must be `http(s)`. |
 | `branch` | string | no | `main` | Git branch to track. Used for `git clone --branch` and `git reset --hard origin/<branch>`. |
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. When set, it must exist and be readable. |
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |

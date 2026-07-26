@@ -1208,43 +1208,8 @@ Behaviour-only (no snapshot): the delta is structural (`data-testid="svc-delta"`
 per-part text), and the per-reference token logic is exhaustively covered by the
 `app-helpers` unit layer (`imageDelta` / `parseImageRef` / `shortImageTag`).
 
-<<<<<<< HEAD
-### 4.37 UI — Maske AK: Service versions in the Stacks view
 
-`compose ps` reports the image each container runs, which rides the `health`
-snapshot: a roster row's **Version** cell names the service the stack is named
-after plus its running version, and the expanded containers panel carries every
-service's version — the same chip the Deploys Version column renders (Maske AI).
-See [Service versions](../internal/ui/UI_SPEC.md#service-versions). Health is
-seeded per stack (`initialHealth` / `setStackHealth` now carry `Image`), so the
-versions render from a real snapshot.
-
-- **UAK1 — Lead version on the row.** A three-service `immich` shows one chip:
-  `immich-server v1.119.0` (the shorter of the two name matches, never the
-  alphabetically-first `database`) plus `+2`, with the `aria-label`
-  (`immich-server running v1.119.0`), the full-reference `title`, and no `→`
-  (a running version is a fact, not a change). Its own column between Stack and
-  Status, asserted by bounding box.
-- **UAK2 — No arbitrary lead.** A role-named stack (`monitoring` over
-  prometheus/grafana) gets no chip at all — the cell reads `2 services` and defers
-  to the panel.
-- **UAK3 — Every version in the panel.** Expanding lists all three versions
-  (`data-testid="health-version"`) beside the state/status the panel already
-  showed, the panel carrying `has-versions`; the chip drops its service label
-  there, since the line already names it.
-- **UAK4 — Degrades to nothing.** A snapshot without `Image` (an older skipper, or
-  a peer of one) leaves the cell empty and the panel without the version column —
-  never an empty chip or an empty track.
-- **UAK5 — Patched in place.** A later poll carrying a new image updates the cell
-  (`v1.120.0`, count gone) while the row's open panel survives — the versions
-  arrive with health, not with the roster snapshot.
-
-Behaviour-only (no snapshot): the cell is structural, and the lead-service and
-token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
-`imageRepoName` / `shortImageTag`).
->>>>>>> origin/main
-
-### 4.38 UI — Maske AJ: Roster change detection
+### 4.37 UI — Maske AJ: Roster change detection
 
 skipper redeploys a stack only when one of its hashed inputs changes
 (Invariant 2), so the most common operator question is not "what happened" but
@@ -1277,7 +1242,76 @@ Behaviour-only (no snapshot): the panel is structural text, and the lead-line
 phrasing across every deploy status (a `failed`/`queued`/`blocked` stack has a
 change *pending* and must never claim "unchanged") is exhaustively covered by
 the `app-helpers` unit layer (`watchedSummary`).
-=======
+
+### 4.38 UI — Maske AK: Service versions in the Stacks view
+
+`compose ps` reports the image each container runs, which rides the `health`
+snapshot: a roster row's **Version** cell names the service the stack is named
+after plus its running version, and the expanded containers panel carries every
+service's version — the same chip the Deploys Version column renders (Maske AI).
+See [Service versions](../internal/ui/UI_SPEC.md#service-versions). Health is
+seeded per stack (`initialHealth` / `setStackHealth` now carry `Image`), so the
+versions render from a real snapshot.
+
+- **UAK1 — Lead version on the row.** A three-service `immich` shows one chip:
+  `immich-server v1.119.0` (the shorter of the two name matches, never the
+  alphabetically-first `database`) plus `+2`, with the `aria-label`
+  (`immich-server running v1.119.0`), the full-reference `title`, and no `→`
+  (a running version is a fact, not a change). Its own column between Stack and
+  Status, asserted by bounding box.
+- **UAK2 — No arbitrary lead.** A role-named stack (`monitoring` over
+  prometheus/grafana) gets no chip at all — the cell reads `2 services` and defers
+  to the panel.
+- **UAK3 — Every version in the panel.** Expanding lists all three versions
+  (`data-testid="health-version"`) beside the state/status the panel already
+  showed, the panel carrying `has-versions`; the chip drops its service label
+  there, since the line already names it.
+- **UAK4 — Degrades to nothing.** A snapshot without `Image` (an older skipper, or
+  a peer of one) leaves the cell empty and the panel without the version column —
+  never an empty chip or an empty track.
+- **UAK5 — Patched in place.** A later poll carrying a new image updates the cell
+  (`v1.120.0`, count gone) while the row's open panel survives — the versions
+  arrive with health, not with the roster snapshot.
+
+Behaviour-only (no snapshot): the cell is structural, and the lead-service and
+token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
+`imageRepoName` / `shortImageTag`).
+
+### 4.39 UI — Maske AL: Commit SHAs link to the forge
+
+A SHA on its own is a dead end — it names a commit the operator then has to go
+find. Every SHA the UI prints is therefore a link to that commit on the forge
+(`repo_web_url`, or one derived from `repo_url`). See
+[Commit links](../internal/ui/UI_SPEC.md#commit-links). The harness clones from a
+local path, which no forge URL can be derived from, so it sets `repo_web_url`
+explicitly (`FORGE_URL`); the degradation case opts back out with
+`repoWebURL: null`.
+
+- **UAL1 — The roster Commit cell links.** The cell is an `<a>` whose `href` is
+  `<forge>/commit/<full sha>` — the **full** 40-char SHA, though the cell prints
+  the 7-char form (a short SHA is a display convention some forges will not
+  resolve). It opens in a new tab (`target="_blank"`, `rel` carrying `noopener`),
+  since the UI is a live SSE stream that navigating away would cost.
+- **UAL2 — The link does one thing.** The SHA sits in a row whose body toggles
+  the expand panel; clicking the link must not also open it. The navigation is
+  cancelled in the capture phase, so what is asserted is purely the row
+  handler's guard — and the row still expands when clicked anywhere else.
+- **UAL3 — Panels and the diff header too.** The deploy-history rows (`.ar-sha`)
+  and the diff panel's commit header (`commit-sha`) link the same way: one
+  helper renders every SHA, so they either all link or none do.
+- **UAL4 — A peer links to its own forge.** A peer's roster row uses the
+  `repo_web_url` from *that peer's* fanned-in snapshot, not the primary's —
+  each host tracks its own deploy repo, so the primary's forge never had those
+  commits.
+- **UAL5 — Degrades to plain text.** With no forge configured (and none
+  derivable), the SHA renders as the inert `<span>` it was before links existed
+  — never a dead link.
+
+Behaviour-only (no snapshot): the link is an attribute change, and the URL
+building itself (trailing slashes, a missing base or SHA, a non-http(s) base
+that must never reach an `href`) is covered by the `app-helpers` unit layer
+(`commitURL`) and, server-side, by `git.WebURL`.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

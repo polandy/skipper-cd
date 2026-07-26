@@ -291,6 +291,9 @@ const peerBData = {
         peerRoster('worker', '', 0), // discovered but never deployed
       ],
       disabled: [],
+      // A peer tracks its own deploy repo, so its commit SHAs link to its own
+      // forge — a different host than the primary's, on purpose.
+      repo_web_url: 'https://forge.host-b.example/ops/deploy',
     },
     // Fanned-in health/healthwatch/app_links (ADR-0048) so peer rows reach the
     // same containers/app-link parity the primary shows for its own stacks.
@@ -361,6 +364,9 @@ const metricsPort = await freePort();
 const cfg =
   `repo_url: ${JSON.stringify(origin)}\n` +
   `repo_dir: ${JSON.stringify(repoDir)}\n` +
+  // The preview clones from a local path, which no forge URL can be derived
+  // from — set one so commit SHAs render as the links they are in production.
+  `repo_web_url: "https://forge.host-a.example/ops/deploy"\n` +
   // stacks_base_dir omitted: stacks live at the repo root, and the field is
   // relative to repo_dir (ADR-0043/#180) — omitting it means the repo root.
   `branch: main\n` +

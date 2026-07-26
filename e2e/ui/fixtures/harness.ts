@@ -104,6 +104,9 @@ exit 0
 const defaultCompose = 'services:\n  app:\n    image: nginx:1.25\n';
 const SECRET = 'e2e-secret';
 
+/** The forge every commit SHA in the UI links to (repo_web_url). */
+export const FORGE_URL = 'https://forge.e2e.test/ops/deploy';
+
 /** repoRoot is the repository root, derived from this file's location. */
 export function repoRoot(): string {
   // fixtures/harness.ts -> e2e/ui -> e2e -> <root>
@@ -277,6 +280,11 @@ export interface StartOptions {
    *  its `/api/v1/snapshot` + `/api/audit`, an unreachable one points at a dead
    *  port so the primary marks it offline. Maske V opts in. */
   peers?: PeerSpec[];
+  /** Override `repo_web_url`, the forge every commit SHA in the UI links to.
+   *  Defaults to FORGE_URL; pass null to omit the key, which is the instance
+   *  that can derive no forge (a clone from a local path) and must therefore
+   *  render plain, unlinked SHAs. Maske AL opts out. */
+  repoWebURL?: string | null;
 }
 
 /** PeerSpec is one stub peer the harness stands up for the multi-host fan-in. */
@@ -558,6 +566,9 @@ export class Skipper {
     const cfg =
       `repo_url: ${JSON.stringify(origin)}\n` +
       `repo_dir: ${JSON.stringify(repoDir)}\n` +
+      // The harness clones from a local path, which no forge URL can be derived
+      // from — set one explicitly so commit SHAs render as links (Maske AL).
+      (opts.repoWebURL === null ? '' : `repo_web_url: ${JSON.stringify(opts.repoWebURL ?? FORGE_URL)}\n`) +
       // stacks_base_dir omitted: it is relative to repo_dir and defaults to the
       // repo root, which is exactly repoDir here (stacks live at the clone root).
       `branch: main\n` +
