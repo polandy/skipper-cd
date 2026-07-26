@@ -47,3 +47,47 @@ test.describe('UP1: blocked row renders the dependency reason as text', () => {
     await expect(depRow.locator('.stack-name')).toHaveText(DEP);
   });
 });
+
+// UP2 — the tag must not cost the row its identity. `.stack-name` carries
+// overflow:hidden, which resolves its automatic flex minimum to zero, so before
+// the min-width floor it was the *only* item in the cell that could shrink while
+// the nowrap tag refused to give way at all — a long dependency name clipped the
+// stack name past its own ellipsis. The name now stays whole at every width; the
+// tag ellipsises and is dropped below 1000px, where it had nothing useful left
+// to say (the badge still reads BLOCKED, the reason stays in the drawer).
+test.describe('UP2: the pending tag yields before the stack name', () => {
+  test.use({
+    startOptions: {
+      stacks: [DEP, 'app'],
+      dependsOn: { app: [DEP] },
+      stubEnv: { STUB_DOCKER_FAIL_NTH_UP: '3' },
+    },
+  });
+
+  test('the name stays whole while the tag gives way', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    const blocked = page.locator('[data-testid="deploy-row"][data-stack="app"]').first();
+    await expect(blocked.locator('[data-testid="status-badge"]')).toContainText('blocked');
+
+    const name = blocked.locator('.stack-name');
+    const tag = blocked.locator('.paused-tag');
+    const clipped = () =>
+      name.evaluate((el) => el.scrollWidth > Math.ceil(el.getBoundingClientRect().width));
+
+    // Wide: both fit.
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await expect(tag).toBeVisible();
+    expect(await clipped()).toBe(false);
+
+    // Narrow enough that something has to give — the tag does, not the name.
+    await page.setViewportSize({ width: 1100, height: 900 });
+    expect(await clipped()).toBe(false);
+
+    // Below the 1000px breakpoint the tag is gone rather than a one-letter stub,
+    // and the name is still whole.
+    await page.setViewportSize({ width: 900, height: 900 });
+    await expect(tag).toBeHidden();
+    expect(await clipped()).toBe(false);
+    await expect(name).toHaveText('app');
+  });
+});

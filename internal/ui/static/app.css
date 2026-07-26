@@ -878,6 +878,11 @@
     border-radius: 4px;
     margin-left: 8px;
     white-space: nowrap;
+    /* Yields before the stack name does: the badge already says BLOCKED or
+       QUEUED, and the full reason stays in the autosync drawer. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .event-row.success-row::before {
@@ -918,10 +923,17 @@
     letter-spacing: -0.3px;
   }
 
+  /* The name is the row's identity, the pending tag beside it is context — so
+     the tag gives way first. Without the floor the name is the only shrinkable
+     item in the cell (its overflow:hidden resolves the automatic minimum to
+     zero) while the nowrap tag refuses to shrink at all, which clipped `backup`
+     to `bac` — past the ellipsis, so not even visibly truncated — next to a
+     `blocked by vaultwarden`. */
   .stack-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 8ch;
   }
 
   /* Recognizable per-stack icon; falls back to a monogram (.mono) when no
@@ -3075,6 +3087,11 @@
        explicitly placed here — on the desktop grid the auto-placed cells after it
        would slide into the freed track. */
     .roster-row .col-version:empty { display: none; }
+
+    /* Below this the tag has no room to say anything useful — it shrank to a
+       one-letter stub, which is worse than absent. The status badge still reads
+       BLOCKED or QUEUED and the full reason stays in the autosync drawer. */
+    .paused-tag { display: none; }
   }
 
   @media (max-width: 700px) {
