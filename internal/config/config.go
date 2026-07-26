@@ -243,13 +243,6 @@ type Config struct {
 	// logs (e.g. for Loki ingestion).
 	LogFormat string `yaml:"log_format"`
 
-	// InitialDeploy decides what a run does when it finds no recorded state at
-	// all — a first start, a new host, or a lost state.yaml: "full" (the
-	// default) deploys every stack, since nothing is known to be running;
-	// "adopt" records the current inputs as deployed without running anything,
-	// for a host whose stacks are already up and match the repo (ADR-0051).
-	InitialDeploy string `yaml:"initial_deploy"`
-
 	// StacksBaseDir is the directory inside the repo clone that holds one
 	// subdirectory per stack (<stacks_base_dir>/<name>/docker-compose.yml).
 	// Change detection and the compose file always come from here. It is a path
@@ -654,9 +647,6 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.LogFormat == "" {
 		cfg.LogFormat = LogFormatPretty
-	}
-	if cfg.InitialDeploy == "" {
-		cfg.InitialDeploy = InitialDeployFull
 	}
 	if cfg.Icons.CacheDir == "" {
 		cfg.Icons.CacheDir = defaultIconCacheDir

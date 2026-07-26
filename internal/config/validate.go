@@ -65,22 +65,6 @@ const (
 	LogFormatJSON   = "json"
 )
 
-// Valid values for the initial_deploy config field (ADR-0051).
-const (
-	// InitialDeployFull deploys every stack when no state is recorded — the
-	// default, and the only safe choice for a host where nothing runs yet.
-	InitialDeployFull = "full"
-	// InitialDeployAdopt records the current inputs as deployed instead, for a
-	// host whose stacks are already running the repo's version.
-	InitialDeployAdopt = "adopt"
-)
-
-// AdoptsInitialState reports whether a run that finds no recorded state should
-// adopt the running stacks instead of deploying them all.
-func (c *Config) AdoptsInitialState() bool {
-	return c.InitialDeploy == InitialDeployAdopt
-}
-
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
 		return fmt.Errorf("repo_url is required")
@@ -224,10 +208,6 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.LogFormat != LogFormatPretty && cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {
 		return fmt.Errorf("log_format must be %q, %q or %q, got %q", LogFormatPretty, LogFormatText, LogFormatJSON, cfg.LogFormat)
-	}
-
-	if cfg.InitialDeploy != InitialDeployFull && cfg.InitialDeploy != InitialDeployAdopt {
-		return fmt.Errorf("initial_deploy must be %q or %q, got %q — use %q on a host whose stacks already run the repo's version, otherwise leave it unset", InitialDeployFull, InitialDeployAdopt, cfg.InitialDeploy, InitialDeployAdopt)
 	}
 
 	if cfg.RuntimeHealthPollIntervalSeconds != nil && *cfg.RuntimeHealthPollIntervalSeconds < 0 {
