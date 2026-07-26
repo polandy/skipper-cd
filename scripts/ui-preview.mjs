@@ -28,7 +28,13 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = Number(process.env.PORT || 3000);
+let PORT = Number(process.env.PORT || 3000);
+// --smoke: seed as usual, assert the result, clean up and exit instead of
+// serving. CI runs this as skipper's startup smoke test — nothing else asserts
+// that the binary boots and serves with a full-featured config (discovery,
+// peers, hooks, icons, health watch, self-heal together), and it doubles as the
+// guard that this fixture still produces the spread it advertises.
+const SMOKE = process.argv.includes('--smoke');
 const SECRET = 'ui-preview-secret';
 // The four happy-path stacks the image-delta demos push through, plus the
 // three that exist to make every failure badge reachable locally (see the
@@ -347,6 +353,10 @@ const peerPort = await freePort();
 await new Promise((r) => peerServer.listen(peerPort, '127.0.0.1', r));
 const deadPeerPort = await freePort(); // nothing listens here → host-c is unreachable
 
+// A smoke run serves nothing, so a fixed port is only a way to collide with a
+// preview someone already has open — which is exactly when you would run it.
+if (SMOKE && !process.env.PORT) PORT = await freePort();
+
 const metricsPort = await freePort();
 const cfg =
   `repo_url: ${JSON.stringify(origin)}\n` +
@@ -618,6 +628,35 @@ git(origin, 'commit', '-am', 'chore: bump the vaultwarden, wiki, backup and moni
 await webhook();
 await settled('vaultwarden', 2);
 await settled('wiki', 2);
+
+if (SMOKE) {
+  const fail = (msg) => {
+    console.error(`[ui-preview] smoke: ${msg}`);
+    cleanup();
+    process.exit(1);
+  };
+  const get = async (path) => (await fetch(`http://127.0.0.1:${PORT}${path}`)).json();
+
+  const roster = (await get('/api/v1/snapshot'))?.stacks?.roster ?? [];
+  if (roster.length !== stacks.length + failureStacks.length + 1) {
+    fail(`roster has ${roster.length} stacks, expected ${stacks.length + failureStacks.length + 1}`);
+  }
+  // The outcomes the audit log records, so the deploy log is showing more than
+  // a wall of green.
+  const outcomes = new Set(roster.map((e) => e.last_status).filter(Boolean));
+  for (const want of ['success', 'rolled_back', 'failed', 'healed']) {
+    if (!outcomes.has(want)) fail(`no stack ended up ${want} (got ${[...outcomes].join(', ')})`);
+  }
+  // queued and blocked are deliberately not audit-recorded, so they are checked
+  // where they do live: the pending registry behind the autosync drawer.
+  const reasons = ((await get('/api/queue'))?.pending ?? []).map((p) => p.reason);
+  if (!reasons.some((r) => r.startsWith('blocked by'))) fail(`nothing is blocked (queue: ${reasons.join(', ')})`);
+  if (!reasons.includes('stack')) fail(`nothing is paused per-stack (queue: ${reasons.join(', ')})`);
+
+  console.error(`[ui-preview] smoke OK — ${roster.length} stacks, outcomes: ${[...outcomes].sort().join(', ')}`);
+  cleanup();
+  process.exit(0);
+}
 
 const bar = '─'.repeat(48);
 console.error(`\n[ui-preview] ${bar}`);

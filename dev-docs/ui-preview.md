@@ -7,6 +7,7 @@ mask is finalized.
 ```sh
 make ui-preview            # http://127.0.0.1:3000/
 PORT=8099 make ui-preview  # or pick another port
+make ui-preview-smoke      # boot, assert, clean up, exit — no server
 ```
 
 It builds the binary from the current checkout, stands up a throwaway origin
@@ -62,6 +63,21 @@ origin yourself and hit `/webhook` if you want another run.
 **Not reachable here:** `rolled_back_unhealthy` and `heal_exhausted`. Both need a
 stack to keep failing across several attempts, which would make the fixture slow
 and noisy for two badges; the e2e masks cover them.
+
+## The smoke run
+
+`make ui-preview-smoke` (`--smoke`) seeds exactly as above, then asserts and
+exits instead of serving: the roster has every declared stack, the audit-recorded
+outcomes include `success`, `rolled_back`, `failed` and `healed`, and the pending
+registry holds one blocked and one per-stack-paused entry. Non-zero on any miss.
+
+CI runs it on **every** push, with no path filter. It is skipper's startup smoke
+test first — nothing else asserts that the binary boots and serves with a
+full-featured config (discovery, peers, hooks, icons, health watch and self-heal
+together) — and the guard on this fixture second. The filter is deliberately
+absent: the last time this fixture broke it was a key rename in
+`internal/config`, not an edit to the script, so anything narrower would have
+missed it.
 
 ## Relationship to the e2e harness
 
