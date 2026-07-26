@@ -6,7 +6,7 @@
 
 *Simple, fast GitOps CD for Docker Compose — push to Git, redeploy only what changed*
 
-![skipper-cd's Deploys view — a live, newest-first feed of every deploy with its status and health](assets/screenshots/deploys.png)
+![skipper-cd's Deploys view — a live, newest-first feed of every deploy with the service versions it changed, its status and health, and the commit's diff](assets/screenshots/deploys.png)
 
 skipper-cd is a lightweight CD tool that maintains a local clone of a Git repository and reconciles your Docker Compose stacks to it on a timer, redeploying only the stacks whose files actually changed — with an optional push webhook to make a change land in seconds instead of at the next tick. On NixOS it can also run `nixos-rebuild switch` when your `.nix` files change — closing the GitOps loop for the whole host. Pair it with automated dependency updates (e.g. [Renovate](https://docs.renovatebot.com/)) — which can even automerge routine minor and patch bumps — and the loop runs itself: each merge rebuilds the NixOS host and redeploys only the stacks it changed, with no manual steps. Unchanged stacks are skipped automatically.
 
