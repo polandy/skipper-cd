@@ -3113,15 +3113,13 @@
     #deploy-table.no-version { --deploy-cols: 92px minmax(0, 1fr) 124px; }
     .event-list-header .eh-dur, .event-list-header .eh-files,
     .event-row .cell-duration, .event-row .col-files { display: none; }
-    /* With the files pill gone the row itself is the way into the diff (the
-       handler already falls back to the row's own pill), so it says so — the
-       same affordance the phone layout has. */
-    .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
-
   }
 
   /* Both narrow layouts, tablet and phone. */
   @media (max-width: 1000px) {
+    /* With the files pill gone the row itself is the way into the diff — the
+       click handler already falls back to the row's own pill. */
+    .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
     /* The pending tag is dropped at this width (see .paused-tag), so nothing is
        left for the name to yield to — it shrinks and ellipsises inside its own
        column again instead of overflowing into the next one. */
@@ -3169,12 +3167,9 @@
        popover "Search" row above is the entry point, so hide the glyph. (T3.11) */
     .stack-search-btn { display: none; }
 
-    /* Name and status on the first line, time · version · duration on the
-       second. The version rides as high as a phone allows: three cells on the
-       first line (name, version, status) is what a tablet has the width for and
-       a 390px row does not — the name, the row's identity, was squeezed to
-       nothing between them. On the second line it still sits in front of the
-       status column, one line up from the row of its own it used to get. */
+    /* Name and status on the first line, time and version on the second. The
+       tablet's three-cell first line does not fit here: at 390px the name — the
+       row's identity — is squeezed to nothing between version and status. */
     .event-row {
       grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-rows: auto auto;
@@ -3194,8 +3189,6 @@
        cell now owns the right-hand column across both lines. Both stay in the
        row's own panel. */
     .cell-duration, .col-files { display: none; }
-    /* The files pill is gone, so the row itself opens the diff/files panel. */
-    .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
 
     /* Roster takes the same shape as the deploy row: name/version/status on the
        first line, time and commit on the second. */

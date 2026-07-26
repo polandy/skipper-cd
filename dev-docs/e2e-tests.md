@@ -404,8 +404,9 @@ UI suite reuses.
 - **UD4 — Responsive ≤700px.** At a 390px viewport the **compact header**
   (UI_SPEC §Responsive) does not overflow the viewport width
   (`documentElement.scrollWidth ≤ clientWidth`) and the `brand-name` wordmark is
-  hidden; the **table** collapses to the 2×2 layout, the Files column hides, and
-  tapping a row with changed files expands the panel. The 1280px control asserts
+  hidden; the **table** collapses to its two-line layout (name/status over
+  time/version), the Duration and Files columns hide, and tapping a row with
+  changed files expands the panel. The 1280px control asserts
   the wordmark is visible with likewise no sideways scroll. *Snapshot: mobile
   layout.*
 - **UD8 — View-options popover.** The view-specific toggle (`time-mode`, shared
@@ -1315,7 +1316,7 @@ The landed baselines:
 | `diff-panel.png` | UA8 | `diff-panel` | — (static diff) |
 | `autosync-drawer.png` | UC6 | `autosync-drawer` | `wait-cell` |
 | `theme-dark.png` / `theme-light.png` | UD1 | full page | `time-cell`, `duration-cell` |
-| `mobile-layout.png` | UD4 | full page (390px) | `time-cell`, `duration-cell` |
+| `mobile-layout.png` | UD4 | full page (390px) | `time-cell` (the duration is hidden at this width) |
 
 The **Logs pane (UB2) is deliberately not snapshotted**: real deploy log output
 is nondeterministic (line count, tmp paths, commit SHAs), so even with the text
