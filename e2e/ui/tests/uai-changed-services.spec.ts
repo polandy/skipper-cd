@@ -213,6 +213,16 @@ test.describe('UI5: responsive', () => {
 // over the chips. Below 1000px the column drops to a full-width line of its own,
 // the same move the phone makes one step further down.
 test.describe('UI7: tablet', () => {
+  // Seeded health gives the status cell its second line (badge over health
+  // pill) — the line the version line has to be level with.
+  test.use({
+    startOptions: {
+      stacks: ['web', 'api', 'worker', 'database'],
+      healthPoll: 1,
+      initialHealth: { api: [{ Service: 'app', State: 'running', Health: 'healthy' }] },
+    },
+  });
+
   test('the Version column drops to its own line and the row keeps its columns', async ({ page, skipper }) => {
     await page.setViewportSize({ width: 744, height: 1000 }); // iPad-mini portrait
     await page.goto(`${skipper.baseURL}/`);
@@ -250,5 +260,13 @@ test.describe('UI7: tablet', () => {
     const statusBox = (await row.locator('.status-cell').boundingBox())!;
     expect(stackBox && statusBox).toBeTruthy();
     expect(stackBox.x + stackBox.width).toBeLessThanOrEqual(statusBox.x);
+
+    // Level with the status cell's own second line: the health pill. The status
+    // cell is two lines tall while Time and Stack are one, so a version line
+    // placed under the whole row left a band of empty row above it and pushed
+    // the versions away from the row they describe.
+    const pillBox = (await row.locator('[data-testid="health-pill"]').boundingBox())!;
+    expect(pillBox).toBeTruthy();
+    expect(Math.abs(deltaBox.y - pillBox.y)).toBeLessThan(4);
   });
 });

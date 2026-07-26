@@ -1199,12 +1199,14 @@ image change — no hand-fed events.
   full-width row **beneath** the name (asserted by bounding box) instead of
   squeezing it — the name still renders in full (no ellipsis).
 - **UAI7 — Tablet.** On a 744 px viewport (iPad-mini portrait) the column drops
-  to its own full-width line — the `Version` header is hidden, the delta sits
-  below and left of the name, and a two-service deploy's chips flow **side by
-  side** rather than stacking (the desktop one-per-line rule, UAI3, is what the
-  width paid for). The row keeps its remaining columns: the stack cell ends at
-  or before the status cell begins, which is what the six-column layout broke —
-  it printed the name over the chips.
+  to its own line — the `Version` header is hidden, the delta sits below and
+  left of the name, and a two-service deploy's chips flow **side by side**
+  rather than stacking (the desktop one-per-line rule, UAI3, is what the width
+  paid for). The row keeps its remaining columns: the stack cell ends at or
+  before the status cell begins, which is what the six-column layout broke — it
+  printed the name over the chips. The line is **level with the health pill**
+  (seeded health gives the status cell its second line): measured against the
+  pill's own top, it was 33 px below it while the line sat under the whole row.
 - **UAI6 — View-options toggle.** The Deploys popover's **Version changes** toggle
   (on by default) collapses the whole column when flipped off — no chips, no
   `Version` header, and no row separators (they exist only because the column
