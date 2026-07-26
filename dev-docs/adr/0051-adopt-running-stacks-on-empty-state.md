@@ -59,6 +59,17 @@ configuration the host already runs is a cheap, idempotent no-op. Skipping it
 would buy nothing and risk leaving the host unconverged, which is the one thing
 a reconciler must not do.
 
+**The two gates an adopting run bypasses**, both because it changes nothing on
+the host and there is therefore nothing to hold back:
+
+- **Autosync.** Adopting is evaluated *before* the pause gate. Queueing instead
+  would leave the stack dirty and deploy it for real on resume — the opposite
+  of what adopt was asked to do.
+- **Dependency ordering** (ADR-0032). Ordering sequences *deploys*, and an
+  adopting run performs none. A stack held back because a sibling's compose
+  file failed discovery would stay unrecorded and then deploy for real on a
+  later run — reintroducing exactly the unattended pull this mode avoids.
+
 An adopted stack emits the existing `skipped` status. It is the honest one —
 nothing was deployed — and it keeps the UI, the audit log and the notification
 matrix unchanged. The run additionally logs a `WARN` naming the mode and every
