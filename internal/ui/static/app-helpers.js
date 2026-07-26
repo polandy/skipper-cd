@@ -91,6 +91,81 @@ function shortImageTag(ref) {
   return ref;
 }
 
+// imageRepoName is the bare repository name of an image reference — registry,
+// path and tag/digest dropped (`ghcr.io/immich-app/immich-server:v1.1` →
+// `immich-server`). Used to recognise the service a stack is named after.
+function imageRepoName(ref) {
+  const repo = (ref || '').split('@')[0];
+  const slash = repo.lastIndexOf('/');
+  const base = slash === -1 ? repo : repo.slice(slash + 1);
+  const colon = base.lastIndexOf(':');
+  return colon === -1 ? base : base.slice(0, colon);
+}
+
+// rosterVersion picks the one service version a Stacks row shows, plus how many
+// further services it stands for — the glance; the expanded containers panel
+// carries every version.
+//
+// A stack is normally named after its main image, so the lead service is the one
+// whose own name or image repository mentions the stack name, shortest name
+// first (`immich-server` beats `immich-machine-learning`); a stack of exactly one
+// service needs no guess at all. When nothing matches — a stack named for its
+// role rather than an app, say `monitoring` over prometheus/grafana/loki — no
+// single version can speak for the stack, so `service` comes back '' and the row
+// reports only the count (`more`) rather than picking arbitrarily.
+//
+// Returns { service, image, more } — the raw image reference, so the caller
+// renders the same shortened token (and full-reference tooltip) as everywhere
+// else — or null when no service reports an image (nothing running, or a snapshot
+// from a skipper too old to carry one), so the caller renders an empty cell.
+function rosterVersion(stack, services) {
+  const all = (services || []).filter(function (s) {
+    return s && s.name;
+  });
+  if (
+    !all.some(function (s) {
+      return s.image;
+    })
+  ) {
+    return null;
+  }
+  const lead = leadService(stack, all);
+  return {
+    service: lead ? lead.name : '',
+    image: lead ? lead.image : '',
+    more: all.length - (lead ? 1 : 0),
+  };
+}
+
+// leadService resolves rosterVersion's "the service this stack is named after",
+// or null when the name identifies none of them.
+function leadService(stack, services) {
+  const key = (stack || '').toLowerCase();
+  const named = services.filter(function (s) {
+    return s.image;
+  });
+  if (!key || !named.length) return null;
+  const exact = named.filter(function (s) {
+    return s.name.toLowerCase() === key;
+  });
+  if (exact.length) return exact[0];
+  const mentions = named.filter(function (s) {
+    return (
+      s.name.toLowerCase().indexOf(key) !== -1 ||
+      imageRepoName(s.image).toLowerCase().indexOf(key) !== -1
+    );
+  });
+  if (mentions.length) {
+    // Shortest name wins, then alphabetical — a stable pick, never render order
+    // (`compose ps` sorts alphabetically, which would crown `database` for
+    // immich).
+    return mentions.slice().sort(function (a, b) {
+      return a.name.length - b.name.length || a.name.localeCompare(b.name);
+    })[0];
+  }
+  return named.length === 1 ? named[0] : null;
+}
+
 // imageDelta reduces an old→new image-reference change to the shortest pair of
 // tokens that actually differ, so a deploy row shows what moved:
 //   - a tag bump           (`app:1.25`        → `app:1.26`)        → 1.25 → 1.26
@@ -395,6 +470,50 @@ function logLineVisible(text, q) {
   return (text || '').toLowerCase().indexOf(q.toLowerCase()) !== -1;
 }
 
+// clogStreamStatus maps an EventSource readyState after an error to the status
+// line the container-log panel shows. EventSource retries a dropped connection
+// on its own (CONNECTING), but a non-2xx response — a 404 for a stack that went
+// away, a 429 when the server is already running its maximum number of log
+// follows — closes it for good (CLOSED). Reporting "reconnecting…" for that
+// case would promise a retry that never comes, so a closed stream reads as
+// closed and points at the way to try again.
+function clogStreamStatus(readyState) {
+  // 2 === EventSource.CLOSED; the constant is not available under node --test.
+  if (readyState === 2) {
+    return { text: 'stream closed — reopen the log to retry', cls: 'err', closed: true };
+  }
+  return { text: 'reconnecting…', cls: 'err', closed: false };
+}
+
+// watchedSummary phrases the change-detection panel's lead line for a roster
+// entry: what skipper watches for this stack, and — the question the panel
+// exists to answer — why nothing has happened for it.
+//
+// The "unchanged since" claim is only made after a clean deploy. A stack whose
+// last outcome was failed/queued/blocked has a change *pending*, so saying
+// nothing changed since then would be exactly backwards.
+const WATCHED_SETTLED = ['success', 'healed'];
+function watchedSummary(status, commit, count, disabled) {
+  if (disabled) {
+    return 'Parked with disabled: true — skipper neither watches nor deploys this stack.';
+  }
+  if (!count) {
+    return 'Nothing tracked yet — this stack has not deployed, so every input counts as changed.';
+  }
+  const deploys =
+    count === 1
+      ? 'A deploy runs when this file changes:'
+      : 'A deploy runs when any of these change:';
+  if (WATCHED_SETTLED.indexOf(status) !== -1) {
+    // A stack's very first deploy has no prior commit to diff against, so the
+    // audit record carries none — the "unchanged" fact still holds, only the
+    // reference point is the deploy itself rather than a SHA.
+    const since = commit ? shortSHA(commit) : 'the last deploy';
+    return 'Unchanged since ' + since + '. ' + deploys;
+  }
+  return deploys;
+}
+
 // deployAnnouncement builds the screen-reader phrase for a terminal deploy
 // outcome, so the a11y-live region can voice what a sighted user reads off the
 // row (T2.8). Returns null for non-terminal statuses (deploying/queued/blocked/
@@ -426,6 +545,8 @@ if (typeof module !== 'undefined' && module.exports) {
     parseImageRef,
     shortImageTag,
     imageDelta,
+    imageRepoName,
+    rosterVersion,
     statusText,
     statusIcon,
     auditStatusLabel,
@@ -442,6 +563,8 @@ if (typeof module !== 'undefined' && module.exports) {
     containerMatchesQuery,
     orphanMatchesQuery,
     logLineVisible,
+    clogStreamStatus,
+    watchedSummary,
     deployAnnouncement,
     HOST_COLOR_COUNT,
     hostColorIndex,

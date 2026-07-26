@@ -29,7 +29,12 @@ const (
 // the same classification the stack rollup aggregates — consumed by the
 // healthwatch transition detector (ADR-0031).
 type ServiceHealth struct {
-	Name   string `json:"name"`
+	Name string `json:"name"`
+	// Image is the reference the container is actually running (from
+	// `compose ps`), which the UI renders as the service's live version — the
+	// running counterpart to the image the compose file declares. Empty when the
+	// compose output carried no Image field, so the UI simply shows no version.
+	Image  string `json:"image,omitempty"`
 	State  string `json:"state"`
 	Health string `json:"health"`
 	Status Status `json:"status"`

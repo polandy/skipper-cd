@@ -25,6 +25,14 @@ const (
 	maxTail     = 1000
 )
 
+// maxConcurrentStreams bounds how many follows may run at once across all
+// clients. Every open stream holds a `docker compose logs --follow` child for
+// as long as the client stays connected, so without a bound a handful of
+// forgotten browser tabs — or anything on the network opening the endpoint in
+// a loop — can pin a host's process table. The UI opens at most one stream per
+// viewer, so this leaves room for several viewers watching several stacks.
+const maxConcurrentStreams = 16
+
 // Invocation is how to run docker compose against a stack: the working
 // directory, the environment, and the leading `compose …` args that select the
 // project. It mirrors the deploy path exactly (Invariant 1) so a logs read
@@ -48,8 +56,13 @@ type Resolver interface {
 // ?services=a,b list narrows the stream to that subset. It streams the backlog
 // then the live follow as SSE. One log streams per request; the UI keeps at
 // most one open, so a viewer holds at most one follow child — a disconnect
-// cancels the request context, killing that child.
+// cancels the request context, killing that child. At most
+// maxConcurrentStreams run at once; beyond that a request is refused with 429
+// rather than spawning another docker child.
 func Handler(streamer LogStreamer, resolver Resolver) http.Handler {
+	// One token per concurrently-running stream, held for the life of the
+	// follow and returned when the client disconnects.
+	slots := make(chan struct{}, maxConcurrentStreams)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -73,6 +86,17 @@ func Handler(streamer LogStreamer, resolver Resolver) http.Handler {
 				http.NotFound(w, r)
 				return
 			}
+		}
+
+		// Taken after validation (a 404 must not consume a slot) and before the
+		// 200 is written, so a refusal can still carry a real status code.
+		select {
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
+		default:
+			w.Header().Set("Retry-After", "5")
+			http.Error(w, "too many concurrent log streams", http.StatusTooManyRequests)
+			return
 		}
 
 		args := logsArgs(inv.Args, selected, tailParam(r), sinceParam(r))

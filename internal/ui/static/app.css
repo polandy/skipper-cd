@@ -1210,9 +1210,17 @@
     background: color-mix(in srgb, var(--hc) 13%, transparent);
   }
   .health-panel .hp-head-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--hc); }
+  /* Service line: name · state · status · logs button (ADR-0037). A snapshot that
+     carries container images inserts the running version right after the name,
+     making five — and only then, so a stack whose containers report none keeps
+     the tighter line instead of an empty track indenting every row. With versions
+     the free width moves out of the name column into the version one: the name
+     track then ends at the longest name, so every chip starts on the same x right
+     beside its service (name + version read as one unit) while state/status/logs
+     stay grouped at the right edge. The ≤700px block re-lays this out. */
   .health-panel .hp-svc {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     gap: 12px;
     align-items: center;
     padding: 5px 2px;
@@ -1220,10 +1228,12 @@
     font-size: 11px;
     border-bottom: 1px solid color-mix(in srgb, var(--overlay2) 8%, transparent);
   }
+  .health-panel.has-versions .hp-svc { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
   .health-panel .hp-svc:last-child { border-bottom: 0; }
   /* A service line directly followed by its timeline hands the separator down
      to the timeline block, so the pair reads as one unit. */
   .health-panel .hp-svc:has(+ .hp-history) { border-bottom: 0; }
+  .health-panel .hp-ver { justify-self: start; min-width: 0; }
   .health-panel .hp-name { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
   .health-panel .hp-state { color: var(--text-muted); }
   .health-panel .hp-status { display: inline-flex; align-items: center; gap: 5px; color: var(--hc); font-weight: 600; }
@@ -1366,6 +1376,35 @@
   }
   .audit-panel .ap-count { color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
   .audit-panel .ap-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
+  /* Change detection: the last card of the roster's expand stack, same bound
+     accent frame as the history panel above it. */
+  .watched-panel {
+    padding: 9px 14px 12px;
+    background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: inset 3px 0 0 var(--accent);
+    animation: expand 0.2s ease-out;
+  }
+  .watched-panel .wp-head { padding: 0 0 8px; font-family: var(--font-mono); font-size: 11px; }
+  .watched-panel .wp-label { color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+  .watched-panel .wp-lead { color: var(--text-secondary); font-size: 12px; padding-bottom: 8px; }
+  .watched-panel .wp-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .watched-panel .wp-file {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-primary);
+    background: color-mix(in srgb, var(--overlay2) 7%, transparent);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px;
+    overflow-x: auto; white-space: nowrap;
+  }
+  /* Not a path — the stack's own settings, hashed under a synthetic key. A
+     plain muted line rather than a boxed entry: sharing the file box's shape
+     made it read as a second file, and a border style alone is too weak a
+     signal to carry that in the light variant. */
+  .watched-panel .wp-config {
+    padding: 2px 2px 0; font-size: 11.5px; color: var(--text-muted);
+  }
+  .watched-panel .wp-config code { font-family: var(--font-mono); font-size: 10.5px; }
   .audit-row {
     display: grid;
     grid-template-columns: 150px 116px 66px 76px 1fr;
@@ -1492,6 +1531,16 @@
   .tag-delta .td-gone { color: var(--danger); }
   /* The ↻ rebuilt marker for a same-tag digest change — muted, not an accent. */
   .tag-delta .td-rebuilt { color: var(--text-secondary); font-weight: 600; }
+  /* Current-value mode (Stacks row + containers panel): the version a service is
+     running right now. Neutral on purpose — the add-green above says "this is the
+     NEW version", which a standing fact must not claim. */
+  .tag-delta .td-cur { color: var(--text-secondary); font-weight: 500; }
+  /* "+3" beside a Stacks row's lead version, and the bare service count when no
+     lead could be named: a pointer to the containers panel, not a value. */
+  .ver-count {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--text-muted); white-space: nowrap;
+  }
 
   .heal-panel {
     padding: 11px 14px 12px 16px;
@@ -1582,6 +1631,7 @@
     .diff-panel,
     .files-list,
     .audit-panel,
+    .watched-panel,
     .heal-panel,
     .error-detail,
     .load-error,
@@ -1804,7 +1854,8 @@
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel, .heal-panel.bound, .peer-detail.bound {
+  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel, .heal-panel.bound, .peer-detail.bound,
+  .watched-panel {
     margin-top: -2px;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
@@ -1813,7 +1864,8 @@
      last card: square its bottom too so the bar runs straight into the error box. */
   .diff-panel.bound:has(+ .error-detail),
   .files-list.bound:has(+ .error-detail),
-  .health-panel:has(+ .audit-panel) {
+  .health-panel:has(+ .audit-panel),
+  .audit-panel:has(+ .watched-panel) {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
@@ -2853,12 +2905,23 @@
      the badge); open-state + panel binding are shared with .event-row.audit-open.
      Header + rows share one fixed grid so columns align, like the deploy table. */
   .roster-list { display: flex; flex-direction: column; gap: 2px; }
+  /* Stack · Version · Status · Last deploy · Commit. The Version column stays a
+     single line (one lead version + a "+N" pointer, not the Deploys column's full
+     per-service stack), so the roster keeps its one-line-per-stack inventory
+     rhythm; a shared track lets the versions align down the page. */
   .roster-list-header, .roster-row {
     display: grid;
-    grid-template-columns: 1fr 130px 160px 90px;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 130px 150px 84px;
     gap: 12px;
     align-items: center;
   }
+  .roster-row .col-version { align-items: center; gap: 5px; overflow: hidden; }
+  /* The roster's chip stays on ONE line where the Deploys column lets a chip wrap
+     within itself: a variable-height roster row would lose the inventory rhythm.
+     Under pressure the service name ellipsizes and the version survives — the
+     version is what the cell is for. */
+  .roster-row .col-version .tag-delta { flex-wrap: nowrap; }
+  .roster-row .col-version .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .roster-list-header {
     padding: 0 20px 10px;
     font-family: var(--font-mono);
@@ -2996,6 +3059,24 @@
   }
 
   /* ─── RESPONSIVE ─── */
+  /* Tablet/narrow desktop: five roster columns don't fit. The stack cell carries
+     a host chip, icon, name and up to four inline affordances, so squeezing it to
+     buy the Version column its width ellipsizes the stack NAME — the row's
+     identity — away. Instead the Version cell drops to a full-width second line
+     under the row (the same move the phone layout makes one step further down),
+     which costs height but keeps every column's content intact. Its header label
+     goes with it, so the remaining four stay in lockstep with the rows. */
+  @media (max-width: 1000px) {
+    .roster-list-header, .roster-row { grid-template-columns: 1fr 130px 150px 84px; }
+    .roster-list-header .rh-ver { display: none; }
+    .roster-row .col-version { grid-column: 1 / -1; grid-row: 2; margin-top: 3px; }
+    /* A stack with no versions (parked, or nothing running) drops the line
+       entirely rather than leaving an empty one. Safe because the cell is
+       explicitly placed here — on the desktop grid the auto-placed cells after it
+       would slide into the freed track. */
+    .roster-row .col-version:empty { display: none; }
+  }
+
   @media (max-width: 700px) {
     header { padding: 0 12px; height: 48px; }
     :root { --app-header-h: 48px; }
@@ -3061,6 +3142,25 @@
     .roster-status { grid-column: 2; grid-row: 1; justify-self: end; }
     .roster-when   { grid-column: 1; grid-row: 2; font-size: 11px; }
     .roster-sha    { grid-column: 2; grid-row: 2; justify-self: end; }
+    /* The Version cell becomes a third full-width row under name/time, exactly as
+       it does on a deploy row — one row further down than the tablet layout, which
+       has no time/commit line above it (and whose roster-scoped rule would
+       otherwise still win here on specificity). */
+    .roster-row .col-version { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
+
+    /* Containers panel: five cells on one line overflow a phone (the version chip
+       cannot ellipsize — a half-shown tag is worse than none), so the version
+       moves to a second line under its service while state/status/logs keep the
+       first, exactly as the no-version line already reads. */
+    .health-panel.has-versions .hp-svc {
+      grid-template-columns: minmax(0, 1fr) auto auto auto;
+      row-gap: 3px;
+    }
+    .health-panel.has-versions .hp-name   { grid-area: 1 / 1; }
+    .health-panel.has-versions .hp-state  { grid-area: 1 / 2; }
+    .health-panel.has-versions .hp-status { grid-area: 1 / 3; }
+    .health-panel.has-versions .clog-btn  { grid-area: 1 / 4; }
+    .health-panel.has-versions .hp-ver    { grid-area: 2 / 1 / auto / -1; }
 
     /* Deploy-history rows on one line: the desktop's fixed columns overflow a
        phone, so use content-width tracks and drop the file count (like the table). */
@@ -3318,6 +3418,10 @@
   @keyframes clogpulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
   .clog-live.paused { color: var(--text-muted); border-color: var(--border-lit); background: transparent; }
   .clog-live.paused .clog-dot { background: var(--text-muted); animation: none; }
+  /* The server closed the stream: the control is inert, so it must stop
+     claiming the stream is live. Danger dot to match the footer's message. */
+  .clog-live.dead { color: var(--text-muted); border-color: var(--border-lit); background: transparent; cursor: default; }
+  .clog-live.dead .clog-dot { background: var(--danger); animation: none; }
 
   .clog-tool { display: inline-flex; align-items: center; justify-content: center;
     width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent;
@@ -3384,5 +3488,3 @@
      background: var(--crust); display: flex; flex-direction: column; }
   #log-pane.wrap .log-msg, #log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .log-line.clog-out { display: none; }
-
-  .health-panel .hp-svc { grid-template-columns: 1fr auto auto auto; }

@@ -32,6 +32,17 @@ type Entry struct {
 	// Hooks carries the stack's deploy-hook command lines so the UI can show the
 	// badge + panel without a fetch (ADR-0038); nil when the stack has none.
 	Hooks *Hooks `json:"hooks,omitempty"`
+	// Watched lists the input files whose hashes decide whether this stack
+	// redeploys (Invariant 2), as recorded by its last successful deploy. It
+	// answers the roster's "why has nothing happened here" without reading
+	// state.yaml on the host. Empty for a stack that has never deployed.
+	Watched []string `json:"watched,omitempty"`
+	// WatchedConfig reports that the stack's deploy-shaping config is hashed
+	// too, so editing it redeploys the stack. It is deliberately not in
+	// Watched: that hash is recorded under a synthetic key, not a file anyone
+	// can open, and listing it as a path would send an operator looking for a
+	// file that does not exist.
+	WatchedConfig bool `json:"watched_config,omitempty"`
 }
 
 // Hooks is the roster view of a stack's deploy hooks: just the command lines,
@@ -44,9 +55,11 @@ type Hooks struct {
 // Build merges the effective stack set with per-stack last outcomes into a
 // stable, sorted roster. stacks is the deploy set (disabled stacks are already
 // excluded from it, so disabled is merged in separately); last returns a
-// stack's newest audit record, if any. Enabled stacks sort first (alphabetical),
-// then disabled (alphabetical), so the list reads live-then-parked.
-func Build(stacks []config.Stack, disabled []string, last func(name string) (audit.Record, bool)) []Entry {
+// stack's newest audit record, if any; watched returns the stack's tracked
+// input files and whether its config hash is tracked too. Enabled stacks sort
+// first (alphabetical), then disabled (alphabetical), so the list reads
+// live-then-parked.
+func Build(stacks []config.Stack, disabled []string, last func(name string) (audit.Record, bool), watched func(name string) (files []string, config bool)) []Entry {
 	entries := make([]Entry, 0, len(stacks)+len(disabled))
 
 	for _, s := range stacks {
@@ -60,11 +73,16 @@ func Build(stacks []config.Stack, disabled []string, last func(name string) (aud
 		if len(s.Hooks.PreDeploy) > 0 || len(s.Hooks.PostDeploy) > 0 {
 			e.Hooks = &Hooks{PreDeploy: s.Hooks.PreDeploy, PostDeploy: s.Hooks.PostDeploy}
 		}
+		if watched != nil {
+			e.Watched, e.WatchedConfig = watched(s.Name)
+		}
 		entries = append(entries, e)
 	}
 	for _, name := range disabled {
 		// Parked stacks show as disabled with no live outcome, even if a
 		// historical record exists — the inventory fact is "not deployed".
+		// Watched files are omitted for the same reason: skipper is not
+		// watching a parked stack, whatever its last deploy recorded.
 		entries = append(entries, Entry{Name: name, Disabled: true})
 	}
 

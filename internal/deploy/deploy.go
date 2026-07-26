@@ -141,11 +141,12 @@ type Deployer struct {
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64
-	lastSyncErr      atomic.Pointer[syncOutcome]       // nil until the first run
-	currentRunPlan   atomic.Pointer[RunPlan]           // latest published plan, for late joiners
-	currentHookRun   atomic.Pointer[HookRun]           // latest published hook-run state, for late joiners
-	discoveredStacks atomic.Pointer[config.RepoStacks] // stack-discovery result, nil when stacks are listed explicitly
-	projectDirs      atomic.Pointer[map[string]string] // recorded stack→project-dir, for orphan detection
+	lastSyncErr      atomic.Pointer[syncOutcome]         // nil until the first run
+	currentRunPlan   atomic.Pointer[RunPlan]             // latest published plan, for late joiners
+	currentHookRun   atomic.Pointer[HookRun]             // latest published hook-run state, for late joiners
+	discoveredStacks atomic.Pointer[config.RepoStacks]   // stack-discovery result, nil when stacks are listed explicitly
+	projectDirs      atomic.Pointer[map[string]string]   // recorded stack→project-dir, for orphan detection
+	trackedFiles     atomic.Pointer[map[string][]string] // recorded stack→hashed input paths, for the roster
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -177,6 +178,18 @@ func New(cfg Config) *Deployer {
 		hookRunSink:  cfg.HookRunSink,
 	}
 	d.nextEventID.Store(cfg.StartEventID)
+
+	// Seed the tracked-file view from the persisted state, so the roster can
+	// answer "what is watched here" from the moment the UI is up rather than
+	// only after a run completes. A failed git sync returns before the deploy
+	// phase, and every stack would otherwise read as never deployed — the one
+	// wrong answer that surface exists to prevent.
+	if state, err := loadPersistedDeployState(stateDir); err != nil {
+		slog.Warn("could not read deploy state to seed the tracked-file view", "err", err)
+	} else {
+		tracked := state.trackedFiles()
+		d.trackedFiles.Store(&tracked)
+	}
 	return d
 }
 
@@ -657,6 +670,11 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// Publish the recorded project dirs for out-of-run orphan detection.
 	dirs := state.projectDirs()
 	d.projectDirs.Store(&dirs)
+
+	// Publish the hashed input paths so the roster can show what change
+	// detection actually watches per stack.
+	tracked := state.trackedFiles()
+	d.trackedFiles.Store(&tracked)
 
 	// After the run, let the wiring publish autosync/queue snapshots and refresh
 	// gauges (queue depth may have changed via defer/clear this run).

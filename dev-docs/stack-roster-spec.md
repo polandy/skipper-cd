@@ -38,12 +38,30 @@ type Entry struct {
     LastStatus events.Status `json:"last_status,omitempty"` // empty = never deployed
     LastAt     *time.Time    `json:"last_at,omitempty"`
     LastCommit string        `json:"last_commit,omitempty"`
+    Hooks      *Hooks        `json:"hooks,omitempty"`    // declared deploy hooks
+    Watched       []string   `json:"watched,omitempty"`        // hashed input paths
+    WatchedConfig bool       `json:"watched_config,omitempty"` // config hash tracked
 }
 
 func Build(stacks []config.Stack, disabled []string,
-    last func(name string) (audit.Record, bool)) []Entry
+    last func(name string) (audit.Record, bool),
+    watched func(name string) []string) []Entry
 ```
 
+- **`Watched`**: the input paths whose hashes decide whether the stack
+  redeploys (Invariant 2), as recorded by its last successful deploy
+  (`Deployer.CurrentTrackedFiles`, published after every run like the project
+  dirs orphan detection reads). It is what lets the UI answer "why did nothing
+  happen for this stack" without an operator opening `state.yaml` on the host.
+  Empty for a stack that has never deployed, and deliberately omitted for a
+  parked (`disabled: true`) one — skipper is not watching it, whatever its last
+  deploy recorded. `cmd/skipper` renders a path inside the repo clone
+  repo-relative before it ships (`splitTrackedPaths`); host paths stay absolute.
+- **`WatchedConfig`**: the stack's deploy-shaping config is hashed as well
+  (`Stack.ConfigHash`), but under a *synthetic* `<stacks_base_dir>/skipper.yaml`
+  key — ADR-0043 moved that config host-side, so no such file exists. It travels
+  as a flag rather than inside `Watched` so the UI can render it as prose; a
+  path would send an operator looking for a file that is not there.
 - No `icon` field: the frontend resolves each stack's icon from its **name**
   via the existing `/api/icons/<name>` endpoint (override + repo icon +
   monogram fallback all server-side), exactly like the deploy table.
@@ -77,7 +95,8 @@ Only what is specific to the roster is listed here.
   gains the `stacks` value (persisted in `localStorage`). The roster container
   shows for the stacks view and hides the deploy table + logs pane (and back).
 - **Aligned table**, same fixed-grid + header treatment as the deploy table
-  (`.roster-list-header`): columns `Stack · Status · Last deploy · Commit`. The
+  (`.roster-list-header`): columns `Stack · Version · Status · Last deploy ·
+  Commit`. The
   Stack cell is icon (`/api/icons/<name>`) + name, like the deploy table's Stack
   cell. Rows are the deploy table's frame **without** the status left bar
   (status is the badge). Mobile collapses to the same 2×2 shape.
@@ -86,6 +105,14 @@ Only what is specific to the roster is listed here.
   **disabled** (`disabled: true`, muted row, no badge). Time/commit are shown
   only for a real past deploy (suppressed while deploying, parked, or never
   deployed) and reuse `formatTime` / `fullTime` / `shortSHA`.
+- **Version** shows the running version of the stack's lead service plus a `+N`
+  for the rest — the glance; the containers panel below carries every service's
+  version. It reads the image each container actually runs
+  (`health.ServiceHealth.Image`, from the `compose ps` the health poller already
+  runs), so it is *live* state, not what the compose file declares. Rendered with
+  the same version chip as the Deploys view's per-service image delta, in its
+  current-value mode. Details (lead-service rule, degradation, mobile) in
+  `internal/ui/UI_SPEC.md`.
 - **No title line.** The roster starts straight at the column header — no count
   or mode hint, matching the deploy table (which has none either).
 - Re-renders on each `stacks` snapshot. A live `deploying` event refreshes only
@@ -126,6 +153,9 @@ Only what is specific to the roster is listed here.
 
 - `internal/roster`: table tests — merge/sort, never-deployed (no record),
   disabled ordering + parking, empty set.
+- The Version column has its own coverage: `internal/health` (the image reaches
+  the snapshot), the `app-helpers` unit layer (`rosterVersion` picks the lead) and
+  Playwright Maske AK (`uak-service-versions.spec.ts`).
 - Frontend: Playwright Maske R (`ur-roster.spec.ts`) — view switch + deployed/
   disabled rows + aligned column header (UR1), click-a-row → containers +
   history (UR2), search incl. the mobile popover entry (UR3/UR4), and the shared

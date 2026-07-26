@@ -223,7 +223,16 @@ export interface StartOptions {
    *  on) would be healed spuriously. Same shape as setStackHealth. */
   initialHealth?: Record<
     string,
-    Array<{ Service: string; Name?: string; State: string; Health?: string; ExitCode?: number }>
+    Array<{
+      Service: string;
+      Name?: string;
+      /** The image the container runs — what the UI shows as the service's live
+       *  version (Maske AK). Omit to seed a snapshot that carries none. */
+      Image?: string;
+      State: string;
+      Health?: string;
+      ExitCode?: number;
+    }>
   >;
   /** Stack discovery (ADR-0034): boot with `stack_discovery: true` — the origin's
    *  stack dirs are the stack set. `repoConfig` (when set) is the former in-repo
@@ -682,7 +691,14 @@ export class Skipper {
    *  given services on its next poll. */
   setStackHealth(
     stack: string,
-    services: Array<{ Service: string; Name?: string; State: string; Health?: string; ExitCode?: number }>,
+    services: Array<{
+      Service: string;
+      Name?: string;
+      Image?: string;
+      State: string;
+      Health?: string;
+      ExitCode?: number;
+    }>,
   ): void {
     writeFileSync(join(this.healthDir, `${stack}.json`), JSON.stringify(services));
   }
