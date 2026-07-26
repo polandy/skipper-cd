@@ -24,6 +24,23 @@ badge, a bound panel, and a log *without* new component CSS — the badge mirror
 the health pill, the panel is variant A, and the log is the container-logs panel
 in a second mode.)
 
+**Budget every addition.** Reuse keeps the *look* consistent; it does not keep
+the surface small. The row already carries a status badge, a health pill, a
+files pill, a jump button, a logs icon, an app link, and — per view — an
+overflow menu or inline actions; the expand card already stacks three panels.
+Each was justified on its own, and the sum is what an operator has to read. So
+a change that adds a badge, chip, panel, or row control answers two questions
+in its PR:
+
+1. **Which existing element could carry this instead?** A new state on a badge
+   that is already there beats a second badge beside it; a line in an existing
+   panel beats a fourth panel.
+2. **What comes off, or why does nothing?** "Nothing, because X" is a fine
+   answer — an unanswered question is not.
+
+This is a design-review prompt, not a veto: the goal is that density grows on
+purpose rather than one justified feature at a time.
+
 One row = one stack. The two table views (Deploys · Stacks) differ only in
 **what** the columns say, not in **how** rows, columns, and expansions look. The
 single sanctioned difference: Deploys rows carry a **status-coloured left bar**
