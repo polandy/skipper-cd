@@ -133,7 +133,7 @@ type Deployer struct {
 	// touched while it is held.
 	mu                     sync.Mutex
 	plan                   []string          // stacks planned to deploy this run, in order
-	adoptRun               bool              // this run records the running state instead of deploying it (ADR-0051)
+	bootstrapRun           bool              // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
 	prober                 *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
 	rolloutPollInterval    time.Duration     // 0 = default; tests set a small value for the canary wait
 	rolloutTimeoutOverride time.Duration     // 0 = derive from config; tests set a short canary-wait deadline
@@ -559,14 +559,17 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		state = newEmptyState()
 	}
 
-	// initial_deploy: adopt (ADR-0051) — with nothing recorded, take the
-	// running stacks to be the repo's version and record them instead of
-	// deploying every one of them. Decided here, before the nixos phase, which
-	// records its own hashes into the state and would otherwise make an empty
-	// state look non-empty by the time the stacks are reached.
-	d.adoptRun = cfg.AdoptsInitialState() && state.isEmpty()
-	if d.adoptRun {
-		slog.Warn("no deploy state recorded and initial_deploy is \"adopt\": recording the running stacks as deployed without running docker compose up — a stack that is not actually running, or not on the repo's version, stays that way until its files change")
+	// Bootstrap run (ADR-0051): nothing is recorded, so every input reads as
+	// changed and every stack is deployed. `up` converges what actually
+	// differs, but a forced `pull` would also move every floating tag on the
+	// host at once — so images are left as they are and only the missing ones
+	// are fetched (compose does that itself when it creates a container).
+	// Decided here, before the nixos phase, which records its own hashes into
+	// the state and would otherwise make an empty state look non-empty by the
+	// time the stacks are reached.
+	d.bootstrapRun = state.isEmpty()
+	if d.bootstrapRun {
+		slog.Info("no deploy state recorded: converging every stack without refreshing images already on the host")
 	}
 
 	if cfg.NixOSRebuild.IsEnabled() && !d.rebuildNixOSIfChanged(ctx, cfg, state) {
@@ -604,9 +607,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// this run, so the header can show what is coming next. Skipped when the UI
 	// is off (no sink). The loop below re-evaluates each stack independently and
 	// remains the source of truth for what actually deploys.
-	// An adopting run deploys nothing, so the look-ahead would otherwise
-	// announce every stack as about to deploy.
-	if d.runPlanSink != nil && !d.adoptRun {
+	if d.runPlanSink != nil {
 		d.plan = d.computeRunPlan(cfg, state)
 	} else {
 		d.plan = nil
@@ -708,28 +709,6 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		return nil
 	}
 
-	// Adopt gate (ADR-0051): nothing is recorded, so every input reads as
-	// changed — but the operator has declared the stack already runs this
-	// version. Record it as deployed and move on; from the next run it is an
-	// ordinary stack whose files are up to date.
-	//
-	// Ahead of the autosync gate on purpose: adopting touches nothing on the
-	// host, so a pause has nothing to hold back, and queueing instead would
-	// leave the stack dirty to deploy for real on resume — the opposite of
-	// what adopt was asked to do.
-	if d.adoptRun {
-		state.recordStack(stack.Name, currentHashes)
-		if currentImages != nil {
-			state.recordImages(stack.Name, currentImages)
-		}
-		state.recordProjectDir(stack.Name, run.effectiveProjectDir())
-		d.clearQueued(stack.Name)
-		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
-		d.emit(events.StatusSkipped, stack.Name, 0, "", changeSet{})
-		slog.Warn("adopted stack without deploying", "stack", stack.Name, "tracked_files", len(currentHashes))
-		return nil
-	}
-
 	// Autosync gate: when paused, defer instead of deploying. The hashes are
 	// deliberately not recorded, so the stack stays dirty and re-deploys once
 	// sync resumes (docs/autosync.md).
@@ -785,7 +764,13 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	if len(dockerfilePaths) > 0 {
 		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", dockerfilePaths)
-		if err := d.runDockerCompose(ctx, run, "build", "--pull"); err != nil {
+		buildArgs := []string{"build"}
+		if !d.bootstrapRun {
+			// --pull refreshes each Dockerfile's base image. On a bootstrap run
+			// that is the same unasked-for jump a forced pull would be.
+			buildArgs = append(buildArgs, "--pull")
+		}
+		if err := d.runDockerCompose(ctx, run, buildArgs...); err != nil {
 			return fmt.Errorf("docker compose build: %w", err)
 		}
 	}
@@ -859,6 +844,17 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 // pull; when the compose file could not be parsed (compose == nil), every
 // service is pulled as a safe fallback.
 func (d *Deployer) pullIfImagesChanged(ctx context.Context, run stackRun, compose *composeFile, currentImages, previousImages serviceImageByName) error {
+	if d.bootstrapRun {
+		// Nothing is recorded, so every image reads as changed and this would
+		// pull the whole host at once — moving every floating tag (`:latest`,
+		// `:2`) to whatever it resolves to today, unattended, in one run. On a
+		// host that is merely being adopted or recovered, none of that was
+		// asked for. `up` below still creates whatever is missing, and compose
+		// fetches an image it does not have locally, so a genuinely fresh
+		// install is unaffected (ADR-0051).
+		slog.Info("skipping pull, bootstrap run", "stack", run.stack.Name)
+		return nil
+	}
 	if currentImages != nil && !hasAnyImageChanged(currentImages, previousImages) {
 		slog.Info("skipping pull, no image changes", "stack", run.stack.Name)
 		return nil

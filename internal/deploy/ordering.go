@@ -125,11 +125,7 @@ func (g *depGate) decide(deps []string) gateDecision {
 // otherwise it deploys normally. Either way it reports the outcome so the caller
 // can gate this stack's own dependents.
 func (d *Deployer) deployStackGated(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState, gate gateDecision) depOutcome {
-	// An adopting run (ADR-0051) deploys nothing, so dependency ordering has
-	// nothing to order: holding a stack back would only leave it unrecorded,
-	// and it would then deploy for real on a later run — the unattended
-	// pull-everything the adopt mode exists to avoid.
-	if gate.outcome != depReady && !d.adoptRun {
+	if gate.outcome != depReady {
 		// A dependency failed or is queued. Only a stack that actually has a
 		// change needs holding back; an unchanged stack is already at its desired
 		// state, so the constraint is moot and it does not block its dependents.
