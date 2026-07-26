@@ -20,14 +20,39 @@ the same tunnel) can open `http://<host>:<port>/` too.
 
 ## What it seeds
 
-- Four stacks (`web`, `api`, `worker`, `database`), each with a coloured icon.
-- A pushed change to `web` (single-commit diff) and to `api` (two commits → the
-  multi-commit diff head with the "N commits" pill).
-- Health poll + watch on: `web`/`api` healthy, `worker` degraded, `database`
-  stopped — so the health pills, the health panel, and the status timeline all
-  render with variety.
-- The autosync drawer, the run/upcoming header, the logs view, and the theme
-  switcher are all live.
+Nine stacks, each with a coloured icon, arranged so that **every state the UI can
+render is reachable** — the point being that a UI change to a failure path can be
+eyeballed here, not only asserted in the e2e suite.
+
+**Deploy outcomes** (Deploys view):
+
+| Stack | Outcome | What it shows |
+| --- | --- | --- |
+| `nextcloud` | `success` | single-service tag bump; hooks + a deploy-health gate |
+| `immich` | `success` | four services changed across two commits — the multi-commit diff head and the per-service version delta |
+| `paperless` | `success` | same-tag rebuild: only the pinned digest moves |
+| `vaultwarden` | `rolled_back` | its `up` fails once, the rollback restores the previous compose — error panel + diff |
+| `wiki` | `failed` | `up` always fails and `rollback: false`, so the failed containers are deliberately left running |
+| `backup` | `blocked` | `depends_on: vaultwarden`, held back in the same run |
+| `monitoring` | `queued` | paused through the same API the autosync drawer calls, then changed |
+| `syncthing` | `healed` | seeded degraded, so self-heal runs a corrective redeploy — heal badge + drift panel |
+| `experiments` | *(parked)* | `disabled: true` — present in the repo, never deployed |
+
+`queued` and `blocked` are deliberately **not** written to the durable audit log,
+so those two appear in the deploy log but their roster rows keep their previous
+outcome. That is the product behaviour, not a seeding gap.
+
+**Other surfaces:** health pills and the containers panel (healthy / unhealthy /
+stopped, each with its running image, so version cells populate), the attention
+band + health beacon, the status timeline, orphan detection (a removed stack
+still running, plus an unmanaged project), Traefik app links (one host and a
+two-host popover), a second host fanned in over `peers:` plus one that is
+unreachable, the autosync drawer with a pending count, the logs view, and the
+theme switcher.
+
+**Not reachable here:** `rolled_back_unhealthy` and `heal_exhausted`. Both need a
+stack to keep failing across several attempts, which would make the fixture slow
+and noisy for two badges; the e2e masks cover them.
 
 ## Relationship to the e2e harness
 
@@ -35,5 +60,13 @@ This script (`scripts/ui-preview.mjs`) is a deliberately self-contained twin of
 the Playwright launcher, `e2e/ui/fixtures/harness.ts`. That harness — run
 through Playwright's TypeScript loader — stays the authoritative, asserted way
 skipper is booted for tests. The preview trades a little duplication for **zero
-toolchain dependencies**, so it runs anywhere with plain `node`. Keep the config
-shape here in rough sync with the harness's when the config changes.
+toolchain dependencies**, so it runs anywhere with plain `node`.
+
+The two configs are **not** shared, and deliberately so: the harness's is
+option-driven (one shape per mask, ~30 toggles), this one is a single fixed
+scenario. A shared builder would be the union of both, re-implementing in JS what
+`internal/config` already validates. What keeps this one honest instead is that
+the preview runs `skipper -validate` against its generated config before booting,
+so a renamed or mistyped key fails here with one actionable line — the check that
+replaced the old "keep the two in rough sync" instruction, which is exactly what
+rotted.

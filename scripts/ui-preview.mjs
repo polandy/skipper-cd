@@ -2,19 +2,21 @@
 // UI (`make ui-preview`, or `PORT=3000 node scripts/ui-preview.mjs`).
 //
 // It builds the binary from the current checkout, stands up a throwaway origin
-// repo + a stub `docker` on PATH + a config, launches skipper, and seeds a
-// representative spread of states — several deployed stacks, a pushed change
-// with a single- and a multi-commit diff, and health that is healthy / degraded
-// / stopped. Then it prints the URL and stays up until Ctrl-C, cleaning up its
-// temp dir on exit. No docker, no network, no node_modules — just Node + git +
-// the Go toolchain.
+// repo + a stub `docker` on PATH + a config, launches skipper, and seeds every
+// state the UI can render — deploys that succeed, fail, roll back, queue and
+// block, health that is healthy / degraded / stopped, a self-heal, a parked
+// stack, orphans, app links and a second host. Then it prints the URL and stays
+// up until Ctrl-C, cleaning up its temp dir on exit. No docker, no network, no
+// node_modules — just Node + git + the Go toolchain.
 //
 // This is a deliberately self-contained twin of the Playwright launcher
 // (e2e/ui/fixtures/harness.ts). That harness — driven by Playwright's TS loader
 // — remains the authoritative, asserted way skipper is booted for tests; this
 // script trades a little duplication for zero toolchain dependencies so anyone
-// can spin up the UI with one command. Keep the config shape here in rough sync
-// with the harness's.
+// can spin up the UI with one command. The two configs are deliberately not
+// shared: the harness's is option-driven (one shape per mask), this one is a
+// fixed scenario. What keeps this one honest is the `-validate` call below,
+// not a rule about staying in sync.
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer } from 'node:http';
@@ -28,7 +30,11 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 3000);
 const SECRET = 'ui-preview-secret';
+// The four happy-path stacks the image-delta demos push through, plus the
+// three that exist to make every failure badge reachable locally (see the
+// pushed changes at the bottom).
 const stacks = ['immich', 'nextcloud', 'paperless', 'gitea'];
+const failureStacks = ['vaultwarden', 'wiki', 'backup', 'monitoring', 'syncthing'];
 
 // Stub docker: records nothing, succeeds at everything, and answers four
 // reads — `compose ps --format json` per stack for the health poller, bare
@@ -44,6 +50,19 @@ const stubDocker = `#!/bin/sh
 case " $* " in
   *" compose "*)
     case " $* " in
+      *" up "*)
+        # Failure switch: a file named after the stack in $STUB_FAIL_DIR makes
+        # its \`up\` fail, so the preview can show a real failed/rolled-back
+        # deploy instead of only the happy path. A file whose content is "once"
+        # is consumed on first use, so the deploy fails but the rollback's own
+        # \`up\` succeeds — which is what turns the row into rolled_back.
+        f="$STUB_FAIL_DIR/$(basename "$(pwd)")"
+        if [ -f "$f" ]; then
+          [ "$(cat "$f")" = "once" ] && rm -f "$f"
+          echo "Error response from daemon: driver failed programming external connectivity" >&2
+          exit 1
+        fi
+        exit 0 ;;
       *" logs "*)
         svc="$(basename "$(pwd)")"
         # Merged (whole-stack) reads keep the compose service prefix; a single
@@ -120,6 +139,20 @@ async function webhook() {
   });
   return resp.status;
 }
+// settled waits until a stack has a terminal record in its durable audit log
+// (ADR-0033) — the deploy actually finished. The seeding used to sleep a fixed
+// 1.5s per push, which immich's `sleep 4` pre_deploy hook already outran, so
+// the next push landed mid-run; polling the outcome is both faster and correct.
+async function settled(stack, want) {
+  for (let i = 0; i < 300; i++) {
+    try {
+      const recs = await (await fetch(`http://127.0.0.1:${PORT}/api/audit?stack=${stack}`)).json();
+      if (recs?.length >= (want ?? 1)) return;
+    } catch {}
+    await sleep(200);
+  }
+  console.error(`[ui-preview] warning: ${stack} did not settle in time; seeding continues`);
+}
 async function healthy() {
   try {
     return (await fetch(`http://127.0.0.1:${PORT}/healthz`)).status === 200;
@@ -132,9 +165,10 @@ const base = mkdtempSync(join(tmpdir(), 'skipper-ui-preview-'));
 const origin = join(base, 'origin');
 const repoDir = join(base, 'state', 'repo');
 const healthDir = join(base, 'health');
+const failDir = join(base, 'fail');
 const stubDir = join(base, 'bin');
 const bin = join(base, 'skipper');
-for (const d of [join(base, 'state'), healthDir, stubDir]) mkdirSync(d, { recursive: true });
+for (const d of [join(base, 'state'), healthDir, failDir, stubDir]) mkdirSync(d, { recursive: true });
 writeFileSync(join(stubDir, 'docker'), stubDocker, { mode: 0o755 });
 
 function cleanup() {
@@ -203,6 +237,14 @@ const initCompose = {
 for (const n of stacks) {
   mkdirSync(join(origin, n), { recursive: true });
   writeFileSync(join(origin, n, 'docker-compose.yml'), initCompose[n]);
+  writeFileSync(join(origin, n, 'icon.svg'), icon);
+}
+// The failure-demo stacks: ordinary single-service composes. What makes each
+// interesting is its override in the config below plus the pushed change at the
+// bottom, not its contents.
+for (const n of failureStacks) {
+  mkdirSync(join(origin, n), { recursive: true });
+  writeFileSync(join(origin, n, 'docker-compose.yml'), composeYaml([['app', `${n}:1.0.0`]]));
   writeFileSync(join(origin, n, 'icon.svg'), icon);
 }
 // A parked stack: a real compose directory kept out of deploys via
@@ -325,6 +367,12 @@ const cfg =
   `ui_theme_switcher: true\n` +
   `runtime_health_poll_interval_seconds: 3\n` +
   `health_watch:\n  debounce_polls: 1\n` +
+  // Self-heal (ADR-0029) so a healed row and its drift panel are reachable. It
+  // is global because under discovery only the global flag activates the
+  // poller; the stacks that exist to *show* a degraded pill opt out below, so
+  // syncthing is the one it acts on. The long cooldown keeps that to one heal
+  // rather than one every few seconds.
+  `self_heal: true\nself_heal_min_unhealthy_polls: 2\nself_heal_cooldown_seconds: 3600\n` +
   `command_timeout_seconds: 120\n` +
   // Dead source_url → auto-match icon fetches fail fast; committed icon.svg
   // overrides still resolve, so the preview stays fully offline.
@@ -335,17 +383,43 @@ const cfg =
   // rest are discovered.
   `stack_discovery: true\n` +
   `stacks:\n` +
-  `  - name: nextcloud\n` +
+  // nextcloud, gitea and paperless are the health-variety demos (unhealthy /
+  // unhealthy / stopped); self-heal would drive each back to a healed row and
+  // take its pill with it, so they opt out and syncthing is the one it heals.
+  `  - name: nextcloud\n    self_heal: false\n` +
   `    deploy_health_check:\n      timeout_seconds: 1\n` +
   `    hooks:\n      pre_deploy:\n        - "echo backing up nextcloud database"\n      post_deploy:\n        - "echo occ upgrade complete"\n` +
+  `  - name: gitea\n    self_heal: false\n` +
+  `  - name: paperless\n    self_heal: false\n` +
   `  - name: immich\n` +
   `    hooks:\n      pre_deploy:\n        - "echo pausing backups"\n        - "sleep 4"\n      post_deploy:\n        - "echo verifying immich"\n` +
+  // vaultwarden's up fails once → the deploy fails and the rollback's own up
+  // succeeds, so the row lands on rolled_back with its error panel and diff.
+  // wiki opts out of rollback (ADR-0050) and fails every time → a plain failed
+  // row whose containers are deliberately left running. backup depends on
+  // vaultwarden, so the same run holds it back → blocked. (monitoring is paused
+  // at runtime further down, once the rest has been seeded.)
+  `  - name: backup\n    depends_on: ["vaultwarden"]\n` +
+  `  - name: wiki\n    rollback: false\n` +
   `  - name: experiments\n    disabled: true\n`;
 const cfgPath = join(base, 'skipper.yml');
 writeFileSync(cfgPath, cfg);
 
+// Check the config with the binary that is about to read it. This fixture is a
+// hand-written config living outside anything CI exercises, so it drifts when a
+// key is renamed — it silently did for two releases. `-validate` turns that into
+// one actionable line here rather than a startup failure three steps later.
+try {
+  execFileSync(bin, ['-config', cfgPath, '-validate'], { stdio: 'pipe' });
+} catch (err) {
+  console.error('[ui-preview] the seeded config is not valid for this build:\n');
+  console.error(String(err.stdout ?? '').trim() || String(err.stderr ?? '').trim());
+  cleanup();
+  process.exit(1);
+}
+
 const proc = spawn(bin, ['-config', cfgPath], {
-  env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, STUB_PS_DIR: healthDir },
+  env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, STUB_PS_DIR: healthDir, STUB_FAIL_DIR: failDir },
   stdio: ['ignore', 'inherit', 'inherit'],
 });
 proc.on('exit', (code) => {
@@ -393,6 +467,18 @@ setHealth('paperless', [
     State: 'exited',
     ExitCode: 0,
   },
+]);
+// The failure-demo stacks report healthy containers with their running image,
+// so their rows carry a version and a pill like any other — only their deploy
+// outcome is unusual. syncthing is the exception: it is seeded degraded, which
+// is what gives self-heal something to act on.
+for (const n of ['vaultwarden', 'wiki', 'backup', 'monitoring']) {
+  setHealth(n, [
+    { Service: 'app', Name: `${n}-app-1`, Image: `${n}:1.1.0`, State: 'running', Health: 'healthy' },
+  ]);
+}
+setHealth('syncthing', [
+  { Service: 'app', Name: 'syncthing-app-1', Image: 'syncthing:1.1.0', State: 'restarting', Health: 'unhealthy' },
 ]);
 setHealth('gitea', [
   { Service: 'server', Name: 'gitea-server-1', Image: 'gitea/gitea:1.22.3', State: 'restarting', Health: 'unhealthy' },
@@ -456,7 +542,7 @@ writeFileSync(
 );
 git(origin, 'commit', '-am', 'feat(nextcloud): bump app to 30.0.2');
 await webhook();
-await sleep(1500);
+await settled('nextcloud', 2);
 // immich: several services change across two commits in one deploy — the delta
 // names each changed service (four services → three chips + "+1 more"), and the
 // diff head shows the multi-commit range.
@@ -481,7 +567,7 @@ writeFileSync(
 );
 git(origin, 'commit', '-am', 'chore(immich): bump ml, redis, database');
 await webhook();
-await sleep(1500);
+await settled('immich', 2);
 // paperless: a same-tag rebuild — only the pinned digest of webserver moves, so
 // the delta shows the shared tag as context plus a short-digest old→new.
 const PAPERLESS_DIGEST_NEW = 'sha256:2222222222222222222222222222222222222222222222222222222222222222';
@@ -495,7 +581,36 @@ writeFileSync(
 );
 git(origin, 'commit', '-am', 'chore(paperless): rebuild webserver (digest bump, same tag)');
 await webhook();
-await sleep(1500);
+await settled('paperless', 2);
+
+// Failure states, so every badge the deploy log can render is reachable here
+// and not only in the e2e suite. One run produces all four, because a stack
+// that rolled back stays dirty by design and a later run would redeploy it —
+// successfully this time — and overwrite the outcome we want to show.
+//
+//   vaultwarden  up fails once → rollback restores the previous compose  → rolled_back
+//   wiki         up always fails, rollback: false                        → failed
+//   backup       depends_on vaultwarden, which just failed               → blocked
+//   monitoring   paused through the API the autosync drawer calls        → queued
+//
+// The pause comes first but the commit base is already set by the pushes above,
+// so the rollback has a previous commit to restore. From here on the base stays
+// pinned, which is correct — a deferred change keeps its diff base until it
+// actually deploys.
+await fetch(`http://127.0.0.1:${PORT}/api/autosync`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ scope: 'stack', stack: 'monitoring', enabled: false }),
+});
+writeFileSync(join(failDir, 'vaultwarden'), 'once');
+writeFileSync(join(failDir, 'wiki'), 'always');
+for (const n of ['vaultwarden', 'wiki', 'backup', 'monitoring']) {
+  writeFileSync(join(origin, n, 'docker-compose.yml'), composeYaml([['app', `${n}:1.1.0`]]));
+}
+git(origin, 'commit', '-am', 'chore: bump the vaultwarden, wiki, backup and monitoring images');
+await webhook();
+await settled('vaultwarden', 2);
+await settled('wiki', 2);
 
 const bar = '─'.repeat(48);
 console.error(`\n[ui-preview] ${bar}`);
