@@ -77,7 +77,10 @@ GET /api/container-logs/{stack}?tail=200&services=api[,db][&since=<ts>]      # S
   reach it can open streams in a loop and pin the host's process table. Beyond
   the cap a request is refused with `429` (plus `Retry-After`) instead of
   spawning another child; the slot is taken after validation (a 404 costs
-  nothing) and released when the client disconnects.
+  nothing) and released when the client disconnects. The peer proxy
+  (`/api/peers/{name}/container-logs/…`, ADR-0048) deliberately holds no slot:
+  it spawns no child on the primary, and the peer applies its own cap to the
+  upstream request — a refusal there is forwarded as the `429` it is.
 - **Disconnect** cancels the request context (context exec), killing the child.
 - **Shutdown** never blocks on a stream: the child is tied to the request
   context and abandoned (ADR-0014 rule).
