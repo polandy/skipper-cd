@@ -1334,6 +1334,45 @@ masked the pane's layout diffs run-to-run. UB2's value — the level-badge mappi
 
   Then review the changed PNGs before committing. (`.pw-bin/` is gitignored.)
 
+### 5.1 Docs screenshots — rendered, never committed
+
+The two images the docs landing page embeds
+(`docs/assets/screenshots/{deploys,stacks}.png`) are **not** in git. A screenshot
+of the UI is derived from the UI, and a PNG never delta-compresses — committing
+one on every UI change would grow the repo without bound. They are rendered from
+a seeded instance instead, by `screenshots/docs-shots.spec.ts` under its own
+config (`screenshots/shots.config.ts`, kept out of the suite's `testDir`):
+
+```sh
+make docs-screenshots     # builds the binary, renders into docs/assets/screenshots/
+```
+
+`.github/workflows/docs.yml` runs the same renderer in Playwright's pinned
+container, hands the PNGs to the `build` job as an artifact, and only then runs
+`mkdocs build --strict` — so a missing or broken render fails the docs gate. The
+workflow's path filter therefore covers `internal/ui/**` and `e2e/ui/**` too: a UI
+change must refresh the published images.
+
+It is a **renderer, not a test** — it asserts only enough to know the page is
+ready to photograph. What it stages, and why:
+
+- Six stacks named after real self-hosted apps, whose logos it fetches from the
+  icon set skipper auto-matches against (a fetch failure is not fatal — the rows
+  fall back to monogram chips rather than breaking the docs build).
+- `initialCompose` gives each stack a realistic multi-service compose from the
+  start, so the first deploy is already the real thing rather than a
+  placeholder-to-real migration.
+- `commitAuthor` makes the pushes Renovate-authored, since the diff panel names
+  the author and a bot-driven bump is the loop skipper exists for.
+- Three staged pushes: a version bump whose row's diff is the focal point, a
+  second push **held** at `compose up` so the top row stays `deploying`, then the
+  remaining stacks bumped so every roster row carries a commit — with each bumped
+  stack's `setStackHealth` updated to match, so the Stacks view's versions agree
+  with its commits.
+
+Because the images are gitignored, a local `mkdocs build --strict` fails on the
+missing files until `make docs-screenshots` has run once.
+
 ## 6. Traceability
 
 Every UI_SPEC requirement maps to a case, or is marked already-unit-tested /

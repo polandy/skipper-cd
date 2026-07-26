@@ -16,3 +16,12 @@ skipper.yml
 # Local scratch binary for generating UI snapshot baselines in the pinned
 # Playwright container (see docs/e2e-tests.md §5). Built ad hoc, never committed.
 /.pw-bin/
+
+# Docs landing-page screenshots — GENERATED, never committed: a screenshot of the
+# UI is derived from it, and a PNG never delta-compresses, so committing one on
+# every UI change would grow the repo without bound. CI renders them before
+# `mkdocs build` (.github/workflows/docs.yml); locally: `make docs-screenshots`.
+/docs/assets/screenshots/*.png
+
+# The skipper binary the docs-screenshot renderer drives (built ad hoc).
+/e2e/ui/.docs-shot-bin
