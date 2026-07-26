@@ -1,0 +1,14 @@
+# The Playwright visual baselines are the only binaries in this repo that CHANGE
+# often: a UI tweak regenerates up to six full PNGs, and a PNG never
+# delta-compresses, so each regeneration would add its full size to history
+# forever. They are tracked with Git LFS instead — history keeps a text pointer,
+# the bytes live in LFS. Write-once binaries (the logo, the embedded fonts, the
+# PWA icons) stay in git as normal: they cost their size once. See
+# dev-docs/adr/0052-binary-assets-out-of-git-history.md.
+#
+# git-lfs on PATH (`nix develop` provides it) is needed to REGENERATE a baseline —
+# `git add` fails without it — and for any run that compares pixels
+# (`RUN_SNAPSHOTS=1`, i.e. the e2e-ui CI job). A plain local `make e2e-ui` skips the
+# compares, so pointer files are harmless there. To get the real PNGs:
+#   git lfs install && git lfs pull
+e2e/ui/__screenshots__/**/*.png filter=lfs diff=lfs merge=lfs -text
