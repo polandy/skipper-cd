@@ -91,6 +91,25 @@ jobs:
           node-version: '24'
       - run: make ui-preview-smoke
 
+  # The visual baselines are LFS-tracked (ADR-0052), and Playwright's pinned
+  # container ships no git-lfs — a checkout inside it would leave pointer text
+  # where the pixel compares expect PNGs. So they are fetched here, on a runner
+  # that has git-lfs, and handed to the e2e-ui job as an artifact. Keeping the
+  # container untouched matters: it is pinned precisely so font rasterisation
+  # matches how the baselines were generated.
+  baselines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          sparse-checkout: e2e/ui/__screenshots__
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ui-baselines
+          path: e2e/ui/__screenshots__
+          retention-days: 1
+
   # UI end-to-end tests: Playwright drives the embedded web UI in a real browser
   # against the same skipper binary (built in globalSetup). It runs inside
   # Playwright's pinned container (matching @playwright/test in the lockfile) so
@@ -99,11 +118,17 @@ jobs:
   # (docs/e2e-tests.md §5, §7). The image already ships Node + the browsers, so
   # only Go (for globalSetup's build) is installed on top.
   e2e-ui:
+    needs: baselines
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
     steps:
       - uses: actions/checkout@v7
+      # Overwrites the LFS pointer files this checkout wrote with the real PNGs.
+      - uses: actions/download-artifact@v7
+        with:
+          name: ui-baselines
+          path: e2e/ui/__screenshots__
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod

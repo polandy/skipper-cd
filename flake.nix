@@ -64,6 +64,10 @@
               pkgs.gotools
               pkgs.gcc # cgo — required by `go test -race`
               pkgs.git # real git for internal/git + e2e tests
+              # The Playwright baselines are LFS-tracked (ADR-0052); without
+              # git-lfs they check out as pointer text and the pixel compares
+              # fail. Run `git lfs install && git lfs pull` once per clone.
+              pkgs.git-lfs
               # Lint / security jobs.
               pkgs.golangci-lint # CI pins v2.12
               pkgs.govulncheck
