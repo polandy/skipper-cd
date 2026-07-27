@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.20.0](https://github.com/polandy/skipper-cd/compare/v0.19.0...v0.20.0) (2026-07-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **config:** a host config carrying a key skipper does not know — including one retired by an earlier rename (working_dir, health_check, health_poll_interval_seconds) — now fails to load instead of starting with the key silently ignored. Run `skipper -config <path> -validate` against each host config before rolling this version out. The NixOS module takes a configFile path and generates no YAML, so it is unaffected.
+* **config:** stacks_base_dir is now relative to repo_dir. Replace an absolute value like /var/lib/skipper/repo/stacks with the relative "stacks", or omit it entirely for the repo root.
+
+### Features
+
+* **api:** add GET /api/v1/snapshot and dogfood it in the UI ([fd857f0](https://github.com/polandy/skipper-cd/commit/fd857f00e4c7dd3ccf3c1b853546475a9a1f7500))
+* **config:** add per-stack and global rollback opt-out ([#205](https://github.com/polandy/skipper-cd/issues/205)) ([92b589f](https://github.com/polandy/skipper-cd/commit/92b589f62c1e0ab585d985badd2f59357a8c816a))
+* **config:** interpret stacks_base_dir relative to repo_dir ([#180](https://github.com/polandy/skipper-cd/issues/180)) ([75a6676](https://github.com/polandy/skipper-cd/commit/75a6676459d3e602330f45be7f094f3e132813b1))
+* **config:** make webhook_secret optional, reconcile is the baseline ([#204](https://github.com/polandy/skipper-cd/issues/204)) ([d72a731](https://github.com/polandy/skipper-cd/commit/d72a73117b489a92688d20cb7eff730d2e5ac3ea))
+* **config:** reject unknown keys and add -validate to check a config ([136a9e7](https://github.com/polandy/skipper-cd/commit/136a9e7af70c90978c702db6b7dde34127caf480))
+* **deploy:** a bootstrap run converges the host without refreshing images ([2cf1030](https://github.com/polandy/skipper-cd/commit/2cf1030baf6d65b767e55358893a5ccedf42f937))
+* **notify:** name changed services with old→new image in deploy notifications ([#206](https://github.com/polandy/skipper-cd/issues/206)) ([e103fc8](https://github.com/polandy/skipper-cd/commit/e103fc82f77a89aa520dca4768be8b9a77b0c7ef))
+* **ui-preview:** seed the failure states, and let skipper check the config ([29d40d3](https://github.com/polandy/skipper-cd/commit/29d40d3b7c85bc313810785eab30127ae02083d7))
+* **ui:** accessibility sweep — contrast, focus, live regions, keyboard (T2.5–T2.10) ([#192](https://github.com/polandy/skipper-cd/issues/192)) ([63d508a](https://github.com/polandy/skipper-cd/commit/63d508ace568c141b8407fb3a3bc3795f8cc14aa))
+* **ui:** add a Version column naming which service a deploy updated ([744ebc8](https://github.com/polandy/skipper-cd/commit/744ebc8a39a40382cea531c2d5e892ce460aa623))
+* **ui:** always-visible search trigger — discoverable stack filter (T3.11) ([#193](https://github.com/polandy/skipper-cd/issues/193)) ([7532671](https://github.com/polandy/skipper-cd/commit/7532671eb4faf0c6c77ac220b8e7396a50bcab53))
+* **ui:** answer "why did nothing happen" per stack in the Stacks roster ([8a5bce0](https://github.com/polandy/skipper-cd/commit/8a5bce08fbc38e2dd037712626c0057e982a3fb7))
+* **ui:** collapse deploy-row secondary actions into ⋯ overflow menu (T3.13) ([#197](https://github.com/polandy/skipper-cd/issues/197)) ([9276096](https://github.com/polandy/skipper-cd/commit/9276096c8e9705cc89c75912e5e5416620cbb575))
+* **ui:** filter container logs to one or more services ([#207](https://github.com/polandy/skipper-cd/issues/207)) ([538ea3f](https://github.com/polandy/skipper-cd/commit/538ea3f4120aa11a158667175bf66adbedb19ce6))
+* **ui:** first-run header tour teaches the glyph-only controls (T3.15) ([1c69417](https://github.com/polandy/skipper-cd/commit/1c69417280c650fc7560d42b0c174dd31c03009a))
+* **ui:** fold roster-row secondary actions into ⋯ overflow menu (T3.13b) ([#198](https://github.com/polandy/skipper-cd/issues/198)) ([20ac739](https://github.com/polandy/skipper-cd/commit/20ac73958b8139b2de0cb594ff0fdd50f64d55ea))
+* **ui:** link every commit SHA to its commit on the forge ([#226](https://github.com/polandy/skipper-cd/issues/226)) ([65e69ee](https://github.com/polandy/skipper-cd/commit/65e69eedee988835e45f6a19ed026cf97eebdd14))
+* **ui:** loading skeleton + retryable fetch-errors (T4.16/T4.17) ([#201](https://github.com/polandy/skipper-cd/issues/201)) ([7012acc](https://github.com/polandy/skipper-cd/commit/7012accee72a3f0029be8bcc37f901192f7481aa))
+* **ui:** multi-host federated UI — fan peers' read data into one merged view (ADR-0048) ([0c8207f](https://github.com/polandy/skipper-cd/commit/0c8207f8364c42ad02fc53edac3fe9c9827ef765))
+* **ui:** peer container logs — proxy a peer's container-logs SSE (ADR-0048) ([#189](https://github.com/polandy/skipper-cd/issues/189)) ([ae86615](https://github.com/polandy/skipper-cd/commit/ae86615cc36407550e3041e3506735538910703a))
+* **ui:** peer health parity — inline health, containers & app-links for peers (ADR-0048) ([19e31d4](https://github.com/polandy/skipper-cd/commit/19e31d472ebfb1ec1bc0ef1948c8ac407ea3c7f8))
+* **ui:** persist the Hosts filter per browser (ADR-0048 amendment) ([ce67f75](https://github.com/polandy/skipper-cd/commit/ce67f757e8bf12ca1884686046bba96ca92b3d6e))
+* **ui:** show each service's running version in the Stacks view ([#216](https://github.com/polandy/skipper-cd/issues/216)) ([2ce78b6](https://github.com/polandy/skipper-cd/commit/2ce78b6f55817ce463c19c292135ab93966e80fa))
+* **ui:** status-badge icons + solid worst-state chips (T3.14) ([#199](https://github.com/polandy/skipper-cd/issues/199)) ([f2e2e96](https://github.com/polandy/skipper-cd/commit/f2e2e968ebff5715ac7f7fca96b9d10e35c771de))
+* **ui:** surface roster logs/hooks inline instead of behind the ⋯ menu ([f0133f1](https://github.com/polandy/skipper-cd/commit/f0133f19a84ecf74ea45580cad0927a2b869a1b1))
+* **ui:** surface unhealthy stacks via a header beacon + attention band ([#190](https://github.com/polandy/skipper-cd/issues/190)) ([3ed2564](https://github.com/polandy/skipper-cd/commit/3ed2564f6a045217be546c73b17074d4d9321d71))
+* **ui:** view-toggle active bar + options caret (T3.12) ([#196](https://github.com/polandy/skipper-cd/issues/196)) ([373c22c](https://github.com/polandy/skipper-cd/commit/373c22c1a4187e9a2b5d4d1fbe1f0607f33e3463))
+
+
+### Bug Fixes
+
+* **config:** redact repo_url credentials in the -validate report ([#222](https://github.com/polandy/skipper-cd/issues/222)) ([8a4ccbe](https://github.com/polandy/skipper-cd/commit/8a4ccbe1857aeef49d1678420d4baf116d7d0cbf))
+* **notify:** skip image-change diff when compose file fails to parse ([#208](https://github.com/polandy/skipper-cd/issues/208)) ([8c0aeee](https://github.com/polandy/skipper-cd/commit/8c0aeee8388c4ab45f35a89c96c0900f6c392878))
+* reject cross-site writes and cap concurrent container-log streams ([3864a91](https://github.com/polandy/skipper-cd/commit/3864a91c4e6eb081b4a75605ef8c16abb64a3807))
+* **ui-preview:** use the current names for two retired config keys ([53b635b](https://github.com/polandy/skipper-cd/commit/53b635b3a88f2341b2aedaab6e1026a4cd29df0a))
+* **ui:** carry the state baseline on the stream so a connecting client misses nothing ([255e147](https://github.com/polandy/skipper-cd/commit/255e1474204165e55490dcb3c3afa77952c1e47f))
+* **ui:** keep an open roster panel across a stacks republish ([#227](https://github.com/polandy/skipper-cd/issues/227)) ([f749aa2](https://github.com/polandy/skipper-cd/commit/f749aa2be837266bfdafc5406402421f19e8f410))
+* **ui:** let the pending tag give way before the stack name does ([2a48d1c](https://github.com/polandy/skipper-cd/commit/2a48d1ccc94c8efd8498a64755679cf63f9ddd13))
+* **ui:** make drawer open-focus deterministic (de-flake UAA4) ([c843b8b](https://github.com/polandy/skipper-cd/commit/c843b8b458092876322721eb24a3b8c7e557eb5a))
+* **ui:** make the peer-detail panel's accent line continuous with its row ([60c06ed](https://github.com/polandy/skipper-cd/commit/60c06ed0e93e3096d112c7813e3aacb2185e1bf0))
+* **ui:** make the Version column readable on tablet and phone ([#225](https://github.com/polandy/skipper-cd/issues/225)) ([177b55e](https://github.com/polandy/skipper-cd/commit/177b55e39f9c6eec77d9c171a0e1b1db3da64e34))
+* **ui:** move the deploy-row health pill into the status column ([0bdf66b](https://github.com/polandy/skipper-cd/commit/0bdf66bdd571fb26a4d2846936bfd09738c06904))
+* **ui:** order autosync snapshots by version so a switch never snaps back ([020093b](https://github.com/polandy/skipper-cd/commit/020093b5a193192a95a2a27694068035c5314899))
+* **ui:** repair four Tier-1 UI defects ([#191](https://github.com/polandy/skipper-cd/issues/191)) ([01ff63a](https://github.com/polandy/skipper-cd/commit/01ff63ad58db80087acf4d4ff4b7c3f45705fc27))
+
 ## [0.19.0](https://github.com/polandy/skipper-cd/compare/v0.18.0...v0.19.0) (2026-07-21)
 
 
