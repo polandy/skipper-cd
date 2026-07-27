@@ -346,11 +346,9 @@ function reasonFromSnap(s) {
 }
 
 // snapshotIsFresh reports whether a versioned state payload may be applied,
-// given the version last applied. State that reaches the UI over two channels —
-// a POST response and the SSE broadcast — can arrive out of order, so ordering
-// comes from the payload's own version, not from arrival time. An unversioned
-// payload always applies: there is nothing to compare, and dropping it would
-// leave the view frozen.
+// given the version last applied — ordering comes from the payload, not from
+// arrival time. An unversioned payload always applies: there is nothing to
+// compare, and dropping it would leave the view frozen.
 function snapshotIsFresh(appliedVersion, payload) {
   const v = payload && payload.version;
   if (typeof v !== 'number') return true;

@@ -3791,15 +3791,12 @@
   }
 
   // applyAutosyncSnapshot installs a snapshot unless it is older than the one
-  // already applied. Two channels carry autosync state — this POST's response and
-  // the SSE broadcast the same change triggers — and they can overtake each other,
-  // so a toggle would otherwise be repainted by the snapshot of the toggle before
-  // it and appear to snap back. The server's monotonic version, not arrival order,
-  // decides (dev-docs/autosync-spec.md).
+  // already applied — the POST response and the SSE broadcast of the same change
+  // can overtake each other, which would make a switch snap back
+  // (dev-docs/autosync-spec.md, "Snapshot ordering").
   function applyAutosyncSnapshot(snap) {
     if (!snapshotIsFresh(autosyncVersion, snap)) {
-      // Dropping is invisible by design, which makes "my toggle did not repaint"
-      // unexplainable without a trace of it.
+      // A drop is invisible by design, so leave a trace of it.
       console.debug('autosync: dropped a stale snapshot', snap.version, '<', autosyncVersion);
       return;
     }

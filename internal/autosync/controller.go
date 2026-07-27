@@ -143,11 +143,9 @@ type StackState struct {
 
 // Snapshot is the autosync state served at GET /api/autosync.
 type Snapshot struct {
-	// Version orders snapshots against each other. It advances on every
-	// mutation, so a consumer receiving state over two channels — the POST
-	// response and the SSE broadcast, which can overtake each other — can drop
-	// a payload older than the one it already applied instead of repainting
-	// stale state. It restarts at 0 with the process; it is not persisted.
+	// Version advances on every mutation so a consumer reading this state from
+	// more than one channel can drop a payload older than the one it applied
+	// (dev-docs/autosync-spec.md, "Snapshot ordering"). Not persisted.
 	Version          uint64       `json:"version"`
 	Global           bool         `json:"global"`
 	GlobalConfig     *bool        `json:"global_config"`

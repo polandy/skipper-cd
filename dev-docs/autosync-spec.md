@@ -264,6 +264,15 @@ makes "the switch correctly did *not* move" observable at all.
 
 Only `autosync` needs this: `queue` reaches the UI over the SSE stream alone.
 
+**Known limit.** Versions are only comparable within one server process, and
+re-baselining on reconnect is what keeps that true. A `POST` answered by the
+*previous* process whose response arrives only after the client has reconnected
+and re-baselined therefore carries a version from the wrong sequence; if it is
+higher, the client pins to it and drops the genuine snapshots that follow until
+its next reconnect. That needs an already-answered response to outlive both the
+process and the reconnect backoff, so it is not worth a second ordering concept
+(a per-connection generation on the response) unless it is ever observed.
+
 ---
 
 ## Metrics
