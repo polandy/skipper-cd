@@ -338,6 +338,10 @@ Controls whether detected changes deploy automatically, per stack and globally. 
 
 **Enable triggers a drain; disable does not.** Enabling sync (global or a stack) triggers a deploy run that drains the queue; disabling only updates state. Switches use the same track/thumb geometry as the header `.filter-toggle`.
 
+**A switch never acts on state the drawer does not have.** The drawer's markup carries optimistic defaults (global "on"), which is what the user sees between page load and the first `autosync` snapshot. Until that snapshot lands the drawer is marked `data-ready="false"` and the global switch is `aria-disabled` with `pointer-events: none` — so an early click **waits** for the real state instead of hitting a control that could not compute the opposite value and silently posted nothing. `data-ready` flips to `"true"` with the first snapshot and stays there.
+
+**A re-render never swaps a switch out from under a click.** The queued and all-stacks lists are patched in place while their rows and order are unchanged, and rebuilt only when the row set actually changes. Rebuilding wholesale on every `autosync`/`queue` event replaced the switch nodes, and a switch replaced between mousedown and mouseup takes the `click` with it — the browser fires it on the common ancestor, where the delegated handler finds no switch and does nothing (it also dropped keyboard focus on every tick).
+
 **A switch never snaps back.** Autosync state reaches the UI over two channels — the toggle's own `POST` response and the `autosync` SSE event the same change broadcasts — and they can overtake each other. The UI applies a snapshot only when its `version` is not below the one already applied, so a late payload is dropped instead of repainting the state before the last change (two quick toggles of the same switch are exactly that window). The version is re-baselined on every reconnect, since it restarts with the server. A drop is announced on the browser console, since it is by design invisible in the interface. See [`docs/autosync.md`](../../dev-docs/autosync-spec.md#snapshot-ordering).
 
 ---
@@ -574,8 +578,8 @@ assert on.
 | `log-search`, `log-wrap`, `follow-logs`, `log-fs` | Search/wrap/auto-scroll/fullscreen tools in the Log view's own header | `.clog-tool`s; `.on` when engaged; clicking `log-search` again closes it and clears the query |
 | `log-filter-wrap` / `log-filter` | Logs in-view search bar / input | Same reveal + type-to-search behaviour as `deploy-filter`; no separate clear button — closing the search tool clears it |
 | `log-filter-count` | Logs search hit count | |
-| `autosync-drawer` | The autosync drawer | |
-| `global-switch` | Global autosync switch | |
+| `autosync-drawer` | The autosync drawer | `data-ready` — `"false"` until the first `autosync` snapshot, then `"true"` |
+| `global-switch` | Global autosync switch | `aria-disabled="true"` and inert while the drawer is not ready |
 | `stack-item` | A row in the "All stacks" list | `data-stack` |
 | `stack-switch` | Per-stack switch in "All stacks" | `data-stack`; only in the all-stacks list |
 | `queue-item` | A row in the queued list | `data-stack` |
