@@ -446,3 +446,65 @@ test.describe('UC12: collapse through the stack filter', () => {
     await expect(stackSwitch(page, 'db')).toHaveAttribute('aria-checked', 'true');
   });
 });
+
+// UC13 — A late snapshot never overwrites a newer one. Autosync state reaches the
+// UI over two channels — the toggle's own POST response and the SSE broadcast the
+// same change triggers — and they can overtake each other, so a switch could snap
+// back to the state before the last change. Ordering therefore comes from the
+// snapshot's monotonic `version`, not from arrival time (dev-docs/autosync-spec.md).
+//
+// The reversal is *forced*, not awaited: the POST is let through to the server so
+// it really mutates, but its response is held in the route handler until a newer
+// state has demonstrably been applied (asserted in the DOM). Releasing the stale
+// response then either changes the switch — the bug — or is dropped.
+test.describe('UC13: a late snapshot never overwrites a newer one', () => {
+  test('a delayed POST response is dropped when newer state already landed', async ({
+    page,
+    skipper,
+  }) => {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // Hold only the first POST response; later ones pass straight through.
+    let holdNext = true;
+    await page.route('**/api/autosync', async (route) => {
+      if (route.request().method() !== 'POST' || !holdNext) return route.continue();
+      holdNext = false;
+      const response = await route.fetch(); // the server mutates and broadcasts now
+      await held;
+      await route.fulfill({ response });
+    });
+
+    await page.goto(`${skipper.baseURL}/`);
+    await autosyncBtn(page).click();
+    await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'true');
+
+    // Click global off. Its POST response is held, but the server already applied
+    // the change, so the SSE broadcast paints the switch off — version 1.
+    await globalSwitch(page).click();
+    await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'false');
+
+    // A separate client turns global back on — version 2, applied over SSE.
+    expect(await skipper.postAutosync('', true)).toBe(200);
+    await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'true');
+
+    // Now let the stale version-1 response (global off) arrive last. Waiting for
+    // the *response* would not be enough: "the switch did not move" is an absence,
+    // and asserting it right after delivery passes before the page has even
+    // handled the payload — green whether or not the guard exists. The drop is
+    // therefore announced, and that announcement is what we wait for. It is
+    // emitted in the same synchronous step in which the switch would otherwise
+    // have been repainted, so once it arrives the DOM assertions cannot be early.
+    const dropped = page.waitForEvent('console', (m) =>
+      m.text().includes('autosync: dropped a stale snapshot'),
+    );
+    release();
+    await dropped;
+
+    // The header control mirrors the same snapshot, so assert both surfaces.
+    await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'true');
+    await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'true');
+  });
+});

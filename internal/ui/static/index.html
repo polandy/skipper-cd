@@ -431,6 +431,7 @@
 
   // Autosync state, populated from the 'autosync' and 'queue' SSE events.
   let autosyncSnap = null;                    // GET /api/autosync shape
+  let autosyncVersion = null;                 // version of the applied snapshot
   let queueSnap = { count: 0, pending: [] };  // GET /api/queue shape
   let queueByStack = {};                       // stack name -> pending item
 
@@ -3083,8 +3084,7 @@
   function applyState(name, d) {
     switch (name) {
       case 'autosync':
-        autosyncSnap = d;
-        renderAutosync();
+        applyAutosyncSnapshot(d);
         break;
       case 'queue':
         queueSnap = d;
@@ -3164,6 +3164,7 @@
     connDot.parentElement.dataset.state = 'connecting';
     connDot.parentElement.title = 'connecting';
     armAnnounceGate(); // re-hydrate silently; the replay burst must not announce (T2.8)
+    autosyncVersion = null; // the version restarts with the server; re-baseline from the snapshot
     fetchSnapshot().finally(openStream);
   }
 
@@ -3785,8 +3786,23 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scope: scope, stack: stack, enabled: enabled })
     }).then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(snap) { if (snap) { autosyncSnap = snap; renderAutosync(); } })
+      .then(function(snap) { if (snap) applyAutosyncSnapshot(snap); })
       .catch(function() {});
+  }
+
+  // applyAutosyncSnapshot installs a snapshot unless it is older than the one
+  // already applied — the POST response and the SSE broadcast of the same change
+  // can overtake each other, which would make a switch snap back
+  // (dev-docs/autosync-spec.md, "Snapshot ordering").
+  function applyAutosyncSnapshot(snap) {
+    if (!snapshotIsFresh(autosyncVersion, snap)) {
+      // A drop is invisible by design, so leave a trace of it.
+      console.debug('autosync: dropped a stale snapshot', snap.version, '<', autosyncVersion);
+      return;
+    }
+    autosyncSnap = snap;
+    if (typeof snap.version === 'number') autosyncVersion = snap.version;
+    renderAutosync();
   }
 
   function waited(since) {

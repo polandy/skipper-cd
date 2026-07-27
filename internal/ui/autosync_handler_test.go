@@ -35,6 +35,35 @@ func TestAutosyncHandler_GetReturnsSnapshot(t *testing.T) {
 	}
 }
 
+// The UI orders the POST response against the SSE broadcast by the snapshot's
+// `version`, so the field has to be on the wire under that name and be higher in
+// the response to a change than in the state that preceded it.
+func TestAutosyncHandler_SnapshotCarriesVersionOnTheWire(t *testing.T) {
+	ctrl := autosync.NewController(boolPtr(true), nil)
+	h := AutosyncHandler(ctrl, orderOf("gitea"), func() {}, func() {})
+
+	versionOf := func(body []byte) float64 {
+		var raw map[string]any
+		if err := json.Unmarshal(body, &raw); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		v, ok := raw["version"].(float64)
+		if !ok {
+			t.Fatalf("no numeric \"version\" in %s", body)
+		}
+		return v
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/autosync", nil))
+	before := versionOf(rec.Body.Bytes())
+
+	after := versionOf(post(t, h, `{"scope":"global","enabled":false}`))
+	if after <= before {
+		t.Fatalf("version = %v after the change, want > %v", after, before)
+	}
+}
+
 func TestAutosyncHandler_PostStackTogglesAndTriggersOnEnable(t *testing.T) {
 	ctrl := autosync.NewController(boolPtr(true), nil)
 	var changed, triggered int
@@ -113,11 +142,13 @@ func TestQueueHandler_ReturnsOrderedPending(t *testing.T) {
 	}
 }
 
-func post(t *testing.T, h http.Handler, body string) {
+// post issues a POST and returns the response body — the new snapshot.
+func post(t *testing.T, h http.Handler, body string) []byte {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/autosync", strings.NewReader(body)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST %s: status = %d, want 200 (body: %s)", body, rec.Code, rec.Body.String())
 	}
+	return rec.Body.Bytes()
 }

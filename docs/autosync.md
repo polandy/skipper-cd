@@ -37,11 +37,11 @@ Available when `ui_enabled: true`, behind the same edge auth as the UI:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/autosync` | Current global/per-stack autosync state. |
+| `GET /api/autosync` | Current global/per-stack autosync state, with a `version` that advances on every change. |
 | `POST /api/autosync` | Set an override: `{"scope": "global", "enabled": false}` or `{"scope": "stack", "stack": "gitea", "enabled": true}`. Enabling triggers a run that drains the queue. |
 | `GET /api/queue` | The ordered pending list with changed files and queue time. |
 
-The `/api/events` SSE stream carries `autosync` and `queue` events so open UIs update in real time.
+The `/api/events` SSE stream carries `autosync` and `queue` events so open UIs update in real time. A client that reads autosync state from both the stream and its own `POST` response should ignore any snapshot whose `version` is below the last one it applied — the two channels can overtake each other. The version restarts at `0` with the process.
 
 ## Metrics
 
