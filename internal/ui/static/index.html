@@ -3141,10 +3141,9 @@
   }
 
   // The stream carries its own baseline: it subscribes, then sends the current
-  // state, then the deltas. Fetching the baseline separately (as this did) left a
-  // window between the response and the subscription in which a published change
-  // reached nobody and was never re-sent — a queued deploy could stay invisible
-  // until the next run. One channel, one ordering. Re-run on every reconnect.
+  // state, then the deltas. Reading the baseline over a second channel would
+  // reopen the gap a change can vanish into (ADR-0039 amendment). Re-run on
+  // every reconnect.
   function connect() {
     connDot.className = 'indicator-dot warn';
     connText.textContent = 'connecting';

@@ -191,14 +191,11 @@ func FontsHandler() http.Handler {
 // then streams live deploy and state events. Supports Last-Event-ID for
 // reconnection of the deploy history.
 //
-// The state baseline rides this stream rather than a separate fetch so that
-// subscribing and reading the baseline are one ordered operation: the
-// subscription is established *before* collect runs, so a change published
-// while the baseline is being built is delivered right after it instead of
-// falling into a gap where the client is not yet listening and the baseline no
-// longer reflects it (ADR-0039 amendment). collect is the same collector
-// GET /api/v1/snapshot serves, so the stream and the REST read surface cannot
-// drift; a nil collect (or a nil state broadcaster) sends no baseline.
+// The baseline rides this stream so that subscribing and reading it are one
+// ordered operation — the subscription is established before collect runs, so
+// nothing published mid-connect falls into a gap (ADR-0039 amendment). collect
+// is the same collector GET /api/v1/snapshot serves, so the two cannot drift; a
+// nil collect (or a nil state broadcaster) sends no baseline.
 func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.Broadcaster[events.StateEvent], history *events.History, collect func() []events.StateEvent) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
