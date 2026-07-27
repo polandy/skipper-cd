@@ -73,6 +73,70 @@ webhook_secret: test-secret
 	}
 }
 
+func TestValidateConfigFile_ReportsWhereCommitLinksWillPoint(t *testing.T) {
+	tests := []struct {
+		name, repoLines, wantIn string
+	}{
+		{
+			// Derived: the operator never wrote this URL, so the report is the
+			// only place to catch a wrong guess before the links go live.
+			name:      "derived from repo_url",
+			repoLines: "repo_url: ssh://git@forge.example.com:2222/owner/deploy.git\n",
+			wantIn:    "commit links:    https://forge.example.com/owner/deploy/commit/<sha>",
+		},
+		{
+			name:      "explicit repo_web_url wins",
+			repoLines: "repo_url: ssh://git@forge.example.com/owner/deploy.git\nrepo_web_url: https://code.example.com/ops/deploy\n",
+			wantIn:    "commit links:    https://code.example.com/ops/deploy/commit/<sha>",
+		},
+		{
+			// A clone from a local path has no forge — say so, and name the key
+			// that fixes it, rather than printing a half-built URL.
+			name:      "none derivable",
+			repoLines: "repo_url: /srv/git/deploy.git\n",
+			wantIn:    "commit links:    none",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeConfig(t, dir, "\n"+tt.repoLines+`repo_dir: `+filepath.Join(dir, "repo")+`
+stacks_base_dir: modules
+webhook_secret: test-secret
+`)
+
+			var out strings.Builder
+			if code := validateConfigFile(path, &out); code != validateOK {
+				t.Fatalf("expected exit code %d, got %d — output:\n%s", validateOK, code, out.String())
+			}
+			if !strings.Contains(out.String(), tt.wantIn) {
+				t.Errorf("report should contain %q, got:\n%s", tt.wantIn, out.String())
+			}
+		})
+	}
+}
+
+func TestValidateConfigFile_CommitLinkLineNeverLeaksCredentials(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, `
+repo_url: https://user:sekrit-token@forge.example.com/owner/deploy.git
+repo_dir: `+filepath.Join(dir, "repo")+`
+stacks_base_dir: modules
+webhook_secret: test-secret
+`)
+
+	var out strings.Builder
+	if code := validateConfigFile(path, &out); code != validateOK {
+		t.Fatalf("expected exit code %d, got %d — output:\n%s", validateOK, code, out.String())
+	}
+	if strings.Contains(out.String(), "sekrit-token") {
+		t.Errorf("the commit-link line leaked the credential, got:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "commit links:    https://forge.example.com/owner/deploy/commit/<sha>") {
+		t.Errorf("expected a credential-free commit-link URL, got:\n%s", out.String())
+	}
+}
+
 func TestValidateConfigFile_ValidConfigWithCloneReportsStacks(t *testing.T) {
 	dir := t.TempDir()
 	repoDir := filepath.Join(dir, "repo")

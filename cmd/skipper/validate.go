@@ -70,6 +70,14 @@ func checkConfigFile(path string, r *report) int {
 
 	r.linef("config OK: %s", path)
 	r.linef("  repo:            %s (branch %s)", git.RedactURL(cfg.RepoURL), cfg.Branch)
+	// Where the UI's commit links will point. Usually derived rather than
+	// configured, so showing it is the only way to catch a wrong guess before
+	// the links are live.
+	if web := cfg.EffectiveRepoWebURL(); web != "" {
+		r.linef("  commit links:    %s/commit/<sha>", web)
+	} else {
+		r.linef("  commit links:    none — no forge URL derivable from repo_url; set repo_web_url to link commit SHAs")
+	}
 	r.linef("  stacks_base_dir: %s", cfg.StacksBaseDir)
 	r.linef("  stack_discovery: %t", cfg.StackDiscovery)
 
