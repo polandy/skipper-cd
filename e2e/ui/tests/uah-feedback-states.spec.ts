@@ -8,8 +8,8 @@ import { openRowMenu } from '../fixtures/menu';
 //   T4.17 — a loading skeleton distinct from the genuine-empty state. The deploy
 //           table starts as a skeleton and only reveals "No deployments yet" once
 //           the SSE end-of-replay `synced` marker confirms an empty history.
-//           Holding /api/v1/snapshot holds openStream (it runs in .finally), so
-//           the skeleton stays up until the test releases the gate.
+//           Holding /api/events holds that marker, so the skeleton stays up
+//           until the test releases the gate.
 //   T4.16 — a fetch that fails no longer masquerades as empty. The audit, diff
 //           and peer-diff fetches show an amber load-error + Retry; the Retry
 //           re-runs just that fetch. A route that fails once then continues
@@ -40,11 +40,11 @@ test.describe('UAH1: loading skeleton yields to the empty state', () => {
   test.use({ startOptions: { stacks: [] } });
 
   test('skeleton shows while connecting, then "No deployments yet"', async ({ page, skipper }) => {
-    // Hold the snapshot: openStream (and thus the `synced` marker) runs only in
-    // its .finally, so nothing settles until we release.
+    // Hold the stream: the `synced` marker rides it, so nothing settles until
+    // we release.
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
-    await page.route('**/api/v1/snapshot', async (route) => {
+    await page.route('**/api/events', async (route) => {
       await gate;
       await route.continue();
     });
@@ -73,7 +73,7 @@ test.describe('UAH2: loading skeleton yields to the deploy table', () => {
   test('skeleton shows while connecting, then the rows appear', async ({ page, skipper }) => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
-    await page.route('**/api/v1/snapshot', async (route) => {
+    await page.route('**/api/events', async (route) => {
       await gate;
       await route.continue();
     });

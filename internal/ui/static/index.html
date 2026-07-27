@@ -3077,8 +3077,8 @@
   }
 
   // applyState routes one state snapshot (by its state-event name) to the same
-  // handling whether it arrived from GET /api/v1/snapshot on (re)connect or as a
-  // live SSE state event. State payloads are snapshots (full replacements), so
+  // handling whether it is the baseline the stream sends on (re)connect or a
+  // later live state event. State payloads are snapshots (full replacements), so
   // applying one is idempotent. 'deploy' is not here — deploy events are the
   // append-style history, streamed over SSE, not part of the state snapshot.
   function applyState(name, d) {
@@ -3140,32 +3140,18 @@
     }
   }
 
-  // fetchSnapshot paints the current state from the REST read surface
-  // (ADR-0039), called on every SSE (re)open so a fresh tab and a reconnect both
-  // resync without the stream replaying an initial state burst. A failure is
-  // non-fatal: the next live state event, or the next reconnect, repaints.
-  function fetchSnapshot() {
-    return fetch('/api/v1/snapshot', { headers: { Accept: 'application/json' } })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(snap) {
-        if (!snap) return; // non-OK: the stream's live events will paint instead
-        Object.keys(snap).forEach(function(name) { applyState(name, snap[name]); });
-      })
-      .catch(function() { /* the stream's live events will paint instead */ });
-  }
-
-  // Snapshot first (baseline), then open the stream for deltas. The two travel
-  // on separate channels, so opening the stream first would let a late, staler
-  // snapshot response clobber a live event that already arrived — fetching the
-  // baseline before subscribing keeps the ordering. Re-run on every reconnect.
+  // The stream carries its own baseline: it subscribes, then sends the current
+  // state, then the deltas. Reading the baseline over a second channel would
+  // reopen the gap a change can vanish into (ADR-0039 amendment). Re-run on
+  // every reconnect.
   function connect() {
     connDot.className = 'indicator-dot warn';
     connText.textContent = 'connecting';
     connDot.parentElement.dataset.state = 'connecting';
     connDot.parentElement.title = 'connecting';
     armAnnounceGate(); // re-hydrate silently; the replay burst must not announce (T2.8)
-    autosyncVersion = null; // the version restarts with the server; re-baseline from the snapshot
-    fetchSnapshot().finally(openStream);
+    autosyncVersion = null; // the version restarts with the server; the baseline re-seeds it
+    openStream();
   }
 
   function openStream() {

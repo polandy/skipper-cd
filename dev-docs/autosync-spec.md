@@ -256,7 +256,7 @@ Ordering therefore rides on the payload: every mutation advances the controller'
 `version`, and a consumer applying autosync state from more than one channel must
 **drop a payload whose `version` is below the one it has already applied**. The
 version restarts with the process, so a consumer re-baselines (forgets the version
-it holds) whenever it reconnects and refetches a snapshot.
+it holds) on every reconnect, and the baseline that connect delivers re-seeds it.
 
 A drop leaves no trace in the interface — that is the point — so the UI announces
 one on the browser console (`autosync: dropped a stale snapshot`), which is what

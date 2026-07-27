@@ -885,7 +885,7 @@ func registerAppRoutes(mux *http.ServeMux, cfg *config.Config, build ui.BuildInf
 // registerEventRoutes wires the live data surface: the SSE stream (seeded with
 // snap's initial state burst) plus the diff, audit and log endpoints.
 func registerEventRoutes(mux *http.ServeMux, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, snap stateSnapshot) {
-	mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, snap.autosync.stateB, history))
+	mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, snap.autosync.stateB, history, snap.collect))
 	mux.Handle("GET /api/v1/snapshot", ui.SnapshotHandler(snap.collect))
 	mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
 	mux.Handle("GET /api/audit", ui.AuditHandler(auditLog))

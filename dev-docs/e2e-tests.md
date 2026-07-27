@@ -448,6 +448,13 @@ UI suite reuses.
   `view-options` popover and confirms `time-mode` still stays silent even
   though it sits under the opted-in `<header>` — the `.view-options` exclusion
   overrides an opted-in ancestor.
+- **UD12 — State published while the stream connects is not lost.** The stream
+  carries its own baseline, so there is no window between "read the baseline"
+  and "start listening". Forced, not awaited: the `/api/events` request is held
+  before it reaches the server, a deploy is queued while nothing is subscribed,
+  and only then is it released — the pending pill must still appear. Fails
+  against a build that fetches the baseline separately, where the queued deploy
+  reached nobody and was never re-sent (that gap is what made **UC8** flaky).
 
 ### 4.6 UI — Maske E: PWA update banner
 
@@ -1170,13 +1177,13 @@ why §5 needed no baseline churn.
 Two feedback gaps, both driven deterministically (route control, no timers) — see
 [Loading vs. empty](../internal/ui/UI_SPEC.md#event-lifecycle-sse) and
 [Failed detail fetches](../internal/ui/UI_SPEC.md#failed-detail-fetches). For T4.17,
-holding `/api/v1/snapshot` holds `openStream` too (it runs in the fetch's
-`.finally`), so the loading skeleton stays up until the test releases the gate;
-the SSE `synced` marker is what then reveals the empty state or the rows. For
+holding `/api/events` holds the `synced` marker, so the loading skeleton stays
+up until the test releases the gate; that marker is what then reveals the empty
+state or the rows. For
 T4.16, a route that answers the first hit with an error status then continues
 exercises both the failure line and the Retry recovery in one flow.
 
-- **UAH1 — Skeleton → genuine-empty.** A stack-free instance: while the snapshot
+- **UAH1 — Skeleton → genuine-empty.** A stack-free instance: while the stream
   is held, `loading-state` is visible and both the table and `empty-state` are
   suppressed; on release the empty (`synced`) history flips it to `No deployments
   yet`, table still hidden.
@@ -1513,6 +1520,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Theme switcher off (default): picker hidden, override ignored | **UD7** |
 | Connection indicator states | **UD2** |
 | Connection indicator recovers from a fatal stream error | **UD10** |
+| State published while the stream connects is not lost | **UD12** |
 | Deploy indicator active/idle | **UD3** |
 | Tap-tip opt-in on non-header controls (touch flash / mouse silent / view-options excluded) | **UD11** |
 | Upcoming look-ahead trail (active + next) | **UF1** |
