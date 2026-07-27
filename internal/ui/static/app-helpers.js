@@ -345,6 +345,18 @@ function reasonFromSnap(s) {
   return 'global';
 }
 
+// snapshotIsFresh reports whether a versioned state payload may be applied,
+// given the version last applied. State that reaches the UI over two channels —
+// a POST response and the SSE broadcast — can arrive out of order, so ordering
+// comes from the payload's own version, not from arrival time. An unversioned
+// payload always applies: there is nothing to compare, and dropping it would
+// leave the view frozen.
+function snapshotIsFresh(appliedVersion, payload) {
+  const v = payload && payload.version;
+  if (typeof v !== 'number') return true;
+  return appliedVersion === null || v >= appliedVersion;
+}
+
 // orphanMeta is the right-hand note on an orphan row: "state only" when nothing
 // runs, otherwise the container count.
 function orphanMeta(o) {
@@ -581,6 +593,7 @@ if (typeof module !== 'undefined' && module.exports) {
     levelClass,
     logTime,
     reasonFromSnap,
+    snapshotIsFresh,
     orphanMeta,
     orphanStateClass,
     containerMatchesQuery,

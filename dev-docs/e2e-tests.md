@@ -42,8 +42,9 @@ asserting **behaviour + visual snapshots**.
 > **UC5** (per-stack switch → POST, reflected on reopen), **UC6** (queued list in
 > deploy order with position/reason/count/wait), **UC7** (stack filter:
 > substring/clear/Esc), **UC8** (enable drains the queue, disable runs no deploy),
-> **UC9** (queued row + `paused:` tag, superseded on resume), and the
-> override-collapse cases **UC10**/**UC11**/**UC12**. Mask D (global chrome) is
+> **UC9** (queued row + `paused:` tag, superseded on resume), the
+> override-collapse cases **UC10**/**UC11**/**UC12**, and **UC13** (a late
+> snapshot never overwrites a newer one). Mask D (global chrome) is
 > likewise complete — **UD1** (theme toggle + persistence + no-flash), the
 > theme-picker cases **UD6**/**UD6b** (per-browser override + auto-hiding
 > mismatch notice, switcher on) and **UD7** (switcher off by default: picker
@@ -368,6 +369,14 @@ UI suite reuses.
   filtered list live over SSE without dropping the filter, and the collapse holds
   through the filtered/live view: a stack paused while filtered resumes after a
   global off→on cycle once the filter is cleared.
+- **UC13 — A late snapshot never overwrites a newer one.** Autosync state reaches
+  the UI over two channels (the toggle's `POST` response and the `autosync` SSE
+  event), which can overtake each other. The reversal is *forced*, not awaited:
+  `page.route` lets the first `POST` through to the server but holds its response
+  until the DOM shows a newer state (applied over SSE from a second client).
+  Releasing the stale response must not move the switch — the UI keys on the
+  snapshot's `version`, not on arrival order
+  ([autosync-spec.md](autosync-spec.md#snapshot-ordering)).
 
 ### 4.5 UI — Maske D: Global chrome
 
@@ -1478,6 +1487,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Per-stack switch is an exception, not a pin (override collapse) | **UC10**, UC11 |
 | Global switch is a true master (collapse on global toggle) | **UC11** |
 | Override collapse through the stack filter | **UC12** |
+| A late autosync snapshot never overwrites a newer one | **UC13** |
 | Enable drains, disable does not | **UC8** |
 | Queued row + `paused:` tag | **UC9** |
 | Theme toggle + persistence + no-flash | **UD1** |

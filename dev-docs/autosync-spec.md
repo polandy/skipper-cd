@@ -186,6 +186,7 @@ Returns the current autosync snapshot.
 
 ```json
 {
+  "version": 4,
   "global": true,
   "global_config": true,
   "global_overridden": false,
@@ -198,6 +199,10 @@ Returns the current autosync snapshot.
 
 `config` is the config-as-code value (`null` = unset/inherit); `effective` is the
 resolved state; `overridden` is `true` when a UI override is currently in force.
+
+`version` orders snapshots against each other (see [Snapshot
+ordering](#snapshot-ordering)). It advances on every override change, restarts at
+`0` with the process, and is not persisted.
 
 ### `POST /api/autosync`
 
@@ -237,6 +242,23 @@ events so open UIs update in real time without polling:
 
 On connect, after replaying the deploy history, the current `autosync` and
 `queue` snapshots are sent so a fresh tab paints immediately.
+
+### Snapshot ordering
+
+A toggling client learns the new state twice: once from its own `POST` response
+and once from the `autosync` event that same change broadcasts. The two travel on
+separate connections and can overtake each other, so **arrival order is not state
+order** — the response to click *N* can land after the broadcast for click *N+1*
+and repaint the switch with the state before the last change. Toggling the same
+switch twice in quick succession is exactly that window.
+
+Ordering therefore rides on the payload: every mutation advances the controller's
+`version`, and a consumer applying autosync state from more than one channel must
+**drop a payload whose `version` is below the one it has already applied**. The
+version restarts with the process, so a consumer re-baselines (forgets the version
+it holds) whenever it reconnects and refetches a snapshot.
+
+Only `autosync` needs this: `queue` reaches the UI over the SSE stream alone.
 
 ---
 

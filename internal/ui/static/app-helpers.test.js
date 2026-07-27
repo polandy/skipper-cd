@@ -365,6 +365,23 @@ test('reasonFromSnap', () => {
   assert.equal(h.reasonFromSnap({ effective: false }), 'global');
 });
 
+test('snapshotIsFresh drops a payload older than the one already applied', () => {
+  // Nothing applied yet: anything is fresh, including version 0.
+  assert.equal(h.snapshotIsFresh(null, { version: 0 }), true);
+  assert.equal(h.snapshotIsFresh(null, { version: 7 }), true);
+
+  assert.equal(h.snapshotIsFresh(3, { version: 4 }), true);
+  assert.equal(h.snapshotIsFresh(3, { version: 3 }), true); // a republish of the same state
+  assert.equal(h.snapshotIsFresh(3, { version: 2 }), false); // the race this guards
+  assert.equal(h.snapshotIsFresh(3, { version: 0 }), false);
+});
+
+test('snapshotIsFresh accepts an unversioned payload rather than freezing', () => {
+  assert.equal(h.snapshotIsFresh(3, {}), true);
+  assert.equal(h.snapshotIsFresh(3, { version: null }), true);
+  assert.equal(h.snapshotIsFresh(3, null), true);
+});
+
 test('orphanMeta: state-only vs container count with pluralization', () => {
   assert.equal(h.orphanMeta({ state_only: true }), 'state only');
   assert.equal(h.orphanMeta({ containers: [{ name: 'a' }] }), '1 container');
