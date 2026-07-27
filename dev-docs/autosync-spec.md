@@ -1,5 +1,7 @@
 # skipper-cd Autosync — Specification
 
+Status: implemented (ADR-0016), living reference — updated as autosync features land.
+
 Autosync governs whether a detected change is deployed automatically. It is
 modelled on ArgoCD's auto-sync: deployment can be paused **globally** or **per
 stack**, changes that arrive while paused are **queued** and deployed **as soon

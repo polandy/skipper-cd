@@ -1,5 +1,7 @@
 # HTTP JSON API spec
 
+Status: implemented (ADR-0039), living reference — kept in sync with the API.
+
 A read-only, versioned HTTP surface for scripts, status pages and second
 dashboards. Design rationale and the scope constraints are in
 [ADR-0039](adr/0039-read-only-http-json-api.md). This file is the endpoint and

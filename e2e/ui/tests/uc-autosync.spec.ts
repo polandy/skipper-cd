@@ -2,7 +2,7 @@ import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 import { visualSnapshot } from '../fixtures/snapshot';
 
-// Maske C: Autosync-Drawer. See docs/e2e-tests.md §4.4.
+// Maske C: Autosync-Drawer. See dev-docs/e2e-tests.md §4.4.
 
 // UC1 — Header state. The autosync header control (`autosync-btn`) shows the
 // *global* autosync state, and it is driven by the live `autosync` SSE event —

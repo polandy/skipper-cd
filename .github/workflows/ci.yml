@@ -34,7 +34,7 @@ jobs:
         run: |
           go mod tidy
           go mod vendor
-          git diff --exit-code
+          git diff --exit-code -- go.mod go.sum vendor/
 
   # JS unit layer for the pure UI helpers (internal/ui/static/app-helpers.js),
   # run with the Node built-in test runner — no build step, no npm deps for the
@@ -115,7 +115,7 @@ jobs:
   # Playwright's pinned container (matching @playwright/test in the lockfile) so
   # the browser + font rasterisation are identical to how the visual-snapshot
   # baselines were generated — RUN_SNAPSHOTS turns the pixel compares on
-  # (docs/e2e-tests.md §5, §7). The image already ships Node + the browsers, so
+  # (dev-docs/e2e-tests.md §5, §7). The image already ships Node + the browsers, so
   # only Go (for globalSetup's build) is installed on top.
   e2e-ui:
     needs: baselines

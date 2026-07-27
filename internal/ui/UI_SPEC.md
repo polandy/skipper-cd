@@ -23,7 +23,7 @@ One semantic token layer consumes the palette; all tints, borders and glows are 
 
 Each theme maps these tokens to its own raw colours (`--raw-accent`, `--raw-success`, …) under `:root[data-theme="<name>"]` / `:root[data-theme="<name>"].light`; adding a theme is a self-contained CSS block, nothing else in the page references a theme name. Background depth: `crust` (sunken — log pane, diff/files panels) → `mantle` (page) → `base` (header glass, cards) → `surface0` (raised — tags, toggle tracks). Text: `text` / `subtext0` / `overlay1` (primary / secondary / muted).
 
-Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). Both are **self-hosted and embedded** (latin subset, weights 400/500/600): the `woff2` files live in `static/fonts/` and are served same-origin from the embedded FS under `/fonts/` (scoped `FontsHandler`, immutable cache), referenced by `@font-face … url(/fonts/…)`, `<link rel="preload">`ed in the head, and cached in the service-worker app shell. There is no external Google Fonts request, so the page stays fully self-contained, works offline, and renders deterministically for visual snapshots (ADR-0035; see [`docs/e2e-tests.md`](../../docs/e2e-tests.md) §5). Background: mantle with subtle grid overlay and peach radial glow at top centre.
+Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). Both are **self-hosted and embedded** (latin subset, weights 400/500/600): the `woff2` files live in `static/fonts/` and are served same-origin from the embedded FS under `/fonts/` (scoped `FontsHandler`, immutable cache), referenced by `@font-face … url(/fonts/…)`, `<link rel="preload">`ed in the head, and cached in the service-worker app shell. There is no external Google Fonts request, so the page stays fully self-contained, works offline, and renders deterministically for visual snapshots (ADR-0035; see [`dev-docs/e2e-tests.md`](../../dev-docs/e2e-tests.md) §5). Background: mantle with subtle grid overlay and peach radial glow at top centre.
 
 ---
 
@@ -481,7 +481,7 @@ The UI is an **installable PWA** (full spec: [`docs/pwa.md`](../../dev-docs/pwa-
 
 ## Test hooks (`data-testid`)
 
-The E2E UI suite ([`docs/e2e-tests.md`](../../docs/e2e-tests.md)) selects **only** on
+The E2E UI suite ([`dev-docs/e2e-tests.md`](../../dev-docs/e2e-tests.md)) selects **only** on
 `data-testid` — never on `id`, text, or CSS class — so refactoring markup or
 styling never breaks the tests. These attributes are a public contract of the
 UI; keep them stable when editing `index.html`. Dynamic rows also carry data

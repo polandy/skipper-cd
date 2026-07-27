@@ -1,8 +1,7 @@
 # Feature Spec: Service Icons
 
-Status: draft
+Status: implemented (see `docs/configuration.md` §Service Icons)
 Date: 2026-07-11
-Branch: `feat/service-icons`
 
 ## Goal
 

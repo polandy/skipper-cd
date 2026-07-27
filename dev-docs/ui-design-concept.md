@@ -1,5 +1,7 @@
 # UI design concept — shared row / table / panel language
 
+Status: living reference — kept in sync with the UI.
+
 The web UI has three top-level views (**Deploys · Stacks · Logs**, header
 switcher). Deploys and Stacks are both **tables of stacks**, and they
 deliberately share one visual language so switching between them feels like the

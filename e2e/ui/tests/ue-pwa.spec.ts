@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import type { Page } from '@playwright/test';
 
-// Maske E: PWA update banner. See docs/e2e-tests.md §4.6 and ADR-0023.
+// Maske E: PWA update banner. See dev-docs/e2e-tests.md §4.6 and ADR-0023.
 //
 // The banner fires when the browser installs a *newer* service worker while an
 // old one still controls the page. The only thing that makes a worker "newer"
