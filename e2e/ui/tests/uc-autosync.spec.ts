@@ -357,7 +357,7 @@ test.describe('UC9: queued row + tag', () => {
 test.describe('UC10: re-enable does not pin', () => {
   test('pausing then resuming a stack leaves no sticky override', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
-    await openDrawer(page); // open the drawer
+    await openDrawer(page);
 
     const web = stackSwitch(page, 'web');
     await expect(web).toHaveAttribute('aria-checked', 'true');
