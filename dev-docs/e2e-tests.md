@@ -1302,6 +1302,10 @@ local path, which no forge URL can be derived from, so it sets `repo_web_url`
 explicitly (`FORGE_URL`); the degradation case opts back out with
 `repoWebURL: null`.
 
+The roster cases run at the default desktop viewport on purpose: below the
+tablet breakpoint the Commit column is dropped entirely (Maske AK, UAK6), so
+there is no cell to link there.
+
 - **UAL1 — The roster Commit cell links.** The cell is an `<a>` whose `href` is
   `<forge>/commit/<full sha>` — the **full** 40-char SHA, though the cell prints
   the 7-char form (a short SHA is a display convention some forges will not
