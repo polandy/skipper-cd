@@ -84,6 +84,15 @@ const stackItem = (page: Page, name: string) =>
   page.locator(`[data-testid="stack-item"][data-stack="${name}"]`);
 const autosyncDrawer = (page: Page) => page.locator('[data-testid="autosync-drawer"]');
 
+/** openDrawer opens the autosync drawer and waits until it carries server state.
+ *  `data-ready` flips with the first `autosync` snapshot; before that the drawer
+ *  is showing the markup's optimistic defaults and its global switch is inert
+ *  (UC14), so a toggle asserted against it would be racing the stream. */
+async function openDrawer(page: Page) {
+  await autosyncBtn(page).click();
+  await expect(autosyncDrawer(page)).toHaveAttribute('data-ready', 'true');
+}
+
 // UC3 — Drawer open/close. Clicking the `autosync-btn` header control opens the
 // `autosync-drawer`; both `Esc` and an outside click close it again. The drawer
 // starts hidden (`visibility: hidden`), so `toBeVisible`/`toBeHidden` track the
@@ -134,7 +143,7 @@ test.describe('UC4: global switch', () => {
     skipper,
   }) => {
     await page.goto(`${skipper.baseURL}/`);
-    await autosyncBtn(page).click();
+    await openDrawer(page);
 
     // On by default: switch and header agree.
     await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'true');
@@ -150,7 +159,7 @@ test.describe('UC4: global switch', () => {
     await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'false');
 
     // Click on again → back to on, live.
-    await autosyncBtn(page).click();
+    await openDrawer(page);
     await globalSwitch(page).click();
     await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'true');
   });
@@ -166,7 +175,7 @@ test.describe('UC5: per-stack switch', () => {
     skipper,
   }) => {
     await page.goto(`${skipper.baseURL}/`);
-    await autosyncBtn(page).click();
+    await openDrawer(page);
 
     const web = stackSwitch(page, 'web');
     await expect(web).toHaveAttribute('aria-checked', 'true');
@@ -178,7 +187,7 @@ test.describe('UC5: per-stack switch', () => {
     // Close and reopen: the paused state is reflected from the server, not lost.
     await page.keyboard.press('Escape');
     await expect(autosyncDrawer(page)).toBeHidden();
-    await autosyncBtn(page).click();
+    await openDrawer(page);
     await expect(stackSwitch(page, 'web')).toHaveAttribute('aria-checked', 'false');
   });
 });
@@ -203,7 +212,7 @@ test.describe('UC6: queued list', () => {
     skipper.setStackImage('api', '1.26');
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
 
-    await autosyncBtn(page).click();
+    await openDrawer(page);
     await expect(queueItem(page, 'web')).toBeVisible();
     await expect(queueItem(page, 'api')).toBeVisible();
 
@@ -237,7 +246,7 @@ test.describe('UC7: stack filter', () => {
 
   test('filters by substring, clears, and Esc clears before closing', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
-    await autosyncBtn(page).click();
+    await openDrawer(page);
 
     // All three listed; clear button hidden until there is a query.
     await expect(stackItem(page, 'web')).toBeVisible();
@@ -348,7 +357,7 @@ test.describe('UC9: queued row + tag', () => {
 test.describe('UC10: re-enable does not pin', () => {
   test('pausing then resuming a stack leaves no sticky override', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
-    await autosyncBtn(page).click(); // open the drawer
+    await openDrawer(page);
 
     const web = stackSwitch(page, 'web');
     await expect(web).toHaveAttribute('aria-checked', 'true');
@@ -375,7 +384,7 @@ test.describe('UC10: re-enable does not pin', () => {
 test.describe('UC11: UI pause does not survive a global cycle', () => {
   test('a stack paused via the UI resumes after global off then on', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
-    await autosyncBtn(page).click();
+    await openDrawer(page);
 
     const web = stackSwitch(page, 'web');
     await web.click(); // pause web
@@ -406,7 +415,7 @@ test.describe('UC12: collapse through the stack filter', () => {
     skipper,
   }) => {
     await page.goto(`${skipper.baseURL}/`);
-    await autosyncBtn(page).click();
+    await openDrawer(page);
 
     // All three stacks are listed before filtering.
     await expect(stackItem(page, 'web')).toBeVisible();
@@ -478,7 +487,7 @@ test.describe('UC13: a late snapshot never overwrites a newer one', () => {
     });
 
     await page.goto(`${skipper.baseURL}/`);
-    await autosyncBtn(page).click();
+    await openDrawer(page);
     await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'true');
 
     // Click global off. Its POST response is held, but the server already applied
@@ -506,5 +515,88 @@ test.describe('UC13: a late snapshot never overwrites a newer one', () => {
     // The header control mirrors the same snapshot, so assert both surfaces.
     await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'true');
     await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'true');
+  });
+});
+
+// UC14 — The drawer never acts on state it does not have. Between page load and
+// the first `autosync` snapshot the drawer only has the markup's optimistic
+// defaults: the global switch *looks* on, but a click could not compute the
+// opposite value and posted nothing at all — a dead control, and a lost toggle
+// for whoever opened the drawer that early. The drawer now says so
+// (`data-ready="false"`, `aria-disabled`) and the switch does not take the click
+// until the state lands, so the click waits instead of vanishing. Driven by
+// stalling the event stream, which makes that window last as long as we need.
+test.describe('UC14: the drawer waits for server state', () => {
+  test('the global switch is inert until the first snapshot, then takes the click', async ({
+    page,
+    skipper,
+  }) => {
+    let release = () => {};
+    const stalled = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/api/events', async (route) => {
+      await stalled;
+      await route.continue();
+    });
+
+    await page.goto(`${skipper.baseURL}/`);
+    await autosyncBtn(page).click();
+    await expect(autosyncDrawer(page)).toBeVisible();
+
+    // No snapshot has arrived, and the drawer admits it rather than presenting a
+    // switch whose position it is guessing.
+    await expect(autosyncDrawer(page)).toHaveAttribute('data-ready', 'false');
+    await expect(globalSwitch(page)).toHaveAttribute('aria-disabled', 'true');
+
+    // Click while it is still inert. The click must not be swallowed: it waits
+    // for the control to arm, which happens when we let the stream through.
+    const clicked = globalSwitch(page).click();
+    release();
+    await clicked;
+
+    // The state arrived, the switch armed, and the click landed on the server.
+    await expect(autosyncDrawer(page)).toHaveAttribute('data-ready', 'true');
+    await expect(globalSwitch(page)).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'false');
+    await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'false');
+  });
+});
+
+// UC15 — A snapshot must not swap a switch out from under the pointer. Every
+// `autosync`/`queue` event repaints the drawer's lists. Rebuilding them wholesale
+// replaced the switch nodes, and a switch replaced between mousedown and mouseup
+// takes the `click` with it — the browser fires it on the common ancestor
+// instead, where the delegated handler finds no switch and does nothing. The
+// lists are therefore patched in place while the rows and their order hold, which
+// this asserts through node identity: the very node a click would be travelling
+// to is still the live, connected control after an unrelated stack's snapshot.
+test.describe('UC15: a re-render keeps the switch nodes', () => {
+  test.use({ startOptions: { stacks: ['web', 'api'] } });
+
+  test('an unrelated snapshot patches the list without replacing the switch', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await openDrawer(page);
+
+    const web = stackSwitch(page, 'web');
+    await expect(web).toHaveAttribute('aria-checked', 'true');
+    const node = await web.elementHandle();
+
+    // Pause a *different* stack from another client: the snapshot repaints the
+    // whole list. Asserting `api` flipped proves the repaint actually ran, so the
+    // node check below cannot pass by being early.
+    expect(await skipper.postAutosync('api', false)).toBe(200);
+    await expect(stackSwitch(page, 'api')).toHaveAttribute('aria-checked', 'false');
+
+    // web's switch survived that repaint as the same node — nothing was swapped
+    // out mid-flight.
+    expect(await node!.evaluate((el) => el.isConnected)).toBe(true);
+
+    // And it is still the live control, not a detached leftover.
+    await web.click();
+    await expect(web).toHaveAttribute('aria-checked', 'false');
   });
 });

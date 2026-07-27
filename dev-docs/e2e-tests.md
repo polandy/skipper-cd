@@ -43,8 +43,10 @@ asserting **behaviour + visual snapshots**.
 > deploy order with position/reason/count/wait), **UC7** (stack filter:
 > substring/clear/Esc), **UC8** (enable drains the queue, disable runs no deploy),
 > **UC9** (queued row + `paused:` tag, superseded on resume), the
-> override-collapse cases **UC10**/**UC11**/**UC12**, and **UC13** (a late
-> snapshot never overwrites a newer one). Mask D (global chrome) is
+> override-collapse cases **UC10**/**UC11**/**UC12**, **UC13** (a late
+> snapshot never overwrites a newer one), **UC14** (the drawer is inert until it
+> has server state) and **UC15** (a re-render keeps the switch nodes).
+> Mask D (global chrome) is
 > likewise complete — **UD1** (theme toggle + persistence + no-flash), the
 > theme-picker cases **UD6**/**UD6b** (per-browser override + auto-hiding
 > mismatch notice, switcher on) and **UD7** (switcher off by default: picker
@@ -385,6 +387,25 @@ UI suite reuses.
   same synchronous step in which the switch would otherwise have been repainted;
   only then are the DOM assertions safe. Reach for the same shape whenever a test
   must observe that something *did not* happen.
+- **UC14 — The drawer waits for server state.** Between page load and the first
+  `autosync` snapshot the drawer has only the markup's optimistic defaults, so
+  `autosync-drawer` carries `data-ready="false"` and `global-switch` is
+  `aria-disabled` and does not accept a click (`pointer-events: none`). The test
+  stalls `/api/events` with `page.route` to hold that window open, clicks the
+  switch while it is inert, then releases the stream: the click must have *waited*
+  and then landed (switch `false`, header `data-global="false"`), not been
+  swallowed. Every other drawer case opens through the `openDrawer` helper, which
+  waits for `data-ready="true"` — the deterministic seam that replaces hoping the
+  snapshot won the race.
+- **UC15 — A re-render keeps the switch nodes.** Every `autosync`/`queue` event
+  repaints the drawer's lists; rebuilding them wholesale replaced the switch
+  nodes, and a switch replaced between mousedown and mouseup takes the `click`
+  with it (the browser fires it on the common ancestor, where the delegated
+  handler finds no switch). With two stacks, an `elementHandle` is taken for
+  `web`'s switch, a *different* stack is paused from a second client, and — once
+  `api`'s switch has visibly flipped, proving the repaint ran — `web`'s node must
+  still be `isConnected` and still toggle. This is what makes UC5/UC10/UC11's
+  clicks land under load.
 
 ### 4.5 UI — Maske D: Global chrome
 
@@ -1512,6 +1533,8 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Global switch is a true master (collapse on global toggle) | **UC11** |
 | Override collapse through the stack filter | **UC12** |
 | A late autosync snapshot never overwrites a newer one | **UC13** |
+| The drawer is inert until it has server state | **UC14** |
+| A re-render never swaps a switch out from under a click | **UC15** |
 | Enable drains, disable does not | **UC8** |
 | Queued row + `paused:` tag | **UC9** |
 | Theme toggle + persistence + no-flash | **UD1** |

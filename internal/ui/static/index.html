@@ -220,7 +220,10 @@
   </div>
 </div>
 
-<div class="drawer" id="autosync-drawer" data-testid="autosync-drawer" role="dialog" aria-modal="true" aria-label="Autosync" tabindex="-1">
+<!-- data-ready flips to "true" with the first `autosync` snapshot. Until then the
+     drawer knows no server state, so its global switch is inert rather than
+     claiming a state it is guessing at (see renderGlobal). -->
+<div class="drawer" id="autosync-drawer" data-testid="autosync-drawer" data-ready="false" role="dialog" aria-modal="true" aria-label="Autosync" tabindex="-1">
   <div class="drawer-inner">
     <div class="drawer-title">Autosync</div>
     <div class="drawer-sub" id="autosync-sub">All stacks in sync.</div>
@@ -230,7 +233,7 @@
         <div class="gr-label">Global autosync</div>
         <div class="gr-note" id="autosync-global-note">on · deploys apply automatically</div>
       </div>
-      <div class="sw lg on" id="autosync-global-sw" data-testid="global-switch" data-taptip role="switch" aria-checked="true" tabindex="0" title="Toggle global autosync"></div>
+      <div class="sw lg on" id="autosync-global-sw" data-testid="global-switch" data-taptip role="switch" aria-checked="true" aria-disabled="true" tabindex="0" title="Toggle global autosync"></div>
     </div>
 
     <div class="sec-label">Queued <span class="sec-count" id="autosync-qcount"></span> · drains in this order</div>
@@ -3808,16 +3811,26 @@
     return 'synced';
   }
 
-  function stackRowHTML(s, pos) {
+  // pos is a number only in the queue list; the all-stacks list passes null and
+  // marks a queued stack with a dot instead.
+  function rowPosText(s, pos) {
+    if (pos !== null) return String(pos);
+    return queueByStack[s.name] ? '●' : '';
+  }
+
+  function rowChipHTML(s) {
     const item = queueByStack[s.name];
-    const queued = !!item;
-    // pos is a number only in the queue list; the all-stacks list passes null.
-    const inQueue = pos !== null;
-    const posCell = inQueue
-      ? `<div class="qpos">${pos}</div>`
-      : `<div class="qpos blank">${queued ? '●' : ''}</div>`;
     const reason = item ? item.reason : reasonFromSnap(s);
-    const chip = (!s.effective && reason) ? `<span class="reason reason-${reason}">${reason}</span>` : '';
+    return (!s.effective && reason) ? `<span class="reason reason-${reason}">${reason}</span>` : '';
+  }
+
+  function switchTitle(s) {
+    return `${s.effective ? 'Pause' : 'Resume'} autosync`;
+  }
+
+  function stackRowHTML(s, pos) {
+    const inQueue = pos !== null;
+    const posCell = `<div class="qpos${inQueue ? '' : ' blank'}">${rowPosText(s, pos)}</div>`;
     const rowTestid = inQueue ? 'queue-item' : 'stack-item';
     // The stack switch is the interactive control the tests toggle; only tag it
     // in the all-stacks list so a queued stack does not expose two of them.
@@ -3825,12 +3838,45 @@
     return `<div class="stack-row" data-testid="${rowTestid}" data-stack="${escapeAttr(s.name)}">` +
         posCell +
         `<div class="stack-meta">` +
-          `<div class="stack-name">${escapeHtml(s.name)}${chip}</div>` +
-          `<div class="stack-detail">${stackDetail(s, item)}</div>` +
+          `<div class="stack-name">${escapeHtml(s.name)}${rowChipHTML(s)}</div>` +
+          `<div class="stack-detail">${stackDetail(s, queueByStack[s.name])}</div>` +
         `</div>` +
         `<div class="sw${s.effective ? ' on' : ''}"${swTestid} data-taptip role="switch" aria-checked="${s.effective}"` +
-          ` tabindex="0" data-stack="${escapeAttr(s.name)}" title="${s.effective ? 'Pause' : 'Resume'} autosync"></div>` +
+          ` tabindex="0" data-stack="${escapeAttr(s.name)}" title="${switchTitle(s)}"></div>` +
       `</div>`;
+  }
+
+  // patchStackRow updates an existing row's cells without touching the row or
+  // switch nodes themselves — see renderRowList for why that matters.
+  function patchStackRow(row, s, pos) {
+    const qpos = row.querySelector('.qpos');
+    qpos.className = pos !== null ? 'qpos' : 'qpos blank';
+    qpos.textContent = rowPosText(s, pos);
+    row.querySelector('.stack-name').innerHTML = escapeHtml(s.name) + rowChipHTML(s);
+    row.querySelector('.stack-detail').innerHTML = stackDetail(s, queueByStack[s.name]);
+    const sw = row.querySelector('.sw');
+    sw.classList.toggle('on', s.effective);
+    sw.setAttribute('aria-checked', String(s.effective));
+    sw.title = switchTitle(s);
+  }
+
+  // renderRowList paints a stack list, patching in place whenever the rows and
+  // their order are unchanged.
+  //
+  // Rebuilding wholesale would be simpler, but a snapshot can land in the middle
+  // of a click: if the switch node is replaced between mousedown and mouseup the
+  // browser fires the `click` on their common ancestor instead, the delegated
+  // handler finds no `.sw` under it, and the toggle is silently lost. Every SSE
+  // tick used to swap the whole list, so an autosync/queue event arriving at the
+  // wrong moment ate the click (and any keyboard focus with it).
+  function renderRowList(el, rows) {
+    const key = rows.map(function(r) { return r.stack.name; }).join('\n');
+    if (el.dataset.rowKey === key && el.children.length === rows.length) {
+      rows.forEach(function(r, i) { patchStackRow(el.children[i], r.stack, r.pos); });
+      return;
+    }
+    el.dataset.rowKey = key;
+    el.innerHTML = rows.map(function(r) { return stackRowHTML(r.stack, r.pos); }).join('');
   }
 
   function renderAutosyncBtn() {
@@ -3852,8 +3898,16 @@
     else asSub.innerHTML = `<b>${q}</b> update${q === 1 ? '' : 's'} waiting · ${paused} stack${paused === 1 ? '' : 's'} paused.`;
   }
 
+  // renderGlobal paints the global switch — and, the first time a snapshot
+  // arrives, arms it. Before that the drawer has no server state: the switch
+  // would show the markup's optimistic "on" and a click could not compute the
+  // opposite value, so it posted nothing and the control read as broken. While
+  // `data-ready` is "false" it is inert (aria-disabled, and pointer-events off
+  // in CSS, so a click waits for the state instead of falling into the void).
   function renderGlobal() {
     if (!autosyncSnap) return;
+    asDrawer.dataset.ready = 'true';
+    asGlobalSw.removeAttribute('aria-disabled');
     asGlobalSw.classList.toggle('on', autosyncSnap.global);
     asGlobalSw.setAttribute('aria-checked', String(autosyncSnap.global));
     asGlobalNote.textContent = autosyncSnap.global
@@ -3865,13 +3919,14 @@
     const pending = queueSnap.pending || [];
     asQCount.textContent = pending.length ? `(${pending.length})` : '';
     if (pending.length === 0) {
+      asQueueList.dataset.rowKey = '';
       asQueueList.innerHTML = '<div class="qempty">Nothing queued — resumed deploys apply immediately.</div>';
       return;
     }
-    asQueueList.innerHTML = pending.map(function(it) {
+    renderRowList(asQueueList, pending.map(function(it) {
       const s = stackByName(it.stack) || { name: it.stack, effective: false, overridden: false, config: null };
-      return stackRowHTML(s, it.position);
-    }).join('');
+      return { stack: s, pos: it.position };
+    }));
   }
 
   function renderStackList() {
@@ -3880,11 +3935,12 @@
     const stacks = autosyncStacks();
     const list = stacks.filter(function(s) { return s.name.toLowerCase().indexOf(query) !== -1; });
     if (list.length === 0) {
+      asStackList.dataset.rowKey = '';
       asStackList.innerHTML = `<div class="qempty">` +
         (stacks.length ? `No stack matches “${escapeHtml(query)}”.` : 'No stacks.') + `</div>`;
       return;
     }
-    asStackList.innerHTML = list.map(function(s) { return stackRowHTML(s, null); }).join('');
+    renderRowList(asStackList, list.map(function(s) { return { stack: s, pos: null }; }));
   }
 
   function renderAutosync() {

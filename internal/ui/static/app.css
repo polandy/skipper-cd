@@ -2931,6 +2931,10 @@
   .sw.lg { width: 34px; height: 19px; border-radius: 10px; }
   .sw.lg::after { width: 13px; height: 13px; }
   .sw.lg.on::after { transform: translateX(15px); }
+  /* Before the first autosync snapshot the drawer is guessing at the global
+     state, so its switch does not accept a click yet — pointer-events off makes
+     the click wait for the real state instead of being swallowed. */
+  .drawer[data-ready="false"] .global-row .sw { pointer-events: none; opacity: 0.5; }
 
   /* ─── LOG VIEW ─── */
   /* body.view-logs switches between the deploy table and the log pane;
