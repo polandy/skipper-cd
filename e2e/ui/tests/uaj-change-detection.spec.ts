@@ -78,13 +78,19 @@ test('UAJ1: a deployed stack shows what is watched and since which commit', asyn
 test('UAJ1b: after a deployed change the lead names the commit', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
 
+  // Only a deploy driven by a push carries a commit — the startup one records
+  // none, since nothing was pushed to reach it. So let the startup deploy settle
+  // *before* changing anything: pushed too early, the change is swept up by the
+  // run already in flight and the lead legitimately reads "the last deploy"
+  // forever. Row counts are the seam; nothing here waits on the clock.
+  const deployed = page.locator('[data-testid="deploy-row"][data-stack="api"][data-status="success"]');
+  await expect(deployed).toHaveCount(1);
+
   skipper.setStackImage('api', '1.26');
   expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
-  // The success row appearing is the signal that the run finished and the
-  // `stacks` snapshot has been republished — no waiting on the clock.
-  await expect(
-    page.locator('[data-testid="deploy-row"][data-stack="api"][data-status="success"]').first(),
-  ).toBeVisible();
+  // The second success row is the pushed change's own deploy, and its arrival is
+  // also the signal that the `stacks` snapshot has been republished.
+  await expect(deployed).toHaveCount(2);
 
   await stacksBtn(page).click();
   await row(page, 'api').click();

@@ -183,3 +183,39 @@ test('UR5: the time-mode toggle switches roster times to absolute', async ({ pag
   await expect(toggle).toHaveClass(/active/);
   await expect(when).toContainText(':'); // absolute now shows a clock time
 });
+
+// UR6 — an open panel survives a roster republish. The `stacks` snapshot lands
+// after every run, and a rebuild that drops the open panel yanks the answer away
+// from whoever is reading it — precisely when the panel has something new to
+// say. The panel is re-opened from the new snapshot instead, which is also the
+// seam that makes the change-detection lead (Maske AJ) deterministic: it can
+// only ever be read after the republish, never before it.
+test('UR6: an open panel survives a roster republish and carries the new data', async ({ page, skipper }) => {
+  await page.goto(`${skipper.baseURL}/`);
+  await expect(page.locator('[data-testid="health-pill"]').first()).toBeVisible();
+  // Let the startup deploy settle before pushing, so the change below gets its
+  // own run (and its own commit) rather than being swept up by the one already
+  // in flight. Row counts are the seam; nothing here waits on the clock.
+  const deployed = page.locator('[data-testid="deploy-row"][data-stack="api"][data-status="success"]');
+  await expect(deployed).toHaveCount(1);
+  await stacksBtn(page).click();
+
+  const apiRow = row(page, 'api');
+  await apiRow.click();
+  const watched = page.locator('[data-testid="watched-panel"]');
+  await expect(watched).toHaveCount(1);
+  // The startup deploy has no prior commit to diff against, so the lead names
+  // the deploy itself rather than a SHA.
+  await expect(watched.locator('[data-testid="watched-lead"]')).toContainText('Unchanged since the last deploy.');
+
+  // A deploy republishes the roster underneath the open panel.
+  skipper.setStackImage('api', '1.26');
+  expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+
+  // Still open, still on the same row — and now carrying what the run produced:
+  // the commit its inputs have not changed since.
+  await expect(watched.locator('[data-testid="watched-lead"]')).toContainText(/^Unchanged since [0-9a-f]{7}\./);
+  await expect(watched).toHaveCount(1);
+  await expect(apiRow).toHaveClass(/audit-open/);
+  await expect(page.locator('[data-testid="audit-panel"]')).toHaveAttribute('data-audit-for', 'api');
+});
