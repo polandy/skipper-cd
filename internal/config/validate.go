@@ -97,6 +97,15 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("repo_dir %q must be an absolute path (start it with \"/\"), or leave it empty to use the default %s", cfg.RepoDir, git.DefaultRepoDir)
 	}
 
+	// repo_web_url ends up as the href of every commit link in the UI, so a value
+	// the browser would not follow as a web page (or would follow into a script
+	// URL) has to be rejected here rather than shipped to the page.
+	if cfg.RepoWebURL != "" {
+		if u, err := url.Parse(cfg.RepoWebURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("repo_web_url %q must be an http(s) URL of the repository's page on the forge, e.g. \"https://forge.example.com/owner/repo\" — or leave it empty to derive it from repo_url", cfg.RepoWebURL)
+		}
+	}
+
 	// A negative command_timeout_seconds would build an already-expired context,
 	// failing every git/docker/nixos command from the first sync with an opaque
 	// "context deadline exceeded". An omitted or 0 value took the default above.

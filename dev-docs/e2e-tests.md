@@ -404,8 +404,9 @@ UI suite reuses.
 - **UD4 — Responsive ≤700px.** At a 390px viewport the **compact header**
   (UI_SPEC §Responsive) does not overflow the viewport width
   (`documentElement.scrollWidth ≤ clientWidth`) and the `brand-name` wordmark is
-  hidden; the **table** collapses to the 2×2 layout, the Files column hides, and
-  tapping a row with changed files expands the panel. The 1280px control asserts
+  hidden; the **table** collapses to its two-line layout (name/status over
+  time/version), the Duration and Files columns hide, and tapping a row with
+  changed files expands the panel. The 1280px control asserts
   the wordmark is visible with likewise no sideways scroll. *Snapshot: mobile
   layout.*
 - **UD8 — View-options popover.** The view-specific toggle (`time-mode`, shared
@@ -1202,9 +1203,18 @@ image change — no hand-fed events.
 - **UAI4 — Digest-only rebuild.** A same-tag digest change (`nginx:1.25@sha256:…`)
   shows the shared tag `1.25` plus a `↻` rebuilt marker (no raw digest pair); the
   full digest is on the chip's `title`.
-- **UAI5 — Responsive.** On a 390 px viewport the Version column becomes a
-  full-width row **beneath** the name (asserted by bounding box) instead of
-  squeezing it — the name still renders in full (no ellipsis).
+- **UAI5 — Responsive.** On a 390 px viewport the row is two lines and the
+  Version cell shares the second one with the time — below the name, beside the
+  time (asserted by bounding box, all boxes read in **one** measurement pass so
+  a prepended row cannot have two reads describe different rows). Duration and
+  Files are hidden; the name still renders in full (no ellipsis).
+- **UAI7 — Tablet.** On a 744 px viewport (iPad-mini portrait) **Duration and
+  Files give up their tracks** — hidden in the rows *and* in the header — so
+  Version keeps the first line: level with the name, right of the stack cell,
+  ending before the status cell begins, chips still stacked one per line. Seeded
+  health (`healthPoll: 1` + `initialHealth`) gives the status cell its second
+  line, the widest state the row reaches. The stack name is asserted present:
+  squeezing all six columns rendered an icon cluster with no stack behind it.
 - **UAI6 — View-options toggle.** The Deploys popover's **Version changes** toggle
   (on by default) collapses the whole column when flipped off — no chips, no
   `Version` header, and no row separators (they exist only because the column
@@ -1215,7 +1225,6 @@ Behaviour-only (no snapshot): the delta is structural (`data-testid="svc-delta"`
 per-part text), and the per-reference token logic is exhaustively covered by the
 `app-helpers` unit layer (`imageDelta` / `parseImageRef` / `shortImageTag`).
 
-<<<<<<< HEAD
 ### 4.37 UI — Maske AK: Service versions in the Stacks view
 
 `compose ps` reports the image each container runs, which rides the `health`
@@ -1245,11 +1254,16 @@ versions render from a real snapshot.
 - **UAK5 — Patched in place.** A later poll carrying a new image updates the cell
   (`v1.120.0`, count gone) while the row's open panel survives — the versions
   arrive with health, not with the roster snapshot.
+- **UAK6 — Tablet.** On an 820 px viewport **Commit** gives up its column —
+  header label and cells — so Version keeps the row's first line beside the
+  name (asserted by bounding box, read in one measurement pass). The stack name
+  is asserted present and non-zero: `immich`'s cell also carries a change chip,
+  an app link and the log/jump glyphs, which wrap to a second line inside the
+  cell rather than squeezing the row's identity away.
 
 Behaviour-only (no snapshot): the cell is structural, and the lead-service and
 token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
 `imageRepoName` / `shortImageTag`).
->>>>>>> origin/main
 
 ### 4.38 UI — Maske AJ: Roster change detection
 
@@ -1286,7 +1300,48 @@ Behaviour-only (no snapshot): the panel is structural text, and the lead-line
 phrasing across every deploy status (a `failed`/`queued`/`blocked` stack has a
 change *pending* and must never claim "unchanged") is exhaustively covered by
 the `app-helpers` unit layer (`watchedSummary`).
-=======
+
+### 4.39 UI — Maske AL: Commit SHAs link to the forge
+
+A SHA on its own is a dead end — it names a commit the operator then has to go
+find. Every SHA the UI prints is therefore a link to that commit on the forge
+(`repo_web_url`, or one derived from `repo_url`). See
+[Commit links](../internal/ui/UI_SPEC.md#commit-links). The harness clones from a
+local path, which no forge URL can be derived from, so it sets `repo_web_url`
+explicitly (`FORGE_URL`); the degradation case opts back out with
+`repoWebURL: null`.
+
+The roster cases run at the default desktop viewport on purpose: below the
+tablet breakpoint the Commit column is dropped entirely (Maske AK, UAK6), so
+there is no cell to link there.
+
+- **UAL1 — The roster Commit cell links.** The cell is an `<a>` whose `href` is
+  `<forge>/commit/<full sha>` — the **full** 40-char SHA, though the cell prints
+  the 7-char form (a short SHA is a display convention some forges will not
+  resolve). It opens in a new tab (`target="_blank"`, `rel` carrying `noopener`),
+  since the UI is a live SSE stream that navigating away would cost.
+- **UAL2 — The link does one thing.** The SHA sits in a row whose body toggles
+  the expand panel; clicking the link must not also open it. The navigation is
+  cancelled in the capture phase, so what is asserted is purely the row
+  handler's guard — and the row still expands when clicked anywhere else.
+- **UAL3 — Panels, prose and the diff header too.** The deploy-history rows
+  (`.ar-sha`), the diff panel's commit header (`commit-sha`) and the
+  change-detection lead's `Unchanged since <sha>` link the same way: one helper
+  renders every SHA, so they either all link or none do. The lead is prose, so
+  the assertion also pins the sentence around the link.
+- **UAL4 — A peer links to its own forge.** A peer's roster row uses the
+  `repo_web_url` from *that peer's* fanned-in snapshot, not the primary's —
+  each host tracks its own deploy repo, so the primary's forge never had those
+  commits.
+- **UAL5 — Degrades to plain text.** With no forge configured (and none
+  derivable), the SHA renders as the inert `<span>` it was before links existed
+  — never a dead link.
+
+Behaviour-only (no snapshot): the link is an attribute change, and the URL
+building itself (trailing slashes, a missing base or SHA, a non-http(s) base
+that must never reach an `href`) is covered by the `app-helpers` unit layer
+(`commitURL`) and, server-side, by `git.WebURL`.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -1312,7 +1367,7 @@ The landed baselines:
 | `diff-panel.png` | UA8 | `diff-panel` | — (static diff) |
 | `autosync-drawer.png` | UC6 | `autosync-drawer` | `wait-cell` |
 | `theme-dark.png` / `theme-light.png` | UD1 | full page | `time-cell`, `duration-cell` |
-| `mobile-layout.png` | UD4 | full page (390px) | `time-cell`, `duration-cell` |
+| `mobile-layout.png` | UD4 | full page (390px) | `time-cell` (the duration is hidden at this width) |
 
 The **Logs pane (UB2) is deliberately not snapshotted**: real deploy log output
 is nondeterministic (line count, tmp paths, commit SHAs), so even with the text
