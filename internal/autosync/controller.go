@@ -21,6 +21,8 @@ type Controller struct {
 
 	globalOverride *bool            // UI override; nil = none
 	stackOverride  map[string]*bool // per-stack UI override; absent = none
+
+	version uint64 // bumped by every mutation; stamped into Snapshot
 }
 
 // NewController builds a Controller from config-as-code values. stackConfig maps
@@ -107,6 +109,7 @@ func (c *Controller) stackScopeSetLocked(name string) bool {
 func (c *Controller) SetGlobal(v *bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.version++
 	c.globalOverride = v
 	for name, ov := range c.stackOverride {
 		if ov != nil && *ov == c.baselineLocked(name) {
@@ -122,6 +125,7 @@ func (c *Controller) SetGlobal(v *bool) {
 func (c *Controller) SetStack(name string, v *bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.version++
 	if v == nil || *v == c.baselineLocked(name) {
 		delete(c.stackOverride, name)
 		return
@@ -139,6 +143,10 @@ type StackState struct {
 
 // Snapshot is the autosync state served at GET /api/autosync.
 type Snapshot struct {
+	// Version advances on every mutation so a consumer reading this state from
+	// more than one channel can drop a payload older than the one it applied
+	// (dev-docs/autosync-spec.md, "Snapshot ordering"). Not persisted.
+	Version          uint64       `json:"version"`
 	Global           bool         `json:"global"`
 	GlobalConfig     *bool        `json:"global_config"`
 	GlobalOverridden bool         `json:"global_overridden"`
@@ -150,6 +158,7 @@ func (c *Controller) Snapshot(order []string) Snapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	s := Snapshot{
+		Version:          c.version,
 		Global:           c.globalEffectiveLocked(),
 		GlobalConfig:     c.globalConfig,
 		GlobalOverridden: c.globalOverride != nil,

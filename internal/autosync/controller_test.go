@@ -194,3 +194,44 @@ func TestControllerSnapshot(t *testing.T) {
 		t.Fatalf("c = %+v, want effective=true overridden=false config=nil", s)
 	}
 }
+
+// The snapshot version orders the two channels that publish autosync state (the
+// POST response and the SSE broadcast), so it must advance on every mutation and
+// never go backwards.
+func TestControllerSnapshot_VersionAdvancesOnEveryMutation(t *testing.T) {
+	c := NewController(ptr(true), nil)
+	order := []string{"web"}
+
+	if v := c.Snapshot(order).Version; v != 0 {
+		t.Fatalf("fresh controller version = %d, want 0", v)
+	}
+
+	prev := uint64(0)
+	mutations := []func(){
+		func() { c.SetGlobal(ptr(false)) },
+		func() { c.SetStack("web", ptr(true)) },
+		func() { c.SetStack("web", nil) },  // clearing is a mutation too
+		func() { c.SetGlobal(ptr(false)) }, // a no-op write still advances
+		func() { c.SetGlobal(nil) },
+	}
+	for i, mutate := range mutations {
+		mutate()
+		v := c.Snapshot(order).Version
+		if v <= prev {
+			t.Fatalf("mutation %d: version = %d, want > %d", i, v, prev)
+		}
+		prev = v
+	}
+}
+
+// Reading the state must not advance the version — otherwise every SSE republish
+// would look newer than the toggle the UI just applied.
+func TestControllerSnapshot_VersionStableWithoutMutation(t *testing.T) {
+	c := NewController(ptr(true), nil)
+	c.SetGlobal(ptr(false))
+
+	first := c.Snapshot(nil).Version
+	if v := c.Snapshot(nil).Version; v != first {
+		t.Fatalf("version = %d after a second read, want it unchanged at %d", v, first)
+	}
+}
