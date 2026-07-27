@@ -377,6 +377,14 @@ UI suite reuses.
   Releasing the stale response must not move the switch — the UI keys on the
   snapshot's `version`, not on arrival order
   ([autosync-spec.md](autosync-spec.md#snapshot-ordering)).
+  **"The switch did not move" is an absence**, and asserting it right after the
+  response is delivered passes *before* the page has handled the payload — green
+  with or without the guard (verified: the first draft of this test passed against
+  a build without the fix, and so did its inverse). The test therefore waits for
+  the **drop announcement** the UI emits on the console, which is issued in the
+  same synchronous step in which the switch would otherwise have been repainted;
+  only then are the DOM assertions safe. Reach for the same shape whenever a test
+  must observe that something *did not* happen.
 
 ### 4.5 UI — Maske D: Global chrome
 

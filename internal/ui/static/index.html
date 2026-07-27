@@ -3752,7 +3752,12 @@
   // it and appear to snap back. The server's monotonic version, not arrival order,
   // decides (dev-docs/autosync-spec.md).
   function applyAutosyncSnapshot(snap) {
-    if (!snapshotIsFresh(autosyncVersion, snap)) return;
+    if (!snapshotIsFresh(autosyncVersion, snap)) {
+      // Dropping is invisible by design, which makes "my toggle did not repaint"
+      // unexplainable without a trace of it.
+      console.debug('autosync: dropped a stale snapshot', snap.version, '<', autosyncVersion);
+      return;
+    }
     autosyncSnap = snap;
     if (typeof snap.version === 'number') autosyncVersion = snap.version;
     renderAutosync();

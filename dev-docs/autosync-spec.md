@@ -258,6 +258,10 @@ Ordering therefore rides on the payload: every mutation advances the controller'
 version restarts with the process, so a consumer re-baselines (forgets the version
 it holds) whenever it reconnects and refetches a snapshot.
 
+A drop leaves no trace in the interface — that is the point — so the UI announces
+one on the browser console (`autosync: dropped a stale snapshot`), which is what
+makes "the switch correctly did *not* move" observable at all.
+
 Only `autosync` needs this: `queue` reaches the UI over the SSE stream alone.
 
 ---

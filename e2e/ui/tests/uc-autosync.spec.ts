@@ -490,15 +490,20 @@ test.describe('UC13: a late snapshot never overwrites a newer one', () => {
     expect(await skipper.postAutosync('', true)).toBe(200);
     await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'true');
 
-    // Now let the stale version-1 response (global off) arrive last, and wait for
-    // the page to actually receive it — the assertions must run after it was
-    // handled, not race it. The header control mirrors the same snapshot, so
-    // assert both surfaces are still `on`.
-    const staleArrived = page.waitForResponse(
-      (r) => r.url().includes('/api/autosync') && r.request().method() === 'POST',
+    // Now let the stale version-1 response (global off) arrive last. Waiting for
+    // the *response* would not be enough: "the switch did not move" is an absence,
+    // and asserting it right after delivery passes before the page has even
+    // handled the payload — green whether or not the guard exists. The drop is
+    // therefore announced, and that announcement is what we wait for. It is
+    // emitted in the same synchronous step in which the switch would otherwise
+    // have been repainted, so once it arrives the DOM assertions cannot be early.
+    const dropped = page.waitForEvent('console', (m) =>
+      m.text().includes('autosync: dropped a stale snapshot'),
     );
     release();
-    await staleArrived;
+    await dropped;
+
+    // The header control mirrors the same snapshot, so assert both surfaces.
     await expect(autosyncBtn(page)).toHaveAttribute('data-global', 'true');
     await expect(globalSwitch(page)).toHaveAttribute('aria-checked', 'true');
   });

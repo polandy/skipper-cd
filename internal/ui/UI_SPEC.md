@@ -331,7 +331,7 @@ Controls whether detected changes deploy automatically, per stack and globally. 
 
 **Enable triggers a drain; disable does not.** Enabling sync (global or a stack) triggers a deploy run that drains the queue; disabling only updates state. Switches use the same track/thumb geometry as the header `.filter-toggle`.
 
-**A switch never snaps back.** Autosync state reaches the UI over two channels — the toggle's own `POST` response and the `autosync` SSE event the same change broadcasts — and they can overtake each other. The UI applies a snapshot only when its `version` is not below the one already applied, so a late payload is dropped instead of repainting the state before the last change (two quick toggles of the same switch are exactly that window). The version is re-baselined on every reconnect, since it restarts with the server. See [`docs/autosync.md`](../../dev-docs/autosync-spec.md#snapshot-ordering).
+**A switch never snaps back.** Autosync state reaches the UI over two channels — the toggle's own `POST` response and the `autosync` SSE event the same change broadcasts — and they can overtake each other. The UI applies a snapshot only when its `version` is not below the one already applied, so a late payload is dropped instead of repainting the state before the last change (two quick toggles of the same switch are exactly that window). The version is re-baselined on every reconnect, since it restarts with the server. A drop is announced on the browser console, since it is by design invisible in the interface. See [`docs/autosync.md`](../../dev-docs/autosync-spec.md#snapshot-ordering).
 
 ---
 
