@@ -476,7 +476,7 @@ func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 	history.Add(events.DeployEvent{ID: 1, Stack: "gitea", Status: events.StatusSuccess})
 	history.Add(events.DeployEvent{ID: 2, Stack: "traefik", Status: events.StatusFailed, Error: "timeout"})
 
-	handler := SSEHandler(broadcaster, nil, history)
+	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	rec := serveSSE(t, handler, req, nil)
 
@@ -498,7 +498,7 @@ func TestSSEHandler_EmitsSyncedMarkerAfterHistory(t *testing.T) {
 	history := events.NewHistory("")
 	history.Add(events.DeployEvent{ID: 1, Stack: "gitea", Status: events.StatusSuccess})
 
-	handler := SSEHandler(broadcaster, nil, history)
+	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	body := serveSSE(t, handler, req, nil).Body.String()
 
@@ -515,7 +515,7 @@ func TestSSEHandler_EmitsSyncedMarkerAfterHistory(t *testing.T) {
 // An empty history still emits the synced marker — the signal that flips the
 // loading skeleton to the genuine-empty state (T4.17).
 func TestSSEHandler_EmitsSyncedMarkerForEmptyHistory(t *testing.T) {
-	handler := SSEHandler(events.NewBroadcaster(), nil, events.NewHistory(""))
+	handler := SSEHandler(events.NewBroadcaster(), nil, events.NewHistory(""), nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	body := serveSSE(t, handler, req, nil).Body.String()
 
@@ -530,7 +530,7 @@ func TestSSEHandler_FiltersHistoryByLastEventID(t *testing.T) {
 	history.Add(events.DeployEvent{ID: 1, Stack: "old"})
 	history.Add(events.DeployEvent{ID: 2, Stack: "new"})
 
-	handler := SSEHandler(broadcaster, nil, history)
+	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	req.Header.Set("Last-Event-ID", "1")
 	rec := serveSSE(t, handler, req, nil)
@@ -544,11 +544,56 @@ func TestSSEHandler_FiltersHistoryByLastEventID(t *testing.T) {
 	}
 }
 
+// The stream carries the state baseline itself, so a client is never left
+// painting from nothing.
+func TestSSEHandler_SendsStateBaselineOnConnect(t *testing.T) {
+	collect := func() []events.StateEvent {
+		return []events.StateEvent{{Name: events.StateQueue, Data: map[string]any{"count": 2}}}
+	}
+
+	handler := SSEHandler(events.NewBroadcaster(), events.NewStateBroadcaster(), events.NewHistory(""), collect)
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+	body := serveSSE(t, handler, req, nil).Body.String()
+
+	if !strings.Contains(body, "event: "+events.StateQueue+"\n") {
+		t.Fatalf("expected the %s baseline on connect, got:\n%s", events.StateQueue, body)
+	}
+	if !strings.Contains(body, `"count":2`) {
+		t.Errorf("baseline payload missing, got:\n%s", body)
+	}
+}
+
+// A state change published *while the baseline is being built* must still reach
+// the client: the subscription is established before the baseline is collected,
+// so such an event is delivered after it rather than falling into a gap where
+// nobody is listening. Publishing from inside collect lands in exactly that
+// window deterministically — with the two swapped, this event is lost forever,
+// which is what left the UI's pending pill blank after a webhook.
+func TestSSEHandler_StateChangeDuringBaselineIsNotLost(t *testing.T) {
+	stateB := events.NewStateBroadcaster()
+	collect := func() []events.StateEvent {
+		stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: map[string]any{"count": 9}})
+		return []events.StateEvent{{Name: events.StateQueue, Data: map[string]any{"count": 0}}}
+	}
+
+	handler := SSEHandler(events.NewBroadcaster(), stateB, events.NewHistory(""), collect)
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+	body := serveSSE(t, handler, req, nil).Body.String()
+
+	if !strings.Contains(body, `"count":9`) {
+		t.Fatalf("a state change published during the baseline was lost, got:\n%s", body)
+	}
+	// And it must arrive after the baseline, or the baseline would overwrite it.
+	if strings.Index(body, `"count":9`) < strings.Index(body, `"count":0`) {
+		t.Errorf("the newer state must follow the baseline, got:\n%s", body)
+	}
+}
+
 func TestSSEHandler_StreamsLiveEvents(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")
 
-	handler := SSEHandler(broadcaster, nil, history)
+	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	rec := serveSSE(t, handler, req, func() {
 		broadcaster.Publish(events.DeployEvent{
@@ -571,7 +616,7 @@ func TestSSEHandler_SetsCorrectHeaders(t *testing.T) {
 	broadcaster := events.NewBroadcaster()
 	history := events.NewHistory("")
 
-	handler := SSEHandler(broadcaster, nil, history)
+	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	rec := serveSSE(t, handler, req, nil)
 
@@ -682,7 +727,7 @@ func TestSSEHandler_StripsDiffsFromStream(t *testing.T) {
 		Diffs:  map[string]string{"file.yml": "+added"},
 	})
 
-	handler := SSEHandler(broadcaster, nil, history)
+	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	rec := serveSSE(t, handler, req, nil)
 

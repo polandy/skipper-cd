@@ -5,11 +5,20 @@ Status: accepted. Parked for want of a concrete consumer when written;
 that consumer** — its read-data fan-in polls this API, so it ships first.
 **Core implemented 2026-07-21**: `GET /api/v1/snapshot` (the whole state as
 one JSON document, built from the same collector as the SSE stream so the two
-cannot drift) plus the UI dogfooding it — the initial paint now fetches
-`/api/v1/snapshot` on every SSE (re)open, and the SSE stream no longer replays
-an initial state burst. The remaining per-topic endpoints in this ADR
+cannot drift). The remaining per-topic endpoints in this ADR
 (`/api/v1/stacks`, `/api/v1/deploys`, …) are additive within this design and
 deferred until a consumer needs them.
+**Amended 2026-07-27 — the UI's initial paint moved back onto the stream.**
+Fetching the baseline separately, as the UI did from 2026-07-21, split
+"read the current state" and "start listening" into two operations on two
+connections, leaving a window between them in which a published change reached
+nobody and was never re-sent (a queued deploy could stay invisible until the
+next run). The stream now subscribes first and *then* writes the baseline from
+the same `collect`, so the two are one ordered operation and a change racing a
+connect is delivered right after the baseline. `GET /api/v1/snapshot` is
+unchanged and remains the read surface for external consumers — notably the
+multi-host fan-in — it is simply no longer the UI's connect path, so the
+no-drift property is kept by the shared collector rather than by shared use.
 Date: 2026-07-19
 
 ## Context

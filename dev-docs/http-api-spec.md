@@ -54,8 +54,9 @@ Unchanged and *not* part of the v1 contract (own consumers, own stability):
 
 ### `GET /api/v1/snapshot`
 
-The whole current picture in one call — the REST equivalent of the SSE
-initial-state burst. Optional subsystems are present only when enabled.
+The whole current picture in one call — the REST equivalent of the baseline the
+SSE stream sends on connect, built from the same collector. Optional subsystems
+are present only when enabled.
 
 ```json
 {
@@ -219,12 +220,12 @@ Partly, and deliberately so.
 - **Live deltas stay on SSE.** The UI's value is push — deploys stream in. A
   poll-based UI would be a regression, so `GET /api/events` remains the delta
   transport and does not move to polling.
-- **The initial paint is the natural REST consumer.** Today the first paint
-  piggybacks on the SSE stream (history replay + `initialState` burst). The clean
-  split is `GET /api/v1/snapshot` for the initial state, then SSE for changes
-  only. Doing this makes the REST surface something the UI itself exercises on
-  every load — external consumers then eat exactly the JSON the UI paints, and
-  the shapes cannot silently rot.
+- **The initial paint stays on the stream.** Splitting it out (`GET
+  /api/v1/snapshot` for the initial state, SSE for changes only) was tried and
+  reverted: subscribing and reading the baseline have to be one ordered
+  operation, or a change published between them reaches nobody (ADR-0039
+  amendment). The shapes still cannot rot, because the stream's baseline and
+  this endpoint are built by the same collector.
 
 That migration is a **follow-up**, not a prerequisite: the endpoints ship and are
 useful (scripts, status pages) before the UI's initial paint is moved onto them.

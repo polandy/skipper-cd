@@ -370,6 +370,55 @@ test('UD10: indicator recovers after a fatal (non-200) stream error the browser 
   await expect(conn).toHaveAttribute('data-state', 'connected', { timeout: 15000 });
 });
 
+// UD12 — State published while the stream is connecting is not lost. The stream
+// carries its own baseline (subscribe, then send current state, then deltas), so
+// there is no window between "read the baseline" and "start listening" for a
+// change to fall into. Forced, not awaited: the `/api/events` request is held
+// before it reaches the server, a deploy is queued while nothing is subscribed,
+// and only then is the request released. With the baseline fetched separately
+// the queued deploy reached nobody and was never re-sent — the pending pill
+// stayed blank until the next run.
+test('UD12: a state change published while the stream connects still reaches the UI', async ({
+  page,
+  skipper,
+}) => {
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let markAttempted = () => {};
+  const attempted = new Promise<void>((resolve) => {
+    markAttempted = resolve;
+  });
+
+  // Hold only the first stream request; the page's own retries pass through.
+  let holdNext = true;
+  await page.route('**/api/events', async (route) => {
+    if (!holdNext) return route.continue();
+    holdNext = false;
+    markAttempted(); // the page is connecting; the server has no subscriber yet
+    await held;
+    await route.continue();
+  });
+
+  page.goto(`${skipper.baseURL}/`).catch(() => {});
+  await attempted;
+
+  // Queue a deploy while nobody is listening: pause autosync, then push.
+  expect(await skipper.postAutosync('', false)).toBe(200);
+  skipper.setStackImage('web', '1.26');
+  expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+  // Read out-of-band (page.route does not see this) that the server really queued it.
+  await expect
+    .poll(async () => (await (await fetch(`${skipper.baseURL}/api/queue`)).json()).count)
+    .toBe(1);
+
+  release();
+
+  // The baseline is collected after subscribing, so it carries the queued deploy.
+  await expect(page.locator('[data-testid="pending-pill"]')).toBeVisible();
+});
+
 // UD3 — Deploy indicator. `deploy-indicator` names the actively deploying
 // stack(s) while a deploy is in flight and reads `idle` otherwise. The state is
 // mirrored into `aria-label` (so it survives the span being hidden on mobile),

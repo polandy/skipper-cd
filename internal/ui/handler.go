@@ -186,15 +186,20 @@ func FontsHandler() http.Handler {
 }
 
 // SSEHandler returns an HTTP handler that streams deploy events via
-// Server-Sent Events. On connect it replays deploy history and, when a state
-// broadcaster is configured, the current autosync and queue snapshots, then
-// streams live deploy and state (autosync/queue) events. Supports
-// Last-Event-ID for reconnection of the deploy history.
-// The initial UI state (autosync, stacks, health, …) is no longer replayed on
-// this stream — the UI fetches it from GET /api/v1/snapshot on every (re)open
-// (ADR-0039). This stream replays the deploy-event history and then carries
-// live deploy events plus live state changes.
-func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.Broadcaster[events.StateEvent], history *events.History) http.Handler {
+// Server-Sent Events. On connect it replays deploy history, then sends the
+// current UI state (autosync, stacks, health, …) as one event per state name,
+// then streams live deploy and state events. Supports Last-Event-ID for
+// reconnection of the deploy history.
+//
+// The state baseline rides this stream rather than a separate fetch so that
+// subscribing and reading the baseline are one ordered operation: the
+// subscription is established *before* collect runs, so a change published
+// while the baseline is being built is delivered right after it instead of
+// falling into a gap where the client is not yet listening and the baseline no
+// longer reflects it (ADR-0039 amendment). collect is the same collector
+// GET /api/v1/snapshot serves, so the stream and the REST read surface cannot
+// drift; a nil collect (or a nil state broadcaster) sends no baseline.
+func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.Broadcaster[events.StateEvent], history *events.History, collect func() []events.StateEvent) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -241,6 +246,17 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 			var unsubS func()
 			sch, unsubS = stateB.Subscribe()
 			defer unsubS()
+		}
+
+		// The baseline is read *after* subscribing, so a state change racing this
+		// connect is queued on sch rather than lost between the two.
+		if stateB != nil && collect != nil {
+			for _, se := range collect() {
+				if err := writeSSEState(w, se); err != nil {
+					return
+				}
+			}
+			flusher.Flush()
 		}
 
 		// Keepalive ticker.
