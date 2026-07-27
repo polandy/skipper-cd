@@ -404,8 +404,9 @@ UI suite reuses.
 - **UD4 — Responsive ≤700px.** At a 390px viewport the **compact header**
   (UI_SPEC §Responsive) does not overflow the viewport width
   (`documentElement.scrollWidth ≤ clientWidth`) and the `brand-name` wordmark is
-  hidden; the **table** collapses to the 2×2 layout, the Files column hides, and
-  tapping a row with changed files expands the panel. The 1280px control asserts
+  hidden; the **table** collapses to its two-line layout (name/status over
+  time/version), the Duration and Files columns hide, and tapping a row with
+  changed files expands the panel. The 1280px control asserts
   the wordmark is visible with likewise no sideways scroll. *Snapshot: mobile
   layout.*
 - **UD8 — View-options popover.** The view-specific toggle (`time-mode`, shared
@@ -1195,9 +1196,18 @@ image change — no hand-fed events.
 - **UAI4 — Digest-only rebuild.** A same-tag digest change (`nginx:1.25@sha256:…`)
   shows the shared tag `1.25` plus a `↻` rebuilt marker (no raw digest pair); the
   full digest is on the chip's `title`.
-- **UAI5 — Responsive.** On a 390 px viewport the Version column becomes a
-  full-width row **beneath** the name (asserted by bounding box) instead of
-  squeezing it — the name still renders in full (no ellipsis).
+- **UAI5 — Responsive.** On a 390 px viewport the row is two lines and the
+  Version cell shares the second one with the time — below the name, beside the
+  time (asserted by bounding box, all boxes read in **one** measurement pass so
+  a prepended row cannot have two reads describe different rows). Duration and
+  Files are hidden; the name still renders in full (no ellipsis).
+- **UAI7 — Tablet.** On a 744 px viewport (iPad-mini portrait) **Duration and
+  Files give up their tracks** — hidden in the rows *and* in the header — so
+  Version keeps the first line: level with the name, right of the stack cell,
+  ending before the status cell begins, chips still stacked one per line. Seeded
+  health (`healthPoll: 1` + `initialHealth`) gives the status cell its second
+  line, the widest state the row reaches. The stack name is asserted present:
+  squeezing all six columns rendered an icon cluster with no stack behind it.
 - **UAI6 — View-options toggle.** The Deploys popover's **Version changes** toggle
   (on by default) collapses the whole column when flipped off — no chips, no
   `Version` header, and no row separators (they exist only because the column
@@ -1208,8 +1218,47 @@ Behaviour-only (no snapshot): the delta is structural (`data-testid="svc-delta"`
 per-part text), and the per-reference token logic is exhaustively covered by the
 `app-helpers` unit layer (`imageDelta` / `parseImageRef` / `shortImageTag`).
 
+### 4.37 UI — Maske AK: Service versions in the Stacks view
 
-### 4.37 UI — Maske AJ: Roster change detection
+`compose ps` reports the image each container runs, which rides the `health`
+snapshot: a roster row's **Version** cell names the service the stack is named
+after plus its running version, and the expanded containers panel carries every
+service's version — the same chip the Deploys Version column renders (Maske AI).
+See [Service versions](../internal/ui/UI_SPEC.md#service-versions). Health is
+seeded per stack (`initialHealth` / `setStackHealth` now carry `Image`), so the
+versions render from a real snapshot.
+
+- **UAK1 — Lead version on the row.** A three-service `immich` shows one chip:
+  `immich-server v1.119.0` (the shorter of the two name matches, never the
+  alphabetically-first `database`) plus `+2`, with the `aria-label`
+  (`immich-server running v1.119.0`), the full-reference `title`, and no `→`
+  (a running version is a fact, not a change). Its own column between Stack and
+  Status, asserted by bounding box.
+- **UAK2 — No arbitrary lead.** A role-named stack (`monitoring` over
+  prometheus/grafana) gets no chip at all — the cell reads `2 services` and defers
+  to the panel.
+- **UAK3 — Every version in the panel.** Expanding lists all three versions
+  (`data-testid="health-version"`) beside the state/status the panel already
+  showed, the panel carrying `has-versions`; the chip drops its service label
+  there, since the line already names it.
+- **UAK4 — Degrades to nothing.** A snapshot without `Image` (an older skipper, or
+  a peer of one) leaves the cell empty and the panel without the version column —
+  never an empty chip or an empty track.
+- **UAK5 — Patched in place.** A later poll carrying a new image updates the cell
+  (`v1.120.0`, count gone) while the row's open panel survives — the versions
+  arrive with health, not with the roster snapshot.
+- **UAK6 — Tablet.** On an 820 px viewport **Commit** gives up its column —
+  header label and cells — so Version keeps the row's first line beside the
+  name (asserted by bounding box, read in one measurement pass). The stack name
+  is asserted present and non-zero: `immich`'s cell also carries a change chip,
+  an app link and the log/jump glyphs, which wrap to a second line inside the
+  cell rather than squeezing the row's identity away.
+
+Behaviour-only (no snapshot): the cell is structural, and the lead-service and
+token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
+`imageRepoName` / `shortImageTag`).
+
+### 4.38 UI — Maske AJ: Roster change detection
 
 skipper redeploys a stack only when one of its hashed inputs changes
 (Invariant 2), so the most common operator question is not "what happened" but
@@ -1242,40 +1291,6 @@ Behaviour-only (no snapshot): the panel is structural text, and the lead-line
 phrasing across every deploy status (a `failed`/`queued`/`blocked` stack has a
 change *pending* and must never claim "unchanged") is exhaustively covered by
 the `app-helpers` unit layer (`watchedSummary`).
-
-### 4.38 UI — Maske AK: Service versions in the Stacks view
-
-`compose ps` reports the image each container runs, which rides the `health`
-snapshot: a roster row's **Version** cell names the service the stack is named
-after plus its running version, and the expanded containers panel carries every
-service's version — the same chip the Deploys Version column renders (Maske AI).
-See [Service versions](../internal/ui/UI_SPEC.md#service-versions). Health is
-seeded per stack (`initialHealth` / `setStackHealth` now carry `Image`), so the
-versions render from a real snapshot.
-
-- **UAK1 — Lead version on the row.** A three-service `immich` shows one chip:
-  `immich-server v1.119.0` (the shorter of the two name matches, never the
-  alphabetically-first `database`) plus `+2`, with the `aria-label`
-  (`immich-server running v1.119.0`), the full-reference `title`, and no `→`
-  (a running version is a fact, not a change). Its own column between Stack and
-  Status, asserted by bounding box.
-- **UAK2 — No arbitrary lead.** A role-named stack (`monitoring` over
-  prometheus/grafana) gets no chip at all — the cell reads `2 services` and defers
-  to the panel.
-- **UAK3 — Every version in the panel.** Expanding lists all three versions
-  (`data-testid="health-version"`) beside the state/status the panel already
-  showed, the panel carrying `has-versions`; the chip drops its service label
-  there, since the line already names it.
-- **UAK4 — Degrades to nothing.** A snapshot without `Image` (an older skipper, or
-  a peer of one) leaves the cell empty and the panel without the version column —
-  never an empty chip or an empty track.
-- **UAK5 — Patched in place.** A later poll carrying a new image updates the cell
-  (`v1.120.0`, count gone) while the row's open panel survives — the versions
-  arrive with health, not with the roster snapshot.
-
-Behaviour-only (no snapshot): the cell is structural, and the lead-service and
-token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
-`imageRepoName` / `shortImageTag`).
 
 ### 4.39 UI — Maske AL: Commit SHAs link to the forge
 
@@ -1339,7 +1354,7 @@ The landed baselines:
 | `diff-panel.png` | UA8 | `diff-panel` | — (static diff) |
 | `autosync-drawer.png` | UC6 | `autosync-drawer` | `wait-cell` |
 | `theme-dark.png` / `theme-light.png` | UD1 | full page | `time-cell`, `duration-cell` |
-| `mobile-layout.png` | UD4 | full page (390px) | `time-cell`, `duration-cell` |
+| `mobile-layout.png` | UD4 | full page (390px) | `time-cell` (the duration is hidden at this width) |
 
 The **Logs pane (UB2) is deliberately not snapshotted**: real deploy log output
 is nondeterministic (line count, tmp paths, commit SHAs), so even with the text

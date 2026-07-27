@@ -70,10 +70,20 @@ duplicated.
   the same component — a deploy's `old → new` change in Deploys, a stack's running
   version in Stacks, each line of the containers panel. Never a second chip built
   per surface.
-- **Mobile (≤ 700 px)**: the header hides and each row collapses to a **2×2**
-  grid (identity + status on top, a time + one metric below); the least
-  important column (Files / Commit-less metrics) is dropped, never truncated
-  off-screen.
+- **Tablet (≤ 1000 px)**: drop columns, don't squeeze them all. Deploys drops
+  **Duration** and **Files**, Stacks drops **Commit** (header labels included),
+  so **Version keeps the row's first line** in front of the status and stays a
+  column to scan down. A cell that still runs out shrinks and ellipsises inside
+  its track — a row never prints one column over the next — and the stack name
+  keeps a floor: below it the row's affordances wrap to a second line inside the
+  cell rather than the name being squeezed away. A cell that no longer fits its track
+  shrinks and ellipsises **inside** it — a row never prints one column over the
+  next, which is what a column layout is for.
+- **Mobile (≤ 700 px)**: the header hides and each row is **two lines** —
+  identity + status on the first, time + **version** on the second, the status
+  cell spanning both so its health pill sits level with the versions. The
+  columns the tablet drops stay dropped: never truncated off-screen, always
+  reachable in the row's panels.
 
 ## Expand → bound panels
 
