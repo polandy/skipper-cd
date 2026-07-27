@@ -3397,7 +3397,8 @@
   // updateAppLinks patches each already-rendered row's link icon in place from
   // the current appLinksSnap, without a full renderRoster() rebuild — app_links
   // updates on the health-poll cadence, far more often than the 'stacks'
-  // snapshot, and a full rebuild would drop any open audit/health panel.
+  // snapshot, and a rebuild at that rate would tear down and refetch an open
+  // card every few seconds (see reopenRosterPanel) for a single icon.
   function updateAppLinks() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
       const cell = row.querySelector('.roster-stack');
@@ -3419,9 +3420,9 @@
   // updateRosterHealth patches each local roster row's live-health pill and
   // Version cell in place from the health snapshot (peer rows refresh via
   // refreshPeerRosterRows), so a health change — or the first poll after the
-  // roster rendered — shows on the Stacks overview without a full re-render that
-  // would drop an open panel. Mirrors updateStackAffordances' pill logic for the
-  // roster.
+  // roster rendered — shows on the Stacks overview without a full re-render,
+  // which at poll cadence would tear down and refetch an open card (see
+  // reopenRosterPanel). Mirrors updateStackAffordances' pill logic for the roster.
   function updateRosterHealth() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
       const statusCell = row.querySelector('.roster-status');
