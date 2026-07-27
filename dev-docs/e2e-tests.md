@@ -742,6 +742,13 @@ e2e — and shares its `.roster-flag` rendering with the disabled row.
   the filter, which then narrows the rows the same way.
 - **UR5 — Shared time mode.** The stacks popover's `Absolute time` toggle (the
   shared `timeMode`) switches the roster's relative times to absolute.
+- **UR6 — An open panel survives a republish.** A `stacks` snapshot lands after
+  every run and rebuilds the roster. With a row expanded, the panels come back
+  on the same row carrying the **new** snapshot — asserted end to end: the
+  change-detection lead reads `Unchanged since the last deploy.` before a push
+  and `Unchanged since <sha>.` after the pushed change deployed, with no click
+  in between. Without the re-open the panel is simply gone (the assertion fails
+  on a missing element), which is what made UAJ1b flaky.
 
 ### 4.20 UI — Maske S: cross-view stack jump
 
@@ -1278,9 +1285,11 @@ place: which inputs are watched, and the commit nothing has changed since. See
   against).
 - **UAJ1b — Since-commit after a real change.** A pushed compose bump deploys
   for real, and the lead then names the short SHA the stack is at — the actual
-  answer to "I pushed, why is this stack quiet". Gated on the success row
-  appearing (the run finished and the `stacks` snapshot was republished), not
-  on a wait.
+  answer to "I pushed, why is this stack quiet". Gated on **row counts**, not on
+  a wait: the stack's success rows must reach 1 (the startup deploy settled)
+  *before* the push, and 2 afterwards (the pushed change got its own run). Only
+  a push-driven deploy records a commit, so a change pushed into the run already
+  in flight leaves the lead at `the last deploy` — the flake this replaced.
 - **UAJ2 — Parked stack.** A stack with `disabled: true` reports that skipper
   neither watches nor deploys it, and lists no files — rather than showing
   whatever its last deploy happened to record.

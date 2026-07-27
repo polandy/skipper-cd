@@ -740,6 +740,18 @@
 
   function renderRoster() {
     const list = document.getElementById('roster-list');
+    // A `stacks` snapshot lands after every run, so a rebuild that drops the
+    // open panel yanks the answer away from whoever is reading it — and the run
+    // that republished is exactly when the panel has something new to say (the
+    // deploy history gained a record, change detection a commit). So note which
+    // row is open and re-open it after the rebuild, from the new snapshot.
+    const openRow = list.querySelector('.roster-row.audit-open, .roster-row.hooks-open, .roster-row.peer-row.diff-open');
+    const reopen = openRow && {
+      stack: openRow.dataset.stack,
+      host: openRow.dataset.host,
+      kind: openRow.classList.contains('hooks-open') ? 'hooks'
+        : openRow.classList.contains('peer-row') ? 'peer' : 'detail',
+    };
     list.textContent = '';
     openLinkWrap = null; // rebuilt rows drop any open app-link popover too
     rosterOrdered().forEach(function(entry) {
@@ -770,9 +782,24 @@
       list.appendChild(row);
     });
     renderPeerRosterRows(list); // append each peer's stacks, host-tagged + read-only
+    reopenRosterPanel(list, reopen); // the open panel returns, carrying the new snapshot
     applyHostFilter(); // dots + host filtering on the rebuilt roster
-    refilterRoster(); // a re-render drops open panels and rows; re-apply any active filter
+    refilterRoster(); // a re-render replaces the rows; re-apply any active filter
     applyHookRun(); // re-paint a running hook's phase on the rebuilt roster rows
+  }
+
+  // reopenRosterPanel restores the panel renderRoster noted before the rebuild.
+  // A stack that left the set (parked, or removed from the repo) simply has no
+  // row to re-open on, which is the correct outcome — its panel is gone with it.
+  function reopenRosterPanel(list, reopen) {
+    if (!reopen) return;
+    const row = [...list.querySelectorAll('.roster-row')].find(function(r) {
+      return r.dataset.stack === reopen.stack && r.dataset.host === reopen.host;
+    });
+    if (!row) return;
+    if (reopen.kind === 'peer') openPeerDetail(row);
+    else if (reopen.kind === 'hooks') openRosterHooksPanel(row);
+    else openRosterDetail(row);
   }
 
   // peerRosterStatusHTML renders a peer stack's status without consulting local
@@ -2807,6 +2834,13 @@
       row.classList.remove('diff-open');
       return;
     }
+    openPeerDetail(row);
+  }
+
+  // openPeerDetail opens a peer row's read-only detail card. Shared with the
+  // re-open after a roster rebuild, so a restored panel is built exactly like a
+  // clicked one — and the restore never has to rely on the row being closed.
+  function openPeerDetail(row) {
     row.classList.add('diff-open'); // reuse the bound status bar/tint
     row.after(createPeerDetailPanel(row));
   }
@@ -3363,7 +3397,8 @@
   // updateAppLinks patches each already-rendered row's link icon in place from
   // the current appLinksSnap, without a full renderRoster() rebuild — app_links
   // updates on the health-poll cadence, far more often than the 'stacks'
-  // snapshot, and a full rebuild would drop any open audit/health panel.
+  // snapshot, and a rebuild at that rate would tear down and refetch an open
+  // card every few seconds (see reopenRosterPanel) for a single icon.
   function updateAppLinks() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
       const cell = row.querySelector('.roster-stack');
@@ -3385,9 +3420,9 @@
   // updateRosterHealth patches each local roster row's live-health pill and
   // Version cell in place from the health snapshot (peer rows refresh via
   // refreshPeerRosterRows), so a health change — or the first poll after the
-  // roster rendered — shows on the Stacks overview without a full re-render that
-  // would drop an open panel. Mirrors updateStackAffordances' pill logic for the
-  // roster.
+  // roster rendered — shows on the Stacks overview without a full re-render,
+  // which at poll cadence would tear down and refetch an open card (see
+  // reopenRosterPanel). Mirrors updateStackAffordances' pill logic for the roster.
   function updateRosterHealth() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
       const statusCell = row.querySelector('.roster-status');
@@ -3450,9 +3485,7 @@
           closeHooksPanel(hrow);
         } else {
           closeRosterPanels(); // one panel per row
-          hrow.classList.add('hooks-open');
-          hrow.after(createHooksPanel(hrow.dataset.stack));
-          refilterRoster(); // a freshly opened panel obeys an active filter
+          openRosterHooksPanel(hrow);
         }
       }
       return;
@@ -3478,25 +3511,37 @@
     const next = row.nextElementSibling;
     const isOpen = next && (next.classList.contains('audit-panel') || next.classList.contains('health-panel'));
     closeRosterPanels();
-    if (!isOpen) {
-      row.classList.add('audit-open');
-      const stack = row.dataset.stack;
-      // Containers (health, if known) above deploy history, bound as one card.
-      let anchor = row;
-      const h = healthSnap[stack];
-      if (h && h.services && h.services.length) {
-        const health = createHealthPanel(stack);
-        anchor.after(health);
-        anchor = health;
-      }
-      const audit = createAuditPanel(stack);
-      anchor.after(audit);
-      // Change detection last: it explains why the history above ends where it
-      // does — which inputs are watched, and that none has changed since.
-      audit.after(createWatchedPanel(stack));
-      refilterRoster(); // freshly opened panels obey an active filter
-    }
+    if (!isOpen) openRosterDetail(row);
   });
+
+  // openRosterDetail opens a local row's bound panels as one card. Shared with
+  // the re-open after a roster rebuild, so a restored panel is built exactly
+  // like a clicked one.
+  function openRosterDetail(row) {
+    row.classList.add('audit-open');
+    const stack = row.dataset.stack;
+    // Containers (health, if known) above deploy history, bound as one card.
+    let anchor = row;
+    const h = healthSnap[stack];
+    if (h && h.services && h.services.length) {
+      const health = createHealthPanel(stack);
+      anchor.after(health);
+      anchor = health;
+    }
+    const audit = createAuditPanel(stack);
+    anchor.after(audit);
+    // Change detection last: it explains why the history above ends where it
+    // does — which inputs are watched, and that none has changed since.
+    audit.after(createWatchedPanel(stack));
+    refilterRoster(); // freshly opened panels obey an active filter
+  }
+
+  // openRosterHooksPanel opens the configured-hooks panel (ADR-0038) on a row.
+  function openRosterHooksPanel(row) {
+    row.classList.add('hooks-open');
+    row.after(createHooksPanel(row.dataset.stack));
+    refilterRoster(); // a freshly opened panel obeys an active filter
+  }
 
   function applyRosterFilter() {
     const q = (rosterFilter.value || '').trim().toLowerCase();

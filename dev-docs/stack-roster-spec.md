@@ -141,7 +141,9 @@ Only what is specific to the roster is listed here.
   (the stack's live health/services, `createHealthPanel`, from the `health`
   snapshot — shown only when health data exists for the stack), then the
   **deploy-history** panel (ADR-0033, `createAuditPanel`, `/api/audit`). One
-  stack open at a time; a full re-render (new snapshot) drops the open panels.
+  stack open at a time; a full re-render (new snapshot, view switch, time-mode
+  toggle) re-opens the card on the same row afterwards, so it carries the new
+  data instead of vanishing while it is being read.
   These are the same two panels the Deploys view opens separately (health pill /
   clock button); in the roster they carry the neutral accent bar.
 - **Time mode.** The Stacks options popover carries the same **Absolute time**
