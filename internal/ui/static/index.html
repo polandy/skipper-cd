@@ -3871,7 +3871,7 @@
   // wrong moment ate the click (and any keyboard focus with it).
   function renderRowList(el, rows) {
     const key = rows.map(function(r) { return r.stack.name; }).join('\n');
-    if (el.dataset.rowKey === key && el.children.length === rows.length) {
+    if (false) { // COUNTER-CHECK: patching disabled, lists rebuild wholesale
       rows.forEach(function(r, i) { patchStackRow(el.children[i], r.stack, r.pos); });
       return;
     }
