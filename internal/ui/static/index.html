@@ -473,6 +473,13 @@
   // dev-docs/stack-roster-spec.md.
   let rosterSnap = [];
 
+  // The deploy repo's forge browse URL from the same 'stacks' snapshot, or ''
+  // when the server could derive none from repo_url. Every commit SHA the UI
+  // prints links to its commit page through it (commitLinkHTML); without it the
+  // SHAs stay plain text. A peer's SHAs use that peer's own value — its repo may
+  // live on a different forge — so this one is the local set's base only.
+  let repoWebURL = '';
+
   // Multi-host fan-in (ADR-0048). peersSnap is the 'peers' state payload
   // ({self, peers:[{name,url,reachable,stale,last_seen,state,deploys}]}) or null
   // on a single-host instance with no peers configured — in which case the whole
@@ -515,6 +522,13 @@
   function appLinksMapFor(host) {
     const p = peerViewFor(host);
     return p ? ((p.state && p.state.app_links && p.state.app_links.stacks) || {}) : appLinksSnap;
+  }
+  // Each host tracks its own deploy repo, so a peer's commit SHAs must be linked
+  // through that peer's forge, never the primary's. '' — no link at all — when
+  // the host derived no browse URL, or runs a skipper predating the field.
+  function repoWebURLFor(host) {
+    const p = peerViewFor(host);
+    return p ? ((p.state && p.state.stacks && p.state.stacks.repo_web_url) || '') : repoWebURL;
   }
 
   // The reserved stack key for nixos-rebuild deploys (invariant 4). It is a
@@ -735,7 +749,7 @@
       // Shared time mode; title carries the opposite (relative <-> absolute).
       const when = showMeta && entry.last_at ? (absoluteTime ? fullTime(entry.last_at) : formatTime(entry.last_at)) : '';
       const whenTitle = showMeta && entry.last_at ? (absoluteTime ? formatTime(entry.last_at) : fullTime(entry.last_at)) : '';
-      const sha = showMeta && entry.last_commit ? shortSHA(entry.last_commit) : '';
+      const commit = showMeta ? entry.last_commit || '' : '';
       const row = document.createElement('div');
       row.className = entry.disabled ? 'roster-row disabled' : 'roster-row';
       row.dataset.testid = 'roster-row';
@@ -751,7 +765,7 @@
         rosterVersionCellHTML(entry.name, selfHost, entry.disabled) +
         `<span class="roster-status">${rosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, selfHost)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
-        `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
+        commitLinkHTML(commit, { cls: 'roster-sha', base: repoWebURL, title: commit });
       populateIcon(row.querySelector('.stack-icon'), entry.name);
       list.appendChild(row);
     });
@@ -779,11 +793,12 @@
     if (!peersSnap) return;
     (peersSnap.peers || []).forEach(function(p) {
       const roster = (p.state && p.state.stacks && p.state.stacks.roster) || [];
+      const peerRepo = repoWebURLFor(p.name); // a peer's commits live on its own forge
       roster.forEach(function(entry) {
         const showMeta = !entry.disabled && !!entry.last_status;
         const when = showMeta && entry.last_at ? (absoluteTime ? fullTime(entry.last_at) : formatTime(entry.last_at)) : '';
         const whenTitle = showMeta && entry.last_at ? (absoluteTime ? formatTime(entry.last_at) : fullTime(entry.last_at)) : '';
-        const sha = showMeta && entry.last_commit ? shortSHA(entry.last_commit) : '';
+        const commit = showMeta ? entry.last_commit || '' : '';
         const row = document.createElement('div');
         row.className = 'roster-row peer-row' + (entry.disabled ? ' disabled' : '') + (p.stale ? ' peer-stale' : '');
         row.dataset.testid = 'roster-row';
@@ -796,7 +811,7 @@
           rosterVersionCellHTML(entry.name, p.name, entry.disabled) +
           `<span class="roster-status">${peerRosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, p.name)}</span>` +
           `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
-          `<span class="roster-sha"${sha ? ` title="${escapeAttr(entry.last_commit)}"` : ''}>${escapeHtml(sha)}</span>`;
+          commitLinkHTML(commit, { cls: 'roster-sha', base: peerRepo, title: commit });
         populateIcon(row.querySelector('.stack-icon'), entry.name);
         list.appendChild(row);
       });
@@ -1148,6 +1163,13 @@
   const personGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
   const clockGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
 
+  // shaHTML renders one `.m-sha` chip of the diff header. The diff panel only
+  // ever shows the local repo's commits — a peer's diff arrives without commit
+  // metadata — so the local forge base is the right one everywhere here.
+  function shaHTML(sha, testid) {
+    return commitLinkHTML(sha, { cls: 'm-sha', base: repoWebURL, title: sha, testid: testid });
+  }
+
   // renderCommitHead builds the diff panel's header: an optional row-echo
   // (stack + status, present only when opened from a deploy row — meta set) and,
   // when commit metadata is available, the newest commit's message/author/time
@@ -1174,7 +1196,7 @@
       let line = '<div class="diff-meta-line">';
       if (multi) {
         const oldest = commits[commits.length - 1];
-        line += `<span class="m-range"><span class="m-sha">${escapeHtml(shortSHA(oldest.sha))}</span><span class="m-arr">→</span><span class="m-sha">${escapeHtml(shortSHA(head.sha))}</span></span>` +
+        line += `<span class="m-range">${shaHTML(oldest.sha)}<span class="m-arr">→</span>${shaHTML(head.sha)}</span>` +
           `<span class="m-sep">·</span>` +
           `<button class="commits-pill" data-testid="commits-pill">${commits.length} commits</button>` +
           `<span class="m-sep">·</span>`;
@@ -1184,13 +1206,13 @@
         line += `<span class="m-sep">·</span><span class="m-item" data-testid="commit-time" title="${escapeAttr(fullTime(head.date))}">${clockGlyph}${escapeHtml(formatTime(head.date))}</span>`;
       }
       if (!multi) {
-        line += `<span class="m-sep">·</span><span class="m-sha" data-testid="commit-sha">${escapeHtml(shortSHA(head.sha))}</span>`;
+        line += `<span class="m-sep">·</span>` + shaHTML(head.sha, 'commit-sha');
       }
       line += '</div>';
       html += line;
       if (multi) {
         html += `<ul class="diff-commit-list" data-testid="diff-commit-list">` + commits.map(function(c) {
-          return `<li><span class="m-sha">${escapeHtml(shortSHA(c.sha))}</span><span>` +
+          return `<li>${shaHTML(c.sha)}<span>` +
             `<span class="cl-subject">${escapeHtml(c.subject || '')}</span> ` +
             `<span class="cl-meta">— ${escapeHtml(c.author || '')}${c.date ? ', ' + escapeHtml(formatTime(c.date)) : ''}</span></span></li>`;
         }).join('') + `</ul>`;
@@ -1293,6 +1315,30 @@
   // like escapeHtml, but quotes must be encoded too.
   function escapeAttr(s) {
     return escapeHtml(s).replace(/"/g, '&quot;');
+  }
+
+  // commitLinkHTML renders one commit SHA — the single treatment behind every
+  // SHA the UI shows (roster, deploy history, diff header, health timeline,
+  // peer detail), so they all link the same way or not at all. Given the forge
+  // base it emits an <a> to that commit's page opened in a new tab (the UI is a
+  // live dashboard — navigating away would drop the stream); without one it
+  // emits the plain element the UI showed before links existed, so a repo_url
+  // no browse URL can be derived from degrades to the previous rendering.
+  // The element keeps its caller's class and only gains `sha-link` when it is
+  // actually a link, so the inert case cannot pick up a link's affordance.
+  // opts: {cls, base, title, testid}. The label is always the short SHA — every
+  // site prints that form; only the href carries the full one.
+  function commitLinkHTML(sha, opts) {
+    const o = opts || {};
+    const label = shortSHA(sha);
+    const href = commitURL(o.base, sha);
+    const cls = href ? ((o.cls ? o.cls + ' ' : '') + 'sha-link') : (o.cls || '');
+    const attrs =
+      (cls ? ` class="${escapeAttr(cls)}"` : '') +
+      (o.testid ? ` data-testid="${escapeAttr(o.testid)}"` : '') +
+      (o.title ? ` title="${escapeAttr(o.title)}"` : '');
+    if (!href) return `<span${attrs}>${escapeHtml(label)}</span>`;
+    return `<a${attrs} href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
   }
 
   // ── Container logs (ADR-0037) ──────────────────────────────────────────────
@@ -2078,6 +2124,21 @@
     return el;
   }
 
+  // leadHTML renders the change-detection lead, linking the commit it names.
+  // watchedSummary stays a pure, unit-tested string: only the SHA token it
+  // already produced is swapped for a link, after escaping — a short SHA is
+  // `[0-9a-f]{7}`, so it survives escaping unchanged and matches unambiguously.
+  // The lead only names a commit in its settled form (UNCHANGED_SINCE, shared
+  // with the helper); any other phrasing misses the lookup and stays plain text.
+  function leadHTML(entry, fileCount) {
+    const text = escapeHtml(watchedSummary(entry.last_status || '', entry.last_commit || '', fileCount, entry.disabled));
+    const commit = entry.last_commit || '';
+    if (!commit) return text;
+    const token = UNCHANGED_SINCE + shortSHA(commit);
+    if (text.indexOf(token) === -1) return text;
+    return text.replace(token, UNCHANGED_SINCE + commitLinkHTML(commit, { base: repoWebURL, title: commit }));
+  }
+
   // createWatchedPanel returns the change-detection panel: the input files whose
   // hashes decide whether this stack redeploys, and — after a clean deploy — the
   // commit nothing has changed since. It answers "I pushed and this stack did
@@ -2103,7 +2164,7 @@
     el.dataset.watchedFor = stack;
     el.innerHTML =
       `<div class="wp-head"><span class="wp-label">change detection</span></div>` +
-      `<div class="wp-lead" data-testid="watched-lead">${escapeHtml(watchedSummary(entry.last_status || '', entry.last_commit || '', items.length, entry.disabled))}</div>` +
+      `<div class="wp-lead" data-testid="watched-lead">${leadHTML(entry, items.length)}</div>` +
       (items.length ? `<ul class="wp-files">${items.join('')}</ul>` : '');
     return el;
   }
@@ -2132,7 +2193,9 @@
     }
     const body = records.map(function(r) {
       const abs = fullTime(r.timestamp), rel = formatTime(r.timestamp);
-      const sha = r.commit_sha ? `<span class="ar-sha" title="${escapeAttr(r.commit_sha)}">${escapeHtml(shortSHA(r.commit_sha))}</span>` : '<span class="ar-sha">—</span>';
+      const sha = r.commit_sha
+        ? commitLinkHTML(r.commit_sha, { cls: 'ar-sha', base: repoWebURL, title: r.commit_sha })
+        : '<span class="ar-sha">—</span>';
       const files = r.changed_files ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : '')) : '—';
       const err = r.error
         ? `<span class="ar-err" title="${escapeAttr(r.error)}">${escapeHtml(r.error)}</span>`
@@ -2161,6 +2224,7 @@
   function healthHistoryHTML(stack, svc, host) {
     const phases = (healthwatchMapFor(host)[stack] || {})[svc];
     if (!phases || phases.length < 2) return '';
+    const hostRepo = repoWebURLFor(host); // this timeline may belong to a peer
     let html = '<div class="hp-history" data-testid="health-history">';
     for (let i = 0; i < phases.length; i++) {
       const p = phases[i];
@@ -2172,7 +2236,12 @@
         `<span>${escapeHtml(phaseSince(p.since))}</span>` +
         `<span>${escapeHtml(i === 0 ? 'for ' + dur : dur)}</span>` +
         (p.deploy_correlated && p.commit
-          ? `<span class="hp-commit" data-testid="health-phase-commit" title="deployed just before this phase began">${escapeHtml(shortSHA(p.commit))}</span>`
+          ? commitLinkHTML(p.commit, {
+              cls: 'hp-commit',
+              base: hostRepo,
+              testid: 'health-phase-commit',
+              title: 'deployed just before this phase began',
+            })
           : '') +
         `</div>`;
     }
@@ -2664,7 +2733,11 @@
     el.dataset.status = row.dataset.status || '';
     el.dataset.peerFor = host;
     let facts = '';
-    if (row.dataset.commit) facts += '<span class="pd-fact">commit <span class="pd-sha">' + escapeHtml(shortSHA(row.dataset.commit)) + '</span></span>';
+    if (row.dataset.commit) {
+      facts += '<span class="pd-fact">commit ' +
+        commitLinkHTML(row.dataset.commit, { cls: 'pd-sha', base: repoWebURLFor(host), title: row.dataset.commit }) +
+        '</span>';
+    }
     if (row.dataset.changed !== undefined) {
       const n = parseInt(row.dataset.changed, 10) || 0;
       facts += '<span class="pd-fact">' + n + ' file' + (n === 1 ? '' : 's') + ' changed</span>';
@@ -3011,6 +3084,7 @@
       case 'stacks':
         disabledSnap = (d && d.disabled) || [];
         rosterSnap = (d && d.roster) || [];
+        repoWebURL = (d && d.repo_web_url) || '';
         renderDisabledStacks();
         renderRoster();
         updateStackAffordances(); // roster carries the hooks — (de)show the badge
@@ -3341,6 +3415,7 @@
 
   rosterList.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
   rosterList.addEventListener('click', function(e) {
+    if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
     // ⋯ overflow menu: toggle open/closed. Picking an action closes the menu,
     // then falls through to that action's own handler below (the relocated
     // buttons still carry their .clog-btn/.hooks-badge classes). Mirrors Deploys.
@@ -4391,6 +4466,7 @@
   // When diffs are available, shows a diff panel; otherwise shows file list.
   tbody.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
   tbody.addEventListener('click', function(e) {
+    if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
     // ⋯ overflow menu: toggle it open/closed. Picking an action inside closes the
     // menu, then falls through to that action's own handler below (the relocated
     // buttons still carry their .history-btn/.clog-btn/.hooks-badge classes).

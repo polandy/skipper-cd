@@ -20,7 +20,7 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 - `internal/deploy` — CORE: orchestration (deploy.go), deploy-event emission + change context + repo-relative paths (events.go), change hashing (hash.go), image/pull logic (images.go, wraps `internal/compose`), state persistence (state.go), env files (envfile.go)
 - `internal/command` — `Runner` interface over os/exec; tests inject fakes through it
 - `internal/containerlogs` — UI-only live `docker compose logs` over SSE (`/api/container-logs`, ADR-0037); own `LogStreamer` seam so the deploy path's `Runner` stays run-to-completion
-- `internal/git` — local clone management (clone, reset --hard, diff, file-at-commit)
+- `internal/git` — local clone management (clone, reset --hard, diff, file-at-commit); also owns what skipper knows about Git remote URL *forms* — redacting credentials for logs, and deriving the forge browse URL the UI links commit SHAs through (`WebURL`)
 - `internal/webhook` — HMAC-verified push handler; responds 202 immediately, deploy runs in a goroutine
 - `internal/nixos` — nixos-rebuild; must stay free of docker/state/metrics/events knowledge
 - `internal/events` — SSE broadcaster + bounded persisted event history

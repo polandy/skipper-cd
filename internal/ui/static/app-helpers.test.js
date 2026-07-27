@@ -80,6 +80,32 @@ test('shortSHA', () => {
   assert.equal(h.shortSHA(undefined), '');
 });
 
+test('commitURL builds the forge commit page from the repo browse URL', () => {
+  const base = 'https://forge.example.com/owner/repo';
+  const sha = '0123456789abcdef';
+  assert.equal(h.commitURL(base, sha), base + '/commit/' + sha);
+  // The full SHA is linked even where the UI only prints the short form.
+  assert.equal(h.commitURL(base, h.shortSHA(sha)), base + '/commit/0123456');
+  assert.equal(h.commitURL(base + '/', sha), base + '/commit/' + sha);
+  assert.equal(
+    h.commitURL('http://forge.example.com:3000/o/r', sha),
+    'http://forge.example.com:3000/o/r/commit/' + sha,
+  );
+});
+
+test('commitURL yields no link without a usable base or sha', () => {
+  const sha = '0123456789abcdef';
+  assert.equal(h.commitURL('', sha), '');
+  assert.equal(h.commitURL(null, sha), '');
+  assert.equal(h.commitURL(undefined, sha), '');
+  assert.equal(h.commitURL('https://forge.example.com/owner/repo', ''), '');
+  assert.equal(h.commitURL('https://forge.example.com/owner/repo', null), '');
+  // A non-http(s) base must never reach an href.
+  assert.equal(h.commitURL('javascript:alert(1)', sha), '');
+  assert.equal(h.commitURL('file:///srv/git/repo', sha), '');
+  assert.equal(h.commitURL('/srv/git/repo', sha), '');
+});
+
 test('parseImageRef splits tag and digest, dropping registry/repo', () => {
   assert.deepEqual(h.parseImageRef('ghcr.io/acme/api:1.5.0'), { tag: '1.5.0', digest: '' });
   assert.deepEqual(h.parseImageRef('app@sha256:ab34cd90ef56'), { tag: '', digest: 'ab34cd90ef56' });

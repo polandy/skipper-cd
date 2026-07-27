@@ -1291,6 +1291,48 @@ Behaviour-only (no snapshot): the panel is structural text, and the lead-line
 phrasing across every deploy status (a `failed`/`queued`/`blocked` stack has a
 change *pending* and must never claim "unchanged") is exhaustively covered by
 the `app-helpers` unit layer (`watchedSummary`).
+
+### 4.39 UI — Maske AL: Commit SHAs link to the forge
+
+A SHA on its own is a dead end — it names a commit the operator then has to go
+find. Every SHA the UI prints is therefore a link to that commit on the forge
+(`repo_web_url`, or one derived from `repo_url`). See
+[Commit links](../internal/ui/UI_SPEC.md#commit-links). The harness clones from a
+local path, which no forge URL can be derived from, so it sets `repo_web_url`
+explicitly (`FORGE_URL`); the degradation case opts back out with
+`repoWebURL: null`.
+
+The roster cases run at the default desktop viewport on purpose: below the
+tablet breakpoint the Commit column is dropped entirely (Maske AK, UAK6), so
+there is no cell to link there.
+
+- **UAL1 — The roster Commit cell links.** The cell is an `<a>` whose `href` is
+  `<forge>/commit/<full sha>` — the **full** 40-char SHA, though the cell prints
+  the 7-char form (a short SHA is a display convention some forges will not
+  resolve). It opens in a new tab (`target="_blank"`, `rel` carrying `noopener`),
+  since the UI is a live SSE stream that navigating away would cost.
+- **UAL2 — The link does one thing.** The SHA sits in a row whose body toggles
+  the expand panel; clicking the link must not also open it. The navigation is
+  cancelled in the capture phase, so what is asserted is purely the row
+  handler's guard — and the row still expands when clicked anywhere else.
+- **UAL3 — Panels, prose and the diff header too.** The deploy-history rows
+  (`.ar-sha`), the diff panel's commit header (`commit-sha`) and the
+  change-detection lead's `Unchanged since <sha>` link the same way: one helper
+  renders every SHA, so they either all link or none do. The lead is prose, so
+  the assertion also pins the sentence around the link.
+- **UAL4 — A peer links to its own forge.** A peer's roster row uses the
+  `repo_web_url` from *that peer's* fanned-in snapshot, not the primary's —
+  each host tracks its own deploy repo, so the primary's forge never had those
+  commits.
+- **UAL5 — Degrades to plain text.** With no forge configured (and none
+  derivable), the SHA renders as the inert `<span>` it was before links existed
+  — never a dead link.
+
+Behaviour-only (no snapshot): the link is an attribute change, and the URL
+building itself (trailing slashes, a missing base or SHA, a non-http(s) base
+that must never reach an `href`) is covered by the `app-helpers` unit layer
+(`commitURL`) and, server-side, by `git.WebURL`.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a

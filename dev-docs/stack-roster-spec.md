@@ -78,6 +78,7 @@ view's disabled line, unchanged) and gains `roster`:
 
 ```json
 { "disabled": ["experiments"],
+  "repo_web_url": "https://forge.example.com/owner/repo",
   "roster": [ { "name": "traefik", "disabled": false,
                 "last_status": "success", "last_at": "…", "last_commit": "a1b2c3d" },
               { "name": "grafana", "disabled": false },
@@ -104,7 +105,11 @@ Only what is specific to the roster is listed here.
   synthetic `.roster-flag`s: **never deployed** (no `last_status`) and
   **disabled** (`disabled: true`, muted row, no badge). Time/commit are shown
   only for a real past deploy (suppressed while deploying, parked, or never
-  deployed) and reuse `formatTime` / `fullTime` / `shortSHA`.
+  deployed) and reuse `formatTime` / `fullTime` / `shortSHA`. The commit cell is
+  a link to that commit on the forge (`repo_web_url` from the same snapshot,
+  a peer row through its own host's) — see
+  [Commit links](../internal/ui/UI_SPEC.md#commit-links); plain text when the
+  host knows no forge.
 - **Version** shows the running version of the stack's lead service plus a `+N`
   for the rest — the glance; the containers panel below carries every service's
   version. It reads the image each container actually runs

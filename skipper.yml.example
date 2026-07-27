@@ -1,5 +1,9 @@
 repo_url: ssh://git@gitea.example.com/user/nixos-config.git
 repo_dir: /var/lib/skipper/repo         # optional, default: /var/lib/skipper/repo
+# repo_web_url: https://gitea.example.com/user/nixos-config
+#                                       # optional; the UI links every commit SHA to
+#                                       # <repo_web_url>/commit/<sha>. Derived from
+#                                       # repo_url when omitted
 branch: main                            # optional, default: main
 # vars_file: /etc/skipper/vars.env      # optional, changes trigger redeploy
 command_timeout_seconds: 300            # optional, default: 300 (5 minutes)

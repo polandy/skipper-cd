@@ -58,6 +58,23 @@ function shortSHA(sha) {
   return (sha || '').slice(0, 7);
 }
 
+// COMMIT_PATH is the forge path segment that addresses a single commit. Gitea
+// and GitHub — the forges skipper-cd speaks webhook to — share it.
+const COMMIT_PATH = '/commit/';
+
+// commitURL builds the forge page for one commit from the repo's browse URL
+// (the `repo_web_url` the `stacks` state carries, already credential-free) and
+// a SHA. Returns '' when either is missing, or when the base is not an http(s)
+// URL — the caller then renders the SHA as plain text rather than a link. The
+// scheme check is the guard against a hostile base ('javascript:…') reaching an
+// href, even though the server only ever derives http(s).
+function commitURL(base, sha) {
+  const b = (base || '').replace(/\/+$/, '');
+  if (!b || !sha) return '';
+  if (!/^https?:\/\//i.test(b)) return '';
+  return b + COMMIT_PATH + sha;
+}
+
 // parseImageRef splits an image reference into its {tag, digest} — either may be
 // '' — dropping the registry/repository (the service name already identifies the
 // image). The tag is the part after the last ':' that follows the last '/' (a
@@ -493,6 +510,11 @@ function clogStreamStatus(readyState) {
 // last outcome was failed/queued/blocked has a change *pending*, so saying
 // nothing changed since then would be exactly backwards.
 const WATCHED_SETTLED = ['success', 'healed'];
+
+// UNCHANGED_SINCE opens the settled lead, immediately followed by the commit.
+// index.html finds that commit by this prefix to turn it into a link, so the two
+// must agree — hence one shared constant rather than the phrase written twice.
+const UNCHANGED_SINCE = 'Unchanged since ';
 function watchedSummary(status, commit, count, disabled) {
   if (disabled) {
     return 'Parked with disabled: true — skipper neither watches nor deploys this stack.';
@@ -509,7 +531,7 @@ function watchedSummary(status, commit, count, disabled) {
     // audit record carries none — the "unchanged" fact still holds, only the
     // reference point is the deploy itself rather than a SHA.
     const since = commit ? shortSHA(commit) : 'the last deploy';
-    return 'Unchanged since ' + since + '. ' + deploys;
+    return UNCHANGED_SINCE + since + '. ' + deploys;
   }
   return deploys;
 }
@@ -542,6 +564,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fullTime,
     classifyDiffLine,
     shortSHA,
+    commitURL,
     parseImageRef,
     shortImageTag,
     imageDelta,
@@ -565,6 +588,7 @@ if (typeof module !== 'undefined' && module.exports) {
     logLineVisible,
     clogStreamStatus,
     watchedSummary,
+    UNCHANGED_SINCE,
     deployAnnouncement,
     HOST_COLOR_COUNT,
     hostColorIndex,

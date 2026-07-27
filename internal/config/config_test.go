@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -748,6 +749,41 @@ func TestLoad_RejectsRelativeRepoDir(t *testing.T) {
 	_, err := loadStringToConfig(t, minimalConfig+"repo_dir: relative/repo\n")
 	if err == nil || !strings.Contains(err.Error(), "repo_dir") || !strings.Contains(err.Error(), "must be an absolute path") {
 		t.Fatalf("expected a repo_dir-must-be-absolute error, got %v", err)
+	}
+}
+
+func TestLoad_DerivesRepoWebURLFromRepoURLWhenUnset(t *testing.T) {
+	// minimalConfig clones over ssh — the forge serves its web UI over https.
+	cfg := loadFromString(t, minimalConfig)
+	if got, want := cfg.EffectiveRepoWebURL(), "https://gitea.example.com/user/nixos"; got != want {
+		t.Errorf("EffectiveRepoWebURL() = %q, want %q", got, want)
+	}
+}
+
+func TestLoad_ExplicitRepoWebURLWinsOverTheDerivedOne(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig+"repo_web_url: https://code.example.com/ops/deploy/\n")
+	// The trailing slash is trimmed so callers append a path verbatim.
+	if got, want := cfg.EffectiveRepoWebURL(), "https://code.example.com/ops/deploy"; got != want {
+		t.Errorf("EffectiveRepoWebURL() = %q, want %q", got, want)
+	}
+}
+
+func TestLoad_NoRepoWebURLWhenNoneCanBeDerived(t *testing.T) {
+	// A clone from a local path has no forge — the UI then shows plain SHAs.
+	cfg := loadFromString(t, "repo_url: /srv/git/deploy.git\nwebhook_secret: secret123\n")
+	if got := cfg.EffectiveRepoWebURL(); got != "" {
+		t.Errorf("EffectiveRepoWebURL() = %q, want empty", got)
+	}
+}
+
+func TestLoad_RejectsNonHTTPRepoWebURL(t *testing.T) {
+	for _, bad := range []string{"javascript:alert(1)", "git@forge.example.com:owner/repo.git", "/srv/git/repo", "https://"} {
+		t.Run(bad, func(t *testing.T) {
+			_, err := loadStringToConfig(t, minimalConfig+"repo_web_url: "+strconv.Quote(bad)+"\n")
+			if err == nil || !strings.Contains(err.Error(), "repo_web_url") || !strings.Contains(err.Error(), "http(s) URL") {
+				t.Fatalf("expected a repo_web_url-must-be-http error, got %v", err)
+			}
+		})
 	}
 }
 

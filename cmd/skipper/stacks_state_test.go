@@ -1,9 +1,44 @@
 package main
 
 import (
+	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/polandy/skipper-cd/internal/audit"
 )
+
+func TestBuildStacksState_CarriesRepoWebURLForCommitLinks(t *testing.T) {
+	const webURL = "https://forge.example.com/owner/repo"
+
+	state := buildStacksState(nil, nil, audit.NewLog(t.TempDir()), nil, repoRef{dir: "/var/lib/skipper/repo", webURL: webURL})
+
+	if state.RepoWebURL != webURL {
+		t.Errorf("RepoWebURL = %q, want %q", state.RepoWebURL, webURL)
+	}
+	body, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(body), `"repo_web_url":"`+webURL+`"`) {
+		t.Errorf("snapshot JSON missing repo_web_url: %s", body)
+	}
+}
+
+func TestBuildStacksState_OmitsRepoWebURLWhenNoneDerivable(t *testing.T) {
+	// A repo_url the forge URL cannot be derived from (a local path, say) leaves
+	// the key out entirely, so the UI renders plain SHAs instead of dead links.
+	state := buildStacksState(nil, nil, audit.NewLog(t.TempDir()), nil, repoRef{dir: "/var/lib/skipper/repo"})
+
+	body, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(body), "repo_web_url") {
+		t.Errorf("snapshot JSON should omit repo_web_url, got: %s", body)
+	}
+}
 
 func TestSplitTrackedPaths(t *testing.T) {
 	const repoDir = "/var/lib/skipper/repo"
