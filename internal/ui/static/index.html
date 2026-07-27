@@ -797,7 +797,7 @@
       return r.dataset.stack === reopen.stack && r.dataset.host === reopen.host;
     });
     if (!row) return;
-    if (reopen.kind === 'peer') togglePeerDetail(row);
+    if (reopen.kind === 'peer') openPeerDetail(row);
     else if (reopen.kind === 'hooks') openRosterHooksPanel(row);
     else openRosterDetail(row);
   }
@@ -2834,6 +2834,13 @@
       row.classList.remove('diff-open');
       return;
     }
+    openPeerDetail(row);
+  }
+
+  // openPeerDetail opens a peer row's read-only detail card. Shared with the
+  // re-open after a roster rebuild, so a restored panel is built exactly like a
+  // clicked one — and the restore never has to rely on the row being closed.
+  function openPeerDetail(row) {
     row.classList.add('diff-open'); // reuse the bound status bar/tint
     row.after(createPeerDetailPanel(row));
   }
