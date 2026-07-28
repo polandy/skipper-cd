@@ -25,6 +25,7 @@ These files deliberately live outside `docs/` so they are **not** published to t
 - [`deploy-hooks-spec.md`](deploy-hooks-spec.md) — pre-/post-deploy hooks.
 - [`container-logs-spec.md`](container-logs-spec.md) — live container logs in
   the UI.
+- [`pwa-spec.md`](pwa-spec.md) — installable PWA shell and its update prompt.
 - [`zero-downtime-rollout-spec.md`](zero-downtime-rollout-spec.md) — opt-in
   canary rollout for Traefik-fronted stacks.
 - [`traefik-app-links-spec.md`](traefik-app-links-spec.md) — app-link icons
