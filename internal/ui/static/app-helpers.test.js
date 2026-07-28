@@ -629,3 +629,9 @@ test('deployStatusLabel spells out what the header trail shows as chips', () => 
   assert.equal(h.deployStatusLabel(['web'], []), 'deploying web');
   assert.equal(h.deployStatusLabel(['web'], ['db', 'cache']), 'deploying web · next db, cache');
 });
+
+test('attentionLabel pluralises the unhealthy-stack count', () => {
+  assert.equal(h.attentionLabel(0), '0 stacks unhealthy');
+  assert.equal(h.attentionLabel(1), '1 stack unhealthy');
+  assert.equal(h.attentionLabel(2), '2 stacks unhealthy');
+});

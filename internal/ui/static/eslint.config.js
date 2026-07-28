@@ -11,6 +11,8 @@ module.exports = [
     // app.js is the main app script, a plain browser <script> loaded after
     // app-helpers.js and app-render.js. The globals list below is the contract
     // it calls by bare name — a new use fails no-undef until it is added here.
+    // The reverse has no linter behind it: when the last call moves out of
+    // app.js, drop the entry by hand or the list drifts.
     files: ['app.js'],
     languageOptions: {
       sourceType: 'script',
@@ -21,11 +23,11 @@ module.exports = [
         UNCHANGED_SINCE: 'readonly',
         // app-helpers.js functions
         assignHostColors: 'readonly',
+        attentionLabel: 'readonly',
         attentionStacks: 'readonly',
         auditStatusLabel: 'readonly',
         classifyDiffLine: 'readonly',
         clogStreamStatus: 'readonly',
-        commitURL: 'readonly',
         containerMatchesQuery: 'readonly',
         deployAnnouncement: 'readonly',
         deployStatusLabel: 'readonly',
@@ -34,7 +36,6 @@ module.exports = [
         fullTime: 'readonly',
         healthClass: 'readonly',
         hostFilterActive: 'readonly',
-        hostMonogram: 'readonly',
         imageDelta: 'readonly',
         levelClass: 'readonly',
         logLineVisible: 'readonly',
@@ -43,25 +44,23 @@ module.exports = [
         orphanMeta: 'readonly',
         orphanStateClass: 'readonly',
         phaseDuration: 'readonly',
-        phaseSince: 'readonly',
         reconcileHostFilter: 'readonly',
-        rosterVersion: 'readonly',
-        shortImageTag: 'readonly',
         shortSHA: 'readonly',
         snapshotIsFresh: 'readonly',
-        statusIcon: 'readonly',
-        statusText: 'readonly',
         watchedSummary: 'readonly',
         // app-render.js constants
         CLOG_ICON: 'readonly',
         LINK_ICON: 'readonly',
+        WARN_ICON: 'readonly',
         // app-render.js functions
+        attentionBandHTML: 'readonly',
         autosyncDetailHTML: 'readonly',
         autosyncPosText: 'readonly',
         autosyncReasonChipHTML: 'readonly',
         autosyncRowHTML: 'readonly',
         autosyncSwitchTitle: 'readonly',
         badgeHTML: 'readonly',
+        beaconPopHTML: 'readonly',
         clogBtnHTML: 'readonly',
         commitLinkHTML: 'readonly',
         escapeAttr: 'readonly',
@@ -117,6 +116,7 @@ module.exports = [
         module: 'readonly',
         require: 'readonly',
         // app-helpers.js functions it calls
+        attentionLabel: 'readonly',
         commitURL: 'readonly',
         formatTime: 'readonly',
         fullTime: 'readonly',

@@ -604,6 +604,70 @@ function runListHTML(active, up) {
   return rows.length ? rows.join('') : '<div class="qempty">Nothing deploying right now.</div>';
 }
 
+// WARN_ICON marks the live-health attention surface: the header beacon's glyph
+// and the attention band's heading.
+const WARN_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>';
+
+// beaconPopHTML renders the header beacon's popover: the shared summary plus one
+// button per unhealthy stack, each carrying the stack name the click handler
+// jumps to.
+function beaconPopHTML(att) {
+  return (
+    '<div class="bp-head">' +
+    escapeHtml(attentionLabel(att.length)) +
+    '</div>' +
+    att
+      .map(function (a) {
+        return (
+          '<button type="button" class="beacon-item" data-testid="health-beacon-item" data-stack="' +
+          escapeAttr(a.stack) +
+          '">' +
+          '<span class="bi-dot" data-health="' +
+          escapeAttr(a.status) +
+          '"></span>' +
+          '<span class="bi-name">' +
+          escapeHtml(a.stack) +
+          '</span></button>'
+        );
+      })
+      .join('')
+  );
+}
+
+// attentionBandHTML renders the Deploys view's attention band: a counted heading
+// and one row per unhealthy stack. The .stack-icon spans stay empty — the caller
+// fills them, because the icons load asynchronously.
+function attentionBandHTML(att) {
+  return (
+    '<div class="att-head">' +
+    WARN_ICON +
+    '<span class="att-title">Needs attention</span>' +
+    '<span class="att-count">' +
+    att.length +
+    '</span></div>' +
+    att
+      .map(function (a) {
+        return (
+          '<button type="button" class="attention-row" data-testid="attention-row" data-stack="' +
+          escapeAttr(a.stack) +
+          '">' +
+          '<span class="stack-icon" data-testid="stack-icon"></span>' +
+          '<span class="att-name">' +
+          escapeHtml(a.stack) +
+          '</span>' +
+          '<span class="health-pill att-pill" data-health="' +
+          escapeAttr(a.status) +
+          '"><span class="hdot"></span><span class="hlabel">' +
+          escapeHtml(a.status) +
+          '</span></span>' +
+          '</button>'
+        );
+      })
+      .join('')
+  );
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
@@ -642,5 +706,8 @@ if (typeof module !== 'undefined' && module.exports) {
     runRowHTML,
     runListHTML,
     SHIP_ICON,
+    beaconPopHTML,
+    attentionBandHTML,
+    WARN_ICON,
   };
 }
