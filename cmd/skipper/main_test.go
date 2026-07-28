@@ -147,7 +147,7 @@ func TestHealthzHandler_ServiceUnavailableAfterFailedSync(t *testing.T) {
 }
 
 // staticStacks adapts a fixed stack list to the stack-source func the locator
-// takes (main wires stacksNow here).
+// takes (main wires stackViews.effective here).
 func staticStacks(stacks []config.Stack) func() []config.Stack {
 	return func() []config.Stack { return stacks }
 }

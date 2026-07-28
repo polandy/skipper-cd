@@ -182,7 +182,7 @@ func buildHealthLayer(cfg *config.Config, views stackViews, stateB *events.Broad
 	healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 	hpCfg := health.Config{
 		Outputter:  command.NewShellRunner(healthTimeout),
-		Stacks:     func() []health.StackRef { return healthStacks(views.cfg, views.effective()) },
+		Stacks:     func() []health.StackRef { return healthStacks(cfg, views.effective()) },
 		Interval:   time.Duration(interval) * time.Second,
 		AlwaysPoll: selfHealActive || healthWatcher != nil,
 	}

@@ -220,12 +220,10 @@ func TestBuildHealthLayer_HeadlessSelfHealGetsPollerWithoutDetectors(t *testing.
 	}
 }
 
-// newAutosyncPublisher wires a publisher over a fresh controller/queue and a
-// constructed deployer, against the given state broadcaster (nil = UI off).
-func newAutosyncPublisher(t *testing.T, cfg *config.Config, stateB *events.Broadcaster[events.StateEvent]) autosyncPublisher {
+// newAutosyncPublisher wires a publisher over a fresh controller/queue and the
+// given deployer ref, against the given state broadcaster (nil = UI off).
+func newAutosyncPublisher(t *testing.T, cfg *config.Config, stateB *events.Broadcaster[events.StateEvent], ref *deployerRef) autosyncPublisher {
 	t.Helper()
-	ref := &deployerRef{}
-	ref.set(deploy.New(deploy.Config{}))
 	return autosyncPublisher{
 		ctrl:     autosync.NewController(nil, nil),
 		queue:    autosync.NewQueue(),
@@ -239,7 +237,9 @@ func newAutosyncPublisher(t *testing.T, cfg *config.Config, stateB *events.Broad
 
 func TestAutosyncPublisher_PublishesAutosyncQueueAndStacksOverSSE(t *testing.T) {
 	stateB := events.NewStateBroadcaster()
-	p := newAutosyncPublisher(t, uiConfig(true), stateB)
+	ref := &deployerRef{}
+	ref.set(deploy.New(deploy.Config{}))
+	p := newAutosyncPublisher(t, uiConfig(true), stateB, ref)
 	ch, cancel := stateB.Subscribe()
 	defer cancel()
 
@@ -258,10 +258,13 @@ func TestAutosyncPublisher_PublishesAutosyncQueueAndStacksOverSSE(t *testing.T) 
 }
 
 func TestAutosyncPublisher_HeadlessStillRefreshesGauges(t *testing.T) {
-	p := newAutosyncPublisher(t, uiConfig(false), nil)
+	// The ref is deliberately left unset: with the UI off the publisher must
+	// refresh the gauges without ever resolving the deployer, and get() panics
+	// if a regression pulls that resolution out of the stateB != nil branch.
+	p := newAutosyncPublisher(t, uiConfig(false), nil, &deployerRef{})
 	p.queue.Mark("gitea", nil, "autosync paused")
 
-	p.publish() // must not publish (no stateB) and must not panic
+	p.publish() // must not publish (no stateB) and must not touch the deployer
 
 	var m dto.Metric
 	if err := metrics.AutosyncPending.Write(&m); err != nil {
