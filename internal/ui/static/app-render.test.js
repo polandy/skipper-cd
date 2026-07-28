@@ -804,3 +804,141 @@ test('diffPanelHTML renders only the sections when there is no head', () => {
   const html = r.diffPanelHTML({ 'a.yaml': '+x' }, null, null, '');
   assert.match(html, /^<div class="diff-file-section"/);
 });
+
+test('hookPhaseHTML numbers a phase only when several hooks share it', () => {
+  const one = r.hookPhaseHTML({ phase: 'pre', index: 1, total: 1, stack: 'web' });
+  assert.match(one, /pre hook</);
+  const many = r.hookPhaseHTML({ phase: 'post', index: 2, total: 3, stack: 'web' });
+  assert.match(many, /post hook 2\/3</);
+});
+
+test('hookPhaseHTML carries the stack on its log button', () => {
+  const html = r.hookPhaseHTML({ phase: 'pre', total: 1, stack: 'a"b' });
+  assert.match(html, /data-hook-log="a&quot;b"/);
+  assert.match(html, /class="clog-btn hook-log-btn"/);
+});
+
+test('logLineHTML gives child-process output a cmd prefix, not a level badge', () => {
+  const html = r.logLineHTML({
+    time: '2026-07-28T10:00:00Z',
+    level: 'info',
+    msg: 'pulling',
+    attrs: { cmd: 'docker', stream: 'stdout' },
+  });
+  assert.match(html, /class="log-cmd" data-testid="cmd-prefix">\[docker\]</);
+  assert.ok(!html.includes('level-badge'), `unexpected level badge: ${html}`);
+  assert.match(html, /class="log-msg">pulling</);
+});
+
+test('logLineHTML prefixes the stack for hook output too', () => {
+  const html = r.logLineHTML({
+    time: '2026-07-28T10:00:00Z',
+    level: 'info',
+    msg: 'hi',
+    attrs: { cmd: 'sh', stream: 'stdout', stack: 'web' },
+  });
+  assert.match(html, /class="log-stack" data-testid="stack-prefix">\[web\]</);
+});
+
+test('logLineHTML renders a level line with its badge, pill and attrs blob', () => {
+  const html = r.logLineHTML({
+    time: '2026-07-28T10:00:00Z',
+    level: 'error',
+    msg: 'deploy failed',
+    attrs: { stack: 'web', event_id: 'e1', took: '3s' },
+  });
+  assert.match(html, /data-testid="level-badge">error</);
+  assert.match(html, /data-testid="diff-pill" data-event-id="e1"/);
+  // stack and event_id have their own surfaces, so they must not repeat here.
+  assert.match(html, /class="log-attrs">took=3s</);
+});
+
+test('logLineHTML drops the attrs blob when nothing is left to show', () => {
+  const html = r.logLineHTML({
+    time: '2026-07-28T10:00:00Z',
+    level: 'info',
+    msg: 'ok',
+    attrs: { stack: 'web', event_id: 'e1' },
+  });
+  assert.ok(!html.includes('log-attrs'), `unexpected attrs blob: ${html}`);
+});
+
+test('logLineHTML escapes the message and the attr values', () => {
+  const html = r.logLineHTML({
+    time: '2026-07-28T10:00:00Z',
+    level: 'info',
+    msg: '<script>x</script>',
+    attrs: { path: 'a<b' },
+  });
+  assert.ok(!html.includes('<script>'), `raw markup leaked: ${html}`);
+  assert.match(html, /class="log-attrs">path=a&lt;b</);
+});
+
+test('auditRowsHTML renders one row per record with its status and link', () => {
+  const html = r.auditRowsHTML(
+    [
+      {
+        timestamp: '2026-07-28T10:00:00Z',
+        status: 'success',
+        duration_ms: 3000,
+        commit_sha: 'abc1234def',
+        changed_files: 2,
+      },
+      { timestamp: '2026-07-28T09:00:00Z', status: 'rolled_back', duration_ms: 1000 },
+    ],
+    'https://forge/r',
+    true,
+  );
+  const statuses = [...html.matchAll(/data-status="([^"]*)"/g)].map((m) => m[1]);
+  assert.deepEqual(statuses, ['success', 'rolled_back']);
+  assert.match(html, /href="https:\/\/forge\/r\/commit\/abc1234def"/);
+  // The stacked-badge wording is flattened for these compact rows.
+  assert.match(html, /class="ar-status"><span class="adot"><\/span>rolled back</);
+  assert.match(html, /class="ar-files">2 files</);
+  // A record with no commit and no file count renders both cells as em dashes.
+  assert.match(html, /<span class="ar-sha">—<\/span><span class="ar-files">—</);
+});
+
+test('auditRowsHTML swaps lead and tooltip with the time mode', () => {
+  const rec = [{ timestamp: '2026-07-28T10:00:00Z', status: 'success', duration_ms: 1000 }];
+  const abs = r.auditRowsHTML(rec, '', true);
+  const rel = r.auditRowsHTML(rec, '', false);
+  const lead = (h) => /class="ar-time"[^>]*>([^<]*)</.exec(h)[1];
+  const tip = (h) => /class="ar-time"[^>]*title="([^"]*)"/.exec(h)[1];
+  // Whatever leads in one mode is the tooltip in the other, and vice versa.
+  assert.equal(lead(abs), tip(rel));
+  assert.equal(lead(rel), tip(abs));
+  assert.notEqual(lead(abs), lead(rel));
+});
+
+test('auditRowsHTML escapes an error into both its text and tooltip', () => {
+  const html = r.auditRowsHTML(
+    [{ timestamp: '2026-07-28T10:00:00Z', status: 'failed', duration_ms: 1, error: 'boom <b>"x"' }],
+    '',
+    false,
+  );
+  assert.ok(!html.includes('<b>'), `raw markup leaked: ${html}`);
+  assert.match(html, /title="boom &lt;b&gt;&quot;x&quot;"/);
+  assert.match(html, /class="ar-err"[^>]*>boom &lt;b&gt;"x"</);
+});
+
+test('auditRowsHTML renders nothing for an empty history', () => {
+  assert.equal(r.auditRowsHTML([], '', false), '');
+});
+
+test('clogSvcsHTML marks the selected services active', () => {
+  const html = r.clogSvcsHTML([{ name: 'web' }, { name: 'db' }], ['db']);
+  assert.match(html, /class="clog-chip" type="button" data-svc="web"/);
+  assert.match(html, /class="clog-chip active" type="button" data-svc="db"/);
+  // "all" is the active chip only while nothing is filtered.
+  assert.match(html, /class="clog-chip" type="button" data-svc="">all</);
+  assert.match(
+    r.clogSvcsHTML([{ name: 'web' }], []),
+    /class="clog-chip active" type="button" data-svc="">all</,
+  );
+});
+
+test('clogSvcsHTML escapes a service name into attribute and label', () => {
+  const html = r.clogSvcsHTML([{ name: 'a"<b' }], []);
+  assert.match(html, /data-svc="a&quot;&lt;b">a"&lt;b</);
+});

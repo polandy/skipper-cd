@@ -255,6 +255,46 @@ function auditStatusLabel(status) {
   return status;
 }
 
+// auditCountText labels the history panel's record count, or '' when there is
+// nothing to count — the head then collapses instead of reading "0 deploys".
+function auditCountText(n) {
+  if (!n) return '';
+  return n + (n === 1 ? ' deploy' : ' deploys');
+}
+
+// ROW_STATUSES are the deploy statuses that tint their row. Each one adds a
+// `<status>-row` class; a status outside this list stays untinted rather than
+// inventing a class no stylesheet defines.
+const ROW_STATUSES = [
+  'deploying',
+  'failed',
+  'success',
+  'rolled_back',
+  'rolled_back_unhealthy',
+  'healed',
+  'heal_exhausted',
+  'queued',
+  'blocked',
+];
+
+// rowClass builds a deploy row's class list. isHistory marks rows replayed on
+// load — live arrivals get `new-row` so they can flash in.
+function rowClass(status, isHistory) {
+  let cls = 'event-row';
+  if (ROW_STATUSES.indexOf(status) !== -1) cls += ' ' + status + '-row';
+  if (!isHistory) cls += ' new-row';
+  return cls;
+}
+
+// logLineLevel is the level a log line renders as: child-process output (a
+// command's stdout/stderr) is tagged `cmd` and drawn with a command prefix
+// instead of a level badge. Shared by the class the line carries and by the
+// renderer that branches on it, so the two cannot disagree.
+function logLineLevel(entry) {
+  const attrs = entry.attrs || {};
+  return attrs.cmd && attrs.stream ? 'cmd' : entry.level;
+}
+
 // phaseDuration renders a millisecond span the way the health timeline needs
 // it: compact, coarse ("6h12m", "5m", "3d4h"), never seconds-precise beyond
 // the first minute.
@@ -611,6 +651,7 @@ if (typeof module !== 'undefined' && module.exports) {
     statusText,
     statusIcon,
     auditStatusLabel,
+    auditCountText,
     phaseDuration,
     phaseSince,
     HEALTH,
@@ -618,6 +659,8 @@ if (typeof module !== 'undefined' && module.exports) {
     attentionStacks,
     attentionLabel,
     levelClass,
+    logLineLevel,
+    rowClass,
     logTime,
     reasonFromSnap,
     waitedSince,

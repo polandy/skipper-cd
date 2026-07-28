@@ -823,11 +823,10 @@
   // Running-hook sub-label (dot + "pre_deploy hook 1/2" + hook-log icon), shared
   // by both views so it looks identical in Deploys and Stacks.
   function hookPhaseNode(hr) {
-    const n = hr.total > 1 ? ' ' + hr.index + '/' + hr.total : '';
     const phase = document.createElement('span');
     phase.className = 'hook-phase';
     phase.dataset.testid = 'hook-phase';
-    phase.innerHTML = `<span class="hk-dot"></span>${escapeHtml(hr.phase)} hook${n}<button class="clog-btn hook-log-btn" type="button" data-testid="clog-btn" data-taptip data-hook-log="${escapeAttr(hr.stack)}" title="View this hook's output in the log" aria-label="View hook log">${CLOG_ICON}</button>`;
+    phase.innerHTML = hookPhaseHTML(hr);
     return phase;
   }
 
@@ -950,29 +949,7 @@
     // when there is nothing to filter (so the head shows no filter tool either).
     function svcRowHTML() {
       if (!hasServiceFilter()) return '';
-      const chips = servicesFor()
-        .map(function (s) {
-          const on = selected.indexOf(s.name) !== -1;
-          return (
-            '<button class="clog-chip' +
-            (on ? ' active' : '') +
-            '" type="button" data-svc="' +
-            escapeAttr(s.name) +
-            '">' +
-            escapeHtml(s.name) +
-            '</button>'
-          );
-        })
-        .join('');
-      return (
-        '<div class="clog-svcs clog-hide" data-testid="clog-svcs">' +
-        '<span class="clog-svcs-lbl">service</span>' +
-        '<button class="clog-chip' +
-        (selected.length ? '' : ' active') +
-        '" type="button" data-svc="">all</button>' +
-        chips +
-        '</div>'
-      );
+      return clogSvcsHTML(servicesFor(), selected);
     }
 
     // Reflect the current selection onto the chips + scope label after a toggle.
@@ -1449,21 +1426,6 @@
     };
   })();
 
-  function rowClass(status, isHistory) {
-    let cls = 'event-row';
-    if (status === 'deploying') cls += ' deploying-row';
-    if (status === 'failed') cls += ' failed-row';
-    if (status === 'success') cls += ' success-row';
-    if (status === 'rolled_back') cls += ' rolled_back-row';
-    if (status === 'rolled_back_unhealthy') cls += ' rolled_back_unhealthy-row';
-    if (status === 'healed') cls += ' healed-row';
-    if (status === 'heal_exhausted') cls += ' heal_exhausted-row';
-    if (status === 'queued') cls += ' queued-row';
-    if (status === 'blocked') cls += ' blocked-row';
-    if (!isHistory) cls += ' new-row';
-    return cls;
-  }
-
   function iconURL(stack) {
     return '/api/icons/' + encodeURIComponent(stack);
   }
@@ -1751,40 +1713,13 @@
       return;
     }
     const count = el.querySelector('.ap-count');
-    if (count)
-      count.textContent = records.length
-        ? records.length + (records.length === 1 ? ' deploy' : ' deploys')
-        : '';
+    if (count) count.textContent = auditCountText(records.length);
     if (!records.length) {
       const empty = el.querySelector('.ap-empty');
       if (empty) empty.textContent = 'No recorded deploys for this stack yet.';
       return;
     }
-    const body = records
-      .map(function (r) {
-        const abs = fullTime(r.timestamp),
-          rel = formatTime(r.timestamp);
-        const sha = r.commit_sha
-          ? commitLinkHTML(r.commit_sha, { cls: 'ar-sha', base: repoWebURL, title: r.commit_sha })
-          : '<span class="ar-sha">—</span>';
-        const files = r.changed_files
-          ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : ''))
-          : '—';
-        const err = r.error
-          ? `<span class="ar-err" title="${escapeAttr(r.error)}">${escapeHtml(r.error)}</span>`
-          : '';
-        return (
-          `<div class="audit-row" data-testid="audit-row" data-status="${escapeAttr(r.status)}">` +
-          `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absoluteTime ? rel : abs)}">${escapeHtml(absoluteTime ? abs : rel)}</span>` +
-          `<span class="ar-status"><span class="adot"></span>${escapeHtml(auditStatusLabel(r.status))}</span>` +
-          `<span class="ar-dur">${escapeHtml(formatDuration(r.duration_ms))}</span>` +
-          sha +
-          `<span class="ar-files">${files}</span>` +
-          err +
-          `</div>`
-        );
-      })
-      .join('');
+    const body = auditRowsHTML(records, repoWebURL, absoluteTime);
     // Replace the loading line with the rows (keep the head).
     const head = el.querySelector('.ap-head');
     el.innerHTML = '';
@@ -3865,42 +3800,8 @@
     const line = document.createElement('div');
     line.className = 'log-line';
     line.dataset.testid = 'log-line';
-    const attrs = entry.attrs || {};
-    let html = `<span class="log-time" title="${escapeAttr(new Date(entry.time).toLocaleString())}">${escapeHtml(logTime(entry.time))}</span>`;
-    if (attrs.cmd && attrs.stream) {
-      // Child process output: slate [cmd] prefix instead of a level badge.
-      line.dataset.level = 'cmd';
-      // Hook output carries a stack (ADR-0038): show the [stack] prefix so it
-      // reads like a deploy line and the filter matches it. docker/git has none.
-      if (attrs.stack) {
-        html += `<span class="log-stack" data-testid="stack-prefix">[${escapeHtml(attrs.stack)}]</span>`;
-      }
-      html += `<span class="log-cmd" data-testid="cmd-prefix">[${escapeHtml(attrs.cmd)}]</span>`;
-      html += `<span class="log-msg">${escapeHtml(entry.msg)}</span>`;
-    } else {
-      line.dataset.level = entry.level;
-      html += `<span class="log-level ${levelClass(entry.level)}" data-testid="level-badge">${escapeHtml(entry.level)}</span>`;
-      // The stack attr says which stack a deploy line belongs to — render
-      // it as a prominent prefix instead of burying it in the attrs blob.
-      if (attrs.stack) {
-        html += `<span class="log-stack" data-testid="stack-prefix">[${escapeHtml(attrs.stack)}]</span>`;
-      }
-      html += `<span class="log-msg">${escapeHtml(entry.msg)}</span>`;
-      // Deploy completion lines carry the deploy event's ID — render a
-      // pill that loads the deploy's diff below the line on demand.
-      if (attrs.event_id) {
-        html += `<button class="files-pill log-diff-pill" data-testid="diff-pill" data-event-id="${escapeAttr(attrs.event_id)}">diff</button>`;
-      }
-      const pairs = Object.keys(attrs)
-        .filter(function (k) {
-          return k !== 'stack' && k !== 'event_id';
-        })
-        .map(function (k) {
-          return `${escapeHtml(k)}=${escapeHtml(attrs[k])}`;
-        });
-      if (pairs.length > 0) html += `<span class="log-attrs">${pairs.join(' ')}</span>`;
-    }
-    line.innerHTML = html;
+    line.dataset.level = logLineLevel(entry);
+    line.innerHTML = logLineHTML(entry);
     return line;
   }
 

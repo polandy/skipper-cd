@@ -778,6 +778,114 @@ function diffPanelHTML(diffs, commits, meta, repoBase) {
   );
 }
 
+// hookPhaseHTML renders the hook-phase chip shown on a deploying row: which
+// phase is running, its position when the stack has several hooks in that
+// phase, and the button that opens the hook's output in the log (ADR-0038).
+function hookPhaseHTML(hr) {
+  const n = hr.total > 1 ? ' ' + hr.index + '/' + hr.total : '';
+  return (
+    `<span class="hk-dot"></span>${escapeHtml(hr.phase)} hook${n}` +
+    `<button class="clog-btn hook-log-btn" type="button" data-testid="clog-btn" data-taptip ` +
+    `data-hook-log="${escapeAttr(hr.stack)}" title="View this hook's output in the log" ` +
+    `aria-label="View hook log">${CLOG_ICON}</button>`
+  );
+}
+
+// logLineHTML renders one log line's spans. Child-process output (level `cmd`)
+// gets a command prefix instead of a level badge and carries no attrs blob —
+// its message is already the raw output.
+function logLineHTML(entry) {
+  const attrs = entry.attrs || {};
+  // The stack attr says which stack a line belongs to — a prominent prefix
+  // rather than one pair buried in the attrs blob. Hook output carries one too
+  // (ADR-0038) so it reads like a deploy line and the filter matches it;
+  // docker/git output has none.
+  const stack = attrs.stack
+    ? `<span class="log-stack" data-testid="stack-prefix">[${escapeHtml(attrs.stack)}]</span>`
+    : '';
+  const msg = `<span class="log-msg">${escapeHtml(entry.msg)}</span>`;
+  let html = `<span class="log-time" title="${escapeAttr(fullTime(entry.time))}">${escapeHtml(logTime(entry.time))}</span>`;
+  if (logLineLevel(entry) === 'cmd') {
+    return (
+      html +
+      stack +
+      `<span class="log-cmd" data-testid="cmd-prefix">[${escapeHtml(attrs.cmd)}]</span>` +
+      msg
+    );
+  }
+  html +=
+    `<span class="log-level ${levelClass(entry.level)}" data-testid="level-badge">${escapeHtml(entry.level)}</span>` +
+    stack +
+    msg;
+  // Deploy completion lines carry the deploy event's ID — render a pill that
+  // loads the deploy's diff below the line on demand.
+  if (attrs.event_id) {
+    html += `<button class="files-pill log-diff-pill" data-testid="diff-pill" data-event-id="${escapeAttr(attrs.event_id)}">diff</button>`;
+  }
+  const pairs = Object.keys(attrs)
+    .filter(function (k) {
+      return k !== 'stack' && k !== 'event_id';
+    })
+    .map(function (k) {
+      return `${escapeHtml(k)}=${escapeHtml(attrs[k])}`;
+    });
+  if (pairs.length > 0) html += `<span class="log-attrs">${pairs.join(' ')}</span>`;
+  return html;
+}
+
+// auditRowsHTML renders the deploy-history rows of one stack. absolute picks
+// which of the two timestamps leads and which becomes the tooltip, following
+// the app-wide time toggle. repoBase links the SHAs; '' renders them inert.
+function auditRowsHTML(records, repoBase, absolute) {
+  return records
+    .map(function (r) {
+      const abs = fullTime(r.timestamp),
+        rel = formatTime(r.timestamp);
+      const sha = r.commit_sha
+        ? commitLinkHTML(r.commit_sha, { cls: 'ar-sha', base: repoBase, title: r.commit_sha })
+        : '<span class="ar-sha">—</span>';
+      const files = r.changed_files
+        ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : ''))
+        : '—';
+      const err = r.error
+        ? `<span class="ar-err" title="${escapeAttr(r.error)}">${escapeHtml(r.error)}</span>`
+        : '';
+      return (
+        `<div class="audit-row" data-testid="audit-row" data-status="${escapeAttr(r.status)}">` +
+        `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absolute ? rel : abs)}">${escapeHtml(absolute ? abs : rel)}</span>` +
+        `<span class="ar-status"><span class="adot"></span>${escapeHtml(auditStatusLabel(r.status))}</span>` +
+        `<span class="ar-dur">${escapeHtml(formatDuration(r.duration_ms))}</span>` +
+        sha +
+        `<span class="ar-files">${files}</span>` +
+        err +
+        `</div>`
+      );
+    })
+    .join('');
+}
+
+// clogSvcsHTML renders the container-log drawer's service filter: an "all" chip
+// plus one per service, the selected ones active. The caller decides whether a
+// filter is warranted at all — a single-service stack has nothing to filter.
+function clogSvcsHTML(services, selected) {
+  const chips = services
+    .map(function (s) {
+      const on = selected.indexOf(s.name) !== -1;
+      return (
+        `<button class="clog-chip${on ? ' active' : ''}" type="button" ` +
+        `data-svc="${escapeAttr(s.name)}">${escapeHtml(s.name)}</button>`
+      );
+    })
+    .join('');
+  return (
+    '<div class="clog-svcs clog-hide" data-testid="clog-svcs">' +
+    '<span class="clog-svcs-lbl">service</span>' +
+    `<button class="clog-chip${selected.length ? '' : ' active'}" type="button" data-svc="">all</button>` +
+    chips +
+    '</div>'
+  );
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
@@ -825,5 +933,9 @@ if (typeof module !== 'undefined' && module.exports) {
     filesPanelHTML,
     diffContentHTML,
     diffPanelHTML,
+    hookPhaseHTML,
+    logLineHTML,
+    auditRowsHTML,
+    clogSvcsHTML,
   };
 }
