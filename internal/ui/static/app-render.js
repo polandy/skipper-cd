@@ -541,6 +541,65 @@ function autosyncRowHTML(entry, pos, item, nowMs) {
   );
 }
 
+// nextTrailHTML renders the header's look-ahead trail "→ a · b · +N", capping
+// the names shown so a long run does not widen the header without bound.
+function nextTrailHTML(up) {
+  const MAX = 3;
+  const shown = up.slice(0, MAX);
+  let html =
+    '<span class="arrow">→</span>' +
+    shown
+      .map(function (n, i) {
+        return `<span class="up${i > 0 ? ' more' : ''}">${escapeHtml(n)}</span>`;
+      })
+      .join('<span class="sep">·</span>');
+  const extra = up.length - shown.length;
+  if (extra > 0) {
+    html += `<span class="sep">·</span><span class="up more">+${extra}</span>`;
+  }
+  return html;
+}
+
+// runSummaryHTML is the run drawer's subtitle: what is deploying now and how
+// much of the run is left.
+function runSummaryHTML(active, up) {
+  if (active.length === 0 && up.length === 0) return 'Nothing deploying.';
+  if (active.length > 0) {
+    return (
+      `<b>${escapeHtml(active.join(', '))}</b> deploying` +
+      (up.length ? ' · ' + up.length + ' more this run' : ' · last in this run')
+    );
+  }
+  return up.length + ' stack' + (up.length === 1 ? '' : 's') + ' upcoming';
+}
+
+// runRowHTML renders one row of the run drawer. The badge is the ship glyph for
+// the active stack and the queue position for the ones waiting behind it.
+function runRowHTML(name, badge, detail, isActive) {
+  return (
+    `<div class="run-row${isActive ? ' active' : ''}" data-stack="${escapeAttr(name)}">` +
+    `<span class="run-badge${isActive ? ' ship' : ''}">${badge}</span>` +
+    `<div><div class="run-name">${escapeHtml(name)}</div>` +
+    `<div class="run-detail">${detail}</div></div>` +
+    `</div>`
+  );
+}
+
+// runListHTML renders the whole run drawer body: the active stack(s) lead with
+// the ship badge, the upcoming ones follow in deploy order.
+function runListHTML(active, up, shipIcon) {
+  const rows = active
+    .map(function (n) {
+      return runRowHTML(n, shipIcon, 'deploying now', true);
+    })
+    .concat(
+      up.map(function (n, i) {
+        return runRowHTML(n, String(i + 1), i === 0 ? 'next' : 'then', false);
+      }),
+    );
+  return rows.length ? rows.join('') : '<div class="qempty">Nothing deploying right now.</div>';
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
@@ -574,5 +633,9 @@ if (typeof module !== 'undefined' && module.exports) {
     autosyncReasonChipHTML,
     autosyncSwitchTitle,
     autosyncRowHTML,
+    nextTrailHTML,
+    runSummaryHTML,
+    runRowHTML,
+    runListHTML,
   };
 }
