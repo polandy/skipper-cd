@@ -710,6 +710,74 @@ function watchedPanelHTML(entry, repoBase) {
   );
 }
 
+// healPanelHTML renders the healed row's detail body: a fixed explanation (no
+// git change → no diff) and, when known, the drifted services the corrective
+// redeploy reacted to.
+function healPanelHTML(drift) {
+  let html =
+    '<div class="heal-summary">Self-heal restored this stack to its deployed running state — a corrective <code>docker compose up -d</code>. Nothing in git changed, so there is no diff.</div>';
+  if (drift && drift.length > 0) {
+    html +=
+      '<div class="heal-drift-label">Drifted when it ran</div>' +
+      `<ul class="heal-drift-list">` +
+      drift
+        .map(function (d) {
+          return (
+            `<li><span class="hd-name">${escapeHtml(d.name)}</span>` +
+            `<span class="hd-status hd-${escapeAttr(d.status)}">${escapeHtml(d.status)}</span></li>`
+          );
+        })
+        .join('') +
+      `</ul>`;
+  }
+  return html;
+}
+
+// filesPanelHTML renders the changed-file list of a deploy, one path per line.
+function filesPanelHTML(files) {
+  return files
+    .map(function (f) {
+      return `<span class="file-path">${escapeHtml(f)}</span>`;
+    })
+    .join('<br>');
+}
+
+// diffContentHTML renders one file's unified diff, each line tagged with the
+// CSS class classifyDiffLine derives from it.
+function diffContentHTML(diff) {
+  return diff
+    .split('\n')
+    .map(function (line) {
+      const cls = classifyDiffLine(line);
+      return `<span class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line)}</span>`;
+    })
+    .join('\n');
+}
+
+// diffPanelHTML renders the diff panel's body: the commit header plus one
+// collapsible section per file. A lone file starts expanded — there is nothing
+// to choose between. repoBase is passed through to the header's SHA links.
+function diffPanelHTML(diffs, commits, meta, repoBase) {
+  const files = Object.keys(diffs);
+  const singleFile = files.length === 1;
+  return (
+    renderCommitHead(commits, meta, repoBase) +
+    files
+      .map(function (f) {
+        const name = f.split('/').pop() || f;
+        return (
+          `<div class="diff-file-section">` +
+          `<div class="diff-file-header${singleFile ? ' expanded' : ''}">` +
+          `<svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>` +
+          `<span>${escapeHtml(name)}</span></div>` +
+          `<div class="diff-content">${diffContentHTML(diffs[f])}</div>` +
+          `</div>`
+        );
+      })
+      .join('')
+  );
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
@@ -753,5 +821,9 @@ if (typeof module !== 'undefined' && module.exports) {
     WARN_ICON,
     watchedLeadHTML,
     watchedPanelHTML,
+    healPanelHTML,
+    filesPanelHTML,
+    diffContentHTML,
+    diffPanelHTML,
   };
 }

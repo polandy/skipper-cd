@@ -725,3 +725,82 @@ test('watchedPanelHTML escapes the watched file names', () => {
   assert.ok(!html.includes('a<b&"c"'), `raw path leaked: ${html}`);
   assert.match(html, /watched-file">a&lt;b&amp;"c"\.env</);
 });
+
+test('healPanelHTML lists the drifted services under a label', () => {
+  const html = r.healPanelHTML([
+    { name: 'web', status: 'exited' },
+    { name: 'db', status: 'missing' },
+  ]);
+  assert.match(html, /class="heal-summary"/);
+  assert.match(html, /class="heal-drift-label">Drifted when it ran</);
+  const names = [...html.matchAll(/class="hd-name">([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(names, ['web', 'db']);
+  // The status doubles as a CSS-class suffix and as the visible text.
+  assert.match(html, /class="hd-status hd-exited">exited</);
+});
+
+test('healPanelHTML drops the drift list when nothing drifted', () => {
+  for (const drift of [undefined, null, []]) {
+    const html = r.healPanelHTML(drift);
+    assert.ok(!html.includes('heal-drift'), `unexpected drift list for ${drift}: ${html}`);
+    assert.match(html, /class="heal-summary"/);
+  }
+});
+
+test('healPanelHTML escapes the drifted service name and status', () => {
+  const html = r.healPanelHTML([{ name: 'a<b&"c"', status: 'x"y' }]);
+  assert.ok(!html.includes('a<b&"c"'), `raw name leaked: ${html}`);
+  assert.match(html, /class="hd-name">a&lt;b&amp;"c"</);
+  // The status lands in an attribute and in text, so it takes the two different
+  // escapes: the quote must die inside the class, but stays as typed in the text.
+  assert.match(html, /class="hd-status hd-x&quot;y">x"y</);
+});
+
+test('filesPanelHTML renders one escaped path per line', () => {
+  const html = r.filesPanelHTML(['a/b.yaml', 'x<y.env']);
+  assert.equal(
+    html,
+    '<span class="file-path">a/b.yaml</span><br><span class="file-path">x&lt;y.env</span>',
+  );
+});
+
+test('filesPanelHTML renders nothing for an empty change set', () => {
+  assert.equal(r.filesPanelHTML([]), '');
+});
+
+test('diffContentHTML tags each line with its diff class', () => {
+  const html = r.diffContentHTML('@@ -1 +1 @@\n-old\n+new\n plain');
+  const classes = [...html.matchAll(/class="diff-line([^"]*)"/g)].map((m) => m[1].trim());
+  assert.deepEqual(classes, ['diff-hunk', 'diff-del', 'diff-add', '']);
+  // Lines stay newline-separated so the <pre>-style panel keeps its layout.
+  assert.equal(html.split('\n').length, 4);
+});
+
+test('diffContentHTML escapes diff payload that looks like markup', () => {
+  const html = r.diffContentHTML('+<script>alert(1)</script>');
+  assert.ok(!html.includes('<script>'), `raw markup leaked: ${html}`);
+  assert.match(html, /diff-add">\+&lt;script&gt;/);
+});
+
+test('diffPanelHTML expands a lone file but collapses several', () => {
+  const one = r.diffPanelHTML({ 'a/compose.yaml': '+x' }, null, null, '');
+  assert.match(one, /class="diff-file-header expanded"/);
+  const many = r.diffPanelHTML({ 'a/compose.yaml': '+x', 'b/app.env': '-y' }, null, null, '');
+  assert.ok(!many.includes('expanded'), `unexpectedly expanded: ${many}`);
+  // Sections keep the input order, headed by the basename only.
+  const names = [...many.matchAll(/diff-file-header[^>]*>.*?<span>([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(names, ['compose.yaml', 'app.env']);
+});
+
+test('diffPanelHTML prefixes the commit head and passes the forge base through', () => {
+  const commits = [{ sha: '1234567abcdef', subject: 'bump', author: 'ci' }];
+  const html = r.diffPanelHTML({ 'a.yaml': '+x' }, commits, null, 'https://forge/r');
+  assert.match(html, /^<div class="diff-head"/);
+  assert.match(html, /href="https:\/\/forge\/r\/commit\/1234567abcdef"/);
+  assert.ok(html.indexOf('diff-head') < html.indexOf('diff-file-section'));
+});
+
+test('diffPanelHTML renders only the sections when there is no head', () => {
+  const html = r.diffPanelHTML({ 'a.yaml': '+x' }, null, null, '');
+  assert.match(html, /^<div class="diff-file-section"/);
+});

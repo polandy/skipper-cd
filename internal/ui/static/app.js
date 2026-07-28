@@ -644,10 +644,8 @@
     if (!hasRows) emptyState.style.display = '';
   }
 
-  // createHealPanel builds the expandable detail for a healed row: a one-line
-  // explanation (no git change → no diff) and, when known, the drifted services
-  // the corrective redeploy reacted to. Bound to its row (variant A) so it shares
-  // the teal status bar.
+  // createHealPanel wraps the healed row's detail body in its element, bound to
+  // the row (variant A) so it shares the teal status bar.
   function createHealPanel(drift, meta) {
     const el = document.createElement('div');
     el.className = 'heal-panel';
@@ -656,23 +654,7 @@
       el.classList.add('bound');
       el.dataset.status = meta.status;
     }
-    let html =
-      '<div class="heal-summary">Self-heal restored this stack to its deployed running state — a corrective <code>docker compose up -d</code>. Nothing in git changed, so there is no diff.</div>';
-    if (drift && drift.length > 0) {
-      html += '<div class="heal-drift-label">Drifted when it ran</div>';
-      html +=
-        `<ul class="heal-drift-list">` +
-        drift
-          .map(function (d) {
-            return (
-              `<li><span class="hd-name">${escapeHtml(d.name)}</span>` +
-              `<span class="hd-status hd-${escapeAttr(d.status)}">${escapeHtml(d.status)}</span></li>`
-            );
-          })
-          .join('') +
-        `</ul>`;
-    }
-    el.innerHTML = html;
+    el.innerHTML = healPanelHTML(drift);
     return el;
   }
 
@@ -687,28 +669,14 @@
       el.classList.add('bound');
       el.dataset.status = meta.status;
     }
-    el.innerHTML = files
-      .map(function (f) {
-        return `<span class="file-path">${escapeHtml(f)}</span>`;
-      })
-      .join('<br>');
+    el.innerHTML = filesPanelHTML(files);
     return el;
   }
 
-  function renderDiffContent(diff) {
-    return diff
-      .split('\n')
-      .map(function (line) {
-        const cls = classifyDiffLine(line);
-        return `<span class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line)}</span>`;
-      })
-      .join('\n');
-  }
-
-  // renderDiffPanel builds the expandable diff panel. meta (optional) carries the
-  // deploy row's stack + status: when set, the panel binds to its row (variant A
-  // — shared status bar/tint) and echoes stack+status in the header. Opened from
-  // a log line, meta is absent and the panel stays unbound.
+  // renderDiffPanel wraps the diff body in its element. meta (optional) carries
+  // the deploy row's stack + status: when set, the panel binds to its row
+  // (variant A — shared status bar/tint). Opened from a log line, meta is
+  // absent and the panel stays unbound.
   function renderDiffPanel(diffs, commits, meta) {
     const el = document.createElement('div');
     el.className = 'diff-panel';
@@ -717,25 +685,9 @@
       el.classList.add('bound');
       el.dataset.status = meta.status;
     }
-    const files = Object.keys(diffs);
-    const singleFile = files.length === 1;
-    el.innerHTML =
-      // The diff panel only ever shows the local repo's commits — a peer's diff
-      // arrives without commit metadata — so the local forge base is right here.
-      renderCommitHead(commits, meta, repoWebURL) +
-      files
-        .map(function (f) {
-          const name = f.split('/').pop() || f;
-          return (
-            `<div class="diff-file-section">` +
-            `<div class="diff-file-header${singleFile ? ' expanded' : ''}">` +
-            `<svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>` +
-            `<span>${escapeHtml(name)}</span></div>` +
-            `<div class="diff-content">${renderDiffContent(diffs[f])}</div>` +
-            `</div>`
-          );
-        })
-        .join('');
+    // The diff panel only ever shows the local repo's commits — a peer's diff
+    // arrives without commit metadata — so the local forge base is right here.
+    el.innerHTML = diffPanelHTML(diffs, commits, meta, repoWebURL);
     return el;
   }
 
