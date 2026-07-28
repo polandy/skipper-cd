@@ -644,10 +644,8 @@
     if (!hasRows) emptyState.style.display = '';
   }
 
-  // createHealPanel builds the expandable detail for a healed row: a one-line
-  // explanation (no git change → no diff) and, when known, the drifted services
-  // the corrective redeploy reacted to. Bound to its row (variant A) so it shares
-  // the teal status bar.
+  // createHealPanel wraps the healed row's detail body in its element, bound to
+  // the row (variant A) so it shares the teal status bar.
   function createHealPanel(drift, meta) {
     const el = document.createElement('div');
     el.className = 'heal-panel';
@@ -675,10 +673,10 @@
     return el;
   }
 
-  // renderDiffPanel builds the expandable diff panel. meta (optional) carries the
-  // deploy row's stack + status: when set, the panel binds to its row (variant A
-  // — shared status bar/tint) and echoes stack+status in the header. Opened from
-  // a log line, meta is absent and the panel stays unbound.
+  // renderDiffPanel wraps the diff body in its element. meta (optional) carries
+  // the deploy row's stack + status: when set, the panel binds to its row
+  // (variant A — shared status bar/tint). Opened from a log line, meta is
+  // absent and the panel stays unbound.
   function renderDiffPanel(diffs, commits, meta) {
     const el = document.createElement('div');
     el.className = 'diff-panel';
