@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -343,4 +344,55 @@ func TestParseContainerLines(t *testing.T) {
 			t.Errorf("empty output should parse to nil,nil; got %v,%v", lines, err)
 		}
 	})
+}
+
+// The caller branches on errCanaryUnhealthy to choose the recovery path — leave
+// the old container running, report rolled_back without a git restore. Every way
+// the canary wait can end must therefore carry that sentinel, not just the
+// unhealthy-canary case covered above. The diagnosis differs per cause and rides
+// along via %w; the classification must not.
+func TestWaitCanaryHealthy_EveryFailureCauseStillClassifiesAsUnhealthy(t *testing.T) {
+	tests := []struct {
+		name    string
+		outputs func(call int, argv []string) ([]byte, error)
+		wantMsg string
+	}{
+		{
+			name: "no canary container ever appears",
+			outputs: func(int, []string) ([]byte, error) {
+				return psArray(cl("old1", "web", "healthy")), nil
+			},
+			wantMsg: "no canary container appeared",
+		},
+		{
+			name: "docker cannot be reached while polling",
+			outputs: func(call int, _ []string) ([]byte, error) {
+				if call == 0 {
+					return psArray(cl("old1", "web", "healthy")), nil
+				}
+				return nil, errors.New("docker daemon not running")
+			},
+			wantMsg: "docker daemon not running",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d, runner, run := rolloutSetup(t, rolloutCompose)
+			runner.outputFn = tc.outputs
+
+			err := d.rollService(context.Background(), run, "web", 30*time.Millisecond)
+			if err == nil {
+				t.Fatal("expected an error when the canary never becomes healthy")
+			}
+			if !errors.Is(err, errCanaryUnhealthy) {
+				t.Errorf("error must wrap errCanaryUnhealthy so the caller keeps the old container; got %v", err)
+			}
+			// The cause is diagnosis: it must survive into the message, or an
+			// operator cannot tell a broken canary from a broken docker.
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Errorf("error should name the cause %q; got %v", tc.wantMsg, err)
+			}
+		})
+	}
 }

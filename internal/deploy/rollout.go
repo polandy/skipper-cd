@@ -134,6 +134,13 @@ func (d *Deployer) waitCanaryHealthy(ctx context.Context, run stackRun, service 
 		interval = defaultRolloutPollInterval
 	}
 
+	// lastErr explains *why* the wait ran out and rides into the returned error
+	// via %w; it is diagnosis, not classification. Deliberately not sentinels:
+	// all three causes — nothing ever started, a canary that stayed unhealthy,
+	// or docker being unreachable — lead the caller to the identical decision
+	// (leave the old container running, report rolled_back without a git
+	// restore), and it branches on errCanaryUnhealthy for that. Sentinels
+	// nothing tests against would be API surface without a reader.
 	var newIDs []string
 	lastErr := errors.New("no canary container appeared")
 	for {
