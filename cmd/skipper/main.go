@@ -54,15 +54,10 @@ const readHeaderTimeout = 10 * time.Second
 // streams) may delay shutdown after a termination signal.
 const shutdownTimeout = 10 * time.Second
 
-const (
-	// peerPollTimeout bounds a single peer read (its snapshot + audit fetch) in
-	// the multi-host fan-in (ADR-0048), so one slow or hung peer cannot stall
-	// the poll loop.
-	peerPollTimeout = 10 * time.Second
-	// peerPollFallbackSeconds is the fan-in poll cadence used when the runtime
-	// health poll — whose cadence the fan-in normally rides — is disabled.
-	peerPollFallbackSeconds = 30
-)
+// peerPollTimeout bounds a single peer read (its snapshot + audit fetch) in
+// the multi-host fan-in (ADR-0048), so one slow or hung peer cannot stall
+// the poll loop.
+const peerPollTimeout = 10 * time.Second
 
 // Build identity surfaced in the UI header (GET /api/version), injected via
 // -ldflags at build time:
@@ -298,26 +293,12 @@ func main() {
 	// the health-poll cadence and republish the merged `peers` state over SSE.
 	// UI-only — it exists only when the UI is on and peers are configured.
 	if uiw.peerRegistry != nil {
-		peerRegistry, stateB := uiw.peerRegistry, uiw.stateB
-		interval := *cfg.RuntimeHealthPollIntervalSeconds
-		if interval <= 0 {
-			interval = peerPollFallbackSeconds
-		}
-		d := time.Duration(interval) * time.Second
-		safego.Go("peers-fanin", func() {
-			t := time.NewTicker(d)
-			defer t.Stop()
-			for {
-				peerRegistry.Poll(signalCtx)
-				stateB.Publish(events.StateEvent{Name: events.StatePeers, Data: peerRegistry.State()})
-				select {
-				case <-signalCtx.Done():
-					return
-				case <-t.C:
-				}
-			}
-		})
-		slog.Info("multi-host fan-in enabled", "peers", len(cfg.Peers), "poll_interval_seconds", interval)
+		stateB := uiw.stateB
+		loop := peers.NewLoop(uiw.peerRegistry,
+			time.Duration(*cfg.RuntimeHealthPollIntervalSeconds)*time.Second,
+			func(s peers.State) { stateB.Publish(events.StateEvent{Name: events.StatePeers, Data: s}) })
+		safego.Go("peers-fanin", func() { loop.Run(signalCtx) })
+		slog.Info("multi-host fan-in enabled", "peers", len(cfg.Peers), "poll_interval_seconds", int(loop.Interval()/time.Second))
 	}
 
 	as := &autosyncDeps{
