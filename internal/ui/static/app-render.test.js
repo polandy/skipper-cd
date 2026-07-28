@@ -496,10 +496,10 @@ test('autosyncDetailHTML reports the resting state when nothing is queued', () =
 });
 
 test('autosyncPosText numbers a queue row and dots a queued all-stacks row', () => {
-  assert.equal(r.autosyncPosText({ name: 'web' }, 2, queued), '2');
-  assert.equal(r.autosyncPosText({ name: 'web' }, 0, undefined), '0');
-  assert.equal(r.autosyncPosText({ name: 'web' }, null, queued), '●');
-  assert.equal(r.autosyncPosText({ name: 'web' }, null, undefined), '');
+  assert.equal(r.autosyncPosText(2, queued), '2');
+  assert.equal(r.autosyncPosText(0, undefined), '0');
+  assert.equal(r.autosyncPosText(null, queued), '●');
+  assert.equal(r.autosyncPosText(null, undefined), '');
 });
 
 test('autosyncReasonChipHTML prefers the queue item reason over the snapshot', () => {

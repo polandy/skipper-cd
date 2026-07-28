@@ -499,7 +499,7 @@ function autosyncDetailHTML(s, item, nowMs) {
 // autosyncPosText renders the row's leading cell. pos is a number only in the
 // queue list; the all-stacks list passes null and marks a queued stack with a
 // dot instead.
-function autosyncPosText(s, pos, queued) {
+function autosyncPosText(pos, queued) {
   if (pos !== null) return String(pos);
   return queued ? '●' : '';
 }
@@ -522,7 +522,7 @@ function autosyncSwitchTitle(s) {
 // pending queue entry, if any.
 function autosyncRowHTML(s, pos, item, nowMs) {
   const inQueue = pos !== null;
-  const posCell = `<div class="qpos${inQueue ? '' : ' blank'}">${autosyncPosText(s, pos, item)}</div>`;
+  const posCell = `<div class="qpos${inQueue ? '' : ' blank'}">${autosyncPosText(pos, item)}</div>`;
   const rowTestid = inQueue ? 'queue-item' : 'stack-item';
   // The stack switch is the interactive control the tests toggle; only tag it
   // in the all-stacks list so a queued stack does not expose two of them.

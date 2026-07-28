@@ -3689,7 +3689,7 @@
     const item = queueByStack[s.name];
     const qpos = row.querySelector('.qpos');
     qpos.className = pos !== null ? 'qpos' : 'qpos blank';
-    qpos.textContent = autosyncPosText(s, pos, item);
+    qpos.textContent = autosyncPosText(pos, item);
     row.querySelector('.stack-name').innerHTML =
       escapeHtml(s.name) + autosyncReasonChipHTML(s, item);
     row.querySelector('.stack-detail').innerHTML = autosyncDetailHTML(s, item, Date.now());
