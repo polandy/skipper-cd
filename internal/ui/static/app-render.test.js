@@ -475,3 +475,84 @@ test('rosterHealthPillHTML renders the pill only when the host reports a status'
   assert.match(html, /data-health="healthy"/);
   assert.match(html, /data-stack="web"/);
 });
+
+// Fixed clock + a queue entry two minutes old: the autosync row renderers take
+// the clock as a parameter, so their wait text is asserted exactly, not raced.
+const NOW = Date.parse('2026-07-28T12:00:00Z');
+const queuedItem = {
+  since: new Date(NOW - 120000).toISOString(),
+  changed_files: ['a', 'b'],
+};
+
+test('autosyncDetailHTML reports the wait for a queued stack', () => {
+  const html = r.autosyncDetailHTML({ name: 'web', effective: true }, queuedItem, NOW);
+  assert.match(html, /2 files/);
+  assert.match(html, /data-testid="wait-cell">2m</);
+  // Singular for exactly one changed file.
+  assert.match(
+    r.autosyncDetailHTML(
+      { effective: true },
+      { since: queuedItem.since, changed_files: ['a'] },
+      NOW,
+    ),
+    /1 file</,
+  );
+});
+
+test('autosyncDetailHTML reports the resting state when nothing is queued', () => {
+  assert.equal(r.autosyncDetailHTML({ effective: true }, undefined, NOW), 'synced');
+  assert.equal(r.autosyncDetailHTML({ effective: false }, undefined, NOW), 'paused · no changes');
+});
+
+test('autosyncPosText numbers a queue row and dots a queued all-stacks row', () => {
+  assert.equal(r.autosyncPosText(2, queuedItem), '2');
+  assert.equal(r.autosyncPosText(0, undefined), '0');
+  assert.equal(r.autosyncPosText(null, queuedItem), '●');
+  assert.equal(r.autosyncPosText(null, undefined), '');
+});
+
+test('autosyncReasonChipHTML prefers the queue item reason over the snapshot', () => {
+  assert.equal(
+    r.autosyncReasonChipHTML({ effective: false }, { reason: 'stack' }),
+    '<span class="reason reason-stack">stack</span>',
+  );
+  assert.equal(
+    r.autosyncReasonChipHTML({ effective: false, overridden: true }, undefined),
+    '<span class="reason reason-stack">stack</span>',
+  );
+  assert.equal(
+    r.autosyncReasonChipHTML({ effective: false }, undefined),
+    '<span class="reason reason-global">global</span>',
+  );
+  // A running stack is never tagged, whatever the queue says.
+  assert.equal(r.autosyncReasonChipHTML({ effective: true }, { reason: 'stack' }), '');
+});
+
+test('autosyncSwitchTitle names the action, not the state', () => {
+  assert.equal(r.autosyncSwitchTitle({ effective: true }), 'Pause autosync');
+  assert.equal(r.autosyncSwitchTitle({ effective: false }), 'Resume autosync');
+});
+
+test('autosyncRowHTML tags a queue row without a second switch testid', () => {
+  const html = r.autosyncRowHTML({ name: 'web', effective: true }, 1, queuedItem, NOW);
+  assert.match(html, /data-testid="queue-item"/);
+  assert.ok(!html.includes('stack-switch'), `queue row must not expose a switch testid: ${html}`);
+  assert.match(html, /class="qpos">1</);
+  assert.match(html, /aria-checked="true"/);
+});
+
+test('autosyncRowHTML tags an all-stacks row as the switch owner', () => {
+  const html = r.autosyncRowHTML({ name: 'web', effective: false }, null, undefined, NOW);
+  assert.match(html, /data-testid="stack-item"/);
+  assert.match(html, /data-testid="stack-switch"/);
+  assert.match(html, /class="qpos blank"><\/div>/);
+  assert.match(html, /aria-checked="false"/);
+  assert.match(html, /title="Resume autosync"/);
+});
+
+test('autosyncRowHTML escapes the stack name in both text and attributes', () => {
+  const html = r.autosyncRowHTML({ name: 'a<b&"c"', effective: true }, null, undefined, NOW);
+  assert.ok(!html.includes('a<b&"c"'), `raw name leaked: ${html}`);
+  assert.match(html, /data-stack="a&lt;b&amp;&quot;c&quot;"/);
+  assert.match(html, /class="stack-name">a&lt;b&amp;"c"/);
+});
