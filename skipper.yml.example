@@ -1,11 +1,11 @@
 # skipper-cd — minimal example config.
 #
 # Deliberately a quickstart, not the full surface: it carries the keys a first
-# deployment needs and omits everything optional. Left out here, all documented
-# in the manual: autosync, hooks, rollout, self_heal, health_watch,
-# notifications, peers, deploy_health_check, depends_on, watch_dirs,
-# on_demand_containers, project_directory_base, reconcile_interval_seconds,
-# log_format, host_name and the rest.
+# deployment needs, plus a few commented-out blocks worth seeing early
+# (deploy_health_check, notifications). Left out entirely and documented only in
+# the manual: autosync, hooks, rollout, self_heal, health_watch, peers,
+# depends_on, watch_dirs, on_demand_containers, project_directory_base,
+# reconcile_interval_seconds, log_format, host_name and the rest.
 #
 # Full reference, every key with its default:
 # https://polandy.github.io/skipper-cd/configuration/
