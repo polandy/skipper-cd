@@ -21,6 +21,7 @@ module.exports = [
         UNCHANGED_SINCE: 'readonly',
         // app-helpers.js functions
         assignHostColors: 'readonly',
+        attentionLabel: 'readonly',
         attentionStacks: 'readonly',
         auditStatusLabel: 'readonly',
         classifyDiffLine: 'readonly',
@@ -55,13 +56,16 @@ module.exports = [
         // app-render.js constants
         CLOG_ICON: 'readonly',
         LINK_ICON: 'readonly',
+        WARN_ICON: 'readonly',
         // app-render.js functions
+        attentionBandHTML: 'readonly',
         autosyncDetailHTML: 'readonly',
         autosyncPosText: 'readonly',
         autosyncReasonChipHTML: 'readonly',
         autosyncRowHTML: 'readonly',
         autosyncSwitchTitle: 'readonly',
         badgeHTML: 'readonly',
+        beaconPopHTML: 'readonly',
         clogBtnHTML: 'readonly',
         commitLinkHTML: 'readonly',
         escapeAttr: 'readonly',
@@ -117,6 +121,7 @@ module.exports = [
         module: 'readonly',
         require: 'readonly',
         // app-helpers.js functions it calls
+        attentionLabel: 'readonly',
         commitURL: 'readonly',
         formatTime: 'readonly',
         fullTime: 'readonly',

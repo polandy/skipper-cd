@@ -622,3 +622,46 @@ test('runListHTML leads with the active stack and numbers the rest in order', ()
 test('runListHTML falls back to the empty-state line', () => {
   assert.match(r.runListHTML([], []), /class="qempty"/);
 });
+
+test('beaconPopHTML heads the popover with the shared label and lists each stack', () => {
+  const html = r.beaconPopHTML([
+    { stack: 'web', status: 'unhealthy' },
+    { stack: 'db', status: 'unhealthy' },
+  ]);
+  assert.match(html, /class="bp-head">2 stacks unhealthy</);
+  const stacks = [...html.matchAll(/class="beacon-item"[^>]*data-stack="([^"]*)"/g)].map(
+    (m) => m[1],
+  );
+  assert.deepEqual(stacks, ['web', 'db']); // caller's order preserved
+  assert.match(html, /class="bi-dot" data-health="unhealthy"/);
+});
+
+test('beaconPopHTML escapes the stack name in both text and attributes', () => {
+  const html = r.beaconPopHTML([{ stack: 'a<b&"c"', status: 'unhealthy' }]);
+  assert.ok(!html.includes('a<b&"c"'), `raw name leaked: ${html}`);
+  assert.match(html, /data-stack="a&lt;b&amp;&quot;c&quot;"/);
+  assert.match(html, /class="bi-name">a&lt;b&amp;"c"/);
+});
+
+test('attentionBandHTML counts the rows and leaves the icon slot for the caller', () => {
+  const html = r.attentionBandHTML([
+    { stack: 'web', status: 'unhealthy' },
+    { stack: 'db', status: 'unhealthy' },
+  ]);
+  assert.ok(html.startsWith(`<div class="att-head">${r.WARN_ICON}`), `head mismatch: ${html}`);
+  assert.match(html, /class="att-count">2</);
+  const stacks = [...html.matchAll(/class="attention-row"[^>]*data-stack="([^"]*)"/g)].map(
+    (m) => m[1],
+  );
+  assert.deepEqual(stacks, ['web', 'db']);
+  // populateIcon fills these asynchronously, so the renderer must emit them empty.
+  assert.match(html, /<span class="stack-icon" data-testid="stack-icon"><\/span>/);
+});
+
+test('attentionBandHTML escapes the stack name and the health status', () => {
+  const html = r.attentionBandHTML([{ stack: 'a<b&"c"', status: 'un"healthy' }]);
+  assert.ok(!html.includes('a<b&"c"'), `raw name leaked: ${html}`);
+  assert.match(html, /data-stack="a&lt;b&amp;&quot;c&quot;"/);
+  assert.match(html, /class="health-pill att-pill" data-health="un&quot;healthy"/);
+  assert.match(html, /class="hlabel">un"healthy</);
+});

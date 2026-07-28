@@ -321,6 +321,13 @@ function attentionStacks(healthSnap) {
     });
 }
 
+// attentionLabel is the pluralised summary of attentionStacks' count, reused as
+// the beacon title, its aria-label and the popover heading, so the three never
+// drift apart.
+function attentionLabel(n) {
+  return n === 1 ? '1 stack unhealthy' : n + ' stacks unhealthy';
+}
+
 // levelClass clamps a log level to the known set (unknown → INFO).
 function levelClass(level) {
   return ['DEBUG', 'INFO', 'WARN', 'ERROR'].indexOf(level) >= 0 ? level : 'INFO';
@@ -608,6 +615,7 @@ if (typeof module !== 'undefined' && module.exports) {
     HEALTH,
     healthClass,
     attentionStacks,
+    attentionLabel,
     levelClass,
     logTime,
     reasonFromSnap,

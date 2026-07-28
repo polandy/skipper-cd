@@ -4328,9 +4328,6 @@
   // above the log. Both render from attentionStacks(healthSnap) and jump to the
   // stack's newest row on activate (degrading to a plain view switch when the
   // stack has no row, exactly like jumpBtn).
-  const WARN_ICON =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>';
-
   const healthBeaconWrap = document.getElementById('health-beacon-wrap');
   const healthBeacon = document.getElementById('health-beacon');
   const healthBeaconIcon = healthBeacon.querySelector('.hb-icon');
@@ -4338,12 +4335,6 @@
   const beaconPop = document.getElementById('beacon-pop');
   const attentionBand = document.getElementById('attention-band');
   healthBeaconIcon.innerHTML = WARN_ICON;
-
-  // Shared, pluralised summary reused as the beacon title, aria-label and the
-  // popover heading, so the three never drift apart.
-  function attentionLabel(n) {
-    return n === 1 ? '1 stack unhealthy' : n + ' stacks unhealthy';
-  }
 
   function setBeaconPop(open) {
     beaconPop.classList.toggle('open', open);
@@ -4364,25 +4355,7 @@
     healthBeaconCount.textContent = String(n);
     healthBeacon.title = label;
     healthBeacon.setAttribute('aria-label', label);
-    beaconPop.innerHTML =
-      '<div class="bp-head">' +
-      escapeHtml(label) +
-      '</div>' +
-      att
-        .map(function (a) {
-          return (
-            '<button type="button" class="beacon-item" data-testid="health-beacon-item" data-stack="' +
-            escapeAttr(a.stack) +
-            '">' +
-            '<span class="bi-dot" data-health="' +
-            escapeAttr(a.status) +
-            '"></span>' +
-            '<span class="bi-name">' +
-            escapeHtml(a.stack) +
-            '</span></button>'
-          );
-        })
-        .join('');
+    beaconPop.innerHTML = beaconPopHTML(att);
   }
 
   function renderAttentionBand(att) {
@@ -4392,32 +4365,7 @@
       attentionBand.innerHTML = '';
       return;
     }
-    attentionBand.innerHTML =
-      '<div class="att-head">' +
-      WARN_ICON +
-      '<span class="att-title">Needs attention</span>' +
-      '<span class="att-count">' +
-      n +
-      '</span></div>' +
-      att
-        .map(function (a) {
-          return (
-            '<button type="button" class="attention-row" data-testid="attention-row" data-stack="' +
-            escapeAttr(a.stack) +
-            '">' +
-            '<span class="stack-icon" data-testid="stack-icon"></span>' +
-            '<span class="att-name">' +
-            escapeHtml(a.stack) +
-            '</span>' +
-            '<span class="health-pill att-pill" data-health="' +
-            escapeAttr(a.status) +
-            '"><span class="hdot"></span><span class="hlabel">' +
-            escapeHtml(a.status) +
-            '</span></span>' +
-            '</button>'
-          );
-        })
-        .join('');
+    attentionBand.innerHTML = attentionBandHTML(att);
     attentionBand.querySelectorAll('.attention-row').forEach(function (row) {
       populateIcon(row.querySelector('.stack-icon'), row.dataset.stack);
     });
