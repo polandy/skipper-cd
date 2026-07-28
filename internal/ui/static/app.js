@@ -1,4 +1,4 @@
-(function() {
+(function () {
   const tbody = document.getElementById('tbody');
   const table = document.getElementById('deploy-table');
   const emptyState = document.getElementById('empty-state');
@@ -13,7 +13,9 @@
   function announce(msg) {
     if (!a11yAnnounce || !msg) return;
     a11yAnnounce.textContent = '';
-    requestAnimationFrame(function() { a11yAnnounce.textContent = msg; });
+    requestAnimationFrame(function () {
+      a11yAnnounce.textContent = msg;
+    });
   }
   // The `/api/events` stream replays the deploy-event backlog through the same
   // handler as live events, so announcements must be suppressed until that burst
@@ -27,7 +29,9 @@
   function armAnnounceGate() {
     announceReady = false;
     clearTimeout(announceSettleTimer);
-    announceSettleTimer = setTimeout(function() { announceReady = true; }, 700);
+    announceSettleTimer = setTimeout(function () {
+      announceReady = true;
+    }, 700);
   }
   const deployStatus = document.getElementById('deploy-status');
   const dsActive = deployStatus.querySelector('.ds-active');
@@ -38,7 +42,8 @@
   const runCount = document.getElementById('run-count');
   const runList = document.getElementById('run-list');
   // Ship glyph for the active row's badge in the run panel.
-  const SHIP_SVG = '<svg class="ds-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h16l-2 4H6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="7.5" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><path d="M3 20q2-1.6 4 0t4 0 4 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  const SHIP_SVG =
+    '<svg class="ds-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h16l-2 4H6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="7.5" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><path d="M3 20q2-1.6 4 0t4 0 4 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
   const deployingRows = {};
   // Queued (paused) rows, keyed by stack, so a stack's pending row is replaced
@@ -52,10 +57,10 @@
   let imageDeltaOn = localStorage.getItem('imageDelta') !== 'off';
 
   // Autosync state, populated from the 'autosync' and 'queue' SSE events.
-  let autosyncSnap = null;                    // GET /api/autosync shape
-  let autosyncVersion = null;                 // version of the applied snapshot
-  let queueSnap = { count: 0, pending: [] };  // GET /api/queue shape
-  let queueByStack = {};                       // stack name -> pending item
+  let autosyncSnap = null; // GET /api/autosync shape
+  let autosyncVersion = null; // version of the applied snapshot
+  let queueSnap = { count: 0, pending: [] }; // GET /api/queue shape
+  let queueByStack = {}; // stack name -> pending item
 
   // Run look-ahead, from the 'upcoming' SSE event: stacks that will deploy after
   // the one currently deploying, in deploy order.
@@ -79,8 +84,11 @@
     const wrap = document.getElementById('disabled-stacks');
     const list = document.getElementById('disabled-list');
     list.textContent = '';
-    if (!disabledSnap.length) { wrap.classList.remove('shown'); return; }
-    disabledSnap.forEach(function(name) {
+    if (!disabledSnap.length) {
+      wrap.classList.remove('shown');
+      return;
+    }
+    disabledSnap.forEach(function (name) {
       const chip = document.createElement('span');
       chip.className = 'dis-chip';
       chip.textContent = name;
@@ -128,7 +136,11 @@
   // same container/health/app-link detail the primary shows for its own stacks.
   function peerViewFor(host) {
     if (!peersSnap || !host || host === selfHost) return null;
-    return (peersSnap.peers || []).find(function(p) { return p.name === host; }) || null;
+    return (
+      (peersSnap.peers || []).find(function (p) {
+        return p.name === host;
+      }) || null
+    );
   }
   // healthMapFor / healthwatchMapFor / appLinksMapFor resolve the per-stack map
   // for a host: the primary's own live snapshot for self, else the peer's
@@ -136,22 +148,24 @@
   // consumer keyed by stack name works unchanged for either.
   function healthMapFor(host) {
     const p = peerViewFor(host);
-    return p ? ((p.state && p.state.health && p.state.health.stacks) || {}) : healthSnap;
+    return p ? (p.state && p.state.health && p.state.health.stacks) || {} : healthSnap;
   }
   function healthwatchMapFor(host) {
     const p = peerViewFor(host);
-    return p ? ((p.state && p.state.healthwatch && p.state.healthwatch.stacks) || {}) : healthwatchSnap;
+    return p
+      ? (p.state && p.state.healthwatch && p.state.healthwatch.stacks) || {}
+      : healthwatchSnap;
   }
   function appLinksMapFor(host) {
     const p = peerViewFor(host);
-    return p ? ((p.state && p.state.app_links && p.state.app_links.stacks) || {}) : appLinksSnap;
+    return p ? (p.state && p.state.app_links && p.state.app_links.stacks) || {} : appLinksSnap;
   }
   // Each host tracks its own deploy repo, so a peer's commit SHAs must be linked
   // through that peer's forge, never the primary's. '' — no link at all — when
   // the host derived no browse URL, or runs a skipper predating the field.
   function repoWebURLFor(host) {
     const p = peerViewFor(host);
-    return p ? ((p.state && p.state.stacks && p.state.stacks.repo_web_url) || '') : repoWebURL;
+    return p ? (p.state && p.state.stacks && p.state.stacks.repo_web_url) || '' : repoWebURL;
   }
 
   // The reserved stack key for nixos-rebuild deploys (invariant 4). It is a
@@ -169,8 +183,10 @@
   // re-render) simply fails every future .contains() check and self-clears.
   let openLinkWrap = null;
 
-  const LINK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M10 14L20 4M18 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>';
-  const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
+  const LINK_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M10 14L20 4M18 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>';
+  const CHECK_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
 
   // linkCellHTML renders the app-link icon for a stack: nothing when no host
   // was discovered, a plain external link for exactly one, or a button that
@@ -182,9 +198,11 @@
       const url = 'https://' + hosts[0];
       return `<span class="link-wrap"><a class="link-btn" data-testid="app-link-btn" data-taptip href="${escapeAttr(url)}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + hosts[0])}">${LINK_ICON}</a></span>`;
     }
-    const items = hosts.map(function(h) {
-      return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
-    }).join('');
+    const items = hosts
+      .map(function (h) {
+        return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
+      })
+      .join('');
     const label = hosts.length + ' app links';
     return `<span class="link-wrap"><button class="link-btn" type="button" data-testid="app-link-btn" data-taptip title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${LINK_ICON}</button><div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
   }
@@ -194,18 +212,24 @@
   function toggleAppLinkPopover(wrap) {
     const wasOpen = wrap === openLinkWrap;
     closeAppLinkPopover();
-    if (!wasOpen) { wrap.classList.add('open'); openLinkWrap = wrap; }
+    if (!wasOpen) {
+      wrap.classList.add('open');
+      openLinkWrap = wrap;
+    }
   }
   function closeAppLinkPopover() {
     if (openLinkWrap) openLinkWrap.classList.remove('open');
     openLinkWrap = null;
   }
-  document.addEventListener('click', function(e) {
+  document.addEventListener('click', function (e) {
     if (openLinkWrap && !openLinkWrap.contains(e.target)) closeAppLinkPopover();
     if (openMoreWrap && !openMoreWrap.contains(e.target)) closeMoreMenu();
   });
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') { closeAppLinkPopover(); closeMoreMenu(); }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      closeAppLinkPopover();
+      closeMoreMenu();
+    }
   });
 
   // ── Row overflow menu (⋯) — T3.13 ──
@@ -215,7 +239,8 @@
   // one-open-at-a-time behaviour as the app-link popover; the action buttons
   // inside keep their own classes, testids and click handlers — they are only
   // relocated, so nothing about opening the panels changes.
-  const MORE_ICON = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>';
+  const MORE_ICON =
+    '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>';
   let openMoreWrap = null;
 
   // ensureRowMore returns the row's ⋯ wrapper, creating it (button + empty
@@ -227,7 +252,11 @@
       wrap.className = 'row-more';
       wrap.innerHTML =
         '<button class="more-btn" type="button" data-testid="more-btn" aria-haspopup="true" aria-expanded="false"' +
-        ' title="More actions" aria-label="' + escapeAttr('more actions for ' + stack) + '">' + MORE_ICON + '</button>' +
+        ' title="More actions" aria-label="' +
+        escapeAttr('more actions for ' + stack) +
+        '">' +
+        MORE_ICON +
+        '</button>' +
         '<div class="more-pop" data-testid="more-pop"></div>';
       cell.appendChild(wrap);
     }
@@ -244,7 +273,8 @@
     lbl.className = 'mi-label';
     lbl.textContent = label;
     const count = btn.querySelector('.hk-count');
-    if (count) btn.insertBefore(lbl, count); else btn.appendChild(lbl);
+    if (count) btn.insertBefore(lbl, count);
+    else btn.appendChild(lbl);
     return btn;
   }
 
@@ -309,9 +339,10 @@
       const label = v.more + (v.more === 1 ? ' service' : ' services');
       return `<span class="ver-count" title="No single main service — open the row for every version">${label}</span>`;
     }
-    const more = v.more > 0
-      ? `<span class="ver-count" title="${escapeAttr(v.more + ' more service' + (v.more === 1 ? '' : 's') + ' — open the row for every version')}">+${v.more}</span>`
-      : '';
+    const more =
+      v.more > 0
+        ? `<span class="ver-count" title="${escapeAttr(v.more + ' more service' + (v.more === 1 ? '' : 's') + ' — open the row for every version')}">+${v.more}</span>`
+        : '';
     return serviceVersionHTML(v.service, v.image) + more;
   }
 
@@ -338,7 +369,7 @@
   // peers alike. Empty when the host reports no health for the stack.
   function rosterHealthPillHTML(stack, host) {
     const h = healthMapFor(host)[stack];
-    return (h && h.status) ? healthPillHTML(stack, h.status) : '';
+    return h && h.status ? healthPillHTML(stack, h.status) : '';
   }
 
   // rosterAttentionRank floats an enabled, currently-unhealthy stack to the top
@@ -356,7 +387,7 @@
   // only at full render (view switch / roster snapshot), never on a live health
   // poll, so rows never jump out from under an open panel.
   function rosterOrdered() {
-    return rosterSnap.slice().sort(function(a, b) {
+    return rosterSnap.slice().sort(function (a, b) {
       return rosterAttentionRank(a) - rosterAttentionRank(b);
     });
   }
@@ -368,22 +399,37 @@
     // that republished is exactly when the panel has something new to say (the
     // deploy history gained a record, change detection a commit). So note which
     // row is open and re-open it after the rebuild, from the new snapshot.
-    const openRow = list.querySelector('.roster-row.audit-open, .roster-row.hooks-open, .roster-row.peer-row.diff-open');
+    const openRow = list.querySelector(
+      '.roster-row.audit-open, .roster-row.hooks-open, .roster-row.peer-row.diff-open',
+    );
     const reopen = openRow && {
       stack: openRow.dataset.stack,
       host: openRow.dataset.host,
-      kind: openRow.classList.contains('hooks-open') ? 'hooks'
-        : openRow.classList.contains('peer-row') ? 'peer' : 'detail',
+      kind: openRow.classList.contains('hooks-open')
+        ? 'hooks'
+        : openRow.classList.contains('peer-row')
+          ? 'peer'
+          : 'detail',
     };
     list.textContent = '';
     openLinkWrap = null; // rebuilt rows drop any open app-link popover too
-    rosterOrdered().forEach(function(entry) {
+    rosterOrdered().forEach(function (entry) {
       const deploying = !!deployingRows[entry.name];
       // Time + commit only apply to a real past deploy.
       const showMeta = !entry.disabled && !deploying && !!entry.last_status;
       // Shared time mode; title carries the opposite (relative <-> absolute).
-      const when = showMeta && entry.last_at ? (absoluteTime ? fullTime(entry.last_at) : formatTime(entry.last_at)) : '';
-      const whenTitle = showMeta && entry.last_at ? (absoluteTime ? formatTime(entry.last_at) : fullTime(entry.last_at)) : '';
+      const when =
+        showMeta && entry.last_at
+          ? absoluteTime
+            ? fullTime(entry.last_at)
+            : formatTime(entry.last_at)
+          : '';
+      const whenTitle =
+        showMeta && entry.last_at
+          ? absoluteTime
+            ? formatTime(entry.last_at)
+            : fullTime(entry.last_at)
+          : '';
       const commit = showMeta ? entry.last_commit || '' : '';
       const row = document.createElement('div');
       row.className = entry.disabled ? 'roster-row disabled' : 'roster-row';
@@ -416,7 +462,7 @@
   // row to re-open on, which is the correct outcome — its panel is gone with it.
   function reopenRosterPanel(list, reopen) {
     if (!reopen) return;
-    const row = [...list.querySelectorAll('.roster-row')].find(function(r) {
+    const row = [...list.querySelectorAll('.roster-row')].find(function (r) {
       return r.dataset.stack === reopen.stack && r.dataset.host === reopen.host;
     });
     if (!row) return;
@@ -441,16 +487,29 @@
   // the peer's fanned-in health). Rows are grouped per host after the local set.
   function renderPeerRosterRows(list) {
     if (!peersSnap) return;
-    (peersSnap.peers || []).forEach(function(p) {
+    (peersSnap.peers || []).forEach(function (p) {
       const roster = (p.state && p.state.stacks && p.state.stacks.roster) || [];
       const peerRepo = repoWebURLFor(p.name); // a peer's commits live on its own forge
-      roster.forEach(function(entry) {
+      roster.forEach(function (entry) {
         const showMeta = !entry.disabled && !!entry.last_status;
-        const when = showMeta && entry.last_at ? (absoluteTime ? fullTime(entry.last_at) : formatTime(entry.last_at)) : '';
-        const whenTitle = showMeta && entry.last_at ? (absoluteTime ? formatTime(entry.last_at) : fullTime(entry.last_at)) : '';
+        const when =
+          showMeta && entry.last_at
+            ? absoluteTime
+              ? fullTime(entry.last_at)
+              : formatTime(entry.last_at)
+            : '';
+        const whenTitle =
+          showMeta && entry.last_at
+            ? absoluteTime
+              ? formatTime(entry.last_at)
+              : fullTime(entry.last_at)
+            : '';
         const commit = showMeta ? entry.last_commit || '' : '';
         const row = document.createElement('div');
-        row.className = 'roster-row peer-row' + (entry.disabled ? ' disabled' : '') + (p.stale ? ' peer-stale' : '');
+        row.className =
+          'roster-row peer-row' +
+          (entry.disabled ? ' disabled' : '') +
+          (p.stale ? ' peer-stale' : '');
         row.dataset.testid = 'roster-row';
         row.dataset.stack = entry.name;
         row.dataset.host = p.name;
@@ -485,7 +544,7 @@
     dot.title = c.state || '';
     const name = document.createElement('span');
     name.className = 'oc-name';
-    name.textContent = c.name || (c.service || '');
+    name.textContent = c.name || c.service || '';
     const image = document.createElement('span');
     image.className = 'oc-image';
     image.textContent = c.image || '';
@@ -531,11 +590,18 @@
     body.textContent = '';
     // The badge shows matching orphans during a search, else the total.
     const q = (deployFilter.value || '').trim().toLowerCase();
-    count.textContent = String(q
-      ? orphansSnap.filter(function(o) { return orphanMatchesQuery(o, q); }).length
-      : orphansSnap.length);
-    if (!orphansSnap.length) { wrap.classList.remove('shown'); return; }
-    orphansSnap.forEach(function(o) {
+    count.textContent = String(
+      q
+        ? orphansSnap.filter(function (o) {
+            return orphanMatchesQuery(o, q);
+          }).length
+        : orphansSnap.length,
+    );
+    if (!orphansSnap.length) {
+      wrap.classList.remove('shown');
+      return;
+    }
+    orphansSnap.forEach(function (o) {
       const conts = o.containers || [];
       const item = document.createElement('div');
       item.className = 'orphan-item';
@@ -571,13 +637,18 @@
         const facts = document.createElement('div');
         facts.className = 'orphan-facts';
         if (o.config_file) facts.appendChild(orphanFactRow('config', o.config_file));
-        if (vols.length) facts.appendChild(orphanFactRow('volumes', vols.join(', '), 'kept on prune'));
+        if (vols.length)
+          facts.appendChild(orphanFactRow('volumes', vols.join(', '), 'kept on prune'));
         detail.appendChild(facts);
       }
       // Search: on a container match, hide the non-matching containers so the
       // hit stands out.
-      const anyContMatch = q && conts.some(function(c) { return containerMatchesQuery(c, q); });
-      conts.forEach(function(c) {
+      const anyContMatch =
+        q &&
+        conts.some(function (c) {
+          return containerMatchesQuery(c, q);
+        });
+      conts.forEach(function (c) {
         const crow = orphanContainerRow(c);
         if (anyContMatch && !containerMatchesQuery(c, q)) crow.classList.add('filtered-out');
         detail.appendChild(crow);
@@ -592,10 +663,14 @@
         const startOpen = orphansOpen.has(o.project) || (!!q && orphanMatch);
         item.classList.toggle('open', startOpen);
         row.setAttribute('aria-expanded', startOpen ? 'true' : 'false');
-        row.addEventListener('click', function() {
+        row.addEventListener('click', function () {
           const open = item.classList.toggle('open');
           row.setAttribute('aria-expanded', open ? 'true' : 'false');
-          if (open) { orphansOpen.add(o.project); } else { orphansOpen.delete(o.project); }
+          if (open) {
+            orphansOpen.add(o.project);
+          } else {
+            orphansOpen.delete(o.project);
+          }
         });
       }
 
@@ -610,14 +685,18 @@
   // (so the hit isn't hidden behind a collapsed section).
   function applyOrphansSectionOpen() {
     const q = (deployFilter.value || '').trim().toLowerCase();
-    const searchOpen = !!q && orphansSnap.some(function(o) { return orphanMatchesQuery(o, q); });
+    const searchOpen =
+      !!q &&
+      orphansSnap.some(function (o) {
+        return orphanMatchesQuery(o, q);
+      });
     const open = orphansSectionOpen || searchOpen;
     document.getElementById('orphans').classList.toggle('open', open);
     document.getElementById('orphans-head').setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
-  (function() {
-    document.getElementById('orphans-head').addEventListener('click', function() {
+  (function () {
+    document.getElementById('orphans-head').addEventListener('click', function () {
       orphansSectionOpen = !orphansSectionOpen;
       applyOrphansSectionOpen();
     });
@@ -654,7 +733,8 @@
     const cls = `badge badge-${status}`;
     // deploying keeps its animated spinner as the leading glyph; every other
     // status gets an icon from statusIcon (T3.14).
-    if (status === 'deploying') return `<span class="${cls}" data-testid="status-badge"><span class="spinner"></span>deploying</span>`;
+    if (status === 'deploying')
+      return `<span class="${cls}" data-testid="status-badge"><span class="spinner"></span>deploying</span>`;
     const icon = statusIcon(status);
     if (status === 'rolled_back_unhealthy') {
       // The worst terminal state: a warning icon on a solid danger fill (T3.14)
@@ -683,37 +763,39 @@
   // count the reader would have to open the diff to resolve.
   function imageDeltaHTML(changes) {
     if (!changes || changes.length === 0) return '';
-    const shown = changes.map(function (c) {
-      // Each chip carries a role=img + aria-label so a screen reader announces
-      // the change as one phrase ("web updated from 1.25 to 1.26"), and a title
-      // with the full old\u2192new reference (registry + repo + digest are dropped
-      // from the visible chip but kept here \u2014 progressive disclosure).
-      let body, aria;
-      if (!c.old) {
-        // First image for this service \u2014 nothing to compare against.
-        body = `<span class="td-new">${escapeHtml(shortImageTag(c.new))}</span>`;
-        aria = `${c.service} set to ${c.new}`;
-      } else if (!c.new) {
-        // Service removed from the stack.
-        body = `<span class="td-old">${escapeHtml(shortImageTag(c.old))}</span><span class="td-arr" aria-hidden="true">\u2192</span><span class="td-gone">removed</span>`;
-        aria = `${c.service} removed (was ${c.old})`;
-      } else {
-        const d = imageDelta(c.old, c.new);
-        if (d.tag) {
-          // Same tag, only the pinned digest moved: a rebuild. Two hex digests
-          // are near-impossible to eyeball, so show a \u21bb rebuilt marker with the
-          // shared tag; the full digests live in the title/aria.
-          body = `<span class="td-ctx">${escapeHtml(d.tag)}</span><span class="td-rebuilt" aria-hidden="true">\u21bb</span>`;
-          aria = `${c.service} rebuilt, tag ${d.tag} unchanged`;
+    const shown = changes
+      .map(function (c) {
+        // Each chip carries a role=img + aria-label so a screen reader announces
+        // the change as one phrase ("web updated from 1.25 to 1.26"), and a title
+        // with the full old\u2192new reference (registry + repo + digest are dropped
+        // from the visible chip but kept here \u2014 progressive disclosure).
+        let body, aria;
+        if (!c.old) {
+          // First image for this service \u2014 nothing to compare against.
+          body = `<span class="td-new">${escapeHtml(shortImageTag(c.new))}</span>`;
+          aria = `${c.service} set to ${c.new}`;
+        } else if (!c.new) {
+          // Service removed from the stack.
+          body = `<span class="td-old">${escapeHtml(shortImageTag(c.old))}</span><span class="td-arr" aria-hidden="true">\u2192</span><span class="td-gone">removed</span>`;
+          aria = `${c.service} removed (was ${c.old})`;
         } else {
-          // A tag bump: show the tags that differ.
-          body = `<span class="td-old">${escapeHtml(d.from)}</span><span class="td-arr" aria-hidden="true">\u2192</span><span class="td-new">${escapeHtml(d.to)}</span>`;
-          aria = `${c.service} updated from ${d.from} to ${d.to}`;
+          const d = imageDelta(c.old, c.new);
+          if (d.tag) {
+            // Same tag, only the pinned digest moved: a rebuild. Two hex digests
+            // are near-impossible to eyeball, so show a \u21bb rebuilt marker with the
+            // shared tag; the full digests live in the title/aria.
+            body = `<span class="td-ctx">${escapeHtml(d.tag)}</span><span class="td-rebuilt" aria-hidden="true">\u21bb</span>`;
+            aria = `${c.service} rebuilt, tag ${d.tag} unchanged`;
+          } else {
+            // A tag bump: show the tags that differ.
+            body = `<span class="td-old">${escapeHtml(d.from)}</span><span class="td-arr" aria-hidden="true">\u2192</span><span class="td-new">${escapeHtml(d.to)}</span>`;
+            aria = `${c.service} updated from ${d.from} to ${d.to}`;
+          }
         }
-      }
-      const title = `${c.service}: ${c.old || '(first image)'} \u2192 ${c.new || '(removed)'}`;
-      return versionChipHTML(c.service, body, aria, title);
-    }).join('');
+        const title = `${c.service}: ${c.old || '(first image)'} \u2192 ${c.new || '(removed)'}`;
+        return versionChipHTML(c.service, body, aria, title);
+      })
+      .join('');
     return `<span class="svc-delta" data-testid="svc-delta">${shown}</span>`;
   }
 
@@ -737,8 +819,12 @@
   function serviceVersionHTML(service, image, labelled) {
     const tag = shortImageTag(image);
     const body = `<span class="td-cur">${escapeHtml(tag)}</span>`;
-    return versionChipHTML(labelled === false ? '' : service, body,
-      `${service} running ${tag}`, `${service}: ${image}`);
+    return versionChipHTML(
+      labelled === false ? '' : service,
+      body,
+      `${service} running ${tag}`,
+      `${service}: ${image}`,
+    );
   }
 
   function filesHTML(files) {
@@ -746,9 +832,11 @@
     // escapeAttr also encodes quotes - JSON is full of them and this lands
     // inside a double-quoted attribute.
     const encoded = escapeAttr(JSON.stringify(files));
-    return `<button class="files-pill" data-testid="files-pill" data-files="${encoded}">` +
+    return (
+      `<button class="files-pill" data-testid="files-pill" data-files="${encoded}">` +
       `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h5l2 2h5v7H2z"/></svg>` +
-      `${files.length} file${files.length > 1 ? 's' : ''}</button>`;
+      `${files.length} file${files.length > 1 ? 's' : ''}</button>`
+    );
   }
 
   // healPillHTML renders the self-heal "badge" that stands in for the files pill
@@ -757,9 +845,11 @@
   // drifted (ADR-0029). The drift rides the event, so it is stashed on the pill.
   function healPillHTML(drift) {
     const encoded = escapeAttr(JSON.stringify(drift || []));
-    return `<button class="heal-pill" data-testid="heal-pill" data-drift="${encoded}">` +
+    return (
+      `<button class="heal-pill" data-testid="heal-pill" data-drift="${encoded}">` +
       `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>` +
-      `self-heal</button>`;
+      `self-heal</button>`
+    );
   }
 
   // createHealPanel builds the expandable detail for a healed row: a one-line
@@ -774,13 +864,21 @@
       el.classList.add('bound');
       el.dataset.status = meta.status;
     }
-    let html = '<div class="heal-summary">Self-heal restored this stack to its deployed running state — a corrective <code>docker compose up -d</code>. Nothing in git changed, so there is no diff.</div>';
+    let html =
+      '<div class="heal-summary">Self-heal restored this stack to its deployed running state — a corrective <code>docker compose up -d</code>. Nothing in git changed, so there is no diff.</div>';
     if (drift && drift.length > 0) {
       html += '<div class="heal-drift-label">Drifted when it ran</div>';
-      html += `<ul class="heal-drift-list">` + drift.map(function(d) {
-        return `<li><span class="hd-name">${escapeHtml(d.name)}</span>` +
-          `<span class="hd-status hd-${escapeAttr(d.status)}">${escapeHtml(d.status)}</span></li>`;
-      }).join('') + `</ul>`;
+      html +=
+        `<ul class="heal-drift-list">` +
+        drift
+          .map(function (d) {
+            return (
+              `<li><span class="hd-name">${escapeHtml(d.name)}</span>` +
+              `<span class="hd-status hd-${escapeAttr(d.status)}">${escapeHtml(d.status)}</span></li>`
+            );
+          })
+          .join('') +
+        `</ul>`;
     }
     el.innerHTML = html;
     return el;
@@ -797,21 +895,28 @@
       el.classList.add('bound');
       el.dataset.status = meta.status;
     }
-    el.innerHTML = files.map(function(f) {
-      return `<span class="file-path">${escapeHtml(f)}</span>`;
-    }).join('<br>');
+    el.innerHTML = files
+      .map(function (f) {
+        return `<span class="file-path">${escapeHtml(f)}</span>`;
+      })
+      .join('<br>');
     return el;
   }
 
   function renderDiffContent(diff) {
-    return diff.split('\n').map(function(line) {
-      const cls = classifyDiffLine(line);
-      return `<span class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line)}</span>`;
-    }).join('\n');
+    return diff
+      .split('\n')
+      .map(function (line) {
+        const cls = classifyDiffLine(line);
+        return `<span class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line)}</span>`;
+      })
+      .join('\n');
   }
 
-  const personGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
-  const clockGlyph = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
+  const personGlyph =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+  const clockGlyph =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
 
   // shaHTML renders one `.m-sha` chip of the diff header. The diff panel only
   // ever shows the local repo's commits — a peer's diff arrives without commit
@@ -831,7 +936,8 @@
     if (!hasEcho && !hasCommits) return '';
     let html = '<div class="diff-head" data-testid="diff-head">';
     if (hasEcho) {
-      html += `<div class="diff-head-echo">` +
+      html +=
+        `<div class="diff-head-echo">` +
         `<span class="dh-who">${escapeHtml(meta.stack)}</span>` +
         `<span class="dh-label">deploy diff</span>` +
         `<span class="dh-pill"><span class="hdot"></span>${escapeHtml(statusText(meta.status))}</span>` +
@@ -840,13 +946,15 @@
     if (hasCommits) {
       const head = commits[0];
       const multi = commits.length > 1;
-      html += `<div class="diff-commit">` +
+      html +=
+        `<div class="diff-commit">` +
         `<svg class="commit-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21"/></svg>` +
         `<span class="dh-subject">${escapeHtml(head.subject || '')}</span></div>`;
       let line = '<div class="diff-meta-line">';
       if (multi) {
         const oldest = commits[commits.length - 1];
-        line += `<span class="m-range">${shaHTML(oldest.sha)}<span class="m-arr">→</span>${shaHTML(head.sha)}</span>` +
+        line +=
+          `<span class="m-range">${shaHTML(oldest.sha)}<span class="m-arr">→</span>${shaHTML(head.sha)}</span>` +
           `<span class="m-sep">·</span>` +
           `<button class="commits-pill" data-testid="commits-pill">${commits.length} commits</button>` +
           `<span class="m-sep">·</span>`;
@@ -861,11 +969,18 @@
       line += '</div>';
       html += line;
       if (multi) {
-        html += `<ul class="diff-commit-list" data-testid="diff-commit-list">` + commits.map(function(c) {
-          return `<li>${shaHTML(c.sha)}<span>` +
-            `<span class="cl-subject">${escapeHtml(c.subject || '')}</span> ` +
-            `<span class="cl-meta">— ${escapeHtml(c.author || '')}${c.date ? ', ' + escapeHtml(formatTime(c.date)) : ''}</span></span></li>`;
-        }).join('') + `</ul>`;
+        html +=
+          `<ul class="diff-commit-list" data-testid="diff-commit-list">` +
+          commits
+            .map(function (c) {
+              return (
+                `<li>${shaHTML(c.sha)}<span>` +
+                `<span class="cl-subject">${escapeHtml(c.subject || '')}</span> ` +
+                `<span class="cl-meta">— ${escapeHtml(c.author || '')}${c.date ? ', ' + escapeHtml(formatTime(c.date)) : ''}</span></span></li>`
+              );
+            })
+            .join('') +
+          `</ul>`;
       }
     }
     html += '</div>';
@@ -886,15 +1001,21 @@
     }
     const files = Object.keys(diffs);
     const singleFile = files.length === 1;
-    el.innerHTML = renderCommitHead(commits, meta) + files.map(function(f) {
-      const name = f.split('/').pop() || f;
-      return `<div class="diff-file-section">` +
-        `<div class="diff-file-header${singleFile ? ' expanded' : ''}">` +
-        `<svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>` +
-        `<span>${escapeHtml(name)}</span></div>` +
-        `<div class="diff-content">${renderDiffContent(diffs[f])}</div>` +
-        `</div>`;
-    }).join('');
+    el.innerHTML =
+      renderCommitHead(commits, meta) +
+      files
+        .map(function (f) {
+          const name = f.split('/').pop() || f;
+          return (
+            `<div class="diff-file-section">` +
+            `<div class="diff-file-header${singleFile ? ' expanded' : ''}">` +
+            `<svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>` +
+            `<span>${escapeHtml(name)}</span></div>` +
+            `<div class="diff-content">${renderDiffContent(diffs[f])}</div>` +
+            `</div>`
+          );
+        })
+        .join('');
     return el;
   }
 
@@ -911,14 +1032,16 @@
     el.dataset.testid = 'load-error';
     el.innerHTML =
       '<svg class="le-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' +
-        '<path d="M12 8v5"/><circle cx="12" cy="16.6" r="1" fill="currentColor" stroke="none"/>' +
-        '<path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke-linejoin="round"/>' +
+      '<path d="M12 8v5"/><circle cx="12" cy="16.6" r="1" fill="currentColor" stroke="none"/>' +
+      '<path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke-linejoin="round"/>' +
       '</svg>' +
-      '<span class="le-msg">' + escapeHtml(message) + '</span>' +
+      '<span class="le-msg">' +
+      escapeHtml(message) +
+      '</span>' +
       '<button class="le-retry" type="button" data-testid="load-retry" aria-label="Retry loading">' +
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Retry</button>';
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Retry</button>';
     const btn = el.querySelector('.le-retry');
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', function () {
       if (el.classList.contains('busy')) return; // a retry is already in flight
       el.classList.add('busy');
       el.querySelector('.le-msg').textContent = 'Retrying…';
@@ -939,12 +1062,12 @@
       return;
     }
     fetch('/api/events/' + eventId + '/diffs')
-      .then(function(r) {
+      .then(function (r) {
         if (r.ok) return r.json();
         if (r.status >= 500) throw new Error('server'); // transient → load-error
-        return null;                                    // 404 etc: genuine no-diff
+        return null; // 404 etc: genuine no-diff
       })
-      .then(function(data) {
+      .then(function (data) {
         if (data && data.diffs) {
           diffCache[eventId] = { diffs: data.diffs, commits: data.commits || null };
           callback(data.diffs, diffCache[eventId].commits, false);
@@ -952,7 +1075,9 @@
           callback(null, null, false);
         }
       })
-      .catch(function() { callback(null, null, true); });
+      .catch(function () {
+        callback(null, null, true);
+      });
   }
 
   function escapeHtml(s) {
@@ -982,7 +1107,7 @@
     const o = opts || {};
     const label = shortSHA(sha);
     const href = commitURL(o.base, sha);
-    const cls = href ? ((o.cls ? o.cls + ' ' : '') + 'sha-link') : (o.cls || '');
+    const cls = href ? (o.cls ? o.cls + ' ' : '') + 'sha-link' : o.cls || '';
     const attrs =
       (cls ? ` class="${escapeAttr(cls)}"` : '') +
       (o.testid ? ` data-testid="${escapeAttr(o.testid)}"` : '') +
@@ -997,13 +1122,17 @@
   // streams from /api/container-logs via EventSource and trails the row/line it
   // was opened from. Controls: live/pause, auto-scroll, wrap, in-log search,
   // fullscreen.
-  const CLOG_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6h14M5 11h14M5 16h9"/><circle cx="17" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>';
+  const CLOG_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6h14M5 11h14M5 16h9"/><circle cx="17" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>';
   const CLOG_ICONS = {
-    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>',
+    search:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>',
     wrap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h13a3 3 0 0 1 0 6h-4"/><path d="M16 15l-3 3 3 3"/><path d="M4 18h6"/></svg>',
-    scroll: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>',
+    scroll:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg>',
     fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
-    filter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
+    filter:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
   };
 
   // clogBtnHTML/clogButton build the logs icon that opens a log — a string
@@ -1012,7 +1141,9 @@
   // with data-clog-host so clog.toggle streams through the primary's peer proxy
   // (ADR-0048) instead of the local container-logs endpoint.
   function clogBtnHTML(stack, service, host) {
-    const label = service ? ('logs for ' + stack + ' / ' + service) : ('logs for ' + stack + ' (all services)');
+    const label = service
+      ? 'logs for ' + stack + ' / ' + service
+      : 'logs for ' + stack + ' (all services)';
     const hostAttr = host ? ` data-clog-host="${escapeAttr(host)}"` : '';
     return `<button class="clog-btn" type="button" data-testid="clog-btn" data-taptip data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}"${hostAttr} title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
   }
@@ -1027,9 +1158,17 @@
   // row, so peer rows and roster rows show an identical at-a-glance pill. A click
   // opens the row's containers panel (routed per row type in the click handlers).
   function healthPillHTML(stack, status) {
-    return '<button class="health-pill" type="button" data-testid="health-pill" data-health="' + escapeAttr(status) +
-      '" data-stack="' + escapeAttr(stack) + '" title="' + escapeAttr(stack + ' — ' + status) +
-      '"><span class="hdot"></span><span class="hlabel">' + escapeHtml(status) + '</span></button>';
+    return (
+      '<button class="health-pill" type="button" data-testid="health-pill" data-health="' +
+      escapeAttr(status) +
+      '" data-stack="' +
+      escapeAttr(stack) +
+      '" title="' +
+      escapeAttr(stack + ' — ' + status) +
+      '"><span class="hdot"></span><span class="hlabel">' +
+      escapeHtml(status) +
+      '</span></button>'
+    );
   }
 
   // ─── Deploy hooks (ADR-0038) ───
@@ -1037,17 +1176,21 @@
   // the currently-executing hook ({} when none) from the hookrun SSE snapshot.
   let hookRunSnap = {};
   // Fishing hook — distinct from the container-logs icon it sits beside.
-  const HOOK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5v7a4 4 0 0 1-8 0"/><path d="M4.5 10.5 7 13l2.5-2.5"/></svg>';
+  const HOOK_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5v7a4 4 0 0 1-8 0"/><path d="M4.5 10.5 7 13l2.5-2.5"/></svg>';
 
   function hooksFor(stack) {
-    const e = rosterSnap.find(function(r) { return r.name === stack; });
-    return (e && e.hooks) ? e.hooks : null;
+    const e = rosterSnap.find(function (r) {
+      return r.name === stack;
+    });
+    return e && e.hooks ? e.hooks : null;
   }
   function hookCount(hooks) {
     return (hooks.pre_deploy || []).length + (hooks.post_deploy || []).length;
   }
   function hooksBadgeHTML(stack, hooks) {
-    const pre = (hooks.pre_deploy || []).length, post = (hooks.post_deploy || []).length;
+    const pre = (hooks.pre_deploy || []).length,
+      post = (hooks.post_deploy || []).length;
     const label = `pre-deploy hook: ${pre}\npost-deploy hook: ${post}`;
     // "2+1" rather than the sum, so the split is visible.
     return `<button class="hooks-badge" type="button" data-testid="hooks-badge" data-taptip data-hooks-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${HOOK_ICON}<span class="hk-count">${pre}+${post}</span></button>`;
@@ -1060,18 +1203,22 @@
   // Bound panel (variant A) listing the configured commands, from the snapshot.
   function createHooksPanel(stack) {
     const hooks = hooksFor(stack) || {};
-    const group = function(title, cmds) {
+    const group = function (title, cmds) {
       if (!cmds || !cmds.length) return '';
-      const lines = cmds.map(function(c) {
-        return `<div class="hooks-cmd" data-testid="hooks-cmd"><span class="hk-prompt">$</span> ${escapeHtml(c)}</div>`;
-      }).join('');
+      const lines = cmds
+        .map(function (c) {
+          return `<div class="hooks-cmd" data-testid="hooks-cmd"><span class="hk-prompt">$</span> ${escapeHtml(c)}</div>`;
+        })
+        .join('');
       return `<div class="hooks-group"><div class="hk-title">${title}<span class="hk-num">${cmds.length}</span></div>${lines}</div>`;
     };
     const panel = document.createElement('div');
     panel.className = 'hooks-panel bound';
     panel.dataset.testid = 'hooks-panel';
-    panel.innerHTML = `<div class="hooks-head"><span class="hk-stack">${escapeHtml(stack)}</span><span class="hk-label">deploy hooks</span></div>` +
-      group('pre_deploy', hooks.pre_deploy) + group('post_deploy', hooks.post_deploy);
+    panel.innerHTML =
+      `<div class="hooks-head"><span class="hk-stack">${escapeHtml(stack)}</span><span class="hk-label">deploy hooks</span></div>` +
+      group('pre_deploy', hooks.pre_deploy) +
+      group('post_deploy', hooks.post_deploy);
     return panel;
   }
   function closeHooksPanel(row) {
@@ -1083,7 +1230,7 @@
   // Running-hook sub-label (dot + "pre_deploy hook 1/2" + hook-log icon), shared
   // by both views so it looks identical in Deploys and Stacks.
   function hookPhaseNode(hr) {
-    const n = hr.total > 1 ? (' ' + hr.index + '/' + hr.total) : '';
+    const n = hr.total > 1 ? ' ' + hr.index + '/' + hr.total : '';
     const phase = document.createElement('span');
     phase.className = 'hook-phase';
     phase.dataset.testid = 'hook-phase';
@@ -1094,15 +1241,23 @@
   // Paint the running-hook phase + pulse the badge on the stack's row in both
   // views; clear it when hookRunSnap has no stack.
   function applyHookRun() {
-    document.querySelectorAll('.hook-phase').forEach(function(n) { n.remove(); });
-    document.querySelectorAll('.hooks-badge[data-hook-active], .more-btn[data-hook-active]').forEach(function(b) { b.removeAttribute('data-hook-active'); });
+    document.querySelectorAll('.hook-phase').forEach(function (n) {
+      n.remove();
+    });
+    document
+      .querySelectorAll('.hooks-badge[data-hook-active], .more-btn[data-hook-active]')
+      .forEach(function (b) {
+        b.removeAttribute('data-hook-active');
+      });
     const hr = hookRunSnap;
     if (!hr || !hr.stack) return;
 
     // Deploys view: the stack's newest row while deploying. The hooks badge now
     // lives inside the collapsed ⋯ menu, so the running-hook pulse rides the
     // visible ⋯ button instead (the badge itself is still marked for when it opens).
-    const drow = Array.from(tbody.querySelectorAll('.event-row[data-stack]')).find(function(r) { return r.dataset.stack === hr.stack; });
+    const drow = Array.from(tbody.querySelectorAll('.event-row[data-stack]')).find(function (r) {
+      return r.dataset.stack === hr.stack;
+    });
     if (drow && drow.dataset.status === 'deploying') {
       const cell = drow.querySelector('.status-cell');
       if (cell) cell.appendChild(hookPhaseNode(hr));
@@ -1115,7 +1270,11 @@
     // Stacks view: the roster row while it shows the live deploying state.
     const rlist = document.getElementById('roster-list');
     if (rlist && deployingRows[hr.stack]) {
-      const rrow = Array.from(rlist.querySelectorAll('.roster-row[data-stack]:not(.peer-row)')).find(function(r) { return r.dataset.stack === hr.stack; });
+      const rrow = Array.from(
+        rlist.querySelectorAll('.roster-row[data-stack]:not(.peer-row)'),
+      ).find(function (r) {
+        return r.dataset.stack === hr.stack;
+      });
       if (rrow) {
         const rcell = rrow.querySelector('.roster-status');
         if (rcell) rcell.appendChild(hookPhaseNode(hr));
@@ -1127,19 +1286,33 @@
     }
   }
 
-  const clog = (function() {
-    let panel = null, es = null, btn = null, body = null, key = null;
-    let selected = [], curStack = '', curHost = '';   // selected = [] → whole stack; else the chosen service subset
+  const clog = (function () {
+    let panel = null,
+      es = null,
+      btn = null,
+      body = null,
+      key = null;
+    let selected = [],
+      curStack = '',
+      curHost = ''; // selected = [] → whole stack; else the chosen service subset
     // 'container' streams docker compose logs; 'skipper' streams /api/logs
     // filtered to the stack — the hook output (ADR-0038), in the same panel.
     let mode = 'container';
-    let follow = true, paused = false, query = '', tail = 200;
+    let follow = true,
+      paused = false,
+      query = '',
+      tail = 200;
     let fsHolder = null; // marks the panel's row spot while it is fullscreen in <body>
 
-    function toBottom() { if (body) body.scrollTop = body.scrollHeight; }
+    function toBottom() {
+      if (body) body.scrollTop = body.scrollHeight;
+    }
     function setStat(text, cls) {
       const s = panel && panel.querySelector('.clog-stat');
-      if (s) { s.textContent = text; s.className = 'clog-stat' + (cls ? ' ' + cls : ''); }
+      if (s) {
+        s.textContent = text;
+        s.className = 'clog-stat' + (cls ? ' ' + cls : '');
+      }
     }
 
     // A stream error, applied to both ends of the panel. The footer says what
@@ -1153,7 +1326,11 @@
       const live = panel.querySelector('.clog-live');
       if (!live) return;
       live.classList.toggle('dead', s.closed);
-      live.querySelector('.clog-ltxt').textContent = s.closed ? 'closed' : (paused ? 'paused' : 'live');
+      live.querySelector('.clog-ltxt').textContent = s.closed
+        ? 'closed'
+        : paused
+          ? 'paused'
+          : 'live';
     }
 
     // The stack's services, from the (peer-aware) health snapshot at open time.
@@ -1163,7 +1340,9 @@
     }
     // A stack with fewer than two services has nothing to filter, so the
     // per-service control is suppressed (only in container mode, never hooks).
-    function hasServiceFilter() { return mode === 'container' && servicesFor().length >= 2; }
+    function hasServiceFilter() {
+      return mode === 'container' && servicesFor().length >= 2;
+    }
 
     // The scope label in the header: whole stack, one service, a short list, or
     // an "N services" count once the list would get long.
@@ -1178,23 +1357,40 @@
     // when there is nothing to filter (so the head shows no filter tool either).
     function svcRowHTML() {
       if (!hasServiceFilter()) return '';
-      const chips = servicesFor().map(function(s) {
-        const on = selected.indexOf(s.name) !== -1;
-        return '<button class="clog-chip' + (on ? ' active' : '') + '" type="button" data-svc="' +
-          escapeAttr(s.name) + '">' + escapeHtml(s.name) + '</button>';
-      }).join('');
-      return '<div class="clog-svcs clog-hide" data-testid="clog-svcs">' +
+      const chips = servicesFor()
+        .map(function (s) {
+          const on = selected.indexOf(s.name) !== -1;
+          return (
+            '<button class="clog-chip' +
+            (on ? ' active' : '') +
+            '" type="button" data-svc="' +
+            escapeAttr(s.name) +
+            '">' +
+            escapeHtml(s.name) +
+            '</button>'
+          );
+        })
+        .join('');
+      return (
+        '<div class="clog-svcs clog-hide" data-testid="clog-svcs">' +
         '<span class="clog-svcs-lbl">service</span>' +
-        '<button class="clog-chip' + (selected.length ? '' : ' active') + '" type="button" data-svc="">all</button>' +
-        chips + '</div>';
+        '<button class="clog-chip' +
+        (selected.length ? '' : ' active') +
+        '" type="button" data-svc="">all</button>' +
+        chips +
+        '</div>'
+      );
     }
 
     // Reflect the current selection onto the chips + scope label after a toggle.
     function syncChips() {
       if (!panel) return;
-      panel.querySelectorAll('.clog-svcs .clog-chip').forEach(function(x) {
+      panel.querySelectorAll('.clog-svcs .clog-chip').forEach(function (x) {
         const svc = x.dataset.svc;
-        x.classList.toggle('active', svc === '' ? selected.length === 0 : selected.indexOf(svc) !== -1);
+        x.classList.toggle(
+          'active',
+          svc === '' ? selected.length === 0 : selected.indexOf(svc) !== -1,
+        );
       });
       const sc = panel.querySelector('.clog-scope');
       if (sc) sc.textContent = '· ' + scopeText();
@@ -1204,14 +1400,22 @@
     // leading RFC3339 timestamp (--timestamps) and message, colouring each and
     // tinting error/warn lines. Everything is escaped — no HTML from the child.
     function decorate(data) {
-      let svc = '', rest = data;
-      if (selected.length !== 1) {   // merged + multi keep the compose prefix; a single service drops it
+      let svc = '',
+        rest = data;
+      if (selected.length !== 1) {
+        // merged + multi keep the compose prefix; a single service drops it
         const m = rest.match(/^([^|]{1,60}?)\s+\|\s?(.*)$/);
-        if (m) { svc = m[1]; rest = m[2]; }
+        if (m) {
+          svc = m[1];
+          rest = m[2];
+        }
       }
       let ts = '';
       const t = rest.match(/^(\S+)\s([\s\S]*)$/);
-      if (t && /^\d{4}-\d\d-\d\dT[\d:.]+/.test(t[1])) { ts = t[1]; rest = t[2]; }
+      if (t && /^\d{4}-\d\d-\d\dT[\d:.]+/.test(t[1])) {
+        ts = t[1];
+        rest = t[2];
+      }
       let cls = '';
       if (/error|fatal|panic|\bfail/i.test(rest)) cls = 'clog-err';
       else if (/warn/i.test(rest)) cls = 'clog-warn';
@@ -1224,16 +1428,23 @@
 
     function highlight(root, q) {
       const ql = q.toLowerCase();
-      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), ns = [];
+      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null),
+        ns = [];
       while (w.nextNode()) ns.push(w.currentNode);
-      ns.forEach(function(n) {
-        const text = n.nodeValue, low = text.toLowerCase();
-        let idx = low.indexOf(ql); if (idx < 0) return;
-        const frag = document.createDocumentFragment(); let pos = 0;
+      ns.forEach(function (n) {
+        const text = n.nodeValue,
+          low = text.toLowerCase();
+        let idx = low.indexOf(ql);
+        if (idx < 0) return;
+        const frag = document.createDocumentFragment();
+        let pos = 0;
         while (idx >= 0) {
           if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
-          const mk = document.createElement('mark'); mk.textContent = text.slice(idx, idx + q.length);
-          frag.appendChild(mk); pos = idx + q.length; idx = low.indexOf(ql, pos);
+          const mk = document.createElement('mark');
+          mk.textContent = text.slice(idx, idx + q.length);
+          frag.appendChild(mk);
+          pos = idx + q.length;
+          idx = low.indexOf(ql, pos);
         }
         if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
         n.parentNode.replaceChild(frag, n);
@@ -1243,15 +1454,24 @@
       if (ln.dataset.orig == null) ln.dataset.orig = ln.innerHTML;
       ln.innerHTML = ln.dataset.orig;
       ln.classList.remove('clog-out', 'clog-hit');
-      if (!logLineVisible(ln.textContent, query)) { ln.classList.add('clog-out'); return; }
-      if (query) { ln.classList.add('clog-hit'); highlight(ln, query); }
+      if (!logLineVisible(ln.textContent, query)) {
+        ln.classList.add('clog-out');
+        return;
+      }
+      if (query) {
+        ln.classList.add('clog-hit');
+        highlight(ln, query);
+      }
     }
     function applySearch(q) {
       query = q;
       let n = 0;
-      body.querySelectorAll('.clog-ln').forEach(function(ln) { filterLine(ln); if (q && !ln.classList.contains('clog-out')) n++; });
+      body.querySelectorAll('.clog-ln').forEach(function (ln) {
+        filterLine(ln);
+        if (q && !ln.classList.contains('clog-out')) n++;
+      });
       const hits = panel.querySelector('.clog-hits');
-      if (hits) hits.textContent = q ? (n + (n === 1 ? ' hit' : ' hits')) : '';
+      if (hits) hits.textContent = q ? n + (n === 1 ? ' hit' : ' hits') : '';
       if (follow) toBottom();
     }
 
@@ -1287,36 +1507,60 @@
     }
 
     function connect() {
-      if (es) { es.close(); es = null; }
+      if (es) {
+        es.close();
+        es = null;
+      }
       setStat('live · streaming', paused ? 'paused' : '');
       if (mode === 'skipper') {
         // Hook log: skipper's own stream, filtered to the stack's attributed lines.
         es = new EventSource('/api/logs');
-        es.addEventListener('log', function(ev) {
-          if (!panel || !panel.isConnected) { close(); return; }
+        es.addEventListener('log', function (ev) {
+          if (!panel || !panel.isConnected) {
+            close();
+            return;
+          }
           let entry;
-          try { entry = JSON.parse(ev.data); } catch (_) { return; }
+          try {
+            entry = JSON.parse(ev.data);
+          } catch (_) {
+            return;
+          }
           if (((entry.attrs && entry.attrs.stack) || '') !== curStack) return;
           appendSkipperLine(entry);
         });
-        es.onerror = function(ev) { applyStreamError(ev.target.readyState); };
-        es.onopen = function() { if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : ''); };
+        es.onerror = function (ev) {
+          applyStreamError(ev.target.readyState);
+        };
+        es.onopen = function () {
+          if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : '');
+        };
         return;
       }
       // A peer's logs stream through the primary's proxy (the browser can't reach
       // the peer cross-origin, ADR-0048); a local stack hits the endpoint directly.
       let url = curHost
-        ? '/api/peers/' + encodeURIComponent(curHost) + '/container-logs/' + encodeURIComponent(curStack)
+        ? '/api/peers/' +
+          encodeURIComponent(curHost) +
+          '/container-logs/' +
+          encodeURIComponent(curStack)
         : '/api/container-logs/' + encodeURIComponent(curStack);
       url += '?tail=' + tail;
       if (selected.length) url += '&services=' + selected.map(encodeURIComponent).join(',');
       es = new EventSource(url);
-      es.onmessage = function(ev) {
-        if (!panel || !panel.isConnected) { close(); return; } // dropped by a re-render
+      es.onmessage = function (ev) {
+        if (!panel || !panel.isConnected) {
+          close();
+          return;
+        } // dropped by a re-render
         appendLine(ev.data);
       };
-      es.onerror = function(ev) { applyStreamError(ev.target.readyState); };
-      es.onopen = function() { if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : ''); };
+      es.onerror = function (ev) {
+        applyStreamError(ev.target.readyState);
+      };
+      es.onopen = function () {
+        if (panel) setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : '');
+      };
     }
 
     function buildPanel(scope) {
@@ -1325,23 +1569,41 @@
       el.dataset.testid = 'clog-panel';
       el.innerHTML =
         '<div class="clog-head" data-taptip>' +
-          '<span class="clog-title">' + CLOG_ICON + ' logs <span class="clog-scope">· ' + escapeHtml(scope) + '</span></span>' +
-          '<span class="clog-live" data-testid="clog-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>' +
-          '<span class="clog-grow"></span>' +
-          '<button class="clog-tool" data-clog="search" type="button" title="Search in log">' + CLOG_ICONS.search + '</button>' +
-          (hasServiceFilter() ? '<button class="clog-tool" data-clog="svcfilter" type="button" title="Filter by service">' + CLOG_ICONS.filter + '</button>' : '') +
-          '<button class="clog-tool" data-clog="wrap" type="button" title="Wrap long lines">' + CLOG_ICONS.wrap + '</button>' +
-          '<button class="clog-tool on" data-clog="scroll" type="button" title="Auto-scroll — follow the tail">' + CLOG_ICONS.scroll + '</button>' +
-          '<span class="clog-tail" data-testid="clog-tail">' +
-            '<button data-tail="50" type="button">50</button>' +
-            '<button data-tail="200" class="active" type="button">200</button>' +
-            '<button data-tail="1000" type="button">1000</button>' +
-          '</span>' +
-          '<button class="clog-tool" data-clog="fs" type="button" title="Fullscreen">' + CLOG_ICONS.fs + '</button>' +
+        '<span class="clog-title">' +
+        CLOG_ICON +
+        ' logs <span class="clog-scope">· ' +
+        escapeHtml(scope) +
+        '</span></span>' +
+        '<span class="clog-live" data-testid="clog-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>' +
+        '<span class="clog-grow"></span>' +
+        '<button class="clog-tool" data-clog="search" type="button" title="Search in log">' +
+        CLOG_ICONS.search +
+        '</button>' +
+        (hasServiceFilter()
+          ? '<button class="clog-tool" data-clog="svcfilter" type="button" title="Filter by service">' +
+            CLOG_ICONS.filter +
+            '</button>'
+          : '') +
+        '<button class="clog-tool" data-clog="wrap" type="button" title="Wrap long lines">' +
+        CLOG_ICONS.wrap +
+        '</button>' +
+        '<button class="clog-tool on" data-clog="scroll" type="button" title="Auto-scroll — follow the tail">' +
+        CLOG_ICONS.scroll +
+        '</button>' +
+        '<span class="clog-tail" data-testid="clog-tail">' +
+        '<button data-tail="50" type="button">50</button>' +
+        '<button data-tail="200" class="active" type="button">200</button>' +
+        '<button data-tail="1000" type="button">1000</button>' +
+        '</span>' +
+        '<button class="clog-tool" data-clog="fs" type="button" title="Fullscreen">' +
+        CLOG_ICONS.fs +
+        '</button>' +
         '</div>' +
         svcRowHTML() +
-        '<div class="clog-search clog-hide" data-testid="clog-search"><span class="clog-sic">' + CLOG_ICONS.search + '</span>' +
-          '<input type="text" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log"><span class="clog-hits"></span></div>' +
+        '<div class="clog-search clog-hide" data-testid="clog-search"><span class="clog-sic">' +
+        CLOG_ICONS.search +
+        '</span>' +
+        '<input type="text" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log"><span class="clog-hits"></span></div>' +
         '<div class="clog-body" data-testid="clog-body"></div>' +
         '<div class="clog-foot"><span class="clog-stat">live · streaming</span></div>';
       return el;
@@ -1349,56 +1611,74 @@
 
     function wire() {
       const live = panel.querySelector('.clog-live');
-      live.addEventListener('click', function() {
+      live.addEventListener('click', function () {
         if (this.classList.contains('dead')) return; // nothing left to pause
         paused = !paused;
         this.classList.toggle('paused', paused);
         this.querySelector('.clog-ltxt').textContent = paused ? 'paused' : 'live';
         setStat(paused ? 'paused' : 'live · streaming', paused ? 'paused' : '');
       });
-      live.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); live.click(); }
+      live.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          live.click();
+        }
       });
-      panel.querySelectorAll('.clog-tool[data-clog]').forEach(function(b) {
-        b.addEventListener('click', function() {
+      panel.querySelectorAll('.clog-tool[data-clog]').forEach(function (b) {
+        b.addEventListener('click', function () {
           const k = b.dataset.clog;
-          if (k === 'wrap') { b.classList.toggle('on', body.classList.toggle('wrap')); }
-          else if (k === 'scroll') { follow = b.classList.toggle('on'); if (follow) toBottom(); }
-          else if (k === 'fs') { fullscreen(!panel.classList.contains('clog-fullscreen')); }
-          else if (k === 'svcfilter') {
+          if (k === 'wrap') {
+            b.classList.toggle('on', body.classList.toggle('wrap'));
+          } else if (k === 'scroll') {
+            follow = b.classList.toggle('on');
+            if (follow) toBottom();
+          } else if (k === 'fs') {
+            fullscreen(!panel.classList.contains('clog-fullscreen'));
+          } else if (k === 'svcfilter') {
             const row = panel.querySelector('.clog-svcs');
             if (row) b.classList.toggle('on', row.classList.toggle('clog-hide') === false);
-          }
-          else if (k === 'search') {
+          } else if (k === 'search') {
             const box = panel.querySelector('.clog-search');
             const show = box.classList.toggle('clog-hide') === false;
             b.classList.toggle('on', show);
             const inp = box.querySelector('input');
-            if (show) inp.focus(); else { inp.value = ''; applySearch(''); }
+            if (show) inp.focus();
+            else {
+              inp.value = '';
+              applySearch('');
+            }
           }
         });
       });
-      panel.querySelector('.clog-search input').addEventListener('input', function() { applySearch(this.value.trim()); });
-      panel.querySelectorAll('.clog-tail button').forEach(function(b) {
-        b.addEventListener('click', function() {
-          panel.querySelectorAll('.clog-tail button').forEach(function(x) { x.classList.remove('active'); });
+      panel.querySelector('.clog-search input').addEventListener('input', function () {
+        applySearch(this.value.trim());
+      });
+      panel.querySelectorAll('.clog-tail button').forEach(function (b) {
+        b.addEventListener('click', function () {
+          panel.querySelectorAll('.clog-tail button').forEach(function (x) {
+            x.classList.remove('active');
+          });
           b.classList.add('active');
           tail = parseInt(b.dataset.tail, 10) || 200;
-          body.innerHTML = ''; connect(); // re-pull the backlog at the new size
+          body.innerHTML = '';
+          connect(); // re-pull the backlog at the new size
         });
       });
       // Service chips toggle membership in the selected set; "all" clears it.
       // Each change re-pulls the backlog at the new scope (like the tail buttons).
-      panel.querySelectorAll('.clog-svcs .clog-chip').forEach(function(c) {
-        c.addEventListener('click', function() {
+      panel.querySelectorAll('.clog-svcs .clog-chip').forEach(function (c) {
+        c.addEventListener('click', function () {
           const svc = c.dataset.svc;
-          if (svc === '') { selected = []; }
-          else {
+          if (svc === '') {
+            selected = [];
+          } else {
             const i = selected.indexOf(svc);
-            if (i === -1) selected.push(svc); else selected.splice(i, 1);
+            if (i === -1) selected.push(svc);
+            else selected.splice(i, 1);
           }
           syncChips();
-          body.innerHTML = ''; connect();
+          body.innerHTML = '';
+          connect();
         });
       });
     }
@@ -1433,13 +1713,27 @@
 
     function open(button, stack, service, host) {
       const newKey = (host || '') + '\n' + stack + '\n' + (service || '');
-      if (key === newKey) { close(); return; } // same icon → toggle closed
+      if (key === newKey) {
+        close();
+        return;
+      } // same icon → toggle closed
       close();
-      btn = button; key = newKey; curStack = stack; selected = service ? [service] : []; curHost = host || '';
-      mode = 'container'; follow = true; paused = false; query = '';
+      btn = button;
+      key = newKey;
+      curStack = stack;
+      selected = service ? [service] : [];
+      curHost = host || '';
+      mode = 'container';
+      follow = true;
+      paused = false;
+      query = '';
       btn.classList.add('on');
       panel = buildPanel(scopeText());
-      const anchor = button.closest('.hp-svc') || button.closest('.event-row') || button.closest('.roster-row') || button;
+      const anchor =
+        button.closest('.hp-svc') ||
+        button.closest('.event-row') ||
+        button.closest('.roster-row') ||
+        button;
       anchor.after(panel);
       body = panel.querySelector('.clog-body');
       wire();
@@ -1450,10 +1744,20 @@
     // on a second click.
     function openHookLog(button, stack) {
       const newKey = `${stack}\n#hook`;
-      if (key === newKey) { close(); return; }
+      if (key === newKey) {
+        close();
+        return;
+      }
       close();
-      btn = button; key = newKey; curStack = stack; selected = []; curHost = '';
-      mode = 'skipper'; follow = true; paused = false; query = '';
+      btn = button;
+      key = newKey;
+      curStack = stack;
+      selected = [];
+      curHost = '';
+      mode = 'skipper';
+      follow = true;
+      paused = false;
+      query = '';
       if (btn) btn.classList.add('on');
       panel = buildPanel(`${stack} · deploy hook`);
       const anchor = button.closest('.event-row') || button.closest('.roster-row') || button;
@@ -1467,46 +1771,90 @@
     }
 
     function close() {
-      if (es) { es.close(); es = null; }
-      if (fsHolder) { if (fsHolder.parentNode) fsHolder.remove(); fsHolder = null; }
-      if (panel) { panel.remove(); panel = null; }
-      if (btn) { btn.classList.remove('on'); btn = null; }
-      body = null; key = null; query = ''; mode = 'container'; curHost = ''; selected = [];
+      if (es) {
+        es.close();
+        es = null;
+      }
+      if (fsHolder) {
+        if (fsHolder.parentNode) fsHolder.remove();
+        fsHolder = null;
+      }
+      if (panel) {
+        panel.remove();
+        panel = null;
+      }
+      if (btn) {
+        btn.classList.remove('on');
+        btn = null;
+      }
+      body = null;
+      key = null;
+      query = '';
+      mode = 'container';
+      curHost = '';
+      selected = [];
     }
 
     // Type-to-search: while a log is open, a printable key routes into the
     // in-log search, overriding the deploys/stacks type-to-search. Capture phase
     // + stopImmediatePropagation so it wins over those document keydown listeners.
-    document.addEventListener('keydown', function(e) {
-      if (!panel) return;                                   // no log open → leave default search
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-      const input = panel.querySelector('.clog-search input');
-      if (e.target === input) return;                       // already in the log search → native typing
-      const tag = (e.target && e.target.tagName) || '';
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
-      if (e.key === 'Escape' || e.key.length !== 1 || e.key === ' ') return;
-      const box = panel.querySelector('.clog-search');
-      const searchBtn = panel.querySelector('.clog-tool[data-clog="search"]');
-      if (box.classList.contains('clog-hide')) { box.classList.remove('clog-hide'); if (searchBtn) searchBtn.classList.add('on'); }
-      input.focus();
-      input.value += e.key; // focus mid-keydown doesn't reliably route the char
-      applySearch(input.value.trim());
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    }, true);
+    document.addEventListener(
+      'keydown',
+      function (e) {
+        if (!panel) return; // no log open → leave default search
+        if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+        const input = panel.querySelector('.clog-search input');
+        if (e.target === input) return; // already in the log search → native typing
+        const tag = (e.target && e.target.tagName) || '';
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          (e.target && e.target.isContentEditable)
+        )
+          return;
+        if (e.key === 'Escape' || e.key.length !== 1 || e.key === ' ') return;
+        const box = panel.querySelector('.clog-search');
+        const searchBtn = panel.querySelector('.clog-tool[data-clog="search"]');
+        if (box.classList.contains('clog-hide')) {
+          box.classList.remove('clog-hide');
+          if (searchBtn) searchBtn.classList.add('on');
+        }
+        input.focus();
+        input.value += e.key; // focus mid-keydown doesn't reliably route the char
+        applySearch(input.value.trim());
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      },
+      true,
+    );
 
     return {
-      toggle: function(button) { open(button, button.dataset.clogStack, button.dataset.clogService || '', button.dataset.clogHost || ''); },
-      openHookLog: function(button, stack) { openHookLog(button, stack); },
+      toggle: function (button) {
+        open(
+          button,
+          button.dataset.clogStack,
+          button.dataset.clogService || '',
+          button.dataset.clogHost || '',
+        );
+      },
+      openHookLog: function (button, stack) {
+        openHookLog(button, stack);
+      },
       close: close,
-      escape: function() {
-        if (panel && panel.classList.contains('clog-fullscreen')) { fullscreen(false); return true; }
-        if (panel) { close(); return true; }
+      escape: function () {
+        if (panel && panel.classList.contains('clog-fullscreen')) {
+          fullscreen(false);
+          return true;
+        }
+        if (panel) {
+          close();
+          return true;
+        }
         return false;
       },
     };
   })();
-
 
   function rowClass(status, isHistory) {
     let cls = 'event-row';
@@ -1536,7 +1884,9 @@
     const img = document.createElement('img');
     img.alt = '';
     img.loading = 'lazy';
-    img.addEventListener('error', function() { iconFallback(chip, stack); });
+    img.addEventListener('error', function () {
+      iconFallback(chip, stack);
+    });
     img.src = iconURL(stack);
     chip.appendChild(img);
   }
@@ -1554,9 +1904,11 @@
   // view switch when it finds nothing to land on.
   function jumpBtnHTML(targetView, stack) {
     const label = targetView === 'stacks' ? 'View in Stacks' : 'View in Deploys';
-    return `<button type="button" class="jump-btn" data-testid="jump-btn" data-taptip data-jump-view="${targetView}" data-jump-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label + ': ' + stack)}">` +
+    return (
+      `<button type="button" class="jump-btn" data-testid="jump-btn" data-taptip data-jump-view="${targetView}" data-jump-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label + ': ' + stack)}">` +
       '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>' +
-      '</button>';
+      '</button>'
+    );
   }
 
   // pendingTagHTML renders the tag on a pending deploy row. Queued rows show
@@ -1585,10 +1937,12 @@
 
     const absTs = fullTime(evt.timestamp);
     const relTs = formatTime(evt.timestamp);
-    const pausedTag = (evt.status === 'queued' || evt.status === 'blocked') ? pendingTagHTML(evt) : '';
+    const pausedTag =
+      evt.status === 'queued' || evt.status === 'blocked' ? pendingTagHTML(evt) : '';
     // A healed row has no changed files; its files cell instead carries the
     // self-heal badge, which expands the corrective-redeploy detail (ADR-0029).
-    const filesCell = evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
+    const filesCell =
+      evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
     // A healed row applied no image change (self-heal re-applies the same
     // version); every other row names which service(s) moved, and to what, in the
     // Version column. Stash the changes on the row so the view-options toggle can
@@ -1596,7 +1950,7 @@
     if (evt.status !== 'healed' && evt.image_changes && evt.image_changes.length) {
       row.dataset.imageChanges = JSON.stringify(evt.image_changes);
     }
-    const delta = (imageDeltaOn && evt.status !== 'healed') ? imageDeltaHTML(evt.image_changes) : '';
+    const delta = imageDeltaOn && evt.status !== 'healed' ? imageDeltaHTML(evt.image_changes) : '';
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
       `<span class="cell-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
@@ -1633,7 +1987,7 @@
     // Peer rows are read-only mirrors — no health pill, history, logs or hooks
     // affordances (those drive local actions the primary cannot perform on a
     // peer), so they are excluded here.
-    tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function(row) {
+    tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function (row) {
       const stack = row.dataset.stack;
       const cell = row.querySelector('.cell-stack');
       const statusCell = row.querySelector('.status-cell');
@@ -1652,7 +2006,6 @@
           // A real <button> (healthPillHTML) so the panel is keyboard-reachable
           // (Tab + Enter/Space), and the pill markup has one source of truth.
           statusCell.insertAdjacentHTML('beforeend', healthPillHTML(stack, h.status));
-          pill = statusCell.querySelector('.health-pill');
         } else {
           pill.dataset.health = h.status;
           pill.dataset.stack = stack;
@@ -1685,7 +2038,8 @@
           hist.type = 'button';
           hist.dataset.testid = 'history-btn';
           hist.setAttribute('aria-label', 'deploy history for ' + stack);
-          hist.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.4 1.5"/></svg>';
+          hist.innerHTML =
+            '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.4 1.5"/></svg>';
           pop.appendChild(moreMenuItem(hist, 'Deploy history'));
         }
 
@@ -1702,7 +2056,8 @@
         const hooks = hooksFor(stack);
         const hbadge = pop.querySelector('.hooks-badge');
         if (hooks && hookCount(hooks) > 0) {
-          if (!hbadge) pop.appendChild(moreMenuItem(hooksBadgeButton(stack, hooks), 'Deploy hooks'));
+          if (!hbadge)
+            pop.appendChild(moreMenuItem(hooksBadgeButton(stack, hooks), 'Deploy hooks'));
         } else if (hbadge) {
           hbadge.remove();
           closeHooksPanel(row);
@@ -1724,7 +2079,14 @@
   // other, so a toggleable panel is always the row's direct next sibling.
   function closeDiffPanel(row) {
     const next = row.nextElementSibling;
-    if (next && (next.classList.contains('files-list') || next.classList.contains('diff-panel') || next.classList.contains('heal-panel') || next.classList.contains('load-error'))) next.remove();
+    if (
+      next &&
+      (next.classList.contains('files-list') ||
+        next.classList.contains('diff-panel') ||
+        next.classList.contains('heal-panel') ||
+        next.classList.contains('load-error'))
+    )
+      next.remove();
     row.classList.remove('diff-open');
   }
 
@@ -1746,13 +2108,17 @@
   // history produces.
   function fetchAudit(stack, callback) {
     fetch('/api/audit?stack=' + encodeURIComponent(stack))
-      .then(function(r) {
+      .then(function (r) {
         if (r.ok) return r.json();
         if (r.status >= 500) throw new Error('server');
         return [];
       })
-      .then(function(records) { callback(records || [], false); })
-      .catch(function() { callback(null, true); });
+      .then(function (records) {
+        callback(records || [], false);
+      })
+      .catch(function () {
+        callback(null, true);
+      });
   }
 
   // createAuditPanel returns the panel immediately with a loading line and fills
@@ -1767,7 +2133,7 @@
     el.innerHTML =
       `<div class="ap-head"><span class="ap-count"></span></div>` +
       `<div class="ap-empty">Loading history…</div>`;
-    fetchAudit(stack, function(records, err) {
+    fetchAudit(stack, function (records, err) {
       if (!el.parentNode) return; // closed (or replaced) while loading
       renderAuditRecords(el, stack, records, err);
     });
@@ -1781,12 +2147,17 @@
   // The lead only names a commit in its settled form (UNCHANGED_SINCE, shared
   // with the helper); any other phrasing misses the lookup and stays plain text.
   function leadHTML(entry, fileCount) {
-    const text = escapeHtml(watchedSummary(entry.last_status || '', entry.last_commit || '', fileCount, entry.disabled));
+    const text = escapeHtml(
+      watchedSummary(entry.last_status || '', entry.last_commit || '', fileCount, entry.disabled),
+    );
     const commit = entry.last_commit || '';
     if (!commit) return text;
     const token = UNCHANGED_SINCE + shortSHA(commit);
     if (text.indexOf(token) === -1) return text;
-    return text.replace(token, UNCHANGED_SINCE + commitLinkHTML(commit, { base: repoWebURL, title: commit }));
+    return text.replace(
+      token,
+      UNCHANGED_SINCE + commitLinkHTML(commit, { base: repoWebURL, title: commit }),
+    );
   }
 
   // createWatchedPanel returns the change-detection panel: the input files whose
@@ -1796,17 +2167,22 @@
   // The data rides the `stacks` snapshot, so unlike the history panel beside it
   // there is no fetch and no loading state.
   function createWatchedPanel(stack) {
-    const entry = rosterSnap.find(function(r) { return r.name === stack; }) || {};
+    const entry =
+      rosterSnap.find(function (r) {
+        return r.name === stack;
+      }) || {};
     const files = entry.watched || [];
     // The stack's own settings are hashed too, but under a synthetic key rather
     // than a file (ADR-0043 moved that config host-side). It gets its own,
     // clearly non-path entry so nobody goes looking for a file that isn't there.
-    const items = files.map(function(f) {
+    const items = files.map(function (f) {
       return `<li class="wp-file" data-testid="watched-file">${escapeHtml(f)}</li>`;
     });
     if (entry.watched_config) {
-      items.push('<li class="wp-config" data-testid="watched-config">' +
-        'plus this stack&rsquo;s settings in the host <code>skipper.yml</code></li>');
+      items.push(
+        '<li class="wp-config" data-testid="watched-config">' +
+          'plus this stack&rsquo;s settings in the host <code>skipper.yml</code></li>',
+      );
     }
     const el = document.createElement('div');
     el.className = 'watched-panel';
@@ -1825,40 +2201,53 @@
     // history (T4.16). The :has(> .load-error) rule flattens the panel bar.
     if (err) {
       el.innerHTML = '';
-      el.appendChild(createLoadError("Couldn't load deploy history.", function() {
-        el.innerHTML = '<div class="ap-head"><span class="ap-count"></span></div><div class="ap-empty">Loading history…</div>';
-        fetchAudit(stack, function(recs, e) {
-          if (!el.parentNode) return;
-          renderAuditRecords(el, stack, recs, e);
-        });
-      }));
+      el.appendChild(
+        createLoadError("Couldn't load deploy history.", function () {
+          el.innerHTML =
+            '<div class="ap-head"><span class="ap-count"></span></div><div class="ap-empty">Loading history…</div>';
+          fetchAudit(stack, function (recs, e) {
+            if (!el.parentNode) return;
+            renderAuditRecords(el, stack, recs, e);
+          });
+        }),
+      );
       return;
     }
     const count = el.querySelector('.ap-count');
-    if (count) count.textContent = records.length ? records.length + (records.length === 1 ? ' deploy' : ' deploys') : '';
+    if (count)
+      count.textContent = records.length
+        ? records.length + (records.length === 1 ? ' deploy' : ' deploys')
+        : '';
     if (!records.length) {
       const empty = el.querySelector('.ap-empty');
       if (empty) empty.textContent = 'No recorded deploys for this stack yet.';
       return;
     }
-    const body = records.map(function(r) {
-      const abs = fullTime(r.timestamp), rel = formatTime(r.timestamp);
-      const sha = r.commit_sha
-        ? commitLinkHTML(r.commit_sha, { cls: 'ar-sha', base: repoWebURL, title: r.commit_sha })
-        : '<span class="ar-sha">—</span>';
-      const files = r.changed_files ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : '')) : '—';
-      const err = r.error
-        ? `<span class="ar-err" title="${escapeAttr(r.error)}">${escapeHtml(r.error)}</span>`
-        : '';
-      return `<div class="audit-row" data-testid="audit-row" data-status="${escapeAttr(r.status)}">` +
-        `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absoluteTime ? rel : abs)}">${escapeHtml(absoluteTime ? abs : rel)}</span>` +
-        `<span class="ar-status"><span class="adot"></span>${escapeHtml(auditStatusLabel(r.status))}</span>` +
-        `<span class="ar-dur">${escapeHtml(formatDuration(r.duration_ms))}</span>` +
-        sha +
-        `<span class="ar-files">${files}</span>` +
-        err +
-        `</div>`;
-    }).join('');
+    const body = records
+      .map(function (r) {
+        const abs = fullTime(r.timestamp),
+          rel = formatTime(r.timestamp);
+        const sha = r.commit_sha
+          ? commitLinkHTML(r.commit_sha, { cls: 'ar-sha', base: repoWebURL, title: r.commit_sha })
+          : '<span class="ar-sha">—</span>';
+        const files = r.changed_files
+          ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : ''))
+          : '—';
+        const err = r.error
+          ? `<span class="ar-err" title="${escapeAttr(r.error)}">${escapeHtml(r.error)}</span>`
+          : '';
+        return (
+          `<div class="audit-row" data-testid="audit-row" data-status="${escapeAttr(r.status)}">` +
+          `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absoluteTime ? rel : abs)}">${escapeHtml(absoluteTime ? abs : rel)}</span>` +
+          `<span class="ar-status"><span class="adot"></span>${escapeHtml(auditStatusLabel(r.status))}</span>` +
+          `<span class="ar-dur">${escapeHtml(formatDuration(r.duration_ms))}</span>` +
+          sha +
+          `<span class="ar-files">${files}</span>` +
+          err +
+          `</div>`
+        );
+      })
+      .join('');
     // Replace the loading line with the rows (keep the head).
     const head = el.querySelector('.ap-head');
     el.innerHTML = '';
@@ -1880,7 +2269,8 @@
       const p = phases[i];
       const end = i === 0 ? Date.now() : new Date(phases[i - 1].since).getTime();
       const dur = phaseDuration(end - new Date(p.since).getTime());
-      html += `<div class="hp-phase" data-testid="health-phase" data-health="${escapeAttr(p.status)}">` +
+      html +=
+        `<div class="hp-phase" data-testid="health-phase" data-health="${escapeAttr(p.status)}">` +
         `<span class="hdot"></span>` +
         `<span class="hp-pstatus">${escapeHtml(p.status)}</span>` +
         `<span>${escapeHtml(phaseSince(p.since))}</span>` +
@@ -1912,7 +2302,8 @@
     const status = (h && h.status) || 'unknown';
     el.dataset.health = status; // drives the shared --hc colour (variant A)
     // Header echoes the stack + status so the panel names its own row.
-    const head = `<div class="health-panel-head">` +
+    const head =
+      `<div class="health-panel-head">` +
       `<span class="hp-head-label">health</span>` +
       `<span class="hp-head-who">${escapeHtml(stack)}</span>` +
       `<span class="hp-head-pill"><span class="hdot"></span>${escapeHtml(status)}</span>` +
@@ -1925,41 +2316,52 @@
     // Versions get their own column only when the snapshot carries images at all
     // (a stack of stopped containers, or a peer running an older skipper, reports
     // none) — an empty column would otherwise indent every line for nothing.
-    const withVersions = svcs.some(function(s) { return !!s.image; });
+    const withVersions = svcs.some(function (s) {
+      return !!s.image;
+    });
     if (withVersions) el.classList.add('has-versions');
-    el.innerHTML = head + svcs.map(function(s) {
-      // One status per line: the classified per-service status (backend field,
-      // healthClass as fallback for older snapshots). The raw `health:` value is
-      // never shown — with a healthcheck it always equals the classified status,
-      // so spelling it out only duplicated the coloured status. The state text
-      // keeps the container fact the status doesn't carry (running/exited/…).
-      const st = s.status || healthClass(s);
-      // With the health watch on, the service line carries the current
-      // phase's age and a status timeline below it (ADR-0031).
-      const phases = (healthwatchMapFor(host)[stack] || {})[s.name];
-      const age = phases && phases.length
-        ? ` <span class="hp-for">· ${escapeHtml(phaseDuration(Date.now() - new Date(phases[0].since).getTime()))}</span>`
-        : '';
-      // An on-demand service is labelled so its stopped state reads as the
-      // intended idle (skipper stops it after the deploy; the scheduler starts
-      // it on request), not as something to worry about.
-      const state = s.on_demand ? s.state + ' · on-demand' : s.state;
-      const svcTitle = s.on_demand
-        ? ' title="on-demand container: stopped by skipper after the deploy, started by the scheduler on request"'
-        : '';
-      // The running version, as the same chip the Deploys column and the roster
-      // row use. A service without an image (nothing running) keeps an empty cell
-      // so the lines stay aligned.
-      const ver = withVersions
-        ? `<span class="hp-ver" data-testid="health-version">${s.image ? serviceVersionHTML(s.name, s.image, false) : ''}</span>`
-        : '';
-      return `<div class="hp-svc" data-testid="health-service"${svcTitle}>` +
-        `<span class="hp-name">${escapeHtml(s.name)}</span>` + ver +
-        `<span class="hp-state">${escapeHtml(state)}</span>` +
-        `<span class="hp-status" data-health="${escapeAttr(st)}"><span class="hdot"></span>${escapeHtml(st)}${age}</span>` +
-        clogBtnHTML(stack, s.name, host) +
-        `</div>` + healthHistoryHTML(stack, s.name, host);
-    }).join('');
+    el.innerHTML =
+      head +
+      svcs
+        .map(function (s) {
+          // One status per line: the classified per-service status (backend field,
+          // healthClass as fallback for older snapshots). The raw `health:` value is
+          // never shown — with a healthcheck it always equals the classified status,
+          // so spelling it out only duplicated the coloured status. The state text
+          // keeps the container fact the status doesn't carry (running/exited/…).
+          const st = s.status || healthClass(s);
+          // With the health watch on, the service line carries the current
+          // phase's age and a status timeline below it (ADR-0031).
+          const phases = (healthwatchMapFor(host)[stack] || {})[s.name];
+          const age =
+            phases && phases.length
+              ? ` <span class="hp-for">· ${escapeHtml(phaseDuration(Date.now() - new Date(phases[0].since).getTime()))}</span>`
+              : '';
+          // An on-demand service is labelled so its stopped state reads as the
+          // intended idle (skipper stops it after the deploy; the scheduler starts
+          // it on request), not as something to worry about.
+          const state = s.on_demand ? s.state + ' · on-demand' : s.state;
+          const svcTitle = s.on_demand
+            ? ' title="on-demand container: stopped by skipper after the deploy, started by the scheduler on request"'
+            : '';
+          // The running version, as the same chip the Deploys column and the roster
+          // row use. A service without an image (nothing running) keeps an empty cell
+          // so the lines stay aligned.
+          const ver = withVersions
+            ? `<span class="hp-ver" data-testid="health-version">${s.image ? serviceVersionHTML(s.name, s.image, false) : ''}</span>`
+            : '';
+          return (
+            `<div class="hp-svc" data-testid="health-service"${svcTitle}>` +
+            `<span class="hp-name">${escapeHtml(s.name)}</span>` +
+            ver +
+            `<span class="hp-state">${escapeHtml(state)}</span>` +
+            `<span class="hp-status" data-health="${escapeAttr(st)}"><span class="hdot"></span>${escapeHtml(st)}${age}</span>` +
+            clogBtnHTML(stack, s.name, host) +
+            `</div>` +
+            healthHistoryHTML(stack, s.name, host)
+          );
+        })
+        .join('');
     return el;
   }
 
@@ -1980,9 +2382,10 @@
     }
     // Mirror everything into title/aria so it survives when the labels are
     // hidden on mobile (the dot + count chip stay — see UI_SPEC §Responsive).
-    const label = active.length > 0
-      ? 'deploying ' + active.join(', ') + (up.length ? ' · next ' + up.join(', ') : '')
-      : 'idle';
+    const label =
+      active.length > 0
+        ? 'deploying ' + active.join(', ') + (up.length ? ' · next ' + up.join(', ') : '')
+        : 'idle';
     deployStatus.title = label;
     deployStatus.setAttribute('aria-label', label);
     renderRunPanel();
@@ -1993,9 +2396,13 @@
   function nextTrailHTML(up) {
     const MAX = 3;
     const shown = up.slice(0, MAX);
-    let html = '<span class="arrow">→</span>' + shown.map(function(n, i) {
-      return `<span class="up${i > 0 ? ' more' : ''}">${escapeHtml(n)}</span>`;
-    }).join('<span class="sep">·</span>');
+    let html =
+      '<span class="arrow">→</span>' +
+      shown
+        .map(function (n, i) {
+          return `<span class="up${i > 0 ? ' more' : ''}">${escapeHtml(n)}</span>`;
+        })
+        .join('<span class="sep">·</span>');
     const extra = up.length - shown.length;
     if (extra > 0) {
       html += `<span class="sep">·</span><span class="up more">+${extra}</span>`;
@@ -2012,43 +2419,58 @@
     if (active.length === 0 && up.length === 0) {
       runSub.textContent = 'Nothing deploying.';
     } else if (active.length > 0) {
-      runSub.innerHTML = `<b>${escapeHtml(active.join(', '))}</b> deploying` +
+      runSub.innerHTML =
+        `<b>${escapeHtml(active.join(', '))}</b> deploying` +
         (up.length ? ' · ' + up.length + ' more this run' : ' · last in this run');
     } else {
       runSub.textContent = up.length + ' stack' + (up.length === 1 ? '' : 's') + ' upcoming';
     }
     const total = active.length + up.length;
     runCount.textContent = total ? total : '';
-    let rows = active.map(function(n) { return runRowHTML(n, SHIP_SVG, 'deploying now', true); });
-    rows = rows.concat(up.map(function(n, i) {
-      return runRowHTML(n, String(i + 1), i === 0 ? 'next' : 'then', false);
-    }));
-    runList.innerHTML = rows.length ? rows.join('') : '<div class="qempty">Nothing deploying right now.</div>';
+    let rows = active.map(function (n) {
+      return runRowHTML(n, SHIP_SVG, 'deploying now', true);
+    });
+    rows = rows.concat(
+      up.map(function (n, i) {
+        return runRowHTML(n, String(i + 1), i === 0 ? 'next' : 'then', false);
+      }),
+    );
+    runList.innerHTML = rows.length
+      ? rows.join('')
+      : '<div class="qempty">Nothing deploying right now.</div>';
   }
 
   function runRowHTML(name, badge, detail, isActive) {
-    return `<div class="run-row${isActive ? ' active' : ''}" data-stack="${escapeAttr(name)}">` +
-        `<span class="run-badge${isActive ? ' ship' : ''}">${badge}</span>` +
-        `<div><div class="run-name">${escapeHtml(name)}</div>` +
-          `<div class="run-detail">${detail}</div></div>` +
-      `</div>`;
+    return (
+      `<div class="run-row${isActive ? ' active' : ''}" data-stack="${escapeAttr(name)}">` +
+      `<span class="run-badge${isActive ? ' ship' : ''}">${badge}</span>` +
+      `<div><div class="run-name">${escapeHtml(name)}</div>` +
+      `<div class="run-detail">${detail}</div></div>` +
+      `</div>`
+    );
   }
 
   // setRunDrawer opens/closes the run panel. It is mutually exclusive with the
   // autosync drawer and the view-options popover.
   function setRunDrawer(open) {
-    if (open) { setViewOptions(false); setDrawer(false); }
+    if (open) {
+      setViewOptions(false);
+      setDrawer(false);
+    }
     runDrawer.classList.toggle('open', open);
     deployStatus.setAttribute('aria-expanded', String(open));
     manageSurfaceFocus(runDrawer, deployStatus, open);
   }
 
-  deployStatus.addEventListener('click', function() {
+  deployStatus.addEventListener('click', function () {
     if (!deployStatus.classList.contains('active')) return; // only openable during a run
     setRunDrawer(!runDrawer.classList.contains('open'));
   });
-  deployStatus.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); deployStatus.click(); }
+  deployStatus.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      deployStatus.click();
+    }
   });
 
   // registerSurface wires the shared dismiss behaviour for a pop-out surface (a
@@ -2058,17 +2480,22 @@
   // dismisses it, and `within` lists the elements (the surface plus its trigger)
   // whose clicks are internal and must not dismiss it.
   function registerSurface(opts) {
-    document.addEventListener('keydown', function(e) {
+    document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') opts.close();
     });
-    document.addEventListener('click', function(e) {
+    document.addEventListener('click', function (e) {
       if (!opts.isOpen()) return;
       // composedPath() is captured when the event is dispatched, so it still
       // names the surface even if the click's handler synchronously re-rendered
       // and detached e.target (e.g. toggling a host in the Hosts drawer rebuilds
       // its list) — a plain contains(e.target) would then miss and wrongly close.
       const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
-      if (opts.within.some(function(el) { return el.contains(e.target) || path.indexOf(el) !== -1; })) return;
+      if (
+        opts.within.some(function (el) {
+          return el.contains(e.target) || path.indexOf(el) !== -1;
+        })
+      )
+        return;
       opts.close();
     });
   }
@@ -2077,14 +2504,15 @@
   // Keyboard users must be pulled into a drawer/popover when it opens and
   // returned to the opener when it closes; the role="dialog" drawers must also
   // trap Tab so it can't wander behind the open panel.
-  const FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled]),' +
+  const FOCUSABLE_SEL =
+    'a[href],button:not([disabled]),input:not([disabled]),' +
     'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
   // Upper bound on frames the open-focus keeps re-trying while a surface settles
   // (see manageSurfaceFocus). Comfortably longer than the 0.22s open transition
   // (~14 frames at 60fps) so focus always lands within the animation.
   const FOCUS_SETTLE_FRAMES = 30;
   function focusablesIn(el) {
-    return Array.prototype.filter.call(el.querySelectorAll(FOCUSABLE_SEL), function(n) {
+    return Array.prototype.filter.call(el.querySelectorAll(FOCUSABLE_SEL), function (n) {
       // Skip hidden controls (a collapsed vo-group, a display:none clear button).
       return n.offsetWidth > 0 || n.offsetHeight > 0 || n.getClientRects().length > 0;
     });
@@ -2115,7 +2543,7 @@
       let tries = FOCUS_SETTLE_FRAMES;
       (function settle() {
         if (!surface.classList.contains('open')) return; // toggled off already
-        if (focusRestsInside(surface)) return;           // observer moved focus in — don't override
+        if (focusRestsInside(surface)) return; // observer moved focus in — don't override
         const target = focusablesIn(surface)[0] || surface;
         target.focus();
         if (document.activeElement === target || --tries <= 0) return;
@@ -2131,20 +2559,34 @@
   }
   // trapFocus keeps Tab/Shift+Tab within an open dialog (wraps at the ends).
   function trapFocus(dialog) {
-    dialog.addEventListener('keydown', function(e) {
+    dialog.addEventListener('keydown', function (e) {
       if (e.key !== 'Tab' || !dialog.classList.contains('open')) return;
       const f = focusablesIn(dialog);
-      if (!f.length) { e.preventDefault(); dialog.focus(); return; }
-      const first = f[0], last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      if (!f.length) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = f[0],
+        last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     });
   }
   trapFocus(runDrawer); // asDrawer/hostsDrawer are trapped in their own sections (declared later)
 
   registerSurface({
-    isOpen: function() { return runDrawer.classList.contains('open'); },
-    close: function() { setRunDrawer(false); },
+    isOpen: function () {
+      return runDrawer.classList.contains('open');
+    },
+    close: function () {
+      setRunDrawer(false);
+    },
     within: [runDrawer, deployStatus],
   });
 
@@ -2155,7 +2597,7 @@
   // before its reason is known. This re-render makes the tag deterministic once
   // the snapshot lands.
   function refreshPendingTags() {
-    Object.keys(queuedRows).forEach(function(stack) {
+    Object.keys(queuedRows).forEach(function (stack) {
       const row = queuedRows[stack];
       const tag = row.querySelector('.paused-tag');
       if (tag) tag.outerHTML = pendingTagHTML({ stack: stack, status: row.dataset.status });
@@ -2211,7 +2653,13 @@
       return;
     }
 
-    if ((evt.status === 'success' || evt.status === 'failed' || evt.status === 'rolled_back' || evt.status === 'rolled_back_unhealthy') && deployingRows[evt.stack]) {
+    if (
+      (evt.status === 'success' ||
+        evt.status === 'failed' ||
+        evt.status === 'rolled_back' ||
+        evt.status === 'rolled_back_unhealthy') &&
+      deployingRows[evt.stack]
+    ) {
       const existing = deployingRows[evt.stack];
       existing.className = rowClass(evt.status, isHistory);
       existing.dataset.status = evt.status;
@@ -2237,7 +2685,8 @@
         delete existing.dataset.imageChanges;
       }
       const versionCell = existing.querySelector('.col-version');
-      if (versionCell) versionCell.innerHTML = imageDeltaOn ? imageDeltaHTML(evt.image_changes) : '';
+      if (versionCell)
+        versionCell.innerHTML = imageDeltaOn ? imageDeltaHTML(evt.image_changes) : '';
       if (evt.error) {
         existing.after(createErrorDetail(evt));
       }
@@ -2253,9 +2702,9 @@
     }
   }
 
-  setInterval(function() {
+  setInterval(function () {
     if (!absoluteTime) {
-      tbody.querySelectorAll('.cell-time').forEach(function(cell) {
+      tbody.querySelectorAll('.cell-time').forEach(function (cell) {
         const abs = cell.dataset.ts;
         if (abs) cell.textContent = formatTime(abs);
       });
@@ -2273,7 +2722,7 @@
 
   function scheduleReconnect() {
     if (reconnectTimer) return; // a retry is already pending
-    reconnectTimer = setTimeout(function() {
+    reconnectTimer = setTimeout(function () {
       reconnectTimer = null;
       connect();
     }, reconnectDelay);
@@ -2289,8 +2738,14 @@
   function hostList() {
     const out = [{ name: selfHost, url: '', self: true, reachable: true, stale: false }];
     if (peersSnap) {
-      (peersSnap.peers || []).forEach(function(p) {
-        out.push({ name: p.name, url: p.url, self: false, reachable: !!p.reachable, stale: !!p.stale });
+      (peersSnap.peers || []).forEach(function (p) {
+        out.push({
+          name: p.name,
+          url: p.url,
+          self: false,
+          reachable: !!p.reachable,
+          stale: !!p.stale,
+        });
       });
     }
     return out;
@@ -2298,13 +2753,22 @@
 
   // isHostSelected reports whether a host is in view. hostSelected null means the
   // filter is off (all hosts shown); otherwise it is the selected-name set.
-  function isHostSelected(name) { return hostSelected === null || hostSelected.has(name); }
+  function isHostSelected(name) {
+    return hostSelected === null || hostSelected.has(name);
+  }
 
   // recomputeHostColors reassigns palette slots whenever the host set changes,
   // keeping the no-two-hosts-share-a-colour guarantee (assignHostColors).
   function recomputeHostColors() {
-    if (!peersSnap) { hostColors = {}; return; }
-    hostColors = assignHostColors(hostList().map(function(h) { return h.name; }));
+    if (!peersSnap) {
+      hostColors = {};
+      return;
+    }
+    hostColors = assignHostColors(
+      hostList().map(function (h) {
+        return h.name;
+      }),
+    );
   }
 
   // hostChipHTML renders a row's leading host-identity chip inside the stack
@@ -2319,7 +2783,17 @@
     // so the full hostname appears whether the chip is hovered or tapped.
     // role/tabindex/aria-label make the quick-filter chip keyboard-operable
     // (T2.10) — Enter/Space fire the same toggle as a click (hostChipKeydown).
-    return '<span class="host-mono" role="button" tabindex="0" aria-label="Filter view to host ' + escapeAttr(hostName) + '"' + attr + ' data-taptip title="' + escapeAttr(hostName) + '">' + escapeHtml(hostMonogram(hostName)) + '</span>';
+    return (
+      '<span class="host-mono" role="button" tabindex="0" aria-label="Filter view to host ' +
+      escapeAttr(hostName) +
+      '"' +
+      attr +
+      ' data-taptip title="' +
+      escapeAttr(hostName) +
+      '">' +
+      escapeHtml(hostMonogram(hostName)) +
+      '</span>'
+    );
   }
   // hostChipKeydown activates a focused host chip from the keyboard (T2.10),
   // mirroring the click delegation on the deploy feed and roster.
@@ -2354,18 +2828,36 @@
     const absTs = fullTime(rec.timestamp);
     const relTs = formatTime(rec.timestamp);
     const n = rec.changed_files || 0;
-    const files = n > 0 ? '<span class="peer-files">' + n + ' file' + (n === 1 ? '' : 's') + '</span>' : '';
+    const files =
+      n > 0 ? '<span class="peer-files">' + n + ' file' + (n === 1 ? '' : 's') + '</span>' : '';
     const h = newest ? healthMapFor(hostName)[rec.stack] : null;
-    const pill = (h && h.status) ? healthPillHTML(rec.stack, h.status) : '';
+    const pill = h && h.status ? healthPillHTML(rec.stack, h.status) : '';
     row.innerHTML =
-      '<span class="cell-time" data-testid="time-cell" data-ts="' + escapeAttr(rec.timestamp) + '" title="' + escapeAttr(absoluteTime ? relTs : absTs) + '">' + (absoluteTime ? absTs : relTs) + '</span>' +
-      '<span class="cell-stack">' + hostChipHTML(hostName) + '<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' + escapeHtml(rec.stack) + '</span></span>' +
+      '<span class="cell-time" data-testid="time-cell" data-ts="' +
+      escapeAttr(rec.timestamp) +
+      '" title="' +
+      escapeAttr(absoluteTime ? relTs : absTs) +
+      '">' +
+      (absoluteTime ? absTs : relTs) +
+      '</span>' +
+      '<span class="cell-stack">' +
+      hostChipHTML(hostName) +
+      '<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' +
+      escapeHtml(rec.stack) +
+      '</span></span>' +
       // Empty Version cell: the fan-in's audit records carry no image_changes, but
       // the peer row shares the deploy grid, so the cell must exist to stay aligned.
       '<span class="col-version"></span>' +
-      '<span class="status-cell">' + badgeHTML(rec.status) + pill + '</span>' +
-      '<span class="cell-duration" data-testid="duration-cell">' + formatDuration(rec.duration_ms) + '</span>' +
-      '<span class="col-files">' + files + '</span>';
+      '<span class="status-cell">' +
+      badgeHTML(rec.status) +
+      pill +
+      '</span>' +
+      '<span class="cell-duration" data-testid="duration-cell">' +
+      formatDuration(rec.duration_ms) +
+      '</span>' +
+      '<span class="col-files">' +
+      files +
+      '</span>';
     if (rec.error) row.title = rec.stack + ' — ' + rec.error;
     populateIcon(row.querySelector('.stack-icon'), rec.stack);
     return row;
@@ -2384,8 +2876,13 @@
     el.dataset.peerFor = host;
     let facts = '';
     if (row.dataset.commit) {
-      facts += '<span class="pd-fact">commit ' +
-        commitLinkHTML(row.dataset.commit, { cls: 'pd-sha', base: repoWebURLFor(host), title: row.dataset.commit }) +
+      facts +=
+        '<span class="pd-fact">commit ' +
+        commitLinkHTML(row.dataset.commit, {
+          cls: 'pd-sha',
+          base: repoWebURLFor(host),
+          title: row.dataset.commit,
+        }) +
         '</span>';
     }
     if (row.dataset.changed !== undefined) {
@@ -2394,13 +2891,18 @@
     }
     const eventId = row.dataset.peerEventId;
     let html =
-      '<div class="pd-head">' + hostChipHTML(host) + '<span class="pd-note">peer deploy · read-only mirror</span></div>' +
+      '<div class="pd-head">' +
+      hostChipHTML(host) +
+      '<span class="pd-note">peer deploy · read-only mirror</span></div>' +
       (facts ? '<div class="pd-facts">' + facts + '</div>' : '');
-    if (row.dataset.error) html += '<div class="pd-error">' + escapeHtml(row.dataset.error) + '</div>';
+    if (row.dataset.error)
+      html += '<div class="pd-error">' + escapeHtml(row.dataset.error) + '</div>';
     // The diff is fetched from the peer through the primary's proxy (the browser
     // can't reach the peer cross-origin) and rendered here on expand. (The
     // per-host "open its own UI" affordance lives in the Hosts drawer, not here.)
-    if (eventId) html += '<div class="pd-diff" data-testid="peer-diff"><div class="diff-loading">Loading diff…</div></div>';
+    if (eventId)
+      html +=
+        '<div class="pd-diff" data-testid="peer-diff"><div class="diff-loading">Loading diff…</div></div>';
     el.innerHTML = html;
     // Containers: the peer's fanned-in health for this stack, rendered with the
     // same panel the primary uses for its own stacks so peers reach health
@@ -2410,7 +2912,8 @@
     if (stack && healthMapFor(host)[stack]) {
       const hp = createHealthPanel(stack, host);
       const diffSlot = el.querySelector('.pd-diff');
-      if (diffSlot) el.insertBefore(hp, diffSlot); else el.appendChild(hp);
+      if (diffSlot) el.insertBefore(hp, diffSlot);
+      else el.appendChild(hp);
     }
     if (eventId) loadPeerDiff(el, host, eventId);
     return el;
@@ -2424,12 +2927,12 @@
   // load-error with a retry (T4.16) rather than silently vanishing.
   function loadPeerDiff(panel, host, id) {
     fetch('/api/peers/' + encodeURIComponent(host) + '/events/' + encodeURIComponent(id) + '/diffs')
-      .then(function(r) {
+      .then(function (r) {
         if (r.ok) return r.json();
         if (r.status >= 500) throw new Error('unreachable'); // 502 peer unreachable
-        return null;                                         // 404: event evicted, genuine no-diff
+        return null; // 404: event evicted, genuine no-diff
       })
-      .then(function(data) {
+      .then(function (data) {
         const slot = panel.querySelector('.pd-diff');
         if (!slot) return;
         if (data && data.diffs && Object.keys(data.diffs).length > 0) {
@@ -2439,13 +2942,15 @@
           slot.remove(); // no diff to show; the peer-UI link remains
         }
       })
-      .catch(function() {
+      .catch(function () {
         const slot = panel.querySelector('.pd-diff');
         if (!slot) return;
         slot.textContent = '';
-        slot.appendChild(createLoadError('Couldn’t reach ' + host + ' for the diff.', function() {
-          loadPeerDiff(panel, host, id); // re-query the (still-present) slot and refetch
-        }));
+        slot.appendChild(
+          createLoadError('Couldn’t reach ' + host + ' for the diff.', function () {
+            loadPeerDiff(panel, host, id); // re-query the (still-present) slot and refetch
+          }),
+        );
       });
   }
 
@@ -2476,7 +2981,10 @@
     for (let i = 0; i < rows.length; i++) {
       const cell = rows[i].querySelector('.cell-time');
       const ets = cell ? cell.dataset.ts : '';
-      if (ets && ets < ts) { tbody.insertBefore(row, rows[i]); return; }
+      if (ets && ets < ts) {
+        tbody.insertBefore(row, rows[i]);
+        return;
+      }
     }
     tbody.appendChild(row);
   }
@@ -2485,22 +2993,26 @@
   // into the local rows by timestamp. Local rows and their panels are never
   // touched; only peer rows (which have no panels) are removed and rebuilt.
   function renderPeerRows() {
-    tbody.querySelectorAll('.peer-row, .peer-detail').forEach(function(r) { r.remove(); });
+    tbody.querySelectorAll('.peer-row, .peer-detail').forEach(function (r) {
+      r.remove();
+    });
     if (!peersSnap) return;
     const items = [];
-    (peersSnap.peers || []).forEach(function(p) {
-      (p.deploys || []).forEach(function(rec) {
+    (peersSnap.peers || []).forEach(function (p) {
+      (p.deploys || []).forEach(function (rec) {
         if (rec.status === 'skipped') return; // an unchanged stack is not shown, as locally
         items.push({ rec: rec, host: p.name, stale: !!p.stale });
       });
     });
     // Newest first, so each insert-above-first-older builds a correct merge.
-    items.sort(function(a, b) { return a.rec.timestamp < b.rec.timestamp ? 1 : (a.rec.timestamp > b.rec.timestamp ? -1 : 0); });
+    items.sort(function (a, b) {
+      return a.rec.timestamp < b.rec.timestamp ? 1 : a.rec.timestamp > b.rec.timestamp ? -1 : 0;
+    });
     if (items.length) showTable();
     // The first row seen per (host, stack) is the newest — it carries the live
     // health pill (a current per-stack value), like the local newest row.
     const seenNewest = {};
-    items.forEach(function(it) {
+    items.forEach(function (it) {
       const perHost = seenNewest[it.host] || (seenNewest[it.host] = {});
       const newest = !perHost[it.rec.stack];
       perHost[it.rec.stack] = true;
@@ -2519,16 +3031,19 @@
   // the first peers snapshot set selfHost (deploy history and the roster are both
   // painted just before it), across both merged views.
   function retagLocalRows() {
-    tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function(row) {
+    tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function (row) {
       row.dataset.host = selfHost;
       const cell = row.querySelector('.cell-stack');
       if (cell) setLeadingChip(cell, selfHost);
     });
-    document.getElementById('roster-list').querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
-      row.dataset.host = selfHost;
-      const cell = row.querySelector('.roster-stack');
-      if (cell) setLeadingChip(cell, selfHost);
-    });
+    document
+      .getElementById('roster-list')
+      .querySelectorAll('.roster-row[data-stack]:not(.peer-row)')
+      .forEach(function (row) {
+        row.dataset.host = selfHost;
+        const cell = row.querySelector('.roster-stack');
+        if (cell) setLeadingChip(cell, selfHost);
+      });
   }
 
   // refreshPeerRosterRows rebuilds only the peer roster rows (which carry no
@@ -2536,7 +3051,9 @@
   // the roster's equivalent of renderPeerRows for the deploy feed.
   function refreshPeerRosterRows() {
     const list = document.getElementById('roster-list');
-    list.querySelectorAll('.roster-row.peer-row, .peer-detail').forEach(function(r) { r.remove(); });
+    list.querySelectorAll('.roster-row.peer-row, .peer-detail').forEach(function (r) {
+      r.remove();
+    });
     renderPeerRosterRows(list);
   }
 
@@ -2549,10 +3066,14 @@
     btn.classList.toggle('enabled', hasPeers);
     if (!hasPeers) return;
 
-    const selCount = hosts.filter(function(h) { return isHostSelected(h.name); }).length;
+    const selCount = hosts.filter(function (h) {
+      return isHostSelected(h.name);
+    }).length;
     document.getElementById('hosts-count').textContent = selCount + '/' + hosts.length;
     btn.classList.toggle('filtered', hostFilterActive(selCount, hosts.length));
-    const anyOffline = hosts.some(function(h) { return !h.self && !h.reachable; });
+    const anyOffline = hosts.some(function (h) {
+      return !h.self && !h.reachable;
+    });
     btn.classList.toggle('has-offline', anyOffline);
     document.getElementById('hosts-sub').textContent = anyOffline
       ? 'Some hosts are unreachable — showing last-known data.'
@@ -2560,7 +3081,7 @@
 
     const list = document.getElementById('hosts-list');
     list.innerHTML = '';
-    hosts.forEach(function(h) {
+    hosts.forEach(function (h) {
       const row = document.createElement('div');
       row.className = 'host-row' + (isHostSelected(h.name) ? ' selected' : '');
       row.dataset.host = h.name;
@@ -2573,17 +3094,44 @@
       row.setAttribute('aria-label', h.name + (h.self ? ' (this host)' : ''));
       const slot = hostColors[h.name];
       const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
-      const dotClass = h.self || h.reachable ? 'up' : (h.stale ? 'stale' : 'down');
-      const dotTitle = h.self ? 'this host' : (h.reachable ? 'reachable' : (h.stale ? 'unreachable — showing last-known' : 'unreachable'));
-      const link = !h.self && h.url
-        ? '<a class="host-link" href="' + escapeAttr(h.url) + '" target="_blank" rel="noopener" title="Open ' + escapeAttr(h.name) + ' UI" data-testid="host-link">' + LINK_ICON + '</a>'
-        : '';
+      const dotClass = h.self || h.reachable ? 'up' : h.stale ? 'stale' : 'down';
+      const dotTitle = h.self
+        ? 'this host'
+        : h.reachable
+          ? 'reachable'
+          : h.stale
+            ? 'unreachable — showing last-known'
+            : 'unreachable';
+      const link =
+        !h.self && h.url
+          ? '<a class="host-link" href="' +
+            escapeAttr(h.url) +
+            '" target="_blank" rel="noopener" title="Open ' +
+            escapeAttr(h.name) +
+            ' UI" data-testid="host-link">' +
+            LINK_ICON +
+            '</a>'
+          : '';
       const selfBadge = h.self ? '<span class="hr-self">self</span>' : '';
       row.innerHTML =
-        '<span class="host-check">' + CHECK_ICON + '</span>' +
-        '<span class="hr-name"><span class="host-tag"' + attr + '><span class="host-name">' + escapeHtml(h.name) + '</span></span>' + selfBadge + '</span>' +
-        '<span class="host-dot ' + dotClass + '" title="' + escapeAttr(dotTitle) + '"></span>' +
-        '<span class="host-link-slot">' + link + '</span>';
+        '<span class="host-check">' +
+        CHECK_ICON +
+        '</span>' +
+        '<span class="hr-name"><span class="host-tag"' +
+        attr +
+        '><span class="host-name">' +
+        escapeHtml(h.name) +
+        '</span></span>' +
+        selfBadge +
+        '</span>' +
+        '<span class="host-dot ' +
+        dotClass +
+        '" title="' +
+        escapeAttr(dotTitle) +
+        '"></span>' +
+        '<span class="host-link-slot">' +
+        link +
+        '</span>';
       list.appendChild(row);
     });
   }
@@ -2593,7 +3141,7 @@
   // same carry-over the stack filter uses, so host + stack filters compose.
   function hostHideRows(container) {
     let visible = true;
-    Array.prototype.forEach.call(container.children, function(el) {
+    Array.prototype.forEach.call(container.children, function (el) {
       const tid = el.dataset && el.dataset.testid;
       if (tid === 'deploy-row' || tid === 'roster-row') visible = isHostSelected(el.dataset.host);
       el.classList.toggle('host-hidden', !visible);
@@ -2623,19 +3171,31 @@
     // While a filter is narrowing the view, highlight the (now single-host) dots
     // so it is visible that a filter is on and re-clicking a dot clears it.
     const hosts = hostList();
-    const active = hostFilterActive(hosts.filter(function(h) { return isHostSelected(h.name); }).length, hosts.length);
+    const active = hostFilterActive(
+      hosts.filter(function (h) {
+        return isHostSelected(h.name);
+      }).length,
+      hosts.length,
+    );
     table.classList.toggle('host-filter-active', active);
     stacksView.classList.toggle('host-filter-active', active);
 
     hostHideRows(tbody);
     hostHideRows(roster);
 
-    const staleSel = (peersSnap.peers || []).filter(function(p) { return isHostSelected(p.name) && (p.stale || !p.reachable); });
+    const staleSel = (peersSnap.peers || []).filter(function (p) {
+      return isHostSelected(p.name) && (p.stale || !p.reachable);
+    });
     if (staleSel.length) {
-      const names = staleSel.map(function(p) { return p.name; }).join(', ');
-      document.getElementById('host-stale-text').textContent = staleSel.length === 1
-        ? names + ' is unreachable — showing its last-known deploys.'
-        : names + ' are unreachable — showing last-known deploys.';
+      const names = staleSel
+        .map(function (p) {
+          return p.name;
+        })
+        .join(', ');
+      document.getElementById('host-stale-text').textContent =
+        staleSel.length === 1
+          ? names + ' is unreachable — showing its last-known deploys.'
+          : names + ' are unreachable — showing last-known deploys.';
       banner.classList.add('show');
     } else {
       banner.classList.remove('show');
@@ -2671,7 +3231,7 @@
   function schedulePeerReflow() {
     if (!peersSnap || peerReflowScheduled) return;
     peerReflowScheduled = true;
-    setTimeout(function() {
+    setTimeout(function () {
       peerReflowScheduled = false;
       renderPeerRows();
       applyHostFilter();
@@ -2686,16 +3246,21 @@
     if (!hostFilterRestored && peersSnap) {
       hostFilterRestored = true; // once only — later refreshes must not override interactive picks
       const saved = (localStorage.getItem('hostFilter') || '').split(',').filter(Boolean);
-      const restored = reconcileHostFilter(saved, hostList().map(function(h) { return h.name; }));
+      const restored = reconcileHostFilter(
+        saved,
+        hostList().map(function (h) {
+          return h.name;
+        }),
+      );
       hostSelected = restored ? new Set(restored) : null;
     }
     recomputeHostColors();
     retagLocalRows();
-    renderPeerRows();       // deploy feed peer rows
+    renderPeerRows(); // deploy feed peer rows
     refreshPeerRosterRows(); // roster peer rows (local roster rows + panels untouched)
-    applyHostFilter();      // dots + host filtering across both views; also renderHosts
-    refilterDeploys();      // re-apply any active stack search to the new peer rows
-    refilterRoster();       // and to the new peer roster rows
+    applyHostFilter(); // dots + host filtering across both views; also renderHosts
+    refilterDeploys(); // re-apply any active stack search to the new peer rows
+    refilterRoster(); // and to the new peer roster rows
   }
 
   // applyState routes one state snapshot (by its state-event name) to the same
@@ -2711,10 +3276,12 @@
       case 'queue':
         queueSnap = d;
         queueByStack = {};
-        (queueSnap.pending || []).forEach(function(it) { queueByStack[it.stack] = it; });
+        (queueSnap.pending || []).forEach(function (it) {
+          queueByStack[it.stack] = it;
+        });
         // A stack that left the pending set without a deploy event (e.g. resumed
         // then found unchanged) must lose its now-stale queued row.
-        Object.keys(queuedRows).forEach(function(stack) {
+        Object.keys(queuedRows).forEach(function (stack) {
           if (!queueByStack[stack]) removeQueuedRow(stack);
         });
         refreshPendingTags();
@@ -2779,7 +3346,7 @@
   function openStream() {
     const es = new EventSource('/api/events');
 
-    es.onopen = function() {
+    es.onopen = function () {
       reconnectDelay = 1000; // a good connection resets the backoff
       connDot.className = 'indicator-dot';
       connText.textContent = 'connected';
@@ -2787,7 +3354,7 @@
       connDot.parentElement.title = 'connected';
     };
 
-    es.addEventListener('deploy', function(e) {
+    es.addEventListener('deploy', function (e) {
       const evt = JSON.parse(e.data);
       handleEvent(evt, false);
       refilterDeploys();
@@ -2800,14 +3367,29 @@
     // If it carried rows, handleEvent already retired the skeleton; if it was
     // empty, this is what reveals the genuine-empty state (settleInitialState is
     // one-shot, so reconnect replays are no-ops).
-    es.addEventListener('synced', function() { settleInitialState(); });
-
-    // Live state changes reuse the same apply path as the snapshot fetch.
-    ['autosync', 'queue', 'upcoming', 'hookrun', 'health', 'healthwatch', 'stacks', 'app_links', 'orphans', 'peers'].forEach(function(name) {
-      es.addEventListener(name, function(e) { applyState(name, JSON.parse(e.data)); });
+    es.addEventListener('synced', function () {
+      settleInitialState();
     });
 
-    es.onerror = function() {
+    // Live state changes reuse the same apply path as the snapshot fetch.
+    [
+      'autosync',
+      'queue',
+      'upcoming',
+      'hookrun',
+      'health',
+      'healthwatch',
+      'stacks',
+      'app_links',
+      'orphans',
+      'peers',
+    ].forEach(function (name) {
+      es.addEventListener(name, function (e) {
+        applyState(name, JSON.parse(e.data));
+      });
+    });
+
+    es.onerror = function () {
       connDot.className = 'indicator-dot err';
       connText.textContent = 'reconnecting';
       connDot.parentElement.dataset.state = 'reconnecting';
@@ -2821,15 +3403,18 @@
 
   // Time mode (default: relative). One shared mode; a toggle in both the Deploys
   // and Stacks popovers flips it and updates both views.
-  const timeModeBtns = [document.getElementById('time-mode'), document.getElementById('roster-time-mode')];
+  const timeModeBtns = [
+    document.getElementById('time-mode'),
+    document.getElementById('roster-time-mode'),
+  ];
 
   function applyTimeMode() {
-    timeModeBtns.forEach(function(btn) {
+    timeModeBtns.forEach(function (btn) {
       if (!btn) return;
       btn.classList.toggle('active', absoluteTime);
       btn.title = absoluteTime ? 'Switch to relative time' : 'Switch to absolute time';
     });
-    tbody.querySelectorAll('.cell-time').forEach(function(cell) {
+    tbody.querySelectorAll('.cell-time').forEach(function (cell) {
       const ts = cell.dataset.ts;
       if (!ts) return;
       cell.textContent = absoluteTime ? fullTime(ts) : formatTime(ts);
@@ -2837,9 +3422,9 @@
     });
   }
 
-  timeModeBtns.forEach(function(btn) {
+  timeModeBtns.forEach(function (btn) {
     if (!btn) return;
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', function () {
       absoluteTime = !absoluteTime;
       localStorage.setItem('timeMode', absoluteTime ? 'absolute' : 'relative');
       applyTimeMode();
@@ -2866,17 +3451,18 @@
       imageDeltaBtn.title = imageDeltaOn ? 'Hide the Version column' : 'Show the Version column';
     }
     if (deployTable) deployTable.classList.toggle('no-version', !imageDeltaOn);
-    tbody.querySelectorAll('.event-row[data-stack]').forEach(function(row) {
+    tbody.querySelectorAll('.event-row[data-stack]').forEach(function (row) {
       const cell = row.querySelector('.col-version');
       if (!cell) return;
-      cell.innerHTML = (imageDeltaOn && row.dataset.imageChanges)
-        ? imageDeltaHTML(JSON.parse(row.dataset.imageChanges))
-        : '';
+      cell.innerHTML =
+        imageDeltaOn && row.dataset.imageChanges
+          ? imageDeltaHTML(JSON.parse(row.dataset.imageChanges))
+          : '';
     });
   }
 
   if (imageDeltaBtn) {
-    imageDeltaBtn.addEventListener('click', function() {
+    imageDeltaBtn.addEventListener('click', function () {
       imageDeltaOn = !imageDeltaOn;
       // Store only the off choice; absence means the default (on), so a cleared
       // browser and a first-time visitor both get the delta.
@@ -2903,7 +3489,9 @@
   function applyDeployFilter() {
     const q = (deployFilter.value || '').trim().toLowerCase();
     deployFilterWrap.classList.toggle('has-value', q.length > 0);
-    let total = 0, shown = 0, visible = false;
+    let total = 0,
+      shown = 0,
+      visible = false;
     const kids = tbody.children;
     for (let i = 0; i < kids.length; i++) {
       const el = kids[i];
@@ -2924,7 +3512,7 @@
         if (orphanMatchesQuery(orphansSnap[j], q)) shown++;
       }
     }
-    deployFilterCount.textContent = q ? (shown + '/' + total) : '';
+    deployFilterCount.textContent = q ? shown + '/' + total : '';
     deployFilterEmpty.classList.toggle('show', q.length > 0 && total > 0 && shown === 0);
     deployFilterEmptyQ.textContent = q;
   }
@@ -2934,32 +3522,45 @@
     if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
   }
 
-  function revealDeployFilter(on) { deployFilterWrap.classList.toggle('revealed', on); syncStackSearchBtn(); }
+  function revealDeployFilter(on) {
+    deployFilterWrap.classList.toggle('revealed', on);
+    syncStackSearchBtn();
+  }
 
   function clearDeployFilter(hide) {
     deployFilter.value = '';
     applyDeployFilter();
-    if (hide) { revealDeployFilter(false); deployFilter.blur(); }
+    if (hide) {
+      revealDeployFilter(false);
+      deployFilter.blur();
+    }
   }
 
   deployFilter.addEventListener('input', applyDeployFilter);
-  deployFilter.addEventListener('keydown', function(e) {
+  deployFilter.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       e.stopPropagation();
-      if (deployFilter.value) clearDeployFilter(false); // first Esc clears
-      else { revealDeployFilter(false); deployFilter.blur(); } // second Esc folds away
+      if (deployFilter.value)
+        clearDeployFilter(false); // first Esc clears
+      else {
+        revealDeployFilter(false);
+        deployFilter.blur();
+      } // second Esc folds away
     }
   });
-  deployFilter.addEventListener('blur', function() {
+  deployFilter.addEventListener('blur', function () {
     if (!deployFilter.value) revealDeployFilter(false); // fold away only when empty
   });
-  deployFilterClear.addEventListener('click', function() { clearDeployFilter(false); deployFilter.focus(); });
+  deployFilterClear.addEventListener('click', function () {
+    clearDeployFilter(false);
+    deployFilter.focus();
+  });
 
   // Mobile entry point: the "Search stacks" row in the deploys view-options
   // popover reveals the filter and focuses it (raising the on-screen keyboard).
   // Hidden on desktop, where type-to-search covers the same job. setViewOptions
   // is a hoisted function declaration further down in this scope.
-  document.getElementById('deploy-search-open').addEventListener('click', function() {
+  document.getElementById('deploy-search-open').addEventListener('click', function () {
     setViewOptions(false);
     revealDeployFilter(true);
     deployFilter.focus();
@@ -2968,10 +3569,16 @@
   // Type-to-search: a printable key while viewing deploys reveals the bar and
   // seeds it. Ignored while typing in any field, off the deploys view, or before
   // any row exists (nothing to filter).
-  document.addEventListener('keydown', function(e) {
+  document.addEventListener('keydown', function (e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     const tag = (e.target && e.target.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+    if (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      (e.target && e.target.isContentEditable)
+    )
+      return;
     if (activeView !== 'deploys' || !hasRows) return;
     if (e.key === 'Escape') {
       if (deployFilterWrap.classList.contains('revealed')) clearDeployFilter(true);
@@ -2999,8 +3606,16 @@
   // audit panel. One open at a time; the panel trails its row as a sibling, so
   // clicks inside it don't re-trigger the row.
   function closeRosterPanels() {
-    rosterList.querySelectorAll('.audit-panel, .health-panel, .hooks-panel, .watched-panel').forEach(function(p) { p.remove(); });
-    rosterList.querySelectorAll('.roster-row.audit-open, .roster-row.hooks-open').forEach(function(r) { r.classList.remove('audit-open', 'hooks-open'); });
+    rosterList
+      .querySelectorAll('.audit-panel, .health-panel, .hooks-panel, .watched-panel')
+      .forEach(function (p) {
+        p.remove();
+      });
+    rosterList
+      .querySelectorAll('.roster-row.audit-open, .roster-row.hooks-open')
+      .forEach(function (r) {
+        r.classList.remove('audit-open', 'hooks-open');
+      });
   }
 
   // updateAppLinks patches each already-rendered row's link icon in place from
@@ -3009,7 +3624,7 @@
   // snapshot, and a rebuild at that rate would tear down and refetch an open
   // card every few seconds (see reopenRosterPanel) for a single icon.
   function updateAppLinks() {
-    rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
+    rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function (row) {
       const cell = row.querySelector('.roster-stack');
       if (!cell) return;
       const old = cell.querySelector('.link-wrap');
@@ -3033,7 +3648,7 @@
   // which at poll cadence would tear down and refetch an open card (see
   // reopenRosterPanel). Mirrors updateStackAffordances' pill logic for the roster.
   function updateRosterHealth() {
-    rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function(row) {
+    rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function (row) {
       const statusCell = row.querySelector('.roster-status');
       if (!statusCell || row.classList.contains('disabled')) return;
       const verCell = row.querySelector('.col-version');
@@ -3047,7 +3662,10 @@
       else row.removeAttribute('data-health');
       let pill = statusCell.querySelector('.health-pill');
       if (h && h.status) {
-        if (!pill) { statusCell.insertAdjacentHTML('beforeend', healthPillHTML(row.dataset.stack, h.status)); return; }
+        if (!pill) {
+          statusCell.insertAdjacentHTML('beforeend', healthPillHTML(row.dataset.stack, h.status));
+          return;
+        }
         pill.dataset.health = h.status;
         pill.title = row.dataset.stack + ' — ' + h.status;
         pill.querySelector('.hlabel').textContent = h.status;
@@ -3058,19 +3676,26 @@
   }
 
   rosterList.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
-  rosterList.addEventListener('click', function(e) {
+  rosterList.addEventListener('click', function (e) {
     if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
     // ⋯ overflow menu: toggle open/closed. Picking an action closes the menu,
     // then falls through to that action's own handler below (the relocated
     // buttons still carry their .clog-btn/.hooks-badge classes). Mirrors Deploys.
     const moreBtn = e.target.closest('.more-btn');
-    if (moreBtn) { toggleMoreMenu(moreBtn.closest('.row-more')); return; }
+    if (moreBtn) {
+      toggleMoreMenu(moreBtn.closest('.row-more'));
+      return;
+    }
     if (e.target.closest('.more-item')) closeMoreMenu();
 
     // Host chip: quick-filter the merged view to this row's host (toggle). Before
     // the peer-row guard and panel logic so it works on every row's chip.
     const hostChip = e.target.closest('.host-mono');
-    if (hostChip) { const r = hostChip.closest('[data-host]'); if (r) toggleHostFilterTo(r.dataset.host); return; }
+    if (hostChip) {
+      const r = hostChip.closest('[data-host]');
+      if (r) toggleHostFilterTo(r.dataset.host);
+      return;
+    }
 
     // Cross-view jump button: hand off to Deploys. Handled before the row's
     // own click (which opens its history panel) so a tap never opens both.
@@ -3081,7 +3706,10 @@
     }
     // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
     const hookLog = e.target.closest('.hook-log-btn');
-    if (hookLog) { clog.openHookLog(hookLog, hookLog.dataset.hookLog); return; }
+    if (hookLog) {
+      clog.openHookLog(hookLog, hookLog.dataset.hookLog);
+      return;
+    }
     // Deploy hooks (ADR-0038): toggle the bound hooks panel (configured commands),
     // like the Deploys hooks badge. On the roster the badge only acts from inside
     // the ⋯ menu; a click elsewhere on the row opens the history panel instead.
@@ -3102,12 +3730,18 @@
     // Container-logs button (ADR-0037) — per stack on the row, per container on a
     // health-panel service line. Handled first so it never toggles the history panel.
     const clogB = e.target.closest('.clog-btn');
-    if (clogB) { clog.toggle(clogB); return; }
+    if (clogB) {
+      clog.toggle(clogB);
+      return;
+    }
     // App-link icon (dev-docs/traefik-app-links-spec.md): a single-host anchor
     // navigates on its own; a multi-host button toggles its popover. Either way
     // it must not also toggle the row's history panel.
     const linkPopA = e.target.closest('.link-pop a');
-    if (linkPopA) { closeAppLinkPopover(); return; }
+    if (linkPopA) {
+      closeAppLinkPopover();
+      return;
+    }
     const linkTrigger = e.target.closest('.link-wrap > .link-btn');
     if (linkTrigger && linkTrigger.tagName === 'BUTTON') {
       toggleAppLinkPopover(linkTrigger.closest('.link-wrap'));
@@ -3116,9 +3750,13 @@
     if (e.target.closest('.link-btn')) return;
     const row = e.target.closest('.roster-row');
     if (!row || !rosterList.contains(row)) return;
-    if (row.classList.contains('peer-row')) { togglePeerDetail(row); return; } // read-only detail + link
+    if (row.classList.contains('peer-row')) {
+      togglePeerDetail(row);
+      return;
+    } // read-only detail + link
     const next = row.nextElementSibling;
-    const isOpen = next && (next.classList.contains('audit-panel') || next.classList.contains('health-panel'));
+    const isOpen =
+      next && (next.classList.contains('audit-panel') || next.classList.contains('health-panel'));
     closeRosterPanels();
     if (!isOpen) openRosterDetail(row);
   });
@@ -3155,7 +3793,9 @@
   function applyRosterFilter() {
     const q = (rosterFilter.value || '').trim().toLowerCase();
     rosterFilterWrap.classList.toggle('has-value', q.length > 0);
-    let total = 0, shown = 0, visible = false;
+    let total = 0,
+      shown = 0,
+      visible = false;
     const kids = rosterList.children;
     for (let i = 0; i < kids.length; i++) {
       const el = kids[i];
@@ -3167,7 +3807,7 @@
       // A trailing history panel shares its row's visibility.
       el.classList.toggle('filtered-out', !visible);
     }
-    rosterFilterCount.textContent = q ? (shown + '/' + total) : '';
+    rosterFilterCount.textContent = q ? shown + '/' + total : '';
     rosterFilterEmpty.classList.toggle('show', q.length > 0 && total > 0 && shown === 0);
     rosterFilterEmptyQ.textContent = q;
   }
@@ -3175,27 +3815,40 @@
   function refilterRoster() {
     if (rosterFilterWrap.classList.contains('has-value')) applyRosterFilter();
   }
-  function revealRosterFilter(on) { rosterFilterWrap.classList.toggle('revealed', on); syncStackSearchBtn(); }
+  function revealRosterFilter(on) {
+    rosterFilterWrap.classList.toggle('revealed', on);
+    syncStackSearchBtn();
+  }
   function clearRosterFilter(hide) {
     rosterFilter.value = '';
     applyRosterFilter();
-    if (hide) { revealRosterFilter(false); rosterFilter.blur(); }
+    if (hide) {
+      revealRosterFilter(false);
+      rosterFilter.blur();
+    }
   }
   rosterFilter.addEventListener('input', applyRosterFilter);
-  rosterFilter.addEventListener('keydown', function(e) {
+  rosterFilter.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       e.stopPropagation();
-      if (rosterFilter.value) clearRosterFilter(false); // first Esc clears
-      else { revealRosterFilter(false); rosterFilter.blur(); } // second Esc folds away
+      if (rosterFilter.value)
+        clearRosterFilter(false); // first Esc clears
+      else {
+        revealRosterFilter(false);
+        rosterFilter.blur();
+      } // second Esc folds away
     }
   });
-  rosterFilter.addEventListener('blur', function() {
+  rosterFilter.addEventListener('blur', function () {
     if (!rosterFilter.value) revealRosterFilter(false);
   });
-  rosterFilterClear.addEventListener('click', function() { clearRosterFilter(false); rosterFilter.focus(); });
+  rosterFilterClear.addEventListener('click', function () {
+    clearRosterFilter(false);
+    rosterFilter.focus();
+  });
 
   // Mobile entry point: the "Search stacks" row in the stacks view-options popover.
-  document.getElementById('roster-search-open').addEventListener('click', function() {
+  document.getElementById('roster-search-open').addEventListener('click', function () {
     setViewOptions(false);
     revealRosterFilter(true);
     rosterFilter.focus();
@@ -3207,27 +3860,42 @@
   // has its own in-panel search) and on mobile (the popover entry covers it there)
   // via CSS. syncStackSearchBtn reflects the bar's open state on the trigger.
   function syncStackSearchBtn() {
-    const open = activeView === 'deploys' ? deployFilterWrap.classList.contains('revealed')
-      : activeView === 'stacks' ? rosterFilterWrap.classList.contains('revealed')
-      : false;
+    const open =
+      activeView === 'deploys'
+        ? deployFilterWrap.classList.contains('revealed')
+        : activeView === 'stacks'
+          ? rosterFilterWrap.classList.contains('revealed')
+          : false;
     stackSearchBtn.classList.toggle('active', open);
     stackSearchBtn.setAttribute('aria-expanded', String(open));
   }
-  stackSearchBtn.addEventListener('click', function() {
+  stackSearchBtn.addEventListener('click', function () {
     if (activeView === 'deploys') {
       if (deployFilterWrap.classList.contains('revealed')) clearDeployFilter(true);
-      else { revealDeployFilter(true); deployFilter.focus(); }
+      else {
+        revealDeployFilter(true);
+        deployFilter.focus();
+      }
     } else if (activeView === 'stacks') {
       if (rosterFilterWrap.classList.contains('revealed')) clearRosterFilter(true);
-      else { revealRosterFilter(true); rosterFilter.focus(); }
+      else {
+        revealRosterFilter(true);
+        rosterFilter.focus();
+      }
     }
   });
 
   // Type-to-search on the stacks view, matching the deploys behaviour.
-  document.addEventListener('keydown', function(e) {
+  document.addEventListener('keydown', function (e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     const tag = (e.target && e.target.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+    if (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      (e.target && e.target.isContentEditable)
+    )
+      return;
     if (activeView !== 'stacks' || !rosterSnap.length) return;
     if (e.key === 'Escape') {
       if (rosterFilterWrap.classList.contains('revealed')) clearRosterFilter(true);
@@ -3245,9 +3913,13 @@
   // Live update of a single roster row's status (in-flight → settled) without a
   // full re-render, so an open history panel survives a deploy event.
   function refreshRosterRow(name) {
-    const row = rosterList.querySelector(`.roster-row[data-stack="${(window.CSS && CSS.escape) ? CSS.escape(name) : name}"]:not(.peer-row)`);
+    const row = rosterList.querySelector(
+      `.roster-row[data-stack="${window.CSS && CSS.escape ? CSS.escape(name) : name}"]:not(.peer-row)`,
+    );
     if (!row) return;
-    const entry = rosterSnap.find(function(x) { return x.name === name; });
+    const entry = rosterSnap.find(function (x) {
+      return x.name === name;
+    });
     const cell = row.querySelector('.roster-status');
     if (entry && cell) cell.innerHTML = rosterStatusHTML(entry);
     applyHookRun(); // rosterStatusHTML replaces the cell — re-paint a running hook's phase
@@ -3266,7 +3938,7 @@
     themeToggle.title = lightTheme ? 'Switch to dark theme' : 'Switch to light theme';
   }
 
-  themeToggle.addEventListener('click', function() {
+  themeToggle.addEventListener('click', function () {
     lightTheme = !lightTheme;
     localStorage.setItem('colorScheme', lightTheme ? 'light' : 'dark');
     applyTheme();
@@ -3284,7 +3956,13 @@
   // Picking the server's own theme clears the override, so the page goes back
   // to following whatever the environment is configured for.
   if (document.documentElement.getAttribute('data-theme-switcher') === 'on') {
-    const THEME_LABELS = { catppuccin: 'Catppuccin', nord: 'Nord', solarized: 'Solarized', gruvbox: 'Gruvbox', 'rose-pine': 'Rosé Pine' };
+    const THEME_LABELS = {
+      catppuccin: 'Catppuccin',
+      nord: 'Nord',
+      solarized: 'Solarized',
+      gruvbox: 'Gruvbox',
+      'rose-pine': 'Rosé Pine',
+    };
     const serverTheme = document.documentElement.getAttribute('data-server-theme');
     const themeSelect = document.getElementById('theme-select');
     const themeNotice = document.getElementById('theme-notice');
@@ -3300,13 +3978,19 @@
         themeNotice.hidden = true;
         return;
       }
-      themeNoticeText.textContent = 'Showing ' + (THEME_LABELS[override] || override) +
-        ' in this browser — this environment is configured for ' + (THEME_LABELS[serverTheme] || serverTheme) + '.';
+      themeNoticeText.textContent =
+        'Showing ' +
+        (THEME_LABELS[override] || override) +
+        ' in this browser — this environment is configured for ' +
+        (THEME_LABELS[serverTheme] || serverTheme) +
+        '.';
       themeNotice.hidden = false;
-      themeNoticeTimer = setTimeout(function() { themeNotice.hidden = true; }, 6000);
+      themeNoticeTimer = setTimeout(function () {
+        themeNotice.hidden = true;
+      }, 6000);
     }
 
-    themeSelect.addEventListener('change', function() {
+    themeSelect.addEventListener('change', function () {
       const chosen = themeSelect.value;
       document.documentElement.setAttribute('data-theme', chosen);
       if (chosen === serverTheme) {
@@ -3317,7 +4001,7 @@
       updateThemeNotice();
     });
 
-    document.getElementById('theme-notice-close').addEventListener('click', function() {
+    document.getElementById('theme-notice-close').addEventListener('click', function () {
       clearTimeout(themeNoticeTimer);
       themeNotice.hidden = true;
     });
@@ -3331,7 +4015,7 @@
   // seen — the class hides the captions/banner and persists so it never returns.
   // Purely localStorage-gated (no timers), so the shown/dismissed states are
   // deterministic. Returning browsers get .header-tour-seen pre-paint (see head).
-  (function() {
+  (function () {
     const root = document.documentElement;
     const dismiss = document.getElementById('header-tour-dismiss');
     if (!dismiss || root.classList.contains('header-tour-seen')) return;
@@ -3350,7 +4034,7 @@
       if (nav) nav.focus();
     }
     dismiss.addEventListener('click', endTour);
-    document.addEventListener('keydown', function(e) {
+    document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') endTour();
     });
   })();
@@ -3379,23 +4063,32 @@
   }
 
   function stackByName(name) {
-    return autosyncStacks().filter(function(s) { return s.name === name; })[0];
+    return autosyncStacks().filter(function (s) {
+      return s.name === name;
+    })[0];
   }
 
   function anyPaused() {
     if (!autosyncSnap) return false;
     if (!autosyncSnap.global) return true;
-    return autosyncStacks().some(function(s) { return !s.effective; });
+    return autosyncStacks().some(function (s) {
+      return !s.effective;
+    });
   }
 
   function autosyncPost(scope, stack, enabled) {
     fetch('/api/autosync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scope: scope, stack: stack, enabled: enabled })
-    }).then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(snap) { if (snap) applyAutosyncSnapshot(snap); })
-      .catch(function() {});
+      body: JSON.stringify({ scope: scope, stack: stack, enabled: enabled }),
+    })
+      .then(function (r) {
+        return r.ok ? r.json() : null;
+      })
+      .then(function (snap) {
+        if (snap) applyAutosyncSnapshot(snap);
+      })
+      .catch(function () {});
   }
 
   // applyAutosyncSnapshot installs a snapshot unless it is older than the one
@@ -3440,7 +4133,7 @@
   function rowChipHTML(s) {
     const item = queueByStack[s.name];
     const reason = item ? item.reason : reasonFromSnap(s);
-    return (!s.effective && reason) ? `<span class="reason reason-${reason}">${reason}</span>` : '';
+    return !s.effective && reason ? `<span class="reason reason-${reason}">${reason}</span>` : '';
   }
 
   function switchTitle(s) {
@@ -3454,15 +4147,17 @@
     // The stack switch is the interactive control the tests toggle; only tag it
     // in the all-stacks list so a queued stack does not expose two of them.
     const swTestid = inQueue ? '' : ' data-testid="stack-switch"';
-    return `<div class="stack-row" data-testid="${rowTestid}" data-stack="${escapeAttr(s.name)}">` +
-        posCell +
-        `<div class="stack-meta">` +
-          `<div class="stack-name">${escapeHtml(s.name)}${rowChipHTML(s)}</div>` +
-          `<div class="stack-detail">${stackDetail(s, queueByStack[s.name])}</div>` +
-        `</div>` +
-        `<div class="sw${s.effective ? ' on' : ''}"${swTestid} data-taptip role="switch" aria-checked="${s.effective}"` +
-          ` tabindex="0" data-stack="${escapeAttr(s.name)}" title="${switchTitle(s)}"></div>` +
-      `</div>`;
+    return (
+      `<div class="stack-row" data-testid="${rowTestid}" data-stack="${escapeAttr(s.name)}">` +
+      posCell +
+      `<div class="stack-meta">` +
+      `<div class="stack-name">${escapeHtml(s.name)}${rowChipHTML(s)}</div>` +
+      `<div class="stack-detail">${stackDetail(s, queueByStack[s.name])}</div>` +
+      `</div>` +
+      `<div class="sw${s.effective ? ' on' : ''}"${swTestid} data-taptip role="switch" aria-checked="${s.effective}"` +
+      ` tabindex="0" data-stack="${escapeAttr(s.name)}" title="${switchTitle(s)}"></div>` +
+      `</div>`
+    );
   }
 
   // patchStackRow updates an existing row's cells without touching the row or
@@ -3489,13 +4184,23 @@
   // tick used to swap the whole list, so an autosync/queue event arriving at the
   // wrong moment ate the click (and any keyboard focus with it).
   function renderRowList(el, rows) {
-    const key = rows.map(function(r) { return r.stack.name; }).join('\n');
+    const key = rows
+      .map(function (r) {
+        return r.stack.name;
+      })
+      .join('\n');
     if (el.dataset.rowKey === key && el.children.length === rows.length) {
-      rows.forEach(function(r, i) { patchStackRow(el.children[i], r.stack, r.pos); });
+      rows.forEach(function (r, i) {
+        patchStackRow(el.children[i], r.stack, r.pos);
+      });
       return;
     }
     el.dataset.rowKey = key;
-    el.innerHTML = rows.map(function(r) { return stackRowHTML(r.stack, r.pos); }).join('');
+    el.innerHTML = rows
+      .map(function (r) {
+        return stackRowHTML(r.stack, r.pos);
+      })
+      .join('');
   }
 
   function renderAutosyncBtn() {
@@ -3504,17 +4209,22 @@
     asBtn.classList.toggle('paused', anyPaused());
     if (autosyncSnap) asBtn.dataset.global = String(autosyncSnap.global);
     asCountEl.textContent = count;
-    asBtn.title = count > 0
-      ? `${count} stack${count === 1 ? '' : 's'} queued — autosync paused`
-      : 'Autosync — all in sync';
+    asBtn.title =
+      count > 0
+        ? `${count} stack${count === 1 ? '' : 's'} queued — autosync paused`
+        : 'Autosync — all in sync';
   }
 
   function renderSub() {
-    const paused = autosyncStacks().filter(function(s) { return !s.effective; }).length;
+    const paused = autosyncStacks().filter(function (s) {
+      return !s.effective;
+    }).length;
     const q = queueSnap.count || 0;
     if (q === 0 && paused === 0) asSub.textContent = 'All stacks in sync.';
-    else if (q === 0) asSub.textContent = `${paused} stack${paused === 1 ? '' : 's'} paused · nothing waiting.`;
-    else asSub.innerHTML = `<b>${q}</b> update${q === 1 ? '' : 's'} waiting · ${paused} stack${paused === 1 ? '' : 's'} paused.`;
+    else if (q === 0)
+      asSub.textContent = `${paused} stack${paused === 1 ? '' : 's'} paused · nothing waiting.`;
+    else
+      asSub.innerHTML = `<b>${q}</b> update${q === 1 ? '' : 's'} waiting · ${paused} stack${paused === 1 ? '' : 's'} paused.`;
   }
 
   // renderGlobal paints the global switch — and, the first time a snapshot
@@ -3539,27 +4249,45 @@
     asQCount.textContent = pending.length ? `(${pending.length})` : '';
     if (pending.length === 0) {
       asQueueList.dataset.rowKey = '';
-      asQueueList.innerHTML = '<div class="qempty">Nothing queued — resumed deploys apply immediately.</div>';
+      asQueueList.innerHTML =
+        '<div class="qempty">Nothing queued — resumed deploys apply immediately.</div>';
       return;
     }
-    renderRowList(asQueueList, pending.map(function(it) {
-      const s = stackByName(it.stack) || { name: it.stack, effective: false, overridden: false, config: null };
-      return { stack: s, pos: it.position };
-    }));
+    renderRowList(
+      asQueueList,
+      pending.map(function (it) {
+        const s = stackByName(it.stack) || {
+          name: it.stack,
+          effective: false,
+          overridden: false,
+          config: null,
+        };
+        return { stack: s, pos: it.position };
+      }),
+    );
   }
 
   function renderStackList() {
     const query = (asFilter.value || '').trim().toLowerCase();
     asFilterWrap.classList.toggle('has-value', query.length > 0);
     const stacks = autosyncStacks();
-    const list = stacks.filter(function(s) { return s.name.toLowerCase().indexOf(query) !== -1; });
+    const list = stacks.filter(function (s) {
+      return s.name.toLowerCase().indexOf(query) !== -1;
+    });
     if (list.length === 0) {
       asStackList.dataset.rowKey = '';
-      asStackList.innerHTML = `<div class="qempty">` +
-        (stacks.length ? `No stack matches “${escapeHtml(query)}”.` : 'No stacks.') + `</div>`;
+      asStackList.innerHTML =
+        `<div class="qempty">` +
+        (stacks.length ? `No stack matches “${escapeHtml(query)}”.` : 'No stacks.') +
+        `</div>`;
       return;
     }
-    renderRowList(asStackList, list.map(function(s) { return { stack: s, pos: null }; }));
+    renderRowList(
+      asStackList,
+      list.map(function (s) {
+        return { stack: s, pos: null };
+      }),
+    );
   }
 
   function renderAutosync() {
@@ -3571,7 +4299,10 @@
   }
 
   function setDrawer(open) {
-    if (open) { setViewOptions(false); setRunDrawer(false); } // surfaces are mutually exclusive
+    if (open) {
+      setViewOptions(false);
+      setRunDrawer(false);
+    } // surfaces are mutually exclusive
     asDrawer.classList.toggle('open', open);
     asBtn.classList.toggle('open', open);
     asBtn.setAttribute('aria-expanded', String(open));
@@ -3579,16 +4310,24 @@
   }
   trapFocus(asDrawer);
 
-  asBtn.addEventListener('click', function() { setDrawer(!asDrawer.classList.contains('open')); });
-  asBtn.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); asBtn.click(); }
+  asBtn.addEventListener('click', function () {
+    setDrawer(!asDrawer.classList.contains('open'));
+  });
+  asBtn.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      asBtn.click();
+    }
   });
 
-  asGlobalSw.addEventListener('click', function() {
+  asGlobalSw.addEventListener('click', function () {
     if (autosyncSnap) autosyncPost('global', '', !autosyncSnap.global);
   });
-  asGlobalSw.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); asGlobalSw.click(); }
+  asGlobalSw.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      asGlobalSw.click();
+    }
   });
 
   // Per-stack switches are event-delegated so re-rendering the lists is cheap.
@@ -3598,22 +4337,36 @@
     autosyncPost('stack', sw.getAttribute('data-stack'), !sw.classList.contains('on'));
     return true;
   }
-  asDrawer.addEventListener('click', function(e) { toggleFromEvent(e.target); });
-  asDrawer.addEventListener('keydown', function(e) {
+  asDrawer.addEventListener('click', function (e) {
+    toggleFromEvent(e.target);
+  });
+  asDrawer.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' || e.key === ' ') {
       if (toggleFromEvent(e.target)) e.preventDefault();
     }
   });
 
   asFilter.addEventListener('input', renderStackList);
-  asFilter.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && asFilter.value) { e.stopPropagation(); asFilter.value = ''; renderStackList(); }
+  asFilter.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && asFilter.value) {
+      e.stopPropagation();
+      asFilter.value = '';
+      renderStackList();
+    }
   });
-  asFilterClear.addEventListener('click', function() { asFilter.value = ''; renderStackList(); asFilter.focus(); });
+  asFilterClear.addEventListener('click', function () {
+    asFilter.value = '';
+    renderStackList();
+    asFilter.focus();
+  });
 
   registerSurface({
-    isOpen: function() { return asDrawer.classList.contains('open'); },
-    close: function() { setDrawer(false); },
+    isOpen: function () {
+      return asDrawer.classList.contains('open');
+    },
+    close: function () {
+      setDrawer(false);
+    },
     within: [asDrawer, asBtn],
   });
 
@@ -3624,7 +4377,11 @@
   const hostsDrawer = document.getElementById('hosts-drawer');
 
   function setHostsDrawer(open) {
-    if (open) { setViewOptions(false); setRunDrawer(false); setDrawer(false); } // surfaces are mutually exclusive
+    if (open) {
+      setViewOptions(false);
+      setRunDrawer(false);
+      setDrawer(false);
+    } // surfaces are mutually exclusive
     hostsDrawer.classList.toggle('open', open);
     hostsBtn.classList.toggle('open', open);
     hostsBtn.setAttribute('aria-expanded', String(open));
@@ -3632,12 +4389,16 @@
   }
   trapFocus(hostsDrawer);
 
-  hostsBtn.addEventListener('click', function() { setHostsDrawer(!hostsDrawer.classList.contains('open')); });
+  hostsBtn.addEventListener('click', function () {
+    setHostsDrawer(!hostsDrawer.classList.contains('open'));
+  });
 
   // Toggling a host: the filter is the set of in-view hosts. Deselecting the last
   // host is a no-op (an empty merged feed is never useful) — one host stays on.
   function toggleHost(name) {
-    const hosts = hostList().map(function(h) { return h.name; });
+    const hosts = hostList().map(function (h) {
+      return h.name;
+    });
     if (hostSelected === null) hostSelected = new Set(hosts); // materialize "all" before narrowing
     if (hostSelected.has(name)) {
       if (hostSelected.size <= 1) return; // keep at least one host in view
@@ -3651,14 +4412,14 @@
     refilterDeploys();
   }
 
-  hostsDrawer.addEventListener('click', function(e) {
+  hostsDrawer.addEventListener('click', function (e) {
     if (e.target.closest('.host-link')) return; // the external link opens normally
     const row = e.target.closest('.host-row');
     if (row) toggleHost(row.dataset.host);
   });
   // Keyboard-operate the host-row checkboxes (T2.10). toggleHost rebuilds the
   // list, so re-focus the same host's fresh row afterwards to keep the caret put.
-  hostsDrawer.addEventListener('keydown', function(e) {
+  hostsDrawer.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     if (e.target.closest('.host-link')) return;
     const row = e.target.closest('.host-row');
@@ -3666,19 +4427,25 @@
     e.preventDefault();
     const host = row.dataset.host;
     toggleHost(host);
-    const again = hostsDrawer.querySelector('.host-row[data-host="' + (window.CSS && CSS.escape ? CSS.escape(host) : host) + '"]');
+    const again = hostsDrawer.querySelector(
+      '.host-row[data-host="' + (window.CSS && CSS.escape ? CSS.escape(host) : host) + '"]',
+    );
     if (again) again.focus();
   });
 
-  document.getElementById('hosts-all-btn').addEventListener('click', function() {
+  document.getElementById('hosts-all-btn').addEventListener('click', function () {
     hostSelected = null;
     applyHostFilter();
     refilterDeploys();
   });
 
   registerSurface({
-    isOpen: function() { return hostsDrawer.classList.contains('open'); },
-    close: function() { setHostsDrawer(false); },
+    isOpen: function () {
+      return hostsDrawer.classList.contains('open');
+    },
+    close: function () {
+      setHostsDrawer(false);
+    },
     within: [hostsDrawer, hostsBtn],
   });
 
@@ -3696,18 +4463,18 @@
   // scrolls to the older edge.
   const logPageSize = 500;
   const maxLogBuffer = 2000;
-  const logEntries = [];            // chronological, oldest → newest
-  let logVisible = logPageSize;   // number of newest entries currently rendered
+  const logEntries = []; // chronological, oldest → newest
+  let logVisible = logPageSize; // number of newest entries currently rendered
   // Fixed newest-first order; the oldest-first toggle was removed — auto-scroll
   // (follow) covers keeping the newest line in view.
   const logDescending = true;
   let followLogs = localStorage.getItem('followLogs') !== 'false';
   const savedView = localStorage.getItem('activeView');
-  let activeView = (savedView === 'logs' || savedView === 'stacks') ? savedView : 'deploys';
+  let activeView = savedView === 'logs' || savedView === 'stacks' ? savedView : 'deploys';
   let logSource = null;
   // Re-applies the Logs-view in-log filter after a re-render; set by the logs
   // toolbar wiring (ADR-0037), a no-op until then and when no search is active.
-  let logSearchApply = function() {};
+  let logSearchApply = function () {};
 
   function renderLogLine(entry) {
     const line = document.createElement('div');
@@ -3739,11 +4506,13 @@
       if (attrs.event_id) {
         html += `<button class="files-pill log-diff-pill" data-testid="diff-pill" data-event-id="${escapeAttr(attrs.event_id)}">diff</button>`;
       }
-      const pairs = Object.keys(attrs).filter(function(k) {
-        return k !== 'stack' && k !== 'event_id';
-      }).map(function(k) {
-        return `${escapeHtml(k)}=${escapeHtml(attrs[k])}`;
-      });
+      const pairs = Object.keys(attrs)
+        .filter(function (k) {
+          return k !== 'stack' && k !== 'event_id';
+        })
+        .map(function (k) {
+          return `${escapeHtml(k)}=${escapeHtml(attrs[k])}`;
+        });
       if (pairs.length > 0) html += `<span class="log-attrs">${pairs.join(' ')}</span>`;
     }
     line.innerHTML = html;
@@ -3772,26 +4541,33 @@
 
   // Diff pill in the log view — same fetch/render/toggle behaviour as the
   // files pill in the deploy table, but anchored below the log line.
-  logPane.addEventListener('click', function(e) {
+  logPane.addEventListener('click', function (e) {
     if (handleDiffToggle(e.target)) return;
 
     const pill = e.target.closest('.log-diff-pill');
     if (!pill) return;
     const line = pill.closest('.log-line');
     const existing = line.nextElementSibling;
-    if (existing && (existing.classList.contains('diff-panel') || existing.classList.contains('files-list') || existing.classList.contains('load-error'))) {
+    if (
+      existing &&
+      (existing.classList.contains('diff-panel') ||
+        existing.classList.contains('files-list') ||
+        existing.classList.contains('load-error'))
+    ) {
       existing.remove();
       return;
     }
     function openLogDiff() {
-      fetchDiffs(pill.dataset.eventId, function(diffs, commits, err) {
+      fetchDiffs(pill.dataset.eventId, function (diffs, commits, err) {
         if (err) {
           // Fetch failed — surface it instead of the genuine "No diff recorded"
           // line, with a retry that re-runs just this fetch (T4.16).
-          line.after(createLoadError("Couldn't load the diff.", function(le) {
-            le.remove();
-            openLogDiff();
-          }));
+          line.after(
+            createLoadError("Couldn't load the diff.", function (le) {
+              le.remove();
+              openLogDiff();
+            }),
+          );
         } else if (diffs && Object.keys(diffs).length > 0) {
           line.after(renderDiffPanel(diffs, commits, null));
         } else {
@@ -3848,7 +4624,9 @@
     const slice = logEntries.slice(logEntries.length - count); // oldest → newest
     if (logDescending) slice.reverse();
     const frag = document.createDocumentFragment();
-    slice.forEach(function(e) { frag.appendChild(renderLogLine(e)); });
+    slice.forEach(function (e) {
+      frag.appendChild(renderLogLine(e));
+    });
     logPane.appendChild(frag);
     scrollToNewest();
     logSearchApply();
@@ -3865,11 +4643,16 @@
     const frag = document.createDocumentFragment();
     if (logDescending) {
       older.reverse(); // append newest → oldest at the bottom
-      older.forEach(function(e) { frag.appendChild(renderLogLine(e)); });
+      older.forEach(function (e) {
+        frag.appendChild(renderLogLine(e));
+      });
       logPane.appendChild(frag); // grows below the fold; scrollTop unchanged
     } else {
-      const prevHeight = logPane.scrollHeight, prevTop = logPane.scrollTop;
-      older.forEach(function(e) { frag.appendChild(renderLogLine(e)); }); // oldest → newest
+      const prevHeight = logPane.scrollHeight,
+        prevTop = logPane.scrollTop;
+      older.forEach(function (e) {
+        frag.appendChild(renderLogLine(e));
+      }); // oldest → newest
       logPane.insertBefore(frag, logPane.firstChild);
       logPane.scrollTop = prevTop + (logPane.scrollHeight - prevHeight);
     }
@@ -3911,19 +4694,25 @@
     logsStat.className = 'clog-stat' + (cls ? ' ' + cls : '');
   }
 
-  logsLive.addEventListener('click', function() {
+  logsLive.addEventListener('click', function () {
     logsPaused = !logsPaused;
     logsLive.classList.toggle('paused', logsPaused);
     logsLive.querySelector('.clog-ltxt').textContent = logsPaused ? 'paused' : 'live';
-    if (logsPaused) { setLogsStat('paused', 'paused'); return; }
+    if (logsPaused) {
+      setLogsStat('paused', 'paused');
+      return;
+    }
     setLogsStat('live · streaming');
     renderLogWindow(); // catch up everything buffered while paused
   });
-  logsLive.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); logsLive.click(); }
+  logsLive.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      logsLive.click();
+    }
   });
 
-  logPane.addEventListener('scroll', function() {
+  logPane.addEventListener('scroll', function () {
     const nearOlderEdge = logDescending
       ? logPane.scrollTop + logPane.clientHeight >= logPane.scrollHeight - 40
       : logPane.scrollTop <= 40;
@@ -3941,7 +4730,7 @@
 
   function scheduleLogReconnect() {
     if (logReconnectTimer) return; // a retry is already pending
-    logReconnectTimer = setTimeout(function() {
+    logReconnectTimer = setTimeout(function () {
       logReconnectTimer = null;
       connectLogs();
     }, logReconnectDelay);
@@ -3951,14 +4740,14 @@
   function connectLogs() {
     if (logSource) return;
     logSource = new EventSource('/api/logs');
-    logSource.addEventListener('log', function(e) {
+    logSource.addEventListener('log', function (e) {
       pushLog(JSON.parse(e.data));
     });
-    logSource.onopen = function() {
+    logSource.onopen = function () {
       logReconnectDelay = 1000; // a good connection resets the backoff
       setLogsStat(logsPaused ? 'paused' : 'live · streaming', logsPaused ? 'paused' : '');
     };
-    logSource.onerror = function() {
+    logSource.onerror = function () {
       // CONNECTING: the browser is retrying itself (Last-Event-ID replays the
       // gap on reconnect), so leave it. CLOSED: it gave up — clear the guard and
       // retry ourselves with a capped backoff.
@@ -3974,7 +4763,7 @@
     clog.close(); // a container-log panel belongs to its row; drop it on a view switch
     document.body.classList.toggle('view-logs', activeView === 'logs');
     document.body.classList.toggle('view-stacks', activeView === 'stacks');
-    viewButtons.forEach(function(btn) {
+    viewButtons.forEach(function (btn) {
       btn.classList.toggle('active', btn.dataset.view === activeView);
     });
     if (activeView === 'logs') {
@@ -3993,10 +4782,13 @@
   const viewOptions = document.getElementById('view-options');
 
   function setViewOptions(open) {
-    if (open) { setDrawer(false); setRunDrawer(false); } // surfaces are mutually exclusive
+    if (open) {
+      setDrawer(false);
+      setRunDrawer(false);
+    } // surfaces are mutually exclusive
     viewOptions.classList.toggle('open', open);
     let activeBtn = null;
-    viewButtons.forEach(function(btn) {
+    viewButtons.forEach(function (btn) {
       // Keep aria-expanded honest on every button — only the active one can be
       // open, the rest are always false — so the caret cue (CSS keys off it)
       // never reads "open" on a stale non-active button.
@@ -4009,8 +4801,8 @@
     manageSurfaceFocus(viewOptions, activeBtn, open);
   }
 
-  viewButtons.forEach(function(btn) {
-    btn.addEventListener('click', function() {
+  viewButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
       if (btn.dataset.view === activeView) {
         // Active button toggles its options popover.
         if (document.querySelector(`.vo-group[data-view="${activeView}"]`)) {
@@ -4044,16 +4836,19 @@
     }
     if (targetView === 'stacks') clearRosterFilter(true);
     else clearDeployFilter(true);
-    const escaped = (window.CSS && CSS.escape) ? CSS.escape(stack) : stack;
-    const target = targetView === 'stacks'
-      ? rosterList.querySelector(`.roster-row[data-stack="${escaped}"]`)
-      : tbody.querySelector(`.event-row[data-stack="${escaped}"]`);
+    const escaped = window.CSS && CSS.escape ? CSS.escape(stack) : stack;
+    const target =
+      targetView === 'stacks'
+        ? rosterList.querySelector(`.roster-row[data-stack="${escaped}"]`)
+        : tbody.querySelector(`.event-row[data-stack="${escaped}"]`);
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.remove('jump-target');
     void target.offsetWidth; // restart the animation if it's already landed once
     target.classList.add('jump-target');
-    setTimeout(function() { target.classList.remove('jump-target'); }, 1800);
+    setTimeout(function () {
+      target.classList.remove('jump-target');
+    }, 1800);
   }
 
   // ─── Live-health attention surface (ADR-0027 extension) ───
@@ -4064,7 +4859,8 @@
   // above the log. Both render from attentionStacks(healthSnap) and jump to the
   // stack's newest row on activate (degrading to a plain view switch when the
   // stack has no row, exactly like jumpBtn).
-  const WARN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>';
+  const WARN_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>';
 
   const healthBeaconWrap = document.getElementById('health-beacon-wrap');
   const healthBeacon = document.getElementById('health-beacon');
@@ -4100,12 +4896,24 @@
     healthBeacon.title = label;
     healthBeacon.setAttribute('aria-label', label);
     beaconPop.innerHTML =
-      '<div class="bp-head">' + escapeHtml(label) + '</div>' +
-      att.map(function(a) {
-        return '<button type="button" class="beacon-item" data-testid="health-beacon-item" data-stack="' + escapeAttr(a.stack) + '">' +
-          '<span class="bi-dot" data-health="' + escapeAttr(a.status) + '"></span>' +
-          '<span class="bi-name">' + escapeHtml(a.stack) + '</span></button>';
-      }).join('');
+      '<div class="bp-head">' +
+      escapeHtml(label) +
+      '</div>' +
+      att
+        .map(function (a) {
+          return (
+            '<button type="button" class="beacon-item" data-testid="health-beacon-item" data-stack="' +
+            escapeAttr(a.stack) +
+            '">' +
+            '<span class="bi-dot" data-health="' +
+            escapeAttr(a.status) +
+            '"></span>' +
+            '<span class="bi-name">' +
+            escapeHtml(a.stack) +
+            '</span></button>'
+          );
+        })
+        .join('');
   }
 
   function renderAttentionBand(att) {
@@ -4116,17 +4924,32 @@
       return;
     }
     attentionBand.innerHTML =
-      '<div class="att-head">' + WARN_ICON +
-        '<span class="att-title">Needs attention</span>' +
-        '<span class="att-count">' + n + '</span></div>' +
-      att.map(function(a) {
-        return '<button type="button" class="attention-row" data-testid="attention-row" data-stack="' + escapeAttr(a.stack) + '">' +
-          '<span class="stack-icon" data-testid="stack-icon"></span>' +
-          '<span class="att-name">' + escapeHtml(a.stack) + '</span>' +
-          '<span class="health-pill att-pill" data-health="' + escapeAttr(a.status) + '"><span class="hdot"></span><span class="hlabel">' + escapeHtml(a.status) + '</span></span>' +
-          '</button>';
-      }).join('');
-    attentionBand.querySelectorAll('.attention-row').forEach(function(row) {
+      '<div class="att-head">' +
+      WARN_ICON +
+      '<span class="att-title">Needs attention</span>' +
+      '<span class="att-count">' +
+      n +
+      '</span></div>' +
+      att
+        .map(function (a) {
+          return (
+            '<button type="button" class="attention-row" data-testid="attention-row" data-stack="' +
+            escapeAttr(a.stack) +
+            '">' +
+            '<span class="stack-icon" data-testid="stack-icon"></span>' +
+            '<span class="att-name">' +
+            escapeHtml(a.stack) +
+            '</span>' +
+            '<span class="health-pill att-pill" data-health="' +
+            escapeAttr(a.status) +
+            '"><span class="hdot"></span><span class="hlabel">' +
+            escapeHtml(a.status) +
+            '</span></span>' +
+            '</button>'
+          );
+        })
+        .join('');
+    attentionBand.querySelectorAll('.attention-row').forEach(function (row) {
       populateIcon(row.querySelector('.stack-icon'), row.dataset.stack);
     });
   }
@@ -4139,11 +4962,11 @@
     renderAttentionBand(att);
   }
 
-  healthBeacon.addEventListener('click', function(e) {
+  healthBeacon.addEventListener('click', function (e) {
     e.stopPropagation();
     setBeaconPop(!beaconPop.classList.contains('open'));
   });
-  beaconPop.addEventListener('click', function(e) {
+  beaconPop.addEventListener('click', function (e) {
     const item = e.target.closest('.beacon-item');
     if (!item) return;
     setBeaconPop(false);
@@ -4152,21 +4975,29 @@
     // user out of the view they're triaging in.
     jumpToStack(activeView === 'stacks' ? 'stacks' : 'deploys', item.dataset.stack);
   });
-  attentionBand.addEventListener('click', function(e) {
+  attentionBand.addEventListener('click', function (e) {
     const row = e.target.closest('.attention-row');
     if (!row) return;
     jumpToStack('deploys', row.dataset.stack);
   });
 
   registerSurface({
-    isOpen: function() { return beaconPop.classList.contains('open'); },
-    close: function() { setBeaconPop(false); },
+    isOpen: function () {
+      return beaconPop.classList.contains('open');
+    },
+    close: function () {
+      setBeaconPop(false);
+    },
     within: [healthBeacon, beaconPop],
   });
 
   registerSurface({
-    isOpen: function() { return viewOptions.classList.contains('open'); },
-    close: function() { setViewOptions(false); },
+    isOpen: function () {
+      return viewOptions.classList.contains('open');
+    },
+    close: function () {
+      setViewOptions(false);
+    },
     within: [viewSwitch], // the switch wraps both buttons and the options popover
   });
 
@@ -4175,7 +5006,7 @@
     if (followLogs) scrollToNewest();
   }
 
-  followBtn.addEventListener('click', function() {
+  followBtn.addEventListener('click', function () {
     followLogs = !followLogs;
     localStorage.setItem('followLogs', String(followLogs));
     applyFollow();
@@ -4187,19 +5018,26 @@
   // Files panel — open/close as full-width sibling below the row.
   // When diffs are available, shows a diff panel; otherwise shows file list.
   tbody.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
-  tbody.addEventListener('click', function(e) {
+  tbody.addEventListener('click', function (e) {
     if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
     // ⋯ overflow menu: toggle it open/closed. Picking an action inside closes the
     // menu, then falls through to that action's own handler below (the relocated
     // buttons still carry their .history-btn/.clog-btn/.hooks-badge classes).
     const moreBtn = e.target.closest('.more-btn');
-    if (moreBtn) { toggleMoreMenu(moreBtn.closest('.row-more')); return; }
+    if (moreBtn) {
+      toggleMoreMenu(moreBtn.closest('.row-more'));
+      return;
+    }
     if (e.target.closest('.more-item')) closeMoreMenu();
 
     // Host chip: quick-filter the merged view to this row's host (toggle). Before
     // any panel logic so a tap on the chip never also opens the row's diff panel.
     const hostChip = e.target.closest('.host-mono');
-    if (hostChip) { const r = hostChip.closest('[data-host]'); if (r) toggleHostFilterTo(r.dataset.host); return; }
+    if (hostChip) {
+      const r = hostChip.closest('[data-host]');
+      if (r) toggleHostFilterTo(r.dataset.host);
+      return;
+    }
 
     // Diff panel collapse/expand controls (per-file header, multi-commit pill).
     if (handleDiffToggle(e.target)) return;
@@ -4213,7 +5051,10 @@
     }
     // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
     const hookLog = e.target.closest('.hook-log-btn');
-    if (hookLog) { clog.openHookLog(hookLog, hookLog.dataset.hookLog); return; }
+    if (hookLog) {
+      clog.openHookLog(hookLog, hookLog.dataset.hookLog);
+      return;
+    }
 
     // Hooks badge: toggle the panel; before the files logic so a tap never also
     // opens the row's diff panel.
@@ -4225,7 +5066,9 @@
         if (hnext && hnext.classList.contains('hooks-panel')) {
           closeHooksPanel(hrow);
         } else {
-          closeHealthPanel(hrow); closeDiffPanel(hrow); closeAuditPanel(hrow); // one panel per row
+          closeHealthPanel(hrow);
+          closeDiffPanel(hrow);
+          closeAuditPanel(hrow); // one panel per row
           hrow.classList.add('hooks-open');
           hrow.after(createHooksPanel(hrow.dataset.stack));
         }
@@ -4236,7 +5079,10 @@
     // Container-logs button (ADR-0037): toggle the live log panel. Handled first
     // so a tap never also opens the row's diff/health/audit panel.
     const clogB = e.target.closest('.clog-btn');
-    if (clogB) { clog.toggle(clogB); return; }
+    if (clogB) {
+      clog.toggle(clogB);
+      return;
+    }
 
     // History button: toggle the per-stack deploy-history panel (ADR-0033).
     // Handled before the files logic so a tap never opens the row's diff panel.
@@ -4248,7 +5094,8 @@
         if (anext && anext.classList.contains('audit-panel')) {
           closeAuditPanel(arow);
         } else {
-          closeHealthPanel(arow); closeHooksPanel(arow); // one panel per row
+          closeHealthPanel(arow);
+          closeHooksPanel(arow); // one panel per row
           closeDiffPanel(arow);
           arow.classList.add('audit-open');
           arow.after(createAuditPanel(arow.dataset.stack));
@@ -4265,13 +5112,17 @@
       // A peer row's pill is read-only: open its containers detail (host-scoped),
       // never the local health panel (which would key the peer's stack name into
       // the primary's own health).
-      if (hrow && hrow.classList.contains('peer-row')) { togglePeerDetail(hrow); return; }
+      if (hrow && hrow.classList.contains('peer-row')) {
+        togglePeerDetail(hrow);
+        return;
+      }
       if (hrow) {
         const hnext = hrow.nextElementSibling;
         if (hnext && hnext.classList.contains('health-panel')) {
           closeHealthPanel(hrow);
         } else {
-          closeDiffPanel(hrow); closeHooksPanel(hrow); // one panel per row
+          closeDiffPanel(hrow);
+          closeHooksPanel(hrow); // one panel per row
           closeAuditPanel(hrow);
           hrow.dataset.health = hpill.dataset.health || 'unknown'; // tint the row (variant A)
           hrow.classList.add('health-open');
@@ -4284,7 +5135,9 @@
     // Self-heal badge: toggle the corrective-redeploy detail panel. A healed row
     // has no files pill, so it is handled on its own (ADR-0029).
     const healPill = e.target.closest('.heal-pill');
-    const healRow = healPill ? healPill.closest('.event-row') : (e.target.closest('.event-row.healed-row'));
+    const healRow = healPill
+      ? healPill.closest('.event-row')
+      : e.target.closest('.event-row.healed-row');
     if (healRow) {
       const healBtn = healPill || healRow.querySelector('.heal-pill');
       if (!healBtn) return;
@@ -4292,12 +5145,15 @@
       if (hnext && hnext.classList.contains('heal-panel')) {
         closeDiffPanel(healRow);
       } else {
-        closeHealthPanel(healRow); closeHooksPanel(healRow); // one panel per row
+        closeHealthPanel(healRow);
+        closeHooksPanel(healRow); // one panel per row
         closeAuditPanel(healRow);
         closeDiffPanel(healRow);
         healRow.classList.add('diff-open'); // shares the panel's status bar
         const drift = JSON.parse(healBtn.dataset.drift || '[]');
-        healRow.after(createHealPanel(drift, { stack: healRow.dataset.stack, status: healRow.dataset.status }));
+        healRow.after(
+          createHealPanel(drift, { stack: healRow.dataset.stack, status: healRow.dataset.status }),
+        );
       }
       return;
     }
@@ -4305,7 +5161,10 @@
     const pill = e.target.closest('.files-pill');
     const row = pill ? pill.closest('.event-row') : e.target.closest('.event-row');
     if (!row) return;
-    if (row.classList.contains('peer-row')) { togglePeerDetail(row); return; } // read-only detail, not a local diff
+    if (row.classList.contains('peer-row')) {
+      togglePeerDetail(row);
+      return;
+    } // read-only detail, not a local diff
     const pillEl = pill || row.querySelector('.files-pill');
     if (!pillEl) {
       // A row with no changed-files panel (e.g. a deploy with nothing hashed)
@@ -4315,18 +5174,26 @@
       if (anext && anext.classList.contains('audit-panel')) {
         closeAuditPanel(row);
       } else {
-        closeHealthPanel(row); closeHooksPanel(row); closeDiffPanel(row);
+        closeHealthPanel(row);
+        closeHooksPanel(row);
+        closeDiffPanel(row);
         row.classList.add('audit-open');
         row.after(createAuditPanel(row.dataset.stack));
       }
       return;
     }
     const existing = row.nextElementSibling;
-    if (existing && (existing.classList.contains('files-list') || existing.classList.contains('diff-panel') || existing.classList.contains('load-error'))) {
+    if (
+      existing &&
+      (existing.classList.contains('files-list') ||
+        existing.classList.contains('diff-panel') ||
+        existing.classList.contains('load-error'))
+    ) {
       closeDiffPanel(row);
       return;
     }
-    closeHealthPanel(row); closeHooksPanel(row); // one panel per row
+    closeHealthPanel(row);
+    closeHooksPanel(row); // one panel per row
     closeAuditPanel(row);
 
     const eventId = row.dataset.eventId;
@@ -4341,13 +5208,13 @@
     if (hasDiffs && eventId) {
       // runDiffFetch drops a loading placeholder after the row and fills it once
       // the fetch resolves. Named so the load-error's Retry can re-run it.
-      const runDiffFetch = function() {
+      const runDiffFetch = function () {
         const loading = document.createElement('div');
         loading.className = 'diff-panel bound';
         loading.dataset.status = meta.status;
         loading.innerHTML = '<div class="diff-loading">Loading diffs...</div>';
         row.after(loading);
-        fetchDiffs(eventId, function(diffs, commits, err) {
+        fetchDiffs(eventId, function (diffs, commits, err) {
           // The placeholder gone means the panel was closed (or replaced by the
           // health panel) while loading — don't resurrect it.
           if (!loading.parentNode) return;
@@ -4356,10 +5223,12 @@
             // Fetch failed: an amber load-error instead of a silent drop to the
             // file list, so a network hiccup isn't mistaken for "no diff"
             // (T4.16). Retry re-runs the fetch from the loading placeholder.
-            row.after(createLoadError("Couldn't load the diff.", function(le) {
-              le.remove();
-              runDiffFetch();
-            }));
+            row.after(
+              createLoadError("Couldn't load the diff.", function (le) {
+                le.remove();
+                runDiffFetch();
+              }),
+            );
           } else if (diffs && Object.keys(diffs).length > 0) {
             row.after(renderDiffPanel(diffs, commits, meta));
           } else {
@@ -4380,20 +5249,22 @@
   // distinguish); release/Nix/dev builds show the version. The short commit is
   // appended whenever the build path knows it.
   fetch('/api/version')
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (d) {
       if (!d || !d.version) return;
       const el = document.getElementById('brand-version');
       if (!el) return;
       const base = d.version === 'dev' ? 'dev' : 'v' + d.version;
-      const head = (d.branch && d.branch !== 'main') ? d.branch : base;
+      const head = d.branch && d.branch !== 'main' ? d.branch : base;
       const text = d.commit ? head + ' · ' + d.commit : head;
       el.textContent = text;
       // The label may be clipped (ellipsis) on narrow viewports or long branch
       // names; the title exposes the full identity on hover / long-press.
       el.title = text;
     })
-    .catch(function() {});
+    .catch(function () {});
 
   // Tap-reveal tooltips for touch (titles never show on touch): a tap flashes
   // the title in a bubble. Any control under a `data-taptip` ancestor (or
@@ -4404,7 +5275,9 @@
     tip.setAttribute('aria-hidden', 'true');
     document.body.appendChild(tip);
     let hideTimer = null;
-    function hide() { tip.classList.remove('show'); }
+    function hide() {
+      tip.classList.remove('show');
+    }
     function flash(el) {
       const text = el.getAttribute('title');
       if (!text) return;
@@ -4419,18 +5292,22 @@
       let left = r.left + r.width / 2 - tip.offsetWidth / 2;
       left = Math.max(margin, Math.min(left, window.innerWidth - tip.offsetWidth - margin));
       tip.style.left = left + 'px';
-      tip.style.top = (r.bottom + 6) + 'px';
+      tip.style.top = r.bottom + 6 + 'px';
       clearTimeout(hideTimer);
       hideTimer = setTimeout(hide, 1600);
     }
-    document.addEventListener('pointerdown', function(e) {
-      if (e.pointerType && e.pointerType !== 'touch') return; // mouse/pen: native tooltip
-      const el = e.target.closest && e.target.closest('[title]');
-      if (!el) return;
-      if (el.closest('.view-options')) return; // popover rows already show visible labels
-      if (!el.closest('[data-taptip]')) return; // deliberate opt-in, not "any [title]"
-      flash(el);
-    }, { passive: true });
+    document.addEventListener(
+      'pointerdown',
+      function (e) {
+        if (e.pointerType && e.pointerType !== 'touch') return; // mouse/pen: native tooltip
+        const el = e.target.closest && e.target.closest('[title]');
+        if (!el) return;
+        if (el.closest('.view-options')) return; // popover rows already show visible labels
+        if (!el.closest('[data-taptip]')) return; // deliberate opt-in, not "any [title]"
+        flash(el);
+      },
+      { passive: true },
+    );
     window.addEventListener('scroll', hide, { passive: true });
   })();
 
@@ -4441,7 +5318,7 @@
   // an insecure context (plain HTTP) simply skips it, the page keeps working as
   // a normal site. See docs/pwa.md.
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
+    window.addEventListener('load', function () {
       registerServiceWorker();
     });
   }
@@ -4464,12 +5341,14 @@
     const banner = document.getElementById('update-banner');
     const reload = document.getElementById('update-banner-reload');
     const close = document.getElementById('update-banner-close');
-    reload.onclick = function() {
+    reload.onclick = function () {
       updateAccepted = true;
       reload.disabled = true;
       worker.postMessage({ type: 'SKIP_WAITING' });
     };
-    close.onclick = function() { banner.hidden = true; };
+    close.onclick = function () {
+      banner.hidden = true;
+    };
     banner.hidden = false;
   }
 
@@ -4480,36 +5359,39 @@
     // first-install clients.claim(), which must not bounce a fresh visit.
     const hadController = !!navigator.serviceWorker.controller;
     let reloading = false;
-    navigator.serviceWorker.addEventListener('controllerchange', function() {
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
       if (reloading || (!updateAccepted && !hadController)) return;
       reloading = true;
       window.location.reload();
     });
 
-    navigator.serviceWorker.register('/sw.js').then(function(reg) {
-      // A worker that finished installing while the page was closed is already
-      // waiting on load — updatefound won't fire for it, so check explicitly.
-      if (reg.waiting && navigator.serviceWorker.controller) {
-        showUpdateBanner(reg.waiting);
-      }
-      reg.addEventListener('updatefound', function() {
-        const sw = reg.installing;
-        if (!sw) return;
-        sw.addEventListener('statechange', function() {
-          // installed + an existing controller ⇒ an update is ready; without a
-          // controller this is the first install, which needs no prompt.
-          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateBanner(sw);
-          }
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then(function (reg) {
+        // A worker that finished installing while the page was closed is already
+        // waiting on load — updatefound won't fire for it, so check explicitly.
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          showUpdateBanner(reg.waiting);
+        }
+        reg.addEventListener('updatefound', function () {
+          const sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener('statechange', function () {
+            // installed + an existing controller ⇒ an update is ready; without a
+            // controller this is the first install, which needs no prompt.
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+              showUpdateBanner(sw);
+            }
+          });
         });
-      });
-      // Check for a new worker now and whenever the tab regains focus, so a
-      // long-lived standalone PWA notices a deploy without a manual reload.
-      reg.update().catch(function() {});
-      document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible') reg.update().catch(function() {});
-      });
-    }).catch(function() {});
+        // Check for a new worker now and whenever the tab regains focus, so a
+        // long-lived standalone PWA notices a deploy without a manual reload.
+        reg.update().catch(function () {});
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') reg.update().catch(function () {});
+        });
+      })
+      .catch(function () {});
   }
 
   // ── skipper Logs view controls: the view is styled as one big clog-panel
@@ -4519,7 +5401,7 @@
   // Search reveals the same filter bar the deploys/stacks views use (seeded by
   // type-to-search on desktop). Fullscreen fills below the header so it stays
   // reachable to toggle back off.
-  (function() {
+  (function () {
     const view = document.getElementById('log-view');
     const wrapBtn = document.getElementById('log-wrap');
     const fsBtn = document.getElementById('log-fs');
@@ -4530,16 +5412,23 @@
 
     function highlightLine(line, q) {
       const ql = q.toLowerCase();
-      const w = document.createTreeWalker(line, NodeFilter.SHOW_TEXT, null), ns = [];
+      const w = document.createTreeWalker(line, NodeFilter.SHOW_TEXT, null),
+        ns = [];
       while (w.nextNode()) ns.push(w.currentNode);
-      ns.forEach(function(n) {
-        const text = n.nodeValue, low = text.toLowerCase();
-        let idx = low.indexOf(ql); if (idx < 0) return;
-        const frag = document.createDocumentFragment(); let pos = 0;
+      ns.forEach(function (n) {
+        const text = n.nodeValue,
+          low = text.toLowerCase();
+        let idx = low.indexOf(ql);
+        if (idx < 0) return;
+        const frag = document.createDocumentFragment();
+        let pos = 0;
         while (idx >= 0) {
           if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
-          const mk = document.createElement('mark'); mk.textContent = text.slice(idx, idx + q.length);
-          frag.appendChild(mk); pos = idx + q.length; idx = low.indexOf(ql, pos);
+          const mk = document.createElement('mark');
+          mk.textContent = text.slice(idx, idx + q.length);
+          frag.appendChild(mk);
+          pos = idx + q.length;
+          idx = low.indexOf(ql, pos);
         }
         if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
         n.parentNode.replaceChild(frag, n);
@@ -4549,68 +5438,104 @@
       const q = input.value.trim();
       wrap.classList.toggle('has-value', q.length > 0);
       let n = 0;
-      logPane.querySelectorAll('.log-line').forEach(function(line) {
+      logPane.querySelectorAll('.log-line').forEach(function (line) {
         if (line.dataset.origHtml == null) line.dataset.origHtml = line.innerHTML;
         line.innerHTML = line.dataset.origHtml;
         line.classList.remove('clog-out');
-        if (!logLineVisible(line.textContent, q)) { line.classList.add('clog-out'); return; }
-        if (q) { n++; highlightLine(line, q); }
+        if (!logLineVisible(line.textContent, q)) {
+          line.classList.add('clog-out');
+          return;
+        }
+        if (q) {
+          n++;
+          highlightLine(line, q);
+        }
       });
-      count.textContent = q ? (n + (n === 1 ? ' hit' : ' hits')) : '';
+      count.textContent = q ? n + (n === 1 ? ' hit' : ' hits') : '';
     }
     function revealLogFilter(on) {
       wrap.classList.toggle('revealed', on);
       searchBtn.classList.toggle('on', on);
     }
     function clearLogFilter(hide) {
-      input.value = ''; applyLogSearch();
-      if (hide) { revealLogFilter(false); input.blur(); }
+      input.value = '';
+      applyLogSearch();
+      if (hide) {
+        revealLogFilter(false);
+        input.blur();
+      }
     }
     // Re-apply after the log window re-renders (new lines) so they obey the filter.
-    logSearchApply = function() { if (wrap.classList.contains('revealed') && input.value.trim()) applyLogSearch(); };
+    logSearchApply = function () {
+      if (wrap.classList.contains('revealed') && input.value.trim()) applyLogSearch();
+    };
 
     input.addEventListener('input', applyLogSearch);
-    input.addEventListener('keydown', function(e) {
+    input.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
-      if (input.value) clearLogFilter(false); else { revealLogFilter(false); input.blur(); }
+      if (input.value) clearLogFilter(false);
+      else {
+        revealLogFilter(false);
+        input.blur();
+      }
     });
-    input.addEventListener('blur', function() { if (!input.value) revealLogFilter(false); });
+    input.addEventListener('blur', function () {
+      if (!input.value) revealLogFilter(false);
+    });
     // Clicking the tool again closes it (and clears the query), matching the
     // container-log panel's search tool.
-    searchBtn.addEventListener('click', function() {
-      if (wrap.classList.contains('revealed')) { clearLogFilter(true); return; }
-      revealLogFilter(true); input.focus();
+    searchBtn.addEventListener('click', function () {
+      if (wrap.classList.contains('revealed')) {
+        clearLogFilter(true);
+        return;
+      }
+      revealLogFilter(true);
+      input.focus();
     });
 
-    wrapBtn.addEventListener('click', function() { wrapBtn.classList.toggle('on', logPane.classList.toggle('wrap')); });
+    wrapBtn.addEventListener('click', function () {
+      wrapBtn.classList.toggle('on', logPane.classList.toggle('wrap'));
+    });
 
     function setLogFullscreen(on) {
       view.classList.toggle('clog-fullscreen', on);
       fsBtn.classList.toggle('on', on);
     }
-    fsBtn.addEventListener('click', function() { setLogFullscreen(!view.classList.contains('clog-fullscreen')); });
+    fsBtn.addEventListener('click', function () {
+      setLogFullscreen(!view.classList.contains('clog-fullscreen'));
+    });
 
     // Type-to-search: a printable key while viewing logs reveals the filter and
     // seeds it (mirrors the deploys/stacks type-to-search); Esc exits fullscreen
     // then the filter.
-    document.addEventListener('keydown', function(e) {
+    document.addEventListener('keydown', function (e) {
       if (activeView !== 'logs' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.target === input) return;
       const tag = (e.target && e.target.tagName) || '';
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        (e.target && e.target.isContentEditable)
+      )
+        return;
       if (e.key === 'Escape') {
         if (view.classList.contains('clog-fullscreen')) setLogFullscreen(false);
         else if (wrap.classList.contains('revealed')) clearLogFilter(true);
         return;
       }
       if (e.key.length === 1 && e.key !== ' ') {
-        revealLogFilter(true); input.focus(); input.value += e.key; applyLogSearch(); e.preventDefault();
+        revealLogFilter(true);
+        input.focus();
+        input.value += e.key;
+        applyLogSearch();
+        e.preventDefault();
       }
     });
   })();
 
-  document.addEventListener('keydown', function(e) {
+  document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') clog.escape();
   });
 })();
