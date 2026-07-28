@@ -1761,26 +1761,6 @@
     return el;
   }
 
-  // leadHTML renders the change-detection lead, linking the commit it names.
-  // watchedSummary stays a pure, unit-tested string: only the SHA token it
-  // already produced is swapped for a link, after escaping — a short SHA is
-  // `[0-9a-f]{7}`, so it survives escaping unchanged and matches unambiguously.
-  // The lead only names a commit in its settled form (UNCHANGED_SINCE, shared
-  // with the helper); any other phrasing misses the lookup and stays plain text.
-  function leadHTML(entry, fileCount) {
-    const text = escapeHtml(
-      watchedSummary(entry.last_status || '', entry.last_commit || '', fileCount, entry.disabled),
-    );
-    const commit = entry.last_commit || '';
-    if (!commit) return text;
-    const token = UNCHANGED_SINCE + shortSHA(commit);
-    if (text.indexOf(token) === -1) return text;
-    return text.replace(
-      token,
-      UNCHANGED_SINCE + commitLinkHTML(commit, { base: repoWebURL, title: commit }),
-    );
-  }
-
   // createWatchedPanel returns the change-detection panel: the input files whose
   // hashes decide whether this stack redeploys, and — after a clean deploy — the
   // commit nothing has changed since. It answers "I pushed and this stack did
@@ -1792,27 +1772,11 @@
       rosterSnap.find(function (r) {
         return r.name === stack;
       }) || {};
-    const files = entry.watched || [];
-    // The stack's own settings are hashed too, but under a synthetic key rather
-    // than a file (ADR-0043 moved that config host-side). It gets its own,
-    // clearly non-path entry so nobody goes looking for a file that isn't there.
-    const items = files.map(function (f) {
-      return `<li class="wp-file" data-testid="watched-file">${escapeHtml(f)}</li>`;
-    });
-    if (entry.watched_config) {
-      items.push(
-        '<li class="wp-config" data-testid="watched-config">' +
-          'plus this stack&rsquo;s settings in the host <code>skipper.yml</code></li>',
-      );
-    }
     const el = document.createElement('div');
     el.className = 'watched-panel';
     el.dataset.testid = 'watched-panel';
     el.dataset.watchedFor = stack;
-    el.innerHTML =
-      `<div class="wp-head"><span class="wp-label">change detection</span></div>` +
-      `<div class="wp-lead" data-testid="watched-lead">${leadHTML(entry, items.length)}</div>` +
-      (items.length ? `<ul class="wp-files">${items.join('')}</ul>` : '');
+    el.innerHTML = watchedPanelHTML(entry, repoWebURL);
     return el;
   }
 

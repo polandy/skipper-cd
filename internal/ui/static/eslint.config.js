@@ -20,7 +20,6 @@ module.exports = [
         ...globals.browser,
         // app-helpers.js constants
         HEALTH: 'readonly',
-        UNCHANGED_SINCE: 'readonly',
         // app-helpers.js functions
         assignHostColors: 'readonly',
         attentionLabel: 'readonly',
@@ -45,9 +44,7 @@ module.exports = [
         orphanStateClass: 'readonly',
         phaseDuration: 'readonly',
         reconcileHostFilter: 'readonly',
-        shortSHA: 'readonly',
         snapshotIsFresh: 'readonly',
-        watchedSummary: 'readonly',
         // app-render.js constants
         CLOG_ICON: 'readonly',
         LINK_ICON: 'readonly',
@@ -86,7 +83,7 @@ module.exports = [
         runListHTML: 'readonly',
         runSummaryHTML: 'readonly',
         serviceVersionHTML: 'readonly',
-        versionChipHTML: 'readonly',
+        watchedPanelHTML: 'readonly',
       },
     },
     rules: {
@@ -115,6 +112,8 @@ module.exports = [
       globals: {
         module: 'readonly',
         require: 'readonly',
+        // app-helpers.js constants it uses
+        UNCHANGED_SINCE: 'readonly',
         // app-helpers.js functions it calls
         attentionLabel: 'readonly',
         commitURL: 'readonly',
@@ -131,6 +130,7 @@ module.exports = [
         statusIcon: 'readonly',
         statusText: 'readonly',
         waitedSince: 'readonly',
+        watchedSummary: 'readonly',
       },
     },
   },
