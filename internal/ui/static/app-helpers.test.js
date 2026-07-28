@@ -680,3 +680,52 @@ test('logLineLevel tags child-process output as cmd', () => {
   assert.equal(h.logLineLevel({ level: 'error', attrs: { stream: 'stderr' } }), 'error');
   assert.equal(h.logLineLevel({ level: 'warn' }), 'warn');
 });
+
+test('phaseSince shows only the time for today, and adds the date otherwise', () => {
+  // Fixed clock: the today-or-not branch is a date-boundary comparison, so a
+  // self-read clock would make this flake once a day.
+  const now = new Date('2026-07-29T18:00:00Z').getTime();
+  const sameDay = new Date('2026-07-29T09:30:00Z').getTime();
+  const otherDay = new Date('2026-07-20T09:30:00Z').getTime();
+  // Asserted against the platform's own formatting rather than a literal, so
+  // the test does not depend on the runner's locale or timezone.
+  const time = new Date(sameDay).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  assert.equal(h.phaseSince(sameDay, now), time);
+  const older = h.phaseSince(otherDay, now);
+  assert.ok(older.endsWith(time), `expected a date before ${time}, got ${older}`);
+  assert.ok(older.length > time.length, `expected a date prefix, got ${older}`);
+});
+
+test('phaseSince treats a later time on the same local day as today', () => {
+  // "Today" is the local calendar day, not "within 24 hours" — an hour earlier
+  // but across midnight must still take the dated form.
+  const now = new Date('2026-07-29T00:30:00').getTime();
+  const justBeforeMidnight = new Date('2026-07-28T23:30:00').getTime();
+  const earlierToday = new Date('2026-07-29T00:05:00').getTime();
+  assert.notEqual(
+    h.phaseSince(justBeforeMidnight, now).length,
+    h.phaseSince(earlierToday, now).length,
+  );
+});
+
+test('watchedSummary opens its settled lead with UNCHANGED_SINCE', () => {
+  // The constant is load-bearing: watchedLeadHTML locates the commit token by
+  // this exact prefix to turn it into a link, so a reworded lead that no longer
+  // starts with it would silently stop linking.
+  for (const status of ['success', 'healed']) {
+    const settled = h.watchedSummary(status, 'abc1234def', 2, false);
+    assert.ok(
+      settled.startsWith(h.UNCHANGED_SINCE),
+      `lead must open with ${JSON.stringify(h.UNCHANGED_SINCE)}, got ${settled}`,
+    );
+    assert.match(settled, new RegExp(h.UNCHANGED_SINCE + 'abc1234'));
+  }
+  // A first deploy has no prior commit; the prefix must still open the lead, or
+  // the linker would look for a token that is not there.
+  assert.ok(h.watchedSummary('success', '', 2, false).startsWith(h.UNCHANGED_SINCE));
+  // An unsettled outcome makes no such claim, so the prefix must be absent.
+  assert.ok(!h.watchedSummary('failed', 'abc1234def', 2, false).includes(h.UNCHANGED_SINCE));
+});

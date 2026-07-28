@@ -270,7 +270,7 @@ function healthHistoryHTML(phases, repoBase, nowMs) {
       `<div class="hp-phase" data-testid="health-phase" data-health="${escapeAttr(p.status)}">` +
       `<span class="hdot"></span>` +
       `<span class="hp-pstatus">${escapeHtml(p.status)}</span>` +
-      `<span>${escapeHtml(phaseSince(p.since))}</span>` +
+      `<span>${escapeHtml(phaseSince(p.since, nowMs))}</span>` +
       `<span>${escapeHtml(i === 0 ? 'for ' + dur : dur)}</span>` +
       (p.deploy_correlated && p.commit
         ? commitLinkHTML(p.commit, {
