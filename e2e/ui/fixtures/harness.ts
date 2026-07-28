@@ -4,7 +4,7 @@ import { createServer as createHttpServer, type Server } from 'node:http';
 import { createHmac } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, basename } from 'node:path';
+import { join, basename } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 // This is the Node twin of the Go E2E harness (e2e/harness_test.go): it runs the
