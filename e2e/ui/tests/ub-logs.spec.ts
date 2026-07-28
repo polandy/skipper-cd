@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske B: Logs-View. See docs/e2e-tests.md §4.3.
+// Maske B: Logs-View. See dev-docs/e2e-tests.md §4.3.
 
 // Distinctive stub-docker stdout line used by UB5 to prove child-process output
 // is captured and rendered as a cmd-prefix line. No level word, no leading '[',

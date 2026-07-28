@@ -1,5 +1,7 @@
 # Install skipper-cd as an App (PWA)
 
+Status: implemented (ADR-0018, ADR-0023).
+
 The skipper-cd web UI is an **installable Progressive Web App (PWA)**. The user-facing summary is [`docs/pwa.md`](../docs/pwa.md). This
 document describes **what** the PWA behaviour is for users and operators — not
 how it is implemented. UI details live in

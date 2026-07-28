@@ -1,5 +1,7 @@
 # Stacks roster tab
 
+Status: implemented, living reference — kept in sync with the Stacks view.
+
 The deploy table is an **event log** — it shows only stacks that emitted an
 event this session (plus persisted history), and by design a disabled or
 never-deployed stack has no row (see `internal/ui/UI_SPEC.md`). Stack discovery

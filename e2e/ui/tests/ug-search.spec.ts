@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske G: Deploys stack search. See docs/e2e-tests.md §4.8.
+// Maske G: Deploys stack search. See dev-docs/e2e-tests.md §4.8.
 //
 // Three stacks deploy on startup (config order web → api → db), giving three
 // success rows to filter. The filter is purely client-side; nothing is faked

@@ -1,5 +1,7 @@
 # Running CI Locally
 
+Status: living reference — recipe doc.
+
 The whole CI pipeline (`.github/workflows/ci.yml` + `docs.yml`) can be run on
 your own machine — useful on NixOS, where the tools aren't otherwise on PATH.
 The flake's dev shell carries the toolchain; a `Makefile` at the repo root

@@ -2,7 +2,7 @@ import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 import type { Skipper } from '../fixtures/harness';
 
-// Maske F: Upcoming-deploys look-ahead. See docs/e2e-tests.md §4.7.
+// Maske F: Upcoming-deploys look-ahead. See dev-docs/e2e-tests.md §4.7.
 //
 // A multi-stack run is held on the first stack's `up`, so the run sits with one
 // stack deploying and the rest still to come — exactly the state the look-ahead

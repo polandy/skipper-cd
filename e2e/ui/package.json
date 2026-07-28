@@ -2,7 +2,7 @@
   "name": "skipper-cd-ui-e2e",
   "version": "0.0.0",
   "private": true,
-  "description": "Playwright UI end-to-end tests for the skipper-cd web UI. Drives the real skipper binary (see ../ and docs/e2e-tests.md).",
+  "description": "Playwright UI end-to-end tests for the skipper-cd web UI. Drives the real skipper binary (see ../ and dev-docs/e2e-tests.md).",
   "scripts": {
     "test": "playwright test",
     "test:update": "playwright test --update-snapshots"

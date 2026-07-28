@@ -1,8 +1,11 @@
 # Dependabot cannot update Nix flake inputs, so a weekly job opens a PR
 # with a refreshed flake.lock instead.
 #
-# Note: PRs created with the default GITHUB_TOKEN do not trigger CI runs.
-# Close and reopen the PR to run CI, or configure a PAT/GitHub App token.
+# Runbook: PRs created with the default GITHUB_TOKEN do not trigger CI runs
+# (a GitHub restriction on workflow-authored PRs, not a bug here). When this
+# job opens a PR, close it and reopen it (or push an empty commit) to make CI
+# run before merging. A permanent fix would need a PAT or GitHub App token
+# with repo write access wired in as a secret.
 name: Update flake.lock
 
 on:

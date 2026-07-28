@@ -5,5 +5,5 @@
 //
 //	go test -tags e2e ./e2e
 //
-// The full scope and test catalog live in docs/e2e-tests.md.
+// The full scope and test catalog live in dev-docs/e2e-tests.md.
 package e2e

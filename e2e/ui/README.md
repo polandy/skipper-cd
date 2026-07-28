@@ -4,7 +4,7 @@ Drives the embedded skipper-cd web UI in a real browser against the **real
 skipper binary**, backed by a local git origin and a stub `docker` on `PATH`
 (no docker daemon). The Node harness in `fixtures/harness.ts` is a twin of the
 Go pipeline harness (`../harness_test.go`) — keep the stub docker script and
-config shape in sync. Full spec: [`../../docs/e2e-tests.md`](../../docs/e2e-tests.md).
+config shape in sync. Full spec: [`../../dev-docs/e2e-tests.md`](../../dev-docs/e2e-tests.md).
 
 ## Run
 

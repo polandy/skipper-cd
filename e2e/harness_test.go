@@ -27,7 +27,7 @@ import (
 // process. It records each invocation as "<cwd>\t<args>" so tests can attribute
 // a `compose … up` to a stack by its working directory
 // (stacks_base_dir/<stack>). Behaviour is scripted via env vars so one stub can
-// drive every deploy status the UI renders (see docs/e2e-tests.md §3):
+// drive every deploy status the UI renders (see dev-docs/e2e-tests.md §3):
 //
 //   - STUB_DOCKER_HOLD_UP=<file>   block on `up` until <file> exists (observe
 //     the "deploying" state), then continue.

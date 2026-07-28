@@ -1,10 +1,10 @@
 import { test, expect } from '../fixtures/test';
 import { visualSnapshot } from '../fixtures/snapshot';
 
-// Maske A: Deploys-View. See docs/e2e-tests.md §4.2.
+// Maske A: Deploys-View. See dev-docs/e2e-tests.md §4.2.
 
 // Dynamic cells that must be masked out of deploy-table screenshots so relative
-// times and durations never diff (docs/e2e-tests.md §5).
+// times and durations never diff (dev-docs/e2e-tests.md §5).
 const deployMasks = (page: import('@playwright/test').Page) => [
   page.locator('[data-testid="time-cell"]'),
   page.locator('[data-testid="duration-cell"]'),
@@ -46,7 +46,7 @@ test('UA1: deploy row transitions deploying → success in place', async ({ page
 });
 
 // UA2 — Status badges. Each deploy status the UI renders is driven through the
-// real backend (recipes in docs/e2e-tests.md §3) and its row asserted to carry
+// real backend (recipes in dev-docs/e2e-tests.md §3) and its row asserted to carry
 // the right data-status and status-badge. One focused test per status keeps the
 // backend setup for each isolated in its own instance.
 test.describe('UA2: status badges', () => {

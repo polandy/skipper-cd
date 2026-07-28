@@ -1,6 +1,6 @@
 # Feature Spec: Multi-Host Federated UI
 
-Status: implemented on the feature branch (see [ADR-0048](adr/0048-multi-host-federated-ui.md)).
+Status: implemented (see [ADR-0048](adr/0048-multi-host-federated-ui.md)).
 **Reworked 2026-07-21**: the earlier reverse-proxy switcher is dropped in
 favour of read-data fan-in — see the "Why not a reverse proxy" section.
 The host-indicator treatment (a per-row **monogram chip**, not a Host column) and the

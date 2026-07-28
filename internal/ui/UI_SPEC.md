@@ -23,7 +23,7 @@ One semantic token layer consumes the palette; all tints, borders and glows are 
 
 Each theme maps these tokens to its own raw colours (`--raw-accent`, `--raw-success`, …) under `:root[data-theme="<name>"]` / `:root[data-theme="<name>"].light`; adding a theme is a self-contained CSS block, nothing else in the page references a theme name. Background depth: `crust` (sunken — log pane, diff/files panels) → `mantle` (page) → `base` (header glass, cards) → `surface0` (raised — tags, toggle tracks). Text: `text` / `subtext0` / `overlay1` (primary / secondary / muted).
 
-Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). Both are **self-hosted and embedded** (latin subset, weights 400/500/600): the `woff2` files live in `static/fonts/` and are served same-origin from the embedded FS under `/fonts/` (scoped `FontsHandler`, immutable cache), referenced by `@font-face … url(/fonts/…)`, `<link rel="preload">`ed in the head, and cached in the service-worker app shell. There is no external Google Fonts request, so the page stays fully self-contained, works offline, and renders deterministically for visual snapshots (ADR-0035; see [`docs/e2e-tests.md`](../../docs/e2e-tests.md) §5). Background: mantle with subtle grid overlay and peach radial glow at top centre.
+Fonts: **DM Sans** (UI) + **JetBrains Mono** (timestamps, stack names, badges). Both are **self-hosted and embedded** (latin subset, weights 400/500/600): the `woff2` files live in `static/fonts/` and are served same-origin from the embedded FS under `/fonts/` (scoped `FontsHandler`, immutable cache), referenced by `@font-face … url(/fonts/…)`, `<link rel="preload">`ed in the head, and cached in the service-worker app shell. There is no external Google Fonts request, so the page stays fully self-contained, works offline, and renders deterministically for visual snapshots (ADR-0035; see [`dev-docs/e2e-tests.md`](../../dev-docs/e2e-tests.md) §5). Background: mantle with subtle grid overlay and peach radial glow at top centre.
 
 ---
 
@@ -324,7 +324,7 @@ Besides `deploy` events, the stream carries named **state snapshots** — `autos
 
 ## Autosync
 
-Controls whether detected changes deploy automatically, per stack and globally. Paused stacks queue their changes and deploy them when sync resumes. Behaviour, semantics and the API contract are specified in [`docs/autosync.md`](../../dev-docs/autosync-spec.md); this section covers only the UI surface.
+Controls whether detected changes deploy automatically, per stack and globally. Paused stacks queue their changes and deploy them when sync resumes. Behaviour, semantics and the API contract are specified in [`dev-docs/autosync-spec.md`](../../dev-docs/autosync-spec.md); this section covers only the UI surface.
 
 **Header control** — the [Autosync control](#header--right) shows global state and, when deploys are waiting, an amber **pending count** pill (hidden at zero). It is the drawer opener and the "how many are queued" indicator. It reflects server state (the `autosync`/`queue` SSE events), never `localStorage`.
 
@@ -334,7 +334,7 @@ Controls whether detected changes deploy automatically, per stack and globally. 
 - **Queued (N) · drains in this order** — the pending stacks in **deploy order** (`_nixos` first, then `skipper.yml` order), each row: position number, stack name, a `reason` chip (`global` / `stack`), changed-file count, and how long it has waited. Empty/hidden when nothing is queued.
 - **All stacks** — one switch per managed stack with its current state, preceded by a **filter field** (case-insensitive substring match on stack name; a clear button appears when non-empty; `Esc` clears the field first, then closes the drawer). A "No stack matches …" state shows when the filter excludes everything. Toggling posts `POST /api/autosync {scope:"stack", stack, enabled}`. The switch reflects `effective`, so it stays correct across a toggle **while a filter is applied** (the toggle re-renders the list but preserves the query and the matched subset).
 
-**Per-stack switch is an exception, not a pin.** A per-stack UI override is held only while it differs from what the stack would inherit; toggling a stack back to its inherited value clears the override (the "return to global" gesture) and toggling the global switch collapses any per-stack override that now matches the baseline. So the global switch behaves as a true master and a UI pause does not survive a global off→on cycle. Full semantics: [`docs/autosync.md`](../../dev-docs/autosync-spec.md#override-collapse) / [ADR-0019](../../dev-docs/adr/0019-autosync-ui-overrides-collapse-to-inherit.md).
+**Per-stack switch is an exception, not a pin.** A per-stack UI override is held only while it differs from what the stack would inherit; toggling a stack back to its inherited value clears the override (the "return to global" gesture) and toggling the global switch collapses any per-stack override that now matches the baseline. So the global switch behaves as a true master and a UI pause does not survive a global off→on cycle. Full semantics: [`dev-docs/autosync-spec.md`](../../dev-docs/autosync-spec.md#override-collapse) / [ADR-0019](../../dev-docs/adr/0019-autosync-ui-overrides-collapse-to-inherit.md).
 
 **Enable triggers a drain; disable does not.** Enabling sync (global or a stack) triggers a deploy run that drains the queue; disabling only updates state. Switches use the same track/thumb geometry as the header `.filter-toggle`.
 
@@ -342,7 +342,7 @@ Controls whether detected changes deploy automatically, per stack and globally. 
 
 **A re-render never swaps a switch out from under a click.** The queued and all-stacks lists are patched in place while their rows and order are unchanged, and rebuilt only when the row set actually changes. Rebuilding wholesale on every `autosync`/`queue` event replaced the switch nodes, and a switch replaced between mousedown and mouseup takes the `click` with it — the browser fires it on the common ancestor, where the delegated handler finds no switch and does nothing (it also dropped keyboard focus on every tick).
 
-**A switch never snaps back.** Autosync state reaches the UI over two channels — the toggle's own `POST` response and the `autosync` SSE event the same change broadcasts — and they can overtake each other. The UI applies a snapshot only when its `version` is not below the one already applied, so a late payload is dropped instead of repainting the state before the last change (two quick toggles of the same switch are exactly that window). The version is re-baselined on every reconnect, since it restarts with the server. A drop is announced on the browser console, since it is by design invisible in the interface. See [`docs/autosync.md`](../../dev-docs/autosync-spec.md#snapshot-ordering).
+**A switch never snaps back.** Autosync state reaches the UI over two channels — the toggle's own `POST` response and the `autosync` SSE event the same change broadcasts — and they can overtake each other. The UI applies a snapshot only when its `version` is not below the one already applied, so a late payload is dropped instead of repainting the state before the last change (two quick toggles of the same switch are exactly that window). The version is re-baselined on every reconnect, since it restarts with the server. A drop is announced on the browser console, since it is by design invisible in the interface. See [`dev-docs/autosync-spec.md`](../../dev-docs/autosync-spec.md#snapshot-ordering).
 
 ---
 
@@ -357,7 +357,7 @@ A read-only panel listing the **current deploy run** in deploy order, opened by 
 
 ## Autosync & queue API
 
-`GET /api/autosync`, `POST /api/autosync`, `GET /api/queue`, and the `autosync` / `queue` SSE events on `/api/events` are specified in [`docs/autosync.md`](../../dev-docs/autosync-spec.md). The `POST` shares the trust level of the other endpoints (unauthenticated at the process; edge auth in front).
+`GET /api/autosync`, `POST /api/autosync`, `GET /api/queue`, and the `autosync` / `queue` SSE events on `/api/events` are specified in [`dev-docs/autosync-spec.md`](../../dev-docs/autosync-spec.md). The `POST` shares the trust level of the other endpoints (unauthenticated at the process; edge auth in front).
 
 ---
 
@@ -468,7 +468,7 @@ Diffs and commit metadata are stored in `deploy-history.yaml` alongside events b
 
 ## Progressive Web App (PWA)
 
-The UI is an **installable PWA** (full spec: [`docs/pwa.md`](../../dev-docs/pwa-spec.md); decisions: [ADR-0018](../../dev-docs/adr/0018-pwa-installable-ui.md), [ADR-0023](../../dev-docs/adr/0023-pwa-update-prompt.md)). It is an enhancement layer — the page behaves exactly as before in a normal browser tab.
+The UI is an **installable PWA** (full spec: [`dev-docs/pwa-spec.md`](../../dev-docs/pwa-spec.md); decisions: [ADR-0018](../../dev-docs/adr/0018-pwa-installable-ui.md), [ADR-0023](../../dev-docs/adr/0023-pwa-update-prompt.md)). It is an enhancement layer — the page behaves exactly as before in a normal browser tab.
 
 - **Manifest** — `GET /manifest.webmanifest` (`<link rel="manifest">` in `<head>`): `name` `skipper-cd`, `short_name` `skipper`, `display` `standalone`, `start_url`/`scope` `/`, `theme_color` `#1e1e2e` (Mocha base), `background_color` `#181825` (Mocha mantle) for the splash. Icons at 192 and 512 px (`purpose: any`) plus a 512 px `maskable` variant, all rendered from the ship logo and served under `/icons/`.
 - **App identity** — the ship logo becomes the app icon (including a maskable variant so Android crops it into the system shape without clipping). Served as PNG because iOS ignores SVG and manifest icons for the home screen; an `apple-touch-icon` link and `apple-mobile-web-app-*` metas cover iOS.
@@ -481,7 +481,7 @@ The UI is an **installable PWA** (full spec: [`docs/pwa.md`](../../dev-docs/pwa-
 
 ## Test hooks (`data-testid`)
 
-The E2E UI suite ([`docs/e2e-tests.md`](../../docs/e2e-tests.md)) selects **only** on
+The E2E UI suite ([`dev-docs/e2e-tests.md`](../../dev-docs/e2e-tests.md)) selects **only** on
 `data-testid` — never on `id`, text, or CSS class — so refactoring markup or
 styling never breaks the tests. These attributes are a public contract of the
 UI; keep them stable when editing `index.html`. Dynamic rows also carry data

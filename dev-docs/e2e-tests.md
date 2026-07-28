@@ -1,5 +1,7 @@
 # End-to-End Test Specification
 
+Status: living reference — kept in sync with the suite as masks land.
+
 Authoritative spec for skipper-cd's end-to-end (E2E) tests. Read this before
 adding or changing E2E coverage. Pure logic lives in unit tests (see below) —
 E2E owns only the **wiring and the through-line journeys** the unit tests

@@ -1,5 +1,7 @@
 # UI preview
 
+Status: living reference — recipe doc.
+
 A one-command, seeded skipper-cd instance for **manually eyeballing the web UI**
 — the manual-test-first gate every UI change goes through before its Playwright
 mask is finalized.
