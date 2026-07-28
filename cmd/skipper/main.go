@@ -24,7 +24,6 @@ import (
 	"github.com/polandy/skipper-cd/internal/audit"
 	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/command"
-	"github.com/polandy/skipper-cd/internal/compose"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/containerlogs"
 	"github.com/polandy/skipper-cd/internal/deploy"
@@ -468,22 +467,6 @@ func stackAutosyncConfig(cfg *config.Config) map[string]*bool {
 	return m
 }
 
-// healthStacks maps each effective stack to the compose identity the health
-// poller probes: the compose file from the repo clone plus project_directory
-// (if any) as --project-directory — the same identity the deploy path uses.
-func healthStacks(cfg *config.Config, stacks []config.Stack) []health.StackRef {
-	refs := make([]health.StackRef, 0, len(stacks))
-	for _, s := range stacks {
-		refs = append(refs, health.StackRef{
-			Name:        s.Name,
-			ComposePath: filepath.Join(cfg.StacksBaseDir, s.Name, compose.FileName),
-			ProjectDir:  s.ProjectDirectory,
-			OnDemand:    s.OnDemandContainers,
-		})
-	}
-	return refs
-}
-
 // stackProjectDir returns the compose project directory of a stack — its
 // project_directory when set, else stacks_base_dir/<name> — matching the
 // working_dir label a running project carries, for orphan detection (ADR-0036).
@@ -587,7 +570,7 @@ func registerPeerRoutes(mux *http.ServeMux, reg *peers.Registry) {
 func registerIconRoutes(mux *http.ServeMux, cfg *config.Config, stacks func() []config.Stack) {
 	iconTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 	iconSvc := icons.New(cfg.Icons.CacheDir, icons.NewHTTPFetcher(cfg.Icons.SourceURL, &http.Client{Timeout: iconTimeout}))
-	mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, stackLocator(cfg, stacks)))
+	mux.Handle("GET /api/icons/{stack}", icons.Handler(iconSvc, icons.NewStackLocator(cfg, stacks)))
 	mux.Handle("POST /api/icons/refresh", ui.RequireSameOrigin(icons.RefreshHandler(iconSvc)))
 }
 
@@ -657,38 +640,6 @@ func (s stateSnapshot) collect() []events.StateEvent {
 		state = append(state, events.StateEvent{Name: events.StatePeers, Data: s.peers.State()})
 	}
 	return state
-}
-
-// stackLocator maps a stack name to its icon-resolution inputs from the
-// effective stack set. The icon file lives in the stack's directory in the
-// clone (stacks_base_dir/<name>), the same directory change detection reads
-// from.
-func stackLocator(cfg *config.Config, stacks func() []config.Stack) icons.StackLocator {
-	return func(name string) (icons.Request, bool) {
-		// The reserved NixOS pseudo-stack has no directory in the clone and is
-		// not in the stack set; resolve its icon by auto-matching the "nixos"
-		// slug so it gets a recognizable logo instead of the "_" monogram
-		// fallback.
-		if name == deploy.NixosStateKey {
-			return icons.Request{Name: "nixos"}, true
-		}
-		// The reserved stack-config pseudo-stack (ADR-0034) likewise has no
-		// directory; its failures are about the repo skipper.yaml, so the git
-		// logo is the recognizable stand-in.
-		if name == deploy.ConfigStateKey {
-			return icons.Request{Name: "git"}, true
-		}
-		for _, s := range stacks() {
-			if s.Name == name {
-				return icons.Request{
-					Name: s.Name,
-					Slug: s.Icon,
-					Dir:  filepath.Join(cfg.StacksBaseDir, s.Name),
-				}, true
-			}
-		}
-		return icons.Request{}, false
-	}
 }
 
 // startServer runs an HTTP server in a goroutine and returns it so the
