@@ -112,15 +112,20 @@ func TestWriteFile_FailedWriteLeavesTheExistingFileIntact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A directory in place of the temp file's home makes CreateTemp fail before
-	// anything touches path.
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: the directory mode below would not deny the write")
+	}
+	// A non-writable parent makes CreateTemp fail before anything touches path.
+	// Restored on the way out so t.TempDir can clean up even if an assertion
+	// below fails first.
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
-	if os.Geteuid() == 0 {
-		t.Skip("running as root: the directory mode would not deny the write")
-	}
+	t.Cleanup(func() {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Errorf("restoring the directory mode: %v", err)
+		}
+	})
 
 	if err := fsatomic.WriteFile(path, []byte("committed: false\n"), 0o640); err == nil {
 		t.Fatal("expected an error when the parent directory is not writable")

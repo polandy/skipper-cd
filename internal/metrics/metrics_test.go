@@ -121,19 +121,27 @@ func TestMetricNamesFollowTheSkipperPrefix(t *testing.T) {
 }
 
 func TestDefaultRegistryGathers(t *testing.T) {
-	// Importing the package registers every collector on the default registry
-	// via promauto, which panics on a duplicate name. Gathering proves the
-	// registration went through and that no two collectors collide.
+	// The duplicate-name assertion is the import itself: promauto panics when a
+	// collector is registered under a name the default registry already holds,
+	// so this test binary would not start. Gathering then proves the
+	// registration actually produced a scrapeable metric — a collector whose
+	// Collect misbehaves fails here rather than at the first scrape in
+	// production.
 	got, err := prometheus.DefaultGatherer.Gather()
 	if err != nil {
 		t.Fatalf("gather from the default registry: %v", err)
 	}
 
-	seen := make(map[string]bool, len(got))
+	// Counters without labels export immediately; the *Vec families stay absent
+	// until they observe a label value, so this asserts presence of the plain
+	// ones rather than the full set.
+	var skipper int
 	for _, mf := range got {
-		if seen[mf.GetName()] {
-			t.Errorf("metric family %q gathered twice", mf.GetName())
+		if strings.HasPrefix(mf.GetName(), "skipper_") {
+			skipper++
 		}
-		seen[mf.GetName()] = true
+	}
+	if skipper == 0 {
+		t.Error("no skipper_ metric families gathered — registration did not take effect")
 	}
 }
