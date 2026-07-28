@@ -610,13 +610,15 @@ test('runRowHTML escapes the stack name in both text and attributes', () => {
 });
 
 test('runListHTML leads with the active stack and numbers the rest in order', () => {
-  const html = r.runListHTML(['web'], ['db', 'cache'], 'SHIP');
-  const badges = [...html.matchAll(/class="run-badge[^"]*">([^<]*)</g)].map((m) => m[1]);
-  assert.deepEqual(badges, ['SHIP', '1', '2']);
+  const html = r.runListHTML(['web'], ['db', 'cache']);
   const details = [...html.matchAll(/class="run-detail">([^<]*)</g)].map((m) => m[1]);
   assert.deepEqual(details, ['deploying now', 'next', 'then']);
+  // The active row carries the ship glyph, the waiting ones their queue position.
+  assert.ok(html.includes(`class="run-badge ship">${r.SHIP_ICON}<`), `ship badge missing: ${html}`);
+  const positions = [...html.matchAll(/class="run-badge">(\d+)</g)].map((m) => m[1]);
+  assert.deepEqual(positions, ['1', '2']);
 });
 
 test('runListHTML falls back to the empty-state line', () => {
-  assert.match(r.runListHTML([], [], 'SHIP'), /class="qempty"/);
+  assert.match(r.runListHTML([], []), /class="qempty"/);
 });

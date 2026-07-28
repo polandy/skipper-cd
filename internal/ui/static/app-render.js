@@ -541,6 +541,10 @@ function autosyncRowHTML(entry, pos, item, nowMs) {
   );
 }
 
+// SHIP_ICON is the badge on the run drawer's active row.
+const SHIP_ICON =
+  '<svg class="ds-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h16l-2 4H6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="7.5" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><path d="M3 20q2-1.6 4 0t4 0 4 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
 // nextTrailHTML renders the header's look-ahead trail "→ a · b · +N", capping
 // the names shown so a long run does not widen the header without bound.
 function nextTrailHTML(up) {
@@ -587,10 +591,10 @@ function runRowHTML(name, badge, detail, isActive) {
 
 // runListHTML renders the whole run drawer body: the active stack(s) lead with
 // the ship badge, the upcoming ones follow in deploy order.
-function runListHTML(active, up, shipIcon) {
+function runListHTML(active, up) {
   const rows = active
     .map(function (n) {
-      return runRowHTML(n, shipIcon, 'deploying now', true);
+      return runRowHTML(n, SHIP_ICON, 'deploying now', true);
     })
     .concat(
       up.map(function (n, i) {
@@ -637,5 +641,6 @@ if (typeof module !== 'undefined' && module.exports) {
     runSummaryHTML,
     runRowHTML,
     runListHTML,
+    SHIP_ICON,
   };
 }

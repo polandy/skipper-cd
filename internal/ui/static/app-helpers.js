@@ -576,7 +576,8 @@ function deployAnnouncement(status, stack) {
 
 // deployStatusLabel is the header indicator's title and aria-label. It says in
 // words what the trail renders as chips, so the meaning survives on mobile,
-// where the labels are hidden and only the dot and count remain.
+// where those labels are hidden and only the dot and count chip stay
+// (UI_SPEC §Responsive).
 function deployStatusLabel(active, up) {
   if (active.length === 0) return 'idle';
   return 'deploying ' + active.join(', ') + (up.length ? ' · next ' + up.join(', ') : '');
