@@ -10,7 +10,7 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/git"
-	"github.com/polandy/skipper-cd/internal/ui"
+	"github.com/polandy/skipper-cd/internal/uitheme"
 )
 
 func TestLoad_ValidConfig(t *testing.T) {
@@ -280,13 +280,13 @@ stacks: []
 `
 	cfg := loadFromString(t, content)
 
-	if cfg.UITheme != ui.ThemeCatppuccin {
-		t.Errorf("expected default ui_theme %q, got %q", ui.ThemeCatppuccin, cfg.UITheme)
+	if cfg.UITheme != uitheme.ThemeCatppuccin {
+		t.Errorf("expected default ui_theme %q, got %q", uitheme.ThemeCatppuccin, cfg.UITheme)
 	}
 }
 
 func TestLoad_UIThemeAcceptsEveryBuiltInTheme(t *testing.T) {
-	for _, theme := range ui.ValidThemes {
+	for _, theme := range uitheme.ValidThemes {
 		t.Run(theme, func(t *testing.T) {
 			content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git

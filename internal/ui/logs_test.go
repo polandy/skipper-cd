@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/logbuf"
+	"github.com/polandy/skipper-cd/internal/uitheme"
 )
 
 func TestLogsSSEHandler_SendsBacklogOnConnect(t *testing.T) {
@@ -104,7 +105,7 @@ func TestLogsSSEHandler_SetsSSEHeaders(t *testing.T) {
 }
 
 func TestIndexHandler_ContainsLogsViewToggle(t *testing.T) {
-	handler := IndexHandler(ThemeCatppuccin, false)
+	handler := IndexHandler(uitheme.ThemeCatppuccin, false)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 

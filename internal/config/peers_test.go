@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/polandy/skipper-cd/internal/ui"
+	"github.com/polandy/skipper-cd/internal/uitheme"
 )
 
 func TestLoad_HostNameDefaultsToOSHostname(t *testing.T) {
@@ -83,7 +83,7 @@ stacks_base_dir: modules
 stacks: []
 peers:
 `)
-	for i := range ui.HostColorCount {
+	for i := range uitheme.HostColorCount {
 		fmt.Fprintf(&b, "  - name: host-%d\n    url: http://host-%d:8001\n", i, i)
 	}
 	cfg := loadFromString(t, b.String())
