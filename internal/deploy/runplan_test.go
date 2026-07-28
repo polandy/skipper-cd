@@ -55,9 +55,12 @@ func TestComputeRunPlan_ExcludesPausedStacks(t *testing.T) {
 	baseDir := t.TempDir()
 	makeStacks(t, baseDir, "alpha", "beta")
 
-	d := newDeployerWithRunner(&recordingRunner{})
 	// Global autosync on (nil), beta paused via its config value.
-	d.SetAutosync(autosync.NewController(nil, map[string]*bool{"beta": off()}), autosync.NewQueue())
+	d := New(Config{
+		Runner:   &recordingRunner{},
+		Autosync: autosync.NewController(nil, map[string]*bool{"beta": off()}),
+		Queue:    autosync.NewQueue(),
+	})
 
 	cfg := &config.Config{
 		StacksBaseDir: baseDir,
@@ -74,12 +77,10 @@ func TestDeployAllStacks_PublishesShrinkingUpcoming(t *testing.T) {
 	baseDir := t.TempDir()
 	makeStacks(t, baseDir, "alpha", "beta", "gamma")
 
-	d := &Deployer{runner: &recordingRunner{}, stateDir: t.TempDir()}
-
 	var got [][]string
-	d.SetRunPlanSink(func(p RunPlan) {
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir(), RunPlanSink: func(p RunPlan) {
 		got = append(got, append([]string{}, p.Upcoming...))
-	})
+	}})
 
 	cfg := &config.Config{
 		StacksBaseDir: baseDir,
@@ -103,8 +104,7 @@ func TestDeployAllStacks_ClearsRunPlanAtEnd(t *testing.T) {
 	baseDir := t.TempDir()
 	makeStacks(t, baseDir, "alpha")
 
-	d := &Deployer{runner: &recordingRunner{}, stateDir: t.TempDir()}
-	d.SetRunPlanSink(func(RunPlan) {})
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir(), RunPlanSink: func(RunPlan) {}})
 
 	cfg := &config.Config{
 		StacksBaseDir: baseDir,
@@ -123,7 +123,7 @@ func TestComputeRunPlan_SkippedWhenNoSink(t *testing.T) {
 	baseDir := t.TempDir()
 	makeStacks(t, baseDir, "alpha")
 
-	d := &Deployer{runner: &recordingRunner{}, stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
 	cfg := &config.Config{
 		StacksBaseDir: baseDir,
 		Stacks:        []config.Stack{{Name: "alpha"}},
@@ -136,8 +136,7 @@ func TestComputeRunPlan_SkippedWhenNoSink(t *testing.T) {
 }
 
 func TestCurrentRunPlan_ReflectsLastPublished(t *testing.T) {
-	d := &Deployer{runner: &recordingRunner{}, stateDir: t.TempDir()}
-	d.SetRunPlanSink(func(RunPlan) {})
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir(), RunPlanSink: func(RunPlan) {}})
 
 	d.publishRunPlan([]string{"x", "y"})
 	if up := d.CurrentRunPlan().Upcoming; !slices.Equal(up, []string{"x", "y"}) {

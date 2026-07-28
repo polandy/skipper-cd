@@ -38,11 +38,11 @@ func discoveryDeployer(t *testing.T, repoDir string) (*Deployer, *recordingRunne
 	runner := &recordingRunner{}
 	var recorded []events.DeployEvent
 	d := New(Config{
-		Runner:   runner,
-		RepoDir:  repoDir,
-		StateDir: t.TempDir(),
+		Runner:    runner,
+		RepoDir:   repoDir,
+		StateDir:  t.TempDir(),
+		EventSink: func(e events.DeployEvent) { recorded = append(recorded, e) },
 	})
-	d.SetEventSink(func(e events.DeployEvent) { recorded = append(recorded, e) })
 	return d, runner, &recorded
 }
 
@@ -98,8 +98,8 @@ func TestDeployAllStacks_DiscoveryConfigEditRedeploysOnlyThatStack(t *testing.T)
 
 	secondRunner := &recordingRunner{}
 	var recorded []events.DeployEvent
-	d2 := New(Config{Runner: secondRunner, RepoDir: repoDir, StateDir: stateDir})
-	d2.SetEventSink(func(e events.DeployEvent) { recorded = append(recorded, e) })
+	d2 := New(Config{Runner: secondRunner, RepoDir: repoDir, StateDir: stateDir,
+		EventSink: func(e events.DeployEvent) { recorded = append(recorded, e) }})
 	d2.DeployAllStacks(context.Background(), edited)
 
 	if got := eventsWithStatus(recorded, events.StatusSuccess); len(got) != 1 || got[0] != "alpha" {

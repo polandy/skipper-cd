@@ -45,9 +45,10 @@ func resolveHealthCheck(stack config.Stack, cf *composeFile) *config.HealthCheck
 	return &config.HealthCheck{TimeoutSeconds: config.DefaultHealthCheckTimeoutSeconds}
 }
 
-// httpDoer is the minimal HTTP client surface the health prober needs;
-// tests inject a fake instead of a real *http.Client.
-type httpDoer interface {
+// HTTPDoer is the minimal HTTP client surface the deploy_health_check probe
+// needs. Config.ProbeClient accepts it so tests inject a fake instead of a
+// real *http.Client.
+type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
@@ -59,17 +60,20 @@ const defaultProbeInterval = 2 * time.Second
 // of a stack's deploy_health_check gate (ADR-0022); the first stage is docker
 // compose up --wait.
 type httpHealthProber struct {
-	doer     httpDoer
+	doer     HTTPDoer
 	interval time.Duration
 }
 
-// healthProber returns the deployer's prober, lazily constructing the real
-// one on first use. Tests pre-set d.prober with a fake doer.
-func (d *Deployer) healthProber() *httpHealthProber {
-	if d.prober == nil {
-		d.prober = &httpHealthProber{doer: &http.Client{}, interval: defaultProbeInterval}
+// newHealthProber builds the prober from the Config probe seams, substituting
+// the production defaults for zero values (New calls it exactly once).
+func newHealthProber(client HTTPDoer, interval time.Duration) *httpHealthProber {
+	if client == nil {
+		client = &http.Client{}
 	}
-	return d.prober
+	if interval <= 0 {
+		interval = defaultProbeInterval
+	}
+	return &httpHealthProber{doer: client, interval: interval}
 }
 
 // waitHealthy polls url until a 2xx response and returns nil, or returns the

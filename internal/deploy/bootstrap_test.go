@@ -34,14 +34,14 @@ func newBootstrapEnv(t *testing.T) *bootstrapEnv {
 
 	runner := &recordingRunner{}
 	stateDir := t.TempDir()
-	d := &Deployer{
-		runner:       runner,
-		commitReader: &fakeCommitReader{},
-		repoDir:      baseDir,
-		stateDir:     stateDir,
-	}
 	emitted := &[]events.DeployEvent{}
-	d.SetEventSink(func(e events.DeployEvent) { *emitted = append(*emitted, e) })
+	d := New(Config{
+		Runner:       runner,
+		CommitReader: &fakeCommitReader{},
+		RepoDir:      baseDir,
+		StateDir:     stateDir,
+		EventSink:    func(e events.DeployEvent) { *emitted = append(*emitted, e) },
+	})
 
 	return &bootstrapEnv{
 		d:        d,
@@ -140,7 +140,7 @@ func TestDeployAllStacks_BootstrapBuildsWithoutPull(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "docker-compose.yml"), "services:\n  app:\n    build: .\n")
 
 	runner := &recordingRunner{}
-	d := &Deployer{runner: runner, commitReader: &fakeCommitReader{}, repoDir: baseDir, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, CommitReader: &fakeCommitReader{}, RepoDir: baseDir, StateDir: t.TempDir()})
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: baseDir,

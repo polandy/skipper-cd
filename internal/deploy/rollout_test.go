@@ -29,7 +29,7 @@ const rolloutCompose = `services:
 
 // rolloutSetup lays out a one-stack repo with the given compose file and returns
 // a Deployer whose runner also serves `docker compose ps`, plus the stackRun.
-func rolloutSetup(t *testing.T, composeYAML string) (*Deployer, *recordingRunner, stackRun) {
+func rolloutSetup(t *testing.T, composeYAML string, opts ...func(*Config)) (*Deployer, *recordingRunner, stackRun) {
 	t.Helper()
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "app")
@@ -39,13 +39,17 @@ func rolloutSetup(t *testing.T, composeYAML string) (*Deployer, *recordingRunner
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeYAML)
 
 	runner := &recordingRunner{}
-	d := &Deployer{
-		runner:                 runner,
-		outputter:              runner,
-		stateDir:               t.TempDir(),
-		rolloutPollInterval:    time.Millisecond,
-		rolloutTimeoutOverride: 50 * time.Millisecond,
+	cfg := Config{
+		Runner:                 runner,
+		Outputter:              runner,
+		StateDir:               t.TempDir(),
+		RolloutPollInterval:    time.Millisecond,
+		RolloutTimeoutOverride: 50 * time.Millisecond,
 	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	d := New(cfg)
 	stack := config.Stack{Name: "app", Rollout: &config.Rollout{Services: []string{"web"}}}
 	run := newStackRun(stack, baseDir, nil)
 	return d, runner, run
@@ -126,8 +130,8 @@ func TestRollService_StartsCanaryThenDrainsOld(t *testing.T) {
 }
 
 func TestRollService_WaitsDrainDelayThenDrainsOld(t *testing.T) {
-	d, runner, run := rolloutSetup(t, rolloutCompose)
-	d.rolloutDrainOverride = 40 * time.Millisecond // stand in for rollout.drain_seconds
+	// The drain override stands in for rollout.drain_seconds.
+	d, runner, run := rolloutSetup(t, rolloutCompose, func(c *Config) { c.RolloutDrainOverride = 40 * time.Millisecond })
 	runner.outputFn = func(call int, _ []string) ([]byte, error) {
 		if call == 0 {
 			return psArray(cl("old1", "web", "healthy")), nil
@@ -280,17 +284,16 @@ func TestDeployStack_RolloutTakesCutoverPathAndSucceeds(t *testing.T) {
 		}
 		return psArray(cl("old1", "web", "healthy"), cl("new1", "web", "healthy")), nil
 	}
-	d := &Deployer{
-		runner:                 runner,
-		outputter:              runner,
-		repoDir:                baseDir,
-		stateDir:               t.TempDir(),
-		rolloutPollInterval:    time.Millisecond,
-		rolloutTimeoutOverride: time.Second,
-	}
-
 	var got events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) { got = e })
+	d := New(Config{
+		Runner:                 runner,
+		Outputter:              runner,
+		RepoDir:                baseDir,
+		StateDir:               t.TempDir(),
+		RolloutPollInterval:    time.Millisecond,
+		RolloutTimeoutOverride: time.Second,
+		EventSink:              func(e events.DeployEvent) { got = e },
+	})
 
 	stack := config.Stack{Name: "app", Rollout: &config.Rollout{Services: []string{"web"}}}
 	state := newEmptyState()

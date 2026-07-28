@@ -137,6 +137,13 @@ func (f *fakeCommitReader) FileAtCommit(_ context.Context, commitSHA, filePath s
 
 // --- helpers ---
 
+// newDeployerWithRunner builds a Deployer with only a (fake) runner wired.
+// Tests needing more collaborators call New(Config{...}) directly — all
+// wiring happens at construction, exactly like production.
+func newDeployerWithRunner(r Runner) *Deployer {
+	return New(Config{Runner: r})
+}
+
 func makeStackDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

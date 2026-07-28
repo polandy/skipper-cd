@@ -29,7 +29,7 @@ func TestDeployAllStacks_AbortsStacksWhenNixOSFails(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{errOnCommand: "switch"}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	enabled := true
 	cfg := &config.Config{
@@ -94,11 +94,9 @@ func TestDeployAllStacks_ShutdownDuringRebuildAbortsStackDeploys(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &shutdownAwareRunner{rebuildStarted: make(chan struct{})}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
-
 	shutdownCtx, requestShutdown := context.WithCancel(context.Background())
 	defer requestShutdown()
-	d.SetShutdownContext(shutdownCtx)
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir(), ShutdownCtx: shutdownCtx})
 
 	enabled := true
 	cfg := &config.Config{
@@ -146,7 +144,7 @@ func TestDeployAllStacks_NixOSSuccessContinuesToDockerStacks(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	enabled := true
 	cfg := &config.Config{
@@ -188,7 +186,7 @@ func TestDeployAllStacks_RetriesNixOSRebuildAfterSurvivingFailure(t *testing.T) 
 
 	stateDir := t.TempDir()
 	runner := &recordingRunner{errOnCommand: "switch"}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: stateDir}
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: stateDir})
 
 	enabled := true
 	cfg := &config.Config{
@@ -237,11 +235,9 @@ func TestDeployAllStacks_KeepsNixHashesWhenRebuildAbandonedOnShutdown(t *testing
 
 	stateDir := t.TempDir()
 	runner := &shutdownAwareRunner{rebuildStarted: make(chan struct{})}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: stateDir}
-
 	shutdownCtx, requestShutdown := context.WithCancel(context.Background())
 	defer requestShutdown()
-	d.SetShutdownContext(shutdownCtx)
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: stateDir, ShutdownCtx: shutdownCtx})
 
 	enabled := true
 	cfg := &config.Config{
@@ -290,20 +286,22 @@ func TestDeployAllStacks_ShutdownDuringRebuildDoesNotEmitFailure(t *testing.T) {
 
 	stateDir := t.TempDir()
 	runner := &shutdownAwareRunner{rebuildStarted: make(chan struct{})}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: stateDir}
-
 	// All emits happen in the deploy goroutine before it closes done, so reading
 	// the slice after <-done is race-free (the channel establishes happens-before).
 	var nixStatuses []events.Status
-	d.SetEventSink(func(e events.DeployEvent) {
-		if e.Stack == NixosStateKey {
-			nixStatuses = append(nixStatuses, e.Status)
-		}
-	})
-
 	shutdownCtx, requestShutdown := context.WithCancel(context.Background())
 	defer requestShutdown()
-	d.SetShutdownContext(shutdownCtx)
+	d := New(Config{
+		Runner:      runner,
+		RepoDir:     baseDir,
+		StateDir:    stateDir,
+		ShutdownCtx: shutdownCtx,
+		EventSink: func(e events.DeployEvent) {
+			if e.Stack == NixosStateKey {
+				nixStatuses = append(nixStatuses, e.Status)
+			}
+		},
+	})
 
 	enabled := true
 	cfg := &config.Config{
@@ -351,14 +349,12 @@ func TestRebuildNixOS_ReconcilesInterruptedRebuildIntoSuccess(t *testing.T) {
 	writeFile(t, nixFile, "{ }")
 
 	runner := &recordingRunner{}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
-
 	var nixStatuses []events.Status
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		if e.Stack == NixosStateKey {
 			nixStatuses = append(nixStatuses, e.Status)
 		}
-	})
+	}})
 
 	// State left by a rebuild the switch interrupted: hashes were pre-saved (so
 	// they match the current files) and the in-flight marker survived the restart.
@@ -399,14 +395,12 @@ func TestRebuildNixOS_ReconciledSuccessCarriesDiffs(t *testing.T) {
 	reader := &fakeCommitReader{diffs: map[string]string{
 		nixFile: "diff --git a/flake.nix b/flake.nix\n+changed",
 	}}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir(), commitReader: reader}
-
 	var reconciled events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir(), CommitReader: reader, EventSink: func(e events.DeployEvent) {
 		if e.Stack == NixosStateKey && e.Status == events.StatusSuccess {
 			reconciled = e
 		}
-	})
+	}})
 
 	// State left by a switch-interrupted rebuild: hashes pre-saved, in-flight
 	// marker survived, and LastDeployedCommit still points at the pre-change commit

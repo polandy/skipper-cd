@@ -51,7 +51,7 @@ func TestDeployStack_RollbackOnUpFailure(t *testing.T) {
 
 	// Fail on "up" but succeed on everything else (including rollback up).
 	runner := &selectiveErrRunner{errCommands: map[string]bool{"up": true}}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack"}
 	state := &persistedState{
@@ -118,7 +118,7 @@ func TestDeployStack_RollbackAlsoFailsPreservesUnderlyingError(t *testing.T) {
 		1: errors.New("initial deploy failed"),
 		2: errSimulatedRollbackFailure,
 	}}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack"}
 	state := &persistedState{
@@ -157,7 +157,7 @@ func TestDeployStack_RollbackSucceeds(t *testing.T) {
 	// Use a runner that fails only the first "up" call (the deploy), not the rollback "up".
 	upCallCount := 0
 	runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack"}
 	state := &persistedState{
@@ -236,7 +236,7 @@ func TestDeployStack_RollbackDisabled_NoRestoreOnUpFailure(t *testing.T) {
 
 	upCallCount := 0
 	runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", Rollback: boolPtr(false)}
 	state := &persistedState{
@@ -289,10 +289,9 @@ func TestDeployAllStacks_RollbackDisabled_EmitsFailedNotRolledBack(t *testing.T)
 
 			upCallCount := 0
 			runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
-			d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-
 			var emitted []events.DeployEvent
-			d.SetEventSink(func(e events.DeployEvent) { emitted = append(emitted, e) })
+			d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir(),
+				EventSink: func(e events.DeployEvent) { emitted = append(emitted, e) }})
 
 			cfg := &config.Config{
 				RepoURL:       "ssh://git@example.com/repo.git",
@@ -352,12 +351,10 @@ func TestDeployAllStacks_EmitsRolledBackEvent(t *testing.T) {
 
 	upCallCount := 0
 	runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-
 	var emitted []events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		emitted = append(emitted, e)
-	})
+	}})
 
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
@@ -417,12 +414,10 @@ func TestDeployAllStacks_EmitsRolledBackUnhealthyEvent(t *testing.T) {
 
 	// Every up fails: the health-gated deploy up and the rollback up alike.
 	runner := &selectiveErrRunner{errCommands: map[string]bool{"up": true}}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-
 	var emitted []events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		emitted = append(emitted, e)
-	})
+	}})
 
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",

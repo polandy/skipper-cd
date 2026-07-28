@@ -107,7 +107,7 @@ func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persi
 	}
 	if hc := run.stack.DeployHealthCheck; hc != nil && hc.URL != "" {
 		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
-		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
+		if err := d.prober.waitHealthy(ctx, hc.URL, timeout); err != nil {
 			return fmt.Errorf("restored version failed the health probe: %w (%w)", err, ErrRollbackUnhealthy)
 		}
 	}

@@ -10,7 +10,7 @@ import (
 )
 
 func TestLogComposeInvocation_WithProjectDirectory(t *testing.T) {
-	d := &Deployer{}
+	d := New(Config{StateDir: t.TempDir()})
 	cfg := &config.Config{
 		StacksBaseDir: "/repo",
 		Stacks:        []config.Stack{{Name: "web", ProjectDirectory: "/srv/web"}},
@@ -29,7 +29,7 @@ func TestLogComposeInvocation_WithProjectDirectory(t *testing.T) {
 }
 
 func TestLogComposeInvocation_NoProjectDirectory(t *testing.T) {
-	d := &Deployer{}
+	d := New(Config{StateDir: t.TempDir()})
 	cfg := &config.Config{
 		StacksBaseDir: "/repo",
 		Stacks:        []config.Stack{{Name: "api"}},
@@ -48,7 +48,7 @@ func TestLogComposeInvocation_NoProjectDirectory(t *testing.T) {
 }
 
 func TestLogComposeInvocation_UnknownStack(t *testing.T) {
-	d := &Deployer{}
+	d := New(Config{StateDir: t.TempDir()})
 	cfg := &config.Config{StacksBaseDir: "/repo", Stacks: []config.Stack{{Name: "web"}}}
 	_, _, _, ok, err := d.LogComposeInvocation(cfg, "ghost")
 	if ok || err != nil {
@@ -62,7 +62,7 @@ func TestLogComposeInvocation_EnvFilesMerged(t *testing.T) {
 	if err := os.WriteFile(envPath, []byte("COMPOSE_PROJECT_NAME=web_prod\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	d := &Deployer{}
+	d := New(Config{StateDir: t.TempDir()})
 	cfg := &config.Config{
 		StacksBaseDir: "/repo",
 		Stacks:        []config.Stack{{Name: "web", EnvFiles: []string{envPath}}},
@@ -77,7 +77,7 @@ func TestLogComposeInvocation_EnvFilesMerged(t *testing.T) {
 }
 
 func TestLogComposeInvocation_EnvFileReadError(t *testing.T) {
-	d := &Deployer{}
+	d := New(Config{StateDir: t.TempDir()})
 	cfg := &config.Config{
 		StacksBaseDir: "/repo",
 		Stacks:        []config.Stack{{Name: "web", EnvFiles: []string{"/nonexistent/does-not-exist.env"}}},
