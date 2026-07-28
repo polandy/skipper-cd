@@ -153,9 +153,16 @@ binary):
 - **Origin repo** (`t.TempDir()`): `git init -b main`, one or more stack dirs
   each with a `docker-compose.yml`, committed. Tests advance it with new commits
   to simulate pushes. (Mirrors `makeOriginRepo` in `git/integration_test.go`.)
-- **Scriptable stub `docker`** on a temp dir prepended to `PATH`. Behaviour via
-  env vars, so one stub drives every UI status:
+- **Scriptable stub `docker`** on a temp dir prepended to `PATH`. It lives in
+  **one file, `e2e/fixtures/docker-stub.sh`**, that both harnesses install — the
+  Go one embeds it, the Playwright one reads it — so a change reaches both
+  suites instead of one copy quietly drifting from the other. Behaviour via env
+  vars, so one stub drives every UI status:
   - always appends `"$@"` to `$DOCKER_LOG` (one line per invocation);
+  - `STUB_DOCKER_UI=1` → enable the branches only the UI suite needs (orphan
+    listings, container logs, per-stack health `ps`). The Playwright harness
+    sets it; the Go harness does not, and without it the stub behaves exactly as
+    that suite's own copy did;
   - `STUB_DOCKER_FAIL_ON=<subcmd>` → exit non-zero when args contain that
     subcommand (e.g. `up`);
   - `STUB_DOCKER_FAIL_NTH_UP=<n>[,<n>…]` → fail on the listed `compose … up`
