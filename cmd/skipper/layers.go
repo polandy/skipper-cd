@@ -21,6 +21,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/orphans"
 	"github.com/polandy/skipper-cd/internal/peers"
+	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/safego"
 	"github.com/polandy/skipper-cd/internal/selfheal"
 )
@@ -251,7 +252,7 @@ type autosyncPublisher struct {
 	views    stackViews
 	deployer *deployerRef
 	auditLog *audit.Log
-	repo     repoRef
+	repo     roster.RepoRef
 }
 
 func (p autosyncPublisher) publish() {
@@ -265,6 +266,6 @@ func (p autosyncPublisher) publish() {
 		d := p.deployer.get()
 		p.stateB.Publish(events.StateEvent{Name: events.StateAutosync, Data: snap})
 		p.stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: p.queue.View(p.views.order())})
-		p.stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: buildStacksState(p.views.effective(), d.CurrentDisabledStacks(), p.auditLog, d.CurrentTrackedFiles(), p.repo)})
+		p.stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: roster.BuildState(p.views.effective(), d.CurrentDisabledStacks(), p.auditLog, d.CurrentTrackedFiles(), p.repo)})
 	}
 }

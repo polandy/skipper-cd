@@ -84,7 +84,7 @@ func (v stackViews) appLinkDirs() map[string]string {
 
 // order returns the effective stack names in the order DeployAllStacks
 // processes them (_nixos first when the rebuild is enabled).
-func (v stackViews) order() []string { return deployOrder(v.cfg, v.effective()) }
+func (v stackViews) order() []string { return deploy.RunOrder(v.cfg, v.effective()) }
 
 // setupLogging installs the process-wide slog handler for the configured
 // log_format, writing to out. With the UI enabled, all slog output (and, via

@@ -71,7 +71,7 @@ func Build(stacks []config.Stack, disabled []string,
   stack to the top of this order at render time — a client-side concern, since
   runtime health is not part of the roster snapshot; see `internal/ui/UI_SPEC.md`.)
 
-Wired into the existing `stacks` SSE snapshot (`stacksState`), which is
+Wired into the existing `stacks` SSE snapshot (`roster.State`), which is
 published on connect and after every deploy run — the roster's natural
 cadence. The snapshot keeps its existing `disabled` array (drives the Deploys
 view's disabled line, unchanged) and gains `roster`:
