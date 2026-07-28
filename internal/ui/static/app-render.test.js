@@ -286,3 +286,86 @@ test('healthHistoryHTML links a deploy-correlated phase commit through repoBase'
   assert.match(html, /href="https:\/\/forge\.example\/repo\/commit\/abcdef1234567890"/);
   assert.match(html, /title="deployed just before this phase began"/);
 });
+
+test('clogBtnHTML names the stack/service pair and escapes both into the data attributes', () => {
+  const html = r.clogBtnHTML('web<x>', 'app "a"');
+  assert.match(html, /^<button class="clog-btn" type="button" data-testid="clog-btn"/);
+  assert.match(html, /data-clog-stack="web&lt;x&gt;"/);
+  assert.match(html, /data-clog-service="app &quot;a&quot;"/);
+  assert.match(html, /aria-label="logs for web&lt;x&gt; \/ app &quot;a&quot;"/);
+  assert.doesNotMatch(html, /data-clog-host/);
+});
+
+test('clogBtnHTML without a service labels the merged all-services log', () => {
+  const html = r.clogBtnHTML('web', '');
+  assert.match(html, /data-clog-service=""/);
+  assert.match(html, /title="logs for web \(all services\)"/);
+});
+
+test('clogBtnHTML tags a peer host so the stream routes through the proxy', () => {
+  assert.match(r.clogBtnHTML('web', 'app', 'nuc'), /data-clog-host="nuc"/);
+});
+
+test('healthPillHTML carries the status in class hooks, label and title', () => {
+  const html = r.healthPillHTML('web', 'unhealthy');
+  assert.match(html, /^<button class="health-pill" type="button" data-testid="health-pill"/);
+  assert.match(html, /data-health="unhealthy"/);
+  assert.match(html, /data-stack="web"/);
+  assert.match(html, /<span class="hlabel">unhealthy<\/span>/);
+  assert.match(html, /title="web — unhealthy"/);
+});
+
+test('hookCount sums pre- and post-deploy commands, tolerating absent groups', () => {
+  assert.equal(r.hookCount({ pre_deploy: ['a', 'b'], post_deploy: ['c'] }), 3);
+  assert.equal(r.hookCount({ post_deploy: ['c'] }), 1);
+  assert.equal(r.hookCount({}), 0);
+});
+
+test('hooksBadgeHTML shows the pre+post split, not the sum', () => {
+  const html = r.hooksBadgeHTML('web', { pre_deploy: ['a', 'b'], post_deploy: ['c'] });
+  assert.match(html, /^<button class="hooks-badge" type="button" data-testid="hooks-badge"/);
+  assert.match(html, /data-hooks-stack="web"/);
+  assert.match(html, /<span class="hk-count">2\+1<\/span>/);
+  assert.match(html, /aria-label="pre-deploy hook: 2\npost-deploy hook: 1"/);
+});
+
+test('jumpBtnHTML labels each target view and escapes the stack', () => {
+  const toStacks = r.jumpBtnHTML('stacks', 'web<x>');
+  assert.match(toStacks, /data-jump-view="stacks"/);
+  assert.match(toStacks, /data-jump-stack="web&lt;x&gt;"/);
+  assert.match(toStacks, /title="View in Stacks"/);
+  assert.match(r.jumpBtnHTML('deploys', 'web'), /title="View in Deploys"/);
+});
+
+test('pendingTagHTML renders a blocked reason as text, never markup', () => {
+  assert.equal(
+    r.pendingTagHTML('blocked', 'blocked by <db>'),
+    '<span class="paused-tag">blocked by &lt;db&gt;</span>',
+  );
+  assert.equal(r.pendingTagHTML('blocked', ''), '<span class="paused-tag">blocked</span>');
+});
+
+test('pendingTagHTML labels queued rows paused, with the reason when given', () => {
+  assert.equal(
+    r.pendingTagHTML('queued', 'window'),
+    '<span class="paused-tag">paused: window</span>',
+  );
+  assert.equal(r.pendingTagHTML('queued', undefined), '<span class="paused-tag">paused</span>');
+});
+
+test('hostChipHTML renders the monogram chip with the supplied colour slot', () => {
+  const html = r.hostChipHTML('nuc', 3);
+  assert.match(html, /^<span class="host-mono" role="button" tabindex="0"/);
+  assert.match(html, /aria-label="Filter view to host nuc"/);
+  assert.match(html, /data-host-color="3"/);
+  assert.match(html, /title="nuc">NUC<\/span>$/);
+});
+
+test('hostChipHTML drops the colour attribute for an unassigned slot', () => {
+  assert.doesNotMatch(r.hostChipHTML('nuc', undefined), /data-host-color/);
+});
+
+test('hostChipHTML is empty on a single-host instance (no host name)', () => {
+  assert.equal(r.hostChipHTML('', 0), '');
+  assert.equal(r.hostChipHTML(undefined, 0), '');
+});
