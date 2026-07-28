@@ -156,12 +156,12 @@ func TestStartServer_ListenFailureIsReportedNotFatal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer held.Close()
+	defer func() { _ = held.Close() }()
 	port := held.Addr().(*net.TCPAddr).Port
 
 	fail := make(chan error, 2)
 	srv := startServer("test", port, http.NewServeMux(), fail)
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 
 	// Blocks until the goroutine reports; no polling and no sleep. A regression
 	// that exits instead would take the test binary down with it, which the
