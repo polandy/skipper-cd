@@ -3683,72 +3683,20 @@
     renderAutosync();
   }
 
-  function waited(since) {
-    const diffS = Math.floor((Date.now() - new Date(since).getTime()) / 1000);
-    if (diffS < 60) return diffS + 's';
-    if (diffS < 3600) return Math.floor(diffS / 60) + 'm';
-    if (diffS < 86400) return Math.floor(diffS / 3600) + 'h';
-    return Math.floor(diffS / 86400) + 'd';
-  }
-
-  function stackDetail(s, item) {
-    if (item) {
-      const n = item.changed_files ? item.changed_files.length : 0;
-      return `<span class="warn">${n} file${n === 1 ? '' : 's'}</span> · waiting <span data-testid="wait-cell">${waited(item.since)}</span>`;
-    }
-    if (!s.effective) return 'paused · no changes';
-    return 'synced';
-  }
-
-  // pos is a number only in the queue list; the all-stacks list passes null and
-  // marks a queued stack with a dot instead.
-  function rowPosText(s, pos) {
-    if (pos !== null) return String(pos);
-    return queueByStack[s.name] ? '●' : '';
-  }
-
-  function rowChipHTML(s) {
-    const item = queueByStack[s.name];
-    const reason = item ? item.reason : reasonFromSnap(s);
-    return !s.effective && reason ? `<span class="reason reason-${reason}">${reason}</span>` : '';
-  }
-
-  function switchTitle(s) {
-    return `${s.effective ? 'Pause' : 'Resume'} autosync`;
-  }
-
-  function stackRowHTML(s, pos) {
-    const inQueue = pos !== null;
-    const posCell = `<div class="qpos${inQueue ? '' : ' blank'}">${rowPosText(s, pos)}</div>`;
-    const rowTestid = inQueue ? 'queue-item' : 'stack-item';
-    // The stack switch is the interactive control the tests toggle; only tag it
-    // in the all-stacks list so a queued stack does not expose two of them.
-    const swTestid = inQueue ? '' : ' data-testid="stack-switch"';
-    return (
-      `<div class="stack-row" data-testid="${rowTestid}" data-stack="${escapeAttr(s.name)}">` +
-      posCell +
-      `<div class="stack-meta">` +
-      `<div class="stack-name">${escapeHtml(s.name)}${rowChipHTML(s)}</div>` +
-      `<div class="stack-detail">${stackDetail(s, queueByStack[s.name])}</div>` +
-      `</div>` +
-      `<div class="sw${s.effective ? ' on' : ''}"${swTestid} data-taptip role="switch" aria-checked="${s.effective}"` +
-      ` tabindex="0" data-stack="${escapeAttr(s.name)}" title="${switchTitle(s)}"></div>` +
-      `</div>`
-    );
-  }
-
   // patchStackRow updates an existing row's cells without touching the row or
   // switch nodes themselves — see renderRowList for why that matters.
   function patchStackRow(row, s, pos) {
+    const item = queueByStack[s.name];
     const qpos = row.querySelector('.qpos');
     qpos.className = pos !== null ? 'qpos' : 'qpos blank';
-    qpos.textContent = rowPosText(s, pos);
-    row.querySelector('.stack-name').innerHTML = escapeHtml(s.name) + rowChipHTML(s);
-    row.querySelector('.stack-detail').innerHTML = stackDetail(s, queueByStack[s.name]);
+    qpos.textContent = autosyncPosText(s, pos, item);
+    row.querySelector('.stack-name').innerHTML =
+      escapeHtml(s.name) + autosyncReasonChipHTML(s, item);
+    row.querySelector('.stack-detail').innerHTML = autosyncDetailHTML(s, item, Date.now());
     const sw = row.querySelector('.sw');
     sw.classList.toggle('on', s.effective);
     sw.setAttribute('aria-checked', String(s.effective));
-    sw.title = switchTitle(s);
+    sw.title = autosyncSwitchTitle(s);
   }
 
   // renderRowList paints a stack list, patching in place whenever the rows and
@@ -3773,9 +3721,10 @@
       return;
     }
     el.dataset.rowKey = key;
+    const now = Date.now();
     el.innerHTML = rows
       .map(function (r) {
-        return stackRowHTML(r.stack, r.pos);
+        return autosyncRowHTML(r.stack, r.pos, queueByStack[r.stack.name], now);
       })
       .join('');
   }

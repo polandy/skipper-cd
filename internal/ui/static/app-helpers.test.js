@@ -611,3 +611,14 @@ test('deployAnnouncement: only terminal outcomes get a spoken phrase (T2.8)', ()
   }
   assert.equal(h.deployAnnouncement('success', ''), null); // no stack → nothing to say
 });
+
+test('waitedSince renders one coarse unit per magnitude', () => {
+  const now = Date.parse('2026-07-28T12:00:00Z');
+  const ago = (ms) => new Date(now - ms).toISOString();
+  assert.equal(h.waitedSince(ago(0), now), '0s');
+  assert.equal(h.waitedSince(ago(45000), now), '45s');
+  assert.equal(h.waitedSince(ago(59999), now), '59s');
+  assert.equal(h.waitedSince(ago(60000), now), '1m');
+  assert.equal(h.waitedSince(ago(90 * 60000), now), '1h'); // no compound "1h30m"
+  assert.equal(h.waitedSince(ago(3 * 86400000), now), '3d');
+});

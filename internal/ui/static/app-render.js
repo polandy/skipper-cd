@@ -485,6 +485,61 @@ function rosterHealthPillHTML(stack, health) {
   return health && health.status ? healthPillHTML(stack, health.status) : '';
 }
 
+// autosyncDetailHTML is the second line of an autosync drawer row: what the
+// stack is waiting on when it is queued (item), else its resting state.
+function autosyncDetailHTML(s, item, nowMs) {
+  if (item) {
+    const n = item.changed_files ? item.changed_files.length : 0;
+    return `<span class="warn">${n} file${n === 1 ? '' : 's'}</span> · waiting <span data-testid="wait-cell">${waitedSince(item.since, nowMs)}</span>`;
+  }
+  if (!s.effective) return 'paused · no changes';
+  return 'synced';
+}
+
+// autosyncPosText renders the row's leading cell. pos is a number only in the
+// queue list; the all-stacks list passes null and marks a queued stack with a
+// dot instead.
+function autosyncPosText(s, pos, queued) {
+  if (pos !== null) return String(pos);
+  return queued ? '●' : '';
+}
+
+// autosyncReasonChipHTML tags a paused stack with why it is paused — the queue
+// item's own reason when it has one, else derived from the snapshot.
+function autosyncReasonChipHTML(s, item) {
+  const reason = item ? item.reason : reasonFromSnap(s);
+  return !s.effective && reason ? `<span class="reason reason-${reason}">${reason}</span>` : '';
+}
+
+// autosyncSwitchTitle is the row switch's tooltip — it names the action the
+// click performs, not the current state.
+function autosyncSwitchTitle(s) {
+  return `${s.effective ? 'Pause' : 'Resume'} autosync`;
+}
+
+// autosyncRowHTML renders one stack row of the autosync drawer, in either list:
+// pos is the queue position, or null in the all-stacks list; item is the stack's
+// pending queue entry, if any.
+function autosyncRowHTML(s, pos, item, nowMs) {
+  const inQueue = pos !== null;
+  const posCell = `<div class="qpos${inQueue ? '' : ' blank'}">${autosyncPosText(s, pos, item)}</div>`;
+  const rowTestid = inQueue ? 'queue-item' : 'stack-item';
+  // The stack switch is the interactive control the tests toggle; only tag it
+  // in the all-stacks list so a queued stack does not expose two of them.
+  const swTestid = inQueue ? '' : ' data-testid="stack-switch"';
+  return (
+    `<div class="stack-row" data-testid="${rowTestid}" data-stack="${escapeAttr(s.name)}">` +
+    posCell +
+    `<div class="stack-meta">` +
+    `<div class="stack-name">${escapeHtml(s.name)}${autosyncReasonChipHTML(s, item)}</div>` +
+    `<div class="stack-detail">${autosyncDetailHTML(s, item, nowMs)}</div>` +
+    `</div>` +
+    `<div class="sw${s.effective ? ' on' : ''}"${swTestid} data-taptip role="switch" aria-checked="${s.effective}"` +
+    ` tabindex="0" data-stack="${escapeAttr(s.name)}" title="${autosyncSwitchTitle(s)}"></div>` +
+    `</div>`
+  );
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
@@ -513,5 +568,10 @@ if (typeof module !== 'undefined' && module.exports) {
     rosterVersionCellHTML,
     rosterStatusHTML,
     rosterHealthPillHTML,
+    autosyncDetailHTML,
+    autosyncPosText,
+    autosyncReasonChipHTML,
+    autosyncSwitchTitle,
+    autosyncRowHTML,
   };
 }

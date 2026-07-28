@@ -345,6 +345,17 @@ function reasonFromSnap(s) {
   return 'global';
 }
 
+// waitedSince renders how long a queued stack has been waiting, from its ISO
+// timestamp: one coarse unit, never a compound span (the queue row has room for
+// a few characters). Takes the clock so it stays pure.
+function waitedSince(since, nowMs) {
+  const diffS = Math.floor((nowMs - new Date(since).getTime()) / 1000);
+  if (diffS < 60) return diffS + 's';
+  if (diffS < 3600) return Math.floor(diffS / 60) + 'm';
+  if (diffS < 86400) return Math.floor(diffS / 3600) + 'h';
+  return Math.floor(diffS / 86400) + 'd';
+}
+
 // snapshotIsFresh reports whether a versioned state payload may be applied,
 // given the version last applied — ordering comes from the payload, not from
 // arrival time. An unversioned payload always applies: there is nothing to
@@ -591,6 +602,7 @@ if (typeof module !== 'undefined' && module.exports) {
     levelClass,
     logTime,
     reasonFromSnap,
+    waitedSince,
     snapshotIsFresh,
     orphanMeta,
     orphanStateClass,
