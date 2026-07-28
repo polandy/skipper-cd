@@ -8,8 +8,9 @@
 # an image-decode error that reads like a broken test, and an empty directory
 # makes the compares pass against nothing at all.
 #
-# Locally this asserts git-lfs actually smudged the files — a checkout without
-# the filter installed leaves the same pointers behind.
+# Locally this is only worth running on the paths that need real pixels —
+# regenerating a baseline, or a RUN_SNAPSHOTS=1 run. A plain local `make e2e-ui`
+# compares behaviour rather than pixels, so pointers are harmless there.
 set -eu
 
 cd "$(dirname "$0")/.."

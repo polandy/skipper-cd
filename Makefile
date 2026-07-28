@@ -127,8 +127,11 @@ check-playwright-pin:
 	@scripts/check-playwright-pin.sh
 
 ## --- check-baselines (part of the e2e-ui job) -----------------------------
-# Asserts the snapshot baselines are real PNGs and not git-lfs pointers — in CI
-# that the artifact hand-off landed, locally that git-lfs smudged them. The CI
-# job calls the script directly: the Playwright container ships no make.
+# Asserts the snapshot baselines are real PNGs and not git-lfs pointers, which
+# is what the CI job needs to know: that the artifact hand-off landed. Not part
+# of `make ci` — a plain local `make e2e-ui` skips the pixel compares, so
+# pointers are harmless there (CLAUDE.md §Binary assets). Run it locally before
+# regenerating a baseline or before a RUN_SNAPSHOTS=1 run, where they are not.
+# The CI job calls the script directly: the Playwright container ships no make.
 check-baselines:
 	@scripts/check-baselines.sh
