@@ -1,6 +1,6 @@
 # skipper-cd Web UI — Specification
 
-Single-page application served at `/` when `ui_enabled: true`. No external JS dependencies. The app script lives in `index.html`; its pure, DOM-free helpers (time/duration formatting, health/level classification, diff-line classing, …) are extracted into `static/app-helpers.js`, loaded first so the app calls them as globals — and exercised in isolation by a `node --test` unit layer (`app-helpers.test.js`, `make ui-unit`) with no build step (ADR-0035). The stylesheet lives in `static/app.css`, linked from `index.html`'s `<head>` and served same-origin (`AppCSSHandler`), so `index.html` stays the app-shell markup and script only (ADR-0035 amendment). Real-time deployment events via SSE (`/api/events`); real-time log lines via SSE (`/api/logs`). The `/api/events` stream also carries `autosync` and `queue` events that drive the autosync controls and the queue drawer live (see [Autosync](#autosync)), and a `health` snapshot that drives the per-stack [Stack health](#stack-health) pill.
+Single-page application served at `/` when `ui_enabled: true`. No external JS dependencies. The app script lives in `static/app.js`, loaded from `index.html` and served same-origin (`AppJSHandler`, ADR-0035 amendment); its pure, DOM-free helpers (time/duration formatting, health/level classification, diff-line classing, …) are extracted into `static/app-helpers.js`, loaded first so the app calls them as globals — and exercised in isolation by a `node --test` unit layer (`app-helpers.test.js`, `make ui-unit`) with no build step (ADR-0035). The stylesheet lives in `static/app.css`, linked from `index.html`'s `<head>` and served same-origin (`AppCSSHandler`), so `index.html` stays the app-shell markup only (ADR-0035 amendments). Real-time deployment events via SSE (`/api/events`); real-time log lines via SSE (`/api/logs`). The `/api/events` stream also carries `autosync` and `queue` events that drive the autosync controls and the queue drawer live (see [Autosync](#autosync)), and a `health` snapshot that drives the per-stack [Stack health](#stack-health) pill.
 
 ---
 
@@ -484,7 +484,7 @@ The UI is an **installable PWA** (full spec: [`dev-docs/pwa-spec.md`](../../dev-
 The E2E UI suite ([`dev-docs/e2e-tests.md`](../../dev-docs/e2e-tests.md)) selects **only** on
 `data-testid` — never on `id`, text, or CSS class — so refactoring markup or
 styling never breaks the tests. These attributes are a public contract of the
-UI; keep them stable when editing `index.html`. Dynamic rows also carry data
+UI; keep them stable when editing `index.html` or `app.js`. Dynamic rows also carry data
 attributes (`data-stack`, `data-status`, `data-level`, `data-state`) the tests
 assert on.
 

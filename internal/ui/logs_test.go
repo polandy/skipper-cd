@@ -111,9 +111,19 @@ func TestIndexHandler_ContainsLogsViewToggle(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	for _, want := range []string{`id="view-toggle"`, `id="log-pane"`, "/api/logs", `id="follow-logs"`, "log-diff-pill"} {
+	for _, want := range []string{`id="view-toggle"`, `id="log-pane"`, `id="follow-logs"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected index.html to contain %q", want)
+		}
+	}
+
+	// The behaviour behind the markup lives in the extracted app script.
+	rec = httptest.NewRecorder()
+	AppJSHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/app.js", nil))
+	body = rec.Body.String()
+	for _, want := range []string{"/api/logs", "log-diff-pill"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected app.js to contain %q", want)
 		}
 	}
 }
