@@ -138,8 +138,9 @@ jobs:
           path: e2e/ui/__screenshots__
       # Fail here rather than inside a pixel compare if that overwrite did not
       # land: comparing against a pointer file, or against nothing, is worse
-      # than a red step because it does not point at the hand-off.
-      - run: make check-baselines
+      # than a red step because it does not point at the hand-off. Called
+      # directly, not via make — this container ships no make.
+      - run: ./scripts/check-baselines.sh
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod

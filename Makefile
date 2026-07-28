@@ -128,6 +128,7 @@ check-playwright-pin:
 
 ## --- check-baselines (part of the e2e-ui job) -----------------------------
 # Asserts the snapshot baselines are real PNGs and not git-lfs pointers — in CI
-# that the artifact hand-off landed, locally that git-lfs smudged them.
+# that the artifact hand-off landed, locally that git-lfs smudged them. The CI
+# job calls the script directly: the Playwright container ships no make.
 check-baselines:
 	@scripts/check-baselines.sh
