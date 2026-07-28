@@ -65,6 +65,9 @@ jobs:
       # The container that renders the baselines and the npm package that
       # compares against them must agree, or the only symptom is a pixel diff.
       - run: make check-playwright-pin
+      # The suite has no fixed waits; keep it that way (see the script for why
+      # a timeout is never the fix).
+      - run: make check-no-sleeps
 
   # End-to-end tests: run the real skipper binary against a local git origin
   # and a stub docker on PATH (no docker daemon needed). Guarded by the "e2e"

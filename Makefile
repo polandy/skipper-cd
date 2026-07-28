@@ -2,11 +2,11 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines
+.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
-ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin lint govulncheck e2e docs e2e-ui ui-preview-smoke
+ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps lint govulncheck e2e docs e2e-ui ui-preview-smoke
 
 ## --- test job -------------------------------------------------------------
 build:
@@ -135,3 +135,10 @@ check-playwright-pin:
 # The CI job calls the script directly: the Playwright container ships no make.
 check-baselines:
 	@scripts/check-baselines.sh
+
+## --- check-no-sleeps (part of the ui-unit job) ----------------------------
+# Keeps the Playwright suite free of fixed waits: a waitForTimeout passes on a
+# fast runner and flakes on a loaded one, and it hides the real gap — that the
+# UI publishes no state to assert on.
+check-no-sleeps:
+	@scripts/check-no-sleeps.sh
