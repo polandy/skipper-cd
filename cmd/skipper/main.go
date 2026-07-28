@@ -316,7 +316,11 @@ func main() {
 		Commit:  resolveCommit(commit, bi, ok),
 	}
 
-	startServer("metrics", cfg.MetricsPort, metricsMux())
+	// Buffered for both servers: a failing server must be able to report and
+	// return even if the other one reported first and main is already shutting
+	// down.
+	serverFail := make(chan error, 2)
+	metricsServer := startServer("metrics", cfg.MetricsPort, metricsMux(), serverFail)
 	webhookServer := startServer("webhook", cfg.Port, webhookMux(webhookDeps{
 		cfg:             cfg,
 		stacks:          views.effective,
@@ -333,13 +337,21 @@ func main() {
 		autosync:        as,
 		build:           build,
 		repo:            repo,
-	}))
+	}), serverFail)
 
-	// Block until SIGINT/SIGTERM, then shut down gracefully: stop accepting
-	// requests, then let an in-flight deploy finish so docker compose is not
-	// interrupted mid-run.
-	<-signalCtx.Done()
-	slog.Info("shutdown signal received")
+	// Block until SIGINT/SIGTERM or a server giving up, then shut down
+	// gracefully: stop accepting requests, then let an in-flight deploy finish
+	// so docker compose is not interrupted mid-run. Both exits take the same
+	// path — a server that cannot listen is a reason to stop, not a reason to
+	// abandon a deploy that is already running.
+	failed := false
+	select {
+	case <-signalCtx.Done():
+		slog.Info("shutdown signal received")
+	case err := <-serverFail:
+		slog.Error("shutting down after a server error", "err", err)
+		failed = true
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
@@ -349,7 +361,25 @@ func main() {
 
 	slog.Info("waiting for in-flight deploy to finish")
 	deployer.WaitIdle()
+
+	// Metrics go last, on their own deadline: the drain above is exactly when a
+	// scrape is still worth answering, and by now shutdownCtx may well have
+	// expired waiting for it.
+	metricsCtx, cancelMetrics := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancelMetrics()
+	if err := metricsServer.Shutdown(metricsCtx); err != nil {
+		slog.Warn("metrics server shutdown", "err", err)
+	}
+
+	// The ctx-bound background loops (notifier, health poller, reconciler,
+	// peer fan-in) are cancelled by signalCtx but deliberately not joined:
+	// deploys are the only work that must not be cut short and WaitIdle above
+	// covers those, and every state write goes through fsatomic, so a loop
+	// killed mid-write leaves the previous file rather than a truncated one.
 	slog.Info("skipper-cd stopped")
+	if failed {
+		os.Exit(1)
+	}
 }
 
 // newLogHandler returns the slog handler for the configured log_format: a
@@ -642,9 +672,13 @@ func (s stateSnapshot) collect() []events.StateEvent {
 	return state
 }
 
-// startServer runs an HTTP server in a goroutine and returns it so the
-// caller can shut it down. An immediate listen failure exits the process.
-func startServer(name string, port int, mux *http.ServeMux) *http.Server {
+// startServer runs an HTTP server in a goroutine and returns it so the caller
+// can shut it down. A listen failure (a port already in use, most often) is
+// reported on fail rather than exiting here: an os.Exit from this goroutine
+// would skip main's shutdown, and the startup sync may already be running
+// `docker compose up` by the time a port turns out to be taken. fail must be
+// buffered so a second server's failure cannot block on an unread channel.
+func startServer(name string, port int, mux *http.ServeMux, fail chan<- error) *http.Server {
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		Handler:           mux,
@@ -653,8 +687,7 @@ func startServer(name string, port int, mux *http.ServeMux) *http.Server {
 	go func() {
 		slog.Info(name+" server listening", "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error(name+" server stopped", "err", err)
-			os.Exit(1)
+			fail <- fmt.Errorf("%s server: %w", name, err)
 		}
 	}()
 	return srv

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"runtime/debug"
@@ -142,5 +143,50 @@ func TestHealthzHandler_ServiceUnavailableAfterFailedSync(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "remote unreachable") {
 		t.Errorf("expected sync error in body, got %q", rec.Body.String())
+	}
+}
+
+// A server that cannot listen must report the failure to main rather than
+// calling os.Exit from its own goroutine: an exit there skips the graceful
+// path, and the startup sync may already be running `docker compose up` by the
+// time a port turns out to be taken.
+func TestStartServer_ListenFailureIsReportedNotFatal(t *testing.T) {
+	// Hold a port so the server under test cannot bind it.
+	held, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	port := held.Addr().(*net.TCPAddr).Port
+
+	fail := make(chan error, 2)
+	srv := startServer("test", port, http.NewServeMux(), fail)
+	defer srv.Close()
+
+	// Blocks until the goroutine reports; no polling and no sleep. A regression
+	// that exits instead would take the test binary down with it, which the
+	// runner reports as a failure rather than a hang.
+	got := <-fail
+	if got == nil {
+		t.Fatal("expected a listen error")
+	}
+	if !strings.Contains(got.Error(), "test server") {
+		t.Errorf("error should name the server it came from; got %v", got)
+	}
+}
+
+func TestStartServer_CleanShutdownReportsNothing(t *testing.T) {
+	// http.ErrServerClosed is the normal outcome of Shutdown and must not be
+	// mistaken for a failure — otherwise every graceful stop would exit 1.
+	fail := make(chan error, 2)
+	srv := startServer("test", 0, http.NewServeMux(), fail)
+
+	if err := srv.Shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	select {
+	case err := <-fail:
+		t.Errorf("clean shutdown reported a failure: %v", err)
+	default:
 	}
 }
