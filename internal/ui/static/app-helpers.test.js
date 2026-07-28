@@ -622,3 +622,10 @@ test('waitedSince renders one coarse unit per magnitude', () => {
   assert.equal(h.waitedSince(ago(90 * 60000), now), '1h'); // no compound "1h30m"
   assert.equal(h.waitedSince(ago(3 * 86400000), now), '3d');
 });
+
+test('deployStatusLabel spells out what the header trail shows as chips', () => {
+  assert.equal(h.deployStatusLabel([], []), 'idle');
+  assert.equal(h.deployStatusLabel([], ['db']), 'idle');
+  assert.equal(h.deployStatusLabel(['web'], []), 'deploying web');
+  assert.equal(h.deployStatusLabel(['web'], ['db', 'cache']), 'deploying web · next db, cache');
+});

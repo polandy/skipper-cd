@@ -574,6 +574,15 @@ function deployAnnouncement(status, stack) {
   return phrase ? stack + ' ' + phrase : null;
 }
 
+// deployStatusLabel is the header indicator's title and aria-label. It says in
+// words what the trail renders as chips, so the meaning survives on mobile,
+// where those labels are hidden and only the dot and count chip stay
+// (UI_SPEC §Responsive).
+function deployStatusLabel(active, up) {
+  if (active.length === 0) return 'idle';
+  return 'deploying ' + active.join(', ') + (up.length ? ' · next ' + up.join(', ') : '');
+}
+
 // Dual-use export: in the browser this file loads as a plain <script>, so the
 // functions above are already globals and `module` is undefined — the export is
 // skipped. Under `node --test` `module` exists, so the helpers are exported for
@@ -613,6 +622,7 @@ if (typeof module !== 'undefined' && module.exports) {
     watchedSummary,
     UNCHANGED_SINCE,
     deployAnnouncement,
+    deployStatusLabel,
     HOST_COLOR_COUNT,
     hostColorIndex,
     hostMonogram,

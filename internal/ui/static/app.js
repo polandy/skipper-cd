@@ -41,10 +41,6 @@
   const runSub = document.getElementById('run-sub');
   const runCount = document.getElementById('run-count');
   const runList = document.getElementById('run-list');
-  // Ship glyph for the active row's badge in the run panel.
-  const SHIP_SVG =
-    '<svg class="ds-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h16l-2 4H6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="7.5" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><path d="M3 20q2-1.6 4 0t4 0 4 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-
   const deployingRows = {};
   // Queued (paused) rows, keyed by stack, so a stack's pending row is replaced
   // rather than duplicated, and removed once it deploys or drains.
@@ -1972,74 +1968,21 @@
       dsCount.textContent = '';
       setRunDrawer(false); // nothing running; close the panel if open
     }
-    // Mirror everything into title/aria so it survives when the labels are
-    // hidden on mobile (the dot + count chip stay — see UI_SPEC §Responsive).
-    const label =
-      active.length > 0
-        ? 'deploying ' + active.join(', ') + (up.length ? ' · next ' + up.join(', ') : '')
-        : 'idle';
+    const label = deployStatusLabel(active, up);
     deployStatus.title = label;
     deployStatus.setAttribute('aria-label', label);
     renderRunPanel();
   }
 
-  // nextTrailHTML renders the look-ahead trail "→ a · b · +N", capping the names
-  // shown so a long run does not widen the header without bound.
-  function nextTrailHTML(up) {
-    const MAX = 3;
-    const shown = up.slice(0, MAX);
-    let html =
-      '<span class="arrow">→</span>' +
-      shown
-        .map(function (n, i) {
-          return `<span class="up${i > 0 ? ' more' : ''}">${escapeHtml(n)}</span>`;
-        })
-        .join('<span class="sep">·</span>');
-    const extra = up.length - shown.length;
-    if (extra > 0) {
-      html += `<span class="sep">·</span><span class="up more">+${extra}</span>`;
-    }
-    return html;
-  }
-
   // renderRunPanel fills the run drawer from the active deploy(s) plus the
-  // upcoming snapshot: the active stack leads (ship badge), the rest follow in
-  // deploy order. Read-only — no switches.
+  // upcoming snapshot. Read-only — no switches.
   function renderRunPanel() {
     const active = Object.keys(deployingRows);
     const up = upcomingSnap;
-    if (active.length === 0 && up.length === 0) {
-      runSub.textContent = 'Nothing deploying.';
-    } else if (active.length > 0) {
-      runSub.innerHTML =
-        `<b>${escapeHtml(active.join(', '))}</b> deploying` +
-        (up.length ? ' · ' + up.length + ' more this run' : ' · last in this run');
-    } else {
-      runSub.textContent = up.length + ' stack' + (up.length === 1 ? '' : 's') + ' upcoming';
-    }
+    runSub.innerHTML = runSummaryHTML(active, up);
     const total = active.length + up.length;
     runCount.textContent = total ? total : '';
-    let rows = active.map(function (n) {
-      return runRowHTML(n, SHIP_SVG, 'deploying now', true);
-    });
-    rows = rows.concat(
-      up.map(function (n, i) {
-        return runRowHTML(n, String(i + 1), i === 0 ? 'next' : 'then', false);
-      }),
-    );
-    runList.innerHTML = rows.length
-      ? rows.join('')
-      : '<div class="qempty">Nothing deploying right now.</div>';
-  }
-
-  function runRowHTML(name, badge, detail, isActive) {
-    return (
-      `<div class="run-row${isActive ? ' active' : ''}" data-stack="${escapeAttr(name)}">` +
-      `<span class="run-badge${isActive ? ' ship' : ''}">${badge}</span>` +
-      `<div><div class="run-name">${escapeHtml(name)}</div>` +
-      `<div class="run-detail">${detail}</div></div>` +
-      `</div>`
-    );
+    runList.innerHTML = runListHTML(active, up);
   }
 
   // setRunDrawer opens/closes the run panel. It is mutually exclusive with the

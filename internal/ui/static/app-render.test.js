@@ -556,3 +556,69 @@ test('autosyncRowHTML escapes the stack name in both text and attributes', () =>
   assert.match(html, /data-stack="a&lt;b&amp;&quot;c&quot;"/);
   assert.match(html, /class="stack-name">a&lt;b&amp;"c"/);
 });
+
+test('nextTrailHTML lists the upcoming stacks separated by dots', () => {
+  const html = r.nextTrailHTML(['web', 'db']);
+  assert.match(html, /class="arrow">→</);
+  assert.match(html, /class="up">web<\/span><span class="sep">·<\/span><span class="up more">db</);
+  assert.ok(!html.includes('+'), `nothing was capped, so no overflow chip: ${html}`);
+});
+
+test('nextTrailHTML caps the trail at three names and counts the rest', () => {
+  const html = r.nextTrailHTML(['a', 'b', 'c', 'd', 'e']);
+  assert.match(html, /class="up more">\+2</);
+  assert.ok(!html.includes('>d<'), `the fourth name must fold into the count: ${html}`);
+});
+
+test('nextTrailHTML escapes the stack names', () => {
+  assert.match(r.nextTrailHTML(['a<b']), /class="up">a&lt;b</);
+});
+
+test('runSummaryHTML names the active stack and how much of the run is left', () => {
+  assert.equal(
+    r.runSummaryHTML(['web'], ['db', 'cache']),
+    '<b>web</b> deploying · 2 more this run',
+  );
+  assert.equal(r.runSummaryHTML(['web'], []), '<b>web</b> deploying · last in this run');
+});
+
+test('runSummaryHTML counts a queue with nothing deploying yet', () => {
+  assert.equal(r.runSummaryHTML([], ['db']), '1 stack upcoming');
+  assert.equal(r.runSummaryHTML([], ['db', 'cache']), '2 stacks upcoming');
+});
+
+test('runSummaryHTML reports an empty run', () => {
+  assert.equal(r.runSummaryHTML([], []), 'Nothing deploying.');
+});
+
+test('runSummaryHTML escapes the active stack names', () => {
+  assert.equal(r.runSummaryHTML(['a<b'], []), '<b>a&lt;b</b> deploying · last in this run');
+});
+
+test('runRowHTML marks the active row and passes the badge through unescaped', () => {
+  const html = r.runRowHTML('web', '<svg/>', 'deploying now', true);
+  assert.match(html, /class="run-row active"/);
+  assert.match(html, /class="run-badge ship"><svg\/></);
+  assert.match(html, /class="run-detail">deploying now</);
+});
+
+test('runRowHTML escapes the stack name in both text and attributes', () => {
+  const html = r.runRowHTML('a<b&"c"', '1', 'next', false);
+  assert.ok(!html.includes('a<b&"c"'), `raw name leaked: ${html}`);
+  assert.match(html, /data-stack="a&lt;b&amp;&quot;c&quot;"/);
+  assert.match(html, /class="run-name">a&lt;b&amp;"c"/);
+});
+
+test('runListHTML leads with the active stack and numbers the rest in order', () => {
+  const html = r.runListHTML(['web'], ['db', 'cache']);
+  const details = [...html.matchAll(/class="run-detail">([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(details, ['deploying now', 'next', 'then']);
+  // The active row carries the ship glyph, the waiting ones their queue position.
+  assert.ok(html.includes(`class="run-badge ship">${r.SHIP_ICON}<`), `ship badge missing: ${html}`);
+  const positions = [...html.matchAll(/class="run-badge">(\d+)</g)].map((m) => m[1]);
+  assert.deepEqual(positions, ['1', '2']);
+});
+
+test('runListHTML falls back to the empty-state line', () => {
+  assert.match(r.runListHTML([], []), /class="qempty"/);
+});
