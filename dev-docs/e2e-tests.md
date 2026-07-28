@@ -1050,7 +1050,12 @@ overlays leave the rendered pixels unchanged).
 - **UAA3 — Live region.** The `a11y-announce` region is empty at boot (the
   startup deploy is history), then a live webhook deploy fills it with the spoken
   outcome (`web deployed successfully`) — proving live outcomes announce and the
-  history replay stays silent.
+  history replay stays silent. Between the two, the test waits for the region's
+  `data-announce-ready` to reach `1` rather than sleeping past the post-connect
+  gate: the gate publishes its own state precisely so this stays an assertion.
+  The suite contains no `waitForTimeout`, and `make check-no-sleeps` keeps it
+  that way — if a wait seems unavoidable, the missing piece is a signal in the
+  UI, not a longer timeout.
 - **UAA4 — Host-row checkbox (multi-host).** Each drawer `host-row` is
   `role="checkbox"` with `aria-checked` = in-view; `Space` on the focused row
   toggles it (narrowing the merged feed, `host-filter-active`) and focus is

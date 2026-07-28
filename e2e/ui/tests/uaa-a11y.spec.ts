@@ -86,9 +86,10 @@ test('UAA3: terminal deploy outcomes are announced live, not from history', asyn
   await expect(page.locator('[data-testid="deploy-row"][data-stack="web"]')).toHaveCount(1);
   await expect(announce(page)).toHaveText('');
 
-  // Let the post-connect announce gate open (the replay burst is over) before a
-  // genuinely live deploy — the real scenario is a deploy well after page load.
-  await page.waitForTimeout(900);
+  // Wait for the gate to actually open rather than sleeping past its timer: the
+  // live region publishes its state, so this is an assertion on the condition
+  // the test depends on, not a guess at how long it takes.
+  await expect(announce(page)).toHaveAttribute('data-announce-ready', '1');
 
   // A live change deploys `web` and the outcome is voiced.
   skipper.setStackImage('web', '1.26');

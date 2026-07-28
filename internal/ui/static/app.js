@@ -24,15 +24,32 @@
   // a frame or two) lands while it is closed, then it opens and stays open, so
   // every later live deploy announces. Not reset by incoming events — a live
   // deploy arriving soon after connect must not keep pushing the gate shut.
+  //
+  // The gate's state is mirrored onto the live region as data-announce-ready,
+  // so "the replay burst is over" is observable instead of having to be waited
+  // out: a test asserts on the attribute rather than sleeping past the timer.
+  // ANNOUNCE_SETTLE_MS is how long after a connect the gate stays shut: long
+  // enough for the replay burst to render, short enough that a deploy landing
+  // right after a reconnect is still voiced.
+  const ANNOUNCE_SETTLE_MS = 700;
   let announceReady = false;
   let announceSettleTimer = null;
+  // setAnnounceReady moves the gate and its published state together, so the
+  // attribute can never disagree with the flag the announce path reads.
+  function setAnnounceReady(ready) {
+    announceReady = ready;
+    if (a11yAnnounce) a11yAnnounce.dataset.announceReady = ready ? '1' : '0';
+  }
   function armAnnounceGate() {
-    announceReady = false;
+    setAnnounceReady(false);
     clearTimeout(announceSettleTimer);
     announceSettleTimer = setTimeout(function () {
-      announceReady = true;
-    }, 700);
+      setAnnounceReady(true);
+    }, ANNOUNCE_SETTLE_MS);
   }
+  // Publish the closed state at boot, before the first connect arms the gate,
+  // so the attribute is never absent while the flag says shut.
+  setAnnounceReady(false);
   const deployStatus = document.getElementById('deploy-status');
   const dsActive = deployStatus.querySelector('.ds-active');
   const dsNext = document.getElementById('deploy-next');
