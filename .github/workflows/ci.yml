@@ -36,7 +36,8 @@ jobs:
           go mod vendor
           git diff --exit-code -- go.mod go.sum vendor/
 
-  # JS unit layer for the pure UI helpers (internal/ui/static/app-helpers.js),
+  # JS unit layer for the pure UI helpers and render layer
+  # (internal/ui/static/app-helpers.js, app-render.js),
   # run with the Node built-in test runner — no build step, no npm deps for the
   # shipped app (ADR-0035). Prettier/ESLint here are dev-only devDependencies
   # (internal/ui/static/package.json), scoped to the plain-script JS files;
@@ -61,6 +62,9 @@ jobs:
       # The --host-N palette in app.css is generated output pasted by hand;
       # nothing else catches it drifting from its generator (`make check-host-colors`).
       - run: make check-host-colors
+      # The container that renders the baselines and the npm package that
+      # compares against them must agree, or the only symptom is a pixel diff.
+      - run: make check-playwright-pin
 
   # End-to-end tests: run the real skipper binary against a local git origin
   # and a stub docker on PATH (no docker daemon needed). Guarded by the "e2e"
@@ -132,6 +136,10 @@ jobs:
         with:
           name: ui-baselines
           path: e2e/ui/__screenshots__
+      # Fail here rather than inside a pixel compare if that overwrite did not
+      # land: comparing against a pointer file, or against nothing, is worse
+      # than a red step because it does not point at the hand-off.
+      - run: make check-baselines
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod

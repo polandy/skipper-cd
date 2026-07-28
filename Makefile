@@ -2,11 +2,11 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors
+.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
-ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors lint govulncheck e2e docs e2e-ui ui-preview-smoke
+ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin lint govulncheck e2e docs e2e-ui ui-preview-smoke
 
 ## --- test job -------------------------------------------------------------
 build:
@@ -118,3 +118,16 @@ check-host-colors:
 	node scripts/gen-host-colors.mjs | grep -oE -- '$(HOST_COLOR_TOKEN)' > "$$gen"; \
 	grep -oE -- '$(HOST_COLOR_TOKEN)' internal/ui/static/app.css > "$$com"; \
 	diff "$$gen" "$$com"
+
+## --- check-playwright-pin (part of the ui-unit job) ------------------------
+# The CI container renders the visual baselines and the npm package drives the
+# comparison; drift between them shows up as a font-rasterisation pixel diff
+# rather than an error, so it needs its own check.
+check-playwright-pin:
+	@scripts/check-playwright-pin.sh
+
+## --- check-baselines (part of the e2e-ui job) -----------------------------
+# Asserts the snapshot baselines are real PNGs and not git-lfs pointers — in CI
+# that the artifact hand-off landed, locally that git-lfs smudged them.
+check-baselines:
+	@scripts/check-baselines.sh
