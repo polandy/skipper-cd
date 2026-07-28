@@ -665,3 +665,64 @@ test('attentionBandHTML escapes the stack name and the health status', () => {
   assert.match(html, /class="health-pill att-pill" data-health="un&quot;healthy"/);
   assert.match(html, /class="hlabel">un"healthy</);
 });
+
+test('watchedLeadHTML links the commit the settled lead names', () => {
+  const entry = { last_status: 'success', last_commit: 'deadbeefcafe1234' };
+  const html = r.watchedLeadHTML(entry, 2, 'https://git.example/repo');
+  assert.match(
+    html,
+    /Unchanged since <a[^>]*href="https:\/\/git\.example\/repo\/commit\/deadbeefcafe1234"/,
+  );
+  assert.match(html, /title="deadbeefcafe1234"/);
+  assert.match(html, />deadbee</); // the short SHA stays the link text
+});
+
+test('watchedLeadHTML leaves an unsettled lead as plain text', () => {
+  // Only the settled phrasing names a commit; anything else must not gain a link.
+  const html = r.watchedLeadHTML(
+    { last_status: 'failed', last_commit: 'deadbeefcafe1234' },
+    1,
+    'b',
+  );
+  assert.ok(!html.includes('<a '), `unexpected link: ${html}`);
+});
+
+test('watchedLeadHTML stays plain text when the entry names no commit', () => {
+  const html = r.watchedLeadHTML({ last_status: 'success', last_commit: '' }, 1, 'b');
+  assert.ok(!html.includes('<a '), `unexpected link: ${html}`);
+});
+
+test('watchedPanelHTML lists the watched files and appends the settings entry', () => {
+  const html = r.watchedPanelHTML(
+    { watched: ['compose.yaml', 'app.env'], watched_config: true },
+    'b',
+  );
+  const files = [...html.matchAll(/class="wp-file" data-testid="watched-file">([^<]*)</g)].map(
+    (m) => m[1],
+  );
+  assert.deepEqual(files, ['compose.yaml', 'app.env']);
+  assert.match(html, /class="wp-config" data-testid="watched-config"/);
+});
+
+test('watchedPanelHTML counts the settings entry in the lead', () => {
+  // The synthetic config entry is a hashed input like any file, so it must be
+  // part of the count the lead phrases.
+  const entry = { watched: ['compose.yaml'], watched_config: true };
+  assert.equal(
+    r.watchedPanelHTML(entry, 'b').includes(r.watchedLeadHTML(entry, 2, 'b')),
+    true,
+    'lead was not built with the settings entry counted',
+  );
+});
+
+test('watchedPanelHTML drops the list when nothing is watched', () => {
+  const html = r.watchedPanelHTML({}, 'b');
+  assert.ok(!html.includes('wp-files'), `unexpected list: ${html}`);
+  assert.match(html, /class="wp-head"/);
+});
+
+test('watchedPanelHTML escapes the watched file names', () => {
+  const html = r.watchedPanelHTML({ watched: ['a<b&"c".env'] }, 'b');
+  assert.ok(!html.includes('a<b&"c"'), `raw path leaked: ${html}`);
+  assert.match(html, /watched-file">a&lt;b&amp;"c"\.env</);
+});
