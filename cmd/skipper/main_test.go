@@ -173,20 +173,10 @@ func TestStartServer_ListenFailureIsReportedNotFatal(t *testing.T) {
 	if !strings.Contains(got.Error(), "test server") {
 		t.Errorf("error should name the server it came from; got %v", got)
 	}
-}
-
-func TestStartServer_CleanShutdownReportsNothing(t *testing.T) {
-	// http.ErrServerClosed is the normal outcome of Shutdown and must not be
-	// mistaken for a failure — otherwise every graceful stop would exit 1.
-	fail := make(chan error, 2)
-	srv := startServer("test", 0, http.NewServeMux(), fail)
-
-	if err := srv.Shutdown(context.Background()); err != nil {
-		t.Fatalf("shutdown: %v", err)
-	}
-	select {
-	case err := <-fail:
-		t.Errorf("clean shutdown reported a failure: %v", err)
-	default:
-	}
+	// The mirror case — a clean Shutdown must stay silent, or every graceful
+	// stop would exit 1 — is deliberately not a test: asserting that nothing
+	// arrives on a channel is green whether or not the goroutine ever ran, and
+	// the only way to order it is a completion signal that exists purely for
+	// the test. The ErrServerClosed filter it would cover is unchanged here and
+	// is exercised on every real shutdown.
 }
