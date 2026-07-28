@@ -311,11 +311,13 @@ function phaseDuration(ms) {
 }
 
 // phaseSince renders a phase start compactly in local time: time-of-day for
-// today, day+month plus time otherwise.
-function phaseSince(ts) {
+// today, day+month plus time otherwise. Takes the clock so it stays pure — the
+// today-or-not comparison is a date boundary, which a self-read clock would
+// make untestable around midnight.
+function phaseSince(ts, nowMs) {
   const d = new Date(ts);
   const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (d.toDateString() === new Date().toDateString()) return time;
+  if (d.toDateString() === new Date(nowMs).toDateString()) return time;
   return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + time;
 }
 
@@ -636,6 +638,11 @@ function deployStatusLabel(active, up) {
 // skipped. Under `node --test` `module` exists, so the helpers are exported for
 // import. No bundler, no build step.
 if (typeof module !== 'undefined' && module.exports) {
+  // Some of these are internal to this file (parseImageRef, imageRepoName,
+  // HOST_COLOR_COUNT, hostColorIndex — each used only by another helper here).
+  // They are exported anyway so the unit layer can exercise them directly:
+  // testing a fiddly reference parser through its callers only would leave its
+  // own edge cases to inference.
   module.exports = {
     formatDuration,
     formatTime,
