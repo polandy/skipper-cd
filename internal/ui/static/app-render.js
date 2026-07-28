@@ -188,6 +188,103 @@ function renderCommitHead(commits, meta, repoBase) {
   return html;
 }
 
+function badgeHTML(status) {
+  const cls = `badge badge-${status}`;
+  // deploying keeps its animated spinner as the leading glyph; every other
+  // status gets an icon from statusIcon (T3.14).
+  if (status === 'deploying')
+    return `<span class="${cls}" data-testid="status-badge"><span class="spinner"></span>deploying</span>`;
+  const icon = statusIcon(status);
+  if (status === 'rolled_back_unhealthy') {
+    // The worst terminal state: a warning icon on a solid danger fill (T3.14)
+    // — the loudest chip in the status column, not the smallest. The label
+    // still stacks two lines (one line overflows the column), wrapped in
+    // .badge-lbl so the badge stays a row for the leading icon.
+    return `<span class="${cls}" data-testid="status-badge">${icon}<span class="badge-lbl"><span>rolled back</span><span>unhealthy</span></span></span>`;
+  }
+  if (status === 'heal_exhausted') {
+    // Same solid two-line treatment as rolled_back_unhealthy (ADR-0029, T3.14).
+    return `<span class="${cls}" data-testid="status-badge">${icon}<span class="badge-lbl"><span>self-heal</span><span>failed</span></span></span>`;
+  }
+  const label = status === 'rolled_back' ? 'rolled back' : status;
+  return `<span class="${cls}" data-testid="status-badge">${icon}${label}</span>`;
+}
+
+// serviceVersionHTML is the same chip in its current-value mode: one token, no
+// arrow, and deliberately neutral \u2014 the add-green in a delta chip means "this
+// is the new version", while a running version is a fact, not a change. The
+// title carries the full reference the visible token drops (registry, repo,
+// digest). Pass labelled=false in the containers panel, whose line already
+// names the service in its own column (the aria/title still name it).
+function serviceVersionHTML(service, image, labelled) {
+  const tag = shortImageTag(image);
+  const body = `<span class="td-cur">${escapeHtml(tag)}</span>`;
+  return versionChipHTML(
+    labelled === false ? '' : service,
+    body,
+    `${service} running ${tag}`,
+    `${service}: ${image}`,
+  );
+}
+
+function filesHTML(files) {
+  if (!files || files.length === 0) return '<span class="cell-duration">\u2014</span>';
+  // escapeAttr also encodes quotes - JSON is full of them and this lands
+  // inside a double-quoted attribute.
+  const encoded = escapeAttr(JSON.stringify(files));
+  return (
+    `<button class="files-pill" data-testid="files-pill" data-files="${encoded}">` +
+    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h5l2 2h5v7H2z"/></svg>` +
+    `${files.length} file${files.length > 1 ? 's' : ''}</button>`
+  );
+}
+
+// healPillHTML renders the self-heal "badge" that stands in for the files pill
+// on a healed row (a heal has no changed files). Clicking it expands a panel
+// explaining the corrective redeploy and listing the services that had
+// drifted (ADR-0029). The drift rides the event, so it is stashed on the pill.
+function healPillHTML(drift) {
+  const encoded = escapeAttr(JSON.stringify(drift || []));
+  return (
+    `<button class="heal-pill" data-testid="heal-pill" data-drift="${encoded}">` +
+    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>` +
+    `self-heal</button>`
+  );
+}
+
+// healthHistoryHTML renders one service's status timeline from the
+// healthwatch snapshot (ADR-0031): newest first, each accepted phase with its
+// start, how long it held, and the deploy commit when correlated. Returns ''
+// when the watchdog is off — and for a service with only its baseline phase,
+// where a one-line timeline would just repeat the inline age. The caller
+// supplies the service's phases, the forge base for the commit chips
+// (repoBase — the timeline may belong to a peer) and the clock (nowMs).
+function healthHistoryHTML(phases, repoBase, nowMs) {
+  if (!phases || phases.length < 2) return '';
+  let html = '<div class="hp-history" data-testid="health-history">';
+  for (let i = 0; i < phases.length; i++) {
+    const p = phases[i];
+    const end = i === 0 ? nowMs : new Date(phases[i - 1].since).getTime();
+    const dur = phaseDuration(end - new Date(p.since).getTime());
+    html +=
+      `<div class="hp-phase" data-testid="health-phase" data-health="${escapeAttr(p.status)}">` +
+      `<span class="hdot"></span>` +
+      `<span class="hp-pstatus">${escapeHtml(p.status)}</span>` +
+      `<span>${escapeHtml(phaseSince(p.since))}</span>` +
+      `<span>${escapeHtml(i === 0 ? 'for ' + dur : dur)}</span>` +
+      (p.deploy_correlated && p.commit
+        ? commitLinkHTML(p.commit, {
+            cls: 'hp-commit',
+            base: repoBase,
+            testid: 'health-phase-commit',
+            title: 'deployed just before this phase began',
+          })
+        : '') +
+      `</div>`;
+  }
+  return html + '</div>';
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
@@ -198,5 +295,10 @@ if (typeof module !== 'undefined' && module.exports) {
     versionChipHTML,
     imageDeltaHTML,
     renderCommitHead,
+    badgeHTML,
+    serviceVersionHTML,
+    filesHTML,
+    healPillHTML,
+    healthHistoryHTML,
   };
 }

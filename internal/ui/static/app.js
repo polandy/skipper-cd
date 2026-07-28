@@ -729,70 +729,6 @@
     if (!hasRows) emptyState.style.display = '';
   }
 
-  function badgeHTML(status) {
-    const cls = `badge badge-${status}`;
-    // deploying keeps its animated spinner as the leading glyph; every other
-    // status gets an icon from statusIcon (T3.14).
-    if (status === 'deploying')
-      return `<span class="${cls}" data-testid="status-badge"><span class="spinner"></span>deploying</span>`;
-    const icon = statusIcon(status);
-    if (status === 'rolled_back_unhealthy') {
-      // The worst terminal state: a warning icon on a solid danger fill (T3.14)
-      // — the loudest chip in the status column, not the smallest. The label
-      // still stacks two lines (one line overflows the column), wrapped in
-      // .badge-lbl so the badge stays a row for the leading icon.
-      return `<span class="${cls}" data-testid="status-badge">${icon}<span class="badge-lbl"><span>rolled back</span><span>unhealthy</span></span></span>`;
-    }
-    if (status === 'heal_exhausted') {
-      // Same solid two-line treatment as rolled_back_unhealthy (ADR-0029, T3.14).
-      return `<span class="${cls}" data-testid="status-badge">${icon}<span class="badge-lbl"><span>self-heal</span><span>failed</span></span></span>`;
-    }
-    const label = status === 'rolled_back' ? 'rolled back' : status;
-    return `<span class="${cls}" data-testid="status-badge">${icon}${label}</span>`;
-  }
-
-  // serviceVersionHTML is the same chip in its current-value mode: one token, no
-  // arrow, and deliberately neutral \u2014 the add-green in a delta chip means "this
-  // is the new version", while a running version is a fact, not a change. The
-  // title carries the full reference the visible token drops (registry, repo,
-  // digest). Pass labelled=false in the containers panel, whose line already
-  // names the service in its own column (the aria/title still name it).
-  function serviceVersionHTML(service, image, labelled) {
-    const tag = shortImageTag(image);
-    const body = `<span class="td-cur">${escapeHtml(tag)}</span>`;
-    return versionChipHTML(
-      labelled === false ? '' : service,
-      body,
-      `${service} running ${tag}`,
-      `${service}: ${image}`,
-    );
-  }
-
-  function filesHTML(files) {
-    if (!files || files.length === 0) return '<span class="cell-duration">\u2014</span>';
-    // escapeAttr also encodes quotes - JSON is full of them and this lands
-    // inside a double-quoted attribute.
-    const encoded = escapeAttr(JSON.stringify(files));
-    return (
-      `<button class="files-pill" data-testid="files-pill" data-files="${encoded}">` +
-      `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h5l2 2h5v7H2z"/></svg>` +
-      `${files.length} file${files.length > 1 ? 's' : ''}</button>`
-    );
-  }
-
-  // healPillHTML renders the self-heal "badge" that stands in for the files pill
-  // on a healed row (a heal has no changed files). Clicking it expands a panel
-  // explaining the corrective redeploy and listing the services that had
-  // drifted (ADR-0029). The drift rides the event, so it is stashed on the pill.
-  function healPillHTML(drift) {
-    const encoded = escapeAttr(JSON.stringify(drift || []));
-    return (
-      `<button class="heal-pill" data-testid="heal-pill" data-drift="${encoded}">` +
-      `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>` +
-      `self-heal</button>`
-    );
-  }
-
   // createHealPanel builds the expandable detail for a healed row: a one-line
   // explanation (no git change → no diff) and, when known, the drifted services
   // the corrective redeploy reacted to. Bound to its row (variant A) so it shares
@@ -2088,39 +2024,6 @@
     el.insertAdjacentHTML('beforeend', body);
   }
 
-  // healthHistoryHTML renders one service's status timeline from the
-  // healthwatch snapshot (ADR-0031): newest first, each accepted phase with its
-  // start, how long it held, and the deploy commit when correlated. Returns ''
-  // when the watchdog is off — and for a service with only its baseline phase,
-  // where a one-line timeline would just repeat the inline age.
-  function healthHistoryHTML(stack, svc, host) {
-    const phases = (healthwatchMapFor(host)[stack] || {})[svc];
-    if (!phases || phases.length < 2) return '';
-    const hostRepo = repoWebURLFor(host); // this timeline may belong to a peer
-    let html = '<div class="hp-history" data-testid="health-history">';
-    for (let i = 0; i < phases.length; i++) {
-      const p = phases[i];
-      const end = i === 0 ? Date.now() : new Date(phases[i - 1].since).getTime();
-      const dur = phaseDuration(end - new Date(p.since).getTime());
-      html +=
-        `<div class="hp-phase" data-testid="health-phase" data-health="${escapeAttr(p.status)}">` +
-        `<span class="hdot"></span>` +
-        `<span class="hp-pstatus">${escapeHtml(p.status)}</span>` +
-        `<span>${escapeHtml(phaseSince(p.since))}</span>` +
-        `<span>${escapeHtml(i === 0 ? 'for ' + dur : dur)}</span>` +
-        (p.deploy_correlated && p.commit
-          ? commitLinkHTML(p.commit, {
-              cls: 'hp-commit',
-              base: hostRepo,
-              testid: 'health-phase-commit',
-              title: 'deployed just before this phase began',
-            })
-          : '') +
-        `</div>`;
-    }
-    return html + '</div>';
-  }
-
   // host is optional: omitted (or the primary's own name) reads the live local
   // snapshot; a peer name reads that peer's fanned-in health (ADR-0048), so peer
   // rows render the same containers panel. The per-service log button is
@@ -2191,7 +2094,7 @@
             `<span class="hp-status" data-health="${escapeAttr(st)}"><span class="hdot"></span>${escapeHtml(st)}${age}</span>` +
             clogBtnHTML(stack, s.name, host) +
             `</div>` +
-            healthHistoryHTML(stack, s.name, host)
+            healthHistoryHTML(phases, repoWebURLFor(host), Date.now())
           );
         })
         .join('');
