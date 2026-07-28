@@ -285,6 +285,111 @@ function healthHistoryHTML(phases, repoBase, nowMs) {
   return html + '</div>';
 }
 
+// ── Row-affordance widgets ──
+// The small per-row buttons and chips shared by the Deploys feed, the roster
+// and peer rows. Pure string builders; the DOM-node wrappers (clogButton,
+// hooksBadgeButton) and all click handling stay in app.js.
+
+// clogBtnHTML builds the logs icon that opens a container log (ADR-0037), used
+// from templates (health-panel lines, roster rows). host is optional: a peer's
+// name tags the button with data-clog-host so clog.toggle streams through the
+// primary's peer proxy (ADR-0048) instead of the local container-logs endpoint.
+const CLOG_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6h14M5 11h14M5 16h9"/><circle cx="17" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>';
+function clogBtnHTML(stack, service, host) {
+  const label = service
+    ? 'logs for ' + stack + ' / ' + service
+    : 'logs for ' + stack + ' (all services)';
+  const hostAttr = host ? ` data-clog-host="${escapeAttr(host)}"` : '';
+  return `<button class="clog-btn" type="button" data-testid="clog-btn" data-taptip data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}"${hostAttr} title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
+}
+
+// healthPillHTML is the string form of the live-health pill (ADR-0027) — the
+// same markup updateStackAffordances builds imperatively for a local Deploys
+// row, so peer rows and roster rows show an identical at-a-glance pill. A click
+// opens the row's containers panel (routed per row type in the click handlers).
+function healthPillHTML(stack, status) {
+  return (
+    '<button class="health-pill" type="button" data-testid="health-pill" data-health="' +
+    escapeAttr(status) +
+    '" data-stack="' +
+    escapeAttr(stack) +
+    '" title="' +
+    escapeAttr(stack + ' — ' + status) +
+    '"><span class="hdot"></span><span class="hlabel">' +
+    escapeHtml(status) +
+    '</span></button>'
+  );
+}
+
+// Fishing hook — distinct from the container-logs icon it sits beside.
+const HOOK_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5v7a4 4 0 0 1-8 0"/><path d="M4.5 10.5 7 13l2.5-2.5"/></svg>';
+function hookCount(hooks) {
+  return (hooks.pre_deploy || []).length + (hooks.post_deploy || []).length;
+}
+// hooksBadgeHTML is the deploy-hooks affordance (ADR-0038) on a stack's row.
+function hooksBadgeHTML(stack, hooks) {
+  const pre = (hooks.pre_deploy || []).length,
+    post = (hooks.post_deploy || []).length;
+  const label = `pre-deploy hook: ${pre}\npost-deploy hook: ${post}`;
+  // "2+1" rather than the sum, so the split is visible.
+  return `<button class="hooks-badge" type="button" data-testid="hooks-badge" data-taptip data-hooks-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${HOOK_ICON}<span class="hk-count">${pre}+${post}</span></button>`;
+}
+
+// jumpBtnHTML renders the cross-view navigation affordance next to a stack
+// name: a small button that switches to targetView and scrolls to that
+// stack's row there (see jumpToStack). Always rendered — whether a landing
+// row actually exists depends on live data (e.g. a stack with no deploy
+// history yet has no Deploys-view row), so jumpToStack degrades to a plain
+// view switch when it finds nothing to land on.
+function jumpBtnHTML(targetView, stack) {
+  const label = targetView === 'stacks' ? 'View in Stacks' : 'View in Deploys';
+  return (
+    `<button type="button" class="jump-btn" data-testid="jump-btn" data-taptip data-jump-view="${targetView}" data-jump-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label + ': ' + stack)}">` +
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>' +
+    '</button>'
+  );
+}
+
+// pendingTagHTML renders the tag on a pending deploy row. Queued rows show
+// "paused[: reason]"; blocked rows (ADR-0032) show the dependency reason
+// ("blocked by <dep>") directly. The caller draws reason from the queue
+// snapshot; it embeds a stack name — repo-controlled in stack-discovery mode
+// (ADR-0034) — so it must render as text, never as markup.
+function pendingTagHTML(status, reason) {
+  if (status === 'blocked') {
+    return `<span class="paused-tag">${escapeHtml(reason || 'blocked')}</span>`;
+  }
+  return `<span class="paused-tag">${reason ? 'paused: ' + escapeHtml(reason) : 'paused'}</span>`;
+}
+
+// hostChipHTML renders a row's leading host-identity chip inside the stack
+// cell — a colour-tinted monogram for the row's host (a labelled chip, not a
+// dot: a dot already means deploy status). Empty (and hidden by CSS) on a
+// single-host instance; CSS shows it only when more than one host is in view.
+// The caller supplies the host's colour slot from the live assignment
+// (app.js hostChip wraps that lookup).
+function hostChipHTML(hostName, slot) {
+  if (!hostName) return '';
+  const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
+  // title → native hover tooltip; data-taptip → the tap-tip bubble on touch,
+  // so the full hostname appears whether the chip is hovered or tapped.
+  // role/tabindex/aria-label make the quick-filter chip keyboard-operable
+  // (T2.10) — Enter/Space fire the same toggle as a click (hostChipKeydown).
+  return (
+    '<span class="host-mono" role="button" tabindex="0" aria-label="Filter view to host ' +
+    escapeAttr(hostName) +
+    '"' +
+    attr +
+    ' data-taptip title="' +
+    escapeAttr(hostName) +
+    '">' +
+    escapeHtml(hostMonogram(hostName)) +
+    '</span>'
+  );
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
@@ -300,5 +405,12 @@ if (typeof module !== 'undefined' && module.exports) {
     filesHTML,
     healPillHTML,
     healthHistoryHTML,
+    clogBtnHTML,
+    healthPillHTML,
+    hookCount,
+    hooksBadgeHTML,
+    jumpBtnHTML,
+    pendingTagHTML,
+    hostChipHTML,
   };
 }

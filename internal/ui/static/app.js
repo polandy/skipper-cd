@@ -442,7 +442,7 @@
       const rowHealth = entry.disabled ? null : healthSnap[entry.name];
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
-        `<span class="roster-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCellHTML(entry.name)}${rosterRowActionsHTML(entry)}</span>` +
+        `<span class="roster-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCellHTML(entry.name)}${rosterRowActionsHTML(entry)}</span>` +
         rosterVersionCellHTML(entry.name, selfHost, entry.disabled) +
         `<span class="roster-status">${rosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, selfHost)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
@@ -516,7 +516,7 @@
         row.dataset.status = entry.last_status || '';
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
-          `<span class="roster-stack">${hostChipHTML(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${entry.disabled ? '' : linkCellHTML(entry.name, p.name)}</span>` +
+          `<span class="roster-stack">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${entry.disabled ? '' : linkCellHTML(entry.name, p.name)}</span>` +
           rosterVersionCellHTML(entry.name, p.name, entry.disabled) +
           `<span class="roster-status">${peerRosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, p.name)}</span>` +
           `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
@@ -891,8 +891,6 @@
   // streams from /api/container-logs via EventSource and trails the row/line it
   // was opened from. Controls: live/pause, auto-scroll, wrap, in-log search,
   // fullscreen.
-  const CLOG_ICON =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6h14M5 11h14M5 16h9"/><circle cx="17" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>';
   const CLOG_ICONS = {
     search:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>',
@@ -904,65 +902,24 @@
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
   };
 
-  // clogBtnHTML/clogButton build the logs icon that opens a log — a string
-  // for template use (health-panel lines, roster rows) and a DOM node for the
-  // deploy row's action cell. host is optional: a peer's name tags the button
-  // with data-clog-host so clog.toggle streams through the primary's peer proxy
-  // (ADR-0048) instead of the local container-logs endpoint.
-  function clogBtnHTML(stack, service, host) {
-    const label = service
-      ? 'logs for ' + stack + ' / ' + service
-      : 'logs for ' + stack + ' (all services)';
-    const hostAttr = host ? ` data-clog-host="${escapeAttr(host)}"` : '';
-    return `<button class="clog-btn" type="button" data-testid="clog-btn" data-taptip data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}"${hostAttr} title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
-  }
+  // clogButton is the DOM-node form of clogBtnHTML (app-render.js) for the
+  // deploy row's action cell.
   function clogButton(stack, service) {
     const tmp = document.createElement('template');
     tmp.innerHTML = clogBtnHTML(stack, service);
     return tmp.content.firstElementChild;
   }
 
-  // healthPillHTML is the string form of the live-health pill (ADR-0027) — the
-  // same markup updateStackAffordances builds imperatively for a local Deploys
-  // row, so peer rows and roster rows show an identical at-a-glance pill. A click
-  // opens the row's containers panel (routed per row type in the click handlers).
-  function healthPillHTML(stack, status) {
-    return (
-      '<button class="health-pill" type="button" data-testid="health-pill" data-health="' +
-      escapeAttr(status) +
-      '" data-stack="' +
-      escapeAttr(stack) +
-      '" title="' +
-      escapeAttr(stack + ' — ' + status) +
-      '"><span class="hdot"></span><span class="hlabel">' +
-      escapeHtml(status) +
-      '</span></button>'
-    );
-  }
-
   // ─── Deploy hooks (ADR-0038) ───
   // Hook commands ride inline on the stacks snapshot (no fetch); hookRunSnap is
   // the currently-executing hook ({} when none) from the hookrun SSE snapshot.
   let hookRunSnap = {};
-  // Fishing hook — distinct from the container-logs icon it sits beside.
-  const HOOK_ICON =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5v7a4 4 0 0 1-8 0"/><path d="M4.5 10.5 7 13l2.5-2.5"/></svg>';
 
   function hooksFor(stack) {
     const e = rosterSnap.find(function (r) {
       return r.name === stack;
     });
     return e && e.hooks ? e.hooks : null;
-  }
-  function hookCount(hooks) {
-    return (hooks.pre_deploy || []).length + (hooks.post_deploy || []).length;
-  }
-  function hooksBadgeHTML(stack, hooks) {
-    const pre = (hooks.pre_deploy || []).length,
-      post = (hooks.post_deploy || []).length;
-    const label = `pre-deploy hook: ${pre}\npost-deploy hook: ${post}`;
-    // "2+1" rather than the sum, so the split is visible.
-    return `<button class="hooks-badge" type="button" data-testid="hooks-badge" data-taptip data-hooks-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${HOOK_ICON}<span class="hk-count">${pre}+${post}</span></button>`;
   }
   function hooksBadgeButton(stack, hooks) {
     const tmp = document.createElement('template');
@@ -1665,33 +1622,11 @@
     chip.textContent = (stack || '?').charAt(0);
   }
 
-  // jumpBtnHTML renders the cross-view navigation affordance next to a stack
-  // name: a small button that switches to targetView and scrolls to that
-  // stack's row there (see jumpToStack). Always rendered — whether a landing
-  // row actually exists depends on live data (e.g. a stack with no deploy
-  // history yet has no Deploys-view row), so jumpToStack degrades to a plain
-  // view switch when it finds nothing to land on.
-  function jumpBtnHTML(targetView, stack) {
-    const label = targetView === 'stacks' ? 'View in Stacks' : 'View in Deploys';
-    return (
-      `<button type="button" class="jump-btn" data-testid="jump-btn" data-taptip data-jump-view="${targetView}" data-jump-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label + ': ' + stack)}">` +
-      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>' +
-      '</button>'
-    );
-  }
-
-  // pendingTagHTML renders the tag on a pending deploy row. Queued rows show
-  // "paused[: reason]"; blocked rows (ADR-0032) show the dependency reason
-  // ("blocked by <dep>") directly, both drawn from the queue snapshot. The
-  // reason embeds a stack name — repo-controlled in stack-discovery mode
-  // (ADR-0034) — so it must render as text, never as markup.
-  function pendingTagHTML(evt) {
-    const item = queueByStack[evt.stack];
-    const reason = item && item.reason;
-    if (evt.status === 'blocked') {
-      return `<span class="paused-tag">${escapeHtml(reason || 'blocked')}</span>`;
-    }
-    return `<span class="paused-tag">${reason ? 'paused: ' + escapeHtml(reason) : 'paused'}</span>`;
+  // pendingReason draws a stack's pause/block reason from the queue snapshot
+  // for pendingTagHTML (app-render.js).
+  function pendingReason(stack) {
+    const item = queueByStack[stack];
+    return item && item.reason;
   }
 
   function createRow(evt, isHistory) {
@@ -1707,7 +1642,9 @@
     const absTs = fullTime(evt.timestamp);
     const relTs = formatTime(evt.timestamp);
     const pausedTag =
-      evt.status === 'queued' || evt.status === 'blocked' ? pendingTagHTML(evt) : '';
+      evt.status === 'queued' || evt.status === 'blocked'
+        ? pendingTagHTML(evt.status, pendingReason(evt.stack))
+        : '';
     // A healed row has no changed files; its files cell instead carries the
     // self-heal badge, which expands the corrective-redeploy detail (ADR-0029).
     const filesCell =
@@ -1722,7 +1659,7 @@
     const delta = imageDeltaOn && evt.status !== 'healed' ? imageDeltaHTML(evt.image_changes) : '';
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
-      `<span class="cell-stack">${hostChipHTML(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
+      `<span class="cell-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="col-version">${delta}</span>` +
       `<span class="status-cell">${badgeHTML(evt.status)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
@@ -2336,7 +2273,7 @@
     Object.keys(queuedRows).forEach(function (stack) {
       const row = queuedRows[stack];
       const tag = row.querySelector('.paused-tag');
-      if (tag) tag.outerHTML = pendingTagHTML({ stack: stack, status: row.dataset.status });
+      if (tag) tag.outerHTML = pendingTagHTML(row.dataset.status, pendingReason(stack));
     });
   }
 
@@ -2507,29 +2444,10 @@
     );
   }
 
-  // hostChipHTML renders a row's leading host-identity chip inside the stack
-  // cell — a colour-tinted monogram for the row's host (a labelled chip, not a
-  // dot: a dot already means deploy status). Empty (and hidden by CSS) on a
-  // single-host instance; CSS shows it only when more than one host is in view.
-  function hostChipHTML(hostName) {
-    if (!hostName) return '';
-    const slot = hostColors[hostName];
-    const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
-    // title → native hover tooltip; data-taptip → the tap-tip bubble on touch,
-    // so the full hostname appears whether the chip is hovered or tapped.
-    // role/tabindex/aria-label make the quick-filter chip keyboard-operable
-    // (T2.10) — Enter/Space fire the same toggle as a click (hostChipKeydown).
-    return (
-      '<span class="host-mono" role="button" tabindex="0" aria-label="Filter view to host ' +
-      escapeAttr(hostName) +
-      '"' +
-      attr +
-      ' data-taptip title="' +
-      escapeAttr(hostName) +
-      '">' +
-      escapeHtml(hostMonogram(hostName)) +
-      '</span>'
-    );
+  // hostChip supplies hostChipHTML (app-render.js) with the host's colour slot
+  // from the live assignment.
+  function hostChip(hostName) {
+    return hostChipHTML(hostName, hostColors[hostName]);
   }
   // hostChipKeydown activates a focused host chip from the keyboard (T2.10),
   // mirroring the click delegation on the deploy feed and roster.
@@ -2577,7 +2495,7 @@
       (absoluteTime ? absTs : relTs) +
       '</span>' +
       '<span class="cell-stack">' +
-      hostChipHTML(hostName) +
+      hostChip(hostName) +
       '<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' +
       escapeHtml(rec.stack) +
       '</span></span>' +
@@ -2628,7 +2546,7 @@
     const eventId = row.dataset.peerEventId;
     let html =
       '<div class="pd-head">' +
-      hostChipHTML(host) +
+      hostChip(host) +
       '<span class="pd-note">peer deploy · read-only mirror</span></div>' +
       (facts ? '<div class="pd-facts">' + facts + '</div>' : '');
     if (row.dataset.error)
@@ -2760,7 +2678,7 @@
   function setLeadingChip(cell, hostName) {
     const existing = cell.querySelector('.host-mono');
     if (existing) existing.remove();
-    if (hostName) cell.insertAdjacentHTML('afterbegin', hostChipHTML(hostName));
+    if (hostName) cell.insertAdjacentHTML('afterbegin', hostChip(hostName));
   }
 
   // retagLocalRows fills in the host dot + data-host on local rows created before
