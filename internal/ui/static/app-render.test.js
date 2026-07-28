@@ -369,3 +369,109 @@ test('hostChipHTML is empty on a single-host instance (no host name)', () => {
   assert.equal(r.hostChipHTML('', 0), '');
   assert.equal(r.hostChipHTML(undefined, 0), '');
 });
+
+test('linkCellHTML is empty when no hostnames were discovered', () => {
+  assert.equal(r.linkCellHTML(undefined), '');
+  assert.equal(r.linkCellHTML([]), '');
+});
+
+test('linkCellHTML renders a single hostname as a plain external link', () => {
+  const html = r.linkCellHTML(['app.example.org']);
+  assert.match(html, /^<span class="link-wrap"><a class="link-btn" data-testid="app-link-btn"/);
+  assert.match(html, /href="https:\/\/app\.example\.org"/);
+  assert.match(html, /target="_blank" rel="noopener"/);
+  assert.match(html, /title="Open app\.example\.org"/);
+  assert.doesNotMatch(html, /link-pop|<button/);
+});
+
+test('linkCellHTML renders several hostnames as a popover button listing each', () => {
+  const html = r.linkCellHTML(['a.example.org', 'b.example.org']);
+  assert.match(html, /<button class="link-btn" type="button" data-testid="app-link-btn"/);
+  assert.match(html, /aria-label="2 app links"/);
+  assert.match(html, /<div class="link-pop" data-testid="app-link-pop">/);
+  assert.match(html, /href="https:\/\/a\.example\.org"[^>]*>[\s\S]*a\.example\.org/);
+  assert.match(html, /href="https:\/\/b\.example\.org"/);
+});
+
+test('rosterRowActionsHTML carries the logs button, plus the hooks badge only when hooks exist', () => {
+  const bare = r.rosterRowActionsHTML({ name: 'web', disabled: false });
+  assert.match(bare, /data-testid="clog-btn"/);
+  assert.doesNotMatch(bare, /hooks-badge/);
+  const hooked = r.rosterRowActionsHTML({
+    name: 'web',
+    hooks: { pre_deploy: [{}], post_deploy: [] },
+  });
+  assert.match(hooked, /data-testid="clog-btn"/);
+  assert.match(hooked, /data-testid="hooks-badge"/);
+});
+
+test('rosterRowActionsHTML is empty for a disabled stack', () => {
+  assert.equal(r.rosterRowActionsHTML({ name: 'web', disabled: true }), '');
+});
+
+test('rosterVersionInnerHTML is empty while the stack has no health entry', () => {
+  assert.equal(r.rosterVersionInnerHTML('web', undefined), '');
+  assert.equal(r.rosterVersionInnerHTML('web', { services: [] }), '');
+});
+
+test('rosterVersionInnerHTML shows the lead service version plus a +N for the rest', () => {
+  const health = {
+    services: [
+      { name: 'web', image: 'nginx:1.27' },
+      { name: 'db', image: 'postgres:16' },
+    ],
+  };
+  const html = r.rosterVersionInnerHTML('web', health);
+  assert.match(html, /td-svc">web</);
+  assert.match(html, /td-cur">1\.27</);
+  assert.match(html, /ver-count" title="1 more service — open the row for every version">\+1</);
+});
+
+test('rosterVersionInnerHTML reports only a count when no lead service exists', () => {
+  const health = {
+    services: [
+      { name: 'prometheus', image: 'prom/prometheus:v2' },
+      { name: 'grafana', image: 'grafana/grafana:11' },
+    ],
+  };
+  assert.equal(
+    r.rosterVersionInnerHTML('monitoring', health),
+    '<span class="ver-count" title="No single main service — open the row for every version">2 services</span>',
+  );
+});
+
+test('rosterVersionCellHTML always emits the cell, empty for a disabled stack', () => {
+  const health = { services: [{ name: 'web', image: 'nginx:1.27' }] };
+  assert.equal(
+    r.rosterVersionCellHTML('web', health, true),
+    '<span class="col-version" data-testid="roster-version"></span>',
+  );
+  assert.match(r.rosterVersionCellHTML('web', health, false), /td-cur">1\.27</);
+});
+
+test('rosterStatusHTML lets a live deploy win over every stored state', () => {
+  const html = r.rosterStatusHTML({ name: 'web', disabled: true, last_status: 'success' }, true);
+  assert.match(html, /badge-deploying/);
+  assert.match(html, /spinner/);
+});
+
+test('rosterStatusHTML falls through deploy → disabled → never deployed → last badge', () => {
+  assert.equal(
+    r.rosterStatusHTML({ disabled: true }, false),
+    '<span class="roster-flag">disabled</span>',
+  );
+  assert.equal(
+    r.rosterStatusHTML({ disabled: false }, false),
+    '<span class="roster-flag">never deployed</span>',
+  );
+  assert.match(r.rosterStatusHTML({ last_status: 'success' }, false), /badge badge-success/);
+});
+
+test('rosterHealthPillHTML renders the pill only when the host reports a status', () => {
+  assert.equal(r.rosterHealthPillHTML('web', undefined), '');
+  assert.equal(r.rosterHealthPillHTML('web', {}), '');
+  const html = r.rosterHealthPillHTML('web', { status: 'healthy' });
+  assert.match(html, /data-testid="health-pill"/);
+  assert.match(html, /data-health="healthy"/);
+  assert.match(html, /data-stack="web"/);
+});

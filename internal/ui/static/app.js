@@ -167,6 +167,11 @@
     const p = peerViewFor(host);
     return p ? (p.state && p.state.stacks && p.state.stacks.repo_web_url) || '' : repoWebURL;
   }
+  // stackHealthFor resolves one stack's live-health entry on a host — the
+  // parameter the roster cell renderers in app-render.js take.
+  function stackHealthFor(stack, host) {
+    return healthMapFor(host)[stack];
+  }
 
   // The reserved stack key for nixos-rebuild deploys (invariant 4). It is a
   // pseudo-stack, not a Docker Compose project and not in the Stacks roster, so
@@ -183,28 +188,13 @@
   // re-render) simply fails every future .contains() check and self-clears.
   let openLinkWrap = null;
 
-  const LINK_ICON =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M10 14L20 4M18 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>';
   const CHECK_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
 
-  // linkCellHTML renders the app-link icon for a stack: nothing when no host
-  // was discovered, a plain external link for exactly one, or a button that
-  // opens a popover listing each when there are several.
-  function linkCellHTML(stack, host) {
-    const hosts = appLinksMapFor(host)[stack];
-    if (!hosts || !hosts.length) return '';
-    if (hosts.length === 1) {
-      const url = 'https://' + hosts[0];
-      return `<span class="link-wrap"><a class="link-btn" data-testid="app-link-btn" data-taptip href="${escapeAttr(url)}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + hosts[0])}">${LINK_ICON}</a></span>`;
-    }
-    const items = hosts
-      .map(function (h) {
-        return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
-      })
-      .join('');
-    const label = hosts.length + ' app links';
-    return `<span class="link-wrap"><button class="link-btn" type="button" data-testid="app-link-btn" data-taptip title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${LINK_ICON}</button><div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
+  // linkCell resolves a stack's discovered app-link hostnames on a host and
+  // renders the cell (linkCellHTML in app-render.js owns the markup).
+  function linkCell(stack, host) {
+    return linkCellHTML(appLinksMapFor(host)[stack]);
   }
 
   // toggleAppLinkPopover opens wrap's popover, closing whichever was open
@@ -307,71 +297,6 @@
     openMoreWrap = null;
   }
 
-  // rosterRowActionsHTML surfaces an enabled roster row's secondary actions
-  // inline in the stack cell, beside the jump + app-link icons: the container-
-  // logs icon (ADR-0037) always, the deploy-hooks badge (ADR-0038) only when the
-  // stack declares hooks. Formerly folded behind the same ⋯ overflow menu the
-  // Deploys row uses (T3.13b), but on the roster the row-body click already opens
-  // the health + history panel, so the menu usually wrapped a single action
-  // (logs) — an extra click for no density gain. Disabled stacks carry neither.
-  function rosterRowActionsHTML(entry) {
-    if (entry.disabled) return '';
-    let html = clogBtnHTML(entry.name, ''); // container logs
-    if (entry.hooks && hookCount(entry.hooks) > 0) html += hooksBadgeHTML(entry.name, entry.hooks);
-    return html;
-  }
-
-  // rosterVersionInnerHTML fills a Stacks row's Version cell from the live health
-  // snapshot: the running version of the service the stack is named after, plus a
-  // muted "+N" for the rest — the glance. The full per-service list lives one
-  // click away in the containers panel, so the row stays a single line (unlike
-  // the Deploys Version column, which lists every changed service: a deploy
-  // touches a few services, while a stack HAS all of them).
-  // Empty while no health data exists for the stack (parked, stopped, or the
-  // first health poll still outstanding — updateRosterHealth fills it in then).
-  function rosterVersionInnerHTML(stack, host) {
-    const h = healthMapFor(host)[stack];
-    const v = rosterVersion(stack, h && h.services);
-    if (!v) return '';
-    // No lead service: naming one of several equals would be arbitrary, so the
-    // cell only says how many there are and defers to the panel.
-    if (!v.service) {
-      const label = v.more + (v.more === 1 ? ' service' : ' services');
-      return `<span class="ver-count" title="No single main service — open the row for every version">${label}</span>`;
-    }
-    const more =
-      v.more > 0
-        ? `<span class="ver-count" title="${escapeAttr(v.more + ' more service' + (v.more === 1 ? '' : 's') + ' — open the row for every version')}">+${v.more}</span>`
-        : '';
-    return serviceVersionHTML(v.service, v.image) + more;
-  }
-
-  // rosterVersionCellHTML wraps that in the cell every row emits — including a
-  // parked stack, whose cell stays empty (it is never polled, so it has no running
-  // version) so the grid still lines up.
-  function rosterVersionCellHTML(stack, host, disabled) {
-    const inner = disabled ? '' : rosterVersionInnerHTML(stack, host);
-    return `<span class="col-version" data-testid="roster-version">${inner}</span>`;
-  }
-
-  // rosterStatusHTML picks the row's status: a live in-flight deploy wins, then
-  // the parked/never-deployed synthetic flags, else the last terminal badge.
-  function rosterStatusHTML(entry) {
-    if (deployingRows[entry.name]) return badgeHTML('deploying');
-    if (entry.disabled) return `<span class="roster-flag">disabled</span>`;
-    if (!entry.last_status) return `<span class="roster-flag">never deployed</span>`;
-    return badgeHTML(entry.last_status);
-  }
-
-  // rosterHealthPillHTML is the live-health pill shown inline in a roster row's
-  // status cell (under the deploy badge), so the Stacks overview surfaces current
-  // container health without expanding — for local stacks and, host-scoped, for
-  // peers alike. Empty when the host reports no health for the stack.
-  function rosterHealthPillHTML(stack, host) {
-    const h = healthMapFor(host)[stack];
-    return h && h.status ? healthPillHTML(stack, h.status) : '';
-  }
-
   // rosterAttentionRank floats an enabled, currently-unhealthy stack to the top
   // (rank 0) so the Stacks view answers "what needs attention" at a glance — the
   // inventory-view counterpart to the Deploys attention band. Legitimate here (a
@@ -442,9 +367,9 @@
       const rowHealth = entry.disabled ? null : healthSnap[entry.name];
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
-        `<span class="roster-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCellHTML(entry.name)}${rosterRowActionsHTML(entry)}</span>` +
-        rosterVersionCellHTML(entry.name, selfHost, entry.disabled) +
-        `<span class="roster-status">${rosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, selfHost)}</span>` +
+        `<span class="roster-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCell(entry.name)}${rosterRowActionsHTML(entry)}</span>` +
+        rosterVersionCellHTML(entry.name, rowHealth, entry.disabled) +
+        `<span class="roster-status">${rosterStatusHTML(entry, !!deployingRows[entry.name])}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, rowHealth)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         commitLinkHTML(commit, { cls: 'roster-sha', base: repoWebURL, title: commit });
       populateIcon(row.querySelector('.stack-icon'), entry.name);
@@ -469,14 +394,6 @@
     if (reopen.kind === 'peer') openPeerDetail(row);
     else if (reopen.kind === 'hooks') openRosterHooksPanel(row);
     else openRosterDetail(row);
-  }
-
-  // peerRosterStatusHTML renders a peer stack's status without consulting local
-  // deploy state (deployingRows is the primary's own in-flight set).
-  function peerRosterStatusHTML(entry) {
-    if (entry.disabled) return `<span class="roster-flag">disabled</span>`;
-    if (!entry.last_status) return `<span class="roster-flag">never deployed</span>`;
-    return badgeHTML(entry.last_status);
   }
 
   // renderPeerRosterRows appends every peer's stacks to the roster, one read-only
@@ -516,9 +433,11 @@
         row.dataset.status = entry.last_status || '';
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
-          `<span class="roster-stack">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${entry.disabled ? '' : linkCellHTML(entry.name, p.name)}</span>` +
-          rosterVersionCellHTML(entry.name, p.name, entry.disabled) +
-          `<span class="roster-status">${peerRosterStatusHTML(entry)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, p.name)}</span>` +
+          `<span class="roster-stack">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${entry.disabled ? '' : linkCell(entry.name, p.name)}</span>` +
+          rosterVersionCellHTML(entry.name, stackHealthFor(entry.name, p.name), entry.disabled) +
+          // deploying=false: deployingRows is the primary's own in-flight set,
+          // never a peer's.
+          `<span class="roster-status">${rosterStatusHTML(entry, false)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, stackHealthFor(entry.name, p.name))}</span>` +
           `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
           commitLinkHTML(commit, { cls: 'roster-sha', base: peerRepo, title: commit });
         populateIcon(row.querySelector('.stack-icon'), entry.name);
@@ -3284,7 +3203,7 @@
       const old = cell.querySelector('.link-wrap');
       if (old) old.remove();
       if (row.classList.contains('disabled')) return;
-      const html = linkCellHTML(row.dataset.stack);
+      const html = linkCell(row.dataset.stack);
       if (html) {
         // Keep the app-link before the ⋯ menu: a plain re-append would drop it
         // after the ⋯ (the link is rebuilt on every health poll, the ⋯ is not).
@@ -3308,7 +3227,11 @@
       const verCell = row.querySelector('.col-version');
       // The versions ride the health snapshot, so the cell is refreshed here
       // rather than only at render — on connect the roster arrives first.
-      if (verCell) verCell.innerHTML = rosterVersionInnerHTML(row.dataset.stack, row.dataset.host);
+      if (verCell)
+        verCell.innerHTML = rosterVersionInnerHTML(
+          row.dataset.stack,
+          stackHealthFor(row.dataset.stack, row.dataset.host),
+        );
       const h = healthSnap[row.dataset.stack];
       // Keep the row's health marker (drives the severity bar + tint) in sync
       // in place — no re-sort, so a row never jumps out from under an open panel.
@@ -3575,7 +3498,7 @@
       return x.name === name;
     });
     const cell = row.querySelector('.roster-status');
-    if (entry && cell) cell.innerHTML = rosterStatusHTML(entry);
+    if (entry && cell) cell.innerHTML = rosterStatusHTML(entry, !!deployingRows[name]);
     applyHookRun(); // rosterStatusHTML replaces the cell — re-paint a running hook's phase
   }
 
