@@ -26,12 +26,10 @@ func TestDeployStack_EmitsDeployingAndSuccessEvents(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-
 	var emitted []events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, EventSink: func(e events.DeployEvent) {
 		emitted = append(emitted, e)
-	})
+	}})
 
 	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
@@ -66,12 +64,10 @@ func TestDeployStack_EmitsSkippedEvent(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-
 	var emitted []events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, EventSink: func(e events.DeployEvent) {
 		emitted = append(emitted, e)
-	})
+	}})
 
 	stack := config.Stack{Name: "gitea"}
 
@@ -108,12 +104,10 @@ func TestDeployAllStacks_EmitsFailedEventOnError(t *testing.T) {
 	// bootstrap run deliberately skips the pull (ADR-0051). The test is about
 	// a failing docker command producing a failed event, whichever it is.
 	runner := &recordingRunner{errOnCommand: "up"}
-	d := &Deployer{runner: runner, stateDir: t.TempDir()}
-
 	var emitted []events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		emitted = append(emitted, e)
-	})
+	}})
 
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
@@ -168,13 +162,10 @@ func TestDeployStack_EventIDsAreMonotonic(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-	d.InitEventID(100)
-
 	var ids []int64
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, StartEventID: 100, EventSink: func(e events.DeployEvent) {
 		ids = append(ids, e.ID)
-	})
+	}})
 
 	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
@@ -203,14 +194,12 @@ func TestDeployStack_DeployingEventIncludesChangedFiles(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-
 	var deploying *events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, EventSink: func(e events.DeployEvent) {
 		if e.Status == events.StatusDeploying {
 			deploying = &e
 		}
-	})
+	}})
 
 	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
@@ -235,7 +224,7 @@ func TestCollectDiffs_ReturnsDiffs(t *testing.T) {
 			"/repo/docker-compose.yml": "+new line\n-old line\n",
 		},
 	}
-	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 
 	diffs := d.collectDiffs(context.Background(), []string{"/repo/docker-compose.yml"}, "old-sha")
 
@@ -248,7 +237,7 @@ func TestCollectDiffs_ReturnsDiffs(t *testing.T) {
 }
 
 func TestCollectDiffs_NilWithoutCommitReader(t *testing.T) {
-	d := &Deployer{runner: &recordingRunner{}, stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
 	diffs := d.collectDiffs(context.Background(), []string{"file.yml"}, "old-sha")
 	if diffs != nil {
 		t.Error("expected nil diffs without commit reader")
@@ -257,7 +246,7 @@ func TestCollectDiffs_NilWithoutCommitReader(t *testing.T) {
 
 func TestCollectDiffs_NilWithEmptyCommit(t *testing.T) {
 	cr := &fakeCommitReader{diffs: map[string]string{}}
-	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, StateDir: t.TempDir()})
 	diffs := d.collectDiffs(context.Background(), []string{"file.yml"}, "")
 	if diffs != nil {
 		t.Error("expected nil diffs with empty last deployed commit")
@@ -269,7 +258,7 @@ func TestCollectDiffs_TruncatesLargeDiff(t *testing.T) {
 	cr := &fakeCommitReader{
 		diffs: map[string]string{"/repo/big.yml": largeDiff},
 	}
-	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 
 	diffs := d.collectDiffs(context.Background(), []string{"/repo/big.yml"}, "old-sha")
 
@@ -288,7 +277,7 @@ func TestCollectDiffs_SkipsFilesOutsideRepo(t *testing.T) {
 	cr := &fakeCommitReader{
 		diffs: map[string]string{"/other/file.yml": "+diff"},
 	}
-	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 
 	diffs := d.collectDiffs(context.Background(), []string{"/other/file.yml"}, "old-sha")
 	if diffs != nil {
@@ -304,7 +293,7 @@ func TestCollectCommits_ReturnsCommits(t *testing.T) {
 			"/repo/docker-compose.yml": {{SHA: "def456", Subject: "feat: bump", Author: "Jane Doe"}},
 		},
 	}
-	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 
 	commits := d.collectCommits(context.Background(), []string{"/repo/docker-compose.yml"}, "old-sha")
 
@@ -314,7 +303,7 @@ func TestCollectCommits_ReturnsCommits(t *testing.T) {
 }
 
 func TestCollectCommits_NilWithoutCommitReader(t *testing.T) {
-	d := &Deployer{runner: &recordingRunner{}, stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
 	if commits := d.collectCommits(context.Background(), []string{"file.yml"}, "old-sha"); commits != nil {
 		t.Error("expected nil commits without commit reader")
 	}
@@ -322,7 +311,7 @@ func TestCollectCommits_NilWithoutCommitReader(t *testing.T) {
 
 func TestCollectCommits_NilWithEmptyCommit(t *testing.T) {
 	cr := &fakeCommitReader{commits: map[string][]events.CommitInfo{}}
-	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, StateDir: t.TempDir()})
 	if commits := d.collectCommits(context.Background(), []string{"file.yml"}, ""); commits != nil {
 		t.Error("expected nil commits with empty last deployed commit")
 	}
@@ -334,7 +323,7 @@ func TestCollectCommits_SkipsFilesOutsideRepo(t *testing.T) {
 			"/other/file.yml": {{SHA: "def456", Subject: "feat: bump"}},
 		},
 	}
-	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 	if commits := d.collectCommits(context.Background(), []string{"/other/file.yml"}, "old-sha"); commits != nil {
 		t.Error("expected nil for files outside repo")
 	}
@@ -342,7 +331,7 @@ func TestCollectCommits_SkipsFilesOutsideRepo(t *testing.T) {
 
 func TestCollectCommits_NilOnReaderError(t *testing.T) {
 	cr := &fakeCommitReader{commitErr: context.DeadlineExceeded}
-	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: "/repo", stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 	if commits := d.collectCommits(context.Background(), []string{"/repo/file.yml"}, "old-sha"); commits != nil {
 		t.Error("expected nil commits when the reader errors (deploy must not fail over metadata)")
 	}
@@ -366,14 +355,12 @@ func TestDeployStack_SuccessEventIncludesDiffs(t *testing.T) {
 		},
 	}
 	runner := &recordingRunner{}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-
 	var successEvt *events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		if e.Status == events.StatusSuccess {
 			successEvt = &e
 		}
-	})
+	}})
 
 	stack := config.Stack{Name: "gitea"}
 	state := &persistedState{
@@ -409,14 +396,12 @@ func TestDeployStack_SuccessEventNamesChangedServiceVersions(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.27"))
 
 	runner := &recordingRunner{}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
-
 	var successEvt *events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		if e.Status == events.StatusSuccess {
 			successEvt = &e
 		}
-	})
+	}})
 
 	stack := config.Stack{Name: "gitea"}
 	state := &persistedState{
@@ -450,14 +435,12 @@ func TestDeployStack_UnparseableComposeReportsNoImageRemovals(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), "services: [this is not valid compose")
 
 	runner := &recordingRunner{}
-	d := &Deployer{runner: runner, repoDir: baseDir, stateDir: t.TempDir()}
-
 	var terminalEvt *events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		if e.Status == events.StatusSuccess || e.Status == events.StatusFailed {
 			terminalEvt = &e
 		}
-	})
+	}})
 
 	stack := config.Stack{Name: "gitea"}
 	state := &persistedState{
@@ -487,14 +470,12 @@ func TestRebuildNixOS_SuccessEventIncludesDiffs(t *testing.T) {
 			nixFile: "+  services.foo.enable = true;\n",
 		},
 	}
-	d := &Deployer{runner: &recordingRunner{}, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-
 	var successEvt *events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		if e.Stack == NixosStateKey && e.Status == events.StatusSuccess {
 			successEvt = &e
 		}
-	})
+	}})
 
 	state := newEmptyState()
 	state.LastDeployedCommit = "old-sha"
@@ -530,14 +511,12 @@ func TestDeployStack_LogsEventIDForDiffLookupOnSuccess(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-
 	var successID int64
-	d.SetEventSink(func(e events.DeployEvent) {
+	d := New(Config{Runner: runner, EventSink: func(e events.DeployEvent) {
 		if e.Status == events.StatusSuccess {
 			successID = e.ID
 		}
-	})
+	}})
 
 	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()

@@ -1,18 +1,21 @@
-package main
+package roster
 
 import (
 	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/polandy/skipper-cd/internal/audit"
+	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/events"
 )
 
-func TestBuildStacksState_CarriesRepoWebURLForCommitLinks(t *testing.T) {
+func TestBuildState_CarriesRepoWebURLForCommitLinks(t *testing.T) {
 	const webURL = "https://forge.example.com/owner/repo"
 
-	state := buildStacksState(nil, nil, audit.NewLog(t.TempDir()), nil, repoRef{dir: "/var/lib/skipper/repo", webURL: webURL})
+	state := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{Dir: "/var/lib/skipper/repo", WebURL: webURL})
 
 	if state.RepoWebURL != webURL {
 		t.Errorf("RepoWebURL = %q, want %q", state.RepoWebURL, webURL)
@@ -26,10 +29,49 @@ func TestBuildStacksState_CarriesRepoWebURLForCommitLinks(t *testing.T) {
 	}
 }
 
-func TestBuildStacksState_OmitsRepoWebURLWhenNoneDerivable(t *testing.T) {
+func TestBuildState_MergesNewestAuditRecordAndTrackedPaths(t *testing.T) {
+	const repoDir = "/var/lib/skipper/repo"
+	ts := time.Date(2026, 7, 28, 9, 0, 0, 0, time.UTC)
+
+	auditLog := audit.NewLog(t.TempDir())
+	auditLog.Record(events.DeployEvent{Stack: "web", Status: events.StatusFailed, Timestamp: ts.Add(-time.Hour), Commits: []events.CommitInfo{{SHA: "0000000"}}})
+	auditLog.Record(events.DeployEvent{Stack: "web", Status: events.StatusSuccess, Timestamp: ts, Commits: []events.CommitInfo{{SHA: "a1b2c3d"}}})
+
+	state := BuildState(
+		// "idle" has never deployed: no audit record, no tracked paths.
+		[]config.Stack{{Name: "web"}, {Name: "idle"}},
+		[]string{"experiments"},
+		auditLog,
+		map[string][]string{"web": {repoDir + "/modules/web/docker-compose.yml", repoDir + "/modules/skipper.yaml"}},
+		RepoRef{Dir: repoDir},
+	)
+
+	byName := map[string]Entry{}
+	for _, e := range state.Roster {
+		byName[e.Name] = e
+	}
+	if len(state.Roster) != 3 {
+		t.Fatalf("roster = %+v, want both enabled stacks and the disabled one", state.Roster)
+	}
+	if idle := byName["idle"]; idle.LastStatus != "" || idle.LastAt != nil || len(idle.Watched) != 0 {
+		t.Errorf("idle entry = %+v, want no outcome and no watched paths", idle)
+	}
+	web := byName["web"]
+	if web.LastStatus != events.StatusSuccess || web.LastCommit != "a1b2c3d" {
+		t.Errorf("web entry = %+v, want the newest record (success/a1b2c3d)", web)
+	}
+	if !slices.Equal(web.Watched, []string{"modules/web/docker-compose.yml"}) || !web.WatchedConfig {
+		t.Errorf("web watched = %v config=%t, want the repo-relative compose file and the config flag", web.Watched, web.WatchedConfig)
+	}
+	if !slices.Equal(state.Disabled, []string{"experiments"}) {
+		t.Errorf("Disabled = %v, want [experiments]", state.Disabled)
+	}
+}
+
+func TestBuildState_OmitsRepoWebURLWhenNoneDerivable(t *testing.T) {
 	// A repo_url the forge URL cannot be derived from (a local path, say) leaves
 	// the key out entirely, so the UI renders plain SHAs instead of dead links.
-	state := buildStacksState(nil, nil, audit.NewLog(t.TempDir()), nil, repoRef{dir: "/var/lib/skipper/repo"})
+	state := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{Dir: "/var/lib/skipper/repo"})
 
 	body, err := json.Marshal(state)
 	if err != nil {

@@ -34,7 +34,6 @@ import (
 	"github.com/polandy/skipper-cd/internal/healthwatch"
 	"github.com/polandy/skipper-cd/internal/icons"
 	"github.com/polandy/skipper-cd/internal/logbuf"
-	"github.com/polandy/skipper-cd/internal/metrics"
 	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/orphans"
 	"github.com/polandy/skipper-cd/internal/peers"
@@ -42,7 +41,6 @@ import (
 	"github.com/polandy/skipper-cd/internal/reconcile"
 	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/safego"
-	"github.com/polandy/skipper-cd/internal/selfheal"
 	"github.com/polandy/skipper-cd/internal/ui"
 	"github.com/polandy/skipper-cd/internal/webhook"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -56,15 +54,10 @@ const readHeaderTimeout = 10 * time.Second
 // streams) may delay shutdown after a termination signal.
 const shutdownTimeout = 10 * time.Second
 
-const (
-	// peerPollTimeout bounds a single peer read (its snapshot + audit fetch) in
-	// the multi-host fan-in (ADR-0048), so one slow or hung peer cannot stall
-	// the poll loop.
-	peerPollTimeout = 10 * time.Second
-	// peerPollFallbackSeconds is the fan-in poll cadence used when the runtime
-	// health poll — whose cadence the fan-in normally rides — is disabled.
-	peerPollFallbackSeconds = 30
-)
+// peerPollTimeout bounds a single peer read (its snapshot + audit fetch) in
+// the multi-host fan-in (ADR-0048), so one slow or hung peer cannot stall
+// the poll loop.
+const peerPollTimeout = 10 * time.Second
 
 // Build identity surfaced in the UI header (GET /api/version), injected via
 // -ldflags at build time:
@@ -143,29 +136,7 @@ func main() {
 		slog.Error("failed to load config", "path", *configPath, "err", err)
 		os.Exit(1)
 	}
-	// With the UI enabled, tee all slog output (and, via sink below, child
-	// process output) into an in-memory ring served live at /api/logs.
-	var logRing *logbuf.Log
-	logHandler := newLogHandler(cfg.LogFormat, os.Stderr)
-	if *cfg.UIEnabled {
-		logRing = logbuf.New(logbuf.DefaultCapacity)
-		logHandler = logbuf.NewHandler(logHandler, logRing)
-	}
-	slog.SetDefault(slog.New(logHandler))
-
-	// Config load already rejected clear errors; these are valid-but-suspicious
-	// setups worth flagging without refusing to start. Logged first, before any
-	// other startup line, so they are the first thing an operator sees.
-	for _, w := range cfg.Warnings {
-		slog.Warn("config warning", "msg", w)
-	}
-
-	// Assign the sink only for a non-nil ring: a typed-nil *logbuf.Log in
-	// the interface would defeat the runner's sink != nil check.
-	var sink command.LineSink
-	if logRing != nil {
-		sink = logRing
-	}
+	logRing, sink := setupLogging(cfg, os.Stderr)
 
 	timeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 
@@ -203,108 +174,21 @@ func main() {
 	// Deriving from repo_url strips any credentials, so a repo_url holding a
 	// token stays out of the UI (the browse URL only ever reaches the browser as
 	// a link target).
-	repo := repoRef{dir: repoSync.RepoDir(), webURL: cfg.EffectiveRepoWebURL()}
+	repo := roster.RepoRef{Dir: repoSync.RepoDir(), WebURL: cfg.EffectiveRepoWebURL()}
 
 	// The deployer is constructed below via deploy.New once all its
 	// collaborators are built — deploy.Config wires everything at construction.
-	// Closures built earlier (e.g. the self-heal healer) capture this variable;
-	// they only run once the background loops start, after the construction.
-	var deployer *deploy.Deployer
+	// Collaborators that call back into it resolve it through ref at call time
+	// (see deployerRef); main completes the wiring right after deploy.New.
+	ref := &deployerRef{}
+	views := stackViews{cfg: cfg, deployer: ref}
 
-	// stacksNow returns the effective stack set: the host config's static list,
-	// or — in stack-discovery mode (ADR-0034) — the set most recently discovered
-	// from the repo (empty until the startup sync completes). Every consumer
-	// that enumerates stacks (health poller, self-heal, autosync order, icons)
-	// reads through this so discovery updates reach them on the next call.
-	stacksNow := func() []config.Stack {
-		if cfg.StackDiscovery {
-			return deployer.CurrentStacks()
-		}
-		return cfg.Stacks
-	}
-
-	// managedNow builds the expected set for orphan detection (ADR-0036) from the
-	// effective stacks, the disabled set, and the recorded project dirs.
-	managedNow := func() orphans.Managed {
-		m := orphans.Managed{
-			BaseDir:      cfg.StacksBaseDir,
-			ActiveDirs:   map[string]bool{},
-			DisabledDirs: map[string]bool{},
-			StateDirs:    deployer.CurrentProjectDirs(),
-		}
-		for _, s := range stacksNow() {
-			m.ActiveDirs[stackProjectDir(cfg, s)] = true
-		}
-		for _, name := range deployer.CurrentDisabledStacks() {
-			m.DisabledDirs[filepath.Join(cfg.StacksBaseDir, name)] = true
-		}
-		return m
-	}
-
-	// appLinkManaged builds the stack-name -> working_dir map app-link
-	// detection matches discovered Traefik hosts against (dev-docs/traefik-app-links-spec.md).
-	// Only active stacks: a parked (disabled) or removed stack has no icon.
-	appLinkManaged := func() map[string]string {
-		stacks := stacksNow()
-		m := make(map[string]string, len(stacks))
-		for _, s := range stacks {
-			m[s.Name] = stackProjectDir(cfg, s)
-		}
-		return m
-	}
-
-	var (
-		broadcaster     *events.Broadcaster[events.DeployEvent]
-		stateB          *events.Broadcaster[events.StateEvent]
-		history         *events.History
-		healthPoller    *health.Poller
-		orphanDetector  *orphans.Detector
-		appLinkDetector *applink.Detector
-		peerRegistry    *peers.Registry
-		startEventID    int64
-		runPlanSink     func(deploy.RunPlan)
-		hookRunSink     func(deploy.HookRun)
-	)
-	// The deploy event sink is composed from whatever consumers are configured;
-	// each is independent, so notifications work with the UI off (ADR-0020).
-	var eventSinks []func(events.DeployEvent)
-	// Tallies every run's per-stack outcomes for the "run complete" summary
-	// PostRunHook logs below; independent of the UI so it works headless too.
-	tally := newRunTally()
-	eventSinks = append(eventSinks, tally.observe)
-	if *cfg.UIEnabled {
-		history = events.NewHistory(stateDir)
-		broadcaster = events.NewBroadcaster()
-		stateB = events.NewStateBroadcaster()
-		startEventID = history.MaxEventID()
-		eventSinks = append(eventSinks, func(e events.DeployEvent) {
-			if e.Status != events.StatusSkipped {
-				history.Add(e)
-			}
-			broadcaster.Publish(e)
-		})
-		// Look-ahead: publish the run plan (what deploys next) over the same SSE
-		// stream. Installing the sink is what enables the upfront planning pass.
-		runPlanSink = func(p deploy.RunPlan) {
-			stateB.Publish(events.StateEvent{Name: events.StateUpcoming, Data: p})
-		}
-		hookRunSink = func(h deploy.HookRun) {
-			stateB.Publish(events.StateEvent{Name: events.StateHookRun, Data: h})
-		}
-		// Multi-host fan-in (ADR-0048): when peers are configured, the primary
-		// reads each peer's `/api/v1` surface and merges it into one UI. The poll
-		// loop that refreshes it starts alongside the other loops below.
-		if len(cfg.Peers) > 0 {
-			peerRegistry = peers.New(cfg.HostName, cfg.Peers, peers.NewHTTPClient(&http.Client{Timeout: peerPollTimeout}), peerPollTimeout)
-		}
-		slog.Info("web UI enabled")
-	}
+	uiw := buildUILayer(cfg, stateDir)
 
 	// Durable per-stack deploy audit trail (ADR-0033). Recorded unconditionally
 	// so the history is complete even with the UI off; only the query API below
 	// is UI-gated. Empty stateDir disables persistence (in-memory only).
 	auditLog := audit.NewLog(stateDir)
-	eventSinks = append(eventSinks, auditLog.Record)
 
 	// Outbound notifications. Config is already validated in Load; New only
 	// re-derives formatters, so an error here is a programming bug, not user
@@ -314,169 +198,48 @@ func main() {
 		slog.Error("failed to build notifier", "err", err)
 		os.Exit(1)
 	}
+	var notifierSink func(events.DeployEvent)
 	if notifier.Enabled() {
 		safego.Go("notifier", func() { notifier.Run(signalCtx) })
-		eventSinks = append(eventSinks, notifier.Notify)
+		notifierSink = notifier.Notify
 		slog.Info("notifications enabled", "targets", len(cfg.Notifications))
 	}
 
-	// Self-heal: automatically restore a stack the health poller finds degraded
-	// (ADR-0029). The engine owns the policy; the deployer performs the
-	// corrective redeploy. A real git deploy of a stack resets its breaker so a
-	// push that fixes the fault grants a fresh attempt budget.
-	selfHealActive := cfg.SelfHealActive()
-	var selfHealEngine *selfheal.Engine
-	if selfHealActive {
-		selfHealEngine = selfheal.New(selfheal.Config{
-			// Both closures capture the deployer variable; they only run from
-			// the health poller, which starts after the deployer is constructed.
-			Healer: healerFunc(func(ctx context.Context, stack string, drift []events.DriftedService) (bool, error) {
-				return deployer.HealStack(ctx, cfg, stack, drift)
-			}),
-			Enabled:           func(name string) bool { return cfg.EffectiveSelfHeal(stacksNow(), name) },
-			MinUnhealthyPolls: cfg.SelfHealMinUnhealthyPolls,
-			MaxAttempts:       cfg.SelfHealMaxAttempts,
-			Cooldown:          time.Duration(*cfg.SelfHealCooldownSeconds) * time.Second,
-			OnExhausted:       func(stack string) { deployer.EmitHealExhausted(stack) },
-		})
-		eventSinks = append(eventSinks, func(e events.DeployEvent) {
-			if e.Status == events.StatusDeploying {
-				selfHealEngine.Reset(e.Stack)
-			}
-		})
-		slog.Info("self-heal enabled", "min_unhealthy_polls", cfg.SelfHealMinUnhealthyPolls, "max_attempts", cfg.SelfHealMaxAttempts, "cooldown_seconds", *cfg.SelfHealCooldownSeconds)
+	selfHealEngine := buildSelfHeal(cfg, views, ref)
+
+	healthWatcher, err := buildHealthWatch(signalCtx, cfg, stateDir, uiw.stateB)
+	if err != nil {
+		slog.Error("failed to build health alerter", "err", err)
+		os.Exit(1)
 	}
 
-	// Own-stack health watchdog (ADR-0031): detects per-service health
-	// transitions and alerts on newly-failed and recovered services. It owns no
-	// poll loop — it consumes the shared health poller's snapshot feed below
-	// (the ADR-0029 seam) and observes deploy events only for commit context;
-	// the deploy path is untouched.
-	var healthWatcher *healthwatch.Watcher
-	if hw := cfg.HealthWatch; hw != nil {
-		alerter, err := notify.NewHealthAlerter(hw.Targets, nil, 0)
-		if err != nil {
-			slog.Error("failed to build health alerter", "err", err)
-			os.Exit(1)
-		}
-		var alertSink healthwatch.Alerter
-		if alerter.Enabled() {
-			safego.Go("health-alerter", func() { alerter.Run(signalCtx) })
-			alertSink = alerter
-		}
-		hwCfg := healthwatch.Config{
-			Alerter:           alertSink,
-			StatePath:         filepath.Join(stateDir, "healthwatch.yaml"),
-			DebouncePolls:     hw.DebouncePolls,
-			AttributionWindow: time.Duration(hw.AttributionWindowSeconds) * time.Second,
-			AlertCooldown:     time.Duration(*hw.AlertCooldownSeconds) * time.Second,
-		}
-		if stateB != nil {
-			// The per-service panel's since/history/commit feed (ADR-0031 UI
-			// surface): every accepted change pushes the fresh view to UI clients.
-			hwCfg.Publish = func(v healthwatch.View) { stateB.Publish(events.StateEvent{Name: events.StateHealthWatch, Data: v}) }
-		}
-		healthWatcher = healthwatch.New(hwCfg)
-		eventSinks = append(eventSinks, healthWatcher.ObserveDeploy)
-		slog.Info("health watch enabled",
-			"debounce_polls", hw.DebouncePolls,
-			"alert_cooldown_seconds", *hw.AlertCooldownSeconds,
-			"targets", len(hw.Targets),
-		)
-	}
+	hl := buildHealthLayer(cfg, views, uiw.stateB, selfHealEngine, healthWatcher)
 
-	// Stack-health poller. It feeds the UI health view (when enabled),
-	// self-heal, and/or the health watchdog. For the UI it is subscriber-gated
-	// so an idle dashboard does no docker work (ADR-0027); self-heal and the
-	// watchdog set AlwaysPoll so it still runs headless on an unattended host
-	// (ADR-0029, ADR-0031). Config validation guarantees a positive interval
-	// whenever self-heal or the watchdog is active.
-	if interval := *cfg.RuntimeHealthPollIntervalSeconds; interval > 0 && (*cfg.UIEnabled || selfHealActive || healthWatcher != nil) {
-		healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
-		hpCfg := health.Config{
-			Outputter:  command.NewShellRunner(healthTimeout),
-			Stacks:     func() []health.StackRef { return healthStacks(cfg, stacksNow()) },
-			Interval:   time.Duration(interval) * time.Second,
-			AlwaysPoll: selfHealActive || healthWatcher != nil,
-		}
-		if stateB != nil {
-			hpCfg.Publish = func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateHealth, Data: s}) }
-			hpCfg.HasSubscribers = stateB.HasSubscribers
-		}
-		var snapshotSinks []func(health.Snapshot)
-		if selfHealEngine != nil {
-			snapshotSinks = append(snapshotSinks, func(s health.Snapshot) { selfHealEngine.Observe(context.Background(), s) })
-		}
-		if healthWatcher != nil {
-			snapshotSinks = append(snapshotSinks, healthWatcher.Observe)
-		}
-		// Orphan detection (ADR-0036) rides the health-poll cadence (no second
-		// timer) and is UI-gated: HasSubscribers skips the headless AlwaysPoll ticks
-		// self-heal/healthwatch drive.
-		if stateB != nil {
-			orphanDetector = orphans.New(orphans.Config{
-				Outputter: command.NewShellRunner(healthTimeout),
-				Managed:   managedNow,
-				Publish:   func(s orphans.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateOrphans, Data: s}) },
-			})
-			snapshotSinks = append(snapshotSinks, func(health.Snapshot) {
-				if stateB.HasSubscribers() {
-					orphanDetector.Detect(context.Background())
-				}
-			})
-			// App-link detection (dev-docs/traefik-app-links-spec.md) rides the
-			// same health-poll cadence for the same reason orphan detection does:
-			// no second timer, UI-gated via HasSubscribers.
-			appLinkDetector = applink.New(applink.Config{
-				Outputter: command.NewShellRunner(healthTimeout),
-				Managed:   appLinkManaged,
-				Publish:   func(s applink.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateAppLinks, Data: s}) },
-			})
-			snapshotSinks = append(snapshotSinks, func(health.Snapshot) {
-				if stateB.HasSubscribers() {
-					appLinkDetector.Detect(context.Background())
-				}
-			})
-		}
-		if len(snapshotSinks) > 0 {
-			hpCfg.OnSnapshot = func(s health.Snapshot) {
-				for _, sink := range snapshotSinks {
-					sink(s)
-				}
-			}
-		}
-		healthPoller = health.New(hpCfg)
-		slog.Info("stack health polling enabled", "interval_seconds", interval, "self_heal", selfHealActive, "health_watch", healthWatcher != nil)
-	}
-
-	// The deploy event sink fans out to all configured consumers.
-	var eventSink func(events.DeployEvent)
-	if len(eventSinks) > 0 {
-		eventSink = func(e events.DeployEvent) {
-			for _, s := range eventSinks {
-				s(e)
-			}
-		}
-	}
+	// Tallies every run's per-stack outcomes for the "run complete" summary
+	// PostRunHook logs below; independent of the UI so it works headless too.
+	tally := newRunTally()
+	eventSink := buildEventFanout(
+		tally.observe,
+		uiw.deploySink(),
+		auditLog.Record,
+		notifierSink,
+		selfHealResetSink(selfHealEngine),
+		healthWatchSink(healthWatcher),
+	)
 
 	// Autosync is active regardless of the UI so config-as-code pauses apply.
 	autosyncCtrl := autosync.NewController(cfg.Autosync, stackAutosyncConfig(cfg))
 	autosyncQueue := autosync.NewQueue()
-	order := func() []string { return deployOrder(cfg, stacksNow()) }
-	publishAutosync := func() {
-		snap := autosyncCtrl.Snapshot(order())
-		metrics.AutosyncGlobal.Set(boolToFloat(autosyncCtrl.GlobalEffective()))
-		for _, s := range snap.Stacks {
-			metrics.AutosyncEnabled.WithLabelValues(s.Name).Set(boolToFloat(s.Effective))
-		}
-		metrics.AutosyncPending.Set(float64(autosyncQueue.Count()))
-		if stateB != nil {
-			stateB.Publish(events.StateEvent{Name: events.StateAutosync, Data: snap})
-			stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: autosyncQueue.View(order())})
-			stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: buildStacksState(stacksNow(), deployer.CurrentDisabledStacks(), auditLog, deployer.CurrentTrackedFiles(), repo)})
-		}
+	asPublisher := autosyncPublisher{
+		ctrl:     autosyncCtrl,
+		queue:    autosyncQueue,
+		stateB:   uiw.stateB,
+		views:    views,
+		deployer: ref,
+		auditLog: auditLog,
+		repo:     repo,
 	}
-	deployer = deploy.New(deploy.Config{
+	deployer := deploy.New(deploy.Config{
 		Runner: command.NewShellRunnerWithSink(timeout, sink),
 		// Rollout reads container state via `docker compose ps`; a plain
 		// (non-sink) runner captures its stdout (ADR-0040).
@@ -487,7 +250,7 @@ func main() {
 		StateDir:     stateDir,
 		ShutdownCtx:  signalCtx,
 		EventSink:    eventSink,
-		StartEventID: startEventID,
+		StartEventID: uiw.startEventID,
 		Autosync:     autosyncCtrl,
 		Queue:        autosyncQueue,
 		PostRunHook: func() {
@@ -495,22 +258,23 @@ func main() {
 			// In stack-discovery mode the set is only known once the first run
 			// resolves it; a static host list already logged this at startup, so
 			// every call after the first is a no-op (sync.Once).
-			logRosterOnce(stacksNow(), deployer.CurrentDisabledStacks())
-			publishAutosync()
-			if healthPoller != nil {
-				healthPoller.Poll() // refresh health right after a deploy run
+			logRosterOnce(views.effective(), ref.get().CurrentDisabledStacks())
+			asPublisher.publish()
+			if hl.poller != nil {
+				hl.poller.Poll() // refresh health right after a deploy run
 			}
 		},
-		RunPlanSink: runPlanSink,
-		HookRunSink: hookRunSink,
+		RunPlanSink: uiw.runPlanSink,
+		HookRunSink: uiw.hookRunSink,
 	})
+	ref.set(deployer)
 
 	// Start the health poller only now that the deployer exists: its snapshot
 	// feed may drive a self-heal, which redeploys through the deployer.
-	if healthPoller != nil {
-		safego.Go("health-poller", func() { healthPoller.Run(signalCtx) })
+	if hl.poller != nil {
+		safego.Go("health-poller", func() { hl.poller.Run(signalCtx) })
 	}
-	publishAutosync() // initialize the gauges
+	asPublisher.publish() // initialize the gauges
 
 	// Sync repo and deploy on startup to catch changes that occurred while skipper-cd was not running.
 	safego.Go("startup-sync", func() { deployer.SyncAndDeployAll(context.Background(), cfg) })
@@ -528,34 +292,21 @@ func main() {
 	// Multi-host fan-in poll loop (ADR-0048): refresh every peer's read data on
 	// the health-poll cadence and republish the merged `peers` state over SSE.
 	// UI-only — it exists only when the UI is on and peers are configured.
-	if peerRegistry != nil {
-		interval := *cfg.RuntimeHealthPollIntervalSeconds
-		if interval <= 0 {
-			interval = peerPollFallbackSeconds
-		}
-		d := time.Duration(interval) * time.Second
-		safego.Go("peers-fanin", func() {
-			t := time.NewTicker(d)
-			defer t.Stop()
-			for {
-				peerRegistry.Poll(signalCtx)
-				stateB.Publish(events.StateEvent{Name: events.StatePeers, Data: peerRegistry.State()})
-				select {
-				case <-signalCtx.Done():
-					return
-				case <-t.C:
-				}
-			}
-		})
-		slog.Info("multi-host fan-in enabled", "peers", len(cfg.Peers), "poll_interval_seconds", interval)
+	if uiw.peerRegistry != nil {
+		stateB := uiw.stateB
+		loop := peers.NewLoop(uiw.peerRegistry,
+			time.Duration(*cfg.RuntimeHealthPollIntervalSeconds)*time.Second,
+			func(s peers.State) { stateB.Publish(events.StateEvent{Name: events.StatePeers, Data: s}) })
+		safego.Go("peers-fanin", func() { loop.Run(signalCtx) })
+		slog.Info("multi-host fan-in enabled", "peers", len(cfg.Peers), "poll_interval_seconds", int(loop.Interval()/time.Second))
 	}
 
 	as := &autosyncDeps{
 		ctrl:    autosyncCtrl,
 		queue:   autosyncQueue,
-		stateB:  stateB,
-		order:   order,
-		publish: publishAutosync,
+		stateB:  uiw.stateB,
+		order:   views.order,
+		publish: asPublisher.publish,
 		trigger: func() { safego.Go("autosync-trigger", func() { deployer.SyncAndDeployAll(context.Background(), cfg) }) },
 	}
 
@@ -569,15 +320,15 @@ func main() {
 	startServer("metrics", cfg.MetricsPort, metricsMux())
 	webhookServer := startServer("webhook", cfg.Port, webhookMux(webhookDeps{
 		cfg:             cfg,
-		stacks:          stacksNow,
+		stacks:          views.effective,
 		deployer:        deployer,
-		healthPoller:    healthPoller,
+		healthPoller:    hl.poller,
 		healthWatcher:   healthWatcher,
-		orphanDetector:  orphanDetector,
-		appLinkDetector: appLinkDetector,
-		peerRegistry:    peerRegistry,
-		broadcaster:     broadcaster,
-		history:         history,
+		orphanDetector:  hl.orphans,
+		appLinkDetector: hl.appLinks,
+		peerRegistry:    uiw.peerRegistry,
+		broadcaster:     uiw.broadcaster,
+		history:         uiw.history,
 		auditLog:        auditLog,
 		logRing:         logRing,
 		autosync:        as,
@@ -622,75 +373,6 @@ func metricsMux() *http.ServeMux {
 	return mux
 }
 
-// stacksState is the `stacks` SSE snapshot: stack-set facts that are not
-// deploy events. Disabled carries the names parked via disabled: true in
-// stack-discovery mode (ADR-0034), driving the Deploys view's disabled line
-// (empty in host-list mode). Roster is the full inventory for the Stacks view —
-// every declared stack with its last outcome (dev-docs/stack-roster-spec.md).
-type stacksState struct {
-	Disabled []string       `json:"disabled"`
-	Roster   []roster.Entry `json:"roster"`
-	// RepoWebURL is the deploy repo's forge browse URL, so the UI can turn every
-	// commit SHA it shows into a link to that commit. Empty when none can be
-	// derived from repo_url — the UI then renders SHAs as plain text. It rides
-	// on this state (rather than a dedicated endpoint) so the multi-host fan-in
-	// carries each peer's own forge along with that peer's roster (ADR-0048).
-	RepoWebURL string `json:"repo_web_url,omitempty"`
-}
-
-// repoRef identifies the deploy repo for the UI: the local clone directory (to
-// render tracked input paths repo-relative) and the forge browse URL derived
-// from repo_url (to link commit SHAs). Both are fixed for a process lifetime.
-type repoRef struct {
-	dir    string
-	webURL string
-}
-
-// buildStacksState assembles the `stacks` snapshot from the effective stack
-// set, the parked (disabled) names, each stack's newest audit record, and the
-// input paths its change detection watches.
-func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.Log, tracked map[string][]string, repo repoRef) stacksState {
-	last := func(name string) (audit.Record, bool) {
-		recs := auditLog.Stack(name, 1)
-		if len(recs) == 0 {
-			return audit.Record{}, false
-		}
-		return recs[0], true
-	}
-	watched := func(name string) ([]string, bool) { return splitTrackedPaths(tracked[name], repo.dir) }
-	return stacksState{
-		Disabled:   disabled,
-		Roster:     roster.Build(stacks, disabled, last, watched),
-		RepoWebURL: repo.webURL,
-	}
-}
-
-// splitTrackedPaths renders a stack's tracked input paths for the UI and
-// separates out the one entry that is not a file.
-//
-// Files: a path inside the repo clone shows repo-relative (the form the
-// operator edits and commits), while a host path — an env file, a vars file —
-// stays absolute, since that is where it actually lives.
-//
-// Config: a stack's deploy-shaping config is hashed under a synthetic
-// <stacks_base_dir>/skipper.yaml key (ADR-0043 moved that config host-side, so
-// no such file exists). Reporting it as a watched path would send an operator
-// looking for a file that is not there, so it is returned as a flag instead.
-func splitTrackedPaths(paths []string, repoDir string) (files []string, configHashed bool) {
-	for _, p := range paths {
-		if filepath.Base(p) == config.RepoConfigFileName {
-			configHashed = true
-			continue
-		}
-		if rel, err := filepath.Rel(repoDir, p); err == nil && !strings.HasPrefix(rel, "..") {
-			files = append(files, rel)
-			continue
-		}
-		files = append(files, p)
-	}
-	return files, configHashed
-}
-
 // autosyncDeps bundles the autosync wiring the UI handlers need.
 type autosyncDeps struct {
 	ctrl    *autosync.Controller
@@ -719,7 +401,7 @@ type webhookDeps struct {
 	logRing         *logbuf.Log
 	autosync        *autosyncDeps
 	build           ui.BuildInfo
-	repo            repoRef
+	repo            roster.RepoRef
 }
 
 // deployReconciler adapts the deployer to reconcile.Reconciler, binding the
@@ -810,19 +492,6 @@ func stackProjectDir(cfg *config.Config, s config.Stack) string {
 		return s.ProjectDirectory
 	}
 	return filepath.Join(cfg.StacksBaseDir, s.Name)
-}
-
-// deployOrder returns stack names in the order DeployAllStacks processes them:
-// _nixos first (when the rebuild is enabled), then the effective stacks.
-func deployOrder(cfg *config.Config, stacks []config.Stack) []string {
-	order := make([]string, 0, len(stacks)+1)
-	if cfg.NixOSRebuild.IsEnabled() {
-		order = append(order, deploy.NixosStateKey)
-	}
-	for _, s := range stacks {
-		order = append(order, s.Name)
-	}
-	return order
 }
 
 func boolToFloat(b bool) float64 {
@@ -952,7 +621,7 @@ type stateSnapshot struct {
 	peers           *peers.Registry
 	auditLog        *audit.Log
 	autosync        *autosyncDeps
-	repo            repoRef // clone dir for repo-relative paths, forge URL for commit links
+	repo            roster.RepoRef // clone dir for repo-relative paths, forge URL for commit links
 }
 
 // collect returns the current state events. As a side effect it polls the
@@ -966,7 +635,7 @@ func (s stateSnapshot) collect() []events.StateEvent {
 		{Name: events.StateQueue, Data: as.queue.View(as.order())},
 		{Name: events.StateUpcoming, Data: s.deployer.CurrentRunPlan()},
 		{Name: events.StateHookRun, Data: s.deployer.CurrentHookRun()},
-		{Name: events.StateStacks, Data: buildStacksState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo)},
+		{Name: events.StateStacks, Data: roster.BuildState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo)},
 	}
 	if s.healthPoller != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealth, Data: s.healthPoller.Current()})

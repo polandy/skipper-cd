@@ -18,7 +18,7 @@ visualization — no trigger/edit (see the project's viz-only scope).
 
 Two facts per stack, merged:
 
-- **Membership + config** — the effective stack set via `stacksNow()`
+- **Membership + config** — the effective stack set via `stackViews.effective()`
   (`CurrentStacks()` in discovery mode, the host `stacks:` list in host-list
   mode), so the tab works in both modes. `disabled: true` names come from
   `CurrentDisabledStacks()`.
@@ -73,7 +73,7 @@ func Build(stacks []config.Stack, disabled []string,
   stack to the top of this order at render time — a client-side concern, since
   runtime health is not part of the roster snapshot; see `internal/ui/UI_SPEC.md`.)
 
-Wired into the existing `stacks` SSE snapshot (`stacksState`), which is
+Wired into the existing `stacks` SSE snapshot (`roster.State`), which is
 published on connect and after every deploy run — the roster's natural
 cadence. The snapshot keeps its existing `disabled` array (drives the Deploys
 view's disabled line, unchanged) and gains `roster`:

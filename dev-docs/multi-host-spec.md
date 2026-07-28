@@ -245,9 +245,11 @@ match the deploy-lifecycle lines:
   best-effort, version-skew tolerant via `json.RawMessage`), the per-peer
   reachability cache (keeps last-known + marks `Stale` on failure), the
   edge-triggered reachability logging, and the on-demand proxy URL resolvers
-  `PeerDiffsURL` + `PeerContainerLogsURL`. Wired in `cmd/skipper/main.go`
-  under the `ui_enabled` block (a `peers-fanin` poll loop republishing the
-  `peers` state on the health-poll cadence, `GET /api/peers`, the peer-diff
+  `PeerDiffsURL` + `PeerContainerLogsURL`, and the fan-in `Loop` (drives the
+  `Poller` seam on the health-poll cadence — `DefaultPollInterval` when that
+  poll is disabled — and hands the merged state to a publish callback). Wired
+  in `cmd/skipper/main.go` under the `ui_enabled` block (a `peers-fanin`
+  goroutine running the loop, `GET /api/peers`, the peer-diff
   proxy `GET /api/peers/{name}/events/{id}/diffs`, and the peer-logs SSE proxy
   `GET /api/peers/{name}/container-logs/{stack}` (service selection rides
   `?services=`)). No change inside

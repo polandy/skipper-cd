@@ -107,6 +107,31 @@ type Config struct {
 	// HookRunSink receives the currently-executing deploy hook (ADR-0038), and
 	// the zero value when a phase finishes. nil disables publishing (UI off).
 	HookRunSink func(HookRun)
+
+	// The fields below are timing/probe seams. Zero values use the production
+	// defaults; tests set fakes and small values so waits resolve
+	// deterministically instead of racing wall-clock time.
+
+	// ProbeClient issues the deploy_health_check URL probe requests (ADR-0022);
+	// nil uses a default http.Client.
+	ProbeClient HTTPDoer
+
+	// ProbeInterval is the pause between two probe attempts; 0 uses the
+	// 2-second default.
+	ProbeInterval time.Duration
+
+	// RolloutPollInterval is the pause between `docker compose ps` polls while
+	// waiting for a rollout canary to turn healthy (ADR-0040); 0 uses the
+	// 2-second default.
+	RolloutPollInterval time.Duration
+
+	// RolloutTimeoutOverride forces the canary health-wait deadline; 0 derives
+	// it from the stack's rollout/deploy_health_check config.
+	RolloutTimeoutOverride time.Duration
+
+	// RolloutDrainOverride forces the wait between a healthy canary and
+	// draining the old container; 0 uses the stack's rollout.drain_seconds.
+	RolloutDrainOverride time.Duration
 }
 
 // Deployer orchestrates deployments for all configured stacks. Construct it
@@ -126,16 +151,18 @@ type Deployer struct {
 	postRunHook  func()
 	runPlanSink  func(RunPlan)
 	hookRunSink  func(HookRun)
+	prober       *httpHealthProber
+
+	// Timing overrides from Config; 0 = derive from stack config / defaults.
+	rolloutPollInterval    time.Duration
+	rolloutTimeoutOverride time.Duration
+	rolloutDrainOverride   time.Duration
 
 	// mu serializes deploy runs (Invariant 7); the fields below it are only
 	// touched while it is held.
-	mu                     sync.Mutex
-	plan                   []string          // stacks planned to deploy this run, in order
-	bootstrapRun           bool              // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
-	prober                 *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
-	rolloutPollInterval    time.Duration     // 0 = default; tests set a small value for the canary wait
-	rolloutTimeoutOverride time.Duration     // 0 = derive from config; tests set a short canary-wait deadline
-	rolloutDrainOverride   time.Duration     // 0 = derive from config; tests set a short pre-drain wait
+	mu           sync.Mutex
+	plan         []string // stacks planned to deploy this run, in order
+	bootstrapRun bool     // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64
@@ -161,19 +188,23 @@ func New(cfg Config) *Deployer {
 		stateDir = defaultStateDir
 	}
 	d := &Deployer{
-		runner:       cfg.Runner,
-		outputter:    cfg.Outputter,
-		commitReader: cfg.CommitReader,
-		syncer:       cfg.Syncer,
-		repoDir:      cfg.RepoDir,
-		stateDir:     stateDir,
-		shutdownCtx:  cfg.ShutdownCtx,
-		eventSink:    cfg.EventSink,
-		autosync:     cfg.Autosync,
-		queue:        cfg.Queue,
-		postRunHook:  cfg.PostRunHook,
-		runPlanSink:  cfg.RunPlanSink,
-		hookRunSink:  cfg.HookRunSink,
+		runner:                 cfg.Runner,
+		outputter:              cfg.Outputter,
+		commitReader:           cfg.CommitReader,
+		syncer:                 cfg.Syncer,
+		repoDir:                cfg.RepoDir,
+		stateDir:               stateDir,
+		shutdownCtx:            cfg.ShutdownCtx,
+		eventSink:              cfg.EventSink,
+		autosync:               cfg.Autosync,
+		queue:                  cfg.Queue,
+		postRunHook:            cfg.PostRunHook,
+		runPlanSink:            cfg.RunPlanSink,
+		hookRunSink:            cfg.HookRunSink,
+		prober:                 newHealthProber(cfg.ProbeClient, cfg.ProbeInterval),
+		rolloutPollInterval:    cfg.RolloutPollInterval,
+		rolloutTimeoutOverride: cfg.RolloutTimeoutOverride,
+		rolloutDrainOverride:   cfg.RolloutDrainOverride,
 	}
 	d.nextEventID.Store(cfg.StartEventID)
 
@@ -430,33 +461,45 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		return
 	}
 
-	// Stack discovery (ADR-0034): the repo declares the stack set. A file-level
-	// error (unparseable skipper.yaml, unreadable base dir) aborts the stack
-	// phase — nothing about the set can be trusted, so nothing deploys or is
-	// touched; the nixos phase above is host-config-driven and already ran.
-	// Entry-level errors fail only the affected stacks, seeded into the
-	// dependency gate below so their dependents block.
-	var stackErrs []config.StackError
-	if cfg.StackDiscovery {
-		repo, errs, err := config.LoadRepoStacks(cfg.StacksBaseDir, cfg.Stacks, cfg.ProjectDirectoryBase)
-		if err != nil {
-			slog.Error("stack discovery failed, no stacks deploy this run", "err", err)
-			d.emitDeployFailure(ConfigStateKey, 0, err, changeSet{})
-			return
-		}
-		d.discoveredStacks.Store(&repo)
-		stackErrs = errs
-		effective := *cfg
-		effective.Stacks = repo.Stacks
-		cfg = &effective
+	cfg, stackErrs, err := d.resolveStackSet(cfg)
+	if err != nil {
+		slog.Error("stack discovery failed, no stacks deploy this run", "err", err)
+		d.emitDeployFailure(ConfigStateKey, 0, err, changeSet{})
+		return
 	}
 
 	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
+	d.deployStacksGated(ctx, cfg, baseEnv, state, stackErrs)
+	d.finishRun(ctx, state)
+}
 
-	// Deploy in dependency order (ADR-0032): a stable topological sort that keeps
-	// config order among stacks not otherwise constrained.
-	ordered := orderStacks(cfg.Stacks)
+// resolveStackSet returns the effective config for this run. With stack
+// discovery (ADR-0034) the repo declares the stack set each sync, with the
+// host config's overrides merged in; entry-level errors (bad override, broken
+// compose, …) come back as stackErrs so only the affected stacks and their
+// dependents fail. A file-level error (unparseable skipper.yaml, unreadable
+// base dir) is returned instead — nothing about the set can be trusted, so the
+// caller aborts the stack phase; the nixos phase is host-config-driven and has
+// already run by then.
+func (d *Deployer) resolveStackSet(cfg *config.Config) (*config.Config, []config.StackError, error) {
+	if !cfg.StackDiscovery {
+		return cfg, nil, nil
+	}
+	repo, errs, err := config.LoadRepoStacks(cfg.StacksBaseDir, cfg.Stacks, cfg.ProjectDirectoryBase)
+	if err != nil {
+		return nil, nil, err
+	}
+	d.discoveredStacks.Store(&repo)
+	effective := *cfg
+	effective.Stacks = repo.Stacks
+	return &effective, errs, nil
+}
 
+// deployStacksGated deploys every stack in dependency order (ADR-0032, a
+// stable topological sort that keeps config order among stacks not otherwise
+// constrained) behind the dependency gate, and maintains the UI's run-plan
+// look-ahead while doing so.
+func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, baseEnv []string, state *persistedState, stackErrs []config.StackError) {
 	// Look-ahead for the UI: hash every stack upfront to learn which will deploy
 	// this run, so the header can show what is coming next. Skipped when the UI
 	// is off (no sink). The loop below re-evaluates each stack independently and
@@ -477,7 +520,7 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		d.emitDeployFailure(se.Stack, 0, se.Err, changeSet{})
 		gate.record(se.Stack, depBlocked)
 	}
-	for _, stack := range ordered {
+	for _, stack := range orderStacks(cfg.Stacks) {
 		// Resolve the effective rollback policy here, where the global default is
 		// in scope, so the deploy path (rollBackFailedDeploy) can honor an opt-out
 		// without carrying the global config down (ADR-0050).
@@ -489,7 +532,10 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 
 	// Run finished: clear the look-ahead so the header returns to idle.
 	d.publishRunPlan(nil)
+}
 
+// finishRun persists the run's results and publishes the post-run views.
+func (d *Deployer) finishRun(ctx context.Context, state *persistedState) {
 	// Record the current HEAD commit so future deploys can diff against it — but
 	// only when nothing is still queued. A change deferred by paused autosync has
 	// not deployed yet; advancing the base past it would make its eventual deploy
@@ -524,7 +570,22 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	}
 }
 
-func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) (err error) {
+// stackPrep bundles everything deployStackIfChanged resolves up front, before
+// change detection: the run values, the single compose parse every downstream
+// consumer shares, and the current hashes/images the persisted state is
+// compared against.
+type stackPrep struct {
+	run             stackRun
+	compose         *composeFile // nil when the compose file failed to parse
+	dockerfilePaths []string
+	currentImages   serviceImageByName
+	currentHashes   stackFileHashes
+}
+
+// prepareStackRun resolves a stack's deploy inputs: the run values from the
+// repo clone (Invariant 1), the compose parse, the effective deploy gate, and
+// the hashes of every tracked input (Invariant 2).
+func (d *Deployer) prepareStackRun(stack config.Stack, baseDir, varsFile string, baseEnv []string) (stackPrep, error) {
 	// Change detection always uses the repo clone so that merged PRs are detected.
 	run := newStackRun(stack, baseDir, baseEnv)
 	repoDir := filepath.Dir(run.composePath)
@@ -538,10 +599,10 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}
 
 	// The effective deploy gate is resolved once here so every downstream read
-	// of run.stack.DeployHealthCheck (rollback.go, rollout.go, below) sees it:
-	// an explicit config, or the automatic compose-healthcheck gate (ADR-0046),
-	// suppressed for on-demand stacks and by deploy_health_check: false
-	// (ADR-0049). See resolveHealthCheck.
+	// of run.stack.DeployHealthCheck (rollback.go, rollout.go, applyStack) sees
+	// it: an explicit config, or the automatic compose-healthcheck gate
+	// (ADR-0046), suppressed for on-demand stacks and by deploy_health_check:
+	// false (ADR-0049). See resolveHealthCheck.
 	run.stack.DeployHealthCheck = resolveHealthCheck(stack, compose)
 
 	var dockerfilePaths []string
@@ -553,13 +614,27 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
 	if err != nil {
-		err = fmt.Errorf("compute per-file hashes: %w", err)
-		d.emitDeployFailure(stack.Name, 0, err, changeSet{})
-		return err
+		return stackPrep{}, fmt.Errorf("compute per-file hashes: %w", err)
 	}
 	d.addStackConfigHash(currentHashes, stack, baseDir)
 
-	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
+	return stackPrep{
+		run:             run,
+		compose:         compose,
+		dockerfilePaths: dockerfilePaths,
+		currentImages:   currentImages,
+		currentHashes:   currentHashes,
+	}, nil
+}
+
+func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) (err error) {
+	prep, err := d.prepareStackRun(stack, baseDir, varsFile, baseEnv)
+	if err != nil {
+		d.emitDeployFailure(stack.Name, 0, err, changeSet{})
+		return err
+	}
+
+	changed := changedFiles(prep.currentHashes, state.hashesFor(stack.Name))
 	if len(changed) == 0 {
 		slog.Info("skipping stack, no changes detected", "stack", stack.Name)
 		d.clearQueued(stack.Name) // nothing pending anymore
@@ -588,7 +663,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.emit(events.StatusDeploying, stack.Name, 0, "", changeSet{files: changed})
 	// This stack is now the active deploy: surface the ones still to come.
 	d.publishUpcomingAfter(stack.Name)
-	slog.Info("deploying stack", "stack", stack.Name, "dir", repoDir, "project_dir", run.projectDir, "changed_files", d.repoRelativePaths(changed))
+	slog.Info("deploying stack", "stack", stack.Name, "dir", filepath.Dir(prep.run.composePath), "project_dir", prep.run.projectDir, "changed_files", d.repoRelativePaths(changed))
 	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
 	// Name the services whose image reference changed (old → new) so terminal
 	// events — and the notifications built from them — report what updated, not
@@ -596,8 +671,8 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// path carries the same list a success does. Skipped when the compose file
 	// failed to parse (compose == nil): currentImages would be nil and every
 	// prior service would be reported as removed — a misleading notification.
-	if compose != nil {
-		cs.imageChanges = imageChanges(currentImages, state.imagesFor(stack.Name))
+	if prep.compose != nil {
+		cs.imageChanges = imageChanges(prep.currentImages, state.imagesFor(stack.Name))
 	}
 	// From here the stack is actually deploying: any error returned below emits
 	// the matching terminal event with the change context gathered above. The
@@ -609,6 +684,23 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	}()
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 
+	if err := d.applyStack(ctx, prep, state); err != nil {
+		return err
+	}
+
+	d.recordStackSuccess(prep, state, deployStart, cs)
+	return nil
+}
+
+// applyStack runs the deploy itself: pre hooks, pull, build, up or rollout,
+// the health gates, post hooks, and the on-demand stop. Every error it returns
+// is final for this deploy — already through the rollback path where one
+// applies (ErrRolledBack / ErrRollbackUnhealthy wrapped for the caller's
+// deferred failure emitter).
+func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persistedState) error {
+	run, compose := prep.run, prep.compose
+	stack := run.stack
+
 	// pre_deploy hooks run before any container is touched — the point at which
 	// the old version is still up, so a backup can dump it (ADR-0038). A failure
 	// here aborts before pull/up with no rollback (nothing changed): the deferred
@@ -617,12 +709,12 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		return err
 	}
 
-	if err := d.pullIfImagesChanged(ctx, run, compose, currentImages, state.imagesFor(stack.Name)); err != nil {
+	if err := d.pullIfImagesChanged(ctx, run, compose, prep.currentImages, state.imagesFor(stack.Name)); err != nil {
 		return fmt.Errorf("docker compose pull: %w", err)
 	}
 
-	if len(dockerfilePaths) > 0 {
-		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", dockerfilePaths)
+	if len(prep.dockerfilePaths) > 0 {
+		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", prep.dockerfilePaths)
 		buildArgs := []string{"build"}
 		if !d.bootstrapRun {
 			// --pull refreshes each Dockerfile's base image. On a bootstrap run
@@ -645,7 +737,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	} else {
 		// --remove-orphans removes containers for services deleted from docker-compose.yml.
 		upArgs := []string{"up", "-d", "--remove-orphans"}
-		if hc := run.stack.DeployHealthCheck; hc != nil {
+		if hc := stack.DeployHealthCheck; hc != nil {
 			// First health gate: --wait makes the up itself fail when the services'
 			// compose healthchecks do not turn healthy in time (ADR-0022).
 			upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
@@ -657,9 +749,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	// Second health gate: the optional HTTP probe verifies the stack from the
 	// outside after a successful up (ADR-0022).
-	if hc := run.stack.DeployHealthCheck; hc != nil && hc.URL != "" {
+	if hc := stack.DeployHealthCheck; hc != nil && hc.URL != "" {
 		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
-		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
+		if err := d.prober.waitHealthy(ctx, hc.URL, timeout); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
 		}
 	}
@@ -681,21 +773,26 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 			slog.Warn("could not stop on-demand containers", "stack", stack.Name, "err", err)
 		}
 	}
+	return nil
+}
 
-	state.recordStack(stack.Name, currentHashes)
-	if currentImages != nil {
-		state.recordImages(stack.Name, currentImages)
+// recordStackSuccess persists the deployed stack's hashes, images and project
+// dir into the run's state (Invariant 2) and emits the success event.
+func (d *Deployer) recordStackSuccess(prep stackPrep, state *persistedState, deployStart time.Time, cs changeSet) {
+	name := prep.run.stack.Name
+	state.recordStack(name, prep.currentHashes)
+	if prep.currentImages != nil {
+		state.recordImages(name, prep.currentImages)
 	}
-	state.recordProjectDir(stack.Name, run.effectiveProjectDir())
-	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
-	eventID := d.emit(events.StatusSuccess, stack.Name, time.Since(deployStart), "", cs)
+	state.recordProjectDir(name, prep.run.effectiveProjectDir())
+	metrics.LastDeployTimestamp.WithLabelValues(name).Set(float64(time.Now().Unix()))
+	eventID := d.emit(events.StatusSuccess, name, time.Since(deployStart), "", cs)
 	if eventID != 0 {
 		// The event ID lets the log view fetch this deploy's diffs.
-		slog.Info("deploy complete", "stack", stack.Name, "event_id", eventID)
+		slog.Info("deploy complete", "stack", name, "event_id", eventID)
 	} else {
-		slog.Info("deploy complete", "stack", stack.Name)
+		slog.Info("deploy complete", "stack", name)
 	}
-	return nil
 }
 
 // pullIfImagesChanged runs docker compose pull unless no image: reference

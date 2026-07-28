@@ -26,9 +26,8 @@ func healConfig(t *testing.T, stack string) *config.Config {
 
 func TestHealStack_RunsCorrectiveUpAndEmitsHealed(t *testing.T) {
 	r := &recordingRunner{}
-	d := newDeployerWithRunner(r)
 	var got []events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) { got = append(got, e) })
+	d := New(Config{Runner: r, EventSink: func(e events.DeployEvent) { got = append(got, e) }})
 
 	cfg := healConfig(t, "web")
 	drift := []events.DriftedService{{Name: "web", Status: "unhealthy"}}
@@ -85,9 +84,8 @@ func TestHealStack_SkipsWhenDeployInProgress(t *testing.T) {
 
 func TestHealStack_ReturnsErrorWithoutHealedEventOnUpFailure(t *testing.T) {
 	r := &recordingRunner{errOnCommand: "up"}
-	d := newDeployerWithRunner(r)
 	var got []events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) { got = append(got, e) })
+	d := New(Config{Runner: r, EventSink: func(e events.DeployEvent) { got = append(got, e) }})
 
 	cfg := healConfig(t, "web")
 	ran, err := d.HealStack(context.Background(), cfg, "web", nil)
