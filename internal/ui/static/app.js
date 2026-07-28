@@ -820,8 +820,8 @@
     row.classList.remove('hooks-open');
   }
 
-  // Running-hook sub-label (dot + "pre_deploy hook 1/2" + hook-log icon), shared
-  // by both views so it looks identical in Deploys and Stacks.
+  // Wraps the running-hook sub-label, shared by both views so it looks
+  // identical in Deploys and Stacks.
   function hookPhaseNode(hr) {
     const phase = document.createElement('span');
     phase.className = 'hook-phase';
@@ -945,8 +945,8 @@
       return curStack + ' / ' + selected.length + ' services';
     }
 
-    // The collapsible chip row: an "all" chip plus one per service; empty string
-    // when there is nothing to filter (so the head shows no filter tool either).
+    // Empty string when there is nothing to filter, so the head shows no filter
+    // tool either.
     function svcRowHTML() {
       if (!hasServiceFilter()) return '';
       return clogSvcsHTML(servicesFor(), selected);
