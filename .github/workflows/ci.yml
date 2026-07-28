@@ -58,6 +58,9 @@ jobs:
         working-directory: internal/ui/static
         run: npm run lint
       - run: node --test internal/ui/static/app-helpers.test.js
+      # The --host-N palette in app.css is generated output pasted by hand;
+      # nothing else catches it drifting from its generator (`make check-host-colors`).
+      - run: make check-host-colors
 
   # End-to-end tests: run the real skipper binary against a local git origin
   # and a stub docker on PATH (no docker daemon needed). Guarded by the "e2e"
