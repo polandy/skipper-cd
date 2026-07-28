@@ -16,7 +16,8 @@ const gzipEncoding = "gzip"
 // use it already build their payload once (e.g. IndexHandler bakes in the
 // configured theme) — so a gzip-capable request never pays compression cost
 // per request. Used for the app shell's larger embedded text assets
-// (index.html, app.css, app.js, app-helpers.js); fonts and icons are already
+// (index.html, app.css, app.js, app-render.js, app-helpers.js); fonts and
+// icons are already
 // compressed binary formats and gain nothing from it.
 type staticAsset struct {
 	contentType string

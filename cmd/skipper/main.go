@@ -539,13 +539,14 @@ func registerCoreRoutes(mux *http.ServeMux, cfg *config.Config, deployer *deploy
 }
 
 // registerAppRoutes wires the static app shell: the PWA document, service
-// worker, manifest, fonts, static icons, app + helper scripts and version
+// worker, manifest, fonts, static icons, app + render + helper scripts and version
 // endpoint.
 func registerAppRoutes(mux *http.ServeMux, cfg *config.Config, build ui.BuildInfo) {
 	mux.Handle("GET /{$}", ui.IndexHandler(cfg.UITheme, cfg.UIThemeSwitcher))
 	mux.Handle("GET /manifest.webmanifest", ui.ManifestHandler(cfg.UITheme))
 	mux.Handle("GET /sw.js", ui.ServiceWorkerHandler(build))
 	mux.Handle("GET /app.js", ui.AppJSHandler())
+	mux.Handle("GET /app-render.js", ui.AppRenderJSHandler())
 	mux.Handle("GET /app-helpers.js", ui.AppHelpersHandler())
 	mux.Handle("GET /app.css", ui.AppCSSHandler())
 	mux.Handle("GET /icons/", ui.IconsHandler())

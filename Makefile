@@ -32,13 +32,14 @@ vendor-check:
 	git diff --exit-code -- go.mod go.sum vendor/
 
 ## --- ui-unit job ----------------------------------------------------------
-# JS unit tests for the pure UI helpers (internal/ui/static/app-helpers.js) via
+# JS unit tests for the pure UI helpers and render layer
+# (internal/ui/static/app-helpers.js, app-render.js) via
 # the Node built-in runner — no build step, no deps.
 ui-unit:
-	node --test internal/ui/static/app-helpers.test.js
+	node --test internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js
 
-# Prettier/ESLint for the embedded UI's plain-script JS (app.js,
-# app-helpers.js, app-helpers.test.js, sw.js). Dev-only npm devDependencies, scoped to
+# Prettier/ESLint for the embedded UI's plain-script JS (app.js, app-render.js,
+# app-helpers.js, the .test.js files, sw.js). Dev-only npm devDependencies, scoped to
 # internal/ui/static — never shipped in the binary (ADR-0035). app.css keeps
 # its hand-tuned compact style and is intentionally not formatted here.
 ui-fmt:

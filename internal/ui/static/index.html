@@ -378,9 +378,14 @@
      them without a build step (ADR-0035). Loaded first, so the app script below
      calls them as globals by bare name. See internal/ui/static/app-helpers.js. -->
 <script src="/app-helpers.js"></script>
+<!-- Pure HTML-string renderers (commit links, version chips, diff header),
+     extracted so the node --test unit layer can exercise them (ADR-0035
+     amendment). Loaded after app-helpers.js, whose functions they call as
+     globals. See internal/ui/static/app-render.js. -->
+<script src="/app-render.js"></script>
 <!-- The main app script, extracted to its own embedded plain-script file
      (ADR-0035 amendment) so it is lintable and formattable; loaded after
-     app-helpers.js because it calls the helpers as globals.
+     app-helpers.js and app-render.js because it calls both as globals.
      See internal/ui/static/app.js. -->
 <script src="/app.js"></script>
 </body>
