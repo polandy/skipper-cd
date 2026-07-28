@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -23,67 +24,13 @@ import (
 	"time"
 )
 
-// stubDockerScript is a fake `docker` placed first on PATH for the skipper
-// process. It records each invocation as "<cwd>\t<args>" so tests can attribute
-// a `compose … up` to a stack by its working directory
-// (stacks_base_dir/<stack>). Behaviour is scripted via env vars so one stub can
-// drive every deploy status the UI renders (see dev-docs/e2e-tests.md §3):
+// stubDockerScript is the fake `docker` placed first on PATH, shared verbatim
+// with the Playwright harness (e2e/ui/fixtures/harness.ts) — one file so a
+// change reaches both. Its UI-only branches are gated behind STUB_DOCKER_UI,
+// which this harness does not set.
 //
-//   - STUB_DOCKER_HOLD_UP=<file>   block on `up` until <file> exists (observe
-//     the "deploying" state), then continue.
-//   - STUB_DOCKER_FAIL_ON=<subcmd> exit 1 when the args contain <subcmd>.
-//   - STUB_DOCKER_FAIL_NTH_UP=<n>[,<n>…]  exit 1 on the listed `up` invocations
-//     (2 lets a rollback `up` succeed while the deploy `up` fails → rolled_back;
-//     2,3 also fails a health-gated rollback `up` → rolled_back_unhealthy).
-//   - STUB_DOCKER_ECHO=<line>      print <line> to stdout on `up`, so tests can
-//     observe captured child-process output in the log ring.
-//   - STUB_DOCKER_PS_FILE=<file>   print <file> on `ps` (compose ps --format
-//     json), driving the health poller and the healthwatch watchdog; the test
-//     flips the file's content to simulate a health transition.
-const stubDockerScript = `#!/bin/sh
-dir=$(pwd)
-printf '%s\t%s\n' "$dir" "$*" >> "$DOCKER_LOG"
-
-if [ -n "$STUB_DOCKER_ECHO" ]; then
-  case " $* " in
-    *" up "*) echo "$STUB_DOCKER_ECHO" ;;
-  esac
-fi
-
-if [ -n "$STUB_DOCKER_PS_FILE" ]; then
-  case " $* " in
-    *" ps "*) cat "$STUB_DOCKER_PS_FILE" ;;
-  esac
-fi
-
-case " $* " in
-  *" up "*)
-    if [ -n "$STUB_DOCKER_HOLD_UP" ]; then
-      while [ ! -f "$STUB_DOCKER_HOLD_UP" ]; do sleep 0.05; done
-    fi
-    ;;
-esac
-
-if [ -n "$STUB_DOCKER_FAIL_ON" ]; then
-  case " $* " in
-    *" $STUB_DOCKER_FAIL_ON "*) exit 1 ;;
-  esac
-fi
-
-if [ -n "$STUB_DOCKER_FAIL_NTH_UP" ]; then
-  case " $* " in
-    *" up "*)
-      c=$(cat "$DOCKER_LOG.upcount" 2>/dev/null || echo 0)
-      c=$((c + 1))
-      echo "$c" > "$DOCKER_LOG.upcount"
-      case ",$STUB_DOCKER_FAIL_NTH_UP," in
-        *",$c,"*) exit 1 ;;
-      esac
-      ;;
-  esac
-fi
-exit 0
-`
+//go:embed fixtures/docker-stub.sh
+var stubDockerScript string
 
 const defaultCompose = "services:\n  app:\n    image: nginx:1.25\n"
 

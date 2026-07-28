@@ -4,102 +4,20 @@ import { createServer as createHttpServer, type Server } from 'node:http';
 import { createHmac } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, basename } from 'node:path';
+import { join, basename } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 // This is the Node twin of the Go E2E harness (e2e/harness_test.go): it runs the
 // real skipper binary against a local git origin and a stub docker on PATH, so
-// the Playwright suite drives the exact backend the pipeline tests do. Keep the
-// two in sync — notably the stub docker script and the config shape.
+// the Playwright suite drives the exact backend the pipeline tests do. The stub
+// docker is now one shared file (e2e/fixtures/docker-stub.sh) rather than a copy
+// per harness; the config shape still has to be kept in sync by hand.
 
-// stubDockerScript is a fake `docker` placed first on PATH. It records each
-// invocation as "<cwd>\t<args>" and is scripted via env vars so one stub drives
-// every UI status. Identical to the Go harness's stubDockerScript.
-const stubDockerScript = `#!/bin/sh
-dir=$(pwd)
-printf '%s\\t%s\\n' "$dir" "$*" >> "$DOCKER_LOG"
-
-# Orphan detection (ADR-0036): \`volume ls\` / \`ps -a\` answered from a shared
-# listing (setOrphans/setVolumes). Matched before the health \`ps\` case: \`ps -a\`
-# also contains " ps ", but health's \`ps --format json --all\` never does.
-case " $* " in
-  *" volume "*)
-    [ -n "$STUB_DOCKER_ORPHANS_DIR" ] && [ -f "$STUB_DOCKER_ORPHANS_DIR/volumes.txt" ] && cat "$STUB_DOCKER_ORPHANS_DIR/volumes.txt"
-    exit 0
-    ;;
-  *" ps -a "*)
-    [ -n "$STUB_DOCKER_ORPHANS_DIR" ] && [ -f "$STUB_DOCKER_ORPHANS_DIR/orphans.txt" ] && cat "$STUB_DOCKER_ORPHANS_DIR/orphans.txt"
-    exit 0
-    ;;
-esac
-
-# Container logs (ADR-0037): a fixed backlog then, with --follow, a periodic
-# tail. --no-log-prefix marks a single service (no prefix); otherwise merged, so
-# each line is prefixed with the service. Killed when the request context ends.
-case " $* " in
-  *" logs "*)
-    base=$(basename "$dir")
-    pfx="$base-1  | "
-    case " $* " in *" --no-log-prefix "*) pfx="" ;; esac
-    printf '%s2026-01-01T00:00:00Z starting %s\\n' "$pfx" "$base"
-    printf '%s2026-01-01T00:00:01Z listening on :8080\\n' "$pfx"
-    printf '%s2026-01-01T00:00:02Z GET /health 200 ok\\n' "$pfx"
-    printf '%s2026-01-01T00:00:03Z ERROR upstream timeout\\n' "$pfx"
-    case " $* " in
-      *" --follow "*)
-        i=0
-        while :; do i=$((i + 1)); printf '%s2026-01-01T00:01:%02dZ tick %s\\n' "$pfx" "$i" "$i"; sleep 1; done
-        ;;
-    esac
-    exit 0
-    ;;
-esac
-
-# Health poll: emit the scripted \`compose ps --format json\` output for this
-# stack (keyed by the project dir's basename), else nothing (-> stopped).
-case " $* " in
-  *" ps "*)
-    base=$(basename "$dir")
-    f="$STUB_DOCKER_PS_DIR/$base.json"
-    [ -n "$STUB_DOCKER_PS_DIR" ] && [ -f "$f" ] && cat "$f"
-    exit 0
-    ;;
-esac
-
-if [ -n "$STUB_DOCKER_ECHO" ]; then
-  case " $* " in
-    *" up "*) echo "$STUB_DOCKER_ECHO" ;;
-  esac
-fi
-
-case " $* " in
-  *" up "*)
-    if [ -n "$STUB_DOCKER_HOLD_UP" ]; then
-      while [ ! -f "$STUB_DOCKER_HOLD_UP" ]; do sleep 0.05; done
-    fi
-    ;;
-esac
-
-if [ -n "$STUB_DOCKER_FAIL_ON" ]; then
-  case " $* " in
-    *" $STUB_DOCKER_FAIL_ON "*) exit 1 ;;
-  esac
-fi
-
-if [ -n "$STUB_DOCKER_FAIL_NTH_UP" ]; then
-  case " $* " in
-    *" up "*)
-      c=$(cat "$DOCKER_LOG.upcount" 2>/dev/null || echo 0)
-      c=$((c + 1))
-      echo "$c" > "$DOCKER_LOG.upcount"
-      case ",$STUB_DOCKER_FAIL_NTH_UP," in
-        *",$c,"*) exit 1 ;;
-      esac
-      ;;
-  esac
-fi
-exit 0
-`;
+// stubDockerScript is the fake `docker` placed first on PATH, shared verbatim
+// with the Go harness (e2e/harness_test.go) — one file so a change reaches
+// both. Its UI-only branches (orphans, container logs, per-stack health) are
+// gated behind STUB_DOCKER_UI, which this harness sets and the Go one does not.
+const stubDockerScript = readFileSync(join(__dirname, '..', '..', 'fixtures', 'docker-stub.sh'), 'utf8');
 
 const defaultCompose = 'services:\n  app:\n    image: nginx:1.25\n';
 const SECRET = 'e2e-secret';
@@ -634,6 +552,7 @@ export class Skipper {
       // Inherited by hook commands (run via `sh -c` with os.Environ()); a hook
       // can wait on this path to hold the running-hook phase deterministically.
       SKIPPER_E2E_HOOK_HOLD: hookHoldFile,
+      STUB_DOCKER_UI: '1', // enables the stub's orphan/logs/per-stack-health branches
       STUB_DOCKER_PS_DIR: healthDir,
       STUB_DOCKER_ORPHANS_DIR: orphansDir,
       ...opts.stubEnv,
