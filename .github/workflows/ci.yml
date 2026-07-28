@@ -57,7 +57,7 @@ jobs:
       - name: ESLint
         working-directory: internal/ui/static
         run: npm run lint
-      - run: node --test internal/ui/static/app-helpers.test.js
+      - run: node --test internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js
       # The --host-N palette in app.css is generated output pasted by hand;
       # nothing else catches it drifting from its generator (`make check-host-colors`).
       - run: make check-host-colors

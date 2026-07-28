@@ -21,6 +21,7 @@ const SHELL = [
   '/',
   '/app.css',
   '/app.js',
+  '/app-render.js',
   '/app-helpers.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',

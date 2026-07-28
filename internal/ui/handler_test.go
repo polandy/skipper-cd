@@ -440,6 +440,51 @@ func TestAppJSHandler_ServesGzipWhenAccepted(t *testing.T) {
 	}
 }
 
+func TestAppRenderJSHandler_ServesJS(t *testing.T) {
+	handler := AppRenderJSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-render.js", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/javascript") {
+		t.Errorf("content type = %q, want text/javascript", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("cache-control = %q, want no-cache (lockstep with the app shell)", cc)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "function renderCommitHead") {
+		t.Error("body does not contain the extracted render functions")
+	}
+}
+
+func TestAppRenderJSHandler_ServesGzipWhenAccepted(t *testing.T) {
+	handler := AppRenderJSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-render.js", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if enc := rec.Header().Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", enc)
+	}
+	gr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	got, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatalf("reading gzip body: %v", err)
+	}
+	if !strings.Contains(string(got), "function renderCommitHead") {
+		t.Error("gzip body does not contain the extracted render functions")
+	}
+}
+
 func TestAppCSSHandler_ServesCSS(t *testing.T) {
 	handler := AppCSSHandler()
 	req := httptest.NewRequest(http.MethodGet, "/app.css", nil)

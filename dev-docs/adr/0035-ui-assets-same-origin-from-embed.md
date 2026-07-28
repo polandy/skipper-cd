@@ -122,3 +122,21 @@ theme script stays inline in `<head>` — it must run before first render.
 `index.html` drops to ~385 lines of markup; `app.js` holds the ~4600-line app
 script where ESLint and Prettier can reach it, opening the path to migrating
 DOM-free logic into the unit-tested `app-helpers.js` incrementally.
+
+## Amendment (2026-07-28): extract the render layer into `static/app-render.js`
+
+First step of the incremental migration the previous amendment opened: the pure
+HTML-string builders (`escapeHtml`/`escapeAttr`, `commitLinkHTML`,
+`versionChipHTML`, `imageDeltaHTML`, `renderCommitHead`) move from `app.js`
+into `internal/ui/static/app-render.js` — named for what it holds, not
+"helpers". Same serving pattern as the other extractions: embedded, served by
+`AppRenderJSHandler` (`GET /app-render.js`, no-cache, pre-gzipped), in the
+service worker's `SHELL`, loaded between `app-helpers.js` (whose functions it
+calls as globals) and `app.js`.
+
+Two deliberate changes from the verbatim move: `escapeHtml` is reimplemented as
+pure string replacement (the DOM-based original needed a browser; the escaped
+set — `& < >` — is exactly what the DOM's text-node serialization escapes), and
+`renderCommitHead` takes the forge base as a `repoBase` parameter instead of
+reading the module-scope `repoWebURL`. That purity is what lets
+`app-render.test.js` exercise the layer under `node --test`.
