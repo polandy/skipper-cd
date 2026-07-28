@@ -390,6 +390,101 @@ function hostChipHTML(hostName, slot) {
   );
 }
 
+// ── Roster cell renderers ──
+// The Stacks-view row cells shared by local and peer rows. Pure string
+// builders: the caller resolves the per-host state each one reads (the
+// stack's discovered app-link hostnames, its live-health entry, whether a
+// deploy is in flight) and passes it in.
+
+const LINK_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M10 14L20 4M18 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>';
+
+// linkCellHTML renders the app-link icon for a stack: nothing when no host
+// was discovered, a plain external link for exactly one, or a button that
+// opens a popover listing each when there are several. hosts is the stack's
+// discovered hostnames (app.js linkCell wraps the per-host lookup).
+function linkCellHTML(hosts) {
+  if (!hosts || !hosts.length) return '';
+  if (hosts.length === 1) {
+    const url = 'https://' + hosts[0];
+    return `<span class="link-wrap"><a class="link-btn" data-testid="app-link-btn" data-taptip href="${escapeAttr(url)}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + hosts[0])}">${LINK_ICON}</a></span>`;
+  }
+  const items = hosts
+    .map(function (h) {
+      return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
+    })
+    .join('');
+  const label = hosts.length + ' app links';
+  return `<span class="link-wrap"><button class="link-btn" type="button" data-testid="app-link-btn" data-taptip title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${LINK_ICON}</button><div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
+}
+
+// rosterRowActionsHTML surfaces an enabled roster row's secondary actions
+// inline in the stack cell, beside the jump + app-link icons: the container-
+// logs icon (ADR-0037) always, the deploy-hooks badge (ADR-0038) only when the
+// stack declares hooks. Formerly folded behind the same ⋯ overflow menu the
+// Deploys row uses (T3.13b), but on the roster the row-body click already opens
+// the health + history panel, so the menu usually wrapped a single action
+// (logs) — an extra click for no density gain. Disabled stacks carry neither.
+function rosterRowActionsHTML(entry) {
+  if (entry.disabled) return '';
+  let html = clogBtnHTML(entry.name, ''); // container logs
+  if (entry.hooks && hookCount(entry.hooks) > 0) html += hooksBadgeHTML(entry.name, entry.hooks);
+  return html;
+}
+
+// rosterVersionInnerHTML fills a Stacks row's Version cell from the live health
+// snapshot: the running version of the service the stack is named after, plus a
+// muted "+N" for the rest — the glance. The full per-service list lives one
+// click away in the containers panel, so the row stays a single line (unlike
+// the Deploys Version column, which lists every changed service: a deploy
+// touches a few services, while a stack HAS all of them).
+// health is the stack's live-health entry on the row's host (app.js
+// stackHealthFor wraps the lookup); empty while none exists for the stack
+// (parked, stopped, or the first health poll still outstanding —
+// updateRosterHealth fills it in then).
+function rosterVersionInnerHTML(stack, health) {
+  const v = rosterVersion(stack, health && health.services);
+  if (!v) return '';
+  // No lead service: naming one of several equals would be arbitrary, so the
+  // cell only says how many there are and defers to the panel.
+  if (!v.service) {
+    const label = v.more + (v.more === 1 ? ' service' : ' services');
+    return `<span class="ver-count" title="No single main service — open the row for every version">${label}</span>`;
+  }
+  const more =
+    v.more > 0
+      ? `<span class="ver-count" title="${escapeAttr(v.more + ' more service' + (v.more === 1 ? '' : 's') + ' — open the row for every version')}">+${v.more}</span>`
+      : '';
+  return serviceVersionHTML(v.service, v.image) + more;
+}
+
+// rosterVersionCellHTML wraps that in the cell every row emits — including a
+// parked stack, whose cell stays empty (it is never polled, so it has no running
+// version) so the grid still lines up.
+function rosterVersionCellHTML(stack, health, disabled) {
+  const inner = disabled ? '' : rosterVersionInnerHTML(stack, health);
+  return `<span class="col-version" data-testid="roster-version">${inner}</span>`;
+}
+
+// rosterStatusHTML picks the row's status: a live in-flight deploy wins
+// (deploying — a peer row always passes false, since the in-flight set is the
+// primary's own), then the parked/never-deployed synthetic flags, else the
+// last terminal badge.
+function rosterStatusHTML(entry, deploying) {
+  if (deploying) return badgeHTML('deploying');
+  if (entry.disabled) return `<span class="roster-flag">disabled</span>`;
+  if (!entry.last_status) return `<span class="roster-flag">never deployed</span>`;
+  return badgeHTML(entry.last_status);
+}
+
+// rosterHealthPillHTML is the live-health pill shown inline in a roster row's
+// status cell (under the deploy badge), so the Stacks overview surfaces current
+// container health without expanding — for local stacks and, host-scoped, for
+// peers alike. Empty when the host reports no health for the stack.
+function rosterHealthPillHTML(stack, health) {
+  return health && health.status ? healthPillHTML(stack, health.status) : '';
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
@@ -412,5 +507,11 @@ if (typeof module !== 'undefined' && module.exports) {
     jumpBtnHTML,
     pendingTagHTML,
     hostChipHTML,
+    linkCellHTML,
+    rosterRowActionsHTML,
+    rosterVersionInnerHTML,
+    rosterVersionCellHTML,
+    rosterStatusHTML,
+    rosterHealthPillHTML,
   };
 }
