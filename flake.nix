@@ -56,9 +56,9 @@
               # Go pinned to go.mod's minor (what CI's setup-go installs), so
               # `go test`/govulncheck see the same stdlib as the pipeline — a
               # newer toolchain flags stdlib CVEs CI doesn't. The nix *build*
-              # (packages.default) tracks pkgs.go separately. This nixpkgs pin
-              # only has go_1_26 at 1.26.4, one patch behind go.mod's 1.26.5
-              # (GO-2026-5856 fix) — closing that gap needs a nixpkgs bump.
+              # (packages.default) tracks pkgs.go separately. Re-check the patch
+              # level against go.mod on every flake bump: when the two drift,
+              # local and CI govulncheck can legitimately disagree.
               pkgs.go_1_26
               pkgs.gopls
               pkgs.gotools
@@ -72,8 +72,10 @@
               pkgs.golangci-lint # CI pins v2.12
               pkgs.govulncheck
               pkgs.trivy # image CVE scan (needs a running dockerd — see make)
-              # UI E2E: Node for `npm ci` + Playwright's JS runner.
-              pkgs.nodejs_22
+              # UI E2E: Node for `npm ci` + Playwright's JS runner, and the
+              # `node --test` unit layer. Same major as CI's setup-node, so a
+              # test cannot pass here and fail there on runner behaviour.
+              pkgs.nodejs_24
               # Docs site.
               mkdocs
             ];
