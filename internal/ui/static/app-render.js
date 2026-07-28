@@ -486,13 +486,14 @@ function rosterHealthPillHTML(stack, health) {
 }
 
 // autosyncDetailHTML is the second line of an autosync drawer row: what the
-// stack is waiting on when it is queued (item), else its resting state.
-function autosyncDetailHTML(s, item, nowMs) {
+// stack is waiting on when it is queued (item), else its resting state. entry
+// is the stack's autosync snapshot entry, item its pending queue entry (if any).
+function autosyncDetailHTML(entry, item, nowMs) {
   if (item) {
     const n = item.changed_files ? item.changed_files.length : 0;
     return `<span class="warn">${n} file${n === 1 ? '' : 's'}</span> · waiting <span data-testid="wait-cell">${waitedSince(item.since, nowMs)}</span>`;
   }
-  if (!s.effective) return 'paused · no changes';
+  if (!entry.effective) return 'paused · no changes';
   return 'synced';
 }
 
@@ -505,22 +506,24 @@ function autosyncPosText(pos, queued) {
 }
 
 // autosyncReasonChipHTML tags a paused stack with why it is paused — the queue
-// item's own reason when it has one, else derived from the snapshot.
-function autosyncReasonChipHTML(s, item) {
-  const reason = item ? item.reason : reasonFromSnap(s);
-  return !s.effective && reason ? `<span class="reason reason-${reason}">${reason}</span>` : '';
+// item's own reason when it has one, else derived from the snapshot entry.
+function autosyncReasonChipHTML(entry, item) {
+  const reason = item ? item.reason : reasonFromSnap(entry);
+  return !entry.effective && reason
+    ? `<span class="reason reason-${reason}">${reason}</span>`
+    : '';
 }
 
 // autosyncSwitchTitle is the row switch's tooltip — it names the action the
 // click performs, not the current state.
-function autosyncSwitchTitle(s) {
-  return `${s.effective ? 'Pause' : 'Resume'} autosync`;
+function autosyncSwitchTitle(entry) {
+  return `${entry.effective ? 'Pause' : 'Resume'} autosync`;
 }
 
 // autosyncRowHTML renders one stack row of the autosync drawer, in either list:
 // pos is the queue position, or null in the all-stacks list; item is the stack's
 // pending queue entry, if any.
-function autosyncRowHTML(s, pos, item, nowMs) {
+function autosyncRowHTML(entry, pos, item, nowMs) {
   const inQueue = pos !== null;
   const posCell = `<div class="qpos${inQueue ? '' : ' blank'}">${autosyncPosText(pos, item)}</div>`;
   const rowTestid = inQueue ? 'queue-item' : 'stack-item';
@@ -528,14 +531,14 @@ function autosyncRowHTML(s, pos, item, nowMs) {
   // in the all-stacks list so a queued stack does not expose two of them.
   const swTestid = inQueue ? '' : ' data-testid="stack-switch"';
   return (
-    `<div class="stack-row" data-testid="${rowTestid}" data-stack="${escapeAttr(s.name)}">` +
+    `<div class="stack-row" data-testid="${rowTestid}" data-stack="${escapeAttr(entry.name)}">` +
     posCell +
     `<div class="stack-meta">` +
-    `<div class="stack-name">${escapeHtml(s.name)}${autosyncReasonChipHTML(s, item)}</div>` +
-    `<div class="stack-detail">${autosyncDetailHTML(s, item, nowMs)}</div>` +
+    `<div class="stack-name">${escapeHtml(entry.name)}${autosyncReasonChipHTML(entry, item)}</div>` +
+    `<div class="stack-detail">${autosyncDetailHTML(entry, item, nowMs)}</div>` +
     `</div>` +
-    `<div class="sw${s.effective ? ' on' : ''}"${swTestid} data-taptip role="switch" aria-checked="${s.effective}"` +
-    ` tabindex="0" data-stack="${escapeAttr(s.name)}" title="${autosyncSwitchTitle(s)}"></div>` +
+    `<div class="sw${entry.effective ? ' on' : ''}"${swTestid} data-taptip role="switch" aria-checked="${entry.effective}"` +
+    ` tabindex="0" data-stack="${escapeAttr(entry.name)}" title="${autosyncSwitchTitle(entry)}"></div>` +
     `</div>`
   );
 }

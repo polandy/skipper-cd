@@ -476,29 +476,34 @@ test('rosterHealthPillHTML renders the pill only when the host reports a status'
   assert.match(html, /data-stack="web"/);
 });
 
-const NOW = Date.parse('2026-07-28T12:00:00Z');
-const queued = { since: new Date(NOW - 120000).toISOString(), changed_files: ['a', 'b'] };
+// Fixed clock + a queue entry two minutes old: the autosync row renderers take
+// the clock as a parameter, so their wait text is asserted exactly, not raced.
+const AUTOSYNC_NOW = Date.parse('2026-07-28T12:00:00Z');
+const AUTOSYNC_QUEUED = {
+  since: new Date(AUTOSYNC_NOW - 120000).toISOString(),
+  changed_files: ['a', 'b'],
+};
 
 test('autosyncDetailHTML reports the wait for a queued stack', () => {
-  const html = r.autosyncDetailHTML({ name: 'web', effective: true }, queued, NOW);
+  const html = r.autosyncDetailHTML({ name: 'web', effective: true }, AUTOSYNC_QUEUED, AUTOSYNC_NOW);
   assert.match(html, /2 files/);
   assert.match(html, /data-testid="wait-cell">2m</);
   // Singular for exactly one changed file.
   assert.match(
-    r.autosyncDetailHTML({ effective: true }, { since: queued.since, changed_files: ['a'] }, NOW),
+    r.autosyncDetailHTML({ effective: true }, { since: AUTOSYNC_QUEUED.since, changed_files: ['a'] }, AUTOSYNC_NOW),
     /1 file</,
   );
 });
 
 test('autosyncDetailHTML reports the resting state when nothing is queued', () => {
-  assert.equal(r.autosyncDetailHTML({ effective: true }, undefined, NOW), 'synced');
-  assert.equal(r.autosyncDetailHTML({ effective: false }, undefined, NOW), 'paused · no changes');
+  assert.equal(r.autosyncDetailHTML({ effective: true }, undefined, AUTOSYNC_NOW), 'synced');
+  assert.equal(r.autosyncDetailHTML({ effective: false }, undefined, AUTOSYNC_NOW), 'paused · no changes');
 });
 
 test('autosyncPosText numbers a queue row and dots a queued all-stacks row', () => {
-  assert.equal(r.autosyncPosText(2, queued), '2');
+  assert.equal(r.autosyncPosText(2, AUTOSYNC_QUEUED), '2');
   assert.equal(r.autosyncPosText(0, undefined), '0');
-  assert.equal(r.autosyncPosText(null, queued), '●');
+  assert.equal(r.autosyncPosText(null, AUTOSYNC_QUEUED), '●');
   assert.equal(r.autosyncPosText(null, undefined), '');
 });
 
@@ -525,7 +530,7 @@ test('autosyncSwitchTitle names the action, not the state', () => {
 });
 
 test('autosyncRowHTML tags a queue row without a second switch testid', () => {
-  const html = r.autosyncRowHTML({ name: 'web', effective: true }, 1, queued, NOW);
+  const html = r.autosyncRowHTML({ name: 'web', effective: true }, 1, AUTOSYNC_QUEUED, AUTOSYNC_NOW);
   assert.match(html, /data-testid="queue-item"/);
   assert.ok(!html.includes('stack-switch'), `queue row must not expose a switch testid: ${html}`);
   assert.match(html, /class="qpos">1</);
@@ -533,7 +538,7 @@ test('autosyncRowHTML tags a queue row without a second switch testid', () => {
 });
 
 test('autosyncRowHTML tags an all-stacks row as the switch owner', () => {
-  const html = r.autosyncRowHTML({ name: 'web', effective: false }, null, undefined, NOW);
+  const html = r.autosyncRowHTML({ name: 'web', effective: false }, null, undefined, AUTOSYNC_NOW);
   assert.match(html, /data-testid="stack-item"/);
   assert.match(html, /data-testid="stack-switch"/);
   assert.match(html, /class="qpos blank"><\/div>/);
@@ -542,7 +547,7 @@ test('autosyncRowHTML tags an all-stacks row as the switch owner', () => {
 });
 
 test('autosyncRowHTML escapes the stack name in both text and attributes', () => {
-  const html = r.autosyncRowHTML({ name: 'a<b&"c"', effective: true }, null, undefined, NOW);
+  const html = r.autosyncRowHTML({ name: 'a<b&"c"', effective: true }, null, undefined, AUTOSYNC_NOW);
   assert.ok(!html.includes('a<b&"c"'), `raw name leaked: ${html}`);
   assert.match(html, /data-stack="a&lt;b&amp;&quot;c&quot;"/);
   assert.match(html, /class="stack-name">a&lt;b&amp;"c"/);
