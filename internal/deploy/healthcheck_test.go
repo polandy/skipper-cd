@@ -226,8 +226,7 @@ func TestDeployStack_UpWaitsForHealthWhenConfigured(t *testing.T) {
 	baseDir := makeBaseWithStack(t)
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-	d.stateDir = t.TempDir()
+	d := New(Config{Runner: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -249,8 +248,7 @@ func TestDeployStack_NoWaitFlagsWithoutHealthCheck(t *testing.T) {
 	baseDir := makeBaseWithStack(t)
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-	d.stateDir = t.TempDir()
+	d := New(Config{Runner: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack"}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -264,8 +262,7 @@ func TestDeployStack_AutoDetectsHealthCheckFromComposeHealthcheck(t *testing.T) 
 	baseDir := makeBaseWithHealthcheckStack(t)
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-	d.stateDir = t.TempDir()
+	d := New(Config{Runner: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack"} // no deploy_health_check declared
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -289,8 +286,7 @@ func TestDeployStack_ExplicitDisableSkipsAutoGate(t *testing.T) {
 	baseDir := makeBaseWithHealthcheckStack(t)
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-	d.stateDir = t.TempDir()
+	d := New(Config{Runner: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{Enabled: boolPtr(false)}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -306,8 +302,7 @@ func TestDeployStack_OnDemandStackSkipsAutoGate(t *testing.T) {
 	baseDir := makeBaseWithHealthcheckStack(t)
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-	d.stateDir = t.TempDir()
+	d := New(Config{Runner: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", OnDemandContainers: []string{"mystack-app"}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -321,8 +316,7 @@ func TestDeployStack_ExplicitHealthCheckOverridesAutoDetect(t *testing.T) {
 	baseDir := makeBaseWithHealthcheckStack(t)
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
-	d.stateDir = t.TempDir()
+	d := New(Config{Runner: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -355,7 +349,7 @@ func TestDeployStack_AutoDetectedHealthCheckFailureTriggersRollback(t *testing.T
 	// The first "up" (the deploy under the auto-detected gate) fails; the
 	// rollback's own "up" (second call) succeeds.
 	failingOnce := &failUpCallsRunner{errs: map[int]error{1: fmt.Errorf("compose up: services never turned healthy")}}
-	d := &Deployer{runner: failingOnce, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+	d := New(Config{Runner: failingOnce, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack"} // no deploy_health_check declared, auto-detected from compose
 	state := &persistedState{
@@ -378,9 +372,7 @@ func TestDeployStack_HealthProbePassKeepsDeploy(t *testing.T) {
 
 	runner := &recordingRunner{}
 	doer := &fakeDoer{statuses: []int{200}}
-	d := newDeployerWithRunner(runner)
-	d.stateDir = t.TempDir()
-	d.prober = &httpHealthProber{doer: doer, interval: time.Millisecond}
+	d := New(Config{Runner: runner, StateDir: t.TempDir(), ProbeClient: doer, ProbeInterval: time.Millisecond})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",
@@ -407,9 +399,7 @@ func TestDeployStack_NoProbeWithoutURL(t *testing.T) {
 
 	runner := &recordingRunner{}
 	doer := &fakeDoer{statuses: []int{500}}
-	d := newDeployerWithRunner(runner)
-	d.stateDir = t.TempDir()
-	d.prober = &httpHealthProber{doer: doer, interval: time.Millisecond}
+	d := New(Config{Runner: runner, StateDir: t.TempDir(), ProbeClient: doer, ProbeInterval: time.Millisecond})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 1}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -454,8 +444,14 @@ func TestDeployStack_HealthProbeFailureRollsBack(t *testing.T) {
 	// The new version never answers healthy; the restored old version does.
 	doer := &fakeDoer{statuses: []int{500}}
 	runner := &rollbackHealsRunner{doer: doer}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-	d.prober = &httpHealthProber{doer: doer, interval: 50 * time.Millisecond}
+	d := New(Config{
+		Runner:        runner,
+		CommitReader:  cr,
+		RepoDir:       baseDir,
+		StateDir:      t.TempDir(),
+		ProbeClient:   doer,
+		ProbeInterval: 50 * time.Millisecond,
+	})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",
@@ -507,7 +503,7 @@ func TestDeployStack_RollbackUpStillUnhealthyWrapsErrRollbackUnhealthy(t *testin
 	}
 	// Every up fails: the deploy up --wait and the rollback up --wait alike.
 	runner := &recordingRunner{errOnCommand: "up"}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
 	state := &persistedState{
@@ -545,8 +541,14 @@ func TestDeployStack_RollbackProbeFailureWrapsErrRollbackUnhealthy(t *testing.T)
 	// Neither the new version nor the restored old one ever answers healthy.
 	runner := &recordingRunner{}
 	doer := &fakeDoer{statuses: []int{500}}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-	d.prober = &httpHealthProber{doer: doer, interval: 50 * time.Millisecond}
+	d := New(Config{
+		Runner:        runner,
+		CommitReader:  cr,
+		RepoDir:       baseDir,
+		StateDir:      t.TempDir(),
+		ProbeClient:   doer,
+		ProbeInterval: 50 * time.Millisecond,
+	})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",
@@ -581,9 +583,7 @@ func TestDeployStack_HealthProbeFailureRollbackAlsoFails(t *testing.T) {
 	// No commitReader: the rollback cannot fetch the old compose file.
 	runner := &recordingRunner{}
 	doer := &fakeDoer{statuses: []int{500}}
-	d := newDeployerWithRunner(runner)
-	d.stateDir = t.TempDir()
-	d.prober = &httpHealthProber{doer: doer, interval: 50 * time.Millisecond}
+	d := New(Config{Runner: runner, StateDir: t.TempDir(), ProbeClient: doer, ProbeInterval: 50 * time.Millisecond})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",

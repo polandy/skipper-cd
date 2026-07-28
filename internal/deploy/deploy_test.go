@@ -22,9 +22,12 @@ func TestEmit_ShortensPathsToRepoRelative(t *testing.T) {
 	inside := repoDir + "/system/host-b/default.nix"
 	outside := "/etc/somewhere/else.nix"
 
-	d := &Deployer{repoDir: repoDir}
 	var got events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) { got = e })
+	d := New(Config{
+		RepoDir:   repoDir,
+		StateDir:  t.TempDir(),
+		EventSink: func(e events.DeployEvent) { got = e },
+	})
 
 	d.emit(events.StatusSuccess, NixosStateKey, 0, "", changeSet{
 		files: []string{inside, outside},
@@ -517,7 +520,7 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	runner := &recordingRunner{delay: 10 * time.Millisecond}
 	syncer := &fakeRepoSyncer{}
 
-	d := &Deployer{runner: runner, syncer: syncer, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, Syncer: syncer, StateDir: t.TempDir()})
 
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
@@ -551,7 +554,7 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 
 func TestTrySyncAndDeployAll_RunsWhenIdle(t *testing.T) {
 	syncer := &fakeRepoSyncer{}
-	d := &Deployer{runner: &recordingRunner{}, syncer: syncer, stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir()})
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: t.TempDir(),
@@ -568,7 +571,7 @@ func TestTrySyncAndDeployAll_RunsWhenIdle(t *testing.T) {
 
 func TestTrySyncAndDeployAll_SkipsWhenDeployInProgress(t *testing.T) {
 	syncer := &fakeRepoSyncer{}
-	d := &Deployer{runner: &recordingRunner{}, syncer: syncer, stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir()})
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: t.TempDir(),
@@ -597,7 +600,7 @@ func TestHealth_NilBeforeFirstRun(t *testing.T) {
 
 func TestHealth_ReportsFailedSync(t *testing.T) {
 	syncer := &fakeRepoSyncer{err: errors.New("remote unreachable")}
-	d := &Deployer{runner: &recordingRunner{}, syncer: syncer, stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir()})
 	cfg := &config.Config{RepoURL: "ssh://git@example.com/repo.git", StacksBaseDir: t.TempDir()}
 
 	d.SyncAndDeployAll(context.Background(), cfg)
@@ -609,7 +612,7 @@ func TestHealth_ReportsFailedSync(t *testing.T) {
 
 func TestHealth_RecoversAfterSuccessfulRun(t *testing.T) {
 	syncer := &fakeRepoSyncer{err: errors.New("remote unreachable")}
-	d := &Deployer{runner: &recordingRunner{}, syncer: syncer, stateDir: t.TempDir()}
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir()})
 	cfg := &config.Config{RepoURL: "ssh://git@example.com/repo.git", StacksBaseDir: t.TempDir()}
 
 	d.SyncAndDeployAll(context.Background(), cfg)
@@ -634,7 +637,7 @@ func TestWaitIdle_BlocksUntilRunningDeployFinishes(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{delay: 150 * time.Millisecond}
-	d := &Deployer{runner: runner, stateDir: t.TempDir()}
+	d := New(Config{Runner: runner, StateDir: t.TempDir()})
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
 		StacksBaseDir: baseDir,

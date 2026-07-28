@@ -128,7 +128,9 @@ type orderingEnv struct {
 	emitted *[]events.DeployEvent
 }
 
-func newOrderingEnv(t *testing.T, stacks []config.Stack) *orderingEnv {
+// newOrderingEnv builds the fixture with autosync on for every stack; a test
+// needing a different policy passes its own controller as ctrl.
+func newOrderingEnv(t *testing.T, stacks []config.Stack, ctrl ...*autosync.Controller) *orderingEnv {
 	t.Helper()
 	baseDir := t.TempDir()
 	for _, s := range stacks {
@@ -139,18 +141,22 @@ func newOrderingEnv(t *testing.T, stacks []config.Stack) *orderingEnv {
 		writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 	}
 
-	runner := &recordingRunner{}
-	d := &Deployer{
-		runner:       runner,
-		commitReader: &fakeCommitReader{},
-		repoDir:      baseDir,
-		stateDir:     t.TempDir(),
+	controller := autosync.NewController(nil, nil)
+	if len(ctrl) > 0 {
+		controller = ctrl[0]
 	}
+	runner := &recordingRunner{}
 	q := autosync.NewQueue()
-	d.SetAutosync(autosync.NewController(nil, nil), q)
-
 	emitted := &[]events.DeployEvent{}
-	d.SetEventSink(func(e events.DeployEvent) { *emitted = append(*emitted, e) })
+	d := New(Config{
+		Runner:       runner,
+		CommitReader: &fakeCommitReader{},
+		RepoDir:      baseDir,
+		StateDir:     t.TempDir(),
+		Autosync:     controller,
+		Queue:        q,
+		EventSink:    func(e events.DeployEvent) { *emitted = append(*emitted, e) },
+	})
 
 	return &orderingEnv{
 		d:       d,
@@ -312,13 +318,12 @@ func TestDeployAllStacks_UnchangedDependencySatisfies(t *testing.T) {
 }
 
 func TestDeployAllStacks_QueuedDependencyQueuesDependent(t *testing.T) {
+	// Pause autosync for db only; app remains on.
+	paused := false
 	env := newOrderingEnv(t, []config.Stack{
 		{Name: "db"},
 		{Name: "app", DependsOn: []string{"db"}},
-	})
-	// Pause autosync for db only; app remains on.
-	paused := false
-	env.d.SetAutosync(autosync.NewController(nil, map[string]*bool{"db": &paused}), env.queue)
+	}, autosync.NewController(nil, map[string]*bool{"db": &paused}))
 
 	env.d.DeployAllStacks(context.Background(), env.cfg)
 

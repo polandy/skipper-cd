@@ -25,7 +25,7 @@ var errCanaryUnhealthy = errors.New("canary did not become healthy")
 const defaultRolloutTimeoutSeconds = 60
 
 // defaultRolloutPollInterval is the pause between `docker compose ps` polls while
-// waiting for a canary to turn healthy (tests override d.rolloutPollInterval).
+// waiting for a canary to turn healthy (Config.RolloutPollInterval overrides it).
 const defaultRolloutPollInterval = 2 * time.Second
 
 // rollout performs the zero-downtime cutover for the stack's rollout services and
@@ -210,7 +210,7 @@ func (d *Deployer) removeContainers(ctx context.Context, run stackRun, ids []str
 }
 
 // drainDelay is the wait after the canary is healthy before draining the old
-// container (rollout.drain_seconds; a test override wins).
+// container (rollout.drain_seconds; Config.RolloutDrainOverride wins).
 func (d *Deployer) drainDelay(stack config.Stack) time.Duration {
 	if d.rolloutDrainOverride > 0 {
 		return d.rolloutDrainOverride
@@ -219,7 +219,8 @@ func (d *Deployer) drainDelay(stack config.Stack) time.Duration {
 }
 
 // rolloutTimeout is the canary health-wait deadline: rollout.health_timeout_seconds,
-// else the stack's deploy_health_check timeout, else the default (a test override wins).
+// else the stack's deploy_health_check timeout, else the default
+// (Config.RolloutTimeoutOverride wins).
 func (d *Deployer) rolloutTimeout(stack config.Stack) time.Duration {
 	if d.rolloutTimeoutOverride > 0 {
 		return d.rolloutTimeoutOverride

@@ -107,10 +107,8 @@ func TestDeployStack_PreDeployFailureAbortsBeforePull(t *testing.T) {
 	baseDir, _ := hookStackDir(t, "db")
 	const backup = "pg_dump > /backup/pre.sql"
 	runner := &recordingRunner{errOnCommand: backup}
-	d := newDeployerWithRunner(runner)
-
 	var got events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) { got = e })
+	d := New(Config{Runner: runner, EventSink: func(e events.DeployEvent) { got = e }})
 
 	stack := config.Stack{Name: "db", Hooks: config.Hooks{PreDeploy: []string{backup}}}
 	state := newEmptyState()
@@ -139,10 +137,14 @@ func TestDeployStack_PostDeployFailureRollsBack(t *testing.T) {
 
 	const smoke = "curl -fsS http://localhost/health"
 	runner := &recordingRunner{errOnCommand: smoke}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-
 	var got events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) { got = e })
+	d := New(Config{
+		Runner:       runner,
+		CommitReader: cr,
+		RepoDir:      baseDir,
+		StateDir:     t.TempDir(),
+		EventSink:    func(e events.DeployEvent) { got = e },
+	})
 
 	stack := config.Stack{Name: "app", Hooks: config.Hooks{PostDeploy: []string{smoke}}}
 	state := &persistedState{

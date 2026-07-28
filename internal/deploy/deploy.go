@@ -107,6 +107,31 @@ type Config struct {
 	// HookRunSink receives the currently-executing deploy hook (ADR-0038), and
 	// the zero value when a phase finishes. nil disables publishing (UI off).
 	HookRunSink func(HookRun)
+
+	// The fields below are timing/probe seams. Zero values use the production
+	// defaults; tests set fakes and small values so waits resolve
+	// deterministically instead of racing wall-clock time.
+
+	// ProbeClient issues the deploy_health_check URL probe requests (ADR-0022);
+	// nil uses a default http.Client.
+	ProbeClient HTTPDoer
+
+	// ProbeInterval is the pause between two probe attempts; 0 uses the
+	// 2-second default.
+	ProbeInterval time.Duration
+
+	// RolloutPollInterval is the pause between `docker compose ps` polls while
+	// waiting for a rollout canary to turn healthy (ADR-0040); 0 uses the
+	// 2-second default.
+	RolloutPollInterval time.Duration
+
+	// RolloutTimeoutOverride forces the canary health-wait deadline; 0 derives
+	// it from the stack's rollout/deploy_health_check config.
+	RolloutTimeoutOverride time.Duration
+
+	// RolloutDrainOverride forces the wait between a healthy canary and
+	// draining the old container; 0 uses the stack's rollout.drain_seconds.
+	RolloutDrainOverride time.Duration
 }
 
 // Deployer orchestrates deployments for all configured stacks. Construct it
@@ -126,16 +151,18 @@ type Deployer struct {
 	postRunHook  func()
 	runPlanSink  func(RunPlan)
 	hookRunSink  func(HookRun)
+	prober       *httpHealthProber
+
+	// Timing overrides from Config; 0 = derive from stack config / defaults.
+	rolloutPollInterval    time.Duration
+	rolloutTimeoutOverride time.Duration
+	rolloutDrainOverride   time.Duration
 
 	// mu serializes deploy runs (Invariant 7); the fields below it are only
 	// touched while it is held.
-	mu                     sync.Mutex
-	plan                   []string          // stacks planned to deploy this run, in order
-	bootstrapRun           bool              // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
-	prober                 *httpHealthProber // nil = lazily built real prober; tests pre-set a fake
-	rolloutPollInterval    time.Duration     // 0 = default; tests set a small value for the canary wait
-	rolloutTimeoutOverride time.Duration     // 0 = derive from config; tests set a short canary-wait deadline
-	rolloutDrainOverride   time.Duration     // 0 = derive from config; tests set a short pre-drain wait
+	mu           sync.Mutex
+	plan         []string // stacks planned to deploy this run, in order
+	bootstrapRun bool     // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64
@@ -161,19 +188,23 @@ func New(cfg Config) *Deployer {
 		stateDir = defaultStateDir
 	}
 	d := &Deployer{
-		runner:       cfg.Runner,
-		outputter:    cfg.Outputter,
-		commitReader: cfg.CommitReader,
-		syncer:       cfg.Syncer,
-		repoDir:      cfg.RepoDir,
-		stateDir:     stateDir,
-		shutdownCtx:  cfg.ShutdownCtx,
-		eventSink:    cfg.EventSink,
-		autosync:     cfg.Autosync,
-		queue:        cfg.Queue,
-		postRunHook:  cfg.PostRunHook,
-		runPlanSink:  cfg.RunPlanSink,
-		hookRunSink:  cfg.HookRunSink,
+		runner:                 cfg.Runner,
+		outputter:              cfg.Outputter,
+		commitReader:           cfg.CommitReader,
+		syncer:                 cfg.Syncer,
+		repoDir:                cfg.RepoDir,
+		stateDir:               stateDir,
+		shutdownCtx:            cfg.ShutdownCtx,
+		eventSink:              cfg.EventSink,
+		autosync:               cfg.Autosync,
+		queue:                  cfg.Queue,
+		postRunHook:            cfg.PostRunHook,
+		runPlanSink:            cfg.RunPlanSink,
+		hookRunSink:            cfg.HookRunSink,
+		prober:                 newHealthProber(cfg.ProbeClient, cfg.ProbeInterval),
+		rolloutPollInterval:    cfg.RolloutPollInterval,
+		rolloutTimeoutOverride: cfg.RolloutTimeoutOverride,
+		rolloutDrainOverride:   cfg.RolloutDrainOverride,
 	}
 	d.nextEventID.Store(cfg.StartEventID)
 
@@ -659,7 +690,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// outside after a successful up (ADR-0022).
 	if hc := run.stack.DeployHealthCheck; hc != nil && hc.URL != "" {
 		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
-		if err := d.healthProber().waitHealthy(ctx, hc.URL, timeout); err != nil {
+		if err := d.prober.waitHealthy(ctx, hc.URL, timeout); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
 		}
 	}

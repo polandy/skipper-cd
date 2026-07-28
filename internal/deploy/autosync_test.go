@@ -19,12 +19,14 @@ func off() *bool { b := false; return &b }
 func pausedDeployer(t *testing.T) (*Deployer, *recordingRunner, *autosync.Queue, *[]events.DeployEvent) {
 	t.Helper()
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
 	q := autosync.NewQueue()
-	d.SetAutosync(autosync.NewController(off(), nil), q)
-
 	emitted := &[]events.DeployEvent{}
-	d.SetEventSink(func(e events.DeployEvent) { *emitted = append(*emitted, e) })
+	d := New(Config{
+		Runner:    runner,
+		Autosync:  autosync.NewController(off(), nil),
+		Queue:     q,
+		EventSink: func(e events.DeployEvent) { *emitted = append(*emitted, e) },
+	})
 	return d, runner, q, emitted
 }
 
@@ -85,14 +87,19 @@ func TestDeployStack_QueuedEventIncludesDiffs(t *testing.T) {
 		},
 	}
 	runner := &recordingRunner{}
-	d := &Deployer{runner: runner, commitReader: cr, repoDir: baseDir, stateDir: t.TempDir()}
-	d.SetAutosync(autosync.NewController(off(), nil), autosync.NewQueue()) // paused globally
-
 	var queuedEvt *events.DeployEvent
-	d.SetEventSink(func(e events.DeployEvent) {
-		if e.Status == events.StatusQueued {
-			queuedEvt = &e
-		}
+	d := New(Config{
+		Runner:       runner,
+		CommitReader: cr,
+		RepoDir:      baseDir,
+		StateDir:     t.TempDir(),
+		Autosync:     autosync.NewController(off(), nil), // paused globally
+		Queue:        autosync.NewQueue(),
+		EventSink: func(e events.DeployEvent) {
+			if e.Status == events.StatusQueued {
+				queuedEvt = &e
+			}
+		},
 	})
 
 	stack := config.Stack{Name: "gitea"}
@@ -128,10 +135,10 @@ func TestDeployStack_DeploysAndClearsQueueWhenEnabled(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
 	q := autosync.NewQueue()
 	q.Mark("gitea", []string{"docker-compose.yml"}, "stack") // was queued earlier
-	d.SetAutosync(autosync.NewController(nil, nil), q)       // autosync on (default)
+	// Autosync on (default).
+	d := New(Config{Runner: runner, Autosync: autosync.NewController(nil, nil), Queue: q})
 
 	stack := config.Stack{Name: "gitea"}
 	state := newEmptyState()
@@ -158,10 +165,10 @@ func TestDeployStack_ClearsQueueEvenWhenDeployFails(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{errOnCommand: "pull"} // deploy will fail
-	d := newDeployerWithRunner(runner)
 	q := autosync.NewQueue()
 	q.Mark("gitea", []string{"docker-compose.yml"}, "stack")
-	d.SetAutosync(autosync.NewController(nil, nil), q) // autosync on
+	// Autosync on.
+	d := New(Config{Runner: runner, Autosync: autosync.NewController(nil, nil), Queue: q})
 
 	err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "gitea"}, baseDir, "", nil, newEmptyState())
 	if err == nil {
@@ -183,10 +190,10 @@ func TestDeployStack_UnchangedClearsQueue(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
 	runner := &recordingRunner{}
-	d := newDeployerWithRunner(runner)
 	q := autosync.NewQueue()
 	q.Mark("gitea", []string{"docker-compose.yml"}, "global")
-	d.SetAutosync(autosync.NewController(off(), nil), q) // paused, but no changes
+	// Paused, but no changes.
+	d := New(Config{Runner: runner, Autosync: autosync.NewController(off(), nil), Queue: q})
 
 	// Pre-seed state so the stack is unchanged.
 	hashes, err := computePerFileHashes(stackDir, nil, nil, "", nil)
@@ -226,12 +233,18 @@ func deployAllStacksCommitBaseDeployer(t *testing.T, paused bool) (*Deployer, *c
 		t.Fatal(err)
 	}
 
-	d := &Deployer{runner: &recordingRunner{}, commitReader: &fakeCommitReader{}, repoDir: baseDir, stateDir: stateDir}
 	var global *bool
 	if paused {
 		global = off()
 	}
-	d.SetAutosync(autosync.NewController(global, nil), autosync.NewQueue())
+	d := New(Config{
+		Runner:       &recordingRunner{},
+		CommitReader: &fakeCommitReader{},
+		RepoDir:      baseDir,
+		StateDir:     stateDir,
+		Autosync:     autosync.NewController(global, nil),
+		Queue:        autosync.NewQueue(),
+	})
 
 	cfg := &config.Config{StacksBaseDir: baseDir, Stacks: []config.Stack{{Name: "gitea"}}}
 	return d, cfg, stateDir
