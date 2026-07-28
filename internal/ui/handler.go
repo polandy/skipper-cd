@@ -133,8 +133,8 @@ func AppHelpersHandler() http.Handler {
 }
 
 // AppJSHandler serves GET /app.js — the main app script, extracted from
-// index.html's inline <script> (ADR-0035 amendment) so it is lintable,
-// formattable and unit-testable as a plain-script file. The app shell loads it
+// index.html's inline <script> (ADR-0035 amendment) so it is lintable and
+// formattable as a plain-script file. The app shell loads it
 // after app-helpers.js because it calls the helpers as globals. Served
 // no-cache so it stays in lockstep with the shell that loads it; the service
 // worker caches it in the app shell for offline use. Served via staticAsset,
