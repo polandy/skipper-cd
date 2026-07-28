@@ -11,6 +11,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/metrics"
+	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/selfheal"
 )
 
@@ -231,7 +232,7 @@ func newAutosyncPublisher(t *testing.T, cfg *config.Config, stateB *events.Broad
 		views:    stackViews{cfg: cfg, deployer: ref},
 		deployer: ref,
 		auditLog: audit.NewLog(t.TempDir()),
-		repo:     repoRef{dir: "/var/lib/skipper/repo"},
+		repo:     roster.RepoRef{Dir: "/var/lib/skipper/repo"},
 	}
 }
 

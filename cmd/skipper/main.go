@@ -174,7 +174,7 @@ func main() {
 	// Deriving from repo_url strips any credentials, so a repo_url holding a
 	// token stays out of the UI (the browse URL only ever reaches the browser as
 	// a link target).
-	repo := repoRef{dir: repoSync.RepoDir(), webURL: cfg.EffectiveRepoWebURL()}
+	repo := roster.RepoRef{Dir: repoSync.RepoDir(), WebURL: cfg.EffectiveRepoWebURL()}
 
 	// The deployer is constructed below via deploy.New once all its
 	// collaborators are built — deploy.Config wires everything at construction.
@@ -373,75 +373,6 @@ func metricsMux() *http.ServeMux {
 	return mux
 }
 
-// stacksState is the `stacks` SSE snapshot: stack-set facts that are not
-// deploy events. Disabled carries the names parked via disabled: true in
-// stack-discovery mode (ADR-0034), driving the Deploys view's disabled line
-// (empty in host-list mode). Roster is the full inventory for the Stacks view —
-// every declared stack with its last outcome (dev-docs/stack-roster-spec.md).
-type stacksState struct {
-	Disabled []string       `json:"disabled"`
-	Roster   []roster.Entry `json:"roster"`
-	// RepoWebURL is the deploy repo's forge browse URL, so the UI can turn every
-	// commit SHA it shows into a link to that commit. Empty when none can be
-	// derived from repo_url — the UI then renders SHAs as plain text. It rides
-	// on this state (rather than a dedicated endpoint) so the multi-host fan-in
-	// carries each peer's own forge along with that peer's roster (ADR-0048).
-	RepoWebURL string `json:"repo_web_url,omitempty"`
-}
-
-// repoRef identifies the deploy repo for the UI: the local clone directory (to
-// render tracked input paths repo-relative) and the forge browse URL derived
-// from repo_url (to link commit SHAs). Both are fixed for a process lifetime.
-type repoRef struct {
-	dir    string
-	webURL string
-}
-
-// buildStacksState assembles the `stacks` snapshot from the effective stack
-// set, the parked (disabled) names, each stack's newest audit record, and the
-// input paths its change detection watches.
-func buildStacksState(stacks []config.Stack, disabled []string, auditLog *audit.Log, tracked map[string][]string, repo repoRef) stacksState {
-	last := func(name string) (audit.Record, bool) {
-		recs := auditLog.Stack(name, 1)
-		if len(recs) == 0 {
-			return audit.Record{}, false
-		}
-		return recs[0], true
-	}
-	watched := func(name string) ([]string, bool) { return splitTrackedPaths(tracked[name], repo.dir) }
-	return stacksState{
-		Disabled:   disabled,
-		Roster:     roster.Build(stacks, disabled, last, watched),
-		RepoWebURL: repo.webURL,
-	}
-}
-
-// splitTrackedPaths renders a stack's tracked input paths for the UI and
-// separates out the one entry that is not a file.
-//
-// Files: a path inside the repo clone shows repo-relative (the form the
-// operator edits and commits), while a host path — an env file, a vars file —
-// stays absolute, since that is where it actually lives.
-//
-// Config: a stack's deploy-shaping config is hashed under a synthetic
-// <stacks_base_dir>/skipper.yaml key (ADR-0043 moved that config host-side, so
-// no such file exists). Reporting it as a watched path would send an operator
-// looking for a file that is not there, so it is returned as a flag instead.
-func splitTrackedPaths(paths []string, repoDir string) (files []string, configHashed bool) {
-	for _, p := range paths {
-		if filepath.Base(p) == config.RepoConfigFileName {
-			configHashed = true
-			continue
-		}
-		if rel, err := filepath.Rel(repoDir, p); err == nil && !strings.HasPrefix(rel, "..") {
-			files = append(files, rel)
-			continue
-		}
-		files = append(files, p)
-	}
-	return files, configHashed
-}
-
 // autosyncDeps bundles the autosync wiring the UI handlers need.
 type autosyncDeps struct {
 	ctrl    *autosync.Controller
@@ -470,7 +401,7 @@ type webhookDeps struct {
 	logRing         *logbuf.Log
 	autosync        *autosyncDeps
 	build           ui.BuildInfo
-	repo            repoRef
+	repo            roster.RepoRef
 }
 
 // deployReconciler adapts the deployer to reconcile.Reconciler, binding the
@@ -561,19 +492,6 @@ func stackProjectDir(cfg *config.Config, s config.Stack) string {
 		return s.ProjectDirectory
 	}
 	return filepath.Join(cfg.StacksBaseDir, s.Name)
-}
-
-// deployOrder returns stack names in the order DeployAllStacks processes them:
-// _nixos first (when the rebuild is enabled), then the effective stacks.
-func deployOrder(cfg *config.Config, stacks []config.Stack) []string {
-	order := make([]string, 0, len(stacks)+1)
-	if cfg.NixOSRebuild.IsEnabled() {
-		order = append(order, deploy.NixosStateKey)
-	}
-	for _, s := range stacks {
-		order = append(order, s.Name)
-	}
-	return order
 }
 
 func boolToFloat(b bool) float64 {
@@ -703,7 +621,7 @@ type stateSnapshot struct {
 	peers           *peers.Registry
 	auditLog        *audit.Log
 	autosync        *autosyncDeps
-	repo            repoRef // clone dir for repo-relative paths, forge URL for commit links
+	repo            roster.RepoRef // clone dir for repo-relative paths, forge URL for commit links
 }
 
 // collect returns the current state events. As a side effect it polls the
@@ -717,7 +635,7 @@ func (s stateSnapshot) collect() []events.StateEvent {
 		{Name: events.StateQueue, Data: as.queue.View(as.order())},
 		{Name: events.StateUpcoming, Data: s.deployer.CurrentRunPlan()},
 		{Name: events.StateHookRun, Data: s.deployer.CurrentHookRun()},
-		{Name: events.StateStacks, Data: buildStacksState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo)},
+		{Name: events.StateStacks, Data: roster.BuildState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo)},
 	}
 	if s.healthPoller != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealth, Data: s.healthPoller.Current()})

@@ -1,4 +1,4 @@
-package main
+package roster
 
 import (
 	"encoding/json"
@@ -9,10 +9,10 @@ import (
 	"github.com/polandy/skipper-cd/internal/audit"
 )
 
-func TestBuildStacksState_CarriesRepoWebURLForCommitLinks(t *testing.T) {
+func TestBuildState_CarriesRepoWebURLForCommitLinks(t *testing.T) {
 	const webURL = "https://forge.example.com/owner/repo"
 
-	state := buildStacksState(nil, nil, audit.NewLog(t.TempDir()), nil, repoRef{dir: "/var/lib/skipper/repo", webURL: webURL})
+	state := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{Dir: "/var/lib/skipper/repo", WebURL: webURL})
 
 	if state.RepoWebURL != webURL {
 		t.Errorf("RepoWebURL = %q, want %q", state.RepoWebURL, webURL)
@@ -26,10 +26,10 @@ func TestBuildStacksState_CarriesRepoWebURLForCommitLinks(t *testing.T) {
 	}
 }
 
-func TestBuildStacksState_OmitsRepoWebURLWhenNoneDerivable(t *testing.T) {
+func TestBuildState_OmitsRepoWebURLWhenNoneDerivable(t *testing.T) {
 	// A repo_url the forge URL cannot be derived from (a local path, say) leaves
 	// the key out entirely, so the UI renders plain SHAs instead of dead links.
-	state := buildStacksState(nil, nil, audit.NewLog(t.TempDir()), nil, repoRef{dir: "/var/lib/skipper/repo"})
+	state := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{Dir: "/var/lib/skipper/repo"})
 
 	body, err := json.Marshal(state)
 	if err != nil {
