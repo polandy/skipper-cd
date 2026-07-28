@@ -29,7 +29,8 @@ multi-repo support.
   change detection. New directory → new stack (no state entry → deploys).
 - The deployer publishes the set (`Deployer.CurrentStacks`); the health
   poller, self-heal, the autosync/queue order, and the icon resolver read
-  the effective stacks through it (`stacksNow` in `cmd/skipper/main.go`).
+  the effective stacks through it (`stackViews.effective` in
+  `cmd/skipper/wiring.go`).
 
 ## Central overrides: `skipper.yaml` at `stacks_base_dir`
 
@@ -162,5 +163,5 @@ carry it with no schema change.
   effective-stack lookup for self-heal, and the config-hash injection into
   the per-stack hash maps. `DeployAllStacks` swaps in the discovered set and
   seeds entry-level failures into the dependency gate.
-- `cmd/skipper/main.go`: `stacksNow` closure feeding every stack-enumerating
-  consumer.
+- `cmd/skipper/wiring.go`: the `stackViews` methods feeding every
+  stack-enumerating consumer.

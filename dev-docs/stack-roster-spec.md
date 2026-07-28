@@ -16,7 +16,7 @@ visualization — no trigger/edit (see the project's viz-only scope).
 
 Two facts per stack, merged:
 
-- **Membership + config** — the effective stack set via `stacksNow()`
+- **Membership + config** — the effective stack set via `stackViews.effective()`
   (`CurrentStacks()` in discovery mode, the host `stacks:` list in host-list
   mode), so the tab works in both modes. `disabled: true` names come from
   `CurrentDisabledStacks()`.
