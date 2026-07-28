@@ -18,7 +18,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-//go:embed static/index.html static/app.css static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
+//go:embed static/index.html static/app.css static/app.js static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
 
 // sseKeepaliveInterval is how often an idle SSE stream (deploy events, state
@@ -124,6 +124,25 @@ func AppHelpersHandler() http.Handler {
 	data, err := staticFS.ReadFile("static/app-helpers.js")
 	if err != nil {
 		panic(err) // staticFS embeds static/app-helpers.js at compile time, so this cannot fail.
+	}
+	asset := newStaticAsset("text/javascript; charset=utf-8", data)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		asset.ServeHTTP(w, r)
+	})
+}
+
+// AppJSHandler serves GET /app.js — the main app script, extracted from
+// index.html's inline <script> (ADR-0035 amendment) so it is lintable and
+// formattable as a plain-script file. The app shell loads it
+// after app-helpers.js because it calls the helpers as globals. Served
+// no-cache so it stays in lockstep with the shell that loads it; the service
+// worker caches it in the app shell for offline use. Served via staticAsset,
+// so a gzip-capable client gets the pre-compressed body (see compress.go).
+func AppJSHandler() http.Handler {
+	data, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		panic(err) // staticFS embeds static/app.js at compile time, so this cannot fail.
 	}
 	asset := newStaticAsset("text/javascript; charset=utf-8", data)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

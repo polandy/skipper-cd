@@ -102,3 +102,23 @@ still fully offline-capable.
 `index.html` drops to ~2440 lines (markup + the main app script); `app.css`
 holds the ~2225 lines of CSS on its own, readable and diffable independent of
 markup/script changes.
+
+## Amendment (2026-07-28): extract the app script into `static/app.js`
+
+The same pressure, one asset later: `index.html` had grown back to ~5000 lines,
+~93% of it the single inline app `<script>` — and because Prettier/ESLint
+exclude `index.html` (a formatting concession to the markup), the script was
+also opted out of linting and unit tooling entirely.
+
+Applying the established relaxation again, the app script moves byte-identical
+to `internal/ui/static/app.js`, embedded via the same `//go:embed` directive
+and served same-origin by a new `AppJSHandler` (`GET /app.js`), mirroring
+`AppHelpersHandler`: no-cache, `text/javascript`, pre-gzipped, added to the
+service worker's `SHELL` for offline use. `index.html` keeps a single
+`<script src="/app.js"></script>` after the `app-helpers.js` tag (load order
+matters: the app script calls the helpers as globals). The tiny pre-paint
+theme script stays inline in `<head>` — it must run before first render.
+
+`index.html` drops to ~385 lines of markup; `app.js` holds the ~4600-line app
+script where ESLint and Prettier can reach it, opening the path to migrating
+DOM-free logic into the unit-tested `app-helpers.js` incrementally.
