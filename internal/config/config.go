@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/polandy/skipper-cd/internal/git"
-	"github.com/polandy/skipper-cd/internal/ui"
+	"github.com/polandy/skipper-cd/internal/uitheme"
 )
 
 // Stack represents a single Docker Compose project to be deployed.
@@ -344,7 +344,7 @@ type Config struct {
 	// set (local + peers, with reachability) via /api/peers.
 	Peers []Peer `yaml:"peers"`
 
-	// UITheme selects the web UI's colour palette (see ui.ValidThemes).
+	// UITheme selects the web UI's colour palette (see uitheme.ValidThemes).
 	// Optional; defaults to "catppuccin". Each theme has its own dark/light
 	// variant, toggled independently in the browser — this only picks which
 	// palette that toggle switches within. Distinguishes multiple skipper-cd
@@ -685,7 +685,7 @@ func Load(path string) (*Config, error) {
 		}
 	}
 	if cfg.UITheme == "" {
-		cfg.UITheme = ui.ThemeCatppuccin
+		cfg.UITheme = uitheme.ThemeCatppuccin
 	}
 	if cfg.HostName == "" {
 		// Default the self-identity label to the OS hostname so the merged

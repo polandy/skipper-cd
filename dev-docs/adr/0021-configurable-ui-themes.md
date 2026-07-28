@@ -20,7 +20,7 @@ by side.
 `ui_theme` (`skipper.yml`) selects one of five built-in palettes — `catppuccin`
 (default), `nord`, `solarized`, `gruvbox`, `rose-pine` — each with its own
 dark/light variant. `config.Load` defaults and validates it against
-`ui.ValidThemes`.
+`uitheme.ValidThemes`.
 
 The chosen theme is baked into `<html data-theme="…">` once, at handler
 construction time (`ui.IndexHandler`, mirroring how `ServiceWorkerHandler`
@@ -95,9 +95,9 @@ silent trap when someone forgets they set it. Full behaviour:
   colours are untouched); `ud-chrome.spec.ts` and the corresponding
   `__screenshots__` files were renamed together with this change.
 - A theme is only ever removed by deleting its CSS block, its
-  `themeIdentity` entry, and its name from `ui.ValidThemes` — the three stay
+  `themeIdentity` entry, and its name from `uitheme.ValidThemes` — the three stay
   in lockstep by construction (`config.validateConfig` rejects anything not in
-  `ui.ValidThemes`, and `ui.IndexHandler`/`ManifestHandler` fall back to
+  `uitheme.ValidThemes`, and `ui.IndexHandler`/`ManifestHandler` fall back to
   Catppuccin for a name absent from `themeIdentities`, which cannot happen for
   a config that passed validation).
 - The per-browser override intentionally has no server-side counterpart (no

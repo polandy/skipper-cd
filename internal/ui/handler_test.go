@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/events"
+	"github.com/polandy/skipper-cd/internal/uitheme"
 )
 
 // serveSSE runs the blocking SSE handler in a goroutine, gives it time to
@@ -48,7 +49,7 @@ func serveSSE(t *testing.T, handler http.Handler, req *http.Request, during func
 }
 
 func TestIndexHandler_ServesHTML(t *testing.T) {
-	handler := IndexHandler(ThemeCatppuccin, false)
+	handler := IndexHandler(uitheme.ThemeCatppuccin, false)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
@@ -68,7 +69,7 @@ func TestIndexHandler_ServesHTML(t *testing.T) {
 }
 
 func TestIndexHandler_ServesGzipWhenAccepted(t *testing.T) {
-	handler := IndexHandler(ThemeCatppuccin, false)
+	handler := IndexHandler(uitheme.ThemeCatppuccin, false)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -156,7 +157,7 @@ func TestBuildInfo_CacheID(t *testing.T) {
 }
 
 func TestIndexHandler_BakesInConfiguredTheme(t *testing.T) {
-	for _, theme := range ValidThemes {
+	for _, theme := range uitheme.ValidThemes {
 		t.Run(theme, func(t *testing.T) {
 			handler := IndexHandler(theme, false)
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -193,7 +194,7 @@ func TestIndexHandler_BakesInThemeSwitcherFlag(t *testing.T) {
 		{"enabled", true, `data-theme-switcher="on"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := IndexHandler(ThemeCatppuccin, tc.enabled)
+			handler := IndexHandler(uitheme.ThemeCatppuccin, tc.enabled)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 
@@ -209,7 +210,7 @@ func TestIndexHandler_BakesInThemeSwitcherFlag(t *testing.T) {
 }
 
 func TestManifestHandler_ServesInstallableManifest(t *testing.T) {
-	handler := ManifestHandler(ThemeCatppuccin)
+	handler := ManifestHandler(uitheme.ThemeCatppuccin)
 	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
 	rec := httptest.NewRecorder()
 
@@ -250,7 +251,7 @@ func TestManifestHandler_ServesInstallableManifest(t *testing.T) {
 }
 
 func TestManifestHandler_ThemeColorsFollowConfiguredTheme(t *testing.T) {
-	handler := ManifestHandler(ThemeNord)
+	handler := ManifestHandler(uitheme.ThemeNord)
 	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
 	rec := httptest.NewRecorder()
 
@@ -263,7 +264,7 @@ func TestManifestHandler_ThemeColorsFollowConfiguredTheme(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
 		t.Fatalf("manifest is not valid JSON: %v", err)
 	}
-	nord := themeIdentities[ThemeNord]
+	nord := themeIdentities[uitheme.ThemeNord]
 	if m.ThemeColor != nord.darkBase {
 		t.Errorf("theme_color = %q, want %q (Nord dark base)", m.ThemeColor, nord.darkBase)
 	}

@@ -2,35 +2,9 @@ package ui
 
 import (
 	"encoding/base64"
-	"slices"
+
+	"github.com/polandy/skipper-cd/internal/uitheme"
 )
-
-// Built-in UI theme names, accepted by the ui_theme config field and by
-// IndexHandler/ManifestHandler. See internal/ui/UI_SPEC.md and
-// docs/configuration.md.
-const (
-	ThemeCatppuccin = "catppuccin"
-	ThemeNord       = "nord"
-	ThemeSolarized  = "solarized"
-	ThemeGruvbox    = "gruvbox"
-	ThemeRosePine   = "rose-pine"
-)
-
-// ValidThemes lists every built-in palette, in the order shown in docs.
-var ValidThemes = []string{ThemeCatppuccin, ThemeNord, ThemeSolarized, ThemeGruvbox, ThemeRosePine}
-
-// HostColorCount is how many distinct per-host identity colours the merged
-// multi-host UI provides (ADR-0048): each host's name is hashed deterministically
-// onto one of these slots, so beyond this many hosts two will share a colour.
-// Must stay in sync with HOST_COLOR_COUNT in static/app-helpers.js (the JS that
-// assigns the slot) and the per-theme `[data-host-color="0..N-1"]` rules in
-// static/app.css.
-const HostColorCount = 6
-
-// IsValidTheme reports whether name is a recognised built-in palette.
-func IsValidTheme(name string) bool {
-	return slices.Contains(ValidThemes, name)
-}
 
 // themeIdentity carries the handful of raw colours needed *outside* the
 // page's own CSS custom properties: the favicon (an inlined SVG with no
@@ -44,23 +18,23 @@ type themeIdentity struct {
 }
 
 var themeIdentities = map[string]themeIdentity{
-	ThemeCatppuccin: {
+	uitheme.ThemeCatppuccin: {
 		darkMantle: "#181825", darkBase: "#1e1e2e", darkText: "#cdd6f4", darkAccent: "#fab387", darkSuccess: "#94e2d5",
 		lightBase: "#eff1f5", lightText: "#4c4f69", lightAccent: "#fe640b", lightSuccess: "#179299",
 	},
-	ThemeNord: {
+	uitheme.ThemeNord: {
 		darkMantle: "#2e3440", darkBase: "#3b4252", darkText: "#eceff4", darkAccent: "#88c0d0", darkSuccess: "#a3be8c",
 		lightBase: "#eceff4", lightText: "#2e3440", lightAccent: "#4c6f96", lightSuccess: "#4c8f6b",
 	},
-	ThemeSolarized: {
+	uitheme.ThemeSolarized: {
 		darkMantle: "#002b36", darkBase: "#073642", darkText: "#93a1a1", darkAccent: "#268bd2", darkSuccess: "#2aa198",
 		lightBase: "#fdf6e3", lightText: "#586e75", lightAccent: "#268bd2", lightSuccess: "#2aa198",
 	},
-	ThemeGruvbox: {
+	uitheme.ThemeGruvbox: {
 		darkMantle: "#282828", darkBase: "#32302f", darkText: "#ebdbb2", darkAccent: "#fe8019", darkSuccess: "#8ec07c",
 		lightBase: "#fbf1c7", lightText: "#3c3836", lightAccent: "#af3a03", lightSuccess: "#427b58",
 	},
-	ThemeRosePine: {
+	uitheme.ThemeRosePine: {
 		darkMantle: "#191724", darkBase: "#1f1d2e", darkText: "#e0def4", darkAccent: "#c4a7e7", darkSuccess: "#9ccfd8",
 		lightBase: "#fffaf3", lightText: "#575279", lightAccent: "#907aa9", lightSuccess: "#56949f",
 	},
@@ -73,7 +47,7 @@ func themeIdentityFor(name string) themeIdentity {
 	if id, ok := themeIdentities[name]; ok {
 		return id
 	}
-	return themeIdentities[ThemeCatppuccin]
+	return themeIdentities[uitheme.ThemeCatppuccin]
 }
 
 // faviconSVG renders the ship-logo favicon for a theme: a light variant (used

@@ -13,7 +13,7 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/compose"
 	"github.com/polandy/skipper-cd/internal/git"
-	"github.com/polandy/skipper-cd/internal/ui"
+	"github.com/polandy/skipper-cd/internal/uitheme"
 )
 
 // collectWarnings checks for valid-but-suspicious configs that don't warrant
@@ -47,12 +47,12 @@ func collectWarnings(cfg *Config) []string {
 		}
 	}
 
-	// Per-host identity colours are drawn from a fixed palette (ui.HostColorCount
+	// Per-host identity colours are drawn from a fixed palette (uitheme.HostColorCount
 	// slots); the merged multi-host UI (ADR-0048) counts this host plus every
 	// peer. Beyond the palette size two hosts hash to the same colour, so the
 	// colour stops uniquely identifying a host.
-	if totalHosts := len(cfg.Peers) + 1; totalHosts > ui.HostColorCount {
-		warnings = append(warnings, fmt.Sprintf("%d hosts are configured (this host plus %d peers) but only %d distinct host colours are available — some hosts will share a colour in the merged UI; reduce the number of peers to keep colours unique", totalHosts, len(cfg.Peers), ui.HostColorCount))
+	if totalHosts := len(cfg.Peers) + 1; totalHosts > uitheme.HostColorCount {
+		warnings = append(warnings, fmt.Sprintf("%d hosts are configured (this host plus %d peers) but only %d distinct host colours are available — some hosts will share a colour in the merged UI; reduce the number of peers to keep colours unique", totalHosts, len(cfg.Peers), uitheme.HostColorCount))
 	}
 
 	return warnings
@@ -211,8 +211,8 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("nixos_rebuild.flake is required when nixos_rebuild is enabled")
 	}
 
-	if !ui.IsValidTheme(cfg.UITheme) {
-		return fmt.Errorf("ui_theme must be one of %s, got %q", strings.Join(ui.ValidThemes, ", "), cfg.UITheme)
+	if !uitheme.IsValidTheme(cfg.UITheme) {
+		return fmt.Errorf("ui_theme must be one of %s, got %q", strings.Join(uitheme.ValidThemes, ", "), cfg.UITheme)
 	}
 
 	if cfg.LogFormat != LogFormatPretty && cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {
