@@ -540,8 +540,9 @@ function clogStreamStatus(readyState) {
 const WATCHED_SETTLED = ['success', 'healed'];
 
 // UNCHANGED_SINCE opens the settled lead, immediately followed by the commit.
-// index.html finds that commit by this prefix to turn it into a link, so the two
-// must agree — hence one shared constant rather than the phrase written twice.
+// watchedLeadHTML finds that commit by this prefix to turn it into a link, so
+// the two must agree — hence one shared constant rather than the phrase written
+// twice.
 const UNCHANGED_SINCE = 'Unchanged since ';
 function watchedSummary(status, commit, count, disabled) {
   if (disabled) {

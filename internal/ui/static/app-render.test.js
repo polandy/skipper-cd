@@ -706,13 +706,12 @@ test('watchedPanelHTML lists the watched files and appends the settings entry', 
 
 test('watchedPanelHTML counts the settings entry in the lead', () => {
   // The synthetic config entry is a hashed input like any file, so it must be
-  // part of the count the lead phrases.
+  // part of the count the lead phrases — one file plus it reads as plural.
   const entry = { watched: ['compose.yaml'], watched_config: true };
-  assert.equal(
-    r.watchedPanelHTML(entry, 'b').includes(r.watchedLeadHTML(entry, 2, 'b')),
-    true,
-    'lead was not built with the settings entry counted',
-  );
+  assert.match(r.watchedPanelHTML(entry, 'b'), /A deploy runs when any of these change:/);
+  // Counter-probe: had the panel passed the file count alone, the lead would
+  // have come out singular — so the assertion above really does discriminate.
+  assert.match(r.watchedLeadHTML(entry, 1, 'b'), /A deploy runs when this file changes:/);
 });
 
 test('watchedPanelHTML drops the list when nothing is watched', () => {
