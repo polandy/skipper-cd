@@ -635,3 +635,48 @@ test('attentionLabel pluralises the unhealthy-stack count', () => {
   assert.equal(h.attentionLabel(1), '1 stack unhealthy');
   assert.equal(h.attentionLabel(2), '2 stacks unhealthy');
 });
+
+test('rowClass tints a row per deploy status', () => {
+  for (const s of [
+    'deploying',
+    'failed',
+    'success',
+    'rolled_back',
+    'rolled_back_unhealthy',
+    'healed',
+    'heal_exhausted',
+    'queued',
+    'blocked',
+  ]) {
+    assert.equal(h.rowClass(s, true), 'event-row ' + s + '-row');
+  }
+});
+
+test('rowClass leaves an unknown status untinted', () => {
+  // No stylesheet defines a class for it, so inventing one would be a silent
+  // no-op that reads as styled.
+  assert.equal(h.rowClass('pending_review', true), 'event-row');
+  assert.equal(h.rowClass('', true), 'event-row');
+  assert.equal(h.rowClass(undefined, true), 'event-row');
+});
+
+test('rowClass marks live arrivals as new but replayed history not', () => {
+  assert.equal(h.rowClass('success', false), 'event-row success-row new-row');
+  assert.equal(h.rowClass('success', true), 'event-row success-row');
+});
+
+test('auditCountText pluralises the history count and hides a zero', () => {
+  assert.equal(h.auditCountText(0), '');
+  assert.equal(h.auditCountText(1), '1 deploy');
+  assert.equal(h.auditCountText(2), '2 deploys');
+});
+
+test('logLineLevel tags child-process output as cmd', () => {
+  const cmd = { level: 'info', attrs: { cmd: 'docker', stream: 'stdout' } };
+  assert.equal(h.logLineLevel(cmd), 'cmd');
+  // Both attrs are required — a level line that merely names a command is not
+  // process output and keeps its own level.
+  assert.equal(h.logLineLevel({ level: 'info', attrs: { cmd: 'docker' } }), 'info');
+  assert.equal(h.logLineLevel({ level: 'error', attrs: { stream: 'stderr' } }), 'error');
+  assert.equal(h.logLineLevel({ level: 'warn' }), 'warn');
+});
