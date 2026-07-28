@@ -509,9 +509,7 @@ function autosyncPosText(pos, queued) {
 // item's own reason when it has one, else derived from the snapshot entry.
 function autosyncReasonChipHTML(entry, item) {
   const reason = item ? item.reason : reasonFromSnap(entry);
-  return !entry.effective && reason
-    ? `<span class="reason reason-${reason}">${reason}</span>`
-    : '';
+  return !entry.effective && reason ? `<span class="reason reason-${reason}">${reason}</span>` : '';
 }
 
 // autosyncSwitchTitle is the row switch's tooltip — it names the action the
