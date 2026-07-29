@@ -342,6 +342,8 @@ Controls whether detected changes deploy automatically, per stack and globally. 
 
 **A re-render never swaps a switch out from under a click.** The queued and all-stacks lists are patched in place while their rows and order are unchanged, and rebuilt only when the row set actually changes. Rebuilding wholesale on every `autosync`/`queue` event replaced the switch nodes, and a switch replaced between mousedown and mouseup takes the `click` with it — the browser fires it on the common ancestor, where the delegated handler finds no switch and does nothing (it also dropped keyboard focus on every tick).
 
+**The drawer says when its geometry has settled.** The open/close animation transitions `max-height` with `overflow-y: auto`, so while it runs a transient scrollbar can re-wrap text and move the right-aligned switches. `data-settled` is set to `"false"` whenever the drawer is toggled and flips to `"true"` on the open transition's `transitionend` — a caller (the e2e suite's `openDrawer`) waits for it instead of clicking into moving geometry. A click that does land astray is recorded on `window.__uiNotes` with its geometry (pointer position, the target switch's box, `document.fonts.status`), and the fonts' own arrival is timestamped as `fonts: settled`, so a missed toggle names the layout shift that ate it.
+
 **Diagnostics survive the console.** Anything the UI reports about its own
 failures goes through `uiNote`, which logs to the console *and* keeps a bounded
 copy (50 entries) on `window.__uiNotes`. The console alone is collected by
@@ -586,7 +588,7 @@ assert on.
 | `log-search`, `log-wrap`, `follow-logs`, `log-fs` | Search/wrap/auto-scroll/fullscreen tools in the Log view's own header | `.clog-tool`s; `.on` when engaged; clicking `log-search` again closes it and clears the query |
 | `log-filter-wrap` / `log-filter` | Logs in-view search bar / input | Same reveal + type-to-search behaviour as `deploy-filter`; no separate clear button — closing the search tool clears it |
 | `log-filter-count` | Logs search hit count | |
-| `autosync-drawer` | The autosync drawer | `data-ready` — `"false"` until the first `autosync` snapshot, then `"true"` |
+| `autosync-drawer` | The autosync drawer | `data-ready` — `"false"` until the first `autosync` snapshot, then `"true"`; `data-settled` — `"true"` once the open transition has finished (geometry no longer moving) |
 | `global-switch` | Global autosync switch | `aria-disabled="true"` and inert while the drawer is not ready |
 | `stack-item` | A row in the "All stacks" list | `data-stack` |
 | `stack-switch` | Per-stack switch in "All stacks" | `data-stack`; only in the all-stacks list |
