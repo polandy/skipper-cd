@@ -179,6 +179,14 @@ binary):
   subscribed to while it runs: attaching a console or network listener is itself
   enough to change the timing of a race, which is how the UC11 investigation
   repeatedly lost its own flake (T8).
+- **Fonts settle before interaction.** The `page` fixture awaits
+  `document.fonts.ready` after every navigation (`goto` and `reload`): the
+  web fonts' `font-display: swap`
+  is the page's one late reflow, and a swap between Playwright computing a click
+  point and dispatching it moves the target out from under the click (the UC11
+  root cause — the queue empty-note wraps to a second line when JetBrains Mono
+  lands). Interacting with the autosync drawer additionally waits for its
+  `data-settled` attribute (the open transition's end, see `UI_SPEC.md`).
 - **Lint** (`make e2e-ui-lint`): type-aware ESLint over the suite. The rule that
   earns it is `no-floating-promises` — a forgotten `await` on an assertion makes
   a test pass without checking anything, and a vacuously green test is worse

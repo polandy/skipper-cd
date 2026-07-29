@@ -15,6 +15,8 @@ const stackSwitch = (page: Page, name: string) =>
 async function openDrawer(page: Page) {
   await autosyncBtn(page).click();
   await expect(autosyncDrawer(page)).toHaveAttribute('data-ready', 'true');
+  // See uc-autosync.spec.ts: wait out the open transition's moving geometry.
+  await expect(autosyncDrawer(page)).toHaveAttribute('data-settled', 'true');
 }
 
 test.describe('UAM: a refused autosync write is announced', () => {

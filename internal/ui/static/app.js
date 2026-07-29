@@ -55,6 +55,14 @@
     // Bounded: a page left open for hours must not grow this without limit.
     if (window.__uiNotes.length > UI_NOTES_MAX) window.__uiNotes.shift();
   }
+  // The web fonts arriving is the page's one late layout reflow (their swap
+  // re-wraps text); timestamping it lets a stray-click note be ordered against
+  // the shift that caused it (T8).
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      uiNote('debug', 'fonts: settled');
+    });
+  }
 
   // ANNOUNCE_SETTLE_MS is how long after a connect the gate stays shut: long
   // enough for the replay burst to render, short enough that a deploy landing
@@ -3683,8 +3691,19 @@
     asDrawer.classList.toggle('open', open);
     asBtn.classList.toggle('open', open);
     asBtn.setAttribute('aria-expanded', String(open));
+    // While the max-height transition runs, geometry inside the drawer is in
+    // flux: content taller than the current clip shows a transient scrollbar,
+    // which re-wraps text and moves the right-aligned switches. data-settled
+    // marks the end of that window so a test (or any caller) can wait for the
+    // drawer to stop moving instead of clicking into the transition (T8).
+    asDrawer.dataset.settled = 'false';
     manageSurfaceFocus(asDrawer, asBtn, open);
   }
+  asDrawer.addEventListener('transitionend', function (e) {
+    if (e.target === asDrawer && e.propertyName === 'max-height') {
+      asDrawer.dataset.settled = String(asDrawer.classList.contains('open'));
+    }
+  });
   trapFocus(asDrawer);
 
   asBtn.addEventListener('click', function () {
@@ -3707,15 +3726,35 @@
     }
   });
 
+  // missGeometry compacts where a stray click landed relative to the switch it
+  // should have hit: the pointer position, the switch's current box, and the
+  // font-load state — a swap of a `font-display: swap` face reflows the drawer,
+  // so `loading` at click time marks the layout as mid-shift. All synchronous
+  // reads inside a handler that already ran, so recording them cannot perturb
+  // the race being measured (T8).
+  function missGeometry(e, sw) {
+    let s = '[';
+    if (typeof e.clientX === 'number') s += 'at ' + e.clientX + ',' + e.clientY + ' ';
+    if (sw) {
+      const r = sw.getBoundingClientRect();
+      s += 'sw ' + Math.round(r.left) + ',' + Math.round(r.top);
+      s += ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' ';
+    }
+    return s + 'fonts ' + (document.fonts ? document.fonts.status : 'n/a') + ']';
+  }
+
   // Per-stack switches are event-delegated so re-rendering the lists is cheap.
-  function toggleFromEvent(target) {
+  function toggleFromEvent(e) {
+    const target = e.target;
     const sw = target.closest ? target.closest('.sw[data-stack]') : null;
     if (!sw) {
       // Only interesting when the click landed *inside a stack row* yet missed
-      // that row's switch — a click aimed at the control that did not reach it.
-      // The rest of the drawer (filter, background, queue lines) is legitimately
-      // non-switch surface, and noting those would evict the diagnostics this
-      // buffer exists for. See T8.
+      // that row's switch — a click aimed at the control that did not reach it —
+      // or anywhere in the drawer while fonts are still loading, when a swap can
+      // shift the layout under a click already in flight. The rest of the drawer
+      // (filter, background, queue lines) is legitimately non-switch surface,
+      // and noting those would evict the diagnostics this buffer exists for.
+      // See T8.
       const row = target.closest ? target.closest('.stack-row') : null;
       if (row && row.querySelector('.sw[data-stack]')) {
         uiNote(
@@ -3724,6 +3763,14 @@
           row.getAttribute('data-stack'),
           'missed its switch — hit',
           String(target.className || target.nodeName),
+          missGeometry(e, row.querySelector('.sw[data-stack]')),
+        );
+      } else if (document.fonts && document.fonts.status === 'loading') {
+        uiNote(
+          'debug',
+          'autosync: stray click while fonts were loading — hit',
+          String(target.className || target.nodeName),
+          missGeometry(e, asStackList.querySelector('.sw[data-stack]')),
         );
       }
       return false;
@@ -3732,11 +3779,11 @@
     return true;
   }
   asDrawer.addEventListener('click', function (e) {
-    toggleFromEvent(e.target);
+    toggleFromEvent(e);
   });
   asDrawer.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' || e.key === ' ') {
-      if (toggleFromEvent(e.target)) e.preventDefault();
+      if (toggleFromEvent(e)) e.preventDefault();
     }
   });
 
