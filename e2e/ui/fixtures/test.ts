@@ -35,11 +35,19 @@ export const test = base.extend<{
     // under the click (the UC11 flake: the queue empty-note wraps from one
     // line to two when JetBrains Mono arrives, shifting the stack switches
     // down 18px). `document.fonts.ready` is that reflow's completion signal —
-    // a settled state, not a wait-and-hope.
+    // a settled state, not a wait-and-hope. Applied to every navigation a
+    // spec performs (goto and reload alike — a reload re-runs the same race).
+    const fontsSettled = () => page.evaluate(() => document.fonts.ready.then(() => undefined));
     const goto = page.goto.bind(page);
     page.goto = async (url, options) => {
       const response = await goto(url, options);
-      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      await fontsSettled();
+      return response;
+    };
+    const reload = page.reload.bind(page);
+    page.reload = async (options) => {
+      const response = await reload(options);
+      await fontsSettled();
       return response;
     };
     await use(page);

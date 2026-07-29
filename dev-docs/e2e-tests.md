@@ -180,7 +180,8 @@ binary):
   enough to change the timing of a race, which is how the UC11 investigation
   repeatedly lost its own flake (T8).
 - **Fonts settle before interaction.** The `page` fixture awaits
-  `document.fonts.ready` after every `goto`: the web fonts' `font-display: swap`
+  `document.fonts.ready` after every navigation (`goto` and `reload`): the
+  web fonts' `font-display: swap`
   is the page's one late reflow, and a swap between Playwright computing a click
   point and dispatching it moves the target out from under the click (the UC11
   root cause — the queue empty-note wraps to a second line when JetBrains Mono
