@@ -10,8 +10,8 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-func at(min int) time.Time {
-	return time.Date(2026, 7, 18, 0, min, 0, 0, time.UTC)
+func at(minutes int) time.Time {
+	return time.Date(2026, 7, 18, 0, minutes, 0, 0, time.UTC)
 }
 
 func terminalEvent(stack string, status events.Status, ts time.Time) events.DeployEvent {

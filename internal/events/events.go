@@ -10,6 +10,9 @@ import (
 // Status represents the current state of a deployment.
 type Status string
 
+// The statuses a deploy event can carry. The UI renders every one of them;
+// only the terminal subset is notifiable (see the NotifyOn* values in
+// internal/config).
 const (
 	StatusDeploying  Status = "deploying"
 	StatusSuccess    Status = "success"

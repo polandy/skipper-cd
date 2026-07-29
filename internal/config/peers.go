@@ -8,8 +8,6 @@ import (
 // The peers this instance federates read data in from (ADR-0048): their shape
 // and validation. The fan-in itself lives in internal/peers.
 
-// validateNotificationTarget checks a single notification target. Format and On
-// have already been defaulted in Load.
 // Peer is one other skipper instance this instance federates in (ADR-0048):
 // the primary reads the peer's read data over HTTP and renders it, tagged by
 // host, in one merged UI.

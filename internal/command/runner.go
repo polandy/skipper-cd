@@ -65,6 +65,9 @@ func NewShellRunnerWithSink(timeout time.Duration, sink LineSink) ShellRunner {
 	return ShellRunner{timeout: timeout, sink: sink, waitDelay: defaultWaitDelay}
 }
 
+// Run executes name with args in dir, with env layered onto the process
+// environment, bounded by the runner's timeout. Child output is tee'd into the
+// runner's sink when it has one.
 func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
 	ctx, cancel := r.commandContext(ctx)
 	defer cancel()

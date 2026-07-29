@@ -55,7 +55,7 @@ func parseSCPLike(raw string) (host, path string, ok bool) {
 	if slash := strings.Index(raw, "/"); slash >= 0 && slash < colon {
 		return "", "", false // a path, not host:path
 	}
-	host, path = raw[:colon], raw[colon+1:]
+	host, path, _ = strings.Cut(raw, ":")
 	if at := strings.LastIndex(host, "@"); at >= 0 {
 		host = host[at+1:] // drop the ssh user
 	}

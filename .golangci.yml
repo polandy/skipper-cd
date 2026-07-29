@@ -1,6 +1,28 @@
 version: "2"
 
 linters:
+  # Beyond the v2 default set (errcheck, govet, ineffassign, staticcheck,
+  # unused). Each was measured before being turned on; gosec is deliberately
+  # absent — see the note below.
+  enable:
+    # Wrapping discipline: %w rather than %v when an error is passed up, so
+    # errors.Is/As keep working through the chain.
+    - errorlint
+    # Doc comments on exported symbols — CLAUDE.md already requires them, this
+    # is what makes the requirement checkable.
+    - revive
+    - gocritic
+    - misspell
+    # A nil error returned after a non-nil check, and unclosed response bodies:
+    # both silent, both currently clean, so enabling them keeps it that way.
+    - nilerr
+    - bodyclose
+  # gosec is NOT enabled. Its 23 findings here are overwhelmingly its known
+  # false-positive profile for this kind of tool: G204 "subprocess launched
+  # with variable" is literally what skipper does (docker compose with a stack
+  # name), plus test-fixture credentials and test-directory permissions. Making
+  # it usable would need a suppression list longer than its signal, and the one
+  # class that does matter — unchecked errors — is already covered by errcheck.
   settings:
     errcheck:
       exclude-functions:
@@ -10,6 +32,13 @@ linters:
         - (*os.File).Close
         - os.Remove
   exclusions:
+    rules:
+      # In a test the signature is dictated, not chosen — by `testing` for a
+      # Test* function, and by the interface a fake implements for the rest —
+      # so an unused parameter there says nothing about the code.
+      - path: _test\.go
+        linters: [revive]
+        text: unused-parameter
     paths:
       # gitignored npm dependency trees (internal/ui/static, e2e/ui); some npm
       # packages bundle stray .go files (e.g. flatted's golang port) that would
