@@ -11,11 +11,11 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-func recordAt(log *audit.Log, stack string, status events.Status, min int) {
+func recordAt(log *audit.Log, stack string, status events.Status, minutes int) {
 	log.Record(events.DeployEvent{
 		Stack:     stack,
 		Status:    status,
-		Timestamp: time.Date(2026, 7, 18, 0, min, 0, 0, time.UTC),
+		Timestamp: time.Date(2026, 7, 18, 0, minutes, 0, 0, time.UTC),
 	})
 }
 

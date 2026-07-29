@@ -94,7 +94,8 @@ func (l *Log) Record(e events.DeployEvent) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	recs := append(l.byStack[rec.Stack], rec)
+	recs := l.byStack[rec.Stack]
+	recs = append(recs, rec)
 	if over := len(recs) - l.perStackCap; over > 0 {
 		recs = recs[over:] // drop this stack's oldest, not another stack's
 	}

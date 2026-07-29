@@ -65,6 +65,8 @@ const (
 	NotifyOnHealExhausted = "heal_exhausted"
 )
 
+// validateNotificationTarget checks a single notification target. Format and On
+// have already been defaulted in Load.
 func validateNotificationTarget(t NotificationTarget) error {
 	switch t.Format {
 	case NotifyFormatSignal, NotifyFormatGeneric:

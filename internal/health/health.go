@@ -14,6 +14,8 @@ import (
 // Status is a stack's rolled-up runtime health.
 type Status string
 
+// The health states a stack rolls up to, worst-first when several services
+// disagree.
 const (
 	Healthy   Status = "healthy"
 	Unhealthy Status = "unhealthy"

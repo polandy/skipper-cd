@@ -57,7 +57,7 @@ func ManifestHandler(theme string) http.Handler {
 	body = strings.ReplaceAll(body, "__THEME_COLOR__", id.darkBase)
 	body = strings.ReplaceAll(body, "__BACKGROUND_COLOR__", id.darkMantle)
 	out := []byte(body)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
 		_, _ = w.Write(out)
 	})
@@ -94,7 +94,7 @@ func ServiceWorkerHandler(b BuildInfo) http.Handler {
 		panic(err) // staticFS embeds static/sw.js at compile time, so this cannot fail.
 	}
 	body := []byte(strings.ReplaceAll(string(data), "__VERSION__", b.CacheID()))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(body)

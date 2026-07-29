@@ -128,11 +128,12 @@ func (cf *composeFile) dockerfilePaths(workDir string) []string {
 		}
 
 		var dfPath string
-		if filepath.IsAbs(dockerfile) {
+		switch {
+		case filepath.IsAbs(dockerfile):
 			dfPath = dockerfile
-		} else if context != "" {
+		case context != "":
 			dfPath = filepath.Join(workDir, context, dockerfile)
-		} else {
+		default:
 			dfPath = filepath.Join(workDir, dockerfile)
 		}
 		dfPath = filepath.Clean(dfPath)

@@ -10,6 +10,8 @@ import (
 // Status represents the current state of a deployment.
 type Status string
 
+// The deploy statuses a stack can reach. Every one of them is rendered by the
+// UI and may be notified on, so adding one means touching both.
 const (
 	StatusDeploying  Status = "deploying"
 	StatusSuccess    Status = "success"

@@ -17,7 +17,7 @@ type fakeStreamer struct {
 	lines []string
 }
 
-func (f *fakeStreamer) Stream(ctx context.Context, dir string, env []string, name string, args []string, onLine func(string)) error {
+func (f *fakeStreamer) Stream(_ context.Context, dir string, env []string, name string, args []string, onLine func(string)) error {
 	f.dir, f.env, f.name, f.args = dir, env, name, args
 	for _, l := range f.lines {
 		onLine(l)
