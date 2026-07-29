@@ -1476,6 +1476,26 @@ masked the pane's layout diffs run-to-run. UB2's value — the level-badge mappi
 
   Then review the changed PNGs before committing. (`.pw-bin/` is gitignored.)
 
+### 4.40 UI — Maske AM: A refused autosync write is announced
+
+A failed toggle is invisible in the interface: the switch simply does not move,
+which looks exactly like a click that never landed. That ambiguity cost real
+time chasing a UC11 flake, so the write path now reports its failure on the
+console — the same treatment a dropped stale snapshot gets (UC13). See
+[Autosync](../internal/ui/UI_SPEC.md#autosync).
+
+- **UAM1 — A refusing server.** The `POST /api/autosync` is fulfilled with 503.
+  The console announcement names the scope and the status; the switch keeps
+  showing *server* state, because the write did not happen and rendering it as
+  though it had would be the worse lie.
+- **UAM2 — A request that never arrives.** The same POST is aborted
+  (`connectionfailed`), covering the transport failure rather than the refusal.
+
+Both wait on the announcement rather than on the DOM: it is emitted in the same
+step the switch would otherwise have been repainted in, so "the switch did not
+move" cannot pass early. Counter-probed against the pre-fix build, where both
+cases fail.
+
 ### 5.1 Docs screenshots — rendered, never committed
 
 The two images the docs landing page embeds

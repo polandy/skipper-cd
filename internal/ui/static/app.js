@@ -3455,19 +3455,35 @@
     });
   }
 
+  // autosyncPost writes a toggle and applies the snapshot it answers with.
+  //
+  // A failure here is invisible in the interface: the switch simply does not
+  // move, which is indistinguishable from a click that never landed. It is
+  // therefore announced on the console — the same treatment a dropped stale
+  // snapshot gets — so an operator (and a failing test) can tell "the write was
+  // refused" from "the control is dead". The switch is deliberately left
+  // showing server state rather than the attempted one: the write did not
+  // happen, so showing it as though it had would be the worse lie.
   function autosyncPost(scope, stack, enabled) {
+    const what = scope === 'stack' ? scope + ' ' + stack : scope;
     fetch('/api/autosync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scope: scope, stack: stack, enabled: enabled }),
     })
       .then(function (r) {
-        return r.ok ? r.json() : null;
+        if (!r.ok) {
+          console.warn('autosync: toggle refused for', what, '— HTTP', r.status);
+          return null;
+        }
+        return r.json();
       })
       .then(function (snap) {
         if (snap) applyAutosyncSnapshot(snap);
       })
-      .catch(function () {});
+      .catch(function (err) {
+        console.warn('autosync: toggle for', what, 'did not reach the server —', err);
+      });
   }
 
   // applyAutosyncSnapshot installs a snapshot unless it is older than the one
