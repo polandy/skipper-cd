@@ -195,9 +195,7 @@ func main() {
 	notifier, err := notify.New(cfg.Notifications, nil, 0)
 	if err != nil {
 		slog.Error("failed to build notifier", "err", err)
-		// stop() is the only pending defer and it merely unregisters the signal
-		// handler; nothing is serving yet, so there is no drain to skip.
-		os.Exit(1) //nolint:gocritic // exitAfterDefer: see above
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: stop() is the only pending defer and merely unregisters the signal handler; nothing is serving yet
 	}
 	var notifierSink func(events.DeployEvent)
 	if notifier.Enabled() {
@@ -211,7 +209,7 @@ func main() {
 	healthWatcher, err := buildHealthWatch(signalCtx, cfg, stateDir, uiw.stateB)
 	if err != nil {
 		slog.Error("failed to build health alerter", "err", err)
-		os.Exit(1) //nolint:gocritic // exitAfterDefer: nothing is serving yet, see above
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: as above — only stop() is pending, nothing is serving yet
 	}
 
 	hl := buildHealthLayer(cfg, views, uiw.stateB, selfHealEngine, healthWatcher)

@@ -14,8 +14,8 @@ import (
 // Status is a stack's rolled-up runtime health.
 type Status string
 
-// The health states a stack rolls up to, worst-first when several services
-// disagree.
+// The health states a stack rolls up to. The precedence between them when
+// services disagree is rollup's, in parse.go — not this declaration order.
 const (
 	Healthy   Status = "healthy"
 	Unhealthy Status = "unhealthy"
