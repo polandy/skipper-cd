@@ -6,8 +6,9 @@ import (
 	"net/http"
 )
 
-// Peer proxies: read-only fan-in from the hosts this instance federates with
-// (ADR-0048). Each resolves a peer name to its base URL, then forwards.
+// The peer surface for the multi-host fan-in (ADR-0048), read-only throughout:
+// the configured host set, plus two proxies that resolve a peer name to its
+// base URL and forward the request there.
 
 // PeersHandler serves GET /api/peers — the effective multi-host set (ADR-0048)
 // as JSON: the primary itself first (self:true), then each configured peer,

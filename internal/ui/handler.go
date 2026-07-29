@@ -25,6 +25,7 @@ func VersionHandler(b BuildInfo) http.Handler {
 		})
 	})
 }
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	// The status header is written implicitly; a failed body write cannot be

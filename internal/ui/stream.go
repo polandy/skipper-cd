@@ -10,8 +10,9 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-// The live state surface: the SSE stream the UI subscribes to, and the one-shot
-// snapshot of the same payload for clients that cannot hold a stream open.
+// The state surface, streamed and polled: the SSE stream the UI subscribes to,
+// and the one-shot snapshot built from the same collector (ADR-0039) so the two
+// cannot drift. Anything that changes the payload has to touch both.
 
 // sseKeepaliveInterval is how often an idle SSE stream (deploy events, state
 // events, logs) sends a keepalive so intermediary proxies don't time out the
@@ -118,6 +119,7 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 		}
 	})
 }
+
 func writeSSE(w http.ResponseWriter, evt events.DeployEvent) error {
 	payload := evt.SSEPayload()
 	data, err := json.Marshal(payload)
@@ -127,6 +129,7 @@ func writeSSE(w http.ResponseWriter, evt events.DeployEvent) error {
 	_, err = fmt.Fprintf(w, "id: %d\nevent: deploy\ndata: %s\n\n", evt.ID, data)
 	return err
 }
+
 func writeSSEState(w http.ResponseWriter, se events.StateEvent) error {
 	data, err := json.Marshal(se.Data)
 	if err != nil {
