@@ -3494,6 +3494,11 @@
   // happen, so showing it as though it had would be the worse lie.
   function autosyncPost(scope, stack, enabled) {
     const what = scope === 'stack' ? scope + ' ' + stack : scope;
+    // Recorded before the request, not after: it marks that a click actually
+    // reached this handler. An empty note buffer on a failed toggle then means
+    // the click never got here at all, which no later message could tell apart
+    // from a request that vanished (T8).
+    uiNote('debug', 'autosync: toggling', what, '->', enabled);
     fetch('/api/autosync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

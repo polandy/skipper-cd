@@ -49,8 +49,14 @@ test.describe('UAM: a refused autosync write is announced', () => {
     // The same note is kept on the page, which is what reaches a CI report — the
     // console alone is collected by nothing, so a failure would arrive without
     // the reason the UI already knew. The harness attaches this on failure.
-    const notes = await page.evaluate(() => (window as { __uiNotes?: string[] }).__uiNotes ?? []);
-    expect(notes.join('\n')).toContain('autosync: toggle refused for stack web');
+    const notes = (
+      await page.evaluate(() => (window as { __uiNotes?: string[] }).__uiNotes ?? [])
+    ).join('\n');
+    expect(notes).toContain('autosync: toggle refused for stack web');
+    // The intent is recorded before the request, so a buffer holding only this
+    // line proves the click reached the handler and the request is what went
+    // missing — the distinction T8 turns on.
+    expect(notes).toContain('autosync: toggling stack web -> false');
   });
 
   test('a request that never arrives is announced too', async ({ page, skipper }) => {
@@ -71,7 +77,10 @@ test.describe('UAM: a refused autosync write is announced', () => {
     await failed;
     await expect(web).toHaveAttribute('aria-checked', 'true');
 
-    const notes = await page.evaluate(() => (window as { __uiNotes?: string[] }).__uiNotes ?? []);
-    expect(notes.join('\n')).toContain('did not reach the server');
+    const notes = (
+      await page.evaluate(() => (window as { __uiNotes?: string[] }).__uiNotes ?? [])
+    ).join('\n');
+    expect(notes).toContain('autosync: toggling stack web -> false');
+    expect(notes).toContain('did not reach the server');
   });
 });

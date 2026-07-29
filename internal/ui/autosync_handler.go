@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/polandy/skipper-cd/internal/autosync"
@@ -15,6 +16,18 @@ type autosyncPostRequest struct {
 	Scope   string `json:"scope"` // "global" | "stack"
 	Stack   string `json:"stack"` // required when scope == "stack"
 	Enabled bool   `json:"enabled"`
+}
+
+// effectiveAfter reports the value the toggle actually produced. A per-stack
+// override wins over the global switch in both directions (ADR-0019), so the
+// requested value and the effective one usually agree — but reading it back
+// from the controller is what makes the log a record of what happened rather
+// than of what was asked for.
+func effectiveAfter(ctrl *autosync.Controller, req autosyncPostRequest) bool {
+	if req.Scope == "global" {
+		return ctrl.GlobalEffective()
+	}
+	return ctrl.Effective(req.Stack)
 }
 
 // AutosyncHandler serves GET /api/autosync (current snapshot) and
@@ -46,6 +59,13 @@ func AutosyncHandler(ctrl *autosync.Controller, order func() []string, onChange,
 				http.Error(w, "scope must be \"global\" or \"stack\"", http.StatusBadRequest)
 				return
 			}
+			// A toggle changes whether a stack deploys at all, and until now it
+			// left no trace: neither "who paused this" nor "did the write land"
+			// was answerable from the log. Logged after the controller accepted
+			// it, so the recorded effective value is the one that took.
+			slog.Info("autosync set",
+				"scope", req.Scope, "stack", req.Stack, "enabled", enabled,
+				"effective", effectiveAfter(ctrl, req))
 			if onChange != nil {
 				onChange()
 			}

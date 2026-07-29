@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -151,4 +153,96 @@ func post(t *testing.T, h http.Handler, body string) []byte {
 		t.Fatalf("POST %s: status = %d, want 200 (body: %s)", body, rec.Code, rec.Body.String())
 	}
 	return rec.Body.Bytes()
+}
+
+// captureLog runs fn with the default logger redirected, returning what it wrote.
+func captureLog(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	fn()
+	return buf.String()
+}
+
+// An autosync toggle decides whether a stack deploys at all, and it used to
+// leave no trace: neither "who paused this" nor, when chasing the UC11 flake,
+// "did the write even arrive" could be answered from the log.
+func TestAutosyncHandler_PostLogsTheChange(t *testing.T) {
+	tests := []struct {
+		name          string
+		body          string
+		wantSubstrs   []string
+		wantEffective string
+		globalOff     bool
+	}{
+		{
+			name:          "pausing one stack",
+			body:          `{"scope":"stack","stack":"web","enabled":false}`,
+			wantSubstrs:   []string{"autosync set", "scope=stack", "stack=web", "enabled=false"},
+			wantEffective: "effective=false",
+		},
+		{
+			name:          "the global switch",
+			body:          `{"scope":"global","enabled":false}`,
+			wantSubstrs:   []string{"autosync set", "scope=global", "enabled=false"},
+			wantEffective: "effective=false",
+		},
+		{
+			// A per-stack override wins over the global switch in both
+			// directions (ADR-0019), so enabling one stack while global is off
+			// really does resume it — the logged effective value is read back
+			// from the controller rather than echoed from the request, which is
+			// what makes it a record of what happened.
+			name:          "enabling a stack while global is off",
+			body:          `{"scope":"stack","stack":"web","enabled":true}`,
+			wantSubstrs:   []string{"autosync set", "stack=web", "enabled=true"},
+			wantEffective: "effective=true",
+			globalOff:     true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := autosync.NewController(boolPtr(!tc.globalOff), nil)
+			h := AutosyncHandler(ctrl, orderOf("web"), nil, nil)
+
+			out := captureLog(t, func() {
+				rec := httptest.NewRecorder()
+				h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/autosync", strings.NewReader(tc.body)))
+				if rec.Code != http.StatusOK {
+					t.Fatalf("status = %d, want 200", rec.Code)
+				}
+			})
+
+			for _, want := range tc.wantSubstrs {
+				if !strings.Contains(out, want) {
+					t.Errorf("log missing %q; got %s", want, out)
+				}
+			}
+			if !strings.Contains(out, tc.wantEffective) {
+				t.Errorf("log missing %q; got %s", tc.wantEffective, out)
+			}
+		})
+	}
+}
+
+// A rejected request must not claim a change happened.
+func TestAutosyncHandler_PostDoesNotLogAnInvalidRequest(t *testing.T) {
+	ctrl := autosync.NewController(boolPtr(true), nil)
+	h := AutosyncHandler(ctrl, orderOf("web"), nil, nil)
+
+	out := captureLog(t, func() {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/autosync",
+			strings.NewReader(`{"scope":"nonsense","enabled":true}`)))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+	})
+
+	if strings.Contains(out, "autosync set") {
+		t.Errorf("a rejected request must not be logged as a change; got %s", out)
+	}
 }
