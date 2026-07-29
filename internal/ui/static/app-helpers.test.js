@@ -729,3 +729,80 @@ test('watchedSummary opens its settled lead with UNCHANGED_SINCE', () => {
   // An unsettled outcome makes no such claim, so the prefix must be absent.
   assert.ok(!h.watchedSummary('failed', 'abc1234def', 2, false).includes(h.UNCHANGED_SINCE));
 });
+
+// A fake timer: records what was scheduled and at which delay, and lets the test
+// fire it — so the backoff is asserted directly instead of waited out.
+function fakeTimer() {
+  const armed = [];
+  const setTimer = (fn, delay) => {
+    armed.push({ fn, delay });
+    return armed.length; // a truthy handle, like the browser's
+  };
+  return {
+    setTimer,
+    delays: () => armed.map((a) => a.delay),
+    fireLast: () => armed[armed.length - 1].fn(),
+    count: () => armed.length,
+  };
+}
+
+test('makeReconnector doubles the delay up to the cap', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer);
+  for (let i = 0; i < 8; i++) {
+    r.schedule();
+    t.fireLast(); // clear the pending retry so the next schedule() arms
+  }
+  assert.deepEqual(t.delays(), [1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000]);
+  assert.equal(t.delays()[0], h.RECONNECT_BASE_DELAY_MS);
+  assert.equal(t.delays()[t.delays().length - 1], h.RECONNECT_MAX_DELAY_MS);
+});
+
+test('makeReconnector ignores a second schedule while one is pending', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer);
+  r.schedule();
+  r.schedule();
+  r.schedule();
+  // Without the guard a burst of stream errors would arm a retry each time.
+  assert.equal(t.count(), 1);
+  t.fireLast();
+  r.schedule();
+  assert.equal(t.count(), 2);
+});
+
+test('makeReconnector runs the connect callback when the timer fires', () => {
+  const t = fakeTimer();
+  let connects = 0;
+  const r = h.makeReconnector(() => connects++, t.setTimer);
+  r.schedule();
+  assert.equal(connects, 0, 'must not connect before the delay elapses');
+  t.fireLast();
+  assert.equal(connects, 1);
+});
+
+test('makeReconnector reset returns the backoff to the base delay', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer);
+  for (let i = 0; i < 3; i++) {
+    r.schedule();
+    t.fireLast();
+  }
+  r.reset(); // what a good connection does
+  r.schedule();
+  assert.equal(t.delays()[t.delays().length - 1], h.RECONNECT_BASE_DELAY_MS);
+});
+
+test('makeReconnector instances keep separate backoff state', () => {
+  // The events stream and the log stream each own one; one stream backing off
+  // must not slow the other's first retry.
+  const t = fakeTimer();
+  const a = h.makeReconnector(() => {}, t.setTimer);
+  const b = h.makeReconnector(() => {}, t.setTimer);
+  for (let i = 0; i < 3; i++) {
+    a.schedule();
+    t.fireLast();
+  }
+  b.schedule();
+  assert.equal(t.delays()[t.delays().length - 1], h.RECONNECT_BASE_DELAY_MS);
+});

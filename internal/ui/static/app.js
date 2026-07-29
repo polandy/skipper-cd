@@ -2117,20 +2117,11 @@
   // EventSource auto-reconnects after a transient drop (readyState CONNECTING),
   // but a *fatal* stream error — a non-2xx response or a bad content-type — puts
   // it in CLOSED for good and it never retries. Without our own retry the
-  // indicator would then sit on `reconnecting` forever. reconnectDelay backs off
-  // our manual retries (capped), and onopen resets it once a connection is good.
-  let reconnectDelay = 1000;
-  let reconnectTimer = null;
-  const maxReconnectDelay = 30000;
-
-  function scheduleReconnect() {
-    if (reconnectTimer) return; // a retry is already pending
-    reconnectTimer = setTimeout(function () {
-      reconnectTimer = null;
-      connect();
-    }, reconnectDelay);
-    reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
-  }
+  // indicator would then sit on `reconnecting` forever, so we retry ourselves
+  // with a capped backoff that onopen resets once a connection is good.
+  const eventsReconnect = makeReconnector(function () {
+    connect();
+  }, setTimeout);
 
   // ── Multi-host fan-in (ADR-0048) ──
   // A peer instance's read data, merged into the local views and tagged by host.
@@ -2731,7 +2722,7 @@
     const es = new EventSource('/api/events');
 
     es.onopen = function () {
-      reconnectDelay = 1000; // a good connection resets the backoff
+      eventsReconnect.reset(); // a good connection resets the backoff
       connDot.className = 'indicator-dot';
       connText.textContent = 'connected';
       connDot.parentElement.dataset.state = 'connected';
@@ -2781,7 +2772,7 @@
       // CLOSED means the browser gave up (fatal error) and will not retry on its
       // own — schedule our own reconnect. CONNECTING means it is already retrying,
       // so leave it be and let onopen recover the indicator.
-      if (es.readyState === EventSource.CLOSED) scheduleReconnect();
+      if (es.readyState === EventSource.CLOSED) eventsReconnect.schedule();
     };
   }
 
@@ -4027,18 +4018,10 @@
   // auto-reconnects after a transient drop but gives up for good on a fatal error
   // (non-2xx / bad content-type, readyState CLOSED); without our own retry the
   // pane would then stop receiving lines with nothing on screen to explain it.
-  // Backoff mirrors the events stream and shares maxReconnectDelay.
-  let logReconnectDelay = 1000;
-  let logReconnectTimer = null;
-
-  function scheduleLogReconnect() {
-    if (logReconnectTimer) return; // a retry is already pending
-    logReconnectTimer = setTimeout(function () {
-      logReconnectTimer = null;
-      connectLogs();
-    }, logReconnectDelay);
-    logReconnectDelay = Math.min(logReconnectDelay * 2, maxReconnectDelay);
-  }
+  // Backoff is the same mechanism the events stream uses, with its own state.
+  const logsReconnect = makeReconnector(function () {
+    connectLogs();
+  }, setTimeout);
 
   function connectLogs() {
     if (logSource) return;
@@ -4047,7 +4030,7 @@
       pushLog(JSON.parse(e.data));
     });
     logSource.onopen = function () {
-      logReconnectDelay = 1000; // a good connection resets the backoff
+      logsReconnect.reset(); // a good connection resets the backoff
       setLogsStat(logsPaused ? 'paused' : 'live · streaming', logsPaused ? 'paused' : '');
     };
     logSource.onerror = function () {
@@ -4057,7 +4040,7 @@
       if (logSource.readyState === EventSource.CLOSED) {
         logSource = null;
         setLogsStat('reconnecting…', 'err');
-        scheduleLogReconnect();
+        logsReconnect.schedule();
       }
     };
   }

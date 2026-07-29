@@ -37,6 +37,7 @@ module.exports = [
         imageDelta: 'readonly',
         logLineLevel: 'readonly',
         logLineVisible: 'readonly',
+        makeReconnector: 'readonly',
         orphanMatchesQuery: 'readonly',
         orphanMeta: 'readonly',
         orphanStateClass: 'readonly',
