@@ -2,12 +2,17 @@
   "name": "skipper-cd-ui-e2e",
   "version": "0.0.0",
   "private": true,
-  "description": "Playwright UI end-to-end tests for the skipper-cd web UI. Drives the real skipper binary (see ../ and dev-docs/e2e-tests.md).",
+  "description": "Playwright UI end-to-end tests for the skipper-cd web UI. Drives the real skipper binary (see ../ and dev-docs/e2e-tests.md). ESLint here is dev-only and type-aware; the suite is deliberately not Prettier-formatted, like app.css - it keeps its hand-written style.",
   "scripts": {
     "test": "playwright test",
-    "test:update": "playwright test --update-snapshots"
+    "test:update": "playwright test --update-snapshots",
+    "lint": "eslint ."
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1"
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
+    "@types/node": "26.1.2",
+    "eslint": "10.8.0",
+    "typescript-eslint": "8.65.0"
   }
 }

@@ -68,6 +68,9 @@ jobs:
       # The suite has no fixed waits; keep it that way (see the script for why
       # a timeout is never the fix).
       - run: make check-no-sleeps
+      # Type-aware lint over the Playwright suite; catches a forgotten `await`
+      # on an assertion, which would otherwise pass as a green test.
+      - run: make e2e-ui-lint
 
   # End-to-end tests: run the real skipper binary against a local git origin
   # and a stub docker on PATH (no docker daemon needed). Guarded by the "e2e"
