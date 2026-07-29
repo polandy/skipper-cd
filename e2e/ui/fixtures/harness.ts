@@ -282,18 +282,18 @@ function volumesListing(vols: OrphanVolume[]): string {
  *  origin repo, the stub-binary dir, and the dirs the stub reads its scripted
  *  answers from. Built once, then only read. */
 interface Workspace {
-  base: string;
-  origin: string;
-  repoDir: string;
-  stateDir: string;
-  dockerLog: string;
-  holdFile: string;
-  hookHoldFile: string;
-  stubDir: string;
-  healthDir: string;
-  orphansDir: string;
-  stacks: string[];
-  author: CommitIdentity;
+  readonly base: string;
+  readonly origin: string;
+  readonly repoDir: string;
+  readonly stateDir: string;
+  readonly dockerLog: string;
+  readonly holdFile: string;
+  readonly hookHoldFile: string;
+  readonly stubDir: string;
+  readonly healthDir: string;
+  readonly orphansDir: string;
+  readonly stacks: string[];
+  readonly author: CommitIdentity;
 }
 
 /** scaffoldWorkspace lays out the temp tree, commits an origin repo with one
