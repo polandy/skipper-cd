@@ -278,6 +278,251 @@ function volumesListing(vols: OrphanVolume[]): string {
   return vols.map((v) => `${v.project}\t${v.volume}`).join('\n') + '\n';
 }
 
+/** Workspace is the on-disk layout one instance runs against: its temp tree, the
+ *  origin repo, the stub-binary dir, and the dirs the stub reads its scripted
+ *  answers from. Built once, then only read. */
+interface Workspace {
+  base: string;
+  origin: string;
+  repoDir: string;
+  stateDir: string;
+  dockerLog: string;
+  holdFile: string;
+  hookHoldFile: string;
+  stubDir: string;
+  healthDir: string;
+  orphansDir: string;
+  stacks: string[];
+  author: CommitIdentity;
+}
+
+/** scaffoldWorkspace lays out the temp tree, commits an origin repo with one
+ *  compose per stack, and installs the stub binaries and the dirs they read.
+ *  Filesystem only — nothing is listening yet. */
+function scaffoldWorkspace(opts: StartOptions): Workspace {
+  const stacks = opts.stacks ?? ['web'];
+  const stackIcons = opts.stackIcons ?? {};
+  const initialCompose = opts.initialCompose ?? {};
+  const author = opts.commitAuthor ?? defaultIdentity;
+  const base = mkdtempSync(join(tmpdir(), 'skipper-ui-e2e-'));
+  const origin = join(base, 'origin');
+  const repoDir = join(base, 'state', 'repo');
+  const stateDir = join(base, 'state');
+  const dockerLog = join(base, 'docker.log');
+  // The hold file gates the stub's `up`. Present = proceed, absent = block.
+  // Pre-created so the startup deploy is not held; hold()/release() toggle it.
+  const holdFile = join(base, 'hold');
+  // The hook-hold file gates a pre/post-deploy hook that waits on it (the
+  // running-hook tests). Absent = block, present = proceed — and it is NOT
+  // pre-created, so such a hook blocks from boot until releaseHook() creates
+  // it. This makes the running-hook phase observable with no wall-clock race.
+  const hookHoldFile = join(base, 'hook-hold');
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(holdFile, '');
+
+  // Origin repo with one committed compose per stack.
+  gitAs(author, '', 'init', '-b', 'main', origin);
+  for (const name of stacks) {
+    mkdirSync(join(origin, name), { recursive: true });
+    writeFileSync(join(origin, name, 'docker-compose.yml'), initialCompose[name] ?? defaultCompose);
+    if (stackIcons[name] !== undefined) {
+      writeFileSync(join(origin, name, 'icon.svg'), stackIcons[name]);
+    }
+  }
+  // With no stacks there is nothing to stage, but the origin still needs a HEAD
+  // on `main` for skipper to clone and reset onto; a placeholder gives the
+  // stack-free instance (UA10 empty state) a valid, deploy-free repo.
+  if (stacks.length === 0) {
+    writeFileSync(join(origin, '.keep'), '');
+  }
+  // A tracked .nix file makes the startup sync detect a nix change and run the
+  // (stubbed) nixos-rebuild, emitting a `_nixos` row.
+  if (opts.nixosRebuild) {
+    writeFileSync(join(origin, 'configuration.nix'), '{ }\n');
+  }
+  // ADR-0043: per-stack overrides go into the host config's stacks: list, not
+  // an in-repo skipper.yaml (a leftover one is now a hard error). setRepoConfig
+  // still writes one on purpose, to exercise that guard.
+  gitAs(author, origin, 'add', '.');
+  gitAs(author, origin, 'commit', '-m', 'initial');
+
+  // Stub docker on its own dir, prepended to PATH.
+  const stubDir = join(base, 'stub-bin');
+  mkdirSync(stubDir, { recursive: true });
+  writeFileSync(join(stubDir, 'docker'), stubDockerScript, { mode: 0o755 });
+  // Stub the nixos-rebuild transition (ADR-0014): `systemd-run` starts the
+  // (fake) unit and returns; `systemctl is-active` reports it already gone and
+  // `is-failed` reports not-failed, so Rebuild sees an instant success without
+  // any real switch. Harmless when nixos_rebuild is not configured.
+  writeFileSync(join(stubDir, 'systemd-run'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  writeFileSync(
+    join(stubDir, 'systemctl'),
+    '#!/bin/sh\ncase " $* " in\n  *" is-active "*) exit 1 ;;\n  *" is-failed "*) exit 1 ;;\n  *) exit 0 ;;\nesac\n',
+    { mode: 0o755 },
+  );
+
+  // Where setStackHealth writes per-stack `compose ps` output for the stub.
+  const healthDir = join(base, 'health');
+  mkdirSync(healthDir, { recursive: true });
+  // Pre-boot health seed, so the very first poll already sees it.
+  for (const [name, services] of Object.entries(opts.initialHealth ?? {})) {
+    writeFileSync(join(healthDir, `${name}.json`), JSON.stringify(services));
+  }
+
+  // Where setOrphans/setVolumes write the stub's `docker ps -a` / `volume ls`
+  // listing (ADR-0036), consulted by orphan detection on the health-poll cadence.
+  const orphansDir = join(base, 'orphans');
+  mkdirSync(orphansDir, { recursive: true });
+
+  return {
+    base,
+    origin,
+    repoDir,
+    stateDir,
+    dockerLog,
+    holdFile,
+    hookHoldFile,
+    stubDir,
+    healthDir,
+    orphansDir,
+    stacks,
+    author,
+  };
+}
+
+/** startPeerStubs serves the multi-host fan-in's peers (ADR-0048): the servers
+ *  to close at teardown, plus the `peers:` config block naming them. A spec with
+ *  no server keeps its reserved port closed, which is how an offline peer is
+ *  driven. */
+async function startPeerStubs(
+  peerSpecs: PeerSpec[],
+  peerPorts: number[],
+): Promise<{ peerServers: Server[]; peersCfg: string }> {
+  // Stub peer servers for the multi-host fan-in (ADR-0048): a reachable peer
+  // serves its curated snapshot + audit; an unreachable one has no server, so
+  // its reserved port refuses connections and the primary marks it offline.
+  const peerServers: Server[] = [];
+  let peersCfg = '';
+  if (peerSpecs.length) {
+    peersCfg = 'peers:\n';
+    for (let i = 0; i < peerSpecs.length; i++) {
+      const spec = peerSpecs[i];
+      const peerPort = peerPorts[i];
+      peersCfg += `  - name: ${JSON.stringify(spec.name)}\n    url: ${JSON.stringify(`http://127.0.0.1:${peerPort}`)}\n`;
+      if (spec.reachable === false) continue; // dead port → unreachable
+      const server = createHttpServer((req, res) => {
+        const path = (req.url ?? '').split('?')[0];
+        res.setHeader('Content-Type', 'application/json');
+        if (path === '/api/v1/snapshot') return void res.end(JSON.stringify(spec.snapshot ?? {}));
+        if (path === '/api/audit') return void res.end(JSON.stringify(spec.audit ?? []));
+        const diffMatch = path.match(/^\/api\/events\/([^/]+)\/diffs$/);
+        if (diffMatch) {
+          const d = (spec.diffs ?? {})[diffMatch[1]];
+          if (d) return void res.end(JSON.stringify(d));
+          res.statusCode = 404;
+          return void res.end('{}');
+        }
+        const logMatch = path.match(/^\/api\/container-logs\/(.+)$/);
+        if (logMatch) {
+          const lines = (spec.logsByStack ?? {})[decodeURIComponent(logMatch[1])];
+          if (!lines) {
+            res.statusCode = 404;
+            return void res.end('{}');
+          }
+          // SSE follow: emit each line as a frame, then hold the stream open
+          // (the primary proxies it; it drops when the client disconnects or
+          // skipper is SIGKILLed at teardown, closing this socket).
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.writeHead(200);
+          for (const ln of lines) res.write(`data: ${ln}\n\n`);
+          return;
+        }
+        res.statusCode = 404;
+        res.end('{}');
+      });
+      await new Promise<void>((r) => server.listen(peerPort, '127.0.0.1', () => r()));
+      peerServers.push(server);
+    }
+  }
+
+  return { peerServers, peersCfg };
+}
+
+/** buildConfig renders the host skipper.yml for one instance. Every option that
+ *  only shapes configuration lands here, so start() reads as scaffold → stubs →
+ *  config → spawn instead of interleaving all four. */
+function buildConfig(
+  opts: StartOptions,
+  ws: Workspace,
+  ports: { port: number; metricsPort: number },
+  peersCfg: string,
+): string {
+  const { base, origin, repoDir, stacks } = ws;
+  const { port, metricsPort } = ports;
+  const cfg =
+    `repo_url: ${JSON.stringify(origin)}\n` +
+    `repo_dir: ${JSON.stringify(repoDir)}\n` +
+    // The harness clones from a local path, which no forge URL can be derived
+    // from — set one explicitly so commit SHAs render as links (Maske AL).
+    (opts.repoWebURL === null ? '' : `repo_web_url: ${JSON.stringify(opts.repoWebURL ?? FORGE_URL)}\n`) +
+    // stacks_base_dir omitted: it is relative to repo_dir and defaults to the
+    // repo root, which is exactly repoDir here (stacks live at the clone root).
+    `branch: main\n` +
+    `webhook_secret: ${JSON.stringify(SECRET)}\n` +
+    `port: ${port}\n` +
+    `metrics_port: ${metricsPort}\n` +
+    `ui_enabled: true\n` +
+    (opts.themeSwitcher ? `ui_theme_switcher: true\n` : '') +
+    (opts.hostName ? `host_name: ${JSON.stringify(opts.hostName)}\n` : '') +
+    peersCfg +
+    // Health polling off by default so masks predating it stay health-free;
+    // Maske H opts in via healthPoll (ADR-0027).
+    `runtime_health_poll_interval_seconds: ${opts.healthPoll ?? 0}\n` +
+    (opts.healthWatch ? `health_watch:\n  debounce_polls: 1\n` : '') +
+    (opts.selfHeal ? `self_heal: true\n` : '') +
+    (opts.selfHealMinUnhealthyPolls !== undefined
+      ? `self_heal_min_unhealthy_polls: ${opts.selfHealMinUnhealthyPolls}\n`
+      : '') +
+    (opts.selfHealMaxAttempts !== undefined
+      ? `self_heal_max_attempts: ${opts.selfHealMaxAttempts}\n`
+      : '') +
+    (opts.selfHealCooldownSeconds !== undefined
+      ? `self_heal_cooldown_seconds: ${opts.selfHealCooldownSeconds}\n`
+      : '') +
+    `command_timeout_seconds: 30\n` +
+    (opts.nixosRebuild ? `nixos_rebuild:\n  flake: ".#test"\n` : '') +
+    // source_url points at a closed local port so auto-match icon fetches fail
+    // fast and deterministically (connection refused → 404 → monogram), keeping
+    // the whole UI suite offline. Repo icon.svg overrides still resolve.
+    `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
+    (opts.discovery
+      ? `stack_discovery: true\n` +
+        (opts.discovery.repoConfig !== undefined
+          ? `stacks:\n` + repoOverridesToHostStacks(opts.discovery.repoConfig)
+          : '')
+      : // ADR-0043: discovery is the default, so explicit-list masks opt out.
+        `stack_discovery: false\n` +
+        `stacks:\n` +
+        stacks
+          .map(
+            (n) =>
+              `  - name: ${JSON.stringify(n)}\n` +
+              ((opts.dependsOn?.[n] ?? []).length
+                ? `    depends_on: [${(opts.dependsOn?.[n] ?? []).map((d) => JSON.stringify(d)).join(', ')}]\n`
+                : '') +
+              ((opts.healthCheck ?? []).includes(n)
+                ? `    deploy_health_check:\n      timeout_seconds: 1\n`
+                : '') +
+              ((opts.onDemand?.[n] ?? []).length
+                ? `    on_demand_containers:\n` +
+                  (opts.onDemand?.[n] ?? []).map((c) => `      - ${JSON.stringify(c)}\n`).join('')
+                : ''),
+          )
+          .join(''));
+  return cfg;
+}
+
 /** Skipper is a running skipper binary under test with its origin, stub docker,
  *  and derived paths — the Node twin of the Go `skipper` struct. */
 export class Skipper {
@@ -347,83 +592,12 @@ export class Skipper {
 
   /** start builds an origin with one dir per stack, launches the binary, waits
    *  until healthy, and waits for the startup deploy of every stack to settle.
-   *
-   *  TODO: this method is too long — split the origin/config scaffolding, the
-   *  peer-stub servers and the spawn/wait sequence into helpers. */
+   *  Reads as its four phases — scaffold, peer stubs, config, spawn-and-wait —
+   *  each of which lives in its own helper above. */
   static async start(opts: StartOptions = {}): Promise<Skipper> {
-    const stacks = opts.stacks ?? ['web'];
-    const stackIcons = opts.stackIcons ?? {};
-    const initialCompose = opts.initialCompose ?? {};
-    const author = opts.commitAuthor ?? defaultIdentity;
-    const base = mkdtempSync(join(tmpdir(), 'skipper-ui-e2e-'));
-    const origin = join(base, 'origin');
-    const repoDir = join(base, 'state', 'repo');
-    const stateDir = join(base, 'state');
-    const dockerLog = join(base, 'docker.log');
-    // The hold file gates the stub's `up`. Present = proceed, absent = block.
-    // Pre-created so the startup deploy is not held; hold()/release() toggle it.
-    const holdFile = join(base, 'hold');
-    // The hook-hold file gates a pre/post-deploy hook that waits on it (the
-    // running-hook tests). Absent = block, present = proceed — and it is NOT
-    // pre-created, so such a hook blocks from boot until releaseHook() creates
-    // it. This makes the running-hook phase observable with no wall-clock race.
-    const hookHoldFile = join(base, 'hook-hold');
-    mkdirSync(stateDir, { recursive: true });
-    writeFileSync(holdFile, '');
-
-    // Origin repo with one committed compose per stack.
-    gitAs(author, '', 'init', '-b', 'main', origin);
-    for (const name of stacks) {
-      mkdirSync(join(origin, name), { recursive: true });
-      writeFileSync(join(origin, name, 'docker-compose.yml'), initialCompose[name] ?? defaultCompose);
-      if (stackIcons[name] !== undefined) {
-        writeFileSync(join(origin, name, 'icon.svg'), stackIcons[name]);
-      }
-    }
-    // With no stacks there is nothing to stage, but the origin still needs a HEAD
-    // on `main` for skipper to clone and reset onto; a placeholder gives the
-    // stack-free instance (UA10 empty state) a valid, deploy-free repo.
-    if (stacks.length === 0) {
-      writeFileSync(join(origin, '.keep'), '');
-    }
-    // A tracked .nix file makes the startup sync detect a nix change and run the
-    // (stubbed) nixos-rebuild, emitting a `_nixos` row.
-    if (opts.nixosRebuild) {
-      writeFileSync(join(origin, 'configuration.nix'), '{ }\n');
-    }
-    // ADR-0043: per-stack overrides go into the host config's stacks: list, not
-    // an in-repo skipper.yaml (a leftover one is now a hard error). setRepoConfig
-    // still writes one on purpose, to exercise that guard.
-    gitAs(author, origin, 'add', '.');
-    gitAs(author, origin, 'commit', '-m', 'initial');
-
-    // Stub docker on its own dir, prepended to PATH.
-    const stubDir = join(base, 'stub-bin');
-    mkdirSync(stubDir, { recursive: true });
-    writeFileSync(join(stubDir, 'docker'), stubDockerScript, { mode: 0o755 });
-    // Stub the nixos-rebuild transition (ADR-0014): `systemd-run` starts the
-    // (fake) unit and returns; `systemctl is-active` reports it already gone and
-    // `is-failed` reports not-failed, so Rebuild sees an instant success without
-    // any real switch. Harmless when nixos_rebuild is not configured.
-    writeFileSync(join(stubDir, 'systemd-run'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-    writeFileSync(
-      join(stubDir, 'systemctl'),
-      '#!/bin/sh\ncase " $* " in\n  *" is-active "*) exit 1 ;;\n  *" is-failed "*) exit 1 ;;\n  *) exit 0 ;;\nesac\n',
-      { mode: 0o755 },
-    );
-
-    // Where setStackHealth writes per-stack `compose ps` output for the stub.
-    const healthDir = join(base, 'health');
-    mkdirSync(healthDir, { recursive: true });
-    // Pre-boot health seed, so the very first poll already sees it.
-    for (const [name, services] of Object.entries(opts.initialHealth ?? {})) {
-      writeFileSync(join(healthDir, `${name}.json`), JSON.stringify(services));
-    }
-
-    // Where setOrphans/setVolumes write the stub's `docker ps -a` / `volume ls`
-    // listing (ADR-0036), consulted by orphan detection on the health-poll cadence.
-    const orphansDir = join(base, 'orphans');
-    mkdirSync(orphansDir, { recursive: true });
+    const ws = scaffoldWorkspace(opts);
+    const { base, origin, repoDir, stateDir, dockerLog, holdFile, hookHoldFile } = ws;
+    const { stubDir, healthDir, orphansDir, stacks, author } = ws;
 
     // Two ports for this instance, plus one per peer (reachable or dead).
     const peerSpecs = opts.peers ?? [];
@@ -433,114 +607,10 @@ export class Skipper {
     const baseURL = `http://127.0.0.1:${port}`;
     const metricsURL = `http://127.0.0.1:${metricsPort}`;
 
-    // Stub peer servers for the multi-host fan-in (ADR-0048): a reachable peer
-    // serves its curated snapshot + audit; an unreachable one has no server, so
-    // its reserved port refuses connections and the primary marks it offline.
-    const peerServers: Server[] = [];
-    let peersCfg = '';
-    if (peerSpecs.length) {
-      peersCfg = 'peers:\n';
-      for (let i = 0; i < peerSpecs.length; i++) {
-        const spec = peerSpecs[i];
-        const peerPort = peerPorts[i];
-        peersCfg += `  - name: ${JSON.stringify(spec.name)}\n    url: ${JSON.stringify(`http://127.0.0.1:${peerPort}`)}\n`;
-        if (spec.reachable === false) continue; // dead port → unreachable
-        const server = createHttpServer((req, res) => {
-          const path = (req.url ?? '').split('?')[0];
-          res.setHeader('Content-Type', 'application/json');
-          if (path === '/api/v1/snapshot') return void res.end(JSON.stringify(spec.snapshot ?? {}));
-          if (path === '/api/audit') return void res.end(JSON.stringify(spec.audit ?? []));
-          const diffMatch = path.match(/^\/api\/events\/([^/]+)\/diffs$/);
-          if (diffMatch) {
-            const d = (spec.diffs ?? {})[diffMatch[1]];
-            if (d) return void res.end(JSON.stringify(d));
-            res.statusCode = 404;
-            return void res.end('{}');
-          }
-          const logMatch = path.match(/^\/api\/container-logs\/(.+)$/);
-          if (logMatch) {
-            const lines = (spec.logsByStack ?? {})[decodeURIComponent(logMatch[1])];
-            if (!lines) {
-              res.statusCode = 404;
-              return void res.end('{}');
-            }
-            // SSE follow: emit each line as a frame, then hold the stream open
-            // (the primary proxies it; it drops when the client disconnects or
-            // skipper is SIGKILLed at teardown, closing this socket).
-            res.setHeader('Content-Type', 'text/event-stream');
-            res.setHeader('Cache-Control', 'no-cache');
-            res.writeHead(200);
-            for (const ln of lines) res.write(`data: ${ln}\n\n`);
-            return;
-          }
-          res.statusCode = 404;
-          res.end('{}');
-        });
-        await new Promise<void>((r) => server.listen(peerPort, '127.0.0.1', () => r()));
-        peerServers.push(server);
-      }
-    }
+    const { peerServers, peersCfg } = await startPeerStubs(peerSpecs, peerPorts);
 
-    const cfg =
-      `repo_url: ${JSON.stringify(origin)}\n` +
-      `repo_dir: ${JSON.stringify(repoDir)}\n` +
-      // The harness clones from a local path, which no forge URL can be derived
-      // from — set one explicitly so commit SHAs render as links (Maske AL).
-      (opts.repoWebURL === null ? '' : `repo_web_url: ${JSON.stringify(opts.repoWebURL ?? FORGE_URL)}\n`) +
-      // stacks_base_dir omitted: it is relative to repo_dir and defaults to the
-      // repo root, which is exactly repoDir here (stacks live at the clone root).
-      `branch: main\n` +
-      `webhook_secret: ${JSON.stringify(SECRET)}\n` +
-      `port: ${port}\n` +
-      `metrics_port: ${metricsPort}\n` +
-      `ui_enabled: true\n` +
-      (opts.themeSwitcher ? `ui_theme_switcher: true\n` : '') +
-      (opts.hostName ? `host_name: ${JSON.stringify(opts.hostName)}\n` : '') +
-      peersCfg +
-      // Health polling off by default so masks predating it stay health-free;
-      // Maske H opts in via healthPoll (ADR-0027).
-      `runtime_health_poll_interval_seconds: ${opts.healthPoll ?? 0}\n` +
-      (opts.healthWatch ? `health_watch:\n  debounce_polls: 1\n` : '') +
-      (opts.selfHeal ? `self_heal: true\n` : '') +
-      (opts.selfHealMinUnhealthyPolls !== undefined
-        ? `self_heal_min_unhealthy_polls: ${opts.selfHealMinUnhealthyPolls}\n`
-        : '') +
-      (opts.selfHealMaxAttempts !== undefined
-        ? `self_heal_max_attempts: ${opts.selfHealMaxAttempts}\n`
-        : '') +
-      (opts.selfHealCooldownSeconds !== undefined
-        ? `self_heal_cooldown_seconds: ${opts.selfHealCooldownSeconds}\n`
-        : '') +
-      `command_timeout_seconds: 30\n` +
-      (opts.nixosRebuild ? `nixos_rebuild:\n  flake: ".#test"\n` : '') +
-      // source_url points at a closed local port so auto-match icon fetches fail
-      // fast and deterministically (connection refused → 404 → monogram), keeping
-      // the whole UI suite offline. Repo icon.svg overrides still resolve.
-      `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
-      (opts.discovery
-        ? `stack_discovery: true\n` +
-          (opts.discovery.repoConfig !== undefined
-            ? `stacks:\n` + repoOverridesToHostStacks(opts.discovery.repoConfig)
-            : '')
-        : // ADR-0043: discovery is the default, so explicit-list masks opt out.
-          `stack_discovery: false\n` +
-          `stacks:\n` +
-          stacks
-            .map(
-              (n) =>
-                `  - name: ${JSON.stringify(n)}\n` +
-                ((opts.dependsOn?.[n] ?? []).length
-                  ? `    depends_on: [${(opts.dependsOn?.[n] ?? []).map((d) => JSON.stringify(d)).join(', ')}]\n`
-                  : '') +
-                ((opts.healthCheck ?? []).includes(n)
-                  ? `    deploy_health_check:\n      timeout_seconds: 1\n`
-                  : '') +
-                ((opts.onDemand?.[n] ?? []).length
-                  ? `    on_demand_containers:\n` +
-                    (opts.onDemand?.[n] ?? []).map((c) => `      - ${JSON.stringify(c)}\n`).join('')
-                  : ''),
-            )
-            .join(''));
+    const cfg = buildConfig(opts, ws, { port, metricsPort }, peersCfg);
+
     const cfgPath = join(base, 'skipper.yml');
     writeFileSync(cfgPath, cfg);
 
