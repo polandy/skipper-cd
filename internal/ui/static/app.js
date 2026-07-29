@@ -3710,7 +3710,18 @@
   // Per-stack switches are event-delegated so re-rendering the lists is cheap.
   function toggleFromEvent(target) {
     const sw = target.closest ? target.closest('.sw[data-stack]') : null;
-    if (!sw) return false;
+    if (!sw) {
+      // A click reached the drawer but not a switch. Usually harmless — the
+      // drawer has plenty of non-switch surface — but it is also the only way a
+      // click *on* a switch can end up doing nothing, so it is recorded with
+      // what it did hit (T8).
+      uiNote(
+        'debug',
+        'autosync: drawer click hit no switch —',
+        target && target.className ? String(target.className) : typeof target,
+      );
+      return false;
+    }
     autosyncPost('stack', sw.getAttribute('data-stack'), !sw.classList.contains('on'));
     return true;
   }
