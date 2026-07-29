@@ -72,6 +72,19 @@ async function freePorts(n: number): Promise<number[]> {
   return ports;
 }
 
+/** How often start() reserves fresh ports and relaunches after one was stolen
+ *  (see start()). Two retries cover the observed ~once-per-thousand collision
+ *  with a wide margin while a systematic bind failure still surfaces fast. */
+const MAX_LAUNCH_ATTEMPTS = 3;
+
+/** isStolenPort matches the two shapes a stolen reserved port fails with:
+ *  skipper's own bind error (captured in the wait failure's output) and a
+ *  peer stub's listen rejection. */
+function isStolenPort(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes('address already in use') || msg.includes('EADDRINUSE');
+}
+
 /** Identity the harness commits as. Overridable per instance
  *  (StartOptions.commitAuthor) so a rendered diff header can name a realistic
  *  author instead of the test default. */
@@ -441,7 +454,18 @@ async function startPeerStubs(
         res.statusCode = 404;
         res.end('{}');
       });
-      await new Promise<void>((r) => server.listen(peerPort, '127.0.0.1', () => r()));
+      // Reject on a listen error (a stolen reserved port raises EADDRINUSE)
+      // instead of letting it escape as an uncaught exception; close the
+      // stubs already up so a retried launch never leaks servers.
+      try {
+        await new Promise<void>((res, rej) => {
+          server.once('error', rej);
+          server.listen(peerPort, '127.0.0.1', () => res());
+        });
+      } catch (err) {
+        for (const started of peerServers) started.close();
+        throw err;
+      }
       peerServers.push(server);
     }
   }
@@ -593,9 +617,31 @@ export class Skipper {
   /** start builds an origin with one dir per stack, launches the binary, waits
    *  until healthy, and waits for the startup deploy of every stack to settle.
    *  Reads as its four phases — scaffold, peer stubs, config, spawn-and-wait —
-   *  each of which lives in its own helper above. */
+   *  each of which lives in its own helper above.
+   *
+   *  The reserved ports are released again before skipper (or a peer stub)
+   *  binds them, and they come from the same ephemeral range every outbound
+   *  connection draws from — so under parallel workers another process can
+   *  steal one in that gap. The theft is detected deterministically (skipper
+   *  exits with its bind error, a stub's listen rejects with EADDRINUSE) and
+   *  the launch is retried on fresh ports; any other failure propagates on
+   *  the first throw. */
   static async start(opts: StartOptions = {}): Promise<Skipper> {
     const ws = scaffoldWorkspace(opts);
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await Skipper.launch(opts, ws);
+      } catch (err) {
+        if (attempt >= MAX_LAUNCH_ATTEMPTS || !isStolenPort(err)) throw err;
+      }
+    }
+  }
+
+  /** launch runs the port-dependent phases of start() once: reserve ports,
+   *  start peer stubs, write the config, spawn skipper and wait for readiness.
+   *  A failure after spawn tears the instance down before rethrowing, so a
+   *  retried launch never leaks a process or a stub server. */
+  private static async launch(opts: StartOptions, ws: Workspace): Promise<Skipper> {
     const { base, origin, repoDir, stateDir, dockerLog, holdFile, hookHoldFile } = ws;
     const { stubDir, healthDir, orphansDir, stacks, author } = ws;
 
@@ -650,15 +696,20 @@ export class Skipper {
       peerServers,
       proc,
     });
-    if ((opts.readiness ?? 'deployed') === 'listening') {
-      await s.waitListening();
-    } else {
-      await s.waitHealthy();
-      const parked = new Set(opts.discovery?.disabled ?? []);
-      for (const name of stacks) {
-        if (parked.has(name)) continue; // disabled: never deploys, never in state
-        await s.waitFor(`startup deploy of ${name}`, () => s.stateHasStack(name));
+    try {
+      if ((opts.readiness ?? 'deployed') === 'listening') {
+        await s.waitListening();
+      } else {
+        await s.waitHealthy();
+        const parked = new Set(opts.discovery?.disabled ?? []);
+        for (const name of stacks) {
+          if (parked.has(name)) continue; // disabled: never deploys, never in state
+          await s.waitFor(`startup deploy of ${name}`, () => s.stateHasStack(name));
+        }
       }
+    } catch (err) {
+      await s.stop();
+      throw err;
     }
     return s;
   }
@@ -847,6 +898,15 @@ export class Skipper {
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       if (await cond()) return;
+      // A process that has exited can never satisfy the condition (checked
+      // after cond so a last-gasp effect, e.g. state written just before the
+      // exit, still counts): fail now with the output that says why — a bind
+      // failure surfaces here in milliseconds instead of a silent 20s spin.
+      if (this.proc.exitCode !== null || this.proc.signalCode !== null) {
+        throw new Error(
+          `skipper exited while waiting for ${what}\n--- skipper output ---\n${this.out}`,
+        );
+      }
       await sleep(50);
     }
     throw new Error(`timed out waiting for ${what}\n--- skipper output ---\n${this.out}`);

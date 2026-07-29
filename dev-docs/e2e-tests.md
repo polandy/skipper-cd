@@ -179,6 +179,17 @@ binary):
   subscribed to while it runs: attaching a console or network listener is itself
   enough to change the timing of a race, which is how the UC11 investigation
   repeatedly lost its own flake (T8).
+- **Stolen ports retry the launch.** The harness reserves ports by binding
+  port 0 and releasing again, so between the release and skipper's (or a peer
+  stub's) own bind another process can take the port — they come from the same
+  ephemeral range every outbound connection draws from, and parallel workers
+  make that a real, ~once-per-thousand event. `Skipper.start` detects the theft
+  deterministically (skipper exits with its bind error — `waitFor` fails fast
+  on a dead process instead of spinning out its deadline — or a stub's listen
+  rejects with `EADDRINUSE`) and relaunches on fresh ports, up to three
+  attempts; any other failure propagates immediately. `relaunch()` deliberately
+  keeps its ports (the browser's origin must survive), so it carries the
+  residual risk.
 - **Fonts settle before interaction.** The `page` fixture awaits
   `document.fonts.ready` after every navigation (`goto` and `reload`): the
   web fonts' `font-display: swap`
