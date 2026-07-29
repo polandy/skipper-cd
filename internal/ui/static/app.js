@@ -3494,6 +3494,11 @@
   // happen, so showing it as though it had would be the worse lie.
   function autosyncPost(scope, stack, enabled) {
     const what = scope === 'stack' ? scope + ' ' + stack : scope;
+    // Recorded before the request, not after: it marks that a click actually
+    // reached this handler. An empty note buffer on a failed toggle then means
+    // the click never got here at all, which no later message could tell apart
+    // from a request that vanished (T8).
+    uiNote('debug', 'autosync: toggling', what, '->', enabled);
     fetch('/api/autosync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3705,7 +3710,24 @@
   // Per-stack switches are event-delegated so re-rendering the lists is cheap.
   function toggleFromEvent(target) {
     const sw = target.closest ? target.closest('.sw[data-stack]') : null;
-    if (!sw) return false;
+    if (!sw) {
+      // Only interesting when the click landed *inside a stack row* yet missed
+      // that row's switch — a click aimed at the control that did not reach it.
+      // The rest of the drawer (filter, background, queue lines) is legitimately
+      // non-switch surface, and noting those would evict the diagnostics this
+      // buffer exists for. See T8.
+      const row = target.closest ? target.closest('.stack-row') : null;
+      if (row && row.querySelector('.sw[data-stack]')) {
+        uiNote(
+          'debug',
+          'autosync: click inside row',
+          row.getAttribute('data-stack'),
+          'missed its switch — hit',
+          String(target.className || target.nodeName),
+        );
+      }
+      return false;
+    }
     autosyncPost('stack', sw.getAttribute('data-stack'), !sw.classList.contains('on'));
     return true;
   }
