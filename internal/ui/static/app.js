@@ -3711,15 +3711,21 @@
   function toggleFromEvent(target) {
     const sw = target.closest ? target.closest('.sw[data-stack]') : null;
     if (!sw) {
-      // A click reached the drawer but not a switch. Usually harmless — the
-      // drawer has plenty of non-switch surface — but it is also the only way a
-      // click *on* a switch can end up doing nothing, so it is recorded with
-      // what it did hit (T8).
-      uiNote(
-        'debug',
-        'autosync: drawer click hit no switch —',
-        target && target.className ? String(target.className) : typeof target,
-      );
+      // Only interesting when the click landed *inside a stack row* yet missed
+      // that row's switch — a click aimed at the control that did not reach it.
+      // The rest of the drawer (filter, background, queue lines) is legitimately
+      // non-switch surface, and noting those would evict the diagnostics this
+      // buffer exists for. See T8.
+      const row = target.closest ? target.closest('.stack-row') : null;
+      if (row && row.querySelector('.sw[data-stack]')) {
+        uiNote(
+          'debug',
+          'autosync: click inside row',
+          row.getAttribute('data-stack'),
+          'missed its switch — hit',
+          String(target.className || target.nodeName),
+        );
+      }
       return false;
     }
     autosyncPost('stack', sw.getAttribute('data-stack'), !sw.classList.contains('on'));
