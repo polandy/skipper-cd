@@ -311,13 +311,12 @@ const RECONNECT_MAX_DELAY_MS = 30000;
 // the timer a test drives in the signature instead of behind a fallback. The
 // returned state is per instance, so two streams back off independently.
 function makeReconnector(connect, setTimer) {
-  const arm = setTimer;
   let timer = null;
   let delay = RECONNECT_BASE_DELAY_MS;
   return {
     schedule: function () {
       if (timer !== null) return; // a retry is already pending
-      timer = arm(function () {
+      timer = setTimer(function () {
         timer = null;
         connect();
       }, delay);
