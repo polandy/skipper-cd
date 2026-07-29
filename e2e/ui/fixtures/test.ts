@@ -29,6 +29,19 @@ export const test = base.extend<{
     if (seedTourSeen) {
       await page.addInitScript(() => localStorage.setItem('headerTourSeen', '1'));
     }
+    // No interaction before the one-time web-font reflow: `font-display: swap`
+    // reflows the page when a font lands, and a swap between Playwright
+    // computing a click point and dispatching it moves the target out from
+    // under the click (the UC11 flake: the queue empty-note wraps from one
+    // line to two when JetBrains Mono arrives, shifting the stack switches
+    // down 18px). `document.fonts.ready` is that reflow's completion signal —
+    // a settled state, not a wait-and-hope.
+    const goto = page.goto.bind(page);
+    page.goto = async (url, options) => {
+      const response = await goto(url, options);
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      return response;
+    };
     await use(page);
   },
 

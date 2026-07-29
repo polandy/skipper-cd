@@ -91,6 +91,10 @@ const autosyncDrawer = (page: Page) => page.locator('[data-testid="autosync-draw
 async function openDrawer(page: Page) {
   await autosyncBtn(page).click();
   await expect(autosyncDrawer(page)).toHaveAttribute('data-ready', 'true');
+  // The open transition animates max-height with overflow-y:auto, so a
+  // transient scrollbar re-wraps text and moves the switches while it runs;
+  // data-settled flips on transitionend — the deterministic end of that window.
+  await expect(autosyncDrawer(page)).toHaveAttribute('data-settled', 'true');
 }
 
 // UC3 — Drawer open/close. Clicking the `autosync-btn` header control opens the
