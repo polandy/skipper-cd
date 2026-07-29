@@ -173,6 +173,12 @@ binary):
     `deploying` state can be observed, then released.
   - `STUB_DOCKER_ECHO=<line>` → print `<line>` to stdout on `up`, so the
     captured child-process output reaches the log ring (drives the `cmd-prefix`).
+- **Failure attachments.** A failed test attaches the instance's stdout/stderr
+  (`skipper-output`) *and* the UI's own diagnostics (`ui-notes`, read from
+  `window.__uiNotes`). Both are collected **after** the test finishes, never
+  subscribed to while it runs: attaching a console or network listener is itself
+  enough to change the timing of a race, which is how the UC11 investigation
+  repeatedly lost its own flake (T8).
 - **Lint** (`make e2e-ui-lint`): type-aware ESLint over the suite. The rule that
   earns it is `no-floating-promises` — a forgotten `await` on an assertion makes
   a test pass without checking anything, and a vacuously green test is worse

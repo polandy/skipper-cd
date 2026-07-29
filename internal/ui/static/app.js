@@ -28,6 +28,34 @@
   // The gate's state is mirrored onto the live region as data-announce-ready,
   // so "the replay burst is over" is observable instead of having to be waited
   // out: a test asserts on the attribute rather than sleeping past the timer.
+  // uiNote records a diagnostic on the console and keeps a bounded copy on the
+  // page. The console alone is not enough: nothing collects it, so a failure in
+  // CI (or a user's report) arrives without the reason the UI already knew. The
+  // e2e harness reads this buffer when a test fails; keeping it a plain array
+  // means no listener has to be attached while the test runs, which matters —
+  // subscribing to the console is itself enough to change the timing of the
+  // race UC11 is chasing.
+  const UI_NOTES_MAX = 50;
+  window.__uiNotes = [];
+  // level picks the console method, so a by-design drop stays `debug` while a
+  // failure is a `warn` — both are recorded either way, because which one
+  // explains a bug is not knowable in advance.
+  function uiNote(level) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    console[level].apply(console, args);
+    window.__uiNotes.push(
+      new Date().toISOString() +
+        ' ' +
+        args
+          .map(function (a) {
+            return a instanceof Error ? a.message : String(a);
+          })
+          .join(' '),
+    );
+    // Bounded: a page left open for hours must not grow this without limit.
+    if (window.__uiNotes.length > UI_NOTES_MAX) window.__uiNotes.shift();
+  }
+
   // ANNOUNCE_SETTLE_MS is how long after a connect the gate stays shut: long
   // enough for the replay burst to render, short enough that a deploy landing
   // right after a reconnect is still voiced.
@@ -3406,7 +3434,7 @@
       } catch (e) {
         // Private-mode storage can throw; the class already hid the tour for
         // this session, so log and carry on rather than leaving it half-applied.
-        console.warn('could not persist headerTourSeen', e);
+        uiNote('warn', 'could not persist headerTourSeen', e);
       }
       // Keyboard users lose the vanished button; land them back in the header.
       const nav = document.querySelector('.view-toggle button.active');
@@ -3473,7 +3501,7 @@
     })
       .then(function (r) {
         if (!r.ok) {
-          console.warn('autosync: toggle refused for', what, '— HTTP', r.status);
+          uiNote('warn', 'autosync: toggle refused for', what, '— HTTP', r.status);
           return null;
         }
         return r.json();
@@ -3482,7 +3510,7 @@
         if (snap) applyAutosyncSnapshot(snap);
       })
       .catch(function (err) {
-        console.warn('autosync: toggle for', what, 'did not reach the server —', err);
+        uiNote('warn', 'autosync: toggle for', what, 'did not reach the server —', err);
       });
   }
 
@@ -3493,7 +3521,7 @@
   function applyAutosyncSnapshot(snap) {
     if (!snapshotIsFresh(autosyncVersion, snap)) {
       // A drop is invisible by design, so leave a trace of it.
-      console.debug('autosync: dropped a stale snapshot', snap.version, '<', autosyncVersion);
+      uiNote('debug', 'autosync: dropped a stale snapshot', snap.version, '<', autosyncVersion);
       return;
     }
     autosyncSnap = snap;

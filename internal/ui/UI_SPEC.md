@@ -342,6 +342,12 @@ Controls whether detected changes deploy automatically, per stack and globally. 
 
 **A re-render never swaps a switch out from under a click.** The queued and all-stacks lists are patched in place while their rows and order are unchanged, and rebuilt only when the row set actually changes. Rebuilding wholesale on every `autosync`/`queue` event replaced the switch nodes, and a switch replaced between mousedown and mouseup takes the `click` with it — the browser fires it on the common ancestor, where the delegated handler finds no switch and does nothing (it also dropped keyboard focus on every tick).
 
+**Diagnostics survive the console.** Anything the UI reports about its own
+failures goes through `uiNote`, which logs to the console *and* keeps a bounded
+copy (50 entries) on `window.__uiNotes`. The console alone is collected by
+nothing, so a CI failure would otherwise arrive without the reason the UI
+already knew; the e2e harness attaches the buffer when a test fails.
+
 **A refused write is announced, not hidden.** A toggle that the server refuses — or that never reaches it — leaves the switch showing *server* state and reports the reason on the browser console (`autosync: toggle refused for …` / `… did not reach the server`). Painting the attempted value would claim a write that did not happen; saying nothing at all is indistinguishable from a dead control, which is exactly the ambiguity that cost time chasing a flake. Mask UAM covers both paths.
 
 **A switch never snaps back.** Autosync state reaches the UI over two channels — the toggle's own `POST` response and the `autosync` SSE event the same change broadcasts — and they can overtake each other. The UI applies a snapshot only when its `version` is not below the one already applied, so a late payload is dropped instead of repainting the state before the last change (two quick toggles of the same switch are exactly that window). The version is re-baselined on every reconnect, since it restarts with the server. A drop is announced on the browser console, since it is by design invisible in the interface. See [`dev-docs/autosync-spec.md`](../../dev-docs/autosync-spec.md#snapshot-ordering).

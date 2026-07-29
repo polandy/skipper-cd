@@ -45,6 +45,12 @@ test.describe('UAM: a refused autosync write is announced', () => {
     // The write did not happen, so the control keeps showing server state rather
     // than the value the click asked for.
     await expect(web).toHaveAttribute('aria-checked', 'true');
+
+    // The same note is kept on the page, which is what reaches a CI report — the
+    // console alone is collected by nothing, so a failure would arrive without
+    // the reason the UI already knew. The harness attaches this on failure.
+    const notes = await page.evaluate(() => (window as { __uiNotes?: string[] }).__uiNotes ?? []);
+    expect(notes.join('\n')).toContain('autosync: toggle refused for stack web');
   });
 
   test('a request that never arrives is announced too', async ({ page, skipper }) => {
@@ -64,5 +70,8 @@ test.describe('UAM: a refused autosync write is announced', () => {
     await web.click();
     await failed;
     await expect(web).toHaveAttribute('aria-checked', 'true');
+
+    const notes = await page.evaluate(() => (window as { __uiNotes?: string[] }).__uiNotes ?? []);
+    expect(notes.join('\n')).toContain('did not reach the server');
   });
 });
