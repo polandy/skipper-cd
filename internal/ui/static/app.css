@@ -4,6 +4,19 @@
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/jetbrains-mono-400.woff2) format('woff2')}
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/jetbrains-mono-500.woff2) format('woff2')}
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/jetbrains-mono-600.woff2) format('woff2')}
+/* Metric-compatible local fallbacks: size-adjust + ascent/descent overrides are
+   computed from the real font metrics (fontTools; e.g. JetBrains Mono advance
+   0.6em vs Ubuntu Mono 0.5em → 120%), so text rendered before the webfont
+   swaps in occupies exactly the space of the loaded face — the swap causes no
+   layout shift on slow connections. One family per local candidate; a
+   candidate that isn't installed fails to match and the stack moves on. The
+   Liberation faces double as their metric clones (Arial, Courier New). */
+@font-face{font-family:'DM Sans Fallback Ubuntu';src:local('Ubuntu');font-weight:400 600;size-adjust:102.9239%;ascent-override:96.3819%;descent-override:30.1193%;line-gap-override:0%}
+@font-face{font-family:'DM Sans Fallback DejaVu';src:local('DejaVu Sans');font-weight:400 600;size-adjust:92.0931%;ascent-override:107.7171%;descent-override:33.6616%;line-gap-override:0%}
+@font-face{font-family:'DM Sans Fallback Liberation';src:local('Liberation Sans'),local('Arial'),local('Helvetica');font-weight:400 600;size-adjust:105.7305%;ascent-override:93.8235%;descent-override:29.3198%;line-gap-override:0%}
+@font-face{font-family:'JetBrains Mono Fallback Ubuntu';src:local('Ubuntu Mono');font-weight:400 600;size-adjust:120%;ascent-override:85%;descent-override:25%;line-gap-override:0%}
+@font-face{font-family:'JetBrains Mono Fallback DejaVu';src:local('DejaVu Sans Mono');font-weight:400 600;size-adjust:99.6594%;ascent-override:102.3486%;descent-override:30.1025%;line-gap-override:0%}
+@font-face{font-family:'JetBrains Mono Fallback Liberation';src:local('Liberation Mono'),local('Courier New');font-weight:400 600;size-adjust:99.9837%;ascent-override:102.0166%;descent-override:30.0049%;line-gap-override:0%}
   /* ---------------------------------------------------------------------
      Theme palettes. The server bakes the configured theme (ui_theme) into
      <html data-theme="…">; the header toggle only ever flips the ".light"
@@ -186,8 +199,8 @@
     --danger-dim: color-mix(in srgb, var(--danger) 10%, transparent);
     --rollback-dim: color-mix(in srgb, var(--rollback) 12%, transparent);
     --queued-dim: color-mix(in srgb, var(--queued) 14%, transparent);
-    --font-display: 'DM Sans', sans-serif;
-    --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+    --font-display: 'DM Sans', 'DM Sans Fallback Ubuntu', 'DM Sans Fallback DejaVu', 'DM Sans Fallback Liberation', sans-serif;
+    --font-mono: 'JetBrains Mono', 'JetBrains Mono Fallback Ubuntu', 'JetBrains Mono Fallback DejaVu', 'JetBrains Mono Fallback Liberation', 'SF Mono', 'Cascadia Code', monospace;
     --radius: 8px;
     --app-header-h: 56px; /* the sticky header height; the Logs fullscreen fills below it */
   }
