@@ -295,6 +295,40 @@ function logLineLevel(entry) {
   return attrs.cmd && attrs.stream ? 'cmd' : entry.level;
 }
 
+// RECONNECT_BASE_DELAY_MS is where a stream's manual retry backoff starts, and
+// RECONNECT_MAX_DELAY_MS is its cap. EventSource retries a transient drop by
+// itself, but gives up for good on a fatal error (non-2xx, bad content-type),
+// which is what these retries are for.
+const RECONNECT_BASE_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 30000;
+
+// makeReconnector owns one stream's retry backoff: schedule() arms a capped,
+// doubling retry unless one is already pending, and reset() is what a good
+// connection calls so the next outage starts from the base delay again.
+//
+// setTimer is required rather than defaulting to setTimeout: this file reaches
+// for no ambient globals, which is what lets it run under node — and it puts
+// the timer a test drives in the signature instead of behind a fallback. The
+// returned state is per instance, so two streams back off independently.
+function makeReconnector(connect, setTimer) {
+  const arm = setTimer;
+  let timer = null;
+  let delay = RECONNECT_BASE_DELAY_MS;
+  return {
+    schedule: function () {
+      if (timer !== null) return; // a retry is already pending
+      timer = arm(function () {
+        timer = null;
+        connect();
+      }, delay);
+      delay = Math.min(delay * 2, RECONNECT_MAX_DELAY_MS);
+    },
+    reset: function () {
+      delay = RECONNECT_BASE_DELAY_MS;
+    },
+  };
+}
+
 // phaseDuration renders a millisecond span the way the health timeline needs
 // it: compact, coarse ("6h12m", "5m", "3d4h"), never seconds-precise beyond
 // the first minute.
@@ -645,6 +679,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // own edge cases to inference.
   module.exports = {
     formatDuration,
+    makeReconnector,
+    RECONNECT_BASE_DELAY_MS,
+    RECONNECT_MAX_DELAY_MS,
     formatTime,
     fullTime,
     classifyDiffLine,
