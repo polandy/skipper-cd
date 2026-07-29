@@ -37,9 +37,12 @@
   // race UC11 is chasing.
   const UI_NOTES_MAX = 50;
   window.__uiNotes = [];
-  function uiNote() {
-    const args = Array.prototype.slice.call(arguments);
-    console.warn.apply(console, args);
+  // level picks the console method, so a by-design drop stays `debug` while a
+  // failure is a `warn` — both are recorded either way, because which one
+  // explains a bug is not knowable in advance.
+  function uiNote(level) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    console[level].apply(console, args);
     window.__uiNotes.push(
       new Date().toISOString() +
         ' ' +
@@ -3431,7 +3434,7 @@
       } catch (e) {
         // Private-mode storage can throw; the class already hid the tour for
         // this session, so log and carry on rather than leaving it half-applied.
-        console.warn('could not persist headerTourSeen', e);
+        uiNote('warn', 'could not persist headerTourSeen', e);
       }
       // Keyboard users lose the vanished button; land them back in the header.
       const nav = document.querySelector('.view-toggle button.active');
@@ -3498,7 +3501,7 @@
     })
       .then(function (r) {
         if (!r.ok) {
-          uiNote('autosync: toggle refused for', what, '— HTTP', r.status);
+          uiNote('warn', 'autosync: toggle refused for', what, '— HTTP', r.status);
           return null;
         }
         return r.json();
@@ -3507,7 +3510,7 @@
         if (snap) applyAutosyncSnapshot(snap);
       })
       .catch(function (err) {
-        uiNote('autosync: toggle for', what, 'did not reach the server —', err);
+        uiNote('warn', 'autosync: toggle for', what, 'did not reach the server —', err);
       });
   }
 
@@ -3518,7 +3521,7 @@
   function applyAutosyncSnapshot(snap) {
     if (!snapshotIsFresh(autosyncVersion, snap)) {
       // A drop is invisible by design, so leave a trace of it.
-      console.debug('autosync: dropped a stale snapshot', snap.version, '<', autosyncVersion);
+      uiNote('debug', 'autosync: dropped a stale snapshot', snap.version, '<', autosyncVersion);
       return;
     }
     autosyncSnap = snap;
