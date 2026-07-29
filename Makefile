@@ -2,11 +2,11 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps
+.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps e2e-ui-lint
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
-ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps lint govulncheck e2e docs e2e-ui ui-preview-smoke
+ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps e2e-ui-lint lint govulncheck e2e docs e2e-ui ui-preview-smoke
 
 ## --- test job -------------------------------------------------------------
 build:
@@ -142,3 +142,12 @@ check-baselines:
 # UI publishes no state to assert on.
 check-no-sleeps:
 	@scripts/check-no-sleeps.sh
+
+## --- e2e-ui-lint (part of the ui-unit job) ---------------------------------
+# Type-aware ESLint over the Playwright suite. The rule that earns it is
+# no-floating-promises: a forgotten `await` on an assertion makes a test pass
+# without checking anything, and a vacuously green test is worse than none.
+# Not Prettier-formatted, deliberately — like app.css, the suite keeps its
+# hand-written style.
+e2e-ui-lint:
+	cd e2e/ui && npm ci && npm run lint

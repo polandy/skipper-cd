@@ -173,6 +173,11 @@ binary):
     `deploying` state can be observed, then released.
   - `STUB_DOCKER_ECHO=<line>` → print `<line>` to stdout on `up`, so the
     captured child-process output reaches the log ring (drives the `cmd-prefix`).
+- **Lint** (`make e2e-ui-lint`): type-aware ESLint over the suite. The rule that
+  earns it is `no-floating-promises` — a forgotten `await` on an assertion makes
+  a test pass without checking anything, and a vacuously green test is worse
+  than none. Deliberately no Prettier: like `app.css`, the suite keeps its
+  hand-written style.
 - **Config file** (`e2e.yml`, temp dir): `repo_url` → local origin,
   `repo_dir`/`stacks_base_dir` → temp dirs, `ui_enabled: true`, free
   `port`/`metrics_port`, known `webhook_secret`, small

@@ -18,7 +18,7 @@ const caret = (page: Page, view: string) => viewBtn(page, view).locator('.vt-car
 
 // The active-bar is a ::before on the button; read its resolved style.
 const bar = (btn: Locator, prop: 'content' | 'height') =>
-  btn.evaluate((el, p) => getComputedStyle(el, '::before')[p as never] as string, prop);
+  btn.evaluate((el, p) => getComputedStyle(el, '::before')[p as never], prop);
 const opacity = (el: Locator) =>
   el.evaluate((n) => parseFloat(getComputedStyle(n).opacity));
 const transform = (el: Locator) =>
