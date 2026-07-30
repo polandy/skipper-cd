@@ -74,8 +74,12 @@ func Build(stacks []config.Stack, disabled []string,
   runtime health is not part of the roster snapshot; see `internal/ui/UI_SPEC.md`.)
 
 Wired into the existing `stacks` SSE snapshot (`roster.State`), which is
-published on connect and after every deploy run — the roster's natural
-cadence. The snapshot keeps its existing `disabled` array (drives the Deploys
+published on connect, as soon as a run resolves the stack set, and after every
+deploy run — the roster's natural cadence. The middle one matters in
+stack-discovery mode: the set is unknown until the first run reads it from the
+repo (`Deployer.CurrentStacks` is nil before that), so publishing only at the
+end of a run would leave the roster — and every affordance derived from the
+stack config, such as the hooks badge — empty for the run's whole duration. The snapshot keeps its existing `disabled` array (drives the Deploys
 view's disabled line, unchanged) and gains `roster`:
 
 ```json

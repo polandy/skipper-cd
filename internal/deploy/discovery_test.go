@@ -230,3 +230,80 @@ func TestNew_TrackedFilesEmptyWithoutState(t *testing.T) {
 		t.Errorf("tracked files = %v, want empty for a fresh install", got)
 	}
 }
+
+// The effective stack set is unknown until a run discovers it, so every
+// stack-derived UI surface (the roster, and with it each row's hooks badge)
+// stays empty until it is published. Publishing it only at the end of the run
+// leaves that gap open for as long as the run's deploys take.
+func TestDeployAllStacks_PublishesTheStackSetBeforeDeploying(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"alpha"}, nil)
+	runner := &recordingRunner{}
+
+	var d *Deployer
+	publishes := 0
+	var upsAtPublish int
+	var setAtPublish []config.Stack
+	d = New(Config{
+		Runner:   runner,
+		RepoDir:  repoDir,
+		StateDir: t.TempDir(),
+		StackSetSink: func() {
+			publishes++
+			upsAtPublish = countComposeUps(runner.calls)
+			setAtPublish = d.CurrentStacks()
+		},
+	})
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if publishes != 1 {
+		t.Fatalf("stack-set publishes = %d, want exactly one per run", publishes)
+	}
+	if upsAtPublish != 0 {
+		t.Errorf("the stack set must be published before any stack deploys; %d up(s) had already run", upsAtPublish)
+	}
+	// Published means published *with* the set resolved — announcing an empty
+	// set would leave the roster just as blank as not announcing at all.
+	if len(setAtPublish) != 1 || setAtPublish[0].Name != "alpha" {
+		t.Errorf("CurrentStacks() at publish time = %+v, want the discovered set", setAtPublish)
+	}
+}
+
+// countComposeUps counts the `docker compose … up` invocations recorded so far.
+func countComposeUps(calls []runCall) int {
+	n := 0
+	for _, c := range calls {
+		if len(c.args) > 1 && c.args[1] == "up" {
+			n++
+		}
+	}
+	return n
+}
+
+// Without discovery the set comes from the host config and never changes, so
+// there is nothing to announce mid-run.
+func TestDeployAllStacks_NoStackSetPublishWithoutDiscovery(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "web")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	published := 0
+	d := New(Config{
+		Runner:       &recordingRunner{},
+		RepoDir:      baseDir,
+		StateDir:     t.TempDir(),
+		StackSetSink: func() { published++ },
+	})
+
+	d.DeployAllStacks(context.Background(), &config.Config{
+		StacksBaseDir: baseDir,
+		Stacks:        []config.Stack{{Name: "web"}},
+	})
+
+	if published != 0 {
+		t.Errorf("stack-set publishes without discovery = %d, want 0", published)
+	}
+}
