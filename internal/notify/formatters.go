@@ -140,16 +140,37 @@ func renderHealthGate(gated bool) string {
 }
 
 // versionTokens reduces an old → new image reference pair to the tokens that
-// actually differ. Both sides normally share a repository — the service name
-// beside them already says which image it is — so it is dropped and only the
-// version part is shown ("nextcloud:30@ab12…" → "30@ab12…"). When the
+// actually differ — the same reduction the UI's version chip makes, so a change
+// reads the same in both places.
+//
+// Both sides normally share a repository (the service name beside them already
+// says which image it is), so it is dropped: a tag bump shows the tags alone
+// ("1.25 → 1.27"), while an unchanged tag means the image behind it moved and
+// the image ids are what differ ("30-apache@ab12… → 30-apache@cd34…"). When the
 // repositories differ, the service switched images entirely: both references
 // are kept in full, because that is the change.
 func versionTokens(oldRef, newRef string) (string, string) {
 	if imageRepository(oldRef) != imageRepository(newRef) {
 		return oldRef, newRef
 	}
+	oldTag, newTag := imageTag(oldRef), imageTag(newRef)
+	if oldTag != "" && newTag != "" && oldTag != newTag {
+		return oldTag, newTag
+	}
 	return dropRepository(oldRef), dropRepository(newRef)
+}
+
+// imageTag returns an image reference's tag, or "" when it carries none
+// ("nginx:1.25@ab12" → "1.25", "nginx@ab12" → "").
+func imageTag(ref string) string {
+	if at := strings.IndexByte(ref, '@'); at != -1 {
+		ref = ref[:at]
+	}
+	colon := strings.LastIndexByte(ref, ':')
+	if colon <= strings.LastIndexByte(ref, '/') {
+		return ""
+	}
+	return ref[colon+1:]
 }
 
 // imageRepository returns the repository part of an image reference: registry

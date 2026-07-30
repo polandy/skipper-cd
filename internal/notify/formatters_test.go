@@ -133,6 +133,23 @@ func TestSignalFormatter_ReportsMovedFloatingTagAsImageIDChange(t *testing.T) {
 	}
 }
 
+func TestSignalFormatter_TagBumpDropsTheImageIDs(t *testing.T) {
+	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}}
+	ev := events.DeployEvent{
+		Stack: "web", Status: events.StatusSuccess, DurationMs: 1500,
+		// Running-image identities: both carry an id, but the tag is what moved.
+		ImageChanges: []events.ServiceImageChange{
+			{Service: "cache", Old: "redis:7.2@a1b2c3d4e5f6", New: "redis:7.4@9f8e7d6c5b4a"},
+		},
+	}
+	msg, _ := bodyOf(t, mustFormat(t, f, ev))["message"].(string)
+	// The ids are noise next to a tag that says the same thing — the same
+	// reduction the UI's version chip makes.
+	if !strings.Contains(msg, "cache: 7.2 → 7.4") {
+		t.Errorf("a tag bump should show the tags alone, got %q", msg)
+	}
+}
+
 func TestSignalFormatter_KeepsFullRefsWhenTheRepositoryChanged(t *testing.T) {
 	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}}
 	ev := events.DeployEvent{
