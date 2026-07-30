@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.21.0](https://github.com/polandy/skipper-cd/compare/v0.20.0...v0.21.0) (2026-07-30)
+
+
+### Features
+
+* **ui:** record that a toggle was attempted, and what a stray click hit ([#266](https://github.com/polandy/skipper-cd/issues/266)) ([90b2a39](https://github.com/polandy/skipper-cd/commit/90b2a3998d9244de8414f901f3ebe22abbaaef23))
+
+
+### Bug Fixes
+
+* **e2e:** close the two layout races that ate the UC11 toggle click ([#267](https://github.com/polandy/skipper-cd/issues/267)) ([ab5e36f](https://github.com/polandy/skipper-cd/commit/ab5e36feb96c9ab6a21bd993d96094a81c2f0898))
+* **e2e:** retry the harness launch when a reserved port is stolen ([#268](https://github.com/polandy/skipper-cd/issues/268)) ([4ed82dd](https://github.com/polandy/skipper-cd/commit/4ed82dd6ef3a433180e331fa469e2b9c11f2da9c))
+* report a listen failure instead of exiting from its goroutine ([#254](https://github.com/polandy/skipper-cd/issues/254)) ([8d9c035](https://github.com/polandy/skipper-cd/commit/8d9c0354400670c748a7205a9781d159cab3f381))
+* **ui:** announce a refused autosync write instead of swallowing it ([#264](https://github.com/polandy/skipper-cd/issues/264)) ([4102191](https://github.com/polandy/skipper-cd/commit/410219165da813718ebee67a5f67242d9132db4a))
+* **ui:** keep the web-font swap from shifting the layout ([#269](https://github.com/polandy/skipper-cd/issues/269)) ([e20b3fd](https://github.com/polandy/skipper-cd/commit/e20b3fd02924537f177f35b24b0c535c47c0a93b))
+* **ui:** keep UI diagnostics where a failed test can reach them ([#265](https://github.com/polandy/skipper-cd/issues/265)) ([557e54f](https://github.com/polandy/skipper-cd/commit/557e54f919c0b7a6b669b197253720e2787a0feb))
+* **ui:** publish the announce gate's state instead of sleeping past it ([#256](https://github.com/polandy/skipper-cd/issues/256)) ([ee6ebc5](https://github.com/polandy/skipper-cd/commit/ee6ebc5f6b21208baf77a8d34533c222990764c4))
+* **ui:** stop the autosync drawer from swallowing switch clicks ([#231](https://github.com/polandy/skipper-cd/issues/231)) ([8db9a57](https://github.com/polandy/skipper-cd/commit/8db9a57d411ad9c4961982c493975e19a43ba7f5))
+
 ## [0.20.0](https://github.com/polandy/skipper-cd/compare/v0.19.0...v0.20.0) (2026-07-27)
 
 
