@@ -1521,6 +1521,32 @@ step the switch would otherwise have been repainted in, so "the switch did not
 move" cannot pass early. Counter-probed against the pre-fix build, where both
 cases fail.
 
+### 4.41 UI — Maske AN: the web-font swap causes no layout shift
+
+The self-hosted webfonts use `font-display: swap`, so on a slow connection the
+page first renders in a local fallback font. Historically that render occupied
+*different* space — the container's Ubuntu Mono (0.5em advance) kept the queue
+empty-note on one line where JetBrains Mono (0.6em) wraps it to two — so the
+swap dropped everything below it ~19px: the UC11 flake for the suite, a
+one-time CLS for real users. `app.css` now declares metric-compatible local
+fallback faces (`size-adjust` + `ascent/descent/line-gap-override`, computed
+from the real font metrics) for the common Ubuntu/DejaVu/Liberation candidates,
+so the pre-swap render already occupies the loaded face's exact space. See
+[Fonts](../internal/ui/UI_SPEC.md).
+
+- **UAN1 — Blocked vs loaded geometry.** The autosync drawer is rendered twice:
+  once with every `/fonts/**` request aborted (the slow-connection render — the
+  spec asserts via `document.fonts.check` that the webfont really is absent,
+  the positive signal that the fallback was measured), once normally. The
+  empty-note's box and the first stack switch's height must match within 1px;
+  the regression it guards was a ~19px hop. Counter-probed against the pre-fix
+  CSS, where the note's height differs by a full line.
+
+Deterministic by construction: both measurements happen after
+`document.fonts.ready` (the fixture's navigation wrapper) and the drawer's
+`data-settled` — settled states, no waiting on a swap to *probably* have
+happened.
+
 ### 5.1 Docs screenshots — rendered, never committed
 
 The two images the docs landing page embeds
