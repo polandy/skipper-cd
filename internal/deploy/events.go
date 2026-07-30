@@ -25,6 +25,10 @@ type changeSet struct {
 	diffs        map[string]string
 	commits      []events.CommitInfo
 	imageChanges []events.ServiceImageChange
+	// healthGated records that the deploy ran under an effective
+	// deploy_health_check (explicit or inferred from a compose healthcheck), so a
+	// success event says the stack was verified healthy, not just applied.
+	healthGated bool
 }
 
 // collectChange gathers the full change context for the given changed files:
@@ -58,6 +62,7 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		Diffs:        d.repoRelativeDiffs(cs.diffs),
 		Commits:      cs.commits,
 		ImageChanges: cs.imageChanges,
+		HealthGated:  cs.healthGated,
 	})
 	return id
 }

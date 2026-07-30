@@ -101,6 +101,12 @@ type DeployEvent struct {
 	// (old → new), set on deploy attempts so notifications and the UI can name what
 	// updated. Kept on the SSE payload like HealDrift.
 	ImageChanges []ServiceImageChange `json:"image_changes,omitempty" yaml:"image_changes,omitempty"`
+	// HealthGated marks a deploy that ran under an effective deploy_health_check
+	// — explicit config or one inferred from a compose healthcheck (ADR-0046).
+	// On a success event it means the stack was verified healthy before the
+	// deploy was called done, which is what a notification reports; on a failed
+	// one it says only that the gate was in effect (the error names what failed).
+	HealthGated bool `json:"health_gated,omitempty" yaml:"health_gated,omitempty"`
 }
 
 // SSEPayload returns a copy suitable for SSE streaming: diffs and commits are

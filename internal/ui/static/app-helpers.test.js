@@ -147,6 +147,13 @@ test('imageDelta — shows the tokens that actually differ', () => {
     to: 'bbbb2222',
     tag: '1.25',
   });
+  // a moved floating tag, as the running-image identity reports it: same tag,
+  // a bare (un-prefixed) short image id — the everyday `:latest` redeploy
+  assert.deepEqual(h.imageDelta('nextcloud:latest@a1b2c3d4e5f6', 'nextcloud:latest@9f8e7d6c5b4a'), {
+    from: 'a1b2c3d4',
+    to: '9f8e7d6c',
+    tag: 'latest',
+  });
   // digest-only refs with no tag at all
   assert.deepEqual(h.imageDelta('nginx@sha256:aaaa1111ff', 'nginx@sha256:bbbb2222ff'), {
     from: 'aaaa1111',

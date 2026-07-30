@@ -29,6 +29,15 @@ type persistedState struct {
 	// Used to determine whether docker compose pull is necessary.
 	Images map[string]serviceImageByName `yaml:"images,omitempty"`
 
+	// RunningImages maps stack names to the service→image identity their
+	// containers actually ran after the last successful deployment
+	// ("<repo>:<tag>@<short image id>"). It is the baseline the next deploy's
+	// reported version change is measured against — deliberately separate from
+	// Images, which holds the compose file's *desired* references and alone
+	// decides whether a pull is needed (Invariant 5). A floating tag keeps its
+	// reference across a re-pull, so only this map can see that version move.
+	RunningImages map[string]serviceImageByName `yaml:"running_images,omitempty"`
+
 	// ProjectDirs maps each stack to its last successful deploy's compose project
 	// directory (the working_dir label). Lets orphan detection (ADR-0036)
 	// recognize a removed stack's project even when its dir lay outside
@@ -103,6 +112,26 @@ func (s *persistedState) imagesFor(stack string) serviceImageByName {
 // recordImages stores the service→image map of a successfully deployed stack.
 func (s *persistedState) recordImages(stack string, images serviceImageByName) {
 	s.Images[stack] = images
+}
+
+// runningImagesFor returns the service→running-image map recorded for a stack
+// (nil when unknown — no deploy of it has recorded one yet).
+func (s *persistedState) runningImagesFor(stack string) serviceImageByName {
+	return s.RunningImages[stack]
+}
+
+// recordRunningImages stores what a successfully deployed stack's containers
+// now run, as the baseline for the next deploy's version delta. An empty map is
+// not recorded: it would claim "this stack runs nothing" where the read simply
+// failed, and silently reset the baseline.
+func (s *persistedState) recordRunningImages(stack string, images serviceImageByName) {
+	if len(images) == 0 {
+		return
+	}
+	if s.RunningImages == nil {
+		s.RunningImages = map[string]serviceImageByName{}
+	}
+	s.RunningImages[stack] = images
 }
 
 // recordProjectDir stores the compose project directory of a successfully

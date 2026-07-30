@@ -674,6 +674,11 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	if prep.compose != nil {
 		cs.imageChanges = imageChanges(prep.currentImages, state.imagesFor(stack.Name))
 	}
+	// An effective deploy_health_check (explicit or inferred from a compose
+	// healthcheck) means this deploy is gated on the stack turning healthy — so
+	// a success event carrying this reports a verified deploy, not just a
+	// completed one.
+	cs.healthGated = prep.run.stack.DeployHealthCheck != nil
 	// From here the stack is actually deploying: any error returned below emits
 	// the matching terminal event with the change context gathered above. The
 	// success path emits StatusSuccess and returns nil, so this never double-fires.
@@ -688,7 +693,17 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		return err
 	}
 
-	d.recordStackSuccess(prep, state, deployStart, cs)
+	// What the stack now actually runs. Read only on the success path: it is the
+	// version the deploy produced, and a failed deploy has none to report.
+	// When both this read and the previous deploy's baseline are available it
+	// replaces the compose-reference delta above, so a moved floating tag shows
+	// up as the version change it is.
+	running := d.runningImages(ctx, prep.run)
+	if delta, ok := runningImageDelta(running, state.runningImagesFor(stack.Name)); ok {
+		cs.imageChanges = delta
+	}
+
+	d.recordStackSuccess(prep, state, deployStart, cs, running)
 	return nil
 }
 
@@ -777,13 +792,17 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 }
 
 // recordStackSuccess persists the deployed stack's hashes, images and project
-// dir into the run's state (Invariant 2) and emits the success event.
-func (d *Deployer) recordStackSuccess(prep stackPrep, state *persistedState, deployStart time.Time, cs changeSet) {
+// dir into the run's state (Invariant 2) and emits the success event. running
+// is what the stack's containers now run, the baseline the next deploy's
+// version delta is measured against; nil when that read was unavailable, which
+// leaves the previous baseline in place rather than clearing it.
+func (d *Deployer) recordStackSuccess(prep stackPrep, state *persistedState, deployStart time.Time, cs changeSet, running serviceImageByName) {
 	name := prep.run.stack.Name
 	state.recordStack(name, prep.currentHashes)
 	if prep.currentImages != nil {
 		state.recordImages(name, prep.currentImages)
 	}
+	state.recordRunningImages(name, running)
 	state.recordProjectDir(name, prep.run.effectiveProjectDir())
 	metrics.LastDeployTimestamp.WithLabelValues(name).Set(float64(time.Now().Unix()))
 	eventID := d.emit(events.StatusSuccess, name, time.Since(deployStart), "", cs)

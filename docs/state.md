@@ -14,6 +14,11 @@ stacks:
 
 With the [web UI](configuration.md) enabled you don't need to read this file to answer *"why didn't my stack redeploy?"*: expanding a stack in the **Stacks** view lists exactly these tracked inputs, and — after a clean deploy — the commit none of them has changed since.
 
+Two image maps are kept, and they answer different questions:
+
+- `images` — the **image references the compose file asks for**, per service. This alone decides whether a deploy needs a `docker compose pull`.
+- `running_images` — the **image each service actually ran** after the last successful deploy, as `<repository>:<tag>@<short image id>`. It is the baseline the next deploy's reported version change is measured against, so a floating tag (`:latest`) that moved shows up as the version change it is. It is never a change-detection input: editing nothing but this cannot trigger a deploy.
+
 A `project_dirs` map records each stack's compose project directory (its `project_directory`, or the compose file's own directory) from its last successful deploy. It lets skipper recognise a stack's running compose project by the `com.docker.compose.project.working_dir` label even after the stack is removed from the repo — the basis for [orphan detection](#orphaned-stacks).
 
 If the state file is absent or cannot be parsed (e.g. after a fresh install or corruption), all stacks are redeployed on the next run — but that run deliberately does **not** refresh images already on the host, so no floating tag moves unattended (see [First run and state loss](configuration.md#first-run-and-state-loss)). **Back this directory up** with the rest of your host state.

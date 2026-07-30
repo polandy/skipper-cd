@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -419,6 +420,176 @@ func TestDeployStack_SuccessEventNamesChangedServiceVersions(t *testing.T) {
 	want := []events.ServiceImageChange{{Service: "app", Old: "nginx:1.25", New: "nginx:1.27"}}
 	if !reflect.DeepEqual(successEvt.ImageChanges, want) {
 		t.Errorf("success event ImageChanges = %+v, want %+v", successEvt.ImageChanges, want)
+	}
+}
+
+// composeImagesJSON is one `docker compose images --format json` reply for a
+// single-service stack whose service is named `app`.
+func composeImagesJSON(repo, tag, id string) []byte {
+	return fmt.Appendf(nil, `[{"Service":"app","Repository":%q,"Tag":%q,"ID":%q}]`, repo, tag, id)
+}
+
+// outputImagesOnly answers `compose images` reads with the given payload and
+// every other Output read with nothing.
+func outputImagesOnly(payload []byte) func(int, []string) ([]byte, error) {
+	return func(_ int, args []string) ([]byte, error) {
+		if slices.Contains(args, "images") {
+			return payload, nil
+		}
+		return nil, nil
+	}
+}
+
+// A floating tag keeps its compose reference across a re-pull, so the compose
+// file alone reports no version change on exactly the deploys that move it.
+// The running images do see it.
+func TestDeployStack_SuccessEventReportsMovedFloatingTag(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "cloud")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nextcloud:latest"))
+
+	runner := &recordingRunner{outputFn: outputImagesOnly(composeImagesJSON("nextcloud", "latest", "9f8e7d6c5b4a"))}
+	var successEvt *events.DeployEvent
+	d := New(Config{Runner: runner, Outputter: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
+		if e.Status == events.StatusSuccess {
+			successEvt = &e
+		}
+	}})
+
+	state := &persistedState{
+		Stacks: map[string]stackFileHashes{"cloud": {"old": "oldhash"}},
+		// The compose reference is unchanged — only the image behind the tag moved.
+		Images:        map[string]serviceImageByName{"cloud": {"app": "nextcloud:latest"}},
+		RunningImages: map[string]serviceImageByName{"cloud": {"app": "nextcloud:latest@a1b2c3d4e5f6"}},
+	}
+
+	if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "cloud"}, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if successEvt == nil {
+		t.Fatal("expected success event")
+	}
+	want := []events.ServiceImageChange{
+		{Service: "app", Old: "nextcloud:latest@a1b2c3d4e5f6", New: "nextcloud:latest@9f8e7d6c5b4a"},
+	}
+	if !reflect.DeepEqual(successEvt.ImageChanges, want) {
+		t.Errorf("success event ImageChanges = %+v, want %+v", successEvt.ImageChanges, want)
+	}
+	// The next deploy measures against what this one left running.
+	if got := state.runningImagesFor("cloud")["app"]; got != "nextcloud:latest@9f8e7d6c5b4a" {
+		t.Errorf("recorded running image = %q, want the version just deployed", got)
+	}
+}
+
+func TestDeployStack_WithoutRunningBaselineKeepsComposeReferenceDelta(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.27"))
+
+	runner := &recordingRunner{outputFn: outputImagesOnly(composeImagesJSON("nginx", "1.27", "9f8e7d6c5b4a"))}
+	var successEvt *events.DeployEvent
+	d := New(Config{Runner: runner, Outputter: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
+		if e.Status == events.StatusSuccess {
+			successEvt = &e
+		}
+	}})
+
+	// No running_images recorded yet — the first deploy after an upgrade. Every
+	// service would otherwise read as newly added.
+	state := &persistedState{
+		Stacks: map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
+		Images: map[string]serviceImageByName{"gitea": {"app": "nginx:1.25"}},
+	}
+
+	if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "gitea"}, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if successEvt == nil {
+		t.Fatal("expected success event")
+	}
+	want := []events.ServiceImageChange{{Service: "app", Old: "nginx:1.25", New: "nginx:1.27"}}
+	if !reflect.DeepEqual(successEvt.ImageChanges, want) {
+		t.Errorf("success event ImageChanges = %+v, want the compose-reference delta %+v", successEvt.ImageChanges, want)
+	}
+	// This deploy's read becomes the next one's baseline.
+	if got := state.runningImagesFor("gitea")["app"]; got != "nginx:1.27@9f8e7d6c5b4a" {
+		t.Errorf("recorded running image = %q, want this deploy's read", got)
+	}
+}
+
+func TestDeployStack_FailedRunningImageReadKeepsPreviousBaseline(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.27"))
+
+	runner := &recordingRunner{outputFn: func(_ int, _ []string) ([]byte, error) { return nil, errFakeOutput }}
+	d := New(Config{Runner: runner, Outputter: runner, RepoDir: baseDir, StateDir: t.TempDir()})
+
+	state := &persistedState{
+		Stacks:        map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
+		Images:        map[string]serviceImageByName{"gitea": {"app": "nginx:1.25"}},
+		RunningImages: map[string]serviceImageByName{"gitea": {"app": "nginx:1.25@a1b2c3d4e5f6"}},
+	}
+
+	if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "gitea"}, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Clearing it would claim the stack runs nothing and cost the next deploy its
+	// version delta; the stale baseline is corrected by the next successful read.
+	if got := state.runningImagesFor("gitea")["app"]; got != "nginx:1.25@a1b2c3d4e5f6" {
+		t.Errorf("recorded running image = %q, want the previous baseline kept", got)
+	}
+}
+
+func TestDeployStack_SuccessEventMarksTheHealthGate(t *testing.T) {
+	tests := []struct {
+		name    string
+		compose string
+		want    bool
+	}{
+		// The gate is inferred from a compose healthcheck (ADR-0046).
+		{name: "gated", compose: composeWithHealthcheck("nginx:1.27"), want: true},
+		{name: "ungated", compose: composeWithImage("nginx:1.27"), want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			stackDir := filepath.Join(baseDir, "gitea")
+			if err := os.MkdirAll(stackDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), tc.compose)
+
+			var successEvt *events.DeployEvent
+			d := New(Config{Runner: &recordingRunner{}, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
+				if e.Status == events.StatusSuccess {
+					successEvt = &e
+				}
+			}})
+
+			state := &persistedState{
+				Stacks: map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
+				Images: map[string]serviceImageByName{"gitea": {"app": "nginx:1.25"}},
+			}
+			if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "gitea"}, baseDir, "", nil, state); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if successEvt == nil {
+				t.Fatal("expected success event")
+			}
+			if successEvt.HealthGated != tc.want {
+				t.Errorf("success event HealthGated = %v, want %v", successEvt.HealthGated, tc.want)
+			}
+		})
 	}
 }
 
