@@ -1,10 +1,7 @@
 package deploy
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -186,7 +183,7 @@ func (d *Deployer) serviceContainers(ctx context.Context, run stackRun, service 
 	if err != nil {
 		return nil, err
 	}
-	lines, err := parseContainerLines(out)
+	lines, err := parseComposeJSON[containerLine](out)
 	if err != nil {
 		return nil, fmt.Errorf("parse compose ps output: %w", err)
 	}
@@ -250,38 +247,6 @@ type containerLine struct {
 	Service string `json:"Service"`
 	State   string `json:"State"`
 	Health  string `json:"Health"`
-}
-
-// parseContainerLines parses `docker compose ps --format json` output. Compose
-// emits either a JSON array or newline-delimited objects depending on its
-// version, so both are accepted. Empty output yields no lines and no error.
-func parseContainerLines(out []byte) ([]containerLine, error) {
-	trimmed := bytes.TrimSpace(out)
-	if len(trimmed) == 0 {
-		return nil, nil
-	}
-	if trimmed[0] == '[' {
-		var lines []containerLine
-		if err := json.Unmarshal(trimmed, &lines); err != nil {
-			return nil, err
-		}
-		return lines, nil
-	}
-	var lines []containerLine
-	sc := bufio.NewScanner(bytes.NewReader(trimmed))
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		b := bytes.TrimSpace(sc.Bytes())
-		if len(b) == 0 {
-			continue
-		}
-		var l containerLine
-		if err := json.Unmarshal(b, &l); err != nil {
-			return nil, err
-		}
-		lines = append(lines, l)
-	}
-	return lines, sc.Err()
 }
 
 // containerIDSet collects the non-empty container IDs of the given lines.

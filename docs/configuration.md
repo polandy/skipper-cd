@@ -407,8 +407,6 @@ Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back`, `
 
 Delivery is **fire-and-forget**: sending runs in the background with its own 10-second per-request timeout, never blocking or delaying a deploy. A failed or slow target is logged and dropped — there is no retry queue, so a notification can be lost if the target is down. For guaranteed history, read the persisted events or scrape metrics instead.
 
-When a deploy changes any service's `image:` reference, the message names each changed service with its old → new image, so you see *what* updated, not just which stack. A `signal` message appends one `• <service>: <old> → <new>` line per service (a first-time image shows just the new ref; a removed service shows `<old> (removed)`); the `generic` payload carries the same list as `image_changes`. Services with no `image:` (built from `build:`) are not version-tracked.
-
 ```yaml
 notifications:
   # Signal via the signal-cli-rest-api stack.
@@ -426,6 +424,24 @@ notifications:
       Authorization: "Bearer <token>"
     on: [failed, rolled_back, rolled_back_unhealthy]
 ```
+
+### What a message says
+
+A message names each service whose version changed, with its old → new image, so you see *what* updated, not just which stack. A `signal` message appends one `• <service>: <old> → <new>` line per service; the `generic` payload carries the same list as `image_changes`. Services with no `image:` (built from `build:`) are not version-tracked.
+
+The versions compared are the ones the containers **actually ran** — recorded after each successful deploy — not the references in the compose file, so a stack on a floating tag reports the update behind the unchanged tag:
+
+```
+[host-a] ✅ deploy succeeded: nextcloud (48.2s)
+  • app: 30-apache@a1b2c3d4e5f6 → 30-apache@9f8e7d6c5b4a
+  • redis: 7.2 → 7.4
+  ✓ health gate passed
+```
+
+- Only the tokens that actually differ are shown, the same reduction the UI's version chip makes: the repository is dropped when both sides share it (the service name already says which image it is), a **tag bump** shows the tags alone, and an **unchanged tag** means the image behind it moved, so the image ids are what's shown. A service that switched to a **different** image keeps both references in full.
+- A first-time image shows just the new reference; a removed service shows `<old> (removed)`.
+- The **first** deploy of a stack after upgrading skipper has no recorded baseline yet and still compares compose references; from the next deploy on the delta is the real one.
+- `✓ health gate passed` appears on a **success** whose stack had an effective [health-check gate](#health-check-gated-rollback) — explicit or inferred from a compose `healthcheck:` — so the message distinguishes *applied* from *verified healthy*. No line means the deploy ran ungated. The `generic` payload carries this as `health_gated`.
 
 ### Target Fields
 

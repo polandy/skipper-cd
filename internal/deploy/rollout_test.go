@@ -318,7 +318,7 @@ func TestDeployStack_RolloutTakesCutoverPathAndSucceeds(t *testing.T) {
 
 // --- ps parsing --------------------------------------------------------------
 
-func TestParseContainerLines(t *testing.T) {
+func TestParseComposeJSON_ContainerLines(t *testing.T) {
 	arr := `[{"ID":"a","Service":"web","Health":"healthy"},{"ID":"b","Service":"web","Health":"starting"}]`
 	nd := `{"ID":"a","Service":"web","Health":"healthy"}
 {"ID":"b","Service":"web","Health":"starting"}`
@@ -328,7 +328,7 @@ func TestParseContainerLines(t *testing.T) {
 		in   string
 	}{{"array", arr}, {"ndjson", nd}} {
 		t.Run(form.name, func(t *testing.T) {
-			lines, err := parseContainerLines([]byte(form.in))
+			lines, err := parseComposeJSON[containerLine]([]byte(form.in))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -339,7 +339,7 @@ func TestParseContainerLines(t *testing.T) {
 	}
 
 	t.Run("empty", func(t *testing.T) {
-		lines, err := parseContainerLines([]byte("  \n"))
+		lines, err := parseComposeJSON[containerLine]([]byte("  \n"))
 		if err != nil || lines != nil {
 			t.Errorf("empty output should parse to nil,nil; got %v,%v", lines, err)
 		}
