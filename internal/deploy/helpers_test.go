@@ -21,6 +21,12 @@ type recordingRunner struct {
 	failFn       func(dir string, args []string) error // optional per-call failure hook, e.g. to fail one stack's up
 	delay        time.Duration                         // optional delay per call for concurrency tests
 
+	// onRunStart, when set, is called at the entry of every Run call — a
+	// deterministic seam for tests that must know a deploy goroutine has
+	// started executing commands (i.e. holds the deploy lock). It may block
+	// to hold a command in flight until the test releases it.
+	onRunStart func(args []string)
+
 	// outputFn drives Output (rollout's `docker compose ps` reads): it receives
 	// the zero-based Output call index so a test can return a changing snapshot
 	// (old only, then old+canary). nil returns empty output.
@@ -36,6 +42,9 @@ type runCall struct {
 }
 
 func (r *recordingRunner) Run(_ context.Context, dir string, env []string, name string, args ...string) error {
+	if r.onRunStart != nil {
+		r.onRunStart(args)
+	}
 	if r.delay > 0 {
 		time.Sleep(r.delay)
 	}
