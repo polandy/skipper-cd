@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -636,7 +639,26 @@ func TestWaitIdle_BlocksUntilRunningDeployFinishes(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
-	runner := &recordingRunner{delay: 150 * time.Millisecond}
+	// Deterministic seam instead of a sleep: the runner signals when the deploy
+	// goroutine executes its first command — proof it holds the deploy lock —
+	// and holds every command in flight until the test releases it, so WaitIdle
+	// verifiably starts waiting while the deploy is mid-run.
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+	var startOnce sync.Once
+	var upCompleted atomic.Bool
+	runner := &recordingRunner{}
+	runner.onRunStart = func([]string) {
+		startOnce.Do(func() { close(started) })
+		<-proceed
+	}
+	runner.failFn = func(_ string, args []string) error {
+		if slices.Contains(args, "up") {
+			upCompleted.Store(true) // set as the up command finishes
+		}
+		return nil
+	}
+
 	d := New(Config{Runner: runner, StateDir: t.TempDir()})
 	cfg := &config.Config{
 		RepoURL:       "ssh://git@example.com/repo.git",
@@ -645,14 +667,21 @@ func TestWaitIdle_BlocksUntilRunningDeployFinishes(t *testing.T) {
 	}
 
 	go d.SyncAndDeployAll(context.Background(), cfg)
+	<-started // the deploy goroutine holds the lock, its first command is in flight
 
-	// Give the deploy goroutine time to acquire the lock and start running.
-	time.Sleep(50 * time.Millisecond)
+	waitIdleReturned := make(chan struct{})
+	go func() {
+		defer close(waitIdleReturned)
+		d.WaitIdle()
+		// WaitIdle must only return after the running deploy released the
+		// lock — by then docker compose up has completed.
+		if !upCompleted.Load() {
+			t.Error("WaitIdle returned before the in-flight deploy finished its up")
+		}
+	}()
 
-	d.WaitIdle()
-
-	// WaitIdle must only return after the running deploy released the lock,
-	// i.e. after docker compose up completed.
+	close(proceed) // release the deploy so it can finish
+	<-waitIdleReturned
 	assertCommandCalled(t, runner.calls, "up")
 }
 
@@ -838,4 +867,56 @@ func TestDeployStack_PullsOnlyRemoteServices(t *testing.T) {
 
 	// Build should still be called.
 	assertCommandCalled(t, runner.calls, "build")
+}
+
+// --- buildBaseEnv: the vars_file layer of Invariant 6 -------------------------
+
+func TestBuildBaseEnv_NoVarsFileReturnsProcessEnvironment(t *testing.T) {
+	t.Setenv("SKIPPER_TEST_BASE", "from-env")
+
+	env, err := buildBaseEnv("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !slices.Contains(env, "SKIPPER_TEST_BASE=from-env") {
+		t.Error("without a vars_file, buildBaseEnv must return the process environment")
+	}
+}
+
+func TestBuildBaseEnv_VarsFileOverridesProcessEnvironment(t *testing.T) {
+	// Invariant 6: vars_file > os.Environ(). exec.Cmd resolves duplicate keys
+	// last-wins, so the vars_file entry must appear after the inherited one.
+	t.Setenv("SKIPPER_TEST_VAR", "from-env")
+	varsPath := filepath.Join(t.TempDir(), "vars.env")
+	writeFile(t, varsPath, "# global vars\n\nSKIPPER_TEST_VAR=from-vars\nSKIPPER_TEST_EXTRA=added\n")
+
+	env, err := buildBaseEnv(varsPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	iEnviron := slices.Index(env, "SKIPPER_TEST_VAR=from-env")
+	iVars := slices.Index(env, "SKIPPER_TEST_VAR=from-vars")
+	if iEnviron == -1 || iVars == -1 {
+		t.Fatalf("expected both the inherited and the vars_file entry; got environ=%d vars=%d", iEnviron, iVars)
+	}
+	if iVars < iEnviron {
+		t.Errorf("vars_file entry (index %d) must come after the inherited one (index %d) so it wins", iVars, iEnviron)
+	}
+	if !slices.Contains(env, "SKIPPER_TEST_EXTRA=added") {
+		t.Error("vars_file entries without an environ counterpart must be appended too")
+	}
+	if slices.Contains(env, "# global vars") {
+		t.Error("comment lines must not leak into the environment")
+	}
+}
+
+func TestBuildBaseEnv_UnreadableVarsFileFails(t *testing.T) {
+	_, err := buildBaseEnv(filepath.Join(t.TempDir(), "missing.env"))
+	if err == nil {
+		t.Fatal("a configured vars_file that cannot be read must fail, not be silently skipped")
+	}
+	// The error names vars_file so the operator knows which config key to fix.
+	if !strings.Contains(err.Error(), "vars_file") {
+		t.Errorf("error should name vars_file; got %v", err)
+	}
 }
