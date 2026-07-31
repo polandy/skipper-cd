@@ -1,10 +1,13 @@
 package icons
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -310,5 +313,80 @@ func TestSlugify(t *testing.T) {
 		if got := slugify(in); got != want {
 			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// captureLogs routes the default slog output into a buffer for the test's
+// duration, so an emitted warning is a positive, assertable signal.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+// readOnlyCacheService returns a Service whose cache directory exists but
+// rejects writes, so every cache write fails while lookups still work.
+func readOnlyCacheService(t *testing.T, ff *fakeFetcher) *Service {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: the directory mode below would not deny the write")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Errorf("restoring the directory mode: %v", err)
+		}
+	})
+	return New(dir, ff)
+}
+
+// A broken cache dir means every request refetches; that must be visible in
+// the logs, not a silent forever-refetch.
+func TestResolve_WarnsWhenPositiveCacheWriteFails(t *testing.T) {
+	ff := &fakeFetcher{icons: map[string][]byte{"media": []byte("<svg/>")}}
+	svc := readOnlyCacheService(t, ff)
+
+	buf := captureLogs(t)
+	got, err := svc.Resolve(context.Background(), Request{Name: "media"})
+	if err != nil || string(got.Data) != "<svg/>" {
+		t.Fatalf("Resolve must still serve the icon on a cache failure, got %v, %v", got, err)
+	}
+	if !strings.Contains(buf.String(), "icon cache write failed") {
+		t.Errorf("expected a warning about the failed cache write, got logs: %q", buf.String())
+	}
+}
+
+func TestResolve_WarnsWhenNegativeCacheWriteFails(t *testing.T) {
+	svc := readOnlyCacheService(t, &fakeFetcher{})
+
+	buf := captureLogs(t)
+	if _, err := svc.Resolve(context.Background(), Request{Name: "ghost"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Resolve = %v, want ErrNotFound", err)
+	}
+	if !strings.Contains(buf.String(), "icon cache write failed") {
+		t.Errorf("expected a warning about the failed cache write, got logs: %q", buf.String())
+	}
+}
+
+func TestResolve_WarnsWhenCacheDirCannotBeCreated(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ff := &fakeFetcher{icons: map[string][]byte{"media": []byte("<svg/>")}}
+	svc := New(filepath.Join(file, "cache"), ff)
+
+	buf := captureLogs(t)
+	if _, err := svc.Resolve(context.Background(), Request{Name: "media"}); err != nil {
+		t.Fatalf("Resolve must still serve the icon on a cache failure: %v", err)
+	}
+	if !strings.Contains(buf.String(), "icon cache dir creation failed") {
+		t.Errorf("expected a warning about the failed cache dir, got logs: %q", buf.String())
 	}
 }

@@ -1,7 +1,10 @@
 package events
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -30,7 +33,10 @@ func NewHistory(stateDir string) *History {
 	h := &History{}
 	if stateDir != "" {
 		h.filePath = filepath.Join(stateDir, historyFileName)
-		_ = h.load() // best-effort
+		// A missing file is the normal first run; anything else is worth a line.
+		if err := h.load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			slog.Warn("load deploy history failed; starting empty", "path", h.filePath, "err", err)
+		}
 	}
 	return h
 }
@@ -60,7 +66,11 @@ func (h *History) Add(event DeployEvent) {
 	if len(h.events) > maxHistorySize {
 		h.events = h.events[len(h.events)-maxHistorySize:]
 	}
-	_ = h.save() // best-effort
+	// Best-effort, but never silent: the persisted history feeds SSE
+	// reconnect recovery (EventsAfterID).
+	if err := h.save(); err != nil {
+		slog.Warn("persist deploy history failed", "path", h.filePath, "err", err)
+	}
 }
 
 // Events returns a copy of all events in chronological order.
