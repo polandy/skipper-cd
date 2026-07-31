@@ -3,7 +3,6 @@ package notify
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -118,29 +117,9 @@ func (a *HealthAlerter) handle(ctx context.Context, al healthwatch.Alert) {
 }
 
 func (a *HealthAlerter) deliver(ctx context.Context, t healthTarget, al healthwatch.Alert) {
-	ctx, cancel := context.WithTimeout(ctx, a.timeout)
-	defer cancel()
-
-	req, err := t.formatter.Format(ctx, al)
-	if err != nil {
-		slog.Error("health alert format failed", "stack", al.Stack, "service", al.Service, "err", err)
-		metrics.HealthAlertsSent.WithLabelValues(t.format, "error").Inc()
-		return
-	}
-	resp, err := a.doer.Do(req)
-	if err != nil {
-		slog.Error("health alert send failed", "stack", al.Stack, "service", al.Service, "err", err)
-		metrics.HealthAlertsSent.WithLabelValues(t.format, "error").Inc()
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		slog.Error("health alert rejected", "stack", al.Stack, "service", al.Service, "status", resp.StatusCode)
-		metrics.HealthAlertsSent.WithLabelValues(t.format, "error").Inc()
-		return
-	}
-	metrics.HealthAlertsSent.WithLabelValues(t.format, "ok").Inc()
+	deliverOne(ctx, a.doer, a.timeout,
+		func(ctx context.Context) (*http.Request, error) { return t.formatter.Format(ctx, al) },
+		metrics.HealthAlertsSent, t.format, "health alert", "stack", al.Stack, "service", al.Service)
 }
 
 // healthFormatterFor builds the HealthFormatter for a validated health_watch

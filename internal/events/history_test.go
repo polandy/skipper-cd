@@ -1,11 +1,25 @@
 package events
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+// captureLogs routes the default slog output into a buffer for the test's
+// duration, so an emitted warning is a positive, assertable signal.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
 
 func TestHistory_SaveLeavesOnlyHistoryFile(t *testing.T) {
 	dir := t.TempDir()
@@ -144,6 +158,56 @@ func TestHistory_MissingFileIsOK(t *testing.T) {
 	h := NewHistory(filepath.Join(dir, "subdir"))
 	if len(h.Events()) != 0 {
 		t.Error("expected empty history for non-existent file")
+	}
+}
+
+// The persisted history feeds SSE reconnect recovery (EventsAfterID), so a
+// failed save must at least be visible in the logs, never silently dropped.
+func TestHistory_AddWarnsWhenSaveFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: the directory mode below would not deny the write")
+	}
+	dir := t.TempDir()
+	h := NewHistory(dir)
+
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Errorf("restoring the directory mode: %v", err)
+		}
+	})
+
+	buf := captureLogs(t)
+	h.Add(DeployEvent{ID: 1, Stack: "gitea", Status: StatusSuccess})
+
+	if !strings.Contains(buf.String(), "persist deploy history failed") {
+		t.Errorf("expected a warning about the failed save, got logs: %q", buf.String())
+	}
+	if len(h.Events()) != 1 {
+		t.Error("the event must still be kept in memory despite the failed save")
+	}
+}
+
+// A corrupt or unreadable history file warns (positive control), while the
+// normal first-run missing file stays silent.
+func TestNewHistory_WarnsOnUnreadableFileButNotOnMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	// A directory at the file path makes the read fail deterministically.
+	if err := os.Mkdir(filepath.Join(dir, historyFileName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	buf := captureLogs(t)
+	NewHistory(dir)
+	if !strings.Contains(buf.String(), "load deploy history failed") {
+		t.Errorf("expected a warning about the failed load, got logs: %q", buf.String())
+	}
+
+	buf.Reset()
+	NewHistory(t.TempDir())
+	if buf.Len() != 0 {
+		t.Errorf("a missing history file is normal on first run and must not warn, got logs: %q", buf.String())
 	}
 }
 

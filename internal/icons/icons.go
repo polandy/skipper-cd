@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,18 +148,24 @@ func (s *Service) cacheLookup(slug string) (Result, cacheState) {
 	return Result{}, cacheUnknown
 }
 
+// Caching is best-effort — a failure just means a re-fetch next time — but a
+// broken cache dir means *every* request refetches, so failures are logged.
 func (s *Service) cachePositive(slug, contentType string, data []byte) {
-	if err := os.MkdirAll(s.cacheDir, 0o755); err != nil {
-		return // caching is best-effort; a failure just means a re-fetch next time
-	}
-	_ = os.WriteFile(filepath.Join(s.cacheDir, slug+extForContentType(contentType)), data, 0o644)
+	s.cacheWrite(slug+extForContentType(contentType), data)
 }
 
 func (s *Service) cacheNegative(slug string) {
+	s.cacheWrite(slug+negativeExt, nil)
+}
+
+func (s *Service) cacheWrite(name string, data []byte) {
 	if err := os.MkdirAll(s.cacheDir, 0o755); err != nil {
+		slog.Warn("icon cache dir creation failed; icons will be re-fetched", "dir", s.cacheDir, "err", err)
 		return
 	}
-	_ = os.WriteFile(filepath.Join(s.cacheDir, slug+negativeExt), nil, 0o644)
+	if err := os.WriteFile(filepath.Join(s.cacheDir, name), data, 0o644); err != nil {
+		slog.Warn("icon cache write failed; icon will be re-fetched", "file", name, "err", err)
+	}
 }
 
 // slugify reduces a name to a filesystem-safe token: lowercase, runs of

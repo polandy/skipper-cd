@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
+	"github.com/polandy/skipper-cd/internal/health"
 )
 
 func TestResolveCommit(t *testing.T) {
@@ -179,4 +181,58 @@ func TestStartServer_ListenFailureIsReportedNotFatal(t *testing.T) {
 	// the only way to order it is a completion signal that exists purely for
 	// the test. The ErrServerClosed filter it would cover is unchanged here and
 	// is exercised on every real shutdown.
+}
+
+func TestServicesOf(t *testing.T) {
+	snap := health.Snapshot{Stacks: map[string]health.StackHealth{
+		"web":  {Services: []health.ServiceHealth{{Name: "app"}, {Name: "db"}}},
+		"bare": {},
+	}}
+
+	cases := []struct {
+		name  string
+		stack string
+		want  []string
+	}{
+		{"names in reported order", "web", []string{"app", "db"}},
+		{"stack without service detail", "bare", []string{}},
+		{"stack not in snapshot", "ghost", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := servicesOf(snap, tc.stack)
+			if tc.want == nil {
+				if got != nil {
+					t.Fatalf("servicesOf(%q) = %v, want nil", tc.stack, got)
+				}
+				return
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("servicesOf(%q) = %v, want %v", tc.stack, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStackAutosyncConfig(t *testing.T) {
+	cfg := &config.Config{Stacks: []config.Stack{
+		{Name: "inherit"},
+		{Name: "on", Autosync: ptr(true)},
+		{Name: "off", Autosync: ptr(false)},
+	}}
+
+	m := stackAutosyncConfig(cfg)
+
+	if len(m) != 3 {
+		t.Fatalf("map has %d entries, want 3: %v", len(m), m)
+	}
+	if m["inherit"] != nil {
+		t.Errorf("inherit = %v, want nil (inherit global)", *m["inherit"])
+	}
+	if m["on"] == nil || !*m["on"] {
+		t.Errorf("on = %v, want true", m["on"])
+	}
+	if m["off"] == nil || *m["off"] {
+		t.Errorf("off = %v, want false", m["off"])
+	}
 }

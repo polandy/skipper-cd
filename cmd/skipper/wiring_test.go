@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"slices"
 	"testing"
@@ -9,6 +10,8 @@ import (
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/events"
+	"github.com/polandy/skipper-cd/internal/health"
+	"github.com/polandy/skipper-cd/internal/selfheal"
 )
 
 func ptr[T any](v T) *T { return &v }
@@ -199,5 +202,57 @@ func TestSetupLogging_LogsConfigWarningsFirst(t *testing.T) {
 
 	if !bytes.Contains(out.Bytes(), []byte("suspicious but valid setup")) {
 		t.Errorf("expected the config warning logged, got %q", out.String())
+	}
+}
+
+// countingHealer is a selfheal.Healer that counts corrective redeploys.
+type countingHealer struct{ calls int }
+
+func (h *countingHealer) Heal(context.Context, string, []events.DriftedService) (bool, error) {
+	h.calls++
+	return true, nil
+}
+
+func TestSelfHealResetSink_NilWhenSelfHealIsOff(t *testing.T) {
+	if selfHealResetSink(nil) != nil {
+		t.Fatal("a nil engine must yield a nil sink so the fanout skips it")
+	}
+}
+
+// Only a real git deploy starting (deploying) grants an exhausted stack a
+// fresh self-heal attempt budget — the ADR-0029 reset rule; terminal statuses
+// must not, or every failed heal outcome would immediately re-arm the breaker.
+func TestSelfHealResetSink_DeployingGrantsFreshHealBudget(t *testing.T) {
+	healer := &countingHealer{}
+	engine := selfheal.New(selfheal.Config{
+		Healer:            healer,
+		Enabled:           func(string) bool { return true },
+		MinUnhealthyPolls: 1,
+		MaxAttempts:       1,
+	})
+	degraded := health.Snapshot{Stacks: map[string]health.StackHealth{"web": {Status: health.Unhealthy}}}
+	ctx := context.Background()
+
+	engine.Observe(ctx, degraded) // heals once
+	engine.Observe(ctx, degraded) // still degraded: budget exhausted
+	engine.Observe(ctx, degraded) // exhausted: no further heals
+	if healer.calls != 1 {
+		t.Fatalf("heal calls before reset = %d, want 1 (budget exhausted)", healer.calls)
+	}
+
+	sink := selfHealResetSink(engine)
+
+	// A terminal status must not reset the breaker.
+	sink(events.DeployEvent{Stack: "web", Status: events.StatusSuccess})
+	engine.Observe(ctx, degraded)
+	if healer.calls != 1 {
+		t.Fatalf("a success event must not grant a fresh budget, heal calls = %d", healer.calls)
+	}
+
+	// A real deploy starting does: the next degraded poll heals again.
+	sink(events.DeployEvent{Stack: "web", Status: events.StatusDeploying})
+	engine.Observe(ctx, degraded)
+	if healer.calls != 2 {
+		t.Fatalf("heal calls after deploying reset = %d, want 2 (fresh budget)", healer.calls)
 	}
 }

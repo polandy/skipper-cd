@@ -6,7 +6,6 @@ package notify
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -132,29 +131,9 @@ func (n *Notifier) handle(ctx context.Context, ev events.DeployEvent) {
 }
 
 func (n *Notifier) deliver(ctx context.Context, t target, ev events.DeployEvent) {
-	ctx, cancel := context.WithTimeout(ctx, n.timeout)
-	defer cancel()
-
-	req, err := t.formatter.Format(ctx, ev)
-	if err != nil {
-		slog.Error("notification format failed", "stack", ev.Stack, "err", err)
-		metrics.NotificationsSent.WithLabelValues(t.format, "error").Inc()
-		return
-	}
-	resp, err := n.doer.Do(req)
-	if err != nil {
-		slog.Error("notification send failed", "stack", ev.Stack, "err", err)
-		metrics.NotificationsSent.WithLabelValues(t.format, "error").Inc()
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		slog.Error("notification rejected", "stack", ev.Stack, "status", resp.StatusCode)
-		metrics.NotificationsSent.WithLabelValues(t.format, "error").Inc()
-		return
-	}
-	metrics.NotificationsSent.WithLabelValues(t.format, "ok").Inc()
+	deliverOne(ctx, n.doer, n.timeout,
+		func(ctx context.Context) (*http.Request, error) { return t.formatter.Format(ctx, ev) },
+		metrics.NotificationsSent, t.format, "notification", "stack", ev.Stack)
 }
 
 func statusSet(on []string) map[events.Status]bool {
