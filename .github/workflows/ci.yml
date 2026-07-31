@@ -138,7 +138,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Overwrites the LFS pointer files this checkout wrote with the real PNGs.
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: ui-baselines
           path: e2e/ui/__screenshots__
