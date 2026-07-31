@@ -241,8 +241,10 @@ match the deploy-lifecycle lines:
 
 - New `internal/peers` package: the fan-in `Registry` (`Poll` / `State` /
   `Hosts`), the `Client` seam + `NewHTTPClient` (reads each peer's
-  `/api/v1/snapshot` curated to stacks/health/healthwatch/app_links + `/api/audit`
-  best-effort, version-skew tolerant via `json.RawMessage`), the per-peer
+  `/api/v1/snapshot` curated to stacks/health/healthwatch/app_links +
+  `/api/v1/audit` best-effort — falling back to the legacy `/api/audit` only
+  on a 404 from an older peer (ADR-0039 amendment) — version-skew tolerant via
+  `json.RawMessage`), the per-peer
   reachability cache (keeps last-known + marks `Stale` on failure), the
   edge-triggered reachability logging, and the on-demand proxy URL resolvers
   `PeerDiffsURL` + `PeerContainerLogsURL`, and the fan-in `Loop` (drives the

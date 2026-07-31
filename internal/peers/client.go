@@ -3,6 +3,7 @@ package peers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -16,6 +17,20 @@ import (
 // pulls for the merged feed — enough for an at-a-glance cross-host overview
 // without transferring a peer's whole history every poll.
 const peerAuditLimit = 100
+
+// The audit paths a peer may serve: the versioned /v1 route is the stable
+// cross-host contract (ADR-0039); the unversioned one is the pre-/v1 route an
+// older peer still answers, kept as a 404-only fallback for mixed-version
+// host pairs.
+const (
+	auditPathV1     = "/api/v1/audit"
+	auditPathLegacy = "/api/audit"
+)
+
+// errNotFound reports a 404 from a peer — the one status that means "route
+// not registered here" (an older skipper) rather than "request failed," so it
+// alone drives the legacy-audit fallback.
+var errNotFound = errors.New("not found")
 
 // fannedStates is the curated subset of a peer's snapshot the merged read views
 // need: the stack roster, live health, the health-watch status timeline, and app
@@ -53,14 +68,29 @@ func (c *httpClient) Fetch(ctx context.Context, baseURL string) (Data, error) {
 		}
 	}
 
-	deploys, err := getJSON[[]audit.Record](ctx, c.hc, fmt.Sprintf("%s/api/audit?limit=%d", baseURL, peerAuditLimit))
+	deploys, err := c.fetchAudit(ctx, baseURL)
 	if err != nil {
 		// Best-effort: keep the peer's live state, just omit its deploy rows.
 		slog.Warn("peer audit fetch failed", "peer", baseURL, "err", err)
 	} else {
-		data.Deploys = *deploys
+		data.Deploys = deploys
 	}
 	return data, nil
+}
+
+// fetchAudit reads a peer's recent deploy records from the versioned audit
+// route (ADR-0039), falling back to the legacy unversioned route only when the
+// peer answers 404 — an older skipper without /api/v1/audit. Any other failure
+// is a real error and is not retried on the legacy path.
+func (c *httpClient) fetchAudit(ctx context.Context, baseURL string) ([]audit.Record, error) {
+	deploys, err := getJSON[[]audit.Record](ctx, c.hc, fmt.Sprintf("%s%s?limit=%d", baseURL, auditPathV1, peerAuditLimit))
+	if errors.Is(err, errNotFound) {
+		deploys, err = getJSON[[]audit.Record](ctx, c.hc, fmt.Sprintf("%s%s?limit=%d", baseURL, auditPathLegacy, peerAuditLimit))
+	}
+	if err != nil {
+		return nil, err
+	}
+	return *deploys, nil
 }
 
 // getJSON fetches url and decodes the JSON body into T. Unknown fields are
@@ -78,6 +108,9 @@ func getJSON[T any](ctx context.Context, hc *http.Client, url string) (*T, error
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("GET %s: status %s: %w", url, resp.Status, errNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: status %s", url, resp.Status)
 	}

@@ -46,7 +46,7 @@ bypasses git. The push webhook remains the sole deploy trigger.
 | GET | `/api/v1/autosync` | Autosync + queue snapshot |
 | POST | `/api/v1/autosync` | Set a non-persistent autosync override |
 | POST | `/api/v1/icons/refresh` | Clear the icon cache |
-| GET | `/api/v1/audit?stack={name}` | Per-stack audit records |
+| GET | `/api/v1/audit` | Deploy audit records, filterable per stack |
 | GET | `/api/v1/version` | Build info |
 
 Unchanged and *not* part of the v1 contract (own consumers, own stability):
@@ -187,10 +187,15 @@ Unchanged behaviour from today's `/api/autosync`, re-homed under `/v1/`.
 
 Clears the server-side icon cache. Re-homed from `/api/icons/refresh`.
 
-### `GET /api/v1/audit?stack={name}`
+### `GET /api/v1/audit`
 
-Per-stack durable audit records (append-only NDJSON, ADR-0033), newest first.
-`stack` is required. Re-homed from `/api/audit`.
+Durable deploy audit records (append-only NDJSON, ADR-0033)
+as a JSON array, newest first. `?stack={name}` filters to one stack's history
+(omit for recent records across all stacks); `?limit={n}` caps the count. An
+empty history returns `[]`. Same handler as the pre-existing `/api/audit`
+(which stays for the UI), so the two cannot diverge; the multi-host fan-in
+(ADR-0048) polls this versioned route, falling back to `/api/audit` only on a
+404 from an older peer.
 
 ### `GET /api/v1/version`
 

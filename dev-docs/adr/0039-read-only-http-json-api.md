@@ -26,6 +26,21 @@ now subscribes to the deploy broadcaster before reading the history snapshot
 and drops live events whose monotonic ID the replay (or a Last-Event-ID
 resume) already covered, so a racing deploy event is delivered right after the
 replay instead of staying invisible until the next reconnect.
+**Amended 2026-07-31 — the audit surface joins /v1.** The multi-host fan-in
+(ADR-0048) is an *external consumer in the exact sense of this ADR* — a
+different skipper process, possibly a different version — yet it polled the
+audit log over the legacy unversioned `GET /api/audit`, so an audit.Record
+shape change could break mixed-version host pairs without breaching any /v1
+promise. `GET /api/v1/audit` now serves the same handler (same query params:
+optional `?stack`, `?limit`), making the audit shape part of the v1
+additive-only contract, and the fan-in polls the versioned route. Folding the
+records into `/api/v1/snapshot` was considered and rejected: the snapshot
+would carry up to a full audit page per call for every consumer (including
+the SSE baseline built from the same collector), and the audit fetch needs
+`?limit`/`?stack` semantics a single snapshot document has no place for. For
+mixed-version pairs the fan-in falls back to the legacy route when — and only
+when — the versioned one answers 404 (an older peer without the route); the
+legacy `/api/audit` stays, unversioned as before, as the UI's route.
 Date: 2026-07-19
 
 ## Context
