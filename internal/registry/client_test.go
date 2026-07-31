@@ -46,8 +46,7 @@ func TestTags_Anonymous(t *testing.T) {
 }
 
 func TestTags_Paginated(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.RawQuery {
 		case "n=1000":
 			w.Header().Set("Link", `</v2/team/app/tags/list?last=1.1&n=1000>; rel="next"`)
