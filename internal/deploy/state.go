@@ -134,6 +134,20 @@ func (s *persistedState) recordRunningImages(stack string, images serviceImageBy
 	s.RunningImages[stack] = images
 }
 
+// runningImagesView returns a copy of the recorded stack→service→running-image
+// map, for out-of-run consumers (the update check, ADR-0054). Never nil.
+func (s *persistedState) runningImagesView() map[string]map[string]string {
+	out := make(map[string]map[string]string, len(s.RunningImages))
+	for stack, images := range s.RunningImages {
+		svc := make(map[string]string, len(images))
+		for name, ref := range images {
+			svc[name] = ref
+		}
+		out[stack] = svc
+	}
+	return out
+}
+
 // recordProjectDir stores the compose project directory of a successfully
 // deployed stack, so orphan detection can match its running project by
 // working_dir even after the stack is removed from the repo.

@@ -277,3 +277,31 @@ func TestRunningImageDelta_ServiceWithoutContainerIsNotRemoved(t *testing.T) {
 		}
 	})
 }
+
+func TestCurrentRunningImages_SeededFromStateAndCopied(t *testing.T) {
+	dir := t.TempDir()
+	state := newEmptyState()
+	state.recordRunningImages("web", serviceImageByName{"app": "nginx:1.27"})
+	if err := saveDeployState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	d := New(Config{StateDir: dir})
+	got := d.CurrentRunningImages()
+	if got["web"]["app"] != "nginx:1.27" {
+		t.Fatalf("CurrentRunningImages() = %+v, want the seeded state", got)
+	}
+
+	// The returned map is a per-call copy: mutating it must not leak back.
+	got["web"]["app"] = "mutated"
+	if again := d.CurrentRunningImages(); again["web"]["app"] != "nginx:1.27" {
+		t.Errorf("mutation leaked into the deployer's view: %+v", again)
+	}
+}
+
+func TestCurrentRunningImages_EmptyWithoutState(t *testing.T) {
+	d := New(Config{StateDir: t.TempDir()})
+	if got := d.CurrentRunningImages(); len(got) != 0 {
+		t.Errorf("CurrentRunningImages() = %+v, want empty", got)
+	}
+}

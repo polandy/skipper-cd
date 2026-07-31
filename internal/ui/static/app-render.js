@@ -216,14 +216,42 @@ function badgeHTML(status) {
 // title carries the full reference the visible token drops (registry, repo,
 // digest). Pass labelled=false in the containers panel, whose line already
 // names the service in its own column (the aria/title still name it).
-function serviceVersionHTML(service, image, labelled) {
+//
+// upd, when set, is the service's registry update-check result (ADR-0054,
+// {latest, rebuilt}): the chip gains an amber \u21e1 token \u2014 the newer same-shape
+// tag, or "rebuilt" when the running tag itself was republished. Queued amber
+// on purpose: the app's colour for "waiting to be applied", which an available
+// update is; applying it stays a git commit.
+function serviceVersionHTML(service, image, labelled, upd) {
   const tag = shortImageTag(image);
-  const body = `<span class="td-cur">${escapeHtml(tag)}</span>`;
-  return versionChipHTML(
-    labelled === false ? '' : service,
-    body,
-    `${service} running ${tag}`,
-    `${service}: ${image}`,
+  let body = `<span class="td-cur">${escapeHtml(tag)}</span>`;
+  let aria = `${service} running ${tag}`;
+  let title = `${service}: ${image}`;
+  if (upd && upd.latest) {
+    body += `<span class="td-upd"><span aria-hidden="true">\u21e1</span>${escapeHtml(upd.latest)}</span>`;
+    aria = `${service} running ${tag}, ${upd.latest} available upstream`;
+    title += ` \u2014 upstream ${upd.latest} available`;
+  } else if (upd && upd.rebuilt) {
+    body += `<span class="td-upd"><span aria-hidden="true">\u21e1</span>rebuilt</span>`;
+    aria = `${service} running ${tag}, image rebuilt upstream`;
+    title += ` \u2014 tag ${tag} was rebuilt upstream (digest moved)`;
+  }
+  return versionChipHTML(labelled === false ? '' : service, body, aria, title);
+}
+
+// updateCheckMetaHTML is the containers-panel head's update summary (ADR-0054):
+// how many of the stack's services have an available update and how fresh the
+// registry check is. Empty when nothing is advertised \u2014 the panel head stays
+// as quiet as before the feature existed. Takes the clock (nowMs) so it stays
+// pure and unit-testable.
+function updateCheckMetaHTML(count, checkedAt, nowMs) {
+  if (!count) return '';
+  const age = checkedAt ? phaseDuration(nowMs - new Date(checkedAt).getTime()) : '';
+  const freshness = age ? ` \u00b7 checked ${age} ago` : '';
+  return (
+    `<span class="hp-head-check" data-testid="update-check-meta" ` +
+    `title="read-only registry check \u2014 applying an update stays a git commit">` +
+    `<span class="hc-count">\u21e1 ${count} update${count === 1 ? '' : 's'}</span>${escapeHtml(freshness)}</span>`
   );
 }
 
@@ -441,8 +469,11 @@ function rosterRowActionsHTML(entry) {
 // health is the stack's live-health entry on the row's host (app.js
 // stackHealthFor wraps the lookup); empty while none exists for the stack
 // (parked, stopped, or the first health poll still outstanding —
-// updateRosterHealth fills it in then).
-function rosterVersionInnerHTML(stack, health) {
+// updateRosterHealth fills it in then). updates is the stack's update-check
+// map (service → {latest, rebuilt}, ADR-0054) — the lead chip carries its own
+// service's marker; a non-lead service's update surfaces in the containers
+// panel and the panel-head count, not on the row.
+function rosterVersionInnerHTML(stack, health, updates) {
   const v = rosterVersion(stack, health && health.services);
   if (!v) return '';
   // No lead service: naming one of several equals would be arbitrary, so the
@@ -455,14 +486,14 @@ function rosterVersionInnerHTML(stack, health) {
     v.more > 0
       ? `<span class="ver-count" title="${escapeAttr(v.more + ' more service' + (v.more === 1 ? '' : 's') + ' — open the row for every version')}">+${v.more}</span>`
       : '';
-  return serviceVersionHTML(v.service, v.image) + more;
+  return serviceVersionHTML(v.service, v.image, true, updates && updates[v.service]) + more;
 }
 
 // rosterVersionCellHTML wraps that in the cell every row emits — including a
 // parked stack, whose cell stays empty (it is never polled, so it has no running
 // version) so the grid still lines up.
-function rosterVersionCellHTML(stack, health, disabled) {
-  const inner = disabled ? '' : rosterVersionInnerHTML(stack, health);
+function rosterVersionCellHTML(stack, health, disabled, updates) {
+  const inner = disabled ? '' : rosterVersionInnerHTML(stack, health, updates);
   return `<span class="col-version" data-testid="roster-version">${inner}</span>`;
 }
 
@@ -898,6 +929,7 @@ if (typeof module !== 'undefined' && module.exports) {
     renderCommitHead,
     badgeHTML,
     serviceVersionHTML,
+    updateCheckMetaHTML,
     filesHTML,
     healPillHTML,
     healthHistoryHTML,

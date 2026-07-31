@@ -196,6 +196,9 @@ func (s *skipper) writeConfig(base string) string {
 	fmt.Fprintf(&b, "metrics_port: %d\n", metricsPort)
 	fmt.Fprintf(&b, "ui_enabled: true\n")
 	fmt.Fprintf(&b, "command_timeout_seconds: 30\n")
+	// Update check (ADR-0054) off: it is on by default, and a test host must
+	// not resolve its fake image references against real registries.
+	fmt.Fprintf(&b, "update_check:\n  interval_seconds: 0\n")
 	fmt.Fprintf(&b, "icons:\n  cache_dir: %q\n", filepath.Join(base, "icons"))
 	fmt.Fprintf(&b, "stacks:\n")
 	for _, name := range s.stacks {

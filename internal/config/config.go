@@ -117,6 +117,11 @@ type Config struct {
 	// overrides it. See RollbackEnabled and ADR-0050.
 	Rollback *bool `yaml:"rollback"`
 
+	// UpdateCheck configures the read-only registry update check (ADR-0054).
+	// Optional — omitting the section runs the check at the defaults (on,
+	// every 6h); update_check.interval_seconds: 0 disables it.
+	UpdateCheck *UpdateCheck `yaml:"update_check"`
+
 	// NixOSRebuild configures automatic nixos-rebuild when nix files change.
 	// Omit the section entirely to disable. When present without an explicit
 	// "enabled" key, it defaults to enabled.

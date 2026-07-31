@@ -137,4 +137,18 @@ var (
 		Name: "skipper_health_alerts_sent_total",
 		Help: "Total outbound health alert deliveries by format and outcome (ok|error).",
 	}, []string{"format", "outcome"})
+
+	// UpdateAlertsSent counts outbound update notifications (ADR-0054) by
+	// target format and outcome, mirroring NotificationsSent.
+	UpdateAlertsSent = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "skipper_update_alerts_sent_total",
+		Help: "Total outbound image-update notifications by format and outcome (ok|error).",
+	}, []string{"format", "outcome"})
+
+	// UpdatesAvailable gauges how many services currently have an available
+	// image update, as of the last registry update check (ADR-0054).
+	UpdatesAvailable = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "skipper_updates_available",
+		Help: "Services with an available image update as of the last registry check.",
+	})
 )

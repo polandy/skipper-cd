@@ -157,6 +157,12 @@
   // dev-docs/stack-roster-spec.md.
   let rosterSnap = [];
 
+  // The registry update-check snapshot ({stacks, checked_at}, ADR-0054) from
+  // the same 'stacks' snapshot, or null while the check is disabled or has not
+  // run. Drives the amber ⇡ markers on version chips and the containers
+  // panel's update summary.
+  let updatesSnap = null;
+
   // The deploy repo's forge browse URL from the same 'stacks' snapshot, or ''
   // when the server could derive none from repo_url. Every commit SHA the UI
   // prints links to its commit page through it (commitLinkHTML); without it the
@@ -202,6 +208,15 @@
   }
   function repoWebURLFor(host) {
     return resolveRepoWebURL(peersSnap, selfHost, host, repoWebURL);
+  }
+  function updatesFor(host) {
+    return resolveUpdates(peersSnap, selfHost, host, updatesSnap);
+  }
+  // stackUpdatesFor resolves one stack's update map (service → {latest,
+  // rebuilt}) on a host — the parameter the version-chip renderers take.
+  function stackUpdatesFor(stack, host) {
+    const u = updatesFor(host);
+    return (u && u.stacks && u.stacks[stack]) || null;
   }
   // stackHealthFor resolves one stack's live-health entry on a host — the
   // parameter the roster cell renderers in app-render.js take.
@@ -391,7 +406,12 @@
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
         `<span class="roster-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCell(entry.name)}${rosterRowActionsHTML(entry)}</span>` +
-        rosterVersionCellHTML(entry.name, rowHealth, entry.disabled) +
+        rosterVersionCellHTML(
+          entry.name,
+          rowHealth,
+          entry.disabled,
+          stackUpdatesFor(entry.name, ''),
+        ) +
         `<span class="roster-status">${rosterStatusHTML(entry, !!deployingRows[entry.name])}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, rowHealth)}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         commitLinkHTML(commit, { cls: 'roster-sha', base: repoWebURL, title: commit });
@@ -457,7 +477,12 @@
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
           `<span class="roster-stack">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${entry.disabled ? '' : linkCell(entry.name, p.name)}</span>` +
-          rosterVersionCellHTML(entry.name, stackHealthFor(entry.name, p.name), entry.disabled) +
+          rosterVersionCellHTML(
+            entry.name,
+            stackHealthFor(entry.name, p.name),
+            entry.disabled,
+            stackUpdatesFor(entry.name, p.name),
+          ) +
           // deploying=false: deployingRows is the primary's own in-flight set,
           // never a peer's.
           `<span class="roster-status">${rosterStatusHTML(entry, false)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, stackHealthFor(entry.name, p.name))}</span>` +
@@ -1777,11 +1802,20 @@
     const h = healthMapFor(host)[stack];
     const status = (h && h.status) || 'unknown';
     el.dataset.health = status; // drives the shared --hc colour (variant A)
+    // The stack's update-check map (ADR-0054): per-service ⇡ markers on the
+    // version chips below, and a count + freshness summary in the head.
+    const upd = stackUpdatesFor(stack, host) || {};
+    const updMeta = updateCheckMetaHTML(
+      Object.keys(upd).length,
+      (updatesFor(host) || {}).checked_at,
+      Date.now(),
+    );
     // Header echoes the stack + status so the panel names its own row.
     const head =
       `<div class="health-panel-head">` +
       `<span class="hp-head-label">health</span>` +
       `<span class="hp-head-who">${escapeHtml(stack)}</span>` +
+      updMeta +
       `<span class="hp-head-pill"><span class="hdot"></span>${escapeHtml(status)}</span>` +
       `</div>`;
     const svcs = (h && h.services) || [];
@@ -1824,7 +1858,7 @@
           // row use. A service without an image (nothing running) keeps an empty cell
           // so the lines stay aligned.
           const ver = withVersions
-            ? `<span class="hp-ver" data-testid="health-version">${s.image ? serviceVersionHTML(s.name, s.image, false) : ''}</span>`
+            ? `<span class="hp-ver" data-testid="health-version">${s.image ? serviceVersionHTML(s.name, s.image, false, upd[s.name]) : ''}</span>`
             : '';
           return (
             `<div class="hp-svc" data-testid="health-service"${svcTitle}>` +
@@ -2696,6 +2730,7 @@
         disabledSnap = (d && d.disabled) || [];
         rosterSnap = (d && d.roster) || [];
         repoWebURL = (d && d.repo_web_url) || '';
+        updatesSnap = (d && d.updates) || null;
         renderDisabledStacks();
         renderRoster();
         updateStackAffordances(); // roster carries the hooks — (de)show the badge
@@ -3050,6 +3085,7 @@
         verCell.innerHTML = rosterVersionInnerHTML(
           row.dataset.stack,
           stackHealthFor(row.dataset.stack, row.dataset.host),
+          stackUpdatesFor(row.dataset.stack, row.dataset.host),
         );
       const h = healthSnap[row.dataset.stack];
       // Keep the row's health marker (drives the severity bar + tint) in sync

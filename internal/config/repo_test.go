@@ -456,6 +456,11 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	if withRollback := hashFor(t, &Stack{Rollback: boolPtr(false)}); withRollback != base {
 		t.Error("ConfigHash must ignore rollback")
 	}
+	// update_check is a display policy (ADR-0054) → never hashed; opting a
+	// stack out of the update check must not redeploy it.
+	if withUpdateCheck := hashFor(t, &Stack{UpdateCheck: boolPtr(false)}); withUpdateCheck != base {
+		t.Error("ConfigHash must ignore update_check")
+	}
 	// deploy_health_check shapes the deploy (--wait gate) → hashed. An explicit
 	// off-switch (ADR-0049) must hash distinctly from absence, so toggling it
 	// deploys the stack once under the new gate policy.

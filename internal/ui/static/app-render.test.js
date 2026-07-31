@@ -942,3 +942,75 @@ test('clogSvcsHTML escapes a service name into attribute and label', () => {
   const html = r.clogSvcsHTML([{ name: 'a"<b' }], []);
   assert.match(html, /data-svc="a&quot;&lt;b">a"&lt;b</);
 });
+
+// ── Registry update markers (ADR-0054, variant A) ──
+
+test('serviceVersionHTML with a newer-tag update appends the amber marker', () => {
+  const html = r.serviceVersionHTML('server', 'gitea/gitea:1.22.3', true, {
+    running: '1.22.3',
+    latest: '1.22.6',
+  });
+  assert.match(html, /class="td-svc"[^>]*>server</);
+  assert.match(html, /class="td-cur">1\.22\.3</);
+  assert.match(html, /class="td-upd"/);
+  assert.match(html, /⇡/);
+  assert.match(html, />1\.22\.6</);
+  assert.match(html, /title="[^"]*upstream 1\.22\.6 available/);
+  assert.match(html, /aria-label="[^"]*1\.22\.6 available/);
+});
+
+test('serviceVersionHTML with a rebuilt update marks the tag as rebuilt, not a new version', () => {
+  const html = r.serviceVersionHTML('traefik', 'traefik:v3.1', true, {
+    running: 'v3.1',
+    rebuilt: true,
+  });
+  assert.match(html, /class="td-upd"/);
+  assert.match(html, />rebuilt</);
+  assert.match(html, /title="[^"]*rebuilt upstream/);
+  assert.doesNotMatch(html, /td-new/);
+});
+
+test('serviceVersionHTML without an update renders exactly the plain chip', () => {
+  assert.equal(
+    r.serviceVersionHTML('web', 'app:2', true, undefined),
+    r.serviceVersionHTML('web', 'app:2', true),
+  );
+});
+
+test('rosterVersionInnerHTML marks the lead chip when its service has an update', () => {
+  const health = {
+    services: [
+      { name: 'immich-server', image: 'ghcr.io/immich-app/immich-server:v1.135.3' },
+      { name: 'redis', image: 'redis:6.2' },
+    ],
+  };
+  const html = r.rosterVersionInnerHTML('immich', health, {
+    'immich-server': { running: 'v1.135.3', latest: 'v1.137.1' },
+  });
+  assert.match(html, /td-upd/);
+  assert.match(html, />v1\.137\.1</);
+  assert.match(html, /\+1/); // the +N pointer stays
+});
+
+test('rosterVersionInnerHTML stays unmarked when only a non-lead service has an update', () => {
+  const health = {
+    services: [
+      { name: 'immich-server', image: 'ghcr.io/immich-app/immich-server:v1.135.3' },
+      { name: 'redis', image: 'redis:6.2' },
+    ],
+  };
+  const html = r.rosterVersionInnerHTML('immich', health, {
+    redis: { running: '6.2', rebuilt: true },
+  });
+  assert.doesNotMatch(html, /td-upd/);
+});
+
+test('updateCheckMetaHTML renders count and check age, and is empty without updates', () => {
+  const now = Date.parse('2026-07-31T12:12:00Z');
+  const html = r.updateCheckMetaHTML(2, '2026-07-31T12:00:00Z', now);
+  assert.match(html, /hp-head-check/);
+  assert.match(html, /⇡ 2 updates/);
+  assert.match(html, /checked 12m ago/);
+  assert.match(r.updateCheckMetaHTML(1, '2026-07-31T12:00:00Z', now), /⇡ 1 update\b/);
+  assert.equal(r.updateCheckMetaHTML(0, '2026-07-31T12:00:00Z', now), '');
+});

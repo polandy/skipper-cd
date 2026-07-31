@@ -249,6 +249,16 @@ Inventory answers "what is running", so a roster row also shows **which version*
 
 There is **no** view-option to hide the column (unlike the Deploys [Version changes](#view-options-popover) toggle): a single-line cell costs the roster no height, so there is nothing to reclaim.
 
+### Update markers
+
+The read-only registry update check (ADR-0054) annotates the version chips with what upstream offers. The data rides the `stacks` snapshot (`updates: {stacks: {<stack>: {<service>: {running, latest?, rebuilt?}}}, checked_at}`, absent while the check is disabled or has not run) — per stack, **only** the services with an available update.
+
+- **On the chip** — a marked service's version chip gains an amber `⇡` token (`.td-upd`) and the faint queued tint on the chip itself: `1.22.3 ⇡ 1.22.6` for a newer same-shape tag, `v3.1 ⇡ rebuilt` when the running tag's upstream digest moved (mirroring the Deploys column's `↻ rebuilt` form). **Queued amber** on purpose — the app's "waiting to be applied" colour: not the diff-add green (that claims "new"), not red (that claims a fault). Applying stays a git commit; there is no button. The full detail lives in the chip `title`.
+- **On the row** — the roster row's lead chip carries its own service's marker only; a non-lead service's update surfaces in the panel and the head count below, not on the row (the row stays one line, and a marker on the `+N` would claim the wrong service).
+- **In the panel** — each containers-panel line's chip carries its own service's marker, and the panel **head** gains a right-aligned summary (`data-testid="update-check-meta"`, `.hp-head-check`): `⇡ N updates · checked 12m ago` — the amber count plus the check's freshness, the only place the check time shows. Absent entirely when the stack has no updates, so an all-current panel head looks exactly as before.
+- **Peers** — a peer's markers come from that peer's own fanned-in `stacks` state (`resolveUpdates`, the `resolveRepoWebURL` pattern); an older peer without the field simply shows none.
+- **Degrading** — no snapshot, an opted-out stack (`update_check: false`), a service the check could not answer for: no marker, never a placeholder.
+
 ### Change detection
 
 The last panel of a roster row's expand card (`data-testid="watched-panel"`) answers the question the rest of the UI leaves to `state.yaml` on the host: **"I pushed and this stack did nothing — why?"** A stack redeploys only when one of its hashed inputs changes (Invariant 2), so the panel names those inputs and, after a clean deploy, the commit they have not changed since.
@@ -538,6 +548,7 @@ assert on.
 | `health-panel` | Per-service health breakdown panel below the row | Sibling of the row, like `files-panel`; leads with a stack + status header; carries `data-health` (drives the shared left bar/tint); the open row gets `health-open` + `data-health` |
 | `health-service` | A service row inside `health-panel` | `data-health` per service |
 | `health-version` | The service's running version inside a `health-service` line | Only when the health snapshot carries container images; holds the current-mode version chip (no service label — the line names it) |
+| `update-check-meta` | The containers-panel head's update summary (`⇡ N updates · checked Xm ago`, ADR-0054) | Only when the stack has at least one advertised update; the version chips of the affected services carry the amber `⇡` marker (`.td-upd`) |
 | `more-btn` | `⋯` overflow-menu trigger in the stack cell (T3.13) | Newest deploy row per stack only (**not** the roster — its secondary actions are inline); collapses the row's secondary actions (history + container logs + deploy hooks); `<button>` with `aria-expanded`; `data-hook-active` pulses it while a hook runs; opens `more-pop` |
 | `more-pop` | The overflow menu popover | Holds the relocated history/clog/hooks buttons as labelled rows; outside-click / `Esc` dismiss; flips `.align-right` near the viewport edge; picking an action closes it |
 | `history-btn` | Deploy-history button (inside the `⋯` menu) | Newest row per stack only; lives in `more-pop`; opens `audit-panel` |

@@ -174,12 +174,13 @@ type Deployer struct {
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64
-	lastSyncErr      atomic.Pointer[syncOutcome]         // nil until the first run
-	currentRunPlan   atomic.Pointer[RunPlan]             // latest published plan, for late joiners
-	currentHookRun   atomic.Pointer[HookRun]             // latest published hook-run state, for late joiners
-	discoveredStacks atomic.Pointer[config.RepoStacks]   // stack-discovery result, nil when stacks are listed explicitly
-	projectDirs      atomic.Pointer[map[string]string]   // recorded stack→project-dir, for orphan detection
-	trackedFiles     atomic.Pointer[map[string][]string] // recorded stack→hashed input paths, for the roster
+	lastSyncErr      atomic.Pointer[syncOutcome]                  // nil until the first run
+	currentRunPlan   atomic.Pointer[RunPlan]                      // latest published plan, for late joiners
+	currentHookRun   atomic.Pointer[HookRun]                      // latest published hook-run state, for late joiners
+	discoveredStacks atomic.Pointer[config.RepoStacks]            // stack-discovery result, nil when stacks are listed explicitly
+	projectDirs      atomic.Pointer[map[string]string]            // recorded stack→project-dir, for orphan detection
+	trackedFiles     atomic.Pointer[map[string][]string]          // recorded stack→hashed input paths, for the roster
+	runningImagesNow atomic.Pointer[map[string]map[string]string] // recorded stack→service→running image, for the update check
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -227,6 +228,8 @@ func New(cfg Config) *Deployer {
 	} else {
 		tracked := state.trackedFiles()
 		d.trackedFiles.Store(&tracked)
+		running := state.runningImagesView()
+		d.runningImagesNow.Store(&running)
 	}
 	return d
 }
@@ -576,6 +579,10 @@ func (d *Deployer) finishRun(ctx context.Context, state *persistedState) {
 	// detection actually watches per stack.
 	tracked := state.trackedFiles()
 	d.trackedFiles.Store(&tracked)
+
+	// Publish the recorded running images for the out-of-run update check.
+	running := state.runningImagesView()
+	d.runningImagesNow.Store(&running)
 
 	// After the run, let the wiring publish autosync/queue snapshots and refresh
 	// gauges (queue depth may have changed via defer/clear this run).

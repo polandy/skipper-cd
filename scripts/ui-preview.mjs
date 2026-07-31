@@ -90,6 +90,12 @@ case " $* " in
             done ;;
         esac
         exit 0 ;;
+      *" images "*)
+        # \`compose images --format json\` — the second half of the
+        # running-image read (ADR-0053): ContainerName + image ID.
+        f="$STUB_PS_DIR/$(basename "$(pwd)")-images.json"
+        [ -f "$f" ] && cat "$f"
+        exit 0 ;;
       *" ps "*)
         f="$STUB_PS_DIR/$(basename "$(pwd)").json"
         [ -f "$f" ] && cat "$f"
@@ -98,6 +104,15 @@ case " $* " in
     exit 0 ;;
   *" volume "*)
     [ -f "$STUB_PS_DIR/volumes.txt" ] && cat "$STUB_PS_DIR/volumes.txt"
+    exit 0 ;;
+  *" image inspect "*)
+    # \`docker image inspect --format {{json .RepoDigests}} <name>\` — the
+    # local half of the update check's digest comparison (ADR-0054). Matched
+    # as one adjacent-word glob — two separate " image " / " inspect " globs
+    # would hit the overlapping-space trap described above.
+    for last; do :; done
+    f="$STUB_PS_DIR/rd-$(printf %s "$last" | tr '/:' '__').json"
+    if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi
     exit 0 ;;
   *" inspect "*)
     shift 3 2>/dev/null # drop "inspect" "--format" "{{json .Config.Labels}}"
@@ -184,6 +199,9 @@ function cleanup() {
   try {
     peerServer?.close();
   } catch {}
+  try {
+    registryServer?.close();
+  } catch {}
   rmSync(base, { recursive: true, force: true });
 }
 process.on('SIGINT', () => {
@@ -206,6 +224,38 @@ execFileSync(
   { cwd: repoRoot, stdio: 'inherit' },
 );
 
+// Local registry stub (ADR-0054): answers the update check's two read-only
+// questions for the demo repos — gitea has a newer same-shape tag upstream
+// (1.22.3 → 1.22.6), nextcloud's running tag was rebuilt (its digest moved).
+// The demo composes point these two images at it via the 127.0.0.1 host
+// prefix (a loopback registry is plain HTTP, like docker treats localhost
+// registries); the visible chips only ever show the tag, so the prefix does
+// not change what the UI renders. Everything else stays offline and is opted
+// out in the config below.
+const NEXTCLOUD_REG_DIGEST = 'sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+const regTags = {
+  'gitea/gitea': ['1.21.0', '1.22.3', '1.22.6', 'latest'],
+  nextcloud: ['30.0.1', '30.0.2'],
+};
+const registryServer = createHttpServer((req, res) => {
+  const tagsMatch = req.url.match(/^\/v2\/(.+)\/tags\/list/);
+  const manifestMatch = req.url.match(/^\/v2\/(.+)\/manifests\//);
+  if (tagsMatch && regTags[tagsMatch[1]]) {
+    res.setHeader('Content-Type', 'application/json');
+    return void res.end(JSON.stringify({ tags: regTags[tagsMatch[1]] }));
+  }
+  if (manifestMatch && regTags[manifestMatch[1]]) {
+    res.setHeader('Docker-Content-Digest', NEXTCLOUD_REG_DIGEST);
+    res.statusCode = 200;
+    return void res.end();
+  }
+  res.statusCode = 404;
+  res.end('{}');
+});
+const regPort = await freePort();
+await new Promise((r) => registryServer.listen(regPort, '127.0.0.1', r));
+const regHost = `127.0.0.1:${regPort}`;
+
 // Origin repo: one committed compose (+ a coloured icon) per stack.
 git(base, 'init', '-b', 'main', origin);
 const icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#7aa2f7"><rect width="24" height="24" rx="5"/></svg>';
@@ -226,7 +276,7 @@ const initCompose = {
     ['database', 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.3.0'],
   ]),
   nextcloud: composeYaml([
-    ['app', 'nextcloud:30.0.1'],
+    ['app', `${regHost}/nextcloud:30.0.1`],
     ['db', 'postgres:16'],
     ['redis', 'redis:7.2'],
   ]),
@@ -236,7 +286,7 @@ const initCompose = {
     ['db', 'postgres:16'],
   ]),
   gitea: composeYaml([
-    ['server', 'gitea/gitea:1.22.3'],
+    ['server', `${regHost}/gitea/gitea:1.22.3`],
     ['db', 'postgres:16'],
   ]),
 };
@@ -294,6 +344,12 @@ const peerBData = {
       // A peer tracks its own deploy repo, so its commit SHAs link to its own
       // forge — a different host than the primary's, on purpose.
       repo_web_url: 'https://forge.host-b.example/ops/deploy',
+      // The peer's own update check (ADR-0054), fanned in with its roster: its
+      // gitea lags further behind than the primary's.
+      updates: {
+        stacks: { gitea: { gitea: { running: '1.22.1', latest: '1.22.6' } } },
+        checked_at: new Date(Date.now() - 8 * 60000).toISOString(),
+      },
     },
     // Fanned-in health/healthwatch/app_links (ADR-0048) so peer rows reach the
     // same containers/app-link parity the primary shows for its own stacks.
@@ -413,8 +469,8 @@ const cfg =
   `    deploy_health_check:\n      timeout_seconds: 1\n` +
   `    hooks:\n      pre_deploy:\n        - "echo backing up nextcloud database"\n      post_deploy:\n        - "echo occ upgrade complete"\n` +
   `  - name: gitea\n    self_heal: false\n` +
-  `  - name: paperless\n    self_heal: false\n` +
-  `  - name: immich\n` +
+  `  - name: paperless\n    self_heal: false\n    update_check: false\n` +
+  `  - name: immich\n    update_check: false\n` +
   `    hooks:\n      pre_deploy:\n        - "echo pausing backups"\n        - "sleep 4"\n      post_deploy:\n        - "echo verifying immich"\n` +
   // vaultwarden's up fails once → the deploy fails and the rollback's own up
   // succeeds, so the row lands on rolled_back with its error panel and diff.
@@ -422,8 +478,11 @@ const cfg =
   // row whose containers are deliberately left running. backup depends on
   // vaultwarden, so the same run holds it back → blocked. (monitoring is paused
   // at runtime further down, once the rest has been seeded.)
-  `  - name: backup\n    depends_on: ["vaultwarden"]\n` +
-  `  - name: wiki\n    rollback: false\n` +
+  `  - name: backup\n    depends_on: ["vaultwarden"]\n    update_check: false\n` +
+  `  - name: wiki\n    rollback: false\n    update_check: false\n` +
+  `  - name: vaultwarden\n    update_check: false\n` +
+  `  - name: monitoring\n    update_check: false\n` +
+  `  - name: syncthing\n    update_check: false\n` +
   `  - name: experiments\n    disabled: true\n`;
 const cfgPath = join(base, 'skipper.yml');
 writeFileSync(cfgPath, cfg);
@@ -440,26 +499,6 @@ try {
   cleanup();
   process.exit(1);
 }
-
-const proc = spawn(bin, ['-config', cfgPath], {
-  env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, STUB_PS_DIR: healthDir, STUB_FAIL_DIR: failDir },
-  stdio: ['ignore', 'inherit', 'inherit'],
-});
-proc.on('exit', (code) => {
-  if (code) {
-    console.error(`[ui-preview] skipper exited with code ${code}`);
-    cleanup();
-    process.exit(code);
-  }
-});
-
-for (let i = 0; i < 150 && !(await healthy()); i++) await sleep(200);
-if (!(await healthy())) {
-  console.error('[ui-preview] skipper did not become healthy');
-  cleanup();
-  process.exit(1);
-}
-console.error('[ui-preview] healthy — seeding states…');
 
 // Health: healthy / degraded / stopped, so the pills and panel show variety.
 // nextcloud and gitea are deployed yet unhealthy (the ADR-0027 case: a green
@@ -478,7 +517,7 @@ setHealth('immich', [
   { Service: 'database', Name: 'immich-database-1', Image: 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.4.0', State: 'running', Health: 'healthy' },
 ]);
 setHealth('nextcloud', [
-  { Service: 'app', Name: 'nextcloud-app-1', Image: 'nextcloud:30.0.2', State: 'running', Health: 'healthy' },
+  { Service: 'app', Name: 'nextcloud-app-1', Image: `${regHost}/nextcloud:30.0.2`, State: 'running', Health: 'healthy' },
   { Service: 'db', Name: 'nextcloud-db-1', Image: 'postgres:16', State: 'restarting', Health: 'unhealthy' },
   { Service: 'redis', Name: 'nextcloud-redis-1', Image: 'redis:7.2', State: 'running', Health: 'healthy' },
 ]);
@@ -504,9 +543,31 @@ setHealth('syncthing', [
   { Service: 'app', Name: 'syncthing-app-1', Image: 'syncthing:1.1.0', State: 'restarting', Health: 'unhealthy' },
 ]);
 setHealth('gitea', [
-  { Service: 'server', Name: 'gitea-server-1', Image: 'gitea/gitea:1.22.3', State: 'restarting', Health: 'unhealthy' },
+  { Service: 'server', Name: 'gitea-server-1', Image: `${regHost}/gitea/gitea:1.22.3`, State: 'restarting', Health: 'unhealthy' },
   { Service: 'db', Name: 'gitea-db-1', Image: 'postgres:16', State: 'running', Health: 'healthy' },
 ]);
+
+// Update-check demo data (ADR-0054): the \`compose images\` half of the
+// running-image read for the two demo stacks (the others deliberately record
+// none and are opted out below), and nextcloud's local RepoDigests — different
+// from what the registry stub advertises, so its running tag reads rebuilt.
+writeFileSync(
+  join(healthDir, 'gitea-images.json'),
+  JSON.stringify([
+    { ContainerName: 'gitea-server-1', ID: 'sha256:40c2d6f1d8f0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+    { ContainerName: 'gitea-db-1', ID: 'sha256:51d3e7f2e9f1bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+  ]),
+);
+writeFileSync(
+  join(healthDir, 'nextcloud-images.json'),
+  JSON.stringify([
+    { ContainerName: 'nextcloud-app-1', ID: 'sha256:62e4f8f3faf2cccccccccccccccccccccccccccccccccccccccccccccccccccc' },
+  ]),
+);
+writeFileSync(
+  join(healthDir, `rd-${`${regHost}/nextcloud:30.0.2`.replace(/[/:]/g, '_')}.json`),
+  JSON.stringify([`${regHost}/nextcloud@sha256:1010101010101010101010101010101010101010101010101010101010101010`]),
+);
 
 // Orphan detection listing (one line per container, columns per psColumns:
 // project, working_dir, config_file, name, service, image, state, status,
@@ -552,13 +613,34 @@ writeFileSync(
   }),
 );
 
+const proc = spawn(bin, ['-config', cfgPath], {
+  env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, STUB_PS_DIR: healthDir, STUB_FAIL_DIR: failDir },
+  stdio: ['ignore', 'inherit', 'inherit'],
+});
+proc.on('exit', (code) => {
+  if (code) {
+    console.error(`[ui-preview] skipper exited with code ${code}`);
+    cleanup();
+    process.exit(code);
+  }
+});
+
+for (let i = 0; i < 150 && !(await healthy()); i++) await sleep(200);
+if (!(await healthy())) {
+  console.error('[ui-preview] skipper did not become healthy');
+  cleanup();
+  process.exit(1);
+}
+console.error('[ui-preview] healthy — seeding deploys…');
+
+
 // Pushed changes → deploy rows carrying real git diffs + commit metadata, each
 // shaped to show a different image-delta case.
 // nextcloud: a single-service tag bump.
 writeFileSync(
   join(origin, 'nextcloud', 'docker-compose.yml'),
   composeYaml([
-    ['app', 'nextcloud:30.0.2'],
+    ['app', `${regHost}/nextcloud:30.0.2`],
     ['db', 'postgres:16'],
     ['redis', 'redis:7.2'],
   ]),
@@ -658,6 +740,18 @@ if (SMOKE) {
   const reasons = ((await get('/api/queue'))?.pending ?? []).map((p) => p.reason);
   if (!reasons.some((r) => r.startsWith('blocked by'))) fail(`nothing is blocked (queue: ${reasons.join(', ')})`);
   if (!reasons.includes('stack')) fail(`nothing is paused per-stack (queue: ${reasons.join(', ')})`);
+
+  // The registry update check (ADR-0054): the post-run nudge is async, so wait
+  // for the snapshot to carry the two demo markers — an effect the seeded
+  // registry stub guarantees.
+  let updates = null;
+  for (let i = 0; i < 100; i++) {
+    updates = (await get('/api/v1/snapshot'))?.stacks?.updates?.stacks;
+    if (updates?.gitea && updates?.nextcloud) break;
+    await sleep(200);
+  }
+  if (updates?.gitea?.server?.latest !== '1.22.6') fail(`gitea update marker missing (got ${JSON.stringify(updates?.gitea)})`);
+  if (updates?.nextcloud?.app?.rebuilt !== true) fail(`nextcloud rebuilt marker missing (got ${JSON.stringify(updates?.nextcloud)})`);
 
   console.error(`[ui-preview] smoke OK — ${roster.length} stacks, outcomes: ${[...outcomes].sort().join(', ')}`);
   cleanup();
