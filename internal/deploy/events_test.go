@@ -550,6 +550,51 @@ func TestDeployStack_FailedRunningImageReadKeepsPreviousBaseline(t *testing.T) {
 	}
 }
 
+// A declared service can have no container — a profile that is not active, a
+// scale of zero — and then `ps` does not list it although the baseline does.
+// The success event must not claim it was removed.
+func TestDeployStack_ServiceWithoutContainerIsNotReportedRemoved(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "cloud")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// worker is declared but has no container: `ps` below reports only app.
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"),
+		composeWithImage("nginx:1.27")+"  worker:\n    image: acme/worker:1.0\n    profiles: [batch]\n")
+
+	runner := &recordingRunner{outputFn: outputRunningImage("nginx:1.27", "sha256:9f8e7d6c5b4a0011")}
+	var successEvt *events.DeployEvent
+	d := New(Config{Runner: runner, Outputter: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
+		if e.Status == events.StatusSuccess {
+			successEvt = &e
+		}
+	}})
+
+	state := &persistedState{
+		Stacks: map[string]stackFileHashes{"cloud": {"old": "oldhash"}},
+		Images: map[string]serviceImageByName{"cloud": {"app": "nginx:1.25", "worker": "acme/worker:1.0"}},
+		RunningImages: map[string]serviceImageByName{"cloud": {
+			"app":    "nginx:1.25@a1b2c3d4e5f6",
+			"worker": "acme/worker:1.0@c0ffee000000",
+		}},
+	}
+
+	if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "cloud"}, baseDir, "", nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if successEvt == nil {
+		t.Fatal("expected success event")
+	}
+	want := []events.ServiceImageChange{
+		{Service: "app", Old: "nginx:1.25@a1b2c3d4e5f6", New: "nginx:1.27@9f8e7d6c5b4a"},
+	}
+	if !reflect.DeepEqual(successEvt.ImageChanges, want) {
+		t.Errorf("success event ImageChanges = %+v, want only the app change (worker is not removed): %+v",
+			successEvt.ImageChanges, want)
+	}
+}
+
 func TestDeployStack_SuccessEventMarksTheHealthGate(t *testing.T) {
 	tests := []struct {
 		name    string

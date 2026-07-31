@@ -103,6 +103,17 @@ names what the gate did.
   container name, and a failed `images` read discards the whole answer: half of
   it would make every floating-tag service look like it had just moved to a
   reference with no id.
+- Services built from `build:` become version-tracked, which the
+  compose-reference delta never could (they carry no `image:` to compare): `ps`
+  reports the image name compose gave them, so a rebuild that produced a new
+  image reads as an image-id change under the unchanged name. That is a real,
+  reportable version change, so it is kept, and the docs say so.
+- A service in the baseline that `ps` no longer lists is reported as removed
+  only when it is also gone from the compose file. A declared service without a
+  container — an inactive profile, a scale of zero — is not a removal, and
+  claiming `<old> (removed)` for it would be false. When the compose parse is
+  unavailable the raw delta stands: suppressing removals blindly would hide the
+  real ones.
 - The first deploy of each stack after upgrading reports the old
   compose-reference delta (usually empty) and establishes the baseline. From the
   second one on, the version delta is the real one.
