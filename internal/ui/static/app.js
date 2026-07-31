@@ -906,10 +906,14 @@
     if (drow && drow.dataset.status === 'deploying') {
       const cell = drow.querySelector('.status-cell');
       if (cell) cell.appendChild(hookPhaseNode(hr));
+      // Marked independently: a running hook is reported by the hookrun stream,
+      // while the badge only exists once the roster snapshot has carried the
+      // stack's hooks. Gating the ⋯ pulse on the badge would drop it whenever
+      // the roster lags the hook.
       const b = drow.querySelector('.hooks-badge');
       if (b) b.dataset.hookActive = '1';
       const mb = drow.querySelector('.more-btn');
-      if (b && mb) mb.dataset.hookActive = '1';
+      if (mb) mb.dataset.hookActive = '1';
     }
 
     // Stacks view: the roster row while it shows the live deploying state.

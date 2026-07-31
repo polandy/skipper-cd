@@ -263,9 +263,21 @@ func (p autosyncPublisher) publish() {
 	}
 	metrics.AutosyncPending.Set(float64(p.queue.Count()))
 	if p.stateB != nil {
-		d := p.deployer.get()
 		p.stateB.Publish(events.StateEvent{Name: events.StateAutosync, Data: snap})
 		p.stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: p.queue.View(p.views.order())})
-		p.stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: roster.BuildState(p.views.effective(), d.CurrentDisabledStacks(), p.auditLog, d.CurrentTrackedFiles(), p.repo)})
+		p.publishStacks()
 	}
+}
+
+// publishStacks pushes the roster snapshot on its own. Wired to the deployer's
+// StackSetSink as well as ridden by publish, so the one place that builds the
+// snapshot serves both the end of a run and the moment stack discovery first
+// learns the set — the UI would otherwise show an empty roster for the whole
+// first run. A nil stateB (UI off) makes it a no-op.
+func (p autosyncPublisher) publishStacks() {
+	if p.stateB == nil {
+		return
+	}
+	d := p.deployer.get()
+	p.stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: roster.BuildState(p.views.effective(), d.CurrentDisabledStacks(), p.auditLog, d.CurrentTrackedFiles(), p.repo)})
 }
