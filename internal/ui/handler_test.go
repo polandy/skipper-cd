@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,36 +18,115 @@ import (
 	"github.com/polandy/skipper-cd/internal/uitheme"
 )
 
-// serveSSE runs the blocking SSE handler in a goroutine, gives it time to
-// write, optionally runs `during` (e.g. publishing a live event), then
-// cancels the request and waits for the handler to exit. Reading the
-// recorder afterwards is race-free because the handler has returned.
-func serveSSE(t *testing.T, handler http.Handler, req *http.Request, during func()) *httptest.ResponseRecorder {
+// sseTestTimeout bounds waits on SSE output a correct handler is guaranteed
+// to produce; a passing run never depends on it, only a broken handler hits it.
+const sseTestTimeout = 5 * time.Second
+
+// sseWriter is the ResponseWriter the SSE tests hand to the blocking handler:
+// it buffers writes under a lock and signals each one, so a test waits for a
+// specific frame to be written instead of sleeping — the deterministic seam
+// replacing wall-clock waits (the awaited frames are guaranteed output, the
+// wait is on delivery, not time).
+type sseWriter struct {
+	mu     sync.Mutex
+	buf    bytes.Buffer
+	header http.Header
+	wrote  chan struct{}
+	// onWrite, when set, sees each chunk before it is buffered — from the
+	// handler's own goroutine, so a test can publish synchronously at an exact
+	// point in the handler's output sequence.
+	onWrite func(chunk string)
+}
+
+func newSSEWriter() *sseWriter {
+	return &sseWriter{header: make(http.Header), wrote: make(chan struct{}, 1)}
+}
+
+func (w *sseWriter) Header() http.Header { return w.header }
+func (w *sseWriter) WriteHeader(int)     {}
+func (w *sseWriter) Flush()              {}
+
+func (w *sseWriter) Write(p []byte) (int, error) {
+	if w.onWrite != nil {
+		w.onWrite(string(p))
+	}
+	w.mu.Lock()
+	n, err := w.buf.Write(p)
+	w.mu.Unlock()
+	// Wake a waitFor; a pending signal already wakes it, so dropping is fine.
+	select {
+	case w.wrote <- struct{}{}:
+	default:
+	}
+	return n, err
+}
+
+// Body returns everything written so far. Safe to call while the handler runs.
+func (w *sseWriter) Body() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
+}
+
+// waitFor blocks until substr appears in the output, re-checking only when a
+// new write lands.
+func (w *sseWriter) waitFor(t *testing.T, substr string) {
+	t.Helper()
+	deadline := time.After(sseTestTimeout)
+	for {
+		if strings.Contains(w.Body(), substr) {
+			return
+		}
+		select {
+		case <-w.wrote:
+		case <-deadline:
+			t.Fatalf("timed out waiting for %q in SSE output:\n%s", substr, w.Body())
+		}
+	}
+}
+
+// sseSyncedMarker is the end-of-replay frame the deploy stream always writes;
+// it is written after the live subscriptions are established, so a test that
+// waits for it may publish knowing the handler is provably listening.
+const sseSyncedMarker = "event: synced\n"
+
+// serveSSE runs the blocking SSE handler in a goroutine. A non-empty `ready`
+// substring is awaited before `during` runs, so a publish from `during`
+// provably lands on an established subscription; each `await` substring is
+// then awaited before cancelling, so live frames are asserted on delivery,
+// never raced. Output written before the handler's live loop needs no await —
+// the loop is the first point a cancel can take effect. Reading the writer
+// afterwards is race-free because the handler has returned.
+func serveSSE(t *testing.T, handler http.Handler, req *http.Request, ready string, during func(), await ...string) *sseWriter {
 	t.Helper()
 	ctx, cancel := context.WithCancel(req.Context())
 	defer cancel()
 	req = req.WithContext(ctx)
-	rec := httptest.NewRecorder()
+	w := newSSEWriter()
 
 	done := make(chan struct{})
 	go func() {
-		handler.ServeHTTP(rec, req)
+		handler.ServeHTTP(w, req)
 		close(done)
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	if ready != "" {
+		w.waitFor(t, ready)
+	}
 	if during != nil {
 		during()
-		time.Sleep(50 * time.Millisecond)
+	}
+	for _, s := range await {
+		w.waitFor(t, s)
 	}
 	cancel()
 
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(sseTestTimeout):
 		t.Fatal("SSE handler did not exit after context cancel")
 	}
-	return rec
+	return w
 }
 
 func TestIndexHandler_ServesHTML(t *testing.T) {
@@ -569,9 +650,9 @@ func TestSSEHandler_SendsHistoryOnConnect(t *testing.T) {
 
 	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	rec := serveSSE(t, handler, req, nil)
+	rec := serveSSE(t, handler, req, "", nil)
 
-	body := rec.Body.String()
+	body := rec.Body()
 	if !strings.Contains(body, `"stack":"gitea"`) {
 		t.Error("expected history event for gitea")
 	}
@@ -591,7 +672,7 @@ func TestSSEHandler_EmitsSyncedMarkerAfterHistory(t *testing.T) {
 
 	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	body := serveSSE(t, handler, req, nil).Body.String()
+	body := serveSSE(t, handler, req, "", nil).Body()
 
 	if !strings.Contains(body, "event: synced\n") {
 		t.Fatalf("expected a synced marker, got:\n%s", body)
@@ -608,7 +689,7 @@ func TestSSEHandler_EmitsSyncedMarkerAfterHistory(t *testing.T) {
 func TestSSEHandler_EmitsSyncedMarkerForEmptyHistory(t *testing.T) {
 	handler := SSEHandler(events.NewBroadcaster(), nil, events.NewHistory(""), nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	body := serveSSE(t, handler, req, nil).Body.String()
+	body := serveSSE(t, handler, req, "", nil).Body()
 
 	if !strings.Contains(body, "event: synced\n") {
 		t.Fatalf("expected a synced marker for empty history, got:\n%s", body)
@@ -624,9 +705,9 @@ func TestSSEHandler_FiltersHistoryByLastEventID(t *testing.T) {
 	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
 	req.Header.Set("Last-Event-ID", "1")
-	rec := serveSSE(t, handler, req, nil)
+	rec := serveSSE(t, handler, req, "", nil)
 
-	body := rec.Body.String()
+	body := rec.Body()
 	if strings.Contains(body, `"stack":"old"`) {
 		t.Error("should not contain events before Last-Event-ID")
 	}
@@ -644,7 +725,7 @@ func TestSSEHandler_SendsStateBaselineOnConnect(t *testing.T) {
 
 	handler := SSEHandler(events.NewBroadcaster(), events.NewStateBroadcaster(), events.NewHistory(""), collect)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	body := serveSSE(t, handler, req, nil).Body.String()
+	body := serveSSE(t, handler, req, "", nil).Body()
 
 	if !strings.Contains(body, "event: "+events.StateQueue+"\n") {
 		t.Fatalf("expected the %s baseline on connect, got:\n%s", events.StateQueue, body)
@@ -669,7 +750,8 @@ func TestSSEHandler_StateChangeDuringBaselineIsNotLost(t *testing.T) {
 
 	handler := SSEHandler(events.NewBroadcaster(), stateB, events.NewHistory(""), collect)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	body := serveSSE(t, handler, req, nil).Body.String()
+	// The racing state event rides the live loop, so wait for its delivery.
+	body := serveSSE(t, handler, req, "", nil, `"count":9`).Body()
 
 	if !strings.Contains(body, `"count":9`) {
 		t.Fatalf("a state change published during the baseline was lost, got:\n%s", body)
@@ -686,20 +768,117 @@ func TestSSEHandler_StreamsLiveEvents(t *testing.T) {
 
 	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	rec := serveSSE(t, handler, req, func() {
+	rec := serveSSE(t, handler, req, sseSyncedMarker, func() {
 		broadcaster.Publish(events.DeployEvent{
 			ID:     10,
 			Stack:  "monitoring",
 			Status: events.StatusDeploying,
 		})
-	})
+	}, "id: 10\n")
 
-	body := rec.Body.String()
+	body := rec.Body()
 	if !strings.Contains(body, `"stack":"monitoring"`) {
 		t.Errorf("expected live event for monitoring in body: %s", body)
 	}
 	if !strings.Contains(body, "id: 10") {
 		t.Error("expected SSE id: 10 in output")
+	}
+}
+
+// A deploy event published while the handler is replaying history must still
+// reach the client: the deploy subscription is established before the history
+// snapshot is read (the same subscribe-first rule the state baseline follows,
+// ADR-0039 amendment), so the racing event queues on the channel and follows
+// the replay instead of falling into the gap between replay and subscribe —
+// where it was lost until the next reconnect's Last-Event-ID replay.
+// Publishing from the synced-marker write lands in exactly that window
+// deterministically.
+func TestSSEHandler_DeployPublishedDuringReplayIsNotLost(t *testing.T) {
+	broadcaster := events.NewBroadcaster()
+	history := events.NewHistory("")
+	history.Add(events.DeployEvent{ID: 1, Stack: "gitea", Status: events.StatusSuccess})
+
+	handler := SSEHandler(broadcaster, nil, history, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil).WithContext(ctx)
+
+	w := newSSEWriter()
+	var once sync.Once
+	w.onWrite = func(chunk string) {
+		if strings.Contains(chunk, "event: synced") {
+			once.Do(func() {
+				broadcaster.Publish(events.DeployEvent{ID: 2, Stack: "racer", Status: events.StatusDeploying})
+			})
+		}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		handler.ServeHTTP(w, req)
+		close(done)
+	}()
+
+	w.waitFor(t, `"stack":"racer"`)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(sseTestTimeout):
+		t.Fatal("SSE handler did not exit after context cancel")
+	}
+
+	body := w.Body()
+	if strings.Index(body, `"stack":"racer"`) < strings.Index(body, `"stack":"gitea"`) {
+		t.Errorf("the racing event must follow the replayed history, got:\n%s", body)
+	}
+}
+
+// Subscribe-first means an event can be both in the replayed history and on
+// the live channel; the live copy must be dropped by its monotonic ID, not
+// sent twice. Delivery of the fresh event (same channel, FIFO) is the
+// positive signal that the duplicate was processed and skipped.
+func TestSSEHandler_DropsLiveEventAlreadyReplayed(t *testing.T) {
+	broadcaster := events.NewBroadcaster()
+	history := events.NewHistory("")
+	history.Add(events.DeployEvent{ID: 1, Stack: "gitea", Status: events.StatusSuccess})
+	history.Add(events.DeployEvent{ID: 2, Stack: "traefik", Status: events.StatusSuccess})
+
+	handler := SSEHandler(broadcaster, nil, history, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+	rec := serveSSE(t, handler, req, sseSyncedMarker, func() {
+		// Same event the replay already delivered, then a genuinely new one.
+		broadcaster.Publish(events.DeployEvent{ID: 2, Stack: "traefik", Status: events.StatusSuccess})
+		broadcaster.Publish(events.DeployEvent{ID: 3, Stack: "fresh", Status: events.StatusDeploying})
+	}, `"stack":"fresh"`)
+
+	if got := strings.Count(rec.Body(), "id: 2\n"); got != 1 {
+		t.Errorf("event 2 written %d times, want exactly once:\n%s", got, rec.Body())
+	}
+}
+
+// A Last-Event-ID resume must drop live events at or below the resume point —
+// the client already has them from its previous connection — while newer ones
+// stream through.
+func TestSSEHandler_LastEventIDResumeDropsAlreadySeenLiveEvents(t *testing.T) {
+	broadcaster := events.NewBroadcaster()
+	history := events.NewHistory("")
+	history.Add(events.DeployEvent{ID: 1, Stack: "old", Status: events.StatusSuccess})
+	history.Add(events.DeployEvent{ID: 2, Stack: "seen", Status: events.StatusSuccess})
+
+	handler := SSEHandler(broadcaster, nil, history, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+	req.Header.Set("Last-Event-ID", "2")
+	rec := serveSSE(t, handler, req, sseSyncedMarker, func() {
+		broadcaster.Publish(events.DeployEvent{ID: 2, Stack: "stale-rebroadcast", Status: events.StatusSuccess})
+		broadcaster.Publish(events.DeployEvent{ID: 3, Stack: "fresh", Status: events.StatusDeploying})
+	}, `"stack":"fresh"`)
+
+	body := rec.Body()
+	if strings.Contains(body, "stale-rebroadcast") {
+		t.Errorf("live event at the resume point was re-sent:\n%s", body)
+	}
+	if strings.Contains(body, `"stack":"seen"`) {
+		t.Errorf("replay must exclude events at or before Last-Event-ID:\n%s", body)
 	}
 }
 
@@ -709,7 +888,7 @@ func TestSSEHandler_SetsCorrectHeaders(t *testing.T) {
 
 	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	rec := serveSSE(t, handler, req, nil)
+	rec := serveSSE(t, handler, req, "", nil)
 
 	headers := rec.Header()
 	if headers.Get("Content-Type") != "text/event-stream" {
@@ -820,9 +999,9 @@ func TestSSEHandler_StripsDiffsFromStream(t *testing.T) {
 
 	handler := SSEHandler(broadcaster, nil, history, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	rec := serveSSE(t, handler, req, nil)
+	rec := serveSSE(t, handler, req, "", nil)
 
-	body := rec.Body.String()
+	body := rec.Body()
 	if strings.Contains(body, "+added") {
 		t.Error("SSE stream should not contain diff content")
 	}

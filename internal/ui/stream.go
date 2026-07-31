@@ -20,16 +20,18 @@ import (
 const sseKeepaliveInterval = 30 * time.Second
 
 // SSEHandler returns an HTTP handler that streams deploy events via
-// Server-Sent Events. On connect it replays deploy history, then sends the
-// current UI state (autosync, stacks, health, …) as one event per state name,
-// then streams live deploy and state events. Supports Last-Event-ID for
-// reconnection of the deploy history.
+// Server-Sent Events. On connect it subscribes to the live broadcasters,
+// replays deploy history, then sends the current UI state (autosync, stacks,
+// health, …) as one event per state name, then streams live deploy and state
+// events. Supports Last-Event-ID for reconnection of the deploy history.
 //
-// The baseline rides this stream so that subscribing and reading it are one
-// ordered operation — the subscription is established before collect runs, so
-// nothing published mid-connect falls into a gap (ADR-0039 amendment). collect
-// is the same collector GET /api/v1/snapshot serves, so the two cannot drift; a
-// nil collect (or a nil state broadcaster) sends no baseline.
+// Subscribing and replaying are one ordered operation: both subscriptions are
+// established before the history snapshot and the state baseline are read, so
+// nothing published mid-connect falls into a gap (ADR-0039 amendment). A
+// deploy event both replayed and received live is sent once — the live copy
+// is dropped by its monotonic ID. collect is the same collector
+// GET /api/v1/snapshot serves, so the two cannot drift; a nil collect (or a
+// nil state broadcaster) sends no baseline.
 func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.Broadcaster[events.StateEvent], history *events.History, collect func() []events.StateEvent) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
@@ -43,10 +45,28 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
 
-		// Replay history (optionally filtered by Last-Event-ID).
+		// Subscribe to live deploy events — and state events when available —
+		// before reading any snapshot, so an event published mid-connect queues
+		// on its channel instead of vanishing between snapshot and subscribe
+		// (ADR-0039 amendment; the logs stream follows the same rule).
+		dch, unsubD := deployB.Subscribe()
+		defer unsubD()
+		var sch <-chan events.StateEvent
+		if stateB != nil {
+			var unsubS func()
+			sch, unsubS = stateB.Subscribe()
+			defer unsubS()
+		}
+
+		// Replay history (optionally filtered by Last-Event-ID). lastSentID is
+		// the newest deploy event the client already has — from this replay or,
+		// on resume, its previous connection — so the live loop can drop channel
+		// events the replay already covered (IDs are monotonic).
+		var lastSentID int64
 		var historyEvents []events.DeployEvent
 		if lastID := r.Header.Get("Last-Event-ID"); lastID != "" {
 			if id, err := strconv.ParseInt(lastID, 10, 64); err == nil {
+				lastSentID = id
 				historyEvents = history.EventsAfterID(id)
 			}
 		} else {
@@ -56,6 +76,9 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 		for _, evt := range historyEvents {
 			if err := writeSSE(w, evt); err != nil {
 				return
+			}
+			if evt.ID > lastSentID {
+				lastSentID = evt.ID
 			}
 		}
 		// End-of-replay marker: the deploy history (above) is a separate channel
@@ -68,16 +91,6 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 			return
 		}
 		flusher.Flush()
-
-		// Subscribe to live deploy events, and state events when available.
-		dch, unsubD := deployB.Subscribe()
-		defer unsubD()
-		var sch <-chan events.StateEvent
-		if stateB != nil {
-			var unsubS func()
-			sch, unsubS = stateB.Subscribe()
-			defer unsubS()
-		}
 
 		// The baseline is read *after* subscribing, so a state change racing this
 		// connect is queued on sch rather than lost between the two.
@@ -100,6 +113,10 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 			case <-ctx.Done():
 				return
 			case evt := <-dch:
+				if evt.ID <= lastSentID {
+					continue // already sent by the replay, or seen pre-resume
+				}
+				lastSentID = evt.ID
 				if err := writeSSE(w, evt); err != nil {
 					return
 				}
