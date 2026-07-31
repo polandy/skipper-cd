@@ -109,7 +109,7 @@ func getJSON[T any](ctx context.Context, hc *http.Client, url string) (*T, error
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("GET %s: %w", url, errNotFound)
+		return nil, fmt.Errorf("GET %s: status %s: %w", url, resp.Status, errNotFound)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: status %s", url, resp.Status)
