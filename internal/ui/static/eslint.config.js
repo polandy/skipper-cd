@@ -18,13 +18,12 @@ module.exports = [
       sourceType: 'script',
       globals: {
         ...globals.browser,
-        // app-helpers.js constants
-        HEALTH: 'readonly',
         // app-helpers.js functions
         assignHostColors: 'readonly',
         auditCountText: 'readonly',
         attentionLabel: 'readonly',
         attentionStacks: 'readonly',
+        buildHostList: 'readonly',
         clogStreamStatus: 'readonly',
         containerMatchesQuery: 'readonly',
         deployAnnouncement: 'readonly',
@@ -43,6 +42,11 @@ module.exports = [
         orphanStateClass: 'readonly',
         phaseDuration: 'readonly',
         reconcileHostFilter: 'readonly',
+        resolveAppLinksMap: 'readonly',
+        resolveHealthMap: 'readonly',
+        resolveHealthwatchMap: 'readonly',
+        resolveRepoWebURL: 'readonly',
+        rosterOrdered: 'readonly',
         rowClass: 'readonly',
         snapshotIsFresh: 'readonly',
         // app-render.js constants

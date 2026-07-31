@@ -7,6 +7,8 @@
   const connText = document.getElementById('conn-text');
   const stackSearchBtn = document.getElementById('stack-search-btn');
   const a11yAnnounce = document.getElementById('a11y-announce');
+  // ── A11y announcements + UI diagnostics (T2.8) ──
+
   // announce voices a message through the off-screen polite live region (T2.8).
   // The region is cleared first, then set on the next frame, so two identical
   // consecutive outcomes (e.g. two stacks both "deploy failed") still re-fire.
@@ -124,6 +126,8 @@
   // the health panel then renders without age/timeline (ADR-0031).
   let healthwatchSnap = {};
 
+  // ── Disabled-stacks strip (ADR-0034) ──
+
   // Names parked with disabled: true, from the 'stacks' SSE snapshot (stack
   // discovery, ADR-0034). Rendered as a quiet chip line below the deploy table;
   // empty (and the line hidden) in host-list mode.
@@ -160,7 +164,9 @@
   // live on a different forge — so this one is the local set's base only.
   let repoWebURL = '';
 
-  // Multi-host fan-in (ADR-0048). peersSnap is the 'peers' state payload
+  // ── Multi-host state + per-host resolvers (ADR-0048) ──
+
+  // peersSnap is the 'peers' state payload
   // ({self, peers:[{name,url,reachable,stale,last_seen,state,deploys}]}) or null
   // on a single-host instance with no peers configured — in which case the whole
   // multi-host surface (Hosts control, Host column, peer rows) stays hidden and
@@ -178,43 +184,24 @@
   let hostSelected = null;
   let hostFilterRestored = false;
 
-  // peerViewFor returns the fanned-in PeerView for a non-self host, or null for
-  // the primary itself (and when no peers are configured). The health, health-
-  // watch and app-link lookups below use it to read a peer's own fanned-in state
-  // (ADR-0048) instead of the primary's live snapshot, so peer rows render the
-  // same container/health/app-link detail the primary shows for its own stacks.
-  function peerViewFor(host) {
-    if (!peersSnap || !host || host === selfHost) return null;
-    return (
-      (peersSnap.peers || []).find(function (p) {
-        return p.name === host;
-      }) || null
-    );
-  }
-  // healthMapFor / healthwatchMapFor / appLinksMapFor resolve the per-stack map
-  // for a host: the primary's own live snapshot for self, else the peer's
-  // fanned-in state. Both carry the identical `{stacks:{<name>:…}}` shape, so a
-  // consumer keyed by stack name works unchanged for either.
+  // healthMapFor / healthwatchMapFor / appLinksMapFor / repoWebURLFor resolve
+  // the per-stack map (or forge browse URL) for a host: the primary's own live
+  // snapshot for self, else the peer's fanned-in state (ADR-0048), so peer rows
+  // render the same container/health/app-link detail the primary shows for its
+  // own stacks. Thin wrappers binding the module-scoped snapshots to the pure
+  // resolve* helpers (app-helpers.js), which own — and unit-test — the
+  // self-vs-peer fallback and the tolerance for older peers missing a section.
   function healthMapFor(host) {
-    const p = peerViewFor(host);
-    return p ? (p.state && p.state.health && p.state.health.stacks) || {} : healthSnap;
+    return resolveHealthMap(peersSnap, selfHost, host, healthSnap);
   }
   function healthwatchMapFor(host) {
-    const p = peerViewFor(host);
-    return p
-      ? (p.state && p.state.healthwatch && p.state.healthwatch.stacks) || {}
-      : healthwatchSnap;
+    return resolveHealthwatchMap(peersSnap, selfHost, host, healthwatchSnap);
   }
   function appLinksMapFor(host) {
-    const p = peerViewFor(host);
-    return p ? (p.state && p.state.app_links && p.state.app_links.stacks) || {} : appLinksSnap;
+    return resolveAppLinksMap(peersSnap, selfHost, host, appLinksSnap);
   }
-  // Each host tracks its own deploy repo, so a peer's commit SHAs must be linked
-  // through that peer's forge, never the primary's. '' — no link at all — when
-  // the host derived no browse URL, or runs a skipper predating the field.
   function repoWebURLFor(host) {
-    const p = peerViewFor(host);
-    return p ? (p.state && p.state.stacks && p.state.stacks.repo_web_url) || '' : repoWebURL;
+    return resolveRepoWebURL(peersSnap, selfHost, host, repoWebURL);
   }
   // stackHealthFor resolves one stack's live-health entry on a host — the
   // parameter the roster cell renderers in app-render.js take.
@@ -227,6 +214,8 @@
   // it carries no container-logs button and no jump-to-Stacks button — only the
   // affordances that apply to it (its git diff + deploy history).
   const NIXOS_STACK = '_nixos';
+
+  // ── App links (Traefik-routed hostnames) ──
 
   // Traefik-routed hostnames per stack, from the 'app_links' SSE snapshot
   // (dev-docs/traefik-app-links-spec.md): stack name -> hostnames, absent
@@ -346,25 +335,7 @@
     openMoreWrap = null;
   }
 
-  // rosterAttentionRank floats an enabled, currently-unhealthy stack to the top
-  // (rank 0) so the Stacks view answers "what needs attention" at a glance — the
-  // inventory-view counterpart to the Deploys attention band. Legitimate here (a
-  // roster is inventory, not a chronological log, so reordering carries no
-  // meaning to lose). Same "only unhealthy floats" rule as attentionStacks.
-  function rosterAttentionRank(entry) {
-    const h = healthSnap[entry.name];
-    return !entry.disabled && h && h.status === HEALTH.UNHEALTHY ? 0 : 1;
-  }
-
-  // rosterOrdered stably sorts a copy of the snapshot by that rank, preserving
-  // the backend's enabled-first / alphabetical order within each group. Applied
-  // only at full render (view switch / roster snapshot), never on a live health
-  // poll, so rows never jump out from under an open panel.
-  function rosterOrdered() {
-    return rosterSnap.slice().sort(function (a, b) {
-      return rosterAttentionRank(a) - rosterAttentionRank(b);
-    });
-  }
+  // ── Stacks roster rendering ──
 
   function renderRoster() {
     const list = document.getElementById('roster-list');
@@ -387,7 +358,10 @@
     };
     list.textContent = '';
     openLinkWrap = null; // rebuilt rows drop any open app-link popover too
-    rosterOrdered().forEach(function (entry) {
+    // Attention-ranked, stable (rosterOrdered, app-helpers.js): unhealthy first,
+    // backend order kept within each group. Applied only here, at full render —
+    // never on a live health poll — so rows never jump under an open panel.
+    rosterOrdered(rosterSnap, healthSnap).forEach(function (entry) {
       const deploying = !!deployingRows[entry.name];
       // Time + commit only apply to a real past deploy.
       const showMeta = !entry.disabled && !deploying && !!entry.last_status;
@@ -494,6 +468,8 @@
       });
     });
   }
+
+  // ── Orphan compose projects (ADR-0036) ──
 
   // Orphans (ADR-0036): compose projects the discovered stack set no longer
   // accounts for, from the 'orphans' SSE snapshot — a collapsed section below
@@ -669,6 +645,8 @@
       applyOrphansSectionOpen();
     });
   })();
+
+  // ── Deploys table: initial state + row detail panels ──
 
   // The deploy list starts as a skeleton (T4.17); this flips true the moment the
   // real picture is known — either rows arrived (showTable) or a snapshot
@@ -1483,6 +1461,8 @@
     };
   })();
 
+  // ── Deploy rows: stack icons, row build, per-stack affordances ──
+
   function iconURL(stack) {
     return '/api/icons/' + encodeURIComponent(stack);
   }
@@ -1861,6 +1841,8 @@
     return el;
   }
 
+  // ── Deploying indicator + run drawer ──
+
   function updateDeployingIndicator() {
     const active = Object.keys(deployingRows);
     const up = upcomingSnap;
@@ -2033,6 +2015,8 @@
     within: [runDrawer, deployStatus],
   });
 
+  // ── Deploy-event ingest: queued rows + handleEvent ──
+
   // refreshPendingTags re-renders the paused/blocked tag on every live pending
   // row. The pending deploy event and the queue snapshot (which carries the
   // authoritative reason) are not ordered — the snapshot is published after the
@@ -2168,21 +2152,10 @@
   // Everything here is inert on a single-host instance (peersSnap null): the
   // Hosts control, Host column and peer rows never appear.
 
-  // hostList is the effective host set: the primary (self) first, then each peer.
+  // hostList is the effective host set: the primary (self) first, then each
+  // peer — buildHostList (app-helpers.js) with the live peers snapshot bound.
   function hostList() {
-    const out = [{ name: selfHost, url: '', self: true, reachable: true, stale: false }];
-    if (peersSnap) {
-      (peersSnap.peers || []).forEach(function (p) {
-        out.push({
-          name: p.name,
-          url: p.url,
-          self: false,
-          reachable: !!p.reachable,
-          stale: !!p.stale,
-        });
-      });
-    }
-    return out;
+    return buildHostList(peersSnap, selfHost);
   }
 
   // isHostSelected reports whether a host is in view. hostSelected null means the
@@ -2744,6 +2717,8 @@
     }
   }
 
+  // ── SSE connection (/api/events) ──
+
   // The stream carries its own baseline: it subscribes, then sends the current
   // state, then the deltas. Reading the baseline over a second channel would
   // reopen the gap a change can vanish into (ADR-0039 amendment). Re-run on
@@ -2815,6 +2790,8 @@
       if (es.readyState === EventSource.CLOSED) eventsReconnect.schedule();
     };
   }
+
+  // ── Deploys view controls: time mode, version column, stack filter ──
 
   // Time mode (default: relative). One shared mode; a toggle in both the Deploys
   // and Stacks popovers flips it and updates both views.
@@ -3343,6 +3320,8 @@
     if (entry && cell) cell.innerHTML = rosterStatusHTML(entry, !!deployingRows[name]);
     applyHookRun(); // rosterStatusHTML replaces the cell — re-paint a running hook's phase
   }
+
+  // ── Theme toggle ──
 
   // Colour-scheme toggle (dark is the default; light is opt-in per browser).
   // Which palette (Catppuccin/Nord/Solarized/Gruvbox/Rosé Pine) is configured
@@ -4162,6 +4141,8 @@
     };
   }
 
+  // ── View switching ──
+
   function applyView() {
     clog.close(); // a container-log panel belongs to its row; drop it on a view switch
     document.body.classList.toggle('view-logs', activeView === 'logs');
@@ -4365,6 +4346,8 @@
 
   applyFollow();
   applyView();
+
+  // ── Deploys table click delegation (row panels) ──
 
   // Files panel — open/close as full-width sibling below the row.
   // When diffs are available, shows a diff panel; otherwise shows file list.
@@ -4617,6 +4600,8 @@
     })
     .catch(function () {});
 
+  // ── Tap-tips: touch tooltips (data-taptip opt-in) ──
+
   // Tap-reveal tooltips for touch (titles never show on touch): a tap flashes
   // the title in a bubble. Any control under a `data-taptip` ancestor (or
   // carrying the attribute itself) opts in; mouse/pen keep the native tooltip.
@@ -4663,6 +4648,8 @@
   })();
 
   connect();
+
+  // ── PWA: service worker + update prompt (ADR-0023) ──
 
   // Register the service worker for installability + app-shell caching, and
   // prompt to reload when a newer version has been deployed. Failure-tolerant:

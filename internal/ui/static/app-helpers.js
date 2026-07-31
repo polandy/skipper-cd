@@ -403,6 +403,27 @@ function attentionLabel(n) {
   return n === 1 ? '1 stack unhealthy' : n + ' stacks unhealthy';
 }
 
+// rosterAttentionRank floats an enabled, currently-unhealthy stack to the top
+// (rank 0) so the Stacks view answers "what needs attention" at a glance — the
+// inventory-view counterpart to the Deploys attention band. Legitimate there (a
+// roster is inventory, not a chronological log, so reordering carries no
+// meaning to lose). Same "only unhealthy floats" rule as attentionStacks.
+function rosterAttentionRank(entry, healthSnap) {
+  const h = (healthSnap || {})[entry.name];
+  return !entry.disabled && h && h.status === HEALTH.UNHEALTHY ? 0 : 1;
+}
+
+// rosterOrdered stably sorts a copy of the roster snapshot by that rank,
+// preserving the backend's enabled-first / alphabetical order within each
+// group. The caller applies it only at full render (view switch / roster
+// snapshot), never on a live health poll, so rows never jump out from under an
+// open panel.
+function rosterOrdered(rosterSnap, healthSnap) {
+  return (rosterSnap || []).slice().sort(function (a, b) {
+    return rosterAttentionRank(a, healthSnap) - rosterAttentionRank(b, healthSnap);
+  });
+}
+
 // levelClass clamps a log level to the known set (unknown → INFO).
 function levelClass(level) {
   return ['DEBUG', 'INFO', 'WARN', 'ERROR'].indexOf(level) >= 0 ? level : 'INFO';
@@ -581,6 +602,76 @@ function reconcileHostFilter(savedNames, currentNames) {
   return restored;
 }
 
+// resolvePeerView returns the fanned-in PeerView for a non-self host, or null
+// for the primary itself (and when no peers are configured, or the host is
+// unknown). The per-host resolvers below use it to read a peer's own fanned-in
+// state (ADR-0048) instead of the primary's live snapshot, so peer rows render
+// the same container/health/app-link detail the primary shows for its own
+// stacks.
+function resolvePeerView(peersSnap, selfHost, host) {
+  if (!peersSnap || !host || host === selfHost) return null;
+  return (
+    (peersSnap.peers || []).find(function (p) {
+      return p.name === host;
+    }) || null
+  );
+}
+
+// peerStacksMap reads one `{stacks:{<name>:…}}` section out of a peer's
+// fanned-in state, defensively: a peer running a skipper that predates the
+// section carries none of it, and the safe default is an empty map — never a
+// throw, and never the primary's own snapshot standing in for a peer's.
+function peerStacksMap(peer, section) {
+  const s = peer.state && peer.state[section];
+  return (s && s.stacks) || {};
+}
+
+// resolveHealthMap / resolveHealthwatchMap / resolveAppLinksMap resolve the
+// per-stack map for a host: the caller's own live snapshot for self, else the
+// peer's fanned-in state. Both carry the identical `{stacks:{<name>:…}}` shape,
+// so a consumer keyed by stack name works unchanged for either.
+function resolveHealthMap(peersSnap, selfHost, host, selfHealth) {
+  const p = resolvePeerView(peersSnap, selfHost, host);
+  return p ? peerStacksMap(p, 'health') : selfHealth;
+}
+function resolveHealthwatchMap(peersSnap, selfHost, host, selfHealthwatch) {
+  const p = resolvePeerView(peersSnap, selfHost, host);
+  return p ? peerStacksMap(p, 'healthwatch') : selfHealthwatch;
+}
+function resolveAppLinksMap(peersSnap, selfHost, host, selfAppLinks) {
+  const p = resolvePeerView(peersSnap, selfHost, host);
+  return p ? peerStacksMap(p, 'app_links') : selfAppLinks;
+}
+
+// resolveRepoWebURL picks the forge browse URL a host's commit SHAs link
+// through. Each host tracks its own deploy repo, so a peer's SHAs must link
+// through that peer's forge, never the primary's. '' — no link at all — when
+// the host derived no browse URL, or runs a skipper predating the field.
+function resolveRepoWebURL(peersSnap, selfHost, host, selfRepoWebURL) {
+  const p = resolvePeerView(peersSnap, selfHost, host);
+  return p ? (p.state && p.state.stacks && p.state.stacks.repo_web_url) || '' : selfRepoWebURL;
+}
+
+// buildHostList is the effective host set as ordered descriptors: the primary
+// (self) first — always reachable, never stale — then each peer in snapshot
+// order, its reachable/stale flags coerced to booleans (an older peer's record
+// may omit them).
+function buildHostList(peersSnap, selfHost) {
+  const out = [{ name: selfHost, url: '', self: true, reachable: true, stale: false }];
+  if (peersSnap) {
+    (peersSnap.peers || []).forEach(function (p) {
+      out.push({
+        name: p.name,
+        url: p.url,
+        self: false,
+        reachable: !!p.reachable,
+        stale: !!p.stale,
+      });
+    });
+  }
+  return out;
+}
+
 // logLineVisible reports whether a log line stays visible under the in-log
 // search filter (ADR-0037): an empty query shows every line, otherwise the line
 // must contain the query (case-insensitive). A non-empty query that matches is
@@ -701,6 +792,14 @@ if (typeof module !== 'undefined' && module.exports) {
     healthClass,
     attentionStacks,
     attentionLabel,
+    rosterAttentionRank,
+    rosterOrdered,
+    resolvePeerView,
+    resolveHealthMap,
+    resolveHealthwatchMap,
+    resolveAppLinksMap,
+    resolveRepoWebURL,
+    buildHostList,
     levelClass,
     logLineLevel,
     rowClass,
