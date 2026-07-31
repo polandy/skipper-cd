@@ -17,7 +17,7 @@ With the [web UI](configuration.md) enabled you don't need to read this file to 
 Two image maps are kept, and they answer different questions:
 
 - `images` — the **image references the compose file asks for**, per service. This alone decides whether a deploy needs a `docker compose pull`.
-- `running_images` — the **image each service actually ran** after the last successful deploy, as `<repository>:<tag>@<short image id>`. It is the baseline the next deploy's reported version change is measured against, so a floating tag (`:latest`) that moved shows up as the version change it is. It is never a change-detection input: editing nothing but this cannot trigger a deploy.
+- `running_images` — the **image each service actually ran** after the last successful deploy: the reference the container runs, plus a short image id when that reference carries no digest (`nextcloud:34-ghostscript@40c2d6f1d8f0`; a digest-pinned `traefik:v3.7.9@sha256:…` is kept as-is). It is the baseline the next deploy's reported version change is measured against, so a floating tag that moved shows up as the version change it is. It is never a change-detection input: editing nothing but this cannot trigger a deploy.
 
 A `project_dirs` map records each stack's compose project directory (its `project_directory`, or the compose file's own directory) from its last successful deploy. It lets skipper recognise a stack's running compose project by the `com.docker.compose.project.working_dir` label even after the stack is removed from the repo — the basis for [orphan detection](#orphaned-stacks).
 

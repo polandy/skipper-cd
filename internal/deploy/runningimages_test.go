@@ -14,97 +14,179 @@ import (
 // errFakeOutput stands in for a failing docker read.
 var errFakeOutput = errors.New("docker unavailable")
 
-func TestImageLineIdentity(t *testing.T) {
+// The fixtures below are verbatim shapes from a real host (Docker Compose
+// 5.1.4), trimmed to the fields skipper reads. They are the reason this read
+// takes two calls: `images` reports no Service at all, and its Tag is empty for
+// every digest-pinned image — only `ps` knows the service and the reference.
+const (
+	realPSJSON = `[{"Command":"\"/entrypoint.sh\"","Health":"healthy","ID":"098172bde26c","Image":"traefik:v3.7.9@sha256:652929a140a32d7cafafb13c6cdfab5376cfeff800f51397b87b524501ed02a8","Name":"traefik","Service":"app","State":"running"},
+	                {"ID":"aa11bb22cc33","Image":"nextcloud:34-ghostscript","Name":"nextcloud-app","Service":"web","State":"running"}]`
+	realImagesJSON = `[{"ID":"sha256:0b9520b5460c9c4d6cf0014b73bbcb64e4d7ed92b3ed9ec4536eeab4b8c7944a","ContainerName":"traefik","Repository":"traefik","Tag":"","Platform":"linux/amd64","Size":192245996},
+	                   {"ID":"sha256:40c2d6f1d8f0aabbccddeeff00112233445566778899aabbccddeeff00112233","ContainerName":"nextcloud-app","Repository":"nextcloud","Tag":"","Platform":"linux/amd64","Size":1024}]`
+)
+
+// outputComposeReads answers the two reads runningImages makes; anything else
+// gets empty output.
+func outputComposeReads(ps, images string) func(int, []string) ([]byte, error) {
+	return func(_ int, args []string) ([]byte, error) {
+		switch {
+		case slices.Contains(args, "ps"):
+			return []byte(ps), nil
+		case slices.Contains(args, "images"):
+			return []byte(images), nil
+		}
+		return nil, nil
+	}
+}
+
+func TestRunningImage(t *testing.T) {
 	tests := []struct {
 		name string
-		line imageLine
+		ref  string
+		id   string
 		want string
 	}{
 		{
-			name: "repository tag and short id",
-			line: imageLine{Repository: "nginx", Tag: "1.27", ID: "a1b2c3d4e5f6"},
-			want: "nginx:1.27@a1b2c3d4e5f6",
+			// Already exact: appending an id would bury the tag bump the reference
+			// itself reports.
+			name: "digest-pinned reference is kept verbatim",
+			ref:  "traefik:v3.7.9@sha256:652929a140a3",
+			id:   "sha256:0b9520b5460c9c4d",
+			want: "traefik:v3.7.9@sha256:652929a140a3",
 		},
 		{
-			// A docker reporting the full sha256 must normalize to the same value
-			// as one reporting the short id, or an upgrade reads as a rebuild.
-			name: "full sha256 id truncates to the short form",
-			line: imageLine{Repository: "nginx", Tag: "1.27", ID: "sha256:a1b2c3d4e5f6aabbccddeeff00112233445566778899aabbccddeeff001122"},
-			want: "nginx:1.27@a1b2c3d4e5f6",
+			// The case the whole read exists for: the reference cannot move.
+			name: "floating tag gains the short image id",
+			ref:  "nextcloud:34-ghostscript",
+			id:   "sha256:40c2d6f1d8f0aabbccdd",
+			want: "nextcloud:34-ghostscript@40c2d6f1d8f0",
 		},
 		{
-			name: "untagged image drops the tag",
-			line: imageLine{Repository: "nginx", Tag: "<none>", ID: "a1b2c3d4e5f6"},
-			want: "nginx@a1b2c3d4e5f6",
+			// A docker reporting the short id must normalize to the same value as
+			// one reporting the full sha256, or an upgrade reads as a rebuild.
+			name: "short id form normalizes to the same value",
+			ref:  "nextcloud:34-ghostscript",
+			id:   "40c2d6f1d8f0",
+			want: "nextcloud:34-ghostscript@40c2d6f1d8f0",
 		},
 		{
-			// Degrades to exactly the compose-reference form, so comparing an
-			// id-less read against a recorded reference still works.
-			name: "missing id falls back to the reference",
-			line: imageLine{Repository: "nginx", Tag: "1.27"},
-			want: "nginx:1.27",
+			name: "no id reported degrades to the reference",
+			ref:  "redis:7.4",
+			id:   "",
+			want: "redis:7.4",
 		},
 		{
-			name: "no image at all",
-			line: imageLine{Service: "app"},
+			name: "no reference at all",
+			ref:  "",
+			id:   "sha256:abc",
 			want: "",
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.line.identity(); got != tc.want {
-				t.Errorf("identity() = %q, want %q", got, tc.want)
+			if got := runningImage(tc.ref, tc.id); got != tc.want {
+				t.Errorf("runningImage(%q, %q) = %q, want %q", tc.ref, tc.id, got, tc.want)
 			}
 		})
 	}
 }
 
-func TestRunningImages_ReadsIdentityPerService(t *testing.T) {
-	runner := &recordingRunner{outputFn: func(_ int, _ []string) ([]byte, error) {
-		return []byte(`[{"Service":"app","Repository":"nginx","Tag":"1.27","ID":"sha256:aaaabbbbcccc0000"},
-		                {"Service":"cache","Repository":"redis","Tag":"7.4","ID":"ddddeeeeffff"}]`), nil
-	}}
+func TestRunningImages_JoinsServicesToImageIDs(t *testing.T) {
+	runner := &recordingRunner{outputFn: outputComposeReads(realPSJSON, realImagesJSON)}
 	d := New(Config{Runner: runner, Outputter: runner})
 
 	got := d.runningImages(context.Background(), newStackRun(config.Stack{Name: "web"}, t.TempDir(), nil))
 
-	want := serviceImageByName{"app": "nginx:1.27@aaaabbbbcccc", "cache": "redis:7.4@ddddeeeeffff"}
+	want := serviceImageByName{
+		// Digest-pinned: the reference stands on its own.
+		"app": "traefik:v3.7.9@sha256:652929a140a32d7cafafb13c6cdfab5376cfeff800f51397b87b524501ed02a8",
+		// Floating tag: joined to the image id via the container name.
+		"web": "nextcloud:34-ghostscript@40c2d6f1d8f0",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("runningImages() = %v, want %v", got, want)
 	}
-	if len(runner.outputCalls) != 1 {
-		t.Fatalf("expected one docker read, got %v", runner.outputCalls)
+	if len(runner.outputCalls) != 2 {
+		t.Fatalf("expected a ps read and an images read, got %d calls", len(runner.outputCalls))
 	}
-	if args := runner.outputCalls[0].args; !slices.Contains(args, "images") || !slices.Contains(args, "--format") {
-		t.Errorf("expected a `compose images --format json` read, got %v", args)
+}
+
+// Compose reports no Service on `images`, so a container that `ps` does not
+// account for cannot be attributed to one — it must be dropped, not guessed at
+// from the container name.
+func TestRunningImages_IgnoresImagesWithoutAMatchingService(t *testing.T) {
+	runner := &recordingRunner{outputFn: outputComposeReads(
+		`[{"Name":"web-app-1","Service":"app","Image":"nginx:1.27"}]`,
+		`[{"ContainerName":"web-app-1","ID":"sha256:aaaabbbbcccc"},{"ContainerName":"stranger","ID":"sha256:ddddeeeeffff"}]`,
+	)}
+	d := New(Config{Runner: runner, Outputter: runner})
+
+	got := d.runningImages(context.Background(), newStackRun(config.Stack{Name: "web"}, t.TempDir(), nil))
+
+	want := serviceImageByName{"app": "nginx:1.27@aaaabbbbcccc"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("runningImages() = %v, want %v", got, want)
+	}
+}
+
+// A service whose image id compose did not report still has its reference —
+// which is all a digest-pinned stack needs.
+func TestRunningImages_ServiceWithoutAnImageIDKeepsItsReference(t *testing.T) {
+	runner := &recordingRunner{outputFn: outputComposeReads(
+		`[{"Name":"web-app-1","Service":"app","Image":"nginx:1.27@sha256:abcd"}]`,
+		`[]`,
+	)}
+	d := New(Config{Runner: runner, Outputter: runner})
+
+	got := d.runningImages(context.Background(), newStackRun(config.Stack{Name: "web"}, t.TempDir(), nil))
+
+	want := serviceImageByName{"app": "nginx:1.27@sha256:abcd"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("runningImages() = %v, want %v", got, want)
 	}
 }
 
 func TestRunningImages_UnavailableReadYieldsNoKnowledge(t *testing.T) {
+	newDeployer := func(fn func(int, []string) ([]byte, error)) *Deployer {
+		runner := &recordingRunner{outputFn: fn}
+		return New(Config{Runner: runner, Outputter: runner})
+	}
+	read := func(t *testing.T, d *Deployer) serviceImageByName {
+		t.Helper()
+		return d.runningImages(context.Background(), newStackRun(config.Stack{Name: "web"}, t.TempDir(), nil))
+	}
+
 	t.Run("no outputter wired", func(t *testing.T) {
-		runner := &recordingRunner{}
-		d := New(Config{Runner: runner})
-		if got := d.runningImages(context.Background(), newStackRun(config.Stack{Name: "web"}, t.TempDir(), nil)); got != nil {
+		d := New(Config{Runner: &recordingRunner{}})
+		if got := read(t, d); got != nil {
 			t.Errorf("without an Outputter there is nothing to read, got %v", got)
 		}
 	})
 
-	t.Run("read fails", func(t *testing.T) {
-		runner := &recordingRunner{outputFn: func(_ int, _ []string) ([]byte, error) {
-			return nil, errFakeOutput
-		}}
-		d := New(Config{Runner: runner, Outputter: runner})
-		if got := d.runningImages(context.Background(), newStackRun(config.Stack{Name: "web"}, t.TempDir(), nil)); got != nil {
+	t.Run("ps read fails", func(t *testing.T) {
+		d := newDeployer(func(_ int, _ []string) ([]byte, error) { return nil, errFakeOutput })
+		if got := read(t, d); got != nil {
 			t.Errorf("a failed read must report no knowledge, not a partial map, got %v", got)
 		}
 	})
 
+	t.Run("images read fails", func(t *testing.T) {
+		d := newDeployer(func(_ int, args []string) ([]byte, error) {
+			if slices.Contains(args, "images") {
+				return nil, errFakeOutput
+			}
+			return []byte(realPSJSON), nil
+		})
+		// Half an answer is worse than none: every floating-tag service would
+		// look like it had just moved to a reference with no id.
+		if got := read(t, d); got != nil {
+			t.Errorf("a failed images read must report no knowledge, got %v", got)
+		}
+	})
+
 	t.Run("output does not parse", func(t *testing.T) {
-		runner := &recordingRunner{outputFn: func(_ int, _ []string) ([]byte, error) {
-			return []byte("not json"), nil
-		}}
-		d := New(Config{Runner: runner, Outputter: runner})
-		if got := d.runningImages(context.Background(), newStackRun(config.Stack{Name: "web"}, t.TempDir(), nil)); got != nil {
+		d := newDeployer(func(_ int, _ []string) ([]byte, error) { return []byte("not json"), nil })
+		if got := read(t, d); got != nil {
 			t.Errorf("unparseable output must report no knowledge, got %v", got)
 		}
 	})

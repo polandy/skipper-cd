@@ -1,10 +1,15 @@
 // Running images: the image identity a stack's containers actually run, as
-// opposed to the image *reference* its compose file asks for. A floating tag
-// (`:latest`, `:stable`) never changes that reference, so a version delta built
-// from the compose file alone reports nothing on the very deploys that move it.
-// This is what the terminal deploy events — and the notifications built from
-// them — compare instead, falling back to the compose references when the read
-// is unavailable.
+// opposed to the image *reference* its compose file asks for. A reference that
+// carries no digest — a floating tag like `:latest` or `:34-ghostscript` —
+// stays the same string across a re-pull, so a version delta built from the
+// compose file alone reports nothing on the very deploys that move it. This is
+// what the terminal deploy events — and the notifications built from them —
+// compare instead, falling back to the compose references when the read is
+// unavailable.
+//
+// Reading it takes two compose calls because compose splits the answer: `ps`
+// knows which service a container belongs to and which reference it runs, and
+// `images` knows the image id behind it. Neither alone is enough (ADR-0053).
 
 package deploy
 
@@ -22,50 +27,44 @@ import (
 // normalize to the same value — a docker upgrade must not read as a rebuild.
 const runningImageIDLen = 12
 
-// untaggedImageTag is what compose reports as the tag of an image that has none.
-const untaggedImageTag = "<none>"
-
-// imageLine is the subset of `docker compose images --format json` skipper
-// needs. ID is the local image ID the service's container was created from —
-// the value that moves when a floating tag is re-pulled. `compose ps` reports
-// only the reference, which is why it cannot see that move.
+// imageLine is the subset of `docker compose images --format json` this read
+// needs. Compose reports **no** service on this output — only the container
+// name, which is what ties it back to a containerLine — and ID is the local
+// image id, the value that moves when a floating tag is re-pulled.
 type imageLine struct {
-	Service    string `json:"Service"`
-	Repository string `json:"Repository"`
-	Tag        string `json:"Tag"`
-	ID         string `json:"ID"`
+	ContainerName string `json:"ContainerName"`
+	ID            string `json:"ID"`
 }
 
-// identity renders the line as one comparable image identity,
-// "<repository>:<tag>@<short id>". An untagged image drops the tag, an image
-// whose ID compose did not report drops the "@<id>" suffix — which degrades to
-// exactly the compose-reference form, so the same comparison still works.
-// Returns "" when the line names no image at all.
-func (l imageLine) identity() string {
-	ref := l.Repository
-	if l.Tag != "" && l.Tag != untaggedImageTag {
-		ref += ":" + l.Tag
-	}
-	id := strings.TrimPrefix(l.ID, "sha256:")
-	if len(id) > runningImageIDLen {
-		id = id[:runningImageIDLen]
-	}
-	if ref == "" {
-		return id
-	}
-	if id == "" {
+// runningImage renders one service's running identity from what its container
+// reports: the image reference itself, plus the short image id when — and only
+// when — that reference carries no digest.
+//
+// A digest-pinned reference (`traefik:v3.7.9@sha256:6529…`) already identifies
+// the image exactly, and keeping it verbatim means a tag bump still reports as
+// the tag bump it is. A reference without one (`nextcloud:34-ghostscript`) is
+// blind to a re-pull, so the id is appended as the part that moves. Returns ""
+// when there is no reference to report.
+func runningImage(ref, id string) string {
+	if ref == "" || strings.Contains(ref, "@") {
 		return ref
 	}
-	return ref + "@" + id
+	short := strings.TrimPrefix(id, "sha256:")
+	if len(short) > runningImageIDLen {
+		short = short[:runningImageIDLen]
+	}
+	if short == "" {
+		return ref
+	}
+	return ref + "@" + short
 }
 
-// runningImages reads the image identity of every service of the stack's
-// compose project via `docker compose images --format json`, keyed by service
-// name. It is called after a successful deploy, so the containers exist and
-// report the version the stack now runs.
+// runningImages reads what every service of the stack's compose project
+// actually runs, keyed by service name. It is called after a successful deploy,
+// so the containers exist and report the version the stack now runs.
 //
 // Returns nil — never a partial map — when the read is unavailable: no
-// Outputter wired, the command failed, or its output did not parse. Callers
+// Outputter wired, either command failed, or its output did not parse. Callers
 // treat that as "no running-image knowledge" and fall back to the compose
 // references, so the read is strictly additive and can never fail a deploy.
 //
@@ -78,30 +77,50 @@ func (d *Deployer) runningImages(ctx context.Context, run stackRun) serviceImage
 	if d.outputter == nil {
 		return nil
 	}
-	dir, args := run.composeInvocation()
-	args = append(args, "images", "--format", "json")
-	out, err := d.outputter.Output(ctx, dir, "docker", args...)
+	psLines, err := composeJSONRead[containerLine](ctx, d, run, "ps", "--format", "json", "--all")
+	if err != nil {
+		slog.Warn("could not read running services, version delta falls back to compose references",
+			"stack", run.stack.Name, "err", err)
+		return nil
+	}
+	imgLines, err := composeJSONRead[imageLine](ctx, d, run, "images", "--format", "json")
 	if err != nil {
 		slog.Warn("could not read running images, version delta falls back to compose references",
 			"stack", run.stack.Name, "err", err)
 		return nil
 	}
-	lines, err := parseComposeJSON[imageLine](out)
-	if err != nil {
-		slog.Warn("could not parse docker compose images output, version delta falls back to compose references",
-			"stack", run.stack.Name, "err", err)
-		return nil
+
+	// Container name → image id, the half `ps` does not report.
+	idByContainer := make(map[string]string, len(imgLines))
+	for _, l := range imgLines {
+		if l.ContainerName != "" {
+			idByContainer[l.ContainerName] = l.ID
+		}
 	}
-	images := make(serviceImageByName, len(lines))
-	for _, l := range lines {
+
+	images := make(serviceImageByName, len(psLines))
+	for _, l := range psLines {
 		if l.Service == "" {
 			continue
 		}
-		if id := l.identity(); id != "" {
-			images[l.Service] = id
+		// A service with several containers (a rollout canary mid-cutover) yields
+		// several lines; they run the same image, so last-one-wins is stable.
+		if ref := runningImage(l.Image, idByContainer[l.Name]); ref != "" {
+			images[l.Service] = ref
 		}
 	}
 	return images
+}
+
+// composeJSONRead runs a `docker compose … --format json` read for the stack
+// and parses it into T, using the same project identity the deploy path uses.
+func composeJSONRead[T any](ctx context.Context, d *Deployer, run stackRun, args ...string) ([]T, error) {
+	dir, composeArgs := run.composeInvocation()
+	out, err := d.outputter.Output(ctx, dir, "docker", append(composeArgs, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	return parseComposeJSON[T](out)
 }
 
 // runningImageDelta returns the per-service version changes to report for a
