@@ -263,8 +263,9 @@ func main() {
 				hl.poller.Poll() // refresh health right after a deploy run
 			}
 		},
-		RunPlanSink: uiw.runPlanSink,
-		HookRunSink: uiw.hookRunSink,
+		StackSetSink: asPublisher.publishStacks,
+		RunPlanSink:  uiw.runPlanSink,
+		HookRunSink:  uiw.hookRunSink,
 	})
 	ref.set(deployer)
 

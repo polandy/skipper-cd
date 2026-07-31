@@ -275,3 +275,38 @@ func TestAutosyncPublisher_HeadlessStillRefreshesGauges(t *testing.T) {
 		t.Errorf("autosync pending gauge = %v, want 1", got)
 	}
 }
+
+// The roster is what every stack-derived UI affordance reads, and stack
+// discovery only learns the set when a run starts — so it must be publishable
+// on its own, without waiting for the end-of-run autosync/queue publish.
+func TestAutosyncPublisher_PublishesStacksAlone(t *testing.T) {
+	stateB := events.NewStateBroadcaster()
+	ref := &deployerRef{}
+	ref.set(deploy.New(deploy.Config{}))
+	p := newAutosyncPublisher(t, uiConfig(true), stateB, ref)
+	ch, cancel := stateB.Subscribe()
+	defer cancel()
+
+	p.publishStacks()
+
+	select {
+	case e := <-ch:
+		if e.Name != events.StateStacks {
+			t.Errorf("state event = %q, want %q", e.Name, events.StateStacks)
+		}
+	default:
+		t.Fatal("expected a stacks state event buffered")
+	}
+	select {
+	case e := <-ch:
+		t.Errorf("publishStacks must publish only the roster, also got %q", e.Name)
+	default:
+	}
+}
+
+// With the UI off there is no broadcaster, and the deployer ref may not even be
+// resolvable yet — the stack-set sink still runs on every discovery.
+func TestAutosyncPublisher_PublishStacksHeadlessIsNoOp(t *testing.T) {
+	p := newAutosyncPublisher(t, uiConfig(false), nil, &deployerRef{})
+	p.publishStacks() // must not panic resolving the deployer
+}

@@ -98,6 +98,14 @@ type Config struct {
 	// saved), e.g. to publish autosync/queue snapshots and refresh gauges.
 	PostRunHook func()
 
+	// StackSetSink runs as soon as a run has resolved the effective stack set
+	// from the repo (stack-discovery mode only), before any stack deploys. The
+	// set is unknown until then, so without this the UI's roster — and with it
+	// every per-stack affordance derived from the stack config, such as the
+	// hooks badge — would stay empty for the whole first run, however long its
+	// deploys take. nil disables it.
+	StackSetSink func()
+
 	// RunPlanSink receives the run plan whenever it changes: as each stack
 	// begins deploying (carrying the stacks still to come) and once more with
 	// an empty plan when the run ends. nil disables run-plan tracking, so the
@@ -149,6 +157,7 @@ type Deployer struct {
 	autosync     *autosync.Controller
 	queue        *autosync.Queue
 	postRunHook  func()
+	stackSetSink func()
 	runPlanSink  func(RunPlan)
 	hookRunSink  func(HookRun)
 	prober       *httpHealthProber
@@ -199,6 +208,7 @@ func New(cfg Config) *Deployer {
 		autosync:               cfg.Autosync,
 		queue:                  cfg.Queue,
 		postRunHook:            cfg.PostRunHook,
+		stackSetSink:           cfg.StackSetSink,
 		runPlanSink:            cfg.RunPlanSink,
 		hookRunSink:            cfg.HookRunSink,
 		prober:                 newHealthProber(cfg.ProbeClient, cfg.ProbeInterval),
@@ -490,6 +500,11 @@ func (d *Deployer) resolveStackSet(cfg *config.Config) (*config.Config, []config
 		return nil, nil, err
 	}
 	d.discoveredStacks.Store(&repo)
+	// The set is now known — let the UI show it before the run's deploys start,
+	// not only once they finish.
+	if d.stackSetSink != nil {
+		d.stackSetSink()
+	}
 	effective := *cfg
 	effective.Stacks = repo.Stacks
 	return &effective, errs, nil
