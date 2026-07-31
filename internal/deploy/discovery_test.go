@@ -222,6 +222,39 @@ stacks:
 	}
 }
 
+// The accessors hand the snapshot to concurrent out-of-run consumers, so each
+// call must return its own copy — a mutating caller must never corrupt the
+// shared snapshot behind other readers.
+func TestCurrentProjectDirs_ReturnsAPerCallCopy(t *testing.T) {
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
+	dirs := map[string]string{"web": "/srv/web"}
+	d.projectDirs.Store(&dirs)
+
+	got := d.CurrentProjectDirs()
+	got["web"] = "/tampered"
+	got["rogue"] = "/rogue"
+
+	fresh := d.CurrentProjectDirs()
+	if fresh["web"] != "/srv/web" || len(fresh) != 1 {
+		t.Errorf("mutating a returned map leaked into the snapshot: %v", fresh)
+	}
+}
+
+func TestCurrentTrackedFiles_ReturnsAPerCallCopy(t *testing.T) {
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
+	tracked := map[string][]string{"web": {"/repo/web/docker-compose.yml"}}
+	d.trackedFiles.Store(&tracked)
+
+	got := d.CurrentTrackedFiles()
+	got["web"][0] = "/tampered"
+	delete(got, "web")
+
+	fresh := d.CurrentTrackedFiles()
+	if len(fresh) != 1 || len(fresh["web"]) != 1 || fresh["web"][0] != "/repo/web/docker-compose.yml" {
+		t.Errorf("mutating a returned map leaked into the snapshot: %v", fresh)
+	}
+}
+
 // A brand-new install has no state file; that is not an error and must not
 // leave the accessor nil.
 func TestNew_TrackedFilesEmptyWithoutState(t *testing.T) {

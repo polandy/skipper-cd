@@ -1,7 +1,9 @@
 package deploy
 
 import (
+	"maps"
 	"path/filepath"
+	"slices"
 
 	"github.com/polandy/skipper-cd/internal/config"
 )
@@ -38,9 +40,10 @@ func (d *Deployer) CurrentDisabledStacks() []string {
 // CurrentProjectDirs returns the recorded stack→project-dir map, for orphan
 // detection (ADR-0036) — it recognizes a removed stack's project even when its
 // dir lay outside stacks_base_dir. Empty before the first run; concurrent-safe.
+// Returns a per-call copy the caller may mutate freely.
 func (d *Deployer) CurrentProjectDirs() map[string]string {
 	if p := d.projectDirs.Load(); p != nil {
-		return *p
+		return maps.Clone(*p)
 	}
 	return map[string]string{}
 }
@@ -49,12 +52,18 @@ func (d *Deployer) CurrentProjectDirs() map[string]string {
 // stack, the input files whose hashes decide whether it redeploys. It answers
 // the roster's "what does skipper watch here, and why has nothing happened"
 // from the same state the decision reads. Paths are as recorded (absolute);
-// empty before the first run. Concurrent-safe.
+// empty before the first run. Concurrent-safe. Returns a per-call copy the
+// caller may mutate freely.
 func (d *Deployer) CurrentTrackedFiles() map[string][]string {
-	if p := d.trackedFiles.Load(); p != nil {
-		return *p
+	p := d.trackedFiles.Load()
+	if p == nil {
+		return map[string][]string{}
 	}
-	return map[string][]string{}
+	out := make(map[string][]string, len(*p))
+	for stack, files := range *p {
+		out[stack] = slices.Clone(files)
+	}
+	return out
 }
 
 // effectiveStack resolves a stack by name from the effective set: the
