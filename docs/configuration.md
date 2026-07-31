@@ -438,7 +438,7 @@ The versions compared are the ones the containers **actually ran** — recorded 
   ✓ health gate passed
 ```
 
-- Only the tokens that actually differ are shown, the same reduction the UI's version chip makes: the repository is dropped when both sides share it (the service name already says which image it is), a **tag bump** shows the tags alone, and an **unchanged tag** means the image behind it moved, so the image ids are what's shown. A service that switched to a **different** image keeps both references in full.
+- Only the tokens that actually differ are shown, the same reduction the UI's version chip makes: the repository is dropped when both sides share it (the service name already says which image it is), a **tag bump** shows the tags alone, and an **unchanged tag** means the image behind it moved, so the image ids are what's shown — in docker's 12-character short form, even when the reference carries a full `sha256:` digest. A service that switched to a **different** image keeps both references in full.
 - A first-time image shows just the new reference; a removed service shows `<old> (removed)`.
 - The **first** deploy of a stack after upgrading skipper has no recorded baseline yet and still compares compose references; from the next deploy on the delta is the real one.
 - `✓ health gate passed` appears on a **success** whose stack had an effective [health-check gate](#health-check-gated-rollback) — explicit or inferred from a compose `healthcheck:` — so the message distinguishes *applied* from *verified healthy*. No line means the deploy ran ungated. The `generic` payload carries this as `health_gated`.
