@@ -16,6 +16,7 @@ package deploy
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/polandy/skipper-cd/internal/events"
@@ -132,9 +133,22 @@ func composeJSONRead[T any](ctx context.Context, d *Deployer, run stackRun, args
 // records this — every service would otherwise read as newly added, which says
 // nothing about what the deploy changed. The caller then keeps the compose-
 // reference delta, and this deploy's read becomes the next one's baseline.
-func runningImageDelta(current, previous serviceImageByName) ([]events.ServiceImageChange, bool) {
+//
+// A service in the baseline that `ps` no longer lists is reported as removed
+// only when it is also gone from the compose file (cf) — a declared service
+// without a container (an inactive profile, a scale of zero) is not a removal.
+// A nil cf (compose parse unavailable) keeps the raw delta: suppressing
+// removals blindly would hide the real ones.
+func runningImageDelta(current, previous serviceImageByName, cf *composeFile) ([]events.ServiceImageChange, bool) {
 	if len(current) == 0 || len(previous) == 0 {
 		return nil, false
 	}
-	return imageChanges(current, previous), true
+	changes := imageChanges(current, previous)
+	if cf != nil {
+		changes = slices.DeleteFunc(changes, func(c events.ServiceImageChange) bool {
+			_, declared := cf.Services[c.Service]
+			return c.New == "" && declared
+		})
+	}
+	return changes, true
 }
