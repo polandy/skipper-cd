@@ -168,7 +168,11 @@ func registerEventRoutes(mux *http.ServeMux, broadcaster *events.Broadcaster[eve
 	mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, snap.autosync.stateB, history, snap.collect))
 	mux.Handle("GET /api/v1/snapshot", ui.SnapshotHandler(snap.collect))
 	mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
-	mux.Handle("GET /api/audit", ui.AuditHandler(auditLog))
+	// One handler on both routes: the legacy path serves the UI, the /v1 alias
+	// is the versioned contract the multi-host fan-in polls (ADR-0039).
+	auditH := ui.AuditHandler(auditLog)
+	mux.Handle("GET /api/audit", auditH)
+	mux.Handle("GET /api/v1/audit", auditH)
 	mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
 	registerPeerRoutes(mux, snap.peers)
 }

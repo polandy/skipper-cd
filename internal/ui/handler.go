@@ -58,10 +58,12 @@ func DiffHandler(history *events.History) http.Handler {
 	})
 }
 
-// AuditHandler serves GET /api/audit — the durable per-stack deploy audit log
-// (ADR-0033) as a JSON array, newest first. With ?stack=<name> it returns that
-// one stack's history; without it, recent records across all stacks. An
-// optional ?limit=<n> caps the count.
+// AuditHandler serves the durable per-stack deploy audit log (ADR-0033) as a
+// JSON array, newest first — registered on both GET /api/audit (the UI's
+// route) and its versioned alias GET /api/v1/audit, the stable contract the
+// multi-host fan-in polls (ADR-0039). With ?stack=<name> it returns that one
+// stack's history; without it, recent records across all stacks. An optional
+// ?limit=<n> caps the count.
 func AuditHandler(log *audit.Log) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		limit := 0

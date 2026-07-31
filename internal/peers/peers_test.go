@@ -274,7 +274,7 @@ func TestHTTPClient_FetchCuratesAndToleratesUnknownFields(t *testing.T) {
 				"autosync": {"global": true},
 				"future_state_v99": {"anything": 1}
 			}`))
-		case "/api/audit":
+		case "/api/v1/audit":
 			// A record with an unknown field — must not break decoding.
 			_, _ = w.Write([]byte(`[{"stack":"gitea","status":"success","future_field":"x"}]`))
 		default:
@@ -301,6 +301,104 @@ func TestHTTPClient_FetchCuratesAndToleratesUnknownFields(t *testing.T) {
 	}
 	if len(data.Deploys) != 1 || data.Deploys[0].Stack != "gitea" {
 		t.Errorf("deploys = %+v, want one gitea record", data.Deploys)
+	}
+}
+
+func TestHTTPClient_FetchPrefersVersionedAuditRoute(t *testing.T) {
+	legacyHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/snapshot":
+			_, _ = w.Write([]byte(`{"health": {"stacks": {}}}`))
+		case "/api/v1/audit":
+			_, _ = w.Write([]byte(`[{"stack":"from-v1","status":"success"}]`))
+		case "/api/audit":
+			legacyHits++
+			_, _ = w.Write([]byte(`[{"stack":"from-legacy","status":"success"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c := peers.NewHTTPClient(srv.Client())
+	data, err := c.Fetch(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(data.Deploys) != 1 || data.Deploys[0].Stack != "from-v1" {
+		t.Errorf("deploys = %+v, want the /api/v1/audit record", data.Deploys)
+	}
+	if legacyHits != 0 {
+		t.Errorf("legacy /api/audit was hit %d times, want 0 when the peer serves /api/v1/audit", legacyHits)
+	}
+}
+
+func TestHTTPClient_FetchFallsBackToLegacyAuditOn404(t *testing.T) {
+	v1Hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/snapshot":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"health": {"stacks": {}}}`))
+		case "/api/v1/audit":
+			// An older peer has no versioned audit route.
+			v1Hits++
+			http.NotFound(w, r)
+		case "/api/audit":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"stack":"from-legacy","status":"success"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c := peers.NewHTTPClient(srv.Client())
+	data, err := c.Fetch(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if v1Hits != 1 {
+		t.Errorf("versioned route tried %d times, want 1 (versioned-first)", v1Hits)
+	}
+	if len(data.Deploys) != 1 || data.Deploys[0].Stack != "from-legacy" {
+		t.Errorf("deploys = %+v, want the legacy /api/audit record after the 404 fallback", data.Deploys)
+	}
+}
+
+func TestHTTPClient_AuditNon404FailureDoesNotFallBack(t *testing.T) {
+	legacyHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/snapshot":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"health": {"stacks": {}}}`))
+		case "/api/v1/audit":
+			// The route exists but errors — a peer problem, not a missing
+			// route; retrying it on the legacy path would just double the load.
+			http.Error(w, "boom", http.StatusInternalServerError)
+		case "/api/audit":
+			legacyHits++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"stack":"from-legacy","status":"success"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c := peers.NewHTTPClient(srv.Client())
+	data, err := c.Fetch(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("a failed audit must not fail the whole fetch: %v", err)
+	}
+	if legacyHits != 0 {
+		t.Errorf("legacy /api/audit was hit %d times, want 0 — fallback is for 404 only", legacyHits)
+	}
+	if len(data.Deploys) != 0 {
+		t.Errorf("expected no deploys on a non-404 audit failure, got %+v", data.Deploys)
 	}
 }
 
