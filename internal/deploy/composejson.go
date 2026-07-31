@@ -10,6 +10,19 @@ import (
 // one object per line, so this only has to hold a single record.
 const composeJSONLineCap = 1024 * 1024
 
+// containerLine is the subset of `docker compose ps --format json` the deploy
+// package reads: rollout tracks a canary by ID/State/Health, and the
+// running-image read needs Service plus the Image reference the container runs.
+// One type per command, not per reader, so the field names are declared once.
+type containerLine struct {
+	ID      string `json:"ID"`
+	Name    string `json:"Name"`
+	Service string `json:"Service"`
+	State   string `json:"State"`
+	Health  string `json:"Health"`
+	Image   string `json:"Image"`
+}
+
 // parseComposeJSON parses the output of a `docker compose … --format json` read
 // into T. Compose emits either a JSON array or newline-delimited objects
 // depending on its version, so both are accepted. Empty output (nothing to

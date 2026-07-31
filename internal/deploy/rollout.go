@@ -240,15 +240,6 @@ func (d *Deployer) rolloutTimeout(stack config.Stack) time.Duration {
 	return time.Duration(secs) * time.Second
 }
 
-// containerLine is the subset of `docker compose ps --format json` rollout uses.
-type containerLine struct {
-	ID      string `json:"ID"`
-	Name    string `json:"Name"`
-	Service string `json:"Service"`
-	State   string `json:"State"`
-	Health  string `json:"Health"`
-}
-
 // containerIDSet collects the non-empty container IDs of the given lines.
 func containerIDSet(cs []containerLine) map[string]bool {
 	set := make(map[string]bool, len(cs))

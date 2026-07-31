@@ -27,18 +27,9 @@ import (
 // normalize to the same value — a docker upgrade must not read as a rebuild.
 const runningImageIDLen = 12
 
-// psServiceLine is the subset of `docker compose ps --format json` this read
-// needs: which service a container belongs to (Service), the name to join the
-// `images` output on (Name), and the image reference it runs (Image).
-type psServiceLine struct {
-	Service string `json:"Service"`
-	Name    string `json:"Name"`
-	Image   string `json:"Image"`
-}
-
 // imageLine is the subset of `docker compose images --format json` this read
 // needs. Compose reports **no** service on this output — only the container
-// name, which is what ties it back to a psServiceLine — and ID is the local
+// name, which is what ties it back to a containerLine — and ID is the local
 // image id, the value that moves when a floating tag is re-pulled.
 type imageLine struct {
 	ContainerName string `json:"ContainerName"`
@@ -86,7 +77,7 @@ func (d *Deployer) runningImages(ctx context.Context, run stackRun) serviceImage
 	if d.outputter == nil {
 		return nil
 	}
-	psLines, err := composeJSONRead[psServiceLine](ctx, d, run, "ps", "--format", "json", "--all")
+	psLines, err := composeJSONRead[containerLine](ctx, d, run, "ps", "--format", "json", "--all")
 	if err != nil {
 		slog.Warn("could not read running services, version delta falls back to compose references",
 			"stack", run.stack.Name, "err", err)
