@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/polandy/skipper-cd/internal/compose"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 )
@@ -197,7 +198,7 @@ func TestRunningImageDelta_NeedsBothSides(t *testing.T) {
 	previous := serviceImageByName{"app": "nginx:latest@aaaa"}
 
 	t.Run("both sides known", func(t *testing.T) {
-		got, ok := runningImageDelta(current, previous)
+		got, ok := runningImageDelta(current, previous, nil)
 		if !ok {
 			t.Fatal("with a baseline and a current read the running images answer")
 		}
@@ -210,14 +211,69 @@ func TestRunningImageDelta_NeedsBothSides(t *testing.T) {
 	t.Run("no baseline", func(t *testing.T) {
 		// Every service would read as newly added, which says nothing about what
 		// this deploy changed — the caller keeps the compose-reference delta.
-		if _, ok := runningImageDelta(current, nil); ok {
+		if _, ok := runningImageDelta(current, nil, nil); ok {
 			t.Error("without a recorded baseline the running images must not answer")
 		}
 	})
 
 	t.Run("nothing read", func(t *testing.T) {
-		if _, ok := runningImageDelta(nil, previous); ok {
+		if _, ok := runningImageDelta(nil, previous, nil); ok {
 			t.Error("without a current read the running images must not answer")
+		}
+	})
+}
+
+// A service can legitimately have no container — a compose profile that is not
+// active, a service scaled to zero — and then `ps` does not list it even though
+// the baseline does. That is not a removal, and reporting "<old> (removed)" for
+// it would be a false claim. A removal is only real when the service is also
+// gone from the compose file.
+func TestRunningImageDelta_ServiceWithoutContainerIsNotRemoved(t *testing.T) {
+	current := serviceImageByName{"app": "nginx:latest@bbbb"}
+	previous := serviceImageByName{
+		"app":    "nginx:latest@aaaa",
+		"worker": "acme/worker:1.0@cccc",
+	}
+	appChange := events.ServiceImageChange{Service: "app", Old: "nginx:latest@aaaa", New: "nginx:latest@bbbb"}
+
+	t.Run("still declared in the compose file: not removed", func(t *testing.T) {
+		cf := &composeFile{}
+		cf.Services = map[string]compose.Service{"app": {}, "worker": {}}
+		got, ok := runningImageDelta(current, previous, cf)
+		if !ok {
+			t.Fatal("expected the running images to answer")
+		}
+		want := []events.ServiceImageChange{appChange}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("delta = %+v, want only the app change (no false removal): %+v", got, want)
+		}
+	})
+
+	t.Run("gone from the compose file: reported removed", func(t *testing.T) {
+		cf := &composeFile{}
+		cf.Services = map[string]compose.Service{"app": {}}
+		got, ok := runningImageDelta(current, previous, cf)
+		if !ok {
+			t.Fatal("expected the running images to answer")
+		}
+		want := []events.ServiceImageChange{
+			appChange,
+			{Service: "worker", Old: "acme/worker:1.0@cccc", New: ""},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("delta = %+v, want the removal reported: %+v", got, want)
+		}
+	})
+
+	t.Run("no compose parse: the raw delta stands", func(t *testing.T) {
+		// Without the compose file there is no way to tell the two cases apart;
+		// suppressing removals blindly would hide the real ones.
+		got, ok := runningImageDelta(current, previous, nil)
+		if !ok {
+			t.Fatal("expected the running images to answer")
+		}
+		if len(got) != 2 {
+			t.Errorf("delta = %+v, want both changes kept", got)
 		}
 	})
 }

@@ -714,7 +714,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// replaces the compose-reference delta above, so a moved floating tag shows
 	// up as the version change it is.
 	running := d.runningImages(ctx, prep.run)
-	if delta, ok := runningImageDelta(running, state.runningImagesFor(stack.Name)); ok {
+	if delta, ok := runningImageDelta(running, state.runningImagesFor(stack.Name), prep.compose); ok {
 		cs.imageChanges = delta
 	}
 
