@@ -52,6 +52,21 @@ if [ -n "$STUB_DOCKER_UI" ]; then
       ;;
   esac
 
+  # Update check (ADR-0054): `docker image inspect --format {{json .RepoDigests}}
+  # <name>` — the local half of the digest comparison. Answered from an
+  # rd-<sanitized-name>.json seeded by the harness; no file means a locally
+  # built image (empty RepoDigests). Matched as one adjacent-word glob — two
+  # separate " image " / " inspect " globs would share the middle space and
+  # never match (the overlapping-space trap).
+  case " $* " in
+    *" image inspect "*)
+      for last; do :; done
+      f="$STUB_DOCKER_PS_DIR/rd-$(printf '%s' "$last" | tr '/:' '__').json"
+      if [ -n "$STUB_DOCKER_PS_DIR" ] && [ -f "$f" ]; then cat "$f"; else echo '[]'; fi
+      exit 0
+      ;;
+  esac
+
   # Health poll: emit the scripted `compose ps --format json` output for this
   # stack (keyed by the project dir's basename), else nothing (-> stopped).
   case " $* " in

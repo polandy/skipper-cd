@@ -1,5 +1,5 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
-import { createServer } from 'node:net';
+import { createServer, type AddressInfo } from 'node:net';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { createHmac } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
@@ -211,6 +211,23 @@ export interface StartOptions {
    *  its `/api/v1/snapshot` + `/api/audit`, an unreachable one points at a dead
    *  port so the primary marks it offline. Maske V opts in. */
   peers?: PeerSpec[];
+  /** Enable the registry update check (ADR-0054, Maske AO): a local registry
+   *  stub answers `tags/list` and manifest-HEAD requests, the config turns the
+   *  check on, and the `{{registry}}` token in initialCompose bodies /
+   *  initialHealth images / repoDigests resolves to the stub's host:port (a
+   *  loopback registry is plain HTTP). Off by default — the harness config
+   *  disables the check (`interval_seconds: 0`) so every other mask stays
+   *  offline and marker-free. */
+  updateCheck?: {
+    /** repo → the tags the stub lists (e.g. `'gitea/gitea': ['1.22.3','1.22.6']`). */
+    tags?: Record<string, string[]>;
+    /** The digest every manifest HEAD advertises (the "upstream" digest). */
+    digest?: string;
+    /** image name (may carry `{{registry}}`) → the RepoDigests the stub
+     *  docker's `image inspect` reports for it — the local half of the digest
+     *  comparison. An image with no entry reports `[]` (locally built). */
+    repoDigests?: Record<string, string[]>;
+  };
   /** Override `repo_web_url`, the forge every commit SHA in the UI links to.
    *  Defaults to FORGE_URL; pass null to omit the key, which is the instance
    *  that can derive no forge (a clone from a local path) and must therefore
@@ -307,12 +324,15 @@ interface Workspace {
   readonly orphansDir: string;
   readonly stacks: string[];
   readonly author: CommitIdentity;
+  /** The update-check registry stub, when the mask opts in (close at stop). */
+  readonly registryServer: Server | null;
 }
 
 /** scaffoldWorkspace lays out the temp tree, commits an origin repo with one
  *  compose per stack, and installs the stub binaries and the dirs they read.
- *  Filesystem only — nothing is listening yet. */
-function scaffoldWorkspace(opts: StartOptions): Workspace {
+ *  Filesystem only — except for the update-check registry stub, which binds an
+ *  ephemeral port here so its host can be substituted into the composes. */
+async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
   const stacks = opts.stacks ?? ['web'];
   const stackIcons = opts.stackIcons ?? {};
   const initialCompose = opts.initialCompose ?? {};
@@ -333,11 +353,42 @@ function scaffoldWorkspace(opts: StartOptions): Workspace {
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(holdFile, '');
 
+  // Registry stub (ADR-0054): tags/list + manifest HEAD for the update check.
+  // Bound to an ephemeral port immediately (no reserve-release gap to steal),
+  // so `{{registry}}` can resolve before the composes are committed.
+  let registryServer: Server | null = null;
+  let registryHost = '';
+  if (opts.updateCheck) {
+    const uc = opts.updateCheck;
+    registryServer = createHttpServer((req, res) => {
+      const tagsMatch = req.url?.match(/^\/v2\/(.+)\/tags\/list/);
+      const manifestMatch = req.url?.match(/^\/v2\/(.+)\/manifests\//);
+      if (tagsMatch && uc.tags?.[tagsMatch[1]]) {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ tags: uc.tags[tagsMatch[1]] }));
+        return;
+      }
+      if (manifestMatch && uc.digest) {
+        res.setHeader('Docker-Content-Digest', uc.digest);
+        res.statusCode = 200;
+        res.end();
+        return;
+      }
+      res.statusCode = 404;
+      res.end('{}');
+    });
+    await new Promise<void>((resolve) => registryServer!.listen(0, '127.0.0.1', resolve));
+    const addr = registryServer.address() as AddressInfo;
+    registryHost = `127.0.0.1:${addr.port}`;
+  }
+  // Resolve the `{{registry}}` token wherever an image reference may carry it.
+  const sub = (v: string) => v.replaceAll('{{registry}}', registryHost);
+
   // Origin repo with one committed compose per stack.
   gitAs(author, '', 'init', '-b', 'main', origin);
   for (const name of stacks) {
     mkdirSync(join(origin, name), { recursive: true });
-    writeFileSync(join(origin, name, 'docker-compose.yml'), initialCompose[name] ?? defaultCompose);
+    writeFileSync(join(origin, name, 'docker-compose.yml'), sub(initialCompose[name] ?? defaultCompose));
     if (stackIcons[name] !== undefined) {
       writeFileSync(join(origin, name, 'icon.svg'), stackIcons[name]);
     }
@@ -379,7 +430,14 @@ function scaffoldWorkspace(opts: StartOptions): Workspace {
   mkdirSync(healthDir, { recursive: true });
   // Pre-boot health seed, so the very first poll already sees it.
   for (const [name, services] of Object.entries(opts.initialHealth ?? {})) {
-    writeFileSync(join(healthDir, `${name}.json`), JSON.stringify(services));
+    const resolved = services.map((svc) => (svc.Image ? { ...svc, Image: sub(svc.Image) } : svc));
+    writeFileSync(join(healthDir, `${name}.json`), JSON.stringify(resolved));
+  }
+  // The stub docker's `image inspect` answers (local RepoDigests) — the update
+  // check's local half. Keyed by the sanitized image name (/, : → _).
+  for (const [image, digests] of Object.entries(opts.updateCheck?.repoDigests ?? {})) {
+    const file = `rd-${sub(image).replace(/[/:]/g, '_')}.json`;
+    writeFileSync(join(healthDir, file), JSON.stringify(digests.map(sub)));
   }
 
   // Where setOrphans/setVolumes write the stub's `docker ps -a` / `volume ls`
@@ -400,6 +458,7 @@ function scaffoldWorkspace(opts: StartOptions): Workspace {
     orphansDir,
     stacks,
     author,
+    registryServer,
   };
 }
 
@@ -503,6 +562,9 @@ function buildConfig(
     // Health polling off by default so masks predating it stay health-free;
     // Maske H opts in via healthPoll (ADR-0027).
     `runtime_health_poll_interval_seconds: ${opts.healthPoll ?? 0}\n` +
+    // Update check (ADR-0054) off by default, so no mask phones a registry for
+    // its fake images (or renders unexpected markers); Maske AO opts in.
+    `update_check:\n  interval_seconds: ${opts.updateCheck ? 21600 : 0}\n` +
     (opts.healthWatch ? `health_watch:\n  debounce_polls: 1\n` : '') +
     (opts.selfHeal ? `self_heal: true\n` : '') +
     (opts.selfHealMinUnhealthyPolls !== undefined
@@ -568,6 +630,7 @@ export class Skipper {
   private readonly orphansDir: string;
   private readonly spawnEnv: NodeJS.ProcessEnv;
   private readonly peerServers: Server[];
+  private readonly registryServer: Server | null;
   private proc: ChildProcess;
   private out = '';
 
@@ -587,6 +650,7 @@ export class Skipper {
     orphansDir: string;
     spawnEnv: NodeJS.ProcessEnv;
     peerServers: Server[];
+    registryServer: Server | null;
     proc: ChildProcess;
   }) {
     this.baseURL = init.baseURL;
@@ -604,6 +668,7 @@ export class Skipper {
     this.orphansDir = init.orphansDir;
     this.spawnEnv = init.spawnEnv;
     this.peerServers = init.peerServers;
+    this.registryServer = init.registryServer;
     this.attach(init.proc);
   }
 
@@ -627,7 +692,7 @@ export class Skipper {
    *  the launch is retried on fresh ports; any other failure propagates on
    *  the first throw. */
   static async start(opts: StartOptions = {}): Promise<Skipper> {
-    const ws = scaffoldWorkspace(opts);
+    const ws = await scaffoldWorkspace(opts);
     for (let attempt = 1; ; attempt++) {
       try {
         return await Skipper.launch(opts, ws);
@@ -694,6 +759,7 @@ export class Skipper {
       orphansDir,
       spawnEnv,
       peerServers,
+      registryServer: ws.registryServer,
       proc,
     });
     try {
@@ -929,6 +995,7 @@ export class Skipper {
    *  abrupt drop is also the more faithful signal for the reconnect cases
    *  (UD2/UE): the SSE stream is cut immediately instead of lingering. */
   async stop(): Promise<void> {
+    this.registryServer?.close();
     for (const server of this.peerServers) {
       // closeAllConnections drops any held-open peer socket (an SSE container-log
       // follow) so close() does not wait on it and hang teardown.

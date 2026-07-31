@@ -1431,6 +1431,34 @@ building itself (trailing slashes, a missing base or SHA, a non-http(s) base
 that must never reach an `href`) is covered by the `app-helpers` unit layer
 (`commitURL`) and, server-side, by `git.WebURL`.
 
+### 4.42 UI — Maske AO: registry update check
+
+The read-only update check (ADR-0054) annotates the Stacks view's version
+chips with what upstream offers. The harness stands up a **local registry
+stub** (tags/list + manifest HEAD; the `{{registry}}` token in composes and
+health images resolves to its host:port) and the shared docker stub answers
+`image inspect` from seeded `rd-*.json` files — so the real pipeline runs:
+running images recorded at deploy → checker → `stacks` snapshot → chips. The
+harness config disables the check for **every other mask**
+(`interval_seconds: 0`), so no test phones a real registry for its fake images
+or renders unexpected markers; this mask opts in via `updateCheck`.
+
+- **UAO1 — Newer tag.** The row chip reads `1.22.3 ⇡ 1.22.6` (amber `.td-upd`),
+  the tooltip names the available version.
+- **UAO2 — Panel.** The containers panel marks the affected service's chip and
+  its head shows `⇡ 1 update · checked … ago`.
+- **UAO3 — Rebuilt.** Nothing newer in the tag list, but the upstream digest
+  differs from the local RepoDigests: the chip reads `v3.1 ⇡ rebuilt`.
+- **UAO4 — Unmarked control.** A stack whose tag list has nothing newer and
+  whose digest matches shows no marker and no head summary. Asserted only after
+  UAO1's marker is visible — the check publishes one snapshot for all stacks,
+  so the marked stack is the positive signal that the absence is a result, not
+  a not-yet-checked false green.
+
+The markers arrive via the post-deploy nudge (the check re-runs when a deploy
+changed what runs), an SSE republish after startup — every case awaits the
+marker itself, never a wall-clock delay.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
