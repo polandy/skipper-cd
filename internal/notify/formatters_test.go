@@ -133,6 +133,28 @@ func TestSignalFormatter_ReportsMovedFloatingTagAsImageIDChange(t *testing.T) {
 	}
 }
 
+// A digest-pinned reference whose tag did not move (a Renovate digest-only
+// bump) differs only in the digest — 71 characters per side when rendered
+// verbatim. The message shortens it to docker's 12-hex short form, like the
+// recorded running-image identity and the UI's version chip do.
+func TestSignalFormatter_ShortensDigestsWhenOnlyTheDigestMoved(t *testing.T) {
+	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}}
+	ev := events.DeployEvent{
+		Stack: "proxy", Status: events.StatusSuccess, DurationMs: 1500,
+		ImageChanges: []events.ServiceImageChange{
+			{
+				Service: "app",
+				Old:     "traefik:v3.7.9@sha256:652929a140a32d7cafafb13c6cdfab5376cfeff800f51397b87b524501ed02a8",
+				New:     "traefik:v3.7.9@sha256:0b9520b5460c9c4d6cf0014b73bbcb64e4d7ed92b3ed9ec4536eeab4b8c7944a",
+			},
+		},
+	}
+	msg, _ := bodyOf(t, mustFormat(t, f, ev))["message"].(string)
+	if !strings.Contains(msg, "app: v3.7.9@652929a140a3 → v3.7.9@0b9520b5460c") {
+		t.Errorf("a digest-only change should show the digests in short form, got %q", msg)
+	}
+}
+
 func TestSignalFormatter_TagBumpDropsTheImageIDs(t *testing.T) {
 	f := signalFormatter{base: "http://localhost:8020", number: "+49111", recipients: []string{"+49222"}}
 	ev := events.DeployEvent{

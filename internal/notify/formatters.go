@@ -146,9 +146,10 @@ func renderHealthGate(gated bool) string {
 // Both sides normally share a repository (the service name beside them already
 // says which image it is), so it is dropped: a tag bump shows the tags alone
 // ("1.25 → 1.27"), while an unchanged tag means the image behind it moved and
-// the image ids are what differ ("30-apache@ab12… → 30-apache@cd34…"). When the
-// repositories differ, the service switched images entirely: both references
-// are kept in full, because that is the change.
+// the image ids are what differ ("30-apache@ab12… → 30-apache@cd34…"), shown in
+// docker's short form — a full sha256 digest is 71 characters of noise per side
+// in a chat message. When the repositories differ, the service switched images
+// entirely: both references are kept in full, because that is the change.
 func versionTokens(oldRef, newRef string) (string, string) {
 	if imageRepository(oldRef) != imageRepository(newRef) {
 		return oldRef, newRef
@@ -157,7 +158,27 @@ func versionTokens(oldRef, newRef string) (string, string) {
 	if oldTag != "" && newTag != "" && oldTag != newTag {
 		return oldTag, newTag
 	}
-	return dropRepository(oldRef), dropRepository(newRef)
+	return shortenImageID(dropRepository(oldRef)), shortenImageID(dropRepository(newRef))
+}
+
+// shortImageIDLen is docker's own short-ID length: the form `docker ps` prints
+// and the running-image identity records, so the message and the recorded
+// identity read the same.
+const shortImageIDLen = 12
+
+// shortenImageID shortens the image id/digest behind a version token's "@" to
+// docker's short form ("v3.7.9@sha256:652929a140a3…" → "v3.7.9@652929a140a3").
+// A token without one, or with an already-short id, passes through unchanged.
+func shortenImageID(token string) string {
+	at := strings.IndexByte(token, '@')
+	if at == -1 {
+		return token
+	}
+	id := strings.TrimPrefix(token[at+1:], "sha256:")
+	if len(id) > shortImageIDLen {
+		id = id[:shortImageIDLen]
+	}
+	return token[:at+1] + id
 }
 
 // imageTag returns an image reference's tag, or "" when it carries none
