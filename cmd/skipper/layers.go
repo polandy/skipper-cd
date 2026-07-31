@@ -21,9 +21,11 @@ import (
 	"github.com/polandy/skipper-cd/internal/notify"
 	"github.com/polandy/skipper-cd/internal/orphans"
 	"github.com/polandy/skipper-cd/internal/peers"
+	"github.com/polandy/skipper-cd/internal/registry"
 	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/safego"
 	"github.com/polandy/skipper-cd/internal/selfheal"
+	"github.com/polandy/skipper-cd/internal/updatecheck"
 )
 
 // uiLayer bundles the subsystems that exist only while the web UI is enabled:
@@ -155,6 +157,70 @@ func buildHealthWatch(ctx context.Context, cfg *config.Config, stateDir string, 
 	return watcher, nil
 }
 
+// buildUpdateCheck constructs the read-only registry update checker
+// (ADR-0054): every interval it compares what each stack's containers run
+// against what their registries offer, publishes the result on the stacks
+// snapshot (via onChange) and — when notifications are configured — sends one
+// message per newly appearing update. It acts on nothing. Returns nil when
+// update_check.interval_seconds is 0. Run is started by the caller once the
+// deployer exists; the alerter's delivery loop runs until ctx is done.
+func buildUpdateCheck(ctx context.Context, cfg *config.Config, stateDir string, timeout time.Duration, views stackViews, ref *deployerRef, onChange func()) (*updatecheck.Checker, error) {
+	interval := cfg.UpdateCheckInterval()
+	if interval <= 0 {
+		return nil, nil
+	}
+
+	var notifyFn func(updatecheck.Alert)
+	if cfg.UpdateCheckNotify() && len(cfg.Notifications) > 0 {
+		alerter, err := notify.NewUpdateAlerter(cfg.Notifications, nil, 0)
+		if err != nil {
+			return nil, fmt.Errorf("build update alerter: %w", err)
+		}
+		safego.Go("update-alerter", func() { alerter.Run(ctx) })
+		notifyFn = alerter.Fire
+	}
+
+	var checker *updatecheck.Checker
+	checker = updatecheck.New(updatecheck.Config{
+		Interval:  interval,
+		Registry:  registry.New(nil, registry.DockerConfigCredentials(registry.DockerConfigPath())),
+		Outputter: command.NewShellRunner(timeout),
+		Running: func() map[string]map[string]string {
+			if d := ref.get(); d != nil {
+				return d.CurrentRunningImages()
+			}
+			return nil
+		},
+		Include: func(name string) bool {
+			stacks := views.effective()
+			for _, s := range stacks {
+				if s.Name == name {
+					return cfg.EffectiveUpdateCheck(stacks, name)
+				}
+			}
+			// Not in the effective set: removed or parked — nothing to report on.
+			return false
+		},
+		Notify: notifyFn,
+		OnChange: func() {
+			if snap := checker.Snapshot(); snap != nil {
+				n := 0
+				for _, services := range snap.Stacks {
+					n += len(services)
+				}
+				metrics.UpdatesAvailable.Set(float64(n))
+			}
+			onChange()
+		},
+		StatePath: filepath.Join(stateDir, "update-check.yaml"),
+	})
+	slog.Info("registry update check enabled",
+		"interval_seconds", int(interval/time.Second),
+		"notify", notifyFn != nil,
+	)
+	return checker, nil
+}
+
 // healthLayer bundles the stack-health poller and the detectors that ride its
 // cadence: orphan detection (ADR-0036) and app-link detection
 // (dev-docs/traefik-app-links-spec.md). Every field is nil while health
@@ -253,6 +319,7 @@ type autosyncPublisher struct {
 	deployer *deployerRef
 	auditLog *audit.Log
 	repo     roster.RepoRef
+	updates  func() *updatecheck.Snapshot // latest update check; nil-safe (disabled)
 }
 
 func (p autosyncPublisher) publish() {
@@ -279,5 +346,9 @@ func (p autosyncPublisher) publishStacks() {
 		return
 	}
 	d := p.deployer.get()
-	p.stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: roster.BuildState(p.views.effective(), d.CurrentDisabledStacks(), p.auditLog, d.CurrentTrackedFiles(), p.repo)})
+	var updates *updatecheck.Snapshot
+	if p.updates != nil {
+		updates = p.updates()
+	}
+	p.stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: roster.BuildState(p.views.effective(), d.CurrentDisabledStacks(), p.auditLog, d.CurrentTrackedFiles(), p.repo, updates)})
 }

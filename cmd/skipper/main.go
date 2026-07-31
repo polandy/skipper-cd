@@ -34,6 +34,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/safego"
 	"github.com/polandy/skipper-cd/internal/ui"
+	"github.com/polandy/skipper-cd/internal/updatecheck"
 )
 
 // readHeaderTimeout bounds how long a client may take to send request
@@ -220,6 +221,11 @@ func main() {
 	// Autosync is active regardless of the UI so config-as-code pauses apply.
 	autosyncCtrl := autosync.NewController(cfg.Autosync, stackAutosyncConfig(cfg))
 	autosyncQueue := autosync.NewQueue()
+	// The update checker (ADR-0054) and the publisher reference each other —
+	// the checker republishes the stacks snapshot after every run, the snapshot
+	// carries the checker's result — so the snapshot accessor closes over a
+	// variable assigned right below, before anything runs.
+	var updChecker *updatecheck.Checker
 	asPublisher := autosyncPublisher{
 		ctrl:     autosyncCtrl,
 		queue:    autosyncQueue,
@@ -228,6 +234,17 @@ func main() {
 		deployer: ref,
 		auditLog: auditLog,
 		repo:     repo,
+		updates: func() *updatecheck.Snapshot {
+			if updChecker == nil {
+				return nil
+			}
+			return updChecker.Snapshot()
+		},
+	}
+	updChecker, err = buildUpdateCheck(signalCtx, cfg, stateDir, timeout, views, ref, asPublisher.publishStacks)
+	if err != nil {
+		slog.Error("failed to build update checker", "err", err)
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: as above — only stop() is pending, nothing is serving yet
 	}
 	deployer := deploy.New(deploy.Config{
 		Runner: command.NewShellRunnerWithSink(timeout, sink),
@@ -253,6 +270,12 @@ func main() {
 			if hl.poller != nil {
 				hl.poller.Poll() // refresh health right after a deploy run
 			}
+			// Re-check updates when the run changed what runs, so an applied
+			// update's marker clears now, not at the next 6h tick (ADR-0054).
+			// No-op runs (the 5-minute reconcile) skip without registry traffic.
+			if updChecker != nil {
+				safego.Go("update-check-nudge", func() { updChecker.RunOnceIfChanged(signalCtx) })
+			}
 		},
 		StackSetSink: asPublisher.publishStacks,
 		RunPlanSink:  uiw.runPlanSink,
@@ -264,6 +287,10 @@ func main() {
 	// feed may drive a self-heal, which redeploys through the deployer.
 	if hl.poller != nil {
 		safego.Go("health-poller", func() { hl.poller.Run(signalCtx) })
+	}
+	// Same for the update checker: it reads the deployer's running images.
+	if updChecker != nil {
+		safego.Go("update-check", func() { updChecker.Run(signalCtx) })
 	}
 	asPublisher.publish() // initialize the gauges
 
@@ -329,6 +356,7 @@ func main() {
 		autosync:        as,
 		build:           build,
 		repo:            repo,
+		updates:         asPublisher.updates,
 	}), serverFail)
 
 	// Block until SIGINT/SIGTERM or a server giving up, then shut down

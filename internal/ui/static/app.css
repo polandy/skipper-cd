@@ -1262,6 +1262,12 @@
   }
   .health-panel .hp-head-label { color: var(--text-muted); letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; }
   .health-panel .hp-head-who { color: var(--text-primary); font-size: 12.5px; font-weight: 600; }
+  /* Update summary in the panel head (ADR-0054): amber count + muted check
+     freshness. Takes over the right-alignment when present; the pill then
+     sits directly after it. Absent entirely while nothing is advertised. */
+  .health-panel .hp-head-check { margin-left: auto; color: var(--text-muted); font-size: 10.5px; white-space: nowrap; }
+  .health-panel .hp-head-check .hc-count { color: var(--queued-text); font-weight: 600; }
+  .health-panel .hp-head-check + .hp-head-pill { margin-left: 0; }
   .health-panel .hp-head-pill {
     margin-left: auto;
     display: inline-flex;
@@ -1601,6 +1607,19 @@
      running right now. Neutral on purpose — the add-green above says "this is the
      NEW version", which a standing fact must not claim. */
   .tag-delta .td-cur { color: var(--text-secondary); font-weight: 500; }
+  /* Registry update marker (ADR-0054): an available upstream version — the
+     newer tag, or "rebuilt" when the running tag's digest moved. Queued amber,
+     the app's "waiting to be applied" colour: not green (that claims new),
+     not red (that claims a fault). The chip itself takes the faint queued
+     tint so a marked row reads at a glance without a second element. */
+  .tag-delta .td-upd {
+    display: inline-flex; align-items: center; gap: 3px;
+    color: var(--queued-text); font-weight: 600;
+  }
+  .tag-delta:has(.td-upd) {
+    background: var(--queued-dim);
+    border-color: color-mix(in srgb, var(--queued) 30%, transparent);
+  }
   /* "+3" beside a Stacks row's lead version, and the bare service count when no
      lead could be named: a pointer to the containers panel, not a value. */
   .ver-count {

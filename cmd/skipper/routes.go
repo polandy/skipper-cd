@@ -24,6 +24,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/peers"
 	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/ui"
+	"github.com/polandy/skipper-cd/internal/updatecheck"
 	"github.com/polandy/skipper-cd/internal/webhook"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -53,6 +54,7 @@ type webhookDeps struct {
 	autosync        *autosyncDeps
 	build           ui.BuildInfo
 	repo            roster.RepoRef
+	updates         func() *updatecheck.Snapshot
 }
 
 // deployReconciler adapts the deployer to reconcile.Reconciler, binding the
@@ -129,6 +131,7 @@ func webhookMux(d webhookDeps) *http.ServeMux {
 			auditLog:        d.auditLog,
 			autosync:        d.autosync,
 			repo:            d.repo,
+			updates:         d.updates,
 		}
 		registerAppRoutes(mux, d.cfg, d.build)
 		registerEventRoutes(mux, d.broadcaster, d.history, d.auditLog, d.logRing, snap)
@@ -237,6 +240,19 @@ type stateSnapshot struct {
 	auditLog        *audit.Log
 	autosync        *autosyncDeps
 	repo            roster.RepoRef // clone dir for repo-relative paths, forge URL for commit links
+	// updates returns the latest registry update check (ADR-0054); nil-safe —
+	// nil (or a nil return) means no check has run or the check is disabled.
+	updates func() *updatecheck.Snapshot
+}
+
+// currentUpdates resolves the latest update-check snapshot, tolerating both a
+// missing accessor (UI wiring without a checker) and a checker with no
+// completed run yet.
+func (s stateSnapshot) currentUpdates() *updatecheck.Snapshot {
+	if s.updates == nil {
+		return nil
+	}
+	return s.updates()
 }
 
 // collect returns the current state events. As a side effect it polls the
@@ -250,7 +266,7 @@ func (s stateSnapshot) collect() []events.StateEvent {
 		{Name: events.StateQueue, Data: as.queue.View(as.order())},
 		{Name: events.StateUpcoming, Data: s.deployer.CurrentRunPlan()},
 		{Name: events.StateHookRun, Data: s.deployer.CurrentHookRun()},
-		{Name: events.StateStacks, Data: roster.BuildState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo)},
+		{Name: events.StateStacks, Data: roster.BuildState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo, s.currentUpdates())},
 	}
 	if s.healthPoller != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealth, Data: s.healthPoller.Current()})

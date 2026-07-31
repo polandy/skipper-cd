@@ -643,6 +643,17 @@ function resolveAppLinksMap(peersSnap, selfHost, host, selfAppLinks) {
   return p ? peerStacksMap(p, 'app_links') : selfAppLinks;
 }
 
+// resolveUpdates picks a host's registry update-check snapshot ({stacks,
+// checked_at}, ADR-0054), riding each host's own `stacks` state exactly like
+// resolveRepoWebURL: the primary's live snapshot for self, else the peer's
+// fanned-in one. null when the host has none — the check is disabled there,
+// has not run yet, or the peer runs a skipper predating the field.
+function resolveUpdates(peersSnap, selfHost, host, selfUpdates) {
+  const p = resolvePeerView(peersSnap, selfHost, host);
+  if (!p) return selfUpdates || null;
+  return (p.state && p.state.stacks && p.state.stacks.updates) || null;
+}
+
 // resolveRepoWebURL picks the forge browse URL a host's commit SHAs link
 // through. Each host tracks its own deploy repo, so a peer's SHAs must link
 // through that peer's forge, never the primary's. '' — no link at all — when
@@ -799,6 +810,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveHealthwatchMap,
     resolveAppLinksMap,
     resolveRepoWebURL,
+    resolveUpdates,
     buildHostList,
     levelClass,
     logLineLevel,

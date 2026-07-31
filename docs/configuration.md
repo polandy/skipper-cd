@@ -111,6 +111,7 @@ nixos_rebuild:
 | `runtime_health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
 | `reconcile_interval_seconds` | int | no | `300` | How often skipper re-runs its git sync + deploy on a timer — the convergence baseline that keeps each host caught up to the repo with or without a webhook (see [Periodic reconcile](#periodic-reconcile)). `0` disables it, leaving the webhook + startup as the only triggers (valid only when `webhook_secret` is set). Runs headless — not tied to the UI. |
 | `self_heal` | bool | no | `false` | Global default for whether a stack the health poller finds degraded is automatically restored to its running state by a corrective redeploy (see [Self-heal](#self-heal)). A per-stack `self_heal` overrides it. Requires `runtime_health_poll_interval_seconds` > 0. |
+| `update_check` | section | no | on, every 6h | Read-only registry [update check](#update-check): shows an "update available" marker in the Stacks view and optionally sends one notification per new update. `interval_seconds` (default `21600`, `0` disables) and `notify` (default `true`). It never deploys anything. |
 | `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce). Must be ≥ 1. |
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
 | `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0; an explicit `0` disables the cooldown. |
@@ -153,6 +154,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `deploy_health_check` | section or bool | no | automatic if the compose file has a `healthcheck:` (except on-demand stacks) | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this as a section to change the timeout or add an HTTP probe. A stack with `on_demand_containers` is never auto-gated. The scalar `false` explicitly disables the gate (keep a compose `healthcheck:` without gating on it); `true` enables it at the defaults. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
 | `rollback` | bool | no | *inherit* | Overrides the global `rollback` for this stack (in both directions). When unset, the stack follows the global setting (on). Set `false` for a stateful stack that must not be reverted over forward-migrated data. See [Disabling rollback](#disabling-rollback). |
+| `update_check` | bool | no | `true` | Set `false` to exclude this stack from the registry [update check](#update-check) — for a stack meant to lag behind upstream, or whose registry is unreachable. Never hash-tracked. |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
 | `rollout` | section | no | — | Deploy the named services with a zero-downtime cutover (new container alongside the old, then drain) instead of an in-place recreate. Needs a reverse proxy in front of the service (only Traefik tested). Never hash-tracked. See [Zero-downtime rollout](#zero-downtime-rollout). |
@@ -647,9 +649,30 @@ Guardrails keep it from fighting a genuinely broken stack:
 
 Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `runtime_health_poll_interval_seconds` > 0 even with the UI off. A successful redeploy shows as a `healed` event in the deploy log.
 
+## Update check
+
+skipper periodically asks each registry what it offers for the images your stacks actually run, and shows the answer — it never acts on it. In the Stacks view, a service with an available update carries an amber `⇡` marker on its version chip:
+
+- `1.22.3 ⇡ 1.22.6` — a newer tag of the same shape exists. Only same-shaped tags are compared: same `v`-or-no prefix, same number of version components, same suffix (`6.2-alpine` is only ever compared against other `-alpine` tags), so the marker never suggests `latest` or a different variant.
+- `v3.1 ⇡ rebuilt` — the tag you run was republished upstream (its digest moved). This is the only check for non-version tags like `latest`.
+
+The expanded containers panel marks each affected service and shows when the registry was last asked. With [notifications](#notifications) configured, each update's first appearance is sent once — deploying it (or a newer one appearing) re-arms the message.
+
+```yaml
+update_check:
+  interval_seconds: 21600   # default: every 6h; 0 disables the check
+  notify: true              # default: one message per newly appearing update
+```
+
+- On by default; the section is only needed to change the cadence or silence the messages. `interval_seconds: 0` turns the feature off entirely — skipper then makes no registry requests outside a deploy.
+- After a deploy that changed what runs, the check re-runs immediately, so an applied update's marker clears right away.
+- Registry credentials come from the host's docker config (`docker login`) — the same ones your pulls use. Public images need none.
+- Locally-built images (`build:`) and stacks with nothing running are skipped. A per-stack `update_check: false` opts a stack out.
+- The check is read-only: applying an update is still a git commit — a tag bump by hand, or a [Renovate](#keeping-images-up-to-date) PR.
+
 ## Keeping images up to date
 
-skipper deploys the images your compose files declare; it does **not** watch registries for new versions on its own. That is a deliberate scope choice: skipper acts on git, so an image update should reach it *as a change in git*. The supported way to automate updates is to let [Renovate](https://docs.renovatebot.com/) keep the `image:` references in your **deploy repo** current: Renovate opens (or auto-merges) a change that bumps the reference and pins it to a digest, and that merge is an ordinary push, so skipper's webhook and [periodic reconcile](#periodic-reconcile) path pick it up and redeploy — no skipper configuration required.
+skipper deploys the images your compose files declare; on its own it only *reports* newer versions (the [update check](#update-check) above) — it never acts on them. That is a deliberate scope choice: skipper acts on git, so an image update should reach it *as a change in git*. The supported way to automate updates is to let [Renovate](https://docs.renovatebot.com/) keep the `image:` references in your **deploy repo** current: Renovate opens (or auto-merges) a change that bumps the reference and pins it to a digest, and that merge is an ordinary push, so skipper's webhook and [periodic reconcile](#periodic-reconcile) path pick it up and redeploy — no skipper configuration required.
 
 Digest pinning is what makes this work. With a plain mutable tag like `image: caddy:latest`, the text in git never changes when the registry publishes a new image behind the same tag, so skipper never sees a change. Renovate's digest pinning rewrites the reference to `image: caddy:2.8.4@sha256:…` and keeps that digest current — so **every** update lands in git as a changed reference and deploys through the normal path.
 

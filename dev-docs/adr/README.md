@@ -58,3 +58,4 @@ One file per decision, numbered sequentially (see
 | [0051](0051-bootstrap-run-does-not-refresh-images.md) | A run with no recorded state converges the host but does not `pull` — no floating tag moves unattended |
 | [0052](0052-binary-assets-out-of-git-history.md) | Churning binaries stay out of git history — docs screenshots generated in CI, Playwright baselines in Git LFS; write-once binaries stay committed |
 | [0053](0053-deploy-reports-running-image-versions.md) | A deploy reports the version it actually put into service (`running_images`, separate from the pull-deciding `images`), plus whether it was health-gated |
+| [0054](0054-read-only-registry-update-check.md) | Read-only registry update check — "update available" in the Stacks view + one notification; acting stays a git commit |

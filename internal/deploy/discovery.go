@@ -66,6 +66,24 @@ func (d *Deployer) CurrentTrackedFiles() map[string][]string {
 	return out
 }
 
+// CurrentRunningImages returns the recorded stack→service→running-image map:
+// what each stack's containers ran after its last successful deploy
+// (ADR-0053), for the out-of-run update check (ADR-0054). Seeded from the
+// persisted state at construction, refreshed after every run. Empty before
+// any deploy has recorded one. Concurrent-safe; returns a per-call copy the
+// caller may mutate freely.
+func (d *Deployer) CurrentRunningImages() map[string]map[string]string {
+	p := d.runningImagesNow.Load()
+	if p == nil {
+		return map[string]map[string]string{}
+	}
+	out := make(map[string]map[string]string, len(*p))
+	for stack, images := range *p {
+		out[stack] = maps.Clone(images)
+	}
+	return out
+}
+
 // effectiveStack resolves a stack by name from the effective set: the
 // discovered stacks in discovery mode, else the host config's list.
 func (d *Deployer) effectiveStack(cfg *config.Config, name string) (config.Stack, bool) {

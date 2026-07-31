@@ -6,6 +6,7 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/audit"
 	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/updatecheck"
 )
 
 // State is the `stacks` SSE snapshot: stack-set facts that are not
@@ -22,6 +23,11 @@ type State struct {
 	// on this state (rather than a dedicated endpoint) so the multi-host fan-in
 	// carries each peer's own forge along with that peer's roster (ADR-0048).
 	RepoWebURL string `json:"repo_web_url,omitempty"`
+	// Updates is the latest registry update check (ADR-0054): per stack, the
+	// services with an available image update. nil until a check has run (or
+	// when the check is disabled). It rides this state so the UI's version
+	// chips and the multi-host fan-in get it with the roster they annotate.
+	Updates *updatecheck.Snapshot `json:"updates,omitempty"`
 }
 
 // RepoRef identifies the deploy repo for the UI: the local clone directory (to
@@ -33,9 +39,10 @@ type RepoRef struct {
 }
 
 // BuildState assembles the `stacks` snapshot from the effective stack
-// set, the parked (disabled) names, each stack's newest audit record, and the
-// input paths its change detection watches.
-func BuildState(stacks []config.Stack, disabled []string, auditLog *audit.Log, tracked map[string][]string, repo RepoRef) State {
+// set, the parked (disabled) names, each stack's newest audit record, the
+// input paths its change detection watches, and the latest update-check
+// result (nil while none exists).
+func BuildState(stacks []config.Stack, disabled []string, auditLog *audit.Log, tracked map[string][]string, repo RepoRef, updates *updatecheck.Snapshot) State {
 	last := func(name string) (audit.Record, bool) {
 		recs := auditLog.Stack(name, 1)
 		if len(recs) == 0 {
@@ -48,6 +55,7 @@ func BuildState(stacks []config.Stack, disabled []string, auditLog *audit.Log, t
 		Disabled:   disabled,
 		Roster:     Build(stacks, disabled, last, watched),
 		RepoWebURL: repo.WebURL,
+		Updates:    updates,
 	}
 }
 

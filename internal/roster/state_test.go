@@ -10,12 +10,13 @@ import (
 	"github.com/polandy/skipper-cd/internal/audit"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
+	"github.com/polandy/skipper-cd/internal/updatecheck"
 )
 
 func TestBuildState_CarriesRepoWebURLForCommitLinks(t *testing.T) {
 	const webURL = "https://forge.example.com/owner/repo"
 
-	state := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{Dir: "/var/lib/skipper/repo", WebURL: webURL})
+	state := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{Dir: "/var/lib/skipper/repo", WebURL: webURL}, nil)
 
 	if state.RepoWebURL != webURL {
 		t.Errorf("RepoWebURL = %q, want %q", state.RepoWebURL, webURL)
@@ -44,6 +45,7 @@ func TestBuildState_MergesNewestAuditRecordAndTrackedPaths(t *testing.T) {
 		auditLog,
 		map[string][]string{"web": {repoDir + "/modules/web/docker-compose.yml", repoDir + "/modules/skipper.yaml"}},
 		RepoRef{Dir: repoDir},
+		nil,
 	)
 
 	byName := map[string]Entry{}
@@ -71,7 +73,7 @@ func TestBuildState_MergesNewestAuditRecordAndTrackedPaths(t *testing.T) {
 func TestBuildState_OmitsRepoWebURLWhenNoneDerivable(t *testing.T) {
 	// A repo_url the forge URL cannot be derived from (a local path, say) leaves
 	// the key out entirely, so the UI renders plain SHAs instead of dead links.
-	state := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{Dir: "/var/lib/skipper/repo"})
+	state := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{Dir: "/var/lib/skipper/repo"}, nil)
 
 	body, err := json.Marshal(state)
 	if err != nil {
@@ -138,5 +140,35 @@ func TestSplitTrackedPaths(t *testing.T) {
 				t.Errorf("splitTrackedPaths(%v) config = %t, want %t", tc.paths, gotConfig, tc.wantConfig)
 			}
 		})
+	}
+}
+
+func TestBuildState_CarriesUpdateCheckSnapshot(t *testing.T) {
+	updates := &updatecheck.Snapshot{
+		Stacks: map[string]map[string]updatecheck.ServiceUpdate{
+			"gitea": {"server": {Running: "1.22.3", Latest: "1.22.6"}},
+		},
+		CheckedAt: time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC),
+	}
+
+	state := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{}, updates)
+
+	if state.Updates != updates {
+		t.Fatal("Updates not carried on the stacks state")
+	}
+	body, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, want := range []string{`"updates"`, `"latest":"1.22.6"`, `"checked_at"`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("snapshot JSON missing %s: %s", want, body)
+		}
+	}
+
+	// Absent entirely while no check has run, so the UI and peers see no field.
+	none := BuildState(nil, nil, audit.NewLog(t.TempDir()), nil, RepoRef{}, nil)
+	if body, _ := json.Marshal(none); strings.Contains(string(body), `"updates"`) {
+		t.Errorf("nil updates must be omitted from the JSON: %s", body)
 	}
 }

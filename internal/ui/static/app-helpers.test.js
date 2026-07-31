@@ -983,3 +983,25 @@ test('buildHostList puts self first and coerces peer flags to booleans', () => {
   // A peers snapshot without a peers list must not throw.
   assert.deepEqual(h.buildHostList({ self: 'primary' }, 'primary').length, 1);
 });
+
+// ── Registry update resolver (ADR-0054) ──
+
+test('resolveUpdates returns the local snapshot for self and the fanned-in one for a peer', () => {
+  const selfUpdates = { stacks: { gitea: { server: { latest: '1.22.6' } } } };
+  const peers = {
+    peers: [
+      {
+        name: 'argoneon',
+        state: { stacks: { updates: { stacks: { pihole: { pihole: { rebuilt: true } } } } } },
+      },
+      { name: 'bare' }, // an older peer without the field
+    ],
+  };
+  assert.equal(h.resolveUpdates(peers, 'nuc', 'nuc', selfUpdates), selfUpdates);
+  assert.equal(h.resolveUpdates(peers, 'nuc', '', selfUpdates), selfUpdates);
+  assert.deepEqual(h.resolveUpdates(peers, 'nuc', 'argoneon', selfUpdates).stacks.pihole.pihole, {
+    rebuilt: true,
+  });
+  assert.equal(h.resolveUpdates(peers, 'nuc', 'bare', selfUpdates), null);
+  assert.equal(h.resolveUpdates(null, 'nuc', 'nuc', null), null);
+});

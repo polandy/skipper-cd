@@ -254,6 +254,9 @@ func validateConfig(cfg *Config) error {
 	if err := validateHealthWatch(cfg.HealthWatch); err != nil {
 		return fmt.Errorf("health_watch: %w", err)
 	}
+	if err := validateUpdateCheck(cfg.UpdateCheck); err != nil {
+		return fmt.Errorf("update_check: %w", err)
+	}
 	// Like self-heal, the watchdog rides the health poll cadence and runs
 	// headless, so it needs a positive poll interval even with the UI off
 	// (ADR-0031).

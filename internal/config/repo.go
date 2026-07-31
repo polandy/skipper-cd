@@ -108,6 +108,7 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 			DeployHealthCheck:  ov.DeployHealthCheck,
 			SelfHeal:           ov.SelfHeal,
 			Rollback:           ov.Rollback,
+			UpdateCheck:        ov.UpdateCheck,
 			DependsOn:          ov.DependsOn,
 			Hooks:              ov.Hooks,
 			Rollout:            ov.Rollout,

@@ -31,6 +31,10 @@ A transient top-level key `nixos_rebuild_in_flight` may appear while a rebuild i
 
 When the [health watch](configuration.md#health-watch) is enabled, it keeps its own file `healthwatch.yaml` in the same directory (also written atomically): per stack, the last successful deploy (`commit`, `at`) and, per service, the last 10 accepted status phases — each with the status, when it began (`since`, second-granular UTC), and the newest commit that had touched the stack at that time. This is what lets a restart resume transition detection without re-alerting known failures. A missing or corrupt `healthwatch.yaml` is a clean slate: the next poll re-baselines silently, no alerts fire.
 
+## Update-check state
+
+When the [update check](configuration.md#update-check) is enabled, it keeps its own file `update-check.yaml` in the same directory (also written atomically): which advertised update each service was already notified about, so a restart does not re-send messages for updates that are still standing. A missing or corrupt file is harmless — at worst, each standing update notifies once more.
+
 ## Deploy audit log
 
 When the [web UI](configuration.md) is enabled, skipper keeps a durable per-stack deploy audit log at `deploy-audit.jsonl` in the same directory — the "what happened to this stack, and when" trail behind the UI's [deploy-history panel](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md). It is separate from the bounded, in-memory live event feed: one **append-only** JSON record per line, so it survives restarts and is not evicted when older events roll off the live window.

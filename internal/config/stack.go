@@ -75,6 +75,13 @@ type Stack struct {
 	// hashed — a runtime failure policy, so toggling it does not itself redeploy.
 	Rollback *bool `yaml:"rollback"`
 
+	// UpdateCheck overrides the global registry update check for this stack.
+	// nil means inherit (on whenever the check itself is enabled); false opts
+	// the stack out — for a stack whose floating tag is meant to lag, or whose
+	// registry is unreachable. See ADR-0054. Never hashed — a display policy,
+	// so toggling it does not itself redeploy.
+	UpdateCheck *bool `yaml:"update_check"`
+
 	// DependsOn lists stacks that must deploy before this one. Within a run,
 	// a failed dependency blocks this stack (it stays dirty and retries on the
 	// next sync) and a queued dependency queues it. Entries must name other
