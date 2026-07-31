@@ -429,11 +429,11 @@ notifications:
 
 A message names each service whose version changed, with its old → new image, so you see *what* updated, not just which stack. A `signal` message appends one `• <service>: <old> → <new>` line per service; the `generic` payload carries the same list as `image_changes`. Services with no `image:` (built from `build:`) are not version-tracked.
 
-The versions compared are the ones the containers **actually ran** — recorded after each successful deploy — not the references in the compose file, so a stack on a floating tag reports the update behind the unchanged tag:
+The versions compared are the ones the containers **actually ran** — recorded after each successful deploy — not the references in the compose file. A tag pinned to a digest already says what changed, so it is reported as-is; a tag without one (`nextcloud:34-ghostscript`) is blind to a re-pull, so the image id is carried alongside it and the update behind the unchanged tag is reported too:
 
 ```
 [host-a] ✅ deploy succeeded: nextcloud (48.2s)
-  • app: 30-apache@a1b2c3d4e5f6 → 30-apache@9f8e7d6c5b4a
+  • app: 34-ghostscript@a1b2c3d4e5f6 → 34-ghostscript@9f8e7d6c5b4a
   • redis: 7.2 → 7.4
   ✓ health gate passed
 ```

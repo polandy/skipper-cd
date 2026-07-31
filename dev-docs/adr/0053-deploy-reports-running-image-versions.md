@@ -23,7 +23,23 @@ The UI already had a second, more truthful source: the Stacks view reads what
 each service *runs* via `docker compose ps`. But `ps` reports the image
 *reference*, which is the same string that did not change — so it cannot answer
 this either. The value that does move is the container's **image ID**, which
-`docker compose images` reports per service.
+`docker compose images` reports.
+
+Compose splits that answer across its two read commands, and neither half is
+usable alone:
+
+- `ps --format json` has `Service`, the container `Name` and the `Image`
+  **reference** it runs — but no image id.
+- `images --format json` has the image `ID` and a `ContainerName` — but **no
+  `Service` field at all**, and its `Tag` is **empty** for every image pulled by
+  digest (verified on Docker Compose 5.1.4).
+
+So an identity built from `images` alone cannot be attributed to a service, and
+building the reference from its `Repository`/`Tag` would *lose* the tag exactly
+on digest-pinned images — turning a readable `v3.7.9 → v3.8.0` into two
+unreadable hex ids. That matters: a host whose images are digest-pinned (a
+Renovate-managed repo, where the digest *is* part of the reference) is the
+common case, and the reference-based delta already works perfectly there.
 
 The obvious fix — record the resolved image ID in `state.yaml` → `images` — is
 wrong: that map is also what `hasAnyImageChanged` reads to decide whether to
@@ -35,11 +51,20 @@ reference never matches, so every stack would pull on every run.
 **A successful deploy records what the stack's containers now run, and the next
 deploy reports its version change against that.**
 
-- After a successful apply, `docker compose images --format json` gives one
-  identity per service: `<repository>:<tag>@<short image id>`. The ID is
-  truncated to docker's own 12-hex short form, so a docker that reports the full
-  `sha256:` digest and one that reports the short ID normalize to the same value
-  — a docker upgrade must not read as a rebuild.
+- After a successful apply, `ps` and `images` are read and **joined on the
+  container name** — the only key both share — giving one identity per service.
+- That identity is **the reference the container runs, plus the short image id
+  when and only when the reference carries no digest**:
+  - `traefik:v3.7.9@sha256:6529…` stays verbatim. It already identifies the
+    image exactly, so a tag bump keeps reading as a tag bump.
+  - `nextcloud:34-ghostscript` gains `@40c2d6f1d8f0`, because that reference
+    alone is blind to a re-pull.
+
+  The addition is therefore strictly additive: it never degrades a message that
+  already worked, and adds the id exactly where the reference is blind. The id
+  is truncated to docker's own 12-hex short form, so a docker that reports the
+  full `sha256:` digest and one that reports the short ID normalize to the same
+  value — a docker upgrade must not read as a rebuild.
 - It is persisted under a **separate** top-level key, `running_images`. The
   existing `images` map keeps holding the compose file's *desired* references
   and remains the sole input to the pull decision. Two questions, two maps.
@@ -63,14 +88,21 @@ names what the gate did.
 
 ## Consequences
 
-- A `:latest` redeploy now reports `app: 30-apache@a1b2c3d4e5f6 →
-  30-apache@9f8e7d6c5b4a` instead of nothing. The UI needs no change: it already
-  renders a same-tag, moved-digest change as `tag ↻` (rebuilt).
-- One extra `docker compose images` per successful deploy. It runs through the
-  same `Outputter` as rollout's `compose ps` read, which passes no env, so a
-  compose file interpolating an `env_file` variable resolves it to empty here.
-  That affects this read only — the deploy itself runs with the full env — and a
-  compose file that errors on the missing value degrades to the fallback above.
+- A floating-tag redeploy now reports `app: 34-ghostscript@a1b2c3d4e5f6 →
+  34-ghostscript@9f8e7d6c5b4a` instead of nothing, while a digest-pinned tag
+  bump still reports `v3.7.9 → v3.8.0` exactly as before. The UI needs no
+  change: it already renders a same-tag, moved-digest change as `tag ↻`
+  (rebuilt) and a tag bump as the tags.
+- Two extra compose reads per successful deploy (`ps` + `images`). They run
+  through the same `Outputter` as rollout's `compose ps` read, which passes no
+  env, so a compose file interpolating an `env_file` variable resolves it to
+  empty here. That affects these reads only — the deploy itself runs with the
+  full env — and a compose file that errors on the missing value degrades to the
+  fallback above.
+- A service `ps` does not account for is dropped rather than guessed at from its
+  container name, and a failed `images` read discards the whole answer: half of
+  it would make every floating-tag service look like it had just moved to a
+  reference with no id.
 - The first deploy of each stack after upgrading reports the old
   compose-reference delta (usually empty) and establishes the baseline. From the
   second one on, the version delta is the real one.

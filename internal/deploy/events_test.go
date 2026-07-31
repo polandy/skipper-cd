@@ -423,18 +423,18 @@ func TestDeployStack_SuccessEventNamesChangedServiceVersions(t *testing.T) {
 	}
 }
 
-// composeImagesJSON is one `docker compose images --format json` reply for a
-// single-service stack whose service is named `app`.
-func composeImagesJSON(repo, tag, id string) []byte {
-	return fmt.Appendf(nil, `[{"Service":"app","Repository":%q,"Tag":%q,"ID":%q}]`, repo, tag, id)
-}
-
-// outputImagesOnly answers `compose images` reads with the given payload and
-// every other Output read with nothing.
-func outputImagesOnly(payload []byte) func(int, []string) ([]byte, error) {
+// outputRunningImage answers the two reads runningImages makes for a
+// single-service stack (service `app`, container `stack-app-1`): `ps` carries
+// the reference the container runs, `images` the image id behind it — compose
+// reports no service on the latter, which is why they have to be joined.
+func outputRunningImage(ref, id string) func(int, []string) ([]byte, error) {
+	const container = "stack-app-1"
 	return func(_ int, args []string) ([]byte, error) {
-		if slices.Contains(args, "images") {
-			return payload, nil
+		switch {
+		case slices.Contains(args, "ps"):
+			return fmt.Appendf(nil, `[{"Service":"app","Name":%q,"Image":%q}]`, container, ref), nil
+		case slices.Contains(args, "images"):
+			return fmt.Appendf(nil, `[{"ContainerName":%q,"ID":%q}]`, container, id), nil
 		}
 		return nil, nil
 	}
@@ -449,9 +449,9 @@ func TestDeployStack_SuccessEventReportsMovedFloatingTag(t *testing.T) {
 	if err := os.MkdirAll(stackDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nextcloud:latest"))
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nextcloud:34-ghostscript"))
 
-	runner := &recordingRunner{outputFn: outputImagesOnly(composeImagesJSON("nextcloud", "latest", "9f8e7d6c5b4a"))}
+	runner := &recordingRunner{outputFn: outputRunningImage("nextcloud:34-ghostscript", "sha256:9f8e7d6c5b4a0011")}
 	var successEvt *events.DeployEvent
 	d := New(Config{Runner: runner, Outputter: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		if e.Status == events.StatusSuccess {
@@ -462,8 +462,8 @@ func TestDeployStack_SuccessEventReportsMovedFloatingTag(t *testing.T) {
 	state := &persistedState{
 		Stacks: map[string]stackFileHashes{"cloud": {"old": "oldhash"}},
 		// The compose reference is unchanged — only the image behind the tag moved.
-		Images:        map[string]serviceImageByName{"cloud": {"app": "nextcloud:latest"}},
-		RunningImages: map[string]serviceImageByName{"cloud": {"app": "nextcloud:latest@a1b2c3d4e5f6"}},
+		Images:        map[string]serviceImageByName{"cloud": {"app": "nextcloud:34-ghostscript"}},
+		RunningImages: map[string]serviceImageByName{"cloud": {"app": "nextcloud:34-ghostscript@a1b2c3d4e5f6"}},
 	}
 
 	if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "cloud"}, baseDir, "", nil, state); err != nil {
@@ -473,13 +473,13 @@ func TestDeployStack_SuccessEventReportsMovedFloatingTag(t *testing.T) {
 		t.Fatal("expected success event")
 	}
 	want := []events.ServiceImageChange{
-		{Service: "app", Old: "nextcloud:latest@a1b2c3d4e5f6", New: "nextcloud:latest@9f8e7d6c5b4a"},
+		{Service: "app", Old: "nextcloud:34-ghostscript@a1b2c3d4e5f6", New: "nextcloud:34-ghostscript@9f8e7d6c5b4a"},
 	}
 	if !reflect.DeepEqual(successEvt.ImageChanges, want) {
 		t.Errorf("success event ImageChanges = %+v, want %+v", successEvt.ImageChanges, want)
 	}
 	// The next deploy measures against what this one left running.
-	if got := state.runningImagesFor("cloud")["app"]; got != "nextcloud:latest@9f8e7d6c5b4a" {
+	if got := state.runningImagesFor("cloud")["app"]; got != "nextcloud:34-ghostscript@9f8e7d6c5b4a" {
 		t.Errorf("recorded running image = %q, want the version just deployed", got)
 	}
 }
@@ -492,7 +492,7 @@ func TestDeployStack_WithoutRunningBaselineKeepsComposeReferenceDelta(t *testing
 	}
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.27"))
 
-	runner := &recordingRunner{outputFn: outputImagesOnly(composeImagesJSON("nginx", "1.27", "9f8e7d6c5b4a"))}
+	runner := &recordingRunner{outputFn: outputRunningImage("nginx:1.27", "sha256:9f8e7d6c5b4a0011")}
 	var successEvt *events.DeployEvent
 	d := New(Config{Runner: runner, Outputter: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 		if e.Status == events.StatusSuccess {
