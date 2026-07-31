@@ -19,6 +19,13 @@ connect is delivered right after the baseline. `GET /api/v1/snapshot` is
 unchanged and remains the read surface for external consumers — notably the
 multi-host fan-in — it is simply no longer the UI's connect path, so the
 no-drift property is kept by the shared collector rather than by shared use.
+**Amended 2026-07-31 — the subscribe-first rule covers deploy events too.**
+The handler had kept the original order for the deploy history (replay, then
+subscribe), leaving the same gap for a deploy event published mid-connect. It
+now subscribes to the deploy broadcaster before reading the history snapshot
+and drops live events whose monotonic ID the replay (or a Last-Event-ID
+resume) already covered, so a racing deploy event is delivered right after the
+replay instead of staying invisible until the next reconnect.
 Date: 2026-07-19
 
 ## Context

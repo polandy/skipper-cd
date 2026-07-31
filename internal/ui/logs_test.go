@@ -19,9 +19,9 @@ func TestLogsSSEHandler_SendsBacklogOnConnect(t *testing.T) {
 
 	handler := LogsSSEHandler(log)
 	req := httptest.NewRequest(http.MethodGet, "/api/logs", nil)
-	rec := serveSSE(t, handler, req, nil)
+	rec := serveSSE(t, handler, req, "", nil)
 
-	body := rec.Body.String()
+	body := rec.Body()
 	if !strings.Contains(body, `"msg":"starting up"`) {
 		t.Error("expected backlog entry 'starting up'")
 	}
@@ -39,9 +39,9 @@ func TestLogsSSEHandler_FiltersBacklogByLastEventID(t *testing.T) {
 	handler := LogsSSEHandler(log)
 	req := httptest.NewRequest(http.MethodGet, "/api/logs", nil)
 	req.Header.Set("Last-Event-ID", strconv.FormatInt(oldID, 10))
-	rec := serveSSE(t, handler, req, nil)
+	rec := serveSSE(t, handler, req, "", nil)
 
-	body := rec.Body.String()
+	body := rec.Body()
 	if strings.Contains(body, `"msg":"old line"`) {
 		t.Error("should not contain entries before Last-Event-ID")
 	}
@@ -52,14 +52,18 @@ func TestLogsSSEHandler_FiltersBacklogByLastEventID(t *testing.T) {
 
 func TestLogsSSEHandler_StreamsLiveEntries(t *testing.T) {
 	log := logbuf.New(10)
+	// Seed one entry: its replayed frame is the readiness signal that the
+	// backlog read — and the subscribe before it — is done, so the ChildLine
+	// below provably exercises the live path.
+	log.Append(time.Now(), "INFO", "seed", nil)
 
 	handler := LogsSSEHandler(log)
 	req := httptest.NewRequest(http.MethodGet, "/api/logs", nil)
-	rec := serveSSE(t, handler, req, func() {
+	rec := serveSSE(t, handler, req, `"msg":"seed"`, func() {
 		log.ChildLine("docker", "stdout", "Container gitea Started", "")
-	})
+	}, `"msg":"Container gitea Started"`)
 
-	body := rec.Body.String()
+	body := rec.Body()
 	if !strings.Contains(body, `"msg":"Container gitea Started"`) {
 		t.Errorf("expected live entry in body: %s", body)
 	}
@@ -74,11 +78,11 @@ func TestLogsSSEHandler_DoesNotDuplicateEntriesAcrossReplayAndLive(t *testing.T)
 
 	handler := LogsSSEHandler(log)
 	req := httptest.NewRequest(http.MethodGet, "/api/logs", nil)
-	rec := serveSSE(t, handler, req, func() {
+	rec := serveSSE(t, handler, req, `"msg":"backlog line"`, func() {
 		log.Append(time.Now(), "INFO", "live line", nil)
-	})
+	}, `"msg":"live line"`)
 
-	body := rec.Body.String()
+	body := rec.Body()
 	if got := strings.Count(body, `"msg":"backlog line"`); got != 1 {
 		t.Errorf("expected the backlog entry exactly once, got %d times", got)
 	}
@@ -90,7 +94,7 @@ func TestLogsSSEHandler_DoesNotDuplicateEntriesAcrossReplayAndLive(t *testing.T)
 func TestLogsSSEHandler_SetsSSEHeaders(t *testing.T) {
 	handler := LogsSSEHandler(logbuf.New(10))
 	req := httptest.NewRequest(http.MethodGet, "/api/logs", nil)
-	rec := serveSSE(t, handler, req, nil)
+	rec := serveSSE(t, handler, req, "", nil)
 
 	headers := rec.Header()
 	if headers.Get("Content-Type") != "text/event-stream" {
