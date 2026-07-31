@@ -813,3 +813,173 @@ test('makeReconnector instances keep separate backoff state', () => {
   b.schedule();
   assert.equal(t.delays()[t.delays().length - 1], h.RECONNECT_BASE_DELAY_MS);
 });
+
+test('rosterAttentionRank floats only an enabled, unhealthy stack', () => {
+  const health = {
+    bad: { status: h.HEALTH.UNHEALTHY },
+    parked: { status: h.HEALTH.UNHEALTHY },
+    ok: { status: h.HEALTH.HEALTHY },
+    warming: { status: h.HEALTH.STARTING },
+    idle: { status: h.HEALTH.STOPPED },
+  };
+  assert.equal(h.rosterAttentionRank({ name: 'bad' }, health), 0);
+  // A disabled stack never floats — its unhealth is parked on purpose.
+  assert.equal(h.rosterAttentionRank({ name: 'parked', disabled: true }, health), 1);
+  // The reporting-only states stay put (same rule as attentionStacks).
+  assert.equal(h.rosterAttentionRank({ name: 'ok' }, health), 1);
+  assert.equal(h.rosterAttentionRank({ name: 'warming' }, health), 1);
+  assert.equal(h.rosterAttentionRank({ name: 'idle' }, health), 1);
+  // No live-health entry at all (poller off, or a never-deployed stack).
+  assert.equal(h.rosterAttentionRank({ name: 'ghost' }, health), 1);
+  assert.equal(h.rosterAttentionRank({ name: 'ghost' }, undefined), 1);
+});
+
+test('rosterOrdered floats unhealthy stacks, preserving backend order within each group', () => {
+  const snap = [{ name: 'a' }, { name: 'b' }, { name: 'c' }, { name: 'd' }, { name: 'e' }];
+  const health = {
+    b: { status: h.HEALTH.UNHEALTHY },
+    d: { status: h.HEALTH.UNHEALTHY },
+    a: { status: h.HEALTH.HEALTHY },
+  };
+  const names = (list) =>
+    list.map((e) => {
+      return e.name;
+    });
+  // Stability is the contract: b before d (unhealthy, backend order kept), and
+  // a/c/e in backend order after them — never re-alphabetised.
+  assert.deepEqual(names(h.rosterOrdered(snap, health)), ['b', 'd', 'a', 'c', 'e']);
+  // A sorted copy: the snapshot itself must stay in backend order.
+  assert.deepEqual(names(snap), ['a', 'b', 'c', 'd', 'e']);
+  // Nothing unhealthy → backend order verbatim.
+  assert.deepEqual(names(h.rosterOrdered(snap, {})), ['a', 'b', 'c', 'd', 'e']);
+  assert.deepEqual(h.rosterOrdered(undefined, health), []);
+});
+
+// A peers snapshot as applyPeers stores it: one fully-populated peer, and one
+// older peer whose fanned-in state predates every per-stack section.
+function peersFixture() {
+  return {
+    self: 'primary',
+    peers: [
+      {
+        name: 'host-b',
+        url: 'https://host-b:8001',
+        reachable: true,
+        stale: false,
+        state: {
+          health: { stacks: { web: { status: 'healthy' } } },
+          healthwatch: { stacks: { web: { app: [] } } },
+          app_links: { stacks: { web: ['web.example.com'] } },
+          stacks: { repo_web_url: 'https://forge-b.example.com/o/r' },
+        },
+      },
+      { name: 'old-peer', url: 'https://old:8001', reachable: false, stale: true, state: {} },
+    ],
+  };
+}
+
+test('resolvePeerView finds the fanned-in peer, never self', () => {
+  const peers = peersFixture();
+  assert.equal(h.resolvePeerView(peers, 'primary', 'host-b').name, 'host-b');
+  // The primary itself never resolves to a peer view — its rows read the live
+  // local snapshots, not the fan-in.
+  assert.equal(h.resolvePeerView(peers, 'primary', 'primary'), null);
+  assert.equal(h.resolvePeerView(null, 'primary', 'host-b'), null); // single-host
+  assert.equal(h.resolvePeerView(peers, 'primary', ''), null);
+  assert.equal(h.resolvePeerView(peers, 'primary', 'ghost'), null);
+  // A snapshot without a peers list must not throw.
+  assert.equal(h.resolvePeerView({ self: 'primary' }, 'primary', 'host-b'), null);
+});
+
+test('per-host map resolvers return the self snapshot for self', () => {
+  const peers = peersFixture();
+  const selfHealth = { app: { status: 'unhealthy' } };
+  const selfWatch = { app: { web: [] } };
+  const selfLinks = { app: ['app.example.com'] };
+  assert.equal(h.resolveHealthMap(peers, 'primary', 'primary', selfHealth), selfHealth);
+  assert.equal(h.resolveHealthwatchMap(peers, 'primary', 'primary', selfWatch), selfWatch);
+  assert.equal(h.resolveAppLinksMap(peers, 'primary', 'primary', selfLinks), selfLinks);
+  // Single-host instance: no peers snapshot at all, any host reads self.
+  assert.equal(h.resolveHealthMap(null, '', '', selfHealth), selfHealth);
+});
+
+test("per-host map resolvers read a peer's own fanned-in state", () => {
+  const peers = peersFixture();
+  assert.deepEqual(h.resolveHealthMap(peers, 'primary', 'host-b', {}), {
+    web: { status: 'healthy' },
+  });
+  assert.deepEqual(h.resolveHealthwatchMap(peers, 'primary', 'host-b', {}), {
+    web: { app: [] },
+  });
+  assert.deepEqual(h.resolveAppLinksMap(peers, 'primary', 'host-b', {}), {
+    web: ['web.example.com'],
+  });
+});
+
+test('per-host map resolvers tolerate an older peer missing the section', () => {
+  const peers = peersFixture();
+  const selfHealth = { app: { status: 'healthy' } };
+  // old-peer's state carries none of the per-stack sections — each resolver
+  // must fall to an empty map, never to the primary's own snapshot and never
+  // throw on the missing chain.
+  assert.deepEqual(h.resolveHealthMap(peers, 'primary', 'old-peer', selfHealth), {});
+  assert.deepEqual(h.resolveHealthwatchMap(peers, 'primary', 'old-peer', selfHealth), {});
+  assert.deepEqual(h.resolveAppLinksMap(peers, 'primary', 'old-peer', selfHealth), {});
+  // A peer with no state at all (never yet polled) behaves the same.
+  peers.peers.push({ name: 'fresh', url: 'https://fresh:8001' });
+  assert.deepEqual(h.resolveHealthMap(peers, 'primary', 'fresh', selfHealth), {});
+});
+
+test('resolveRepoWebURL links each host through its own forge', () => {
+  const peers = peersFixture();
+  const selfURL = 'https://forge.example.com/o/self';
+  assert.equal(h.resolveRepoWebURL(peers, 'primary', 'primary', selfURL), selfURL);
+  assert.equal(
+    h.resolveRepoWebURL(peers, 'primary', 'host-b', selfURL),
+    'https://forge-b.example.com/o/r',
+  );
+  // An older peer predating repo_web_url yields '' — plain-text SHAs, never a
+  // link through the wrong (primary's) forge.
+  assert.equal(h.resolveRepoWebURL(peers, 'primary', 'old-peer', selfURL), '');
+  assert.equal(h.resolveRepoWebURL(null, 'primary', 'primary', ''), '');
+});
+
+test('buildHostList puts self first and coerces peer flags to booleans', () => {
+  // Single host: exactly the self descriptor, always reachable, never stale.
+  assert.deepEqual(h.buildHostList(null, 'primary'), [
+    { name: 'primary', url: '', self: true, reachable: true, stale: false },
+  ]);
+  const peers = peersFixture();
+  peers.peers.push({ name: 'fresh', url: 'https://fresh:8001' }); // older shape: no flags
+  const list = h.buildHostList(peers, 'primary');
+  assert.deepEqual(
+    list.map((x) => {
+      return x.name;
+    }),
+    ['primary', 'host-b', 'old-peer', 'fresh'],
+  );
+  assert.deepEqual(list[1], {
+    name: 'host-b',
+    url: 'https://host-b:8001',
+    self: false,
+    reachable: true,
+    stale: false,
+  });
+  assert.deepEqual(list[2], {
+    name: 'old-peer',
+    url: 'https://old:8001',
+    self: false,
+    reachable: false,
+    stale: true,
+  });
+  // Missing flags coerce to booleans, not undefined — the renderers branch on them.
+  assert.deepEqual(list[3], {
+    name: 'fresh',
+    url: 'https://fresh:8001',
+    self: false,
+    reachable: false,
+    stale: false,
+  });
+  // A peers snapshot without a peers list must not throw.
+  assert.deepEqual(h.buildHostList({ self: 'primary' }, 'primary').length, 1);
+});
