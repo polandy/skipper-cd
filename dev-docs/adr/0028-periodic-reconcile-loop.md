@@ -29,11 +29,11 @@ even when webhooks are configured** — the webhook is treated as a latency
 optimization, and the periodic poll is the correctness guarantee. skipper has the
 optimization but not the guarantee.
 
-Adding a periodic reconcile stays squarely inside skipper's scope
-([[project-scope-visualization-not-trigger]] / the "viz tool, git-driven, no manual
-trigger" boundary): it introduces **no new trigger surface** and **no manual
-action** — it is the *same* git-desired-state deploy skipper already does, just on
-a timer instead of only on a push. It reconciles against **git**, not against
+Adding a periodic reconcile stays squarely inside skipper's scope (the "viz
+tool, git-driven, no manual trigger" boundary): it introduces **no new trigger
+surface** and **no manual action** — it is the *same* git-desired-state deploy
+skipper already does, just on a timer instead of only on a push. It reconciles
+against **git**, not against
 container runtime state; runtime-drift self-heal is a separate, later question (see
 Consequences).
 

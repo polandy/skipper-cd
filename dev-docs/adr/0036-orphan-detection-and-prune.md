@@ -24,7 +24,8 @@ a follow-up on the same design.
 
 Non-goals: pruning projects skipper never deployed (manually started compose
 projects, skipper's own container), volume deletion, image cleanup, and any
-manual "delete" button — deploys stay git-driven ([[project-scope-visualization-not-trigger]]).
+manual "delete" button — deploys stay git-driven, and the UI visualizes them
+rather than triggering or editing them.
 
 ## Decision
 

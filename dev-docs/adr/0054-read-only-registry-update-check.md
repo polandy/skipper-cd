@@ -25,10 +25,9 @@ watches, that upstream has moved on:
 
 This is a *display* gap, and display-only runtime facts are squarely in
 skipper's scope ([ADR-0027](0027-live-stack-health-in-ui.md) live health,
-ADR-0053 running versions,
-[[project-scope-visualization-not-trigger]]). The Stacks view already answers
-"what runs" and "is it healthy"; "is it current" is the missing third of the
-same question.
+ADR-0053 running versions — visualization, not trigger). The Stacks view
+already answers "what runs" and "is it healthy"; "is it current" is the missing
+third of the same question.
 
 ## Decision
 
@@ -185,8 +184,8 @@ the *doing*; shape B stays rejected.
   service to run, configure, and wire to a second notification pipe — against
   the one-pane-of-glass point of the UI, and blind to skipper's
   per-service running identity. Rejected.
-- **Surface it as a deploy trigger or UI button.** Rejected —
-  [[project-scope-visualization-not-trigger]] and ADR-0030 shape B.
+- **Surface it as a deploy trigger or UI button.** Rejected — the UI
+  visualizes, it does not trigger or edit (ADR-0030 shape B).
 
 ## Amendment (2026-08-02): `notify` defaults to false — the UI is the surface
 

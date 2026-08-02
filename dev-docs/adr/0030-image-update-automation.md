@@ -28,8 +28,8 @@ upstream releases.
 The tension is that acting on a new registry digest means reacting to a signal
 **that does not come from git** — the first non-git deploy trigger skipper would
 ever have. skipper's whole identity is "git is the desired state; the running state
-equals git" ([[project-scope-visualization-not-trigger]]). Any design here is
-really a decision about *how far* to bend that, so the three shapes below differ
+equals git" — visualization, not trigger. Any design here is really a decision
+about *how far* to bend that, so the three shapes below differ
 mostly in what they do to the git-single-source-of-truth invariant.
 
 ### The three shapes
@@ -111,8 +111,8 @@ yet* — delegation covers the homelab today.
 
 - **With (C):** the "mutable tag never updates" gap is closed with no new skipper
   surface. Image updates arrive as commits in the deploy repo — visible in
-  skipper's own diff/commit view ([[project-todo-diff-commit-metadata]]) like any
-  other change — and deploy through the path skipper already exercises and tests.
+  skipper's own diff/commit view, with its commit metadata, like any other
+  change — and deploy through the path skipper already exercises and tests.
   The dependency is operational (run Renovate against the deploy repo), not code.
 - **Scope stays intact.** No non-git deploy trigger is introduced; git remains the
   single source of truth and the audit log. skipper keeps doing exactly what a push

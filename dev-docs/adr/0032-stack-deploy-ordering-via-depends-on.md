@@ -22,10 +22,9 @@ This is the docker-compose analogue of ArgoCD's sync waves / `depends-on`
 annotations: an ordering guarantee *between* units of deployment, where compose's
 own `depends_on` only orders services *within* one stack.
 
-The feature stays inside skipper's scope
-([[project-scope-visualization-not-trigger]]): it adds no trigger surface and no
-manual action — it only constrains the order and gating of deploys that git
-already demanded.
+The feature stays inside skipper's scope (visualization, not trigger): it adds
+no trigger surface and no manual action — it only constrains the order and
+gating of deploys that git already demanded.
 
 ## Decision
 
