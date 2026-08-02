@@ -203,9 +203,10 @@ func assertCommandNotCalled(t *testing.T, calls []runCall, subcommand string) {
 func boolPtr(b bool) *bool { return &b }
 
 // captureLogAt runs fn with the default logger swapped for one writing to a
-// buffer at the given threshold, and returns what was logged. It is how a
-// test asserts which *level* a line is emitted at — the log_level key makes
-// that a behavioural property, not an implementation detail.
+// buffer at the given threshold, and returns what was logged. Both the *level*
+// a line is emitted at and the attrs it carries are behaviour here, not
+// implementation detail: the level decides whether an idle run stays quiet,
+// and the console renders a changed file's diff straight from the record.
 func captureLogAt(t *testing.T, level slog.Level, fn func(*testing.T)) string {
 	t.Helper()
 	var buf bytes.Buffer

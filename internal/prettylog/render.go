@@ -39,6 +39,10 @@ type style struct {
 	indent bool
 	gap    bool // blank line before this record — a new stack block starting
 	body   func(attrs []attr, color bool) string
+	// block renders extra lines *below* the record's own line, already
+	// newline-terminated, for a record that carries more than one line's worth
+	// of detail. Empty output means nothing is appended.
+	block func(attrs []attr, color bool) string
 }
 
 // anchors maps the exact message text of skipper-cd's deploy-lifecycle log
@@ -64,7 +68,7 @@ var anchors = map[string]style{
 	"deploy deferred: autosync paused":                         {glyph: "▪", color: ansiWarn, body: bodyDeferred},
 	"self-heal: restoring stack to its deployed running state": {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restoring")},
 	"self-heal: stack restored":                                {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restored")},
-	"file changed":                                             {glyph: "↳", indent: true, body: bodyFileChanged},
+	"file changed":                                             {glyph: "↳", indent: true, body: bodyFileChanged, block: blockDiff},
 
 	// Multi-host fan-in (ADR-0048): the startup line and per-peer reachability
 	// edges. Message text mirrors cmd/skipper and internal/peers by hand — same
@@ -89,7 +93,11 @@ func render(r slog.Record, attrs []attr, color bool) string {
 		return renderLine(r.Time, "▪", ansiDim, false, false, bodyStacksDisabled(attrs, color), color)
 	}
 	if st, ok := anchors[r.Message]; ok {
-		return renderLine(r.Time, st.glyph, st.color, st.indent, st.gap, st.body(attrs, color), color)
+		line := renderLine(r.Time, st.glyph, st.color, st.indent, st.gap, st.body(attrs, color), color)
+		if st.block != nil {
+			line += st.block(attrs, color)
+		}
+		return line
 	}
 	glyph, code := levelGlyph(r.Level)
 	indent := hasKey(attrs, "stack")
@@ -209,6 +217,48 @@ func bodyDeployHook(attrs []attr, color bool) string {
 
 func bodyFileChanged(attrs []attr, color bool) string {
 	return colorize(color, ansiDim, str(attrs, "file"))
+}
+
+// diffIndent aligns a diff block under the file name it belongs to, past the
+// timestamp column, so the block reads as that file's detail rather than as
+// further log lines.
+const diffIndent = "      "
+
+// blockDiff renders the changed file's diff below its name, one line per diff
+// line in the usual add/remove/hunk colours. The console is the only surface
+// with no way to *fetch* the diff — the web UI opens it from the deploy event
+// on demand — so here it is printed inline. The content is already capped
+// upstream (10 KB per file, internal/deploy), which bounds this block too.
+func blockDiff(attrs []attr, color bool) string {
+	diff := str(attrs, "diff")
+	if diff == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, line := range strings.Split(strings.TrimRight(diff, "\n"), "\n") {
+		b.WriteString(diffIndent)
+		b.WriteString(colorize(color, diffLineColor(line), line))
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// diffLineColor picks a unified-diff line's colour. The `+++`/`---` file
+// headers are checked before the plain `+`/`-` cases so they read as metadata
+// rather than as a huge addition and removal.
+func diffLineColor(line string) string {
+	switch {
+	case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+		return ansiDim
+	case strings.HasPrefix(line, "@@"):
+		return ansiWarn
+	case strings.HasPrefix(line, "+"):
+		return ansiSuccess
+	case strings.HasPrefix(line, "-"):
+		return ansiDanger
+	default:
+		return ansiDim
+	}
 }
 
 // bodyFanIn narrates the multi-host startup line: how many peers are watched

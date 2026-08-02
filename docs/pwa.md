@@ -14,5 +14,6 @@ The web UI is an **installable Progressive Web App**: add it to a phone home scr
 
 ## Good to know
 
-- Live data (deploys, logs, health) is always fetched from the server, never from cache. Offline, the app opens but shows the usual "reconnecting" state — it does not replay stale deploy data.
+- Live data (deploys, logs, health) is always fetched from the server, never from cache. It does not replay stale deploy data.
+- Offline, the app still opens from its cache, and says so: the connection indicator reads `reconnecting` and the deploy list shows **"Can't reach skipper — the deploy stream is offline."** with a **Retry**. Bringing the app back to the foreground reconnects it, so a phone that was asleep picks up where it left off.
 - The in-app dark/light toggle works as usual; the OS-level window and status-bar colour follow the operating system's light/dark preference (a platform limitation).
