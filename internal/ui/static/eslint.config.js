@@ -86,6 +86,7 @@ module.exports = [
         hostChipHTML: 'readonly',
         imageDeltaHTML: 'readonly',
         jumpBtnHTML: 'readonly',
+        rowActionClusterHTML: 'readonly',
         linkCellHTML: 'readonly',
         logLineHTML: 'readonly',
         nextTrailHTML: 'readonly',

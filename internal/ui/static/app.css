@@ -3132,6 +3132,11 @@
     color: var(--text-primary); letter-spacing: -0.3px;
   }
   .roster-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The row's affordance glyphs are one cluster (rowActionClusterHTML): the
+     same 8px rhythm as the cell around them, but a single flex item, so a
+     narrow cell wraps them to the next line together instead of breaking
+     between two icons. flex: none keeps the name the part that yields. */
+  .row-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; }
   .roster-when, .roster-sha {
     font-family: var(--font-mono); font-size: 12px;
     color: var(--text-muted); white-space: nowrap;

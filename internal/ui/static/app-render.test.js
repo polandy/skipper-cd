@@ -409,6 +409,18 @@ test('rosterRowActionsHTML is empty for a disabled stack', () => {
   assert.equal(r.rosterRowActionsHTML({ name: 'web', disabled: true }), '');
 });
 
+test('rowActionClusterHTML wraps the row glyphs in one box, dropping the empty ones', () => {
+  const html = r.rowActionClusterHTML('<b>jump</b>', '', '<i>logs</i>');
+  assert.equal(html, '<span class="row-actions"><b>jump</b><i>logs</i></span>');
+});
+
+test('rowActionClusterHTML is empty when the row has no actions at all', () => {
+  // No empty box: it would be a flex item, and the cell's gap would leave a
+  // phantom space after the stack name.
+  assert.equal(r.rowActionClusterHTML('', ''), '');
+  assert.equal(r.rowActionClusterHTML(), '');
+});
+
 test('rosterVersionInnerHTML is empty while the stack has no health entry', () => {
   assert.equal(r.rosterVersionInnerHTML('web', undefined), '');
   assert.equal(r.rosterVersionInnerHTML('web', { services: [] }), '');
