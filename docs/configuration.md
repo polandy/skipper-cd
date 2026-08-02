@@ -128,11 +128,19 @@ With the default `log_format: pretty`, startup logs the effective stack set (nam
 14:32:07  ▣ stacks  · 4 discovered
 14:32:07  ◆ nextcloud  hooks pre_deploy·1 post_deploy·1   watch ./nextcloud
 14:32:08  ▸ nextcloud  changed · 2 files
+14:32:08    ↳ nextcloud/docker-compose.yml
+      @@ -8,7 +8,7 @@ services:
+         app:
+      -    image: nextcloud:30.0.4-apache
+      +    image: nextcloud:30.0.6-apache
+           restart: unless-stopped
 14:32:08    ↳ pre_deploy [1]
 14:32:20  ✓ nextcloud  deployed
 14:32:41  ↺ arr-stack  rolled back  — health check failed: GET /ping: context deadline exceeded
 14:32:41  ✗ run complete  1 deployed · 1 rolled back · 1 skipped
 ```
+
+Each changed file is listed with its **diff** below it, in the usual add/remove/hunk colours — the console has no way to open a diff on demand the way the web UI does, so it prints the one the deploy recorded. It is the same content, and it is bounded the same way: 10 KB per file, 50 KB per deploy. The diff is part of the `file changed` record, so `text` and `json` carry it too as a `diff` field; drop that field in the shipper if you do not want it there.
 
 Color auto-disables when stdout is not a terminal (e.g. redirected to a file) or `NO_COLOR` is set; icons still render. Use `log_format: text` or `log_format: json` for a log shipper (Loki, journald) or any other machine consumer.
 

@@ -120,6 +120,59 @@ visibility).
 - No new dependency: color/TTY detection is `os.File.Stat().Mode()`, no
   `golang.org/x/term` (keeps `vendor/` unchanged, `vendorHash = null` intact).
 
+## Amendment (2026-08-02): the console prints each changed file's diff
+
+The decision above narrates *what happened*; it stops at the file name
+(`↳ nextcloud/docker-compose.yml`). The web UI does not stop there — a
+`deploy complete` line carries the event id and opens the recorded diff on
+demand (`GET /api/events/{id}/diffs`). The console has no such affordance:
+`journalctl` cannot fetch. So for the one surface that cannot ask for the
+detail, the detail is printed:
+
+```
+14:32:08    ↳ nextcloud/docker-compose.yml
+      @@ -8,7 +8,7 @@ services:
+         app:
+      -    image: nextcloud:30.0.4-apache
+      +    image: nextcloud:30.0.6-apache
+           restart: unless-stopped
+```
+
+The block is indented past the timestamp column so it reads as that file's
+detail rather than as further log lines, and uses the add/remove/hunk
+colours already in the palette. `+++`/`---` headers are matched before the
+plain `+`/`-` cases so they render as metadata rather than as one huge
+addition and removal.
+
+### The diff travels as a log attr, and each sink decides
+
+`internal/deploy` attaches the (already truncated) diff to the `file changed`
+record rather than handing it to prettylog by some side channel — a display
+layer must not gain its own data path into the core. The consequence is that
+every sink sees it, and each one answers for itself:
+
+- **prettylog** renders the block. This is what it is for.
+- **`internal/logbuf`** clamps it. The ring is bounded (2000 entries) and
+  every entry is streamed to every connected browser over `/api/logs`;
+  10 KB payloads would evict real history and push kilobytes per line down
+  the stream. The rule this establishes: **the ring carries messages, not
+  payloads** — a payload has its own endpoint. The clamp counts *lines* for
+  a multi-line value, because that is the unit its reader thinks in
+  ("12 lines omitted"), with a byte ceiling so one runaway line cannot slip
+  past the line budget.
+- **text/json** carry it verbatim. A structured log is the complete record
+  by definition, and a shipper that does not want it can drop the field;
+  silently emitting less than the pretty format does would be the surprising
+  choice.
+
+### Bounds
+
+Nothing new is stored or computed: the content is the diff the deploy event
+already collected, under the caps that already applied to it — 10 KB per
+file, 50 KB per deploy (`internal/deploy/events.go`). A test pins the logged
+form to the stored one, so the console can never print more than the event
+kept.
+
 ## Amendment (2026-08-02): the idle-run narrative moves back to Debug; no verbosity key
 
 The decision above promoted `skipping stack, no changes detected` from Debug

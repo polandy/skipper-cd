@@ -1187,19 +1187,27 @@ hooks-declaring `web` stack and a plain `api` stack. Behaviour-only.
   `hooks-panel` (the row gains `hooks-open`); a second click toggles it closed.
 - **UAE4 — Portrait safety.** On a 400px portrait viewport the inline action
   cluster stays within the row bounds and the log panel opens below it.
-- **UAE5 — Wraps as one cluster.** On an iPad-mini-width viewport (744px) a
-  stack whose name is long enough to push the glyphs off the first line moves
-  them down *together*: the cluster sits below the name (the positive signal
-  that a wrap really happened) and every glyph in it shares one line. Before
+- **UAE5 — Wraps as one cluster, version stays put.** On an iPad-mini-width
+  viewport (744px) a stack carrying the full glyph set (jump, app link, logs,
+  hooks) cannot fit them behind its name: they move to a second line
+  *together* (the positive signal that a wrap really happened is asserted
+  first), every glyph shares one line, and the **version chip stays on the
+  name's line** rather than sliding to the middle of the now taller row. Before
   `.row-actions` each glyph was its own flex item and the row broke between two
-  icons. The same test asserts the row's **version chip stays on the name's
-  line**: a wrapped cell makes the row taller, and centred cells would drop the
-  version below the name it describes.
+  icons; before the top-aligned cells the version dropped below the name it
+  describes. The fixture also asserts its own shape — the name shares the first
+  line with the host chip — since a name long enough to take a line of its own
+  is a different case the alignment check would not describe.
 - **UAE6 — A re-polled app link stays in the cluster.** With an app link seeded
   (`appLinks` start option, detection rides the health poll) the icon is rebuilt
   on every poll long after the row rendered: it must land back inside the
   cluster ahead of the logs icon, leaving no glyph as a direct child of the
   stack cell. Appending it to the cell would strand it on its own line again.
+- **UAE7 — An over-long name clips instead of moving.** At the same width a
+  29-character stack name stays on the host chip's line, ellipsised, with the
+  version beside it and the full name in the element's `title`. Ungrouped, the
+  name took a line of its own below the chip and the version — aligned to the
+  row's first line — ended up above it.
 
 ### 4.33 UI — Maske AF: Status-badge icons + solid worst states (T3.14)
 

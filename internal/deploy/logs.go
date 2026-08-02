@@ -15,7 +15,7 @@ func (d *Deployer) LogComposeInvocation(cfg *config.Config, name string) (dir st
 	if !ok {
 		return "", nil, nil, false, nil
 	}
-	baseEnv, err := buildBaseEnv(cfg.VarsFile)
+	baseEnv, err := BaseEnv(cfg.VarsFile)
 	if err != nil {
 		return "", nil, nil, false, err
 	}
