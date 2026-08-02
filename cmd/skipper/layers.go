@@ -232,6 +232,22 @@ type healthLayer struct {
 	appLinks *applink.Detector
 }
 
+// healthOutputEnv returns the environment the poller's `docker compose ps`
+// runs in. The probe interpolates the same ${VAR} references the deploy path
+// does, so it needs vars_file; without it compose warns per unset variable per
+// stack on every tick — a continuous log stream at the poll interval. A
+// vars_file that fails to load is not worth refusing to poll over: fall back
+// to the process environment (nil), which the deploy path already surfaces the
+// failure for loudly.
+func healthOutputEnv(cfg *config.Config) []string {
+	env, err := deploy.BaseEnv(cfg.VarsFile)
+	if err != nil {
+		slog.Warn("health poller falling back to the process environment", "err", err)
+		return nil
+	}
+	return env
+}
+
 // buildHealthLayer constructs the stack-health poller. It feeds the UI health
 // view (when enabled), self-heal, and/or the health watchdog. For the UI it is
 // subscriber-gated so an idle dashboard does no docker work (ADR-0027);
@@ -248,19 +264,8 @@ func buildHealthLayer(cfg *config.Config, views stackViews, stateB *events.Broad
 	}
 	var hl healthLayer
 	healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
-	// The poller's `compose ps` interpolates the same ${VAR} references the
-	// deploy path does, so it needs vars_file in its environment. Without it
-	// compose warns per unset variable per stack on every tick — a continuous
-	// log stream at the poll interval. A vars_file that fails to load is not
-	// worth refusing to poll over: fall back to the process environment (the
-	// deploy path surfaces the same failure loudly).
-	healthEnv, err := deploy.BaseEnv(cfg.VarsFile)
-	if err != nil {
-		slog.Warn("health poller falling back to the process environment", "err", err)
-		healthEnv = nil
-	}
 	hpCfg := health.Config{
-		Outputter:  command.NewShellRunnerWithOutputEnv(healthTimeout, healthEnv),
+		Outputter:  command.NewShellRunnerWithOutputEnv(healthTimeout, healthOutputEnv(cfg)),
 		Stacks:     func() []health.StackRef { return health.StackRefs(cfg, views.effective()) },
 		Interval:   time.Duration(interval) * time.Second,
 		AlwaysPoll: selfHealActive || healthWatcher != nil,
