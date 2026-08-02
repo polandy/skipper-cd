@@ -11,7 +11,10 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-hits=$(grep -rn 'waitForTimeout' e2e/ui --include='*.ts' || true)
+# node_modules is excluded: Playwright's own type declarations document
+# waitForTimeout, so scanning them makes the check fail on any machine that has
+# installed the suite's dependencies — the rule is about our tests, not theirs.
+hits=$(grep -rn 'waitForTimeout' e2e/ui --include='*.ts' --exclude-dir=node_modules || true)
 if [ -n "$hits" ]; then
 	echo 'ERROR: fixed waits found in the e2e suite:'
 	echo "$hits" | sed 's/^/  /'
