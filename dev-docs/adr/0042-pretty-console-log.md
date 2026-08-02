@@ -251,12 +251,14 @@ narrative — was built and then deliberately dropped. Reasons:
   and evicts the deploys again. The measurement above is the argument
   against making that a switch someone can flip.
 
-The four demoted lines stay `slog.Debug` rather than being deleted, matching
-what the codebase already does with its other stand-down diagnostics
-(`reconcile tick skipped`, `self-heal skipped`, `healthwatch baseline`):
-below the fixed threshold, but present for anyone attaching a lower-level
-handler in a test or a debugging build. The prettylog anchor table keeps its
-entries for all four for the same reason.
+The three demoted `slog` lines stay `slog.Debug` rather than being deleted
+(the fourth, `HEAD is now at …`, is git's own output and is silenced at the
+source), matching what the codebase already does with its other stand-down
+diagnostics (`reconcile tick skipped`, `self-heal skipped`, `healthwatch
+baseline`): below the fixed threshold, but present for anyone attaching a
+lower-level handler in a test or a debugging build. The prettylog anchor
+table — and the web UI's mirror of it — keeps its entries for all three for
+the same reason.
 
 What is *not* changed: the skip is still reported everywhere it was before
 this ADR — as a `skipped` deploy event, in the run tally, and in the UI's
