@@ -404,34 +404,20 @@ func main() {
 
 // newLogHandler returns the slog handler for the configured log_format: a
 // JSON handler for "json", a logfmt text handler for "text", and prettylog's
-// colored console handler otherwise (the default, "pretty"). All three drop
-// records below level (log_level, default Info).
-func newLogHandler(format, level string, w io.Writer) slog.Handler {
-	threshold := slogLevel(level)
-	opts := &slog.HandlerOptions{Level: threshold}
+// colored console handler otherwise (the default, "pretty").
+//
+// All three log at Info and there is no key to change that: the level is a
+// property of what skipper has to say, not an operator setting. Narrowing
+// further is the web UI's job — its log view filters what it already has,
+// without a restart (ADR-0042 amendment).
+func newLogHandler(format string, w io.Writer) slog.Handler {
 	switch format {
 	case config.LogFormatJSON:
-		return slog.NewJSONHandler(w, opts)
+		return slog.NewJSONHandler(w, nil)
 	case config.LogFormatText:
-		return slog.NewTextHandler(w, opts)
+		return slog.NewTextHandler(w, nil)
 	default:
-		return prettylog.New(w, threshold)
-	}
-}
-
-// slogLevel maps a validated log_level value to its slog threshold. An
-// unrecognized value cannot reach here (config validation rejects it) and
-// falls back to Info rather than silently muting or flooding the log.
-func slogLevel(level string) slog.Level {
-	switch level {
-	case config.LogLevelDebug:
-		return slog.LevelDebug
-	case config.LogLevelWarn:
-		return slog.LevelWarn
-	case config.LogLevelError:
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
+		return prettylog.New(w)
 	}
 }
 

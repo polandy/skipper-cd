@@ -21,15 +21,14 @@ import (
 type Handler struct {
 	mu    *sync.Mutex
 	w     io.Writer
-	level slog.Level
 	color bool
 	attrs []slog.Attr // bound via WithAttrs, applied before the record's own
 	group string      // dotted prefix from WithGroup, applied to attr keys
 }
 
-// New returns a Handler writing records of at least level to w.
-func New(w io.Writer, level slog.Level) *Handler {
-	return &Handler{mu: &sync.Mutex{}, w: w, level: level, color: colorEnabled(w)}
+// New returns a Handler writing to w.
+func New(w io.Writer) *Handler {
+	return &Handler{mu: &sync.Mutex{}, w: w, color: colorEnabled(w)}
 }
 
 // colorEnabled reports whether ANSI color should be emitted: w must be a
@@ -46,10 +45,11 @@ func colorEnabled(w io.Writer) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// Enabled reports whether level reaches the threshold this handler was
-// built with (log_level, default Info).
+// Enabled reports whether level is enabled. It matches the default slog
+// handlers' threshold (Info) since this handler exposes no HandlerOptions —
+// the threshold is deliberately fixed (see newLogHandler).
 func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
-	return level >= h.level
+	return level >= slog.LevelInfo
 }
 
 // WithAttrs returns a copy with attrs bound ahead of every future record's
