@@ -2,7 +2,15 @@ import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { createServer, type AddressInfo } from 'node:net';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { createHmac } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  appendFileSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -20,6 +28,12 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const stubDockerScript = readFileSync(join(__dirname, '..', '..', 'fixtures', 'docker-stub.sh'), 'utf8');
 
 const defaultCompose = 'services:\n  app:\n    image: nginx:1.25\n';
+
+/** Where the stub docker reads its app-link answers (ADR-0041), both under
+ *  STUB_DOCKER_PS_DIR. Mirrored verbatim in e2e/fixtures/docker-stub.sh — a
+ *  shell script cannot import them. */
+const APPLINK_PS_FILE = 'applinks-ps.txt';
+const APPLINK_LABELS_PREFIX = 'applink-labels-';
 const SECRET = 'e2e-secret';
 
 /** The forge every commit SHA in the UI links to (repo_web_url). */
@@ -228,6 +242,11 @@ export interface StartOptions {
      *  comparison. An image with no entry reports `[]` (locally built). */
     repoDigests?: Record<string, string[]>;
   };
+  /** Traefik app links (ADR-0041) to seed per stack: stack name → the hostnames
+   *  its router rule advertises. The stub docker reports one labelled container
+   *  per entry, so the roster row grows its app-link icon. Needs `healthPoll`
+   *  — detection rides that cadence. */
+  appLinks?: Record<string, string[]>;
   /** Override `repo_web_url`, the forge every commit SHA in the UI links to.
    *  Defaults to FORGE_URL; pass null to omit the key, which is the instance
    *  that can derive no forge (a clone from a local path) and must therefore
@@ -432,6 +451,22 @@ async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
   for (const [name, services] of Object.entries(opts.initialHealth ?? {})) {
     const resolved = services.map((svc) => (svc.Image ? { ...svc, Image: sub(svc.Image) } : svc));
     writeFileSync(join(healthDir, `${name}.json`), JSON.stringify(resolved));
+  }
+  // App-link detection (ADR-0041): the stub answers the detector's labelled
+  // `docker ps` with one container per stack (id + the stack's project dir, the
+  // key the detector maps back to a stack) and its `docker inspect` with that
+  // container's Traefik labels. Rides the health-poll cadence, so `healthPoll`
+  // must be on for the links to appear.
+  for (const [i, [stack, hosts]] of Object.entries(opts.appLinks ?? {}).entries()) {
+    const id = `applink${i}`;
+    appendFileSync(join(healthDir, APPLINK_PS_FILE), `${id}\t${join(repoDir, stack)}\n`);
+    writeFileSync(
+      join(healthDir, `${APPLINK_LABELS_PREFIX}${id}.json`),
+      JSON.stringify({
+        'traefik.enable': 'true',
+        [`traefik.http.routers.${stack}.rule`]: `Host(${hosts.map((h) => `\`${h}\``).join(',')})`,
+      }),
+    );
   }
   // The stub docker's `image inspect` answers (local RepoDigests) — the update
   // check's local half. Keyed by the sanitized image name (/, : → _).

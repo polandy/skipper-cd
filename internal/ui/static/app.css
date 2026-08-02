@@ -3055,6 +3055,18 @@
     color: var(--text-primary); letter-spacing: -0.3px;
   }
   .roster-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Host chip + icon + name are one identity group, and it never wraps: as
+     separate flex items a long name took a line of its own below the chip,
+     which put the version — aligned to the row's first line — above the name it
+     describes. As a group the name ellipsises instead, so the identity and its
+     version always share the first line. min-width: 0 is what lets it shrink;
+     the full name stays in the title. */
+  .roster-ident { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  /* The row's affordance glyphs are one cluster (rowActionClusterHTML): the
+     same 8px rhythm as the cell around them, but a single flex item, so a
+     narrow cell wraps them to the next line together instead of breaking
+     between two icons. flex: none keeps the name the part that yields. */
+  .row-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; }
   .roster-when, .roster-sha {
     font-family: var(--font-mono); font-size: 12px;
     color: var(--text-muted); white-space: nowrap;
@@ -3166,6 +3178,11 @@
        Version. */
     .roster-list-header, .roster-row { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) 130px 104px; }
     .roster-list-header .rh-sha, .roster-row .roster-sha { display: none; }
+    /* Top-align once the stack cell can wrap: centred cells drop the version,
+       status and time to the middle of a two-line row, i.e. *below* the name
+       they belong to. Aligned to the top they stay on the name's line, which is
+       what the row reads as — identity first, then what runs. */
+    .roster-row { align-items: start; }
 
     /* Deploys: Duration and Files go, Time is trimmed to `22h ago`, and the two
        that carry the row's meaning — Stack and Version — take what is freed. */
@@ -3192,6 +3209,8 @@
        width, and a floor there would pad short names out and shift every row. */
     .cell-stack, .roster-stack { flex-wrap: wrap; }
     .cell-stack .stack-name, .roster-stack .roster-name { min-width: 7ch; }
+    /* Only the action cluster is left to wrap, so it is what moves. */
+    .roster-ident { flex: 1 1 auto; }
   }
 
   @media (max-width: 700px) {
