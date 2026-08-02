@@ -295,12 +295,13 @@ function logLineLevel(entry) {
   return attrs.cmd && attrs.stream ? 'cmd' : entry.level;
 }
 
-// LOG_SEVERITIES ranks the log levels the quick filters treat as a threshold:
-// picking "warn" shows warnings *and* errors, so narrowing never hides
-// something worse than what was asked for. Child-process output (`cmd`) has no
-// level of its own and ranks with INFO — it is the detail under a deploy, not
-// a severity signal.
-const LOG_SEVERITIES = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+// LOG_SEVERITY_FILTERS are the severity quick filters, exactly one of which is
+// active. `WARN` and `ERROR` select *only* that level — picking one answers
+// "show me the warnings" rather than "show me this and everything worse", so
+// the chip label and what lands on screen say the same thing. `ALL` is the
+// unfiltered state and is the only one that shows child-process output
+// (`cmd` lines carry no level of their own).
+const LOG_SEVERITY_FILTERS = ['ALL', 'WARN', 'ERROR'];
 
 // LOG_DEPLOY_MESSAGES is the set of messages the `deploys` quick filter keeps:
 // skipper's deploy lifecycle, as opposed to startup/background chatter. The
@@ -358,15 +359,13 @@ function logFacets(entry) {
 }
 
 // logMatchesFilters reports whether one line's facets survive the quick
-// filters. The three axes are independent and each is a narrowing: severity is
-// a minimum, while a non-empty kind or stack set is a membership test. An
-// empty set means "no restriction on this axis", never "match nothing" — a
-// filter a viewer cleared must not blank the pane.
+// filters. The three axes are independent and each is a narrowing: severity
+// selects exactly one level (or `ALL`), while a non-empty kind or stack set is
+// a membership test. An empty set means "no restriction on this axis", never
+// "match nothing" — a filter a viewer cleared must not blank the pane.
 function logMatchesFilters(facets, filters) {
   const f = filters || DEFAULT_LOG_FILTERS;
-  const min = LOG_SEVERITIES[f.sev];
-  const level = LOG_SEVERITIES[facets.level];
-  if (min !== undefined && (level === undefined ? LOG_SEVERITIES.INFO : level) < min) return false;
+  if (f.sev && f.sev !== 'ALL' && facets.level !== f.sev) return false;
   if (f.kinds && f.kinds.length && f.kinds.indexOf(facets.kind) === -1) return false;
   if (f.stacks && f.stacks.length && f.stacks.indexOf(facets.stack || '') === -1) return false;
   return true;
@@ -408,7 +407,7 @@ function parseLogFilters(raw) {
       : [];
   };
   return {
-    sev: LOG_SEVERITIES[saved.sev] !== undefined ? saved.sev : 'ALL',
+    sev: LOG_SEVERITY_FILTERS.indexOf(saved.sev) !== -1 ? saved.sev : 'ALL',
     kinds: strings(saved.kinds).filter(function (k) {
       return k === 'deploy' || k === 'output';
     }),
@@ -1003,7 +1002,7 @@ if (typeof module !== 'undefined' && module.exports) {
     assignHostColors,
     hostFilterActive,
     reconcileHostFilter,
-    LOG_SEVERITIES,
+    LOG_SEVERITY_FILTERS,
     DEFAULT_LOG_FILTERS,
     logKind,
     logFacets,
