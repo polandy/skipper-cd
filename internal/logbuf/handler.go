@@ -2,6 +2,7 @@ package logbuf
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"maps"
 	"strings"
@@ -80,8 +81,25 @@ func (h *Handler) WithGroup(name string) slog.Handler {
 	return &Handler{next: h.next.WithGroup(name), log: h.log, attrs: h.attrs, groups: groups}
 }
 
+// The ring is bounded and every entry is streamed to every connected browser,
+// so a captured attr value is clamped: a record that attaches a payload (a
+// file diff is up to 10 KB) would evict real history and push kilobytes per
+// line down /api/logs. The wrapped handler still receives the record in full —
+// the console is the surface such a payload exists for.
+//
+// A multi-line value is clamped by *lines*, since that is the unit its reader
+// thinks in: "12 lines omitted" says how much of a diff is missing, where a
+// byte count says nothing anyone can act on. maxAttrValueLen is the ceiling
+// for a value with few but very long lines, so one runaway line cannot slip
+// past the line budget.
+const (
+	maxAttrValueLines = 40
+	maxAttrValueLen   = 4096
+)
+
 // flattenAttr stringifies a into dst under prefix, expanding group values
-// into dotted keys.
+// into dotted keys. An oversized value is summarised rather than dropped, so
+// the entry never silently pretends the attr was short.
 func flattenAttr(dst map[string]string, prefix string, a slog.Attr) {
 	v := a.Value.Resolve()
 	if v.Kind() == slog.KindGroup {
@@ -90,5 +108,25 @@ func flattenAttr(dst map[string]string, prefix string, a slog.Attr) {
 		}
 		return
 	}
-	dst[prefix+a.Key] = v.String()
+	dst[prefix+a.Key] = clampValue(v.String())
+}
+
+// clampValue shortens s to the line and byte budgets above, announcing in each
+// case what was left out so the entry never pretends the value was short.
+func clampValue(s string) string {
+	if total := strings.Count(s, "\n"); total >= maxAttrValueLines {
+		cut := 0
+		for i := 0; i < maxAttrValueLines; i++ {
+			next := strings.IndexByte(s[cut:], '\n')
+			if next < 0 {
+				break
+			}
+			cut += next + 1
+		}
+		return s[:cut] + fmt.Sprintf("… (%d lines omitted)", total-maxAttrValueLines)
+	}
+	if len(s) > maxAttrValueLen {
+		return s[:maxAttrValueLen] + "… (truncated)"
+	}
+	return s
 }
