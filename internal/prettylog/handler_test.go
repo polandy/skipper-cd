@@ -297,3 +297,48 @@ func TestHandler_EnabledMatchesDefaultInfoThreshold(t *testing.T) {
 		t.Error("expected Info enabled by default")
 	}
 }
+
+func TestHandler_FileChangedRendersTheDiffBlock(t *testing.T) {
+	var buf bytes.Buffer
+	newTestLogger(&buf, false).Info("file changed", "file", "flake.nix",
+		"diff", "@@ -13,7 +13,7 @@\n-    old line\n+    new line\n     context\n")
+
+	out := buf.String()
+	if !strings.Contains(out, "↳ flake.nix") {
+		t.Errorf("expected the file name to still lead the block, got %q", out)
+	}
+	for _, want := range []string{"@@ -13,7 +13,7 @@", "-    old line", "+    new line", "     context"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected diff line %q in the output, got %q", want, out)
+		}
+	}
+	// The block is indented past the timestamp column so it reads as detail
+	// under its file rather than as further log lines.
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n")[1:] {
+		if !strings.HasPrefix(line, "      ") {
+			t.Errorf("expected every diff line indented, got %q", line)
+		}
+	}
+}
+
+func TestHandler_FileChangedWithoutDiffIsUnchanged(t *testing.T) {
+	var buf bytes.Buffer
+	newTestLogger(&buf, false).Info("file changed", "file", "flake.lock")
+
+	if got := strings.Count(buf.String(), "\n"); got != 1 {
+		t.Errorf("expected a single line when no diff is attached, got %d lines: %q", got, buf.String())
+	}
+}
+
+func TestHandler_DiffBlockColorsAddsRemovesAndHunks(t *testing.T) {
+	var buf bytes.Buffer
+	newTestLogger(&buf, true).Info("file changed", "file", "compose.yml",
+		"diff", "@@ -1 +1 @@\n-old\n+new\n")
+
+	out := buf.String()
+	for _, want := range []string{ansiSuccess + "+new", ansiDanger + "-old", ansiWarn + "@@ -1 +1 @@"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q colorized, got %q", want, out)
+		}
+	}
+}
