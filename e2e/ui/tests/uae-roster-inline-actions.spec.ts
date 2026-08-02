@@ -41,21 +41,21 @@ async function openStacks(page: Page, skipper: { baseURL: string }) {
 test('UAE1: logs (+ hooks) render inline in the row, with no ⋯ menu', async ({ page, skipper }) => {
   await openStacks(page, skipper);
 
-  const stackCell = rosterRow(page, 'web').locator('.roster-stack');
-
-  // Jump, logs and hooks all sit directly in the stack cell.
-  await expect(stackCell.locator('> [data-testid="jump-btn"]')).toBeVisible();
-  await expect(stackCell.locator('> [data-testid="clog-btn"]')).toBeVisible();
-  await expect(stackCell.locator('> [data-testid="hooks-badge"]')).toBeVisible();
-  await expect(stackCell.locator('> [data-testid="hooks-badge"]')).toContainText('1+1'); // 1 pre, 1 post
+  // Jump, logs and hooks all sit in the stack cell's own action cluster — one
+  // box, so a narrow row wraps them together rather than between two icons.
+  const actions = rosterRow(page, 'web').locator('.roster-stack > .row-actions');
+  await expect(actions.locator('> [data-testid="jump-btn"]')).toBeVisible();
+  await expect(actions.locator('> [data-testid="clog-btn"]')).toBeVisible();
+  await expect(actions.locator('> [data-testid="hooks-badge"]')).toBeVisible();
+  await expect(actions.locator('> [data-testid="hooks-badge"]')).toContainText('1+1'); // 1 pre, 1 post
 
   // No overflow menu anywhere on the roster.
   await expect(page.locator('[data-testid="roster-list"] [data-testid="more-btn"]')).toHaveCount(0);
 
   // A hooks-less stack shows the logs icon but no hooks badge.
-  const apiCell = rosterRow(page, 'api').locator('.roster-stack');
-  await expect(apiCell.locator('> [data-testid="clog-btn"]')).toBeVisible();
-  await expect(apiCell.locator('> [data-testid="hooks-badge"]')).toHaveCount(0);
+  const apiActions = rosterRow(page, 'api').locator('.roster-stack > .row-actions');
+  await expect(apiActions.locator('> [data-testid="clog-btn"]')).toBeVisible();
+  await expect(apiActions.locator('> [data-testid="hooks-badge"]')).toHaveCount(0);
 });
 
 // UAE2 — the inline logs icon opens the live log panel directly (one click).
@@ -63,14 +63,14 @@ test('UAE2: the inline logs icon opens the log panel', async ({ page, skipper })
   await openStacks(page, skipper);
   const web = rosterRow(page, 'web');
 
-  await web.locator('.roster-stack > [data-testid="clog-btn"]').click();
+  await web.locator('.roster-stack .row-actions > [data-testid="clog-btn"]').click();
 
   const panel = page.locator('[data-testid="clog-panel"]');
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('web');
 
   // A second click on the same icon toggles it closed.
-  await web.locator('.roster-stack > [data-testid="clog-btn"]').click();
+  await web.locator('.roster-stack .row-actions > [data-testid="clog-btn"]').click();
   await expect(panel).toHaveCount(0);
 });
 
@@ -79,7 +79,7 @@ test('UAE2: the inline logs icon opens the log panel', async ({ page, skipper })
 test('UAE3: the inline hooks badge opens the hooks panel', async ({ page, skipper }) => {
   await openStacks(page, skipper);
   const web = rosterRow(page, 'web');
-  const badge = web.locator('.roster-stack > [data-testid="hooks-badge"]');
+  const badge = web.locator('.roster-stack .row-actions > [data-testid="hooks-badge"]');
 
   await badge.click();
   const panel = page.locator('[data-testid="hooks-panel"]');
@@ -100,7 +100,7 @@ test.describe('UAE4: portrait — inline actions stay usable', () => {
 
   test('the inline actions fit the row and the log opens below it', async ({ page, skipper }) => {
     await openStacks(page, skipper);
-    const clog = rosterRow(page, 'web').locator('.roster-stack > [data-testid="clog-btn"]');
+    const clog = rosterRow(page, 'web').locator('.roster-stack .row-actions > [data-testid="clog-btn"]');
 
     await expect(clog).toBeVisible();
     const box = await clog.boundingBox();
@@ -112,5 +112,42 @@ test.describe('UAE4: portrait — inline actions stay usable', () => {
 
     await clog.click();
     await expect(page.locator('[data-testid="clog-panel"]')).toBeVisible();
+  });
+});
+
+// UAE5 — a tablet-width row whose name is long enough to push the affordances
+// off the first line wraps them as ONE cluster: the icons stayed together, and
+// the row does not split a jump icon from the log icon beside it.
+test.describe('UAE5: tablet — a wrapping row keeps its glyphs on one line', () => {
+  const LONG = 'docker-registry-proxy-service';
+  test.use({
+    startOptions: { stacks: [LONG] },
+    viewport: { width: 744, height: 1133 }, // iPad mini, portrait
+  });
+
+  test('the action cluster wraps whole, not glyph by glyph', async ({ page, skipper }) => {
+    await openStacks(page, skipper);
+
+    const boxes = await rosterRow(page, LONG).evaluate((row) => {
+      // Vertical centre, not top: the glyphs are centre-aligned and differ in
+      // height, so equal tops would be the wrong question.
+      const mid = (el: Element) => {
+        const b = el.getBoundingClientRect();
+        return Math.round(b.top + b.height / 2);
+      };
+      const cluster = row.querySelector('.roster-stack > .row-actions')!;
+      return {
+        name: mid(row.querySelector('.roster-name')!),
+        cluster: mid(cluster),
+        glyphs: [...cluster.children].map(mid),
+      };
+    });
+
+    // The name is long enough that the cluster really did move down a line —
+    // without this the same-line check below would pass vacuously.
+    expect(boxes.cluster).toBeGreaterThan(boxes.name);
+    // …and every glyph moved with it.
+    expect(boxes.glyphs.length).toBeGreaterThan(1);
+    for (const y of boxes.glyphs) expect(Math.abs(y - boxes.glyphs[0])).toBeLessThanOrEqual(2);
   });
 });

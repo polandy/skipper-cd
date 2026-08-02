@@ -405,7 +405,11 @@
       const rowHealth = entry.disabled ? null : healthSnap[entry.name];
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
-        `<span class="roster-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCell(entry.name)}${rosterRowActionsHTML(entry)}</span>` +
+        `<span class="roster-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${rowActionClusterHTML(
+          jumpBtnHTML('deploys', entry.name),
+          entry.disabled ? '' : linkCell(entry.name),
+          rosterRowActionsHTML(entry),
+        )}</span>` +
         rosterVersionCellHTML(
           entry.name,
           rowHealth,
@@ -476,7 +480,9 @@
         row.dataset.status = entry.last_status || '';
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
-          `<span class="roster-stack">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${entry.disabled ? '' : linkCell(entry.name, p.name)}</span>` +
+          `<span class="roster-stack">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${rowActionClusterHTML(
+            entry.disabled ? '' : linkCell(entry.name, p.name),
+          )}</span>` +
           rosterVersionCellHTML(
             entry.name,
             stackHealthFor(entry.name, p.name),

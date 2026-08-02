@@ -1186,6 +1186,12 @@ hooks-declaring `web` stack and a plain `api` stack. Behaviour-only.
   `hooks-panel` (the row gains `hooks-open`); a second click toggles it closed.
 - **UAE4 — Portrait safety.** On a 400px portrait viewport the inline action
   cluster stays within the row bounds and the log panel opens below it.
+- **UAE5 — Wraps as one cluster.** On an iPad-mini-width viewport (744px) a
+  stack whose name is long enough to push the glyphs off the first line moves
+  them down *together*: the cluster sits below the name (the positive signal
+  that a wrap really happened) and every glyph in it shares one line. Before
+  `.row-actions` each glyph was its own flex item and the row broke between two
+  icons.
 
 ### 4.33 UI — Maske AF: Status-badge icons + solid worst states (T3.14)
 
