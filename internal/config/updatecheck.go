@@ -21,8 +21,10 @@ type UpdateCheck struct {
 	IntervalSeconds *int `yaml:"interval_seconds"`
 
 	// Notify sends one message through the configured notifications targets
-	// when a service's available update first appears. Defaults to true;
-	// without any notifications targets it has no effect.
+	// when a service's available update first appears. Defaults to false — an
+	// available update is a marker to look at, not an event to be paged about;
+	// set it to true to opt in. Without any notifications targets it has no
+	// effect either way.
 	Notify *bool `yaml:"notify"`
 }
 
@@ -40,12 +42,13 @@ func (c *Config) UpdateCheckInterval() time.Duration {
 }
 
 // UpdateCheckNotify reports whether an update's first appearance is sent to
-// the notifications targets. Defaults to true.
+// the notifications targets. Defaults to false: the update check reports in
+// the UI, and messaging about it is opt-in.
 func (c *Config) UpdateCheckNotify() bool {
 	if c.UpdateCheck != nil && c.UpdateCheck.Notify != nil {
 		return *c.UpdateCheck.Notify
 	}
-	return true
+	return false
 }
 
 // EffectiveUpdateCheck reports whether the named stack takes part in the

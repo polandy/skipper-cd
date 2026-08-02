@@ -111,7 +111,7 @@ nixos_rebuild:
 | `runtime_health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
 | `reconcile_interval_seconds` | int | no | `300` | How often skipper re-runs its git sync + deploy on a timer — the convergence baseline that keeps each host caught up to the repo with or without a webhook (see [Periodic reconcile](#periodic-reconcile)). `0` disables it, leaving the webhook + startup as the only triggers (valid only when `webhook_secret` is set). Runs headless — not tied to the UI. |
 | `self_heal` | bool | no | `false` | Global default for whether a stack the health poller finds degraded is automatically restored to its running state by a corrective redeploy (see [Self-heal](#self-heal)). A per-stack `self_heal` overrides it. Requires `runtime_health_poll_interval_seconds` > 0. |
-| `update_check` | section | no | on, every 6h | Read-only registry [update check](#update-check): shows an "update available" marker in the Stacks view and optionally sends one notification per new update. `interval_seconds` (default `21600`, `0` disables) and `notify` (default `true`). It never deploys anything. |
+| `update_check` | section | no | on, every 6h | Read-only registry [update check](#update-check): shows an "update available" marker in the Stacks view, and optionally sends one notification per new update. `interval_seconds` (default `21600`, `0` disables) and `notify` (default `false`). It never deploys anything. |
 | `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce). Must be ≥ 1. |
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
 | `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0; an explicit `0` disables the cooldown. |
@@ -656,15 +656,15 @@ skipper periodically asks each registry what it offers for the images your stack
 - `1.22.3 ⇡ 1.22.6` — a newer tag of the same shape exists. Only same-shaped tags are compared: same `v`-or-no prefix, same number of version components, same suffix (`6.2-alpine` is only ever compared against other `-alpine` tags), so the marker never suggests `latest` or a different variant.
 - `v3.1 ⇡ rebuilt` — the tag you run was republished upstream (its digest moved). This is the only check for non-version tags like `latest`.
 
-The expanded containers panel marks each affected service and shows when the registry was last asked. With [notifications](#notifications) configured, each update's first appearance is sent once — deploying it (or a newer one appearing) re-arms the message.
+The expanded containers panel marks each affected service and shows when the registry was last asked. The check reports in the UI only; set `notify: true` (and configure [notifications](#notifications)) to also have each update's first appearance sent once — deploying it (or a newer one appearing) re-arms the message.
 
 ```yaml
 update_check:
   interval_seconds: 21600   # default: every 6h; 0 disables the check
-  notify: true              # default: one message per newly appearing update
+  notify: false             # default: UI only; true = one message per newly appearing update
 ```
 
-- On by default; the section is only needed to change the cadence or silence the messages. `interval_seconds: 0` turns the feature off entirely — skipper then makes no registry requests outside a deploy.
+- On by default; the section is only needed to change the cadence or to opt into the messages. `interval_seconds: 0` turns the feature off entirely — skipper then makes no registry requests outside a deploy.
 - After a deploy that changed what runs, the check re-runs immediately, so an applied update's marker clears right away.
 - Registry credentials come from the host's docker config (`docker login`) — the same ones your pulls use. Public images need none.
 - Locally-built images (`build:`) and stacks with nothing running are skipped. A per-stack `update_check: false` opts a stack out.
