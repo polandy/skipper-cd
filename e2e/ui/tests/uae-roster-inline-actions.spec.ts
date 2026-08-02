@@ -115,51 +115,68 @@ test.describe('UAE4: portrait — inline actions stay usable', () => {
   });
 });
 
-// UAE5 — a tablet-width row whose name is long enough to push the affordances
-// off the first line wraps them as ONE cluster: the icons stayed together, and
-// the row does not split a jump icon from the log icon beside it.
+// UAE5 — a tablet-width row carrying the full glyph set (jump, app link, logs,
+// hooks) runs out of first-line width and wraps them as ONE cluster: the icons
+// stay together, and the version keeps the name's line rather than sliding to
+// the middle of the now two-line row.
 test.describe('UAE5: tablet — a wrapping row keeps its glyphs on one line', () => {
-  const LONG = 'docker-registry-proxy-service';
+  // 15 chars: wide enough that the four glyphs cannot follow it on the first
+  // line, narrow enough that the name itself still shares that line with the
+  // host chip (a name long enough to take a line of its own is a different
+  // shape, and would make the alignment check below meaningless).
+  const STACK = 'changedetection';
   test.use({
-    // The health seed gives the row a version chip, so the alignment check
-    // below has something to measure.
     startOptions: {
-      stacks: [LONG],
-      healthPoll: 1,
+      stacks: [STACK],
+      discovery: {
+        repoConfig: `stacks:\n  ${STACK}:\n    hooks:\n      pre_deploy:\n        - "echo backup"\n`,
+      },
+      healthPoll: 1, // drives both the version chip and app-link detection
+      appLinks: { [STACK]: ['watch.e2e.test'] },
       initialHealth: {
-        [LONG]: [{ Service: 'app', Image: 'nginx:1.25', State: 'running', Health: 'healthy' }],
+        [STACK]: [{ Service: 'app', Image: 'nginx:1.25', State: 'running', Health: 'healthy' }],
       },
     },
     viewport: { width: 744, height: 1133 }, // iPad mini, portrait
   });
 
-  test('the action cluster wraps whole, not glyph by glyph', async ({ page, skipper }) => {
+  test('the cluster wraps whole, and the version stays on the name line', async ({
+    page,
+    skipper,
+  }) => {
     await openStacks(page, skipper);
-    await expect(rosterRow(page, LONG).locator('[data-testid="roster-version"] > *')).toBeVisible();
+    const row = rosterRow(page, STACK);
+    // Both arrive on a poll; measuring before they land would read a half-built row.
+    await expect(row.locator('[data-testid="app-link-btn"]')).toBeVisible();
+    await expect(row.locator('[data-testid="roster-version"] > *')).toBeVisible();
 
-    const boxes = await rosterRow(page, LONG).evaluate((row) => {
-      // Vertical centre, not top: the glyphs are centre-aligned and differ in
-      // height, so equal tops would be the wrong question.
+    const boxes = await row.evaluate((r) => {
+      // Vertical centre, not top: these elements are centre-aligned within
+      // their line and differ in height, so equal tops would be the wrong
+      // question.
       const mid = (el: Element) => {
         const b = el.getBoundingClientRect();
         return Math.round(b.top + b.height / 2);
       };
-      const cluster = row.querySelector('.roster-stack > .row-actions')!;
+      const cluster = r.querySelector('.roster-stack > .row-actions')!;
       return {
-        name: mid(row.querySelector('.roster-name')!),
+        chip: mid(r.querySelector('.roster-stack > :first-child')!),
+        name: mid(r.querySelector('.roster-name')!),
         cluster: mid(cluster),
         glyphs: [...cluster.children].map(mid),
-        version: mid(row.querySelector('[data-testid="roster-version"] > *')!),
+        version: mid(r.querySelector('[data-testid="roster-version"] > *')!),
       };
     });
 
-    // The name is long enough that the cluster really did move down a line —
-    // without this the same-line check below would pass vacuously.
+    // The fixture holds: the name shares the first line with the host chip...
+    expect(Math.abs(boxes.name - boxes.chip)).toBeLessThanOrEqual(3);
+    // ...and the glyphs really did move to a second line — without this the
+    // same-line check below would pass vacuously.
     expect(boxes.cluster).toBeGreaterThan(boxes.name);
-    // …and every glyph moved with it.
+    // Every glyph moved together.
     expect(boxes.glyphs.length).toBeGreaterThan(1);
     for (const y of boxes.glyphs) expect(Math.abs(y - boxes.glyphs[0])).toBeLessThanOrEqual(2);
-    // The taller row must not push the version down with it: it belongs to the
+    // The taller row must not drag the version down with it: it belongs to the
     // name and stays on the name's line (top-aligned cells).
     expect(Math.abs(boxes.version - boxes.name)).toBeLessThanOrEqual(3);
   });
