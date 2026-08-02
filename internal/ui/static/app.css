@@ -2976,7 +2976,9 @@
      page-sized, so live/search/wrap/auto-scroll/fullscreen live inline in its
      own header instead of the view-options popover. */
   #log-view { display: none; }
-  body.view-logs #log-view { display: flex; flex-direction: column; margin: 0; }
+  /* position: relative anchors the "N new lines" pill (below) over the pane's
+     lower edge — the edge the newest line now sits at. */
+  body.view-logs #log-view { display: flex; flex-direction: column; margin: 0; position: relative; }
   #log-view:not(.clog-fullscreen) { height: calc(100vh - 150px); }
   body.view-logs #deploy-table, body.view-logs #empty-state, body.view-logs #disabled-stacks { display: none !important; }
   /* Revealed by the search tool or type-to-search, like .clog-search's
@@ -2984,6 +2986,56 @@
      (shown on .revealed, matching the deploys/stacks filter bars' own class). */
   #log-filter-wrap { display: none; }
   #log-filter-wrap.revealed { display: flex; }
+
+  /* Quick filters — the chip row under the Logs panel head. Same chrome as the
+     container-log panel's per-service chip row (.clog-svcs/.clog-chip) so the
+     two read as one control family; the difference is that this row is shown by
+     default. It has to be: the filter state persists across reloads, and a
+     narrowed pane that hides its own filter reads as an empty log. */
+  .clog-quick {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px 12px;
+    background: var(--bg-base); border-bottom: 1px solid var(--border);
+  }
+  .clog-quick.clog-hide { display: none; }
+  .clog-quick-lbl { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-right: 2px; }
+  .clog-quick-sep { width: 1px; height: 14px; background: var(--border-lit); margin: 0 3px; }
+  /* An active severity chip carries its own severity hue rather than the shared
+     accent: "errors only" has to read as a severity, not just as "selected", or
+     a deliberately narrowed pane looks like a broken one. */
+  .clog-chip.active[data-sev="WARN"] {
+    color: var(--hunk); background: color-mix(in srgb, var(--hunk) 12%, transparent);
+    border-color: color-mix(in srgb, var(--hunk) 40%, transparent);
+  }
+  .clog-chip.active[data-sev="ERROR"] {
+    color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  }
+  .clog-chip.stack-chip { display: inline-flex; align-items: center; gap: 6px; }
+  .clog-chip.stack-chip .chip-x { color: var(--text-muted); font-weight: 600; }
+  .clog-chip.stack-chip:hover .chip-x { color: var(--danger); }
+  #log-quick-count { margin-left: auto; }
+
+  /* A stack prefix in a log line doubles as the control that filters to it. */
+  #log-pane .log-stack { cursor: pointer; border-radius: 4px; padding: 0 2px; margin: 0 -2px; }
+  #log-pane .log-stack:hover { background: var(--accent-dim); }
+  #log-pane .log-stack:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* "N new lines" — shown only while auto-scroll is disengaged, so a viewer
+     reading history is told what arrived instead of being yanked to the tail. */
+  .clog-newpill {
+    position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 2;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    color: var(--accent); background: var(--bg-base);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    border-radius: 20px; padding: 4px 12px; cursor: pointer;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 28%);
+  }
+  .clog-newpill[hidden] { display: none; }
+  .clog-newpill:hover { background: var(--accent-dim); }
+  .clog-newpill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* In fullscreen the panel fills the viewport, so the pill follows the pane's
+     bottom edge there too (the foot bar keeps its height). */
+  #log-view.clog-fullscreen .clog-newpill { bottom: 34px; }
 
   /* ─── STACKS VIEW (roster / inventory, dev-docs/stack-roster-spec.md) ─── */
   /* The full set of stacks skipper owns (stack discovery, ADR-0034), each with
@@ -3607,3 +3659,7 @@
      background: var(--crust); display: flex; flex-direction: column; }
   #log-pane.wrap .log-msg, #log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .log-line.clog-out { display: none; }
+  /* The quick filters' own hide class. Separate from .clog-out (the in-log
+     search) so the two narrow independently — a line stays hidden while
+     either excludes it. */
+  .log-line.log-out { display: none; }
