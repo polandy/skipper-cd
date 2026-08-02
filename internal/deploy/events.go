@@ -206,11 +206,13 @@ func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, 
 		if diff == "" {
 			continue
 		}
-		slog.Info("file changed", "file", d.repoRelative(filePath))
-
 		if len(diff) > maxDiffPerFile {
 			diff = diff[:maxDiffPerFile] + "\n... (truncated)"
 		}
+		// The diff rides along so the console can print it (internal/prettylog):
+		// it is the one surface that cannot fetch it the way the UI does. See
+		// the ADR-0042 amendment for what each sink then makes of it.
+		slog.Info("file changed", "file", d.repoRelative(filePath), "diff", diff)
 		if totalSize+len(diff) > maxDiffTotal {
 			remaining := maxDiffTotal - totalSize
 			if remaining > 0 {
