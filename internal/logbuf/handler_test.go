@@ -139,3 +139,67 @@ func TestHandler_WithAttrsDoesNotMutateParent(t *testing.T) {
 		t.Errorf("base entry inherited the child's attr: %+v", entries[1].Attrs)
 	}
 }
+
+// The ring is bounded (DefaultCapacity entries) and every entry is streamed to
+// every connected browser over /api/logs. A record carrying a payload — a file
+// diff is up to 10 KB — would evict real history and push kilobytes per line
+// down the stream, so the capture layer keeps messages and clamps anything
+// oversized. A diff is clamped by lines, the unit its reader thinks in.
+func TestHandler_ClampsAMultiLineAttrByLines(t *testing.T) {
+	var buf bytes.Buffer
+	log := New(8)
+	logger := slog.New(NewHandler(slog.NewTextHandler(&buf, nil), log))
+
+	diff := strings.Repeat("+added line\n", 100)
+	logger.Info("file changed", "file", "flake.nix", "diff", diff)
+
+	entries := log.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 captured entry, got %d", len(entries))
+	}
+	got := entries[0].Attrs["diff"]
+	if n := strings.Count(got, "+added line"); n != maxAttrValueLines {
+		t.Errorf("expected %d diff lines kept, got %d", maxAttrValueLines, n)
+	}
+	// The count names what a reader would go looking for, not a byte figure.
+	if want := "(60 lines omitted)"; !strings.Contains(got, want) {
+		t.Errorf("expected %q, got tail %q", want, got[max(0, len(got)-40):])
+	}
+	// Short attrs on the same record are untouched — only the payload is cut.
+	if entries[0].Attrs["file"] != "flake.nix" {
+		t.Errorf("expected the file attr intact, got %q", entries[0].Attrs["file"])
+	}
+	// The wrapped handler still receives the record in full: the console is the
+	// surface the diff exists for.
+	if strings.Count(buf.String(), "+added line") != 100 {
+		t.Error("expected the wrapped handler to receive the untruncated record")
+	}
+}
+
+func TestHandler_KeepsAShortMultiLineAttrVerbatim(t *testing.T) {
+	log := New(8)
+	logger := slog.New(NewHandler(slog.NewTextHandler(&bytes.Buffer{}, nil), log))
+
+	diff := "@@ -1 +1 @@\n-old\n+new\n"
+	logger.Info("file changed", "file", "compose.yml", "diff", diff)
+
+	if got := log.Entries()[0].Attrs["diff"]; got != diff {
+		t.Errorf("expected a small diff kept verbatim, got %q", got)
+	}
+}
+
+// A value with few but very long lines must not slip past the line budget.
+func TestHandler_ClampsARunawaySingleLineAttr(t *testing.T) {
+	log := New(8)
+	logger := slog.New(NewHandler(slog.NewTextHandler(&bytes.Buffer{}, nil), log))
+
+	logger.Info("watch dirs", "dirs", strings.Repeat("x", maxAttrValueLen*2))
+
+	got := log.Entries()[0].Attrs["dirs"]
+	if len(got) > maxAttrValueLen+32 {
+		t.Errorf("expected the value clamped, got %d bytes", len(got))
+	}
+	if !strings.Contains(got, "truncated") {
+		t.Error("expected the clamp to announce itself")
+	}
+}
