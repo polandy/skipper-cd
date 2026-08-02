@@ -62,7 +62,7 @@ func mustInfo(info *debug.BuildInfo, _ bool) *debug.BuildInfo { return info }
 
 func TestNewLogHandler_JSONFormatEmitsJSON(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(newLogHandler(config.LogFormatJSON, &buf))
+	logger := slog.New(newLogHandler(config.LogFormatJSON, config.LogLevelInfo, &buf))
 
 	logger.Info("hello", "stack", "gitea")
 
@@ -80,7 +80,7 @@ func TestNewLogHandler_JSONFormatEmitsJSON(t *testing.T) {
 
 func TestNewLogHandler_TextFormatEmitsLogfmt(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(newLogHandler(config.LogFormatText, &buf))
+	logger := slog.New(newLogHandler(config.LogFormatText, config.LogLevelInfo, &buf))
 
 	logger.Info("hello", "stack", "gitea")
 
@@ -95,7 +95,7 @@ func TestNewLogHandler_TextFormatEmitsLogfmt(t *testing.T) {
 
 func TestNewLogHandler_PrettyIsTheDefault(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(newLogHandler(config.LogFormatPretty, &buf))
+	logger := slog.New(newLogHandler(config.LogFormatPretty, config.LogLevelInfo, &buf))
 
 	logger.Info("hello", "stack", "gitea")
 
@@ -111,9 +111,59 @@ func TestNewLogHandler_PrettyIsTheDefault(t *testing.T) {
 	// already defaults an empty log_format to LogFormatPretty; this just
 	// confirms newLogHandler agrees rather than silently reverting to text).
 	var fallback bytes.Buffer
-	slog.New(newLogHandler("", &fallback)).Info("hello")
+	slog.New(newLogHandler("", config.LogLevelInfo, &fallback)).Info("hello")
 	if strings.HasPrefix(strings.TrimSpace(fallback.String()), "{") {
 		t.Errorf("expected an empty format to fall back to pretty, got JSON: %q", fallback.String())
+	}
+}
+
+// The log_level threshold must hold for every format — a debug line that
+// escapes in "json" but not in "pretty" would make the key format-dependent.
+func TestNewLogHandler_LogLevelGatesEveryFormat(t *testing.T) {
+	// Messages with no prettylog anchor, so all three formats render the text
+	// verbatim and one assertion fits every format.
+	const debugMsg = "reconcile tick skipped: deploy already in progress"
+	const infoMsg = "web UI enabled"
+	const warnMsg = "config warning"
+
+	formats := []string{config.LogFormatPretty, config.LogFormatText, config.LogFormatJSON}
+	for _, format := range formats {
+		t.Run(format+"/info drops debug", func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := slog.New(newLogHandler(format, config.LogLevelInfo, &buf))
+			logger.Debug(debugMsg)
+			if buf.Len() != 0 {
+				t.Errorf("expected debug dropped at log_level=info, got %q", buf.String())
+			}
+			// Positive control: an Info record on the same handler does land,
+			// so the empty buffer above means the level gated it rather than
+			// the handler writing nowhere.
+			logger.Info(infoMsg)
+			if !strings.Contains(buf.String(), infoMsg) {
+				t.Errorf("expected info to pass at log_level=info, got %q", buf.String())
+			}
+		})
+
+		t.Run(format+"/debug keeps debug", func(t *testing.T) {
+			var buf bytes.Buffer
+			slog.New(newLogHandler(format, config.LogLevelDebug, &buf)).Debug(debugMsg)
+			if !strings.Contains(buf.String(), debugMsg) {
+				t.Errorf("expected debug to pass at log_level=debug, got %q", buf.String())
+			}
+		})
+
+		t.Run(format+"/warn drops info", func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := slog.New(newLogHandler(format, config.LogLevelWarn, &buf))
+			logger.Info(infoMsg)
+			if buf.Len() != 0 {
+				t.Errorf("expected info dropped at log_level=warn, got %q", buf.String())
+			}
+			logger.Warn(warnMsg)
+			if !strings.Contains(buf.String(), warnMsg) {
+				t.Errorf("expected warn to pass at log_level=warn, got %q", buf.String())
+			}
+		})
 	}
 }
 

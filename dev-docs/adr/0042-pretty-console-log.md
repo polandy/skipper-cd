@@ -119,3 +119,36 @@ visibility).
   able to see what a run considered without waiting for a real deploy.
 - No new dependency: color/TTY detection is `os.File.Stat().Mode()`, no
   `golang.org/x/term` (keeps `vendor/` unchanged, `vendorHash = null` intact).
+
+## Amendment (2026-08-02): the idle-run narrative moves back to Debug, behind a new `log_level`
+
+The decision above promoted `skipping stack, no changes detected` from Debug
+to Info so a run's consideration of every stack was always visible. Measured
+against a real instance (29 stacks, `reconcile_interval_seconds: 300`), that
+made the *idle* case dominate the log: of 573 buffered entries over 75
+minutes, 464 (81%) were skip lines and another 64 the per-tick sync/run
+header pair — 92% of the log described nothing happening, and the two lines
+that carried real signal were one eviction away from falling out of the
+1000-entry ring behind `/api/logs`.
+
+The premise was right for a single run watched live and wrong for a process
+that reconciles on a timer. So:
+
+- `skipping stack, no changes detected`, `starting deploy run` and
+  `pulling latest commits` return to `slog.Debug`. `git reset --hard` gains
+  `--quiet`, which suppresses its per-sync `HEAD is now at <sha> <subject>`
+  child line. An idle run now costs one line: the `run complete` summary,
+  which already carries the skip count.
+- A new `log_level` config key (`debug`/`info`/`warn`/`error`, default
+  `info`) makes the full narrative recoverable rather than deleted, and is
+  applied to all three formats through `slog.HandlerOptions` —
+  `prettylog.New` takes the threshold instead of hard-coding Info. The key
+  was missing entirely before, which is also why the codebase's existing
+  `slog.Debug` lines (reconcile/self-heal stand-downs, healthwatch baseline)
+  could never be seen.
+
+What is *not* reverted: the skip is still reported everywhere it was before
+this ADR — as a `skipped` deploy event, in the run tally, and in the UI's
+per-stack state. Only the per-stack log line moved. The anchor table keeps
+its entries for all four demoted messages, so `log_level: debug` renders the
+same narrative it rendered at Info.

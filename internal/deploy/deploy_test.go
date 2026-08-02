@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -104,6 +105,47 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 
 	if len(runner.calls) != 0 {
 		t.Errorf("expected no commands to be run, got %d call(s)", len(runner.calls))
+	}
+}
+
+// An unchanged stack must stay off the log at the default level: with the
+// reconcile loop running every few minutes, one line per stack per tick is
+// what buries the lines that matter (and evicts them from the UI's ring).
+// The information is not lost — the run summary counts the skips, and
+// log_level=debug brings the per-stack narrative back.
+func TestDeployStack_SkipIsLoggedAtDebugLevel(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	hashes, err := computePerFileHashes(stackDir, nil, nil, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error computing hashes: %v", err)
+	}
+
+	skipUnchanged := func(t *testing.T) {
+		t.Helper()
+		state := &persistedState{
+			Stacks: map[string]stackFileHashes{"gitea": hashes},
+			Images: map[string]serviceImageByName{},
+		}
+		d := newDeployerWithRunner(&recordingRunner{})
+		if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "gitea"}, baseDir, "", nil, state); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	atInfo := captureLogAt(t, slog.LevelInfo, skipUnchanged)
+	if strings.Contains(atInfo, "skipping stack") {
+		t.Errorf("expected no skip line at info level, got %q", atInfo)
+	}
+
+	atDebug := captureLogAt(t, slog.LevelDebug, skipUnchanged)
+	if !strings.Contains(atDebug, "skipping stack, no changes detected") || !strings.Contains(atDebug, "gitea") {
+		t.Errorf("expected the skip line at debug level, got %q", atDebug)
 	}
 }
 

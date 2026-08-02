@@ -68,7 +68,12 @@ func (s *RepoSync) cloneRepository(ctx context.Context) error {
 }
 
 func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
-	slog.Info("pulling latest commits", "dir", s.repoDir, "branch", s.branch)
+	// Debug: every reconcile tick syncs, so at info level this line (and the
+	// reset's "HEAD is now at …" below) reports the poll cadence rather than
+	// anything that happened. A sync that actually moves the branch still
+	// shows up — git fetch narrates the new refs, and the deploy lines name
+	// the commit. A failure returns an error and is logged by the caller.
+	slog.Debug("pulling latest commits", "dir", s.repoDir, "branch", s.branch)
 	// Pin origin to the configured URL on every sync: the clone may predate
 	// a repo_url config change (e.g. an ssh:// to https:// migration) and
 	// would otherwise fetch from the stale remote forever.
@@ -78,7 +83,9 @@ func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
 	if err := s.runner.Run(ctx, s.repoDir, nil, "git", "fetch", "origin"); err != nil {
 		return err
 	}
-	return s.runner.Run(ctx, s.repoDir, nil, "git", "reset", "--hard", "origin/"+s.branch)
+	// --quiet: the reset prints "HEAD is now at <sha> <subject>" on every
+	// sync, changed or not, and child output is captured into the log.
+	return s.runner.Run(ctx, s.repoDir, nil, "git", "reset", "--hard", "--quiet", "origin/"+s.branch)
 }
 
 // redactedPlaceholder is what net/url's Redacted substitutes for a password;

@@ -94,7 +94,7 @@ func (v stackViews) order() []string { return deploy.RunOrder(v.cfg, v.effective
 // before any other startup line, so they are the first thing an operator sees.
 func setupLogging(cfg *config.Config, out io.Writer) (*logbuf.Log, command.LineSink) {
 	var logRing *logbuf.Log
-	logHandler := newLogHandler(cfg.LogFormat, out)
+	logHandler := newLogHandler(cfg.LogFormat, cfg.LogLevel, out)
 	if *cfg.UIEnabled {
 		logRing = logbuf.New(logbuf.DefaultCapacity)
 		logHandler = logbuf.NewHandler(logHandler, logRing)

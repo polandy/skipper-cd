@@ -1,8 +1,10 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -199,3 +201,17 @@ func assertCommandNotCalled(t *testing.T, calls []runCall, subcommand string) {
 
 // boolPtr returns a pointer to b, for optional *bool config fields in tests.
 func boolPtr(b bool) *bool { return &b }
+
+// captureLogAt runs fn with the default logger swapped for one writing to a
+// buffer at the given threshold, and returns what was logged. It is how a
+// test asserts which *level* a line is emitted at — the log_level key makes
+// that a behavioural property, not an implementation detail.
+func captureLogAt(t *testing.T, level slog.Level, fn func(*testing.T)) string {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: level})))
+	defer slog.SetDefault(prev)
+	fn(t)
+	return buf.String()
+}

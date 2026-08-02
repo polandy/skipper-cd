@@ -14,7 +14,7 @@ import (
 // forced via the enabled param — a *bytes.Buffer is never a terminal, so
 // New's own auto-detection would always disable it.
 func newTestLogger(buf *bytes.Buffer, enabled bool) *slog.Logger {
-	h := New(buf)
+	h := New(buf, slog.LevelInfo)
 	h.color = enabled
 	return slog.New(h)
 }
@@ -69,7 +69,7 @@ func TestHandler_WarnAndErrorGlyphs(t *testing.T) {
 	}
 }
 
-func TestHandler_DebugSuppressedByDefault(t *testing.T) {
+func TestHandler_DebugSuppressedAtTheDefaultLevel(t *testing.T) {
 	var buf bytes.Buffer
 	newTestLogger(&buf, false).Debug("reconcile tick skipped: deploy already in progress")
 
@@ -227,7 +227,7 @@ func TestHandler_WithGroupPrefixesAttrKeys(t *testing.T) {
 
 func TestHandler_TimestampFormat(t *testing.T) {
 	var buf bytes.Buffer
-	h := New(&buf)
+	h := New(&buf, slog.LevelInfo)
 	h.color = false
 	ts := time.Date(2026, 7, 20, 14, 32, 7, 0, time.UTC)
 	line := render(recordAt(ts, slog.LevelInfo, "web UI enabled"), nil, false)
@@ -288,12 +288,35 @@ func TestColorEnabled_FalseForNonFileWriter(t *testing.T) {
 	}
 }
 
-func TestHandler_EnabledMatchesDefaultInfoThreshold(t *testing.T) {
-	h := New(&bytes.Buffer{})
+func TestHandler_EnabledFollowsTheConfiguredThreshold(t *testing.T) {
+	h := New(&bytes.Buffer{}, slog.LevelInfo)
 	if h.Enabled(context.Background(), slog.LevelDebug) {
-		t.Error("expected Debug disabled by default")
+		t.Error("expected Debug disabled at the Info threshold")
 	}
 	if !h.Enabled(context.Background(), slog.LevelInfo) {
-		t.Error("expected Info enabled by default")
+		t.Error("expected Info enabled at the Info threshold")
+	}
+
+	// log_level: debug is what restores the per-stack narrative the Info
+	// threshold deliberately drops (the skipped stacks, the git sync).
+	debug := New(&bytes.Buffer{}, slog.LevelDebug)
+	if !debug.Enabled(context.Background(), slog.LevelDebug) {
+		t.Error("expected Debug enabled at the Debug threshold")
+	}
+
+	warn := New(&bytes.Buffer{}, slog.LevelWarn)
+	if warn.Enabled(context.Background(), slog.LevelInfo) {
+		t.Error("expected Info disabled at the Warn threshold")
+	}
+}
+
+func TestHandler_RendersDebugRecordsWhenEnabled(t *testing.T) {
+	var buf bytes.Buffer
+	h := New(&buf, slog.LevelDebug)
+	h.color = false
+	slog.New(h).Debug("skipping stack, no changes detected", "stack", "monitoring")
+
+	if !strings.Contains(buf.String(), "monitoring") {
+		t.Errorf("expected the debug record rendered, got %q", buf.String())
 	}
 }

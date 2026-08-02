@@ -55,6 +55,13 @@ type Config struct {
 	// logs (e.g. for Loki ingestion).
 	LogFormat string `yaml:"log_format"`
 
+	// LogLevel is the minimum severity that reaches the log: "debug", "info"
+	// (the default), "warn" or "error". At "info" a run that changes nothing
+	// costs a single line; "debug" adds the per-stack narrative (the skipped
+	// stacks, the git sync, the run header) and the diagnostic lines the
+	// background loops emit when they stand down.
+	LogLevel string `yaml:"log_level"`
+
 	// StacksBaseDir is the directory inside the repo clone that holds one
 	// subdirectory per stack (<stacks_base_dir>/<name>/docker-compose.yml).
 	// Change detection and the compose file always come from here. It is a path
@@ -390,6 +397,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.LogFormat == "" {
 		cfg.LogFormat = LogFormatPretty
+	}
+	if cfg.LogLevel == "" {
+		cfg.LogLevel = LogLevelInfo
 	}
 	if cfg.Icons.CacheDir == "" {
 		cfg.Icons.CacheDir = defaultIconCacheDir

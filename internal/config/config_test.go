@@ -272,6 +272,52 @@ stacks: []
 	}
 }
 
+func TestLoad_LogLevelDefaultsToInfo(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: modules
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.LogLevel != config.LogLevelInfo {
+		t.Errorf("expected default log_level %q, got %q", config.LogLevelInfo, cfg.LogLevel)
+	}
+}
+
+func TestLoad_LogLevelDebug(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: modules
+log_level: debug
+stacks: []
+`
+	cfg := loadFromString(t, content)
+
+	if cfg.LogLevel != config.LogLevelDebug {
+		t.Errorf("expected log_level %q, got %q", config.LogLevelDebug, cfg.LogLevel)
+	}
+}
+
+func TestLoad_RejectsUnknownLogLevel(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: modules
+log_level: verbose
+stacks: []
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil {
+		t.Fatal("expected error for unknown log_level, got nil")
+	}
+	// The message must name the key and the accepted values, not just complain.
+	for _, want := range []string{"log_level", "debug", "verbose"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected error to mention %q, got: %v", want, err)
+		}
+	}
+}
+
 func TestLoad_UIThemeDefaultsToCatppuccin(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git

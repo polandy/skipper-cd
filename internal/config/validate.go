@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/polandy/skipper-cd/internal/git"
@@ -63,6 +64,18 @@ const (
 	LogFormatText   = "text"
 	LogFormatJSON   = "json"
 )
+
+// Valid values for the log_level config field, ordered by severity.
+const (
+	LogLevelDebug = "debug"
+	LogLevelInfo  = "info"
+	LogLevelWarn  = "warn"
+	LogLevelError = "error"
+)
+
+// validLogLevels is the accepted set, kept in one place so the validator and
+// its error message cannot drift apart.
+var validLogLevels = []string{LogLevelDebug, LogLevelInfo, LogLevelWarn, LogLevelError}
 
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
@@ -216,6 +229,10 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.LogFormat != LogFormatPretty && cfg.LogFormat != LogFormatText && cfg.LogFormat != LogFormatJSON {
 		return fmt.Errorf("log_format must be %q, %q or %q, got %q", LogFormatPretty, LogFormatText, LogFormatJSON, cfg.LogFormat)
+	}
+
+	if !slices.Contains(validLogLevels, cfg.LogLevel) {
+		return fmt.Errorf("log_level must be one of %s, got %q", strings.Join(validLogLevels, ", "), cfg.LogLevel)
 	}
 
 	if cfg.RuntimeHealthPollIntervalSeconds != nil && *cfg.RuntimeHealthPollIntervalSeconds < 0 {

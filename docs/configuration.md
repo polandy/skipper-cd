@@ -45,6 +45,7 @@ branch: main                            # optional, default: main
 vars_file: /etc/skipper/vars.env        # optional
 command_timeout_seconds: 300            # optional, default: 300
 log_format: pretty                      # optional, default: pretty (colored console); "text" or "json" for machine-readable logs
+log_level: info                         # optional, default: info; "debug" adds the per-stack narrative
 stacks_base_dir: modules                # relative to repo_dir (the clone); omit for the repo root
 project_directory_base: /etc/nixos/modules    # optional; see project_directory_base below
 webhook_secret: "your-secret-here"      # optional — enables the /webhook accelerator; reconcile runs without it
@@ -94,6 +95,7 @@ nixos_rebuild:
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. When set, it must exist and be readable. |
 | `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |
 | `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
+| `log_level` | string | no | `info` | Minimum severity that reaches the log: `debug`, `info`, `warn` or `error`. At `info` a run that changes nothing costs a single summary line; `debug` adds the per-stack narrative — the skipped stacks, the git sync, the run header — and the diagnostics the background loops emit when they stand down (see [Log level](#log-level)). |
 | `stacks_base_dir` | string | no | repo root | Base directory holding one subdirectory per stack (`<stacks_base_dir>/<name>/docker-compose.yml`); always the source of the compose file and change detection. Relative to `repo_dir` (the clone) — e.g. `stacks`, not `/var/lib/skipper/repo/stacks`. Omit it for the repo root itself. An absolute value, or one escaping the clone via `../`, is rejected at startup. |
 | `project_directory_base` | string | no | — | Base directory a stack's `project_directory` is derived from as `<project_directory_base>/<name>` when the stack does not set its own `project_directory` (see [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity)). Avoids repeating a common prefix (e.g. a NixOS modules directory) across stacks. Must be absolute — checked at startup. |
 | `webhook_secret` | string | no | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Optional: the webhook only accelerates the [reconcile loop](#periodic-reconcile), so leaving it empty is valid and disables the `/webhook` endpoint (it then rejects every request); when set, every request is signature-verified. Rejected only if it's empty **and** `reconcile_interval_seconds` is `0`, since then nothing would deploy after startup. |
@@ -127,16 +129,37 @@ With the default `log_format: pretty`, startup logs the effective stack set (nam
 ```
 14:32:07  ▣ stacks  · 4 discovered
 14:32:07  ◆ nextcloud  hooks pre_deploy·1 post_deploy·1   watch ./nextcloud
-14:32:08  ⇢ run starting  · 4 stacks
 14:32:08  ▸ nextcloud  changed · 2 files
 14:32:08    ↳ pre_deploy [1]
 14:32:20  ✓ nextcloud  deployed
 14:32:41  ↺ arr-stack  rolled back  — health check failed: GET /ping: context deadline exceeded
-14:32:41  ▪ monitoring  unchanged, skipped
 14:32:41  ✗ run complete  1 deployed · 1 rolled back · 1 skipped
 ```
 
 Color auto-disables when stdout is not a terminal (e.g. redirected to a file) or `NO_COLOR` is set; icons still render. Use `log_format: text` or `log_format: json` for a log shipper (Loki, journald) or any other machine consumer.
+
+## Log level
+
+`log_level` sets the minimum severity that reaches the log — in every format, and in the web UI's Logs view alike.
+
+At the default `info`, a run that changes nothing logs exactly one line:
+
+```
+14:37:41  ▪ run complete  12 skipped
+```
+
+That matters because the [reconcile loop](#periodic-reconcile) syncs every few minutes whether or not anything moved: one line per stack per tick would bury the deploys and push them out of the UI's in-memory log.
+
+`log_level: debug` restores the full per-stack narrative and adds the diagnostics the background loops emit when they stand down:
+
+```
+14:37:38  ⇢ pulling latest commits  · main
+14:37:38  ⇢ run starting  · 12 stacks
+14:37:41  ▪ monitoring  unchanged, skipped
+14:37:41  ▪ run complete  12 skipped
+```
+
+Nothing is lost at `info`: a skipped stack is still a `skipped` deploy event, is counted in the run summary, and shows its state in the web UI. Use `warn` or `error` to see only what needs attention.
 
 ## Stack Fields
 

@@ -404,15 +404,33 @@ func main() {
 
 // newLogHandler returns the slog handler for the configured log_format: a
 // JSON handler for "json", a logfmt text handler for "text", and prettylog's
-// colored console handler otherwise (the default, "pretty").
-func newLogHandler(format string, w io.Writer) slog.Handler {
+// colored console handler otherwise (the default, "pretty"). All three drop
+// records below level (log_level, default Info).
+func newLogHandler(format, level string, w io.Writer) slog.Handler {
+	opts := &slog.HandlerOptions{Level: slogLevel(level)}
 	switch format {
 	case config.LogFormatJSON:
-		return slog.NewJSONHandler(w, nil)
+		return slog.NewJSONHandler(w, opts)
 	case config.LogFormatText:
-		return slog.NewTextHandler(w, nil)
+		return slog.NewTextHandler(w, opts)
 	default:
-		return prettylog.New(w)
+		return prettylog.New(w, opts.Level.Level())
+	}
+}
+
+// slogLevel maps a validated log_level value to its slog threshold. An
+// unrecognized value cannot reach here (config validation rejects it) and
+// falls back to Info rather than silently muting or flooding the log.
+func slogLevel(level string) slog.Level {
+	switch level {
+	case config.LogLevelDebug:
+		return slog.LevelDebug
+	case config.LogLevelWarn:
+		return slog.LevelWarn
+	case config.LogLevelError:
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
 	}
 }
 
