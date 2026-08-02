@@ -741,21 +741,25 @@ test('watchedSummary opens its settled lead with UNCHANGED_SINCE', () => {
 // fire it — so the backoff is asserted directly instead of waited out.
 function fakeTimer() {
   const armed = [];
+  const cleared = [];
   const setTimer = (fn, delay) => {
     armed.push({ fn, delay });
     return armed.length; // a truthy handle, like the browser's
   };
+  const clearTimer = (handle) => cleared.push(handle);
   return {
     setTimer,
+    clearTimer,
     delays: () => armed.map((a) => a.delay),
     fireLast: () => armed[armed.length - 1].fn(),
     count: () => armed.length,
+    cleared: () => cleared.slice(),
   };
 }
 
 test('makeReconnector doubles the delay up to the cap', () => {
   const t = fakeTimer();
-  const r = h.makeReconnector(() => {}, t.setTimer);
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
   for (let i = 0; i < 8; i++) {
     r.schedule();
     t.fireLast(); // clear the pending retry so the next schedule() arms
@@ -767,7 +771,7 @@ test('makeReconnector doubles the delay up to the cap', () => {
 
 test('makeReconnector ignores a second schedule while one is pending', () => {
   const t = fakeTimer();
-  const r = h.makeReconnector(() => {}, t.setTimer);
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
   r.schedule();
   r.schedule();
   r.schedule();
@@ -781,7 +785,7 @@ test('makeReconnector ignores a second schedule while one is pending', () => {
 test('makeReconnector runs the connect callback when the timer fires', () => {
   const t = fakeTimer();
   let connects = 0;
-  const r = h.makeReconnector(() => connects++, t.setTimer);
+  const r = h.makeReconnector(() => connects++, t.setTimer, t.clearTimer);
   r.schedule();
   assert.equal(connects, 0, 'must not connect before the delay elapses');
   t.fireLast();
@@ -790,7 +794,7 @@ test('makeReconnector runs the connect callback when the timer fires', () => {
 
 test('makeReconnector reset returns the backoff to the base delay', () => {
   const t = fakeTimer();
-  const r = h.makeReconnector(() => {}, t.setTimer);
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
   for (let i = 0; i < 3; i++) {
     r.schedule();
     t.fireLast();
@@ -804,14 +808,92 @@ test('makeReconnector instances keep separate backoff state', () => {
   // The events stream and the log stream each own one; one stream backing off
   // must not slow the other's first retry.
   const t = fakeTimer();
-  const a = h.makeReconnector(() => {}, t.setTimer);
-  const b = h.makeReconnector(() => {}, t.setTimer);
+  const a = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
+  const b = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
   for (let i = 0; i < 3; i++) {
     a.schedule();
     t.fireLast();
   }
   b.schedule();
   assert.equal(t.delays()[t.delays().length - 1], h.RECONNECT_BASE_DELAY_MS);
+});
+
+// resume() is what a page returning to the foreground calls. A suspended tab
+// (a backgrounded PWA, a locked phone) has its stream torn down and its pending
+// retry timer dropped or throttled by the OS, so waiting for that timer can
+// mean waiting forever — the reconnect has to be driven by the wake-up itself.
+test('makeReconnector resume reconnects at once when the stream is not open', () => {
+  const t = fakeTimer();
+  let connects = 0;
+  const r = h.makeReconnector(() => connects++, t.setTimer, t.clearTimer);
+  r.resume(false); // came back to a stream that did not survive
+  assert.equal(connects, 1, 'must connect on the wake-up, not on a timer');
+  assert.equal(t.count(), 0, 'no retry armed — the connection attempt is immediate');
+});
+
+test('makeReconnector resume leaves an already-open stream alone', () => {
+  const t = fakeTimer();
+  let connects = 0;
+  const r = h.makeReconnector(() => connects++, t.setTimer, t.clearTimer);
+  r.resume(true); // a brief tab switch: the stream stayed open
+  assert.equal(connects, 0, 'reconnecting a live stream would drop its events');
+});
+
+test('makeReconnector resume clears the pending retry so the wake-up connects once', () => {
+  const t = fakeTimer();
+  let connects = 0;
+  const r = h.makeReconnector(() => connects++, t.setTimer, t.clearTimer);
+  r.schedule(); // the stream died while hidden and armed a retry
+  const pending = t.count();
+  r.resume(false);
+  assert.equal(connects, 1);
+  // The armed timer must be cancelled, not merely forgotten: left running it
+  // would fire after the resume and open a second, duplicate stream.
+  assert.deepEqual(t.cleared(), [pending]);
+});
+
+test('makeReconnector resume returns the backoff to the base delay', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
+  for (let i = 0; i < 4; i++) {
+    r.schedule(); // back off to 8s while the tab was hidden and the server unreachable
+    t.fireLast();
+  }
+  r.resume(false);
+  r.schedule(); // the resumed attempt failed too — retry promptly, not at the old delay
+  assert.equal(t.delays()[t.delays().length - 1], h.RECONNECT_BASE_DELAY_MS);
+});
+
+// A stream the browser is still retrying by itself never reaches schedule(),
+// so the outage is counted from the failures themselves — otherwise the case
+// that prompted this (a page that cannot reach the server at all) would never
+// register as offline.
+test('makeReconnector reports offline only once attempts keep failing', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
+  assert.equal(r.isOffline(), false, 'a page that has not failed yet is not offline');
+  for (let i = 1; i < h.OFFLINE_AFTER_FAILURES; i++) {
+    r.failed();
+    assert.equal(r.isOffline(), false, 'one blip must not claim the server is unreachable');
+  }
+  r.failed();
+  assert.equal(r.isOffline(), true);
+});
+
+test('makeReconnector clears the offline state on a good connection', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
+  for (let i = 0; i < h.OFFLINE_AFTER_FAILURES + 2; i++) r.failed();
+  r.reset(); // what onopen calls
+  assert.equal(r.isOffline(), false);
+});
+
+test('makeReconnector resume keeps the offline state until a connection succeeds', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
+  for (let i = 0; i < h.OFFLINE_AFTER_FAILURES; i++) r.failed();
+  r.resume(false); // woke up, trying again — but nothing has answered yet
+  assert.equal(r.isOffline(), true, 'only a connection that works may retract "offline"');
 });
 
 test('rosterAttentionRank floats only an enabled, unhealthy stack', () => {

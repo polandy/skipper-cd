@@ -1459,6 +1459,48 @@ The markers arrive via the post-deploy nudge (the check re-runs when a deploy
 changed what runs), an SSE republish after startup — every case awaits the
 marker itself, never a wall-clock delay.
 
+### 4.43 UI — Maske AP: an unreachable deploy stream
+
+The loading skeleton deliberately does not settle on a failed connection, so a
+transient outage never reads as "no deployments" (Maske AH). Left alone that
+turns into promising forever: a page with no route to the server — an installed
+PWA opened off the network, which the service worker still paints from its
+cached shell — sat on `Connecting to deployment stream…` with the indicator on
+`reconnecting` and no way out, reloading included. This mask pins the honest
+end of it.
+
+`/api/events` is answered `503` rather than aborted: a non-2xx is **fatal** to
+`EventSource` (it closes for good instead of retrying itself), so the page is
+driven purely by its own retry — the path under test. Flipping the stub back to
+`continue()` stands in for a server that came back.
+
+- **UAP1 — It says so.** After the failures cross the threshold the skeleton
+  gives way to the amber load-error line reading `Can't reach skipper — the
+  deploy stream is offline.`, and the indicator reads `reconnecting`. Asserts the
+  skeleton is *gone* — it means "rows are on their way" — that the genuine-empty
+  state stayed hidden, and that the line sits outside any `aria-hidden` subtree:
+  the skeleton is decoration the connection indicator speaks for, so a focusable
+  Retry inside it would be tabbable but invisible to assistive tech.
+- **UAP2 — Retry recovers in place.** With the server back, the notice's Retry
+  connects, the table appears and the notice retracts. A marker set on `window`
+  before the click is asserted afterwards: if Retry ever became a reload it would
+  not survive, so the test fails instead of passing on a fresh document.
+- **UAP3 — Counter-check.** A reachable server shows no notice. Without it UAP1
+  would still pass if the line were rendered unconditionally — a worse bug than
+  the one fixed.
+
+Each case awaits the notice or the table itself, never a wall-clock delay: the
+notice is rendered on the failure that crosses the threshold, so the assertion
+cannot land early.
+
+**Not covered here:** the wake-up wiring (`visibilitychange` / `online`
+reconnecting a page that returns to the foreground). Observing it needs a
+connection attempt to be attributed to the event rather than to the retry timer
+already armed, which means either racing that timer or subscribing to network
+events mid-test — and the fixture warns that such a listener changes the timing
+of the very race it observes (T8). It is covered deterministically at the unit
+layer instead (`makeReconnector` `resume`, injected timer).
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
