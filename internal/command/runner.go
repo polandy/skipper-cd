@@ -51,6 +51,11 @@ type ShellRunner struct {
 	timeout   time.Duration
 	sink      LineSink
 	waitDelay time.Duration // bounds Wait's post-exit I/O drain; see defaultWaitDelay
+	// outputEnv is the environment Output runs its command in; nil inherits the
+	// process environment. Only Output reads it — Run takes its environment as a
+	// per-call parameter, since the deploy path layers env_files on top of the
+	// base env differently for each compose call.
+	outputEnv []string
 }
 
 // NewShellRunner returns a ShellRunner that kills any single command running
@@ -63,6 +68,15 @@ func NewShellRunner(timeout time.Duration) ShellRunner {
 // tee'd line by line into sink. A nil sink behaves like NewShellRunner.
 func NewShellRunnerWithSink(timeout time.Duration, sink LineSink) ShellRunner {
 	return ShellRunner{timeout: timeout, sink: sink, waitDelay: defaultWaitDelay}
+}
+
+// NewShellRunnerWithOutputEnv is NewShellRunner with a fixed environment for
+// the Output path. Read-only compose calls (`compose ps`) need the same
+// ${VAR} interpolation the deploy path gets from vars_file; without it compose
+// warns about every unset variable on every call, which on a polling caller is
+// a continuous log stream. A nil env behaves like NewShellRunner.
+func NewShellRunnerWithOutputEnv(timeout time.Duration, env []string) ShellRunner {
+	return ShellRunner{timeout: timeout, waitDelay: defaultWaitDelay, outputEnv: env}
 }
 
 // Run executes name with args in dir, with env layered onto the process
@@ -103,6 +117,7 @@ func (r ShellRunner) Output(ctx context.Context, dir string, name string, args .
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = r.waitDelay
 	cmd.Dir = dir
+	cmd.Env = r.outputEnv // nil inherits the process environment
 	cmd.Stderr = os.Stderr
 	if r.sink != nil {
 		ew := &lineWriter{sink: r.sink, cmd: name, stream: "stderr"}

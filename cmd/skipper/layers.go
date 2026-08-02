@@ -248,8 +248,19 @@ func buildHealthLayer(cfg *config.Config, views stackViews, stateB *events.Broad
 	}
 	var hl healthLayer
 	healthTimeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
+	// The poller's `compose ps` interpolates the same ${VAR} references the
+	// deploy path does, so it needs vars_file in its environment. Without it
+	// compose warns per unset variable per stack on every tick — a continuous
+	// log stream at the poll interval. A vars_file that fails to load is not
+	// worth refusing to poll over: fall back to the process environment (the
+	// deploy path surfaces the same failure loudly).
+	healthEnv, err := deploy.BaseEnv(cfg.VarsFile)
+	if err != nil {
+		slog.Warn("health poller falling back to the process environment", "err", err)
+		healthEnv = nil
+	}
 	hpCfg := health.Config{
-		Outputter:  command.NewShellRunner(healthTimeout),
+		Outputter:  command.NewShellRunnerWithOutputEnv(healthTimeout, healthEnv),
 		Stacks:     func() []health.StackRef { return health.StackRefs(cfg, views.effective()) },
 		Interval:   time.Duration(interval) * time.Second,
 		AlwaysPoll: selfHealActive || healthWatcher != nil,

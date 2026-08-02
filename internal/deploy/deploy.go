@@ -391,6 +391,13 @@ func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName 
 	return true, nil
 }
 
+// BaseEnv exposes buildBaseEnv to the read-only compose callers outside this
+// package. The health poller runs `docker compose ps` against the same compose
+// file and --project-directory the deploy path uses (Invariant 1), so it must
+// resolve ${VAR} interpolation from the same environment — otherwise compose
+// warns about every unset variable on every poll.
+func BaseEnv(varsFile string) ([]string, error) { return buildBaseEnv(varsFile) }
+
 // buildBaseEnv returns the process environment extended with the entries of
 // the optional global vars_file (Invariant 6: env_files > vars_file > environ,
 // with env_files appended later per compose call).
