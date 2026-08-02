@@ -2177,9 +2177,13 @@
   // it in CLOSED for good and it never retries. Without our own retry the
   // indicator would then sit on `reconnecting` forever, so we retry ourselves
   // with a capped backoff that onopen resets once a connection is good.
-  const eventsReconnect = makeReconnector(function () {
-    connect();
-  }, setTimeout);
+  const eventsReconnect = makeReconnector(
+    function () {
+      connect();
+    },
+    setTimeout,
+    clearTimeout,
+  );
 
   // ── Multi-host fan-in (ADR-0048) ──
   // A peer instance's read data, merged into the local views and tagged by host.
@@ -2754,6 +2758,10 @@
 
   // ── SSE connection (/api/events) ──
 
+  // The live stream handle, or null before the first connect. Kept out here so
+  // the wake-up path (resumeStreams) can tell a surviving stream from a dead one.
+  let eventsSource = null;
+
   // The stream carries its own baseline: it subscribes, then sends the current
   // state, then the deltas. Reading the baseline over a second channel would
   // reopen the gap a change can vanish into (ADR-0039 amendment). Re-run on
@@ -2769,7 +2777,12 @@
   }
 
   function openStream() {
+    // Drop any previous stream before opening the next. Usually it is already
+    // CLOSED (close() is then a no-op), but a stream a suspension left behind
+    // can still be holding a connection — reopening over it would leak one.
+    if (eventsSource) eventsSource.close();
     const es = new EventSource('/api/events');
+    eventsSource = es; // the wake-up path reads its readyState; handlers keep `es`
 
     es.onopen = function () {
       eventsReconnect.reset(); // a good connection resets the backoff
@@ -4151,9 +4164,13 @@
   // (non-2xx / bad content-type, readyState CLOSED); without our own retry the
   // pane would then stop receiving lines with nothing on screen to explain it.
   // Backoff is the same mechanism the events stream uses, with its own state.
-  const logsReconnect = makeReconnector(function () {
-    connectLogs();
-  }, setTimeout);
+  const logsReconnect = makeReconnector(
+    function () {
+      connectLogs();
+    },
+    setTimeout,
+    clearTimeout,
+  );
 
   function connectLogs() {
     if (logSource) return;
@@ -4176,6 +4193,36 @@
       }
     };
   }
+
+  // ── Stream wake-up ──
+
+  // An OS that freezes a backgrounded tab — an installed PWA, a locked phone —
+  // tears the streams down and drops or throttles the retry timer that would
+  // have rebuilt them, so a page can come back to the foreground stuck on
+  // `reconnecting` with nothing left to wake it. The wake-up drives the
+  // reconnect itself instead of trusting that timer. `online` is the same
+  // recovery for the case where the network, not the tab, was what went away.
+
+  function streamIsOpen(src) {
+    return src !== null && src.readyState === EventSource.OPEN;
+  }
+
+  function resumeStreams() {
+    eventsReconnect.resume(streamIsOpen(eventsSource));
+    // The log stream is opened by the Logs view, so only a page sitting on that
+    // view has one to resume; elsewhere applyView connects it on arrival.
+    if (activeView !== 'logs') return;
+    if (logSource && !streamIsOpen(logSource)) {
+      logSource.close();
+      logSource = null; // connectLogs takes this handle as "already connected"
+    }
+    logsReconnect.resume(streamIsOpen(logSource));
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') resumeStreams();
+  });
+  window.addEventListener('online', resumeStreams);
 
   // ── View switching ──
 

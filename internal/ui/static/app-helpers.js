@@ -305,12 +305,14 @@ const RECONNECT_MAX_DELAY_MS = 30000;
 // makeReconnector owns one stream's retry backoff: schedule() arms a capped,
 // doubling retry unless one is already pending, and reset() is what a good
 // connection calls so the next outage starts from the base delay again.
+// resume(isOpen) is the wake-up path — see below.
 //
-// setTimer is required rather than defaulting to setTimeout: this file reaches
-// for no ambient globals, which is what lets it run under node — and it puts
-// the timer a test drives in the signature instead of behind a fallback. The
-// returned state is per instance, so two streams back off independently.
-function makeReconnector(connect, setTimer) {
+// setTimer/clearTimer are required rather than defaulting to the globals: this
+// file reaches for no ambient globals, which is what lets it run under node —
+// and it puts the timer a test drives in the signature instead of behind a
+// fallback. The returned state is per instance, so two streams back off
+// independently.
+function makeReconnector(connect, setTimer, clearTimer) {
   let timer = null;
   let delay = RECONNECT_BASE_DELAY_MS;
   return {
@@ -324,6 +326,27 @@ function makeReconnector(connect, setTimer) {
     },
     reset: function () {
       delay = RECONNECT_BASE_DELAY_MS;
+    },
+    // resume reconnects a page that just came back to the foreground. The
+    // scheduled retry cannot be relied on across a suspension: an OS that
+    // freezes a backgrounded tab (an installed PWA, a locked phone) drops or
+    // throttles its timers, so a stream torn down while hidden can sit in
+    // `reconnecting` forever with nothing left to wake it. The wake-up itself
+    // has to drive the reconnect.
+    //
+    // isOpen says whether the stream survived — a brief tab switch usually
+    // leaves it live, and reopening that would drop events for nothing. When it
+    // did not survive, the pending retry is cancelled (leaving it armed would
+    // open a second stream when it fires) and the backoff resets, since the
+    // delay reached while unreachable says nothing about reachability now.
+    resume: function (isOpen) {
+      if (isOpen) return;
+      if (timer !== null) {
+        clearTimer(timer);
+        timer = null;
+      }
+      delay = RECONNECT_BASE_DELAY_MS;
+      connect();
     },
   };
 }
