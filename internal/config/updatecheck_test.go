@@ -15,8 +15,8 @@ func TestLoad_UpdateCheckDefaultsOn(t *testing.T) {
 	if got, want := cfg.UpdateCheckInterval(), 6*time.Hour; got != want {
 		t.Errorf("UpdateCheckInterval() = %v, want %v (default on)", got, want)
 	}
-	if !cfg.UpdateCheckNotify() {
-		t.Error("UpdateCheckNotify() = false, want true by default")
+	if cfg.UpdateCheckNotify() {
+		t.Error("UpdateCheckNotify() = true, want false by default (UI-only)")
 	}
 }
 
@@ -24,11 +24,21 @@ func TestLoad_UpdateCheckExplicitValues(t *testing.T) {
 	cfg := loadFromString(t, minimalConfig+`
 update_check:
   interval_seconds: 3600
-  notify: false
+  notify: true
 `)
 	if got, want := cfg.UpdateCheckInterval(), time.Hour; got != want {
 		t.Errorf("UpdateCheckInterval() = %v, want %v", got, want)
 	}
+	if !cfg.UpdateCheckNotify() {
+		t.Error("UpdateCheckNotify() = false, want true")
+	}
+}
+
+func TestLoad_UpdateCheckNotifyExplicitlyOff(t *testing.T) {
+	cfg := loadFromString(t, minimalConfig+`
+update_check:
+  notify: false
+`)
 	if cfg.UpdateCheckNotify() {
 		t.Error("UpdateCheckNotify() = true, want false")
 	}

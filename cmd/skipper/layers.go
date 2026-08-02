@@ -160,10 +160,11 @@ func buildHealthWatch(ctx context.Context, cfg *config.Config, stateDir string, 
 // buildUpdateCheck constructs the read-only registry update checker
 // (ADR-0054): every interval it compares what each stack's containers run
 // against what their registries offer, publishes the result on the stacks
-// snapshot (via onChange) and — when notifications are configured — sends one
-// message per newly appearing update. It acts on nothing. Returns nil when
-// update_check.interval_seconds is 0. Run is started by the caller once the
-// deployer exists; the alerter's delivery loop runs until ctx is done.
+// snapshot (via onChange) and — only when update_check.notify opts in and a
+// sink is configured — sends one message per newly appearing update. It acts
+// on nothing. Returns nil when update_check.interval_seconds is 0. Run is
+// started by the caller once the deployer exists; the alerter's delivery loop
+// runs until ctx is done.
 func buildUpdateCheck(ctx context.Context, cfg *config.Config, stateDir string, timeout time.Duration, views stackViews, ref *deployerRef, onChange func()) (*updatecheck.Checker, error) {
 	interval := cfg.UpdateCheckInterval()
 	if interval <= 0 {

@@ -25,10 +25,9 @@ watches, that upstream has moved on:
 
 This is a *display* gap, and display-only runtime facts are squarely in
 skipper's scope ([ADR-0027](0027-live-stack-health-in-ui.md) live health,
-ADR-0053 running versions,
-[[project-scope-visualization-not-trigger]]). The Stacks view already answers
-"what runs" and "is it healthy"; "is it current" is the missing third of the
-same question.
+ADR-0053 running versions — visualization, not trigger). The Stacks view
+already answers "what runs" and "is it healthy"; "is it current" is the missing
+third of the same question.
 
 ## Decision
 
@@ -92,7 +91,7 @@ file per the feature-area layout:
 ```yaml
 update_check:
   interval_seconds: 21600   # default 6h; 0 disables the feature
-  notify: true              # one notification when an update first appears
+  notify: false             # opt-in: one notification when an update first appears
 ```
 
 Per-stack opt-out: `update_check: false` in the stack's overrides (for a stack
@@ -122,8 +121,8 @@ not phone registries outside a deploy sets `interval_seconds: 0`.
   marker, and the containers panel head gains a muted
   `⇡ N updates · registry check 12m ago` in its existing meta slot. Full
   references and the check time live in the chip `title`, like every chip.
-- **Notification** (`notify: true` and a sink configured): one message through
-  the existing pipe when a service first flips to a given advertised version —
+- **Notification** (opt-in `notify: true` and a sink configured): one message
+  through the existing pipe when a service first flips to an advertised version —
   "gitea: 1.22.6 available (running 1.22.3)". Deduped per
   stack/service/advertised identity, and the dedup map is persisted in its own
   small state file beside `state.yaml` (the healthwatch precedent —
@@ -185,5 +184,23 @@ the *doing*; shape B stays rejected.
   service to run, configure, and wire to a second notification pipe — against
   the one-pane-of-glass point of the UI, and blind to skipper's
   per-service running identity. Rejected.
-- **Surface it as a deploy trigger or UI button.** Rejected —
-  [[project-scope-visualization-not-trigger]] and ADR-0030 shape B.
+- **Surface it as a deploy trigger or UI button.** Rejected — the UI
+  visualizes, it does not trigger or edit (ADR-0030 shape B).
+
+## Amendment (2026-08-02): `notify` defaults to false — the UI is the surface
+
+The original default sent a notification for every newly appearing update.
+In practice that is the wrong channel for this signal: an available update is
+a standing state to look at when convenient, not an event that warrants a
+push. Its cadence is set by upstream release schedules, not by anything on the
+host, so across a homelab's worth of stacks it produces a steady trickle of
+messages that no one acts on immediately — and that noise erodes the value of
+the channel that also carries `failed`, `rolled_back` and `heal_exhausted`,
+which *do* demand attention now.
+
+`UpdateCheckNotify()` therefore defaults to **false**: the check reports in
+the Stacks view (the version chip's `⇡` marker) and nowhere else. Setting
+`update_check.notify: true` opts back in; everything about the message, the
+dedup identity and its persistence in `update-check.yaml` is unchanged — only
+the default flips. The dedup file is still written whenever notifications are
+on, and is simply unused when they are not.

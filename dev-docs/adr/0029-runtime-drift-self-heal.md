@@ -164,8 +164,8 @@ stack with `self_heal: true` still gets restored to whatever it last deployed.
   stopped/removed/unhealthy own-stack automatically, within `min_unhealthy_polls`
   intervals, and the ArgoCD "self-heal both axes" parallel is complete.
 - **First trigger that acts on runtime rather than git.** Every prior automatic
-  action ([[project-scope-visualization-not-trigger]]) reconciled toward git;
-  self-heal reconciles toward *running*. It stays inside the "automatic, not
+  action reconciled toward git; self-heal reconciles toward *running*. It
+  stays inside the "automatic, not
   manual, no new operator trigger surface" boundary (like autosync and reconcile),
   but it is the first to read container state as its input, so it is a genuine
   scope extension and is gated off-by-default precisely for that reason.

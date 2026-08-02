@@ -26,8 +26,8 @@ Today those events land in one structure — `events.History`:
 
 The result: skipper can tell you what happened in the last ~100 events, but not
 "what is the deploy history of this one stack" — the audit question. This stays
-within skipper's scope ([[project-scope-visualization-not-trigger]]): it records
-and displays deploys git already drove; it adds no trigger and no action.
+within skipper's scope (visualization, not trigger): it records and displays
+deploys git already drove; it adds no trigger and no action.
 
 ## Decision
 
