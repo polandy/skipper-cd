@@ -106,7 +106,9 @@ func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name str
 	return cmd.Run()
 }
 
-// Output executes a command and returns its captured stdout. Stderr passes
+// Output executes a command in the runner's configured environment (the
+// process environment unless one was fixed at construction — see outputEnv)
+// and returns its captured stdout. Stderr passes
 // through to the process stderr so failures remain visible in logs; with a
 // sink it is additionally captured line by line (stdout is not — it is
 // data for the caller, not log output).
