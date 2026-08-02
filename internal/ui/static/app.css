@@ -2976,10 +2976,35 @@
      page-sized, so live/search/wrap/auto-scroll/fullscreen live inline in its
      own header instead of the view-options popover. */
   #log-view { display: none; }
-  /* position: relative anchors the "N new lines" pill (below) over the pane's
-     lower edge — the edge the newest line now sits at. */
-  body.view-logs #log-view { display: flex; flex-direction: column; margin: 0; position: relative; }
-  #log-view:not(.clog-fullscreen) { height: calc(100vh - 150px); }
+  /* The Logs view is one full-height panel and the page behind it must not
+     scroll. Rather than computing the panel's height from the header and
+     margins — which cannot work, since the first-run tour adds a banner above
+     <main> and makes the header taller, and the PWA update prompt is another
+     such banner — the view turns the page into a flex column and hands the
+     panel whatever is left. No constant to keep in sync with the chrome.
+     dvh, not vh: on mobile Safari `100vh` is the *large* viewport (toolbars
+     collapsed), which overshoots what is actually visible and scrolls the page
+     by the height of the browser chrome. The vh line is the fallback for
+     engines without dvh. */
+  body.view-logs {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    /* body's global `min-height: 100vh` would otherwise win over the dvh
+       height above and put the mobile-Safari overshoot straight back. */
+    min-height: 0;
+    overflow: hidden;
+  }
+  body.view-logs main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  body.view-logs #log-view { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; }
+  /* position: relative anchors the "N new lines" pill over the pane's lower
+     edge. It lives on the :not(.clog-fullscreen) rule deliberately: on
+     `body.view-logs #log-view` it would out-specify the fullscreen rule's
+     `position: fixed` and leave fullscreen merely offset down the page.
+     In fullscreen the panel is itself `position: fixed`, so the pill still
+     has its containing block. */
+  #log-view:not(.clog-fullscreen) { position: relative; }
   body.view-logs #deploy-table, body.view-logs #empty-state, body.view-logs #disabled-stacks { display: none !important; }
   /* Revealed by the search tool or type-to-search, like .clog-search's
      .clog-hide toggle in the container-log panel — just the opposite polarity
