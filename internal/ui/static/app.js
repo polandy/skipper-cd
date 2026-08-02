@@ -684,6 +684,7 @@
       table.style.display = '';
       emptyState.style.display = 'none';
       loadingState.style.display = 'none';
+      clearOfflineNotice();
       initialStateSettled = true; // rows arrived — the initial picture is known
     }
   }
@@ -697,6 +698,7 @@
     if (initialStateSettled) return;
     initialStateSettled = true;
     loadingState.style.display = 'none';
+    clearOfflineNotice();
     if (!hasRows) emptyState.style.display = '';
   }
 
@@ -2762,6 +2764,31 @@
   // the wake-up path (resumeStreams) can tell a surviving stream from a dead one.
   let eventsSource = null;
 
+  const STREAM_OFFLINE_MSG = "Can't reach skipper — the deploy stream is offline.";
+
+  // Once attempts keep failing, the skeleton stops promising a connection and
+  // says so. Its spinner and shimmer rows mean "rows are on their way", which is
+  // exactly wrong when nothing can reach the server — a page left on a suspended
+  // device or off the network would otherwise sit on "Connecting…" forever.
+  // Reuses the load-error component rather than inventing a second failure look;
+  // its Retry reconnects on the spot instead of making the user reload.
+  let offlineNotice = null;
+
+  function showOfflineNotice() {
+    if (initialStateSettled) return; // the table is up — the indicator carries it
+    if (offlineNotice) offlineNotice.remove(); // replace one spent on "Retrying…"
+    offlineNotice = createLoadError(STREAM_OFFLINE_MSG, function () {
+      resumeStreams();
+    });
+    loadingState.appendChild(offlineNotice);
+  }
+
+  function clearOfflineNotice() {
+    if (!offlineNotice) return;
+    offlineNotice.remove();
+    offlineNotice = null;
+  }
+
   // The stream carries its own baseline: it subscribes, then sends the current
   // state, then the deltas. Reading the baseline over a second channel would
   // reopen the gap a change can vanish into (ADR-0039 amendment). Re-run on
@@ -2785,7 +2812,8 @@
     eventsSource = es; // the wake-up path reads its readyState; handlers keep `es`
 
     es.onopen = function () {
-      eventsReconnect.reset(); // a good connection resets the backoff
+      eventsReconnect.reset(); // a good connection resets the backoff and "offline"
+      clearOfflineNotice();
       connDot.className = 'indicator-dot';
       connText.textContent = 'connected';
       connDot.parentElement.dataset.state = 'connected';
@@ -2828,6 +2856,8 @@
     });
 
     es.onerror = function () {
+      eventsReconnect.failed();
+      if (eventsReconnect.isOffline()) showOfflineNotice();
       connDot.className = 'indicator-dot err';
       connText.textContent = 'reconnecting';
       connDot.parentElement.dataset.state = 'reconnecting';

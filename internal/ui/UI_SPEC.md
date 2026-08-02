@@ -314,6 +314,21 @@ state (`data-testid="empty-state"`, `No deployments yet`). A failed snapshot doe
 resolves, so a transient outage never reads as "no deployments". The `synced`
 marker is the deterministic seam this hangs on (no timers).
 
+**Unreachable (offline).** Not settling must not mean promising forever: a page
+that cannot reach the server at all — an installed PWA opened off the network,
+which the service worker still paints from its cached shell — would otherwise sit
+on `Connecting to deployment stream…` with no way out. Once attempts have failed
+`OFFLINE_AFTER_FAILURES` times in a row (more than one, so a single blip during a
+normal connect never flashes it), the skeleton's spinner and shimmer rows are
+replaced by the same amber **load-error line** the [failed detail fetches](#failed-detail-fetches)
+use (`data-testid="load-error"`), reading `Can't reach skipper — the deploy stream
+is offline.`, whose **Retry** reconnects on the spot rather than reloading. The count is
+kept per stream and only a connection that comes up clears it, so a wake-up that
+still cannot reach the server keeps saying offline. Failures are counted from the
+stream errors themselves rather than from the scheduled retries: a stream the
+browser is still retrying by itself never schedules one, and that is exactly the
+shape of an unreachable server.
+
 | Transition | Behaviour |
 |---|---|
 | `deploying` | New row prepended, tracked in memory. |

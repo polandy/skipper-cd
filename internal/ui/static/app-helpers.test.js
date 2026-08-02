@@ -864,6 +864,38 @@ test('makeReconnector resume returns the backoff to the base delay', () => {
   assert.equal(t.delays()[t.delays().length - 1], h.RECONNECT_BASE_DELAY_MS);
 });
 
+// A stream the browser is still retrying by itself never reaches schedule(),
+// so the outage is counted from the failures themselves — otherwise the case
+// that prompted this (a page that cannot reach the server at all) would never
+// register as offline.
+test('makeReconnector reports offline only once attempts keep failing', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
+  assert.equal(r.isOffline(), false, 'a page that has not failed yet is not offline');
+  for (let i = 1; i < h.OFFLINE_AFTER_FAILURES; i++) {
+    r.failed();
+    assert.equal(r.isOffline(), false, 'one blip must not claim the server is unreachable');
+  }
+  r.failed();
+  assert.equal(r.isOffline(), true);
+});
+
+test('makeReconnector clears the offline state on a good connection', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
+  for (let i = 0; i < h.OFFLINE_AFTER_FAILURES + 2; i++) r.failed();
+  r.reset(); // what onopen calls
+  assert.equal(r.isOffline(), false);
+});
+
+test('makeReconnector resume keeps the offline state until a connection succeeds', () => {
+  const t = fakeTimer();
+  const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);
+  for (let i = 0; i < h.OFFLINE_AFTER_FAILURES; i++) r.failed();
+  r.resume(false); // woke up, trying again — but nothing has answered yet
+  assert.equal(r.isOffline(), true, 'only a connection that works may retract "offline"');
+});
+
 test('rosterAttentionRank floats only an enabled, unhealthy stack', () => {
   const health = {
     bad: { status: h.HEALTH.UNHEALTHY },

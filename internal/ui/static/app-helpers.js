@@ -302,6 +302,13 @@ function logLineLevel(entry) {
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
 
+// OFFLINE_AFTER_FAILURES is how many attempts must fail in a row before the UI
+// says the server is unreachable rather than that it is still connecting. More
+// than one, so a single blip during a normal connect never flashes "offline";
+// low enough that a page with no route to the server stops promising a
+// connection within seconds.
+const OFFLINE_AFTER_FAILURES = 3;
+
 // makeReconnector owns one stream's retry backoff: schedule() arms a capped,
 // doubling retry unless one is already pending, and reset() is what a good
 // connection calls so the next outage starts from the base delay again.
@@ -315,7 +322,20 @@ const RECONNECT_MAX_DELAY_MS = 30000;
 function makeReconnector(connect, setTimer, clearTimer) {
   let timer = null;
   let delay = RECONNECT_BASE_DELAY_MS;
+  let failures = 0;
   return {
+    // failed records one attempt that did not come up. It is counted separately
+    // from schedule() because the two do not coincide: a stream the browser is
+    // still retrying by itself (readyState CONNECTING) never schedules a retry
+    // here, and that is exactly the shape of a page with no route to the server.
+    failed: function () {
+      failures++;
+    },
+    // isOffline reports whether enough attempts have failed in a row to say the
+    // server is unreachable instead of still being reached for.
+    isOffline: function () {
+      return failures >= OFFLINE_AFTER_FAILURES;
+    },
     schedule: function () {
       if (timer !== null) return; // a retry is already pending
       timer = setTimer(function () {
@@ -324,8 +344,11 @@ function makeReconnector(connect, setTimer, clearTimer) {
       }, delay);
       delay = Math.min(delay * 2, RECONNECT_MAX_DELAY_MS);
     },
+    // reset is what a connection that came up calls: the next outage starts from
+    // the base delay, and only an answer from the server retracts "offline".
     reset: function () {
       delay = RECONNECT_BASE_DELAY_MS;
+      failures = 0;
     },
     // resume reconnects a page that just came back to the foreground. The
     // scheduled retry cannot be relied on across a suspension: an OS that
@@ -806,6 +829,7 @@ if (typeof module !== 'undefined' && module.exports) {
     makeReconnector,
     RECONNECT_BASE_DELAY_MS,
     RECONNECT_MAX_DELAY_MS,
+    OFFLINE_AFTER_FAILURES,
     formatTime,
     fullTime,
     classifyDiffLine,
