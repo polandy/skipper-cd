@@ -40,11 +40,18 @@ test.describe('UAP: an unreachable deploy stream', () => {
       "Can't reach skipper — the deploy stream is offline.",
     );
 
-    // The spinner and shimmer rows both mean "rows are on their way". With the
-    // notice up they must be gone, or the page still promises what it cannot
-    // deliver — the whole point of the mask.
-    await expect(loadingState(page).locator('.sk-status')).toBeHidden();
-    await expect(loadingState(page).locator('.sk-row').first()).toBeHidden();
+    // The skeleton — spinner and shimmer rows — means "rows are on their way".
+    // With the notice up it must be gone, or the page still promises what it
+    // cannot deliver, which is the whole point of the mask.
+    await expect(loadingState(page)).toBeHidden();
+
+    // The notice must not sit inside the skeleton: that subtree is aria-hidden
+    // decoration (the connection indicator speaks for it), so a message with a
+    // focusable Retry placed in there would be tabbable but absent from the
+    // accessibility tree.
+    expect(
+      await loadError(page).evaluate((el) => el.closest('[aria-hidden="true"]') === null),
+    ).toBe(true);
 
     // The genuine-empty state is NOT what an unreachable server means.
     await expect(page.locator('[data-testid="empty-state"]')).toBeHidden();

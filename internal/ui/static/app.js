@@ -681,11 +681,11 @@
   function showTable() {
     if (!hasRows) {
       hasRows = true;
+      initialStateSettled = true; // rows arrived — the initial picture is known
       table.style.display = '';
       emptyState.style.display = 'none';
       loadingState.style.display = 'none';
-      clearOfflineNotice();
-      initialStateSettled = true; // rows arrived — the initial picture is known
+      clearOfflineNotice(); // after the flag, so it does not restore the skeleton
     }
   }
 
@@ -2780,13 +2780,21 @@
     offlineNotice = createLoadError(STREAM_OFFLINE_MSG, function () {
       resumeStreams();
     });
-    loadingState.appendChild(offlineNotice);
+    // Beside the skeleton, never inside it: the skeleton is aria-hidden
+    // decoration, and this is a real message carrying a real control. A
+    // focusable button in an aria-hidden subtree is reachable by keyboard but
+    // absent from the accessibility tree.
+    loadingState.style.display = 'none';
+    loadingState.parentElement.insertBefore(offlineNotice, loadingState.nextSibling);
   }
 
   function clearOfflineNotice() {
     if (!offlineNotice) return;
     offlineNotice.remove();
     offlineNotice = null;
+    // Put the skeleton back if the picture is still unknown — a connection came
+    // up and the rows (or the synced marker) are on their way.
+    if (!initialStateSettled) loadingState.style.display = '';
   }
 
   // The stream carries its own baseline: it subscribes, then sends the current
@@ -4239,14 +4247,16 @@
 
   function resumeStreams() {
     eventsReconnect.resume(streamIsOpen(eventsSource));
-    // The log stream is opened by the Logs view, so only a page sitting on that
-    // view has one to resume; elsewhere applyView connects it on arrival.
-    if (activeView !== 'logs') return;
+    // Drop a log stream the suspension killed even when the Logs view is not
+    // active: connectLogs takes a non-null handle as "already connected", so one
+    // left behind dead would make the view come up silent when it is next
+    // opened. Reconnecting is what stays view-gated — that view is what opens
+    // the stream, and applyView connects it on arrival.
     if (logSource && !streamIsOpen(logSource)) {
       logSource.close();
-      logSource = null; // connectLogs takes this handle as "already connected"
+      logSource = null;
     }
-    logsReconnect.resume(streamIsOpen(logSource));
+    if (activeView === 'logs') logsReconnect.resume(streamIsOpen(logSource));
   }
 
   document.addEventListener('visibilitychange', function () {

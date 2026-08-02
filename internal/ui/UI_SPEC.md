@@ -319,10 +319,14 @@ that cannot reach the server at all — an installed PWA opened off the network,
 which the service worker still paints from its cached shell — would otherwise sit
 on `Connecting to deployment stream…` with no way out. Once attempts have failed
 `OFFLINE_AFTER_FAILURES` times in a row (more than one, so a single blip during a
-normal connect never flashes it), the skeleton's spinner and shimmer rows are
-replaced by the same amber **load-error line** the [failed detail fetches](#failed-detail-fetches)
-use (`data-testid="load-error"`), reading `Can't reach skipper — the deploy stream
-is offline.`, whose **Retry** reconnects on the spot rather than reloading. The count is
+normal connect never flashes it), the skeleton gives way to the same amber
+**load-error line** the [failed detail fetches](#failed-detail-fetches) use
+(`data-testid="load-error"`), reading `Can't reach skipper — the deploy stream is
+offline.`, whose **Retry** reconnects on the spot rather than reloading. The line
+stands **beside** the skeleton, not inside it: that subtree is `aria-hidden`
+decoration, and a focusable Retry placed in there would be tabbable while absent
+from the accessibility tree. Clearing the line restores the skeleton when the
+picture is still unknown. The count is
 kept per stream and only a connection that comes up clears it, so a wake-up that
 still cannot reach the server keeps saying offline. Failures are counted from the
 stream errors themselves rather than from the scheduled retries: a stream the

@@ -1474,11 +1474,13 @@ end of it.
 driven purely by its own retry — the path under test. Flipping the stub back to
 `continue()` stands in for a server that came back.
 
-- **UAP1 — It says so.** After the failures cross the threshold the skeleton's
-  spinner and shimmer rows give way to the amber load-error line reading
-  `Can't reach skipper — the deploy stream is offline.`, and the indicator reads
-  `reconnecting`. Asserts the spinner and rows are *gone* — both mean "rows are
-  on their way" — and that the genuine-empty state stayed hidden.
+- **UAP1 — It says so.** After the failures cross the threshold the skeleton
+  gives way to the amber load-error line reading `Can't reach skipper — the
+  deploy stream is offline.`, and the indicator reads `reconnecting`. Asserts the
+  skeleton is *gone* — it means "rows are on their way" — that the genuine-empty
+  state stayed hidden, and that the line sits outside any `aria-hidden` subtree:
+  the skeleton is decoration the connection indicator speaks for, so a focusable
+  Retry inside it would be tabbable but invisible to assistive tech.
 - **UAP2 — Retry recovers in place.** With the server back, the notice's Retry
   connects, the table appears and the notice retracts. A marker set on `window`
   before the click is asserted afterwards: if Retry ever became a reload it would
