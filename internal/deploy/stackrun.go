@@ -83,10 +83,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	changed := changedFiles(prep.currentHashes, state.hashesFor(stack.Name))
 	if len(changed) == 0 {
-		// Debug: with the reconcile loop ticking every few minutes this fires
-		// once per stack per tick and would otherwise be most of the log. The
-		// skip is still reported — as a `skipped` deploy event, in the run
-		// summary's count, and in the UI's per-stack state.
+		// Debug: once per stack per reconcile tick, this is most of the log.
+		// The skip is still reported as a `skipped` event and in the run
+		// summary's count (ADR-0042 amendment).
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		d.clearQueued(stack.Name) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()

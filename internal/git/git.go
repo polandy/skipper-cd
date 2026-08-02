@@ -68,11 +68,9 @@ func (s *RepoSync) cloneRepository(ctx context.Context) error {
 }
 
 func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
-	// Debug: every reconcile tick syncs, so at info level this line (and the
-	// reset's "HEAD is now at …" below) reports the poll cadence rather than
-	// anything that happened. A sync that actually moves the branch still
-	// shows up — git fetch narrates the new refs, and the deploy lines name
-	// the commit. A failure returns an error and is logged by the caller.
+	// Debug: every reconcile tick syncs, so at info this reports the poll
+	// cadence, not an event. A sync that moves the branch still shows up —
+	// git fetch narrates the new refs and the deploy lines name the commit.
 	slog.Debug("pulling latest commits", "dir", s.repoDir, "branch", s.branch)
 	// Pin origin to the configured URL on every sync: the clone may predate
 	// a repo_url config change (e.g. an ssh:// to https:// migration) and

@@ -407,14 +407,15 @@ func main() {
 // colored console handler otherwise (the default, "pretty"). All three drop
 // records below level (log_level, default Info).
 func newLogHandler(format, level string, w io.Writer) slog.Handler {
-	opts := &slog.HandlerOptions{Level: slogLevel(level)}
+	threshold := slogLevel(level)
+	opts := &slog.HandlerOptions{Level: threshold}
 	switch format {
 	case config.LogFormatJSON:
 		return slog.NewJSONHandler(w, opts)
 	case config.LogFormatText:
 		return slog.NewTextHandler(w, opts)
 	default:
-		return prettylog.New(w, opts.Level.Level())
+		return prettylog.New(w, threshold)
 	}
 }
 
