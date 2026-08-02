@@ -687,10 +687,11 @@
   function showTable() {
     if (!hasRows) {
       hasRows = true;
+      initialStateSettled = true; // rows arrived — the initial picture is known
       table.style.display = '';
       emptyState.style.display = 'none';
       loadingState.style.display = 'none';
-      initialStateSettled = true; // rows arrived — the initial picture is known
+      clearOfflineNotice(); // after the flag, so it does not restore the skeleton
     }
   }
 
@@ -703,6 +704,7 @@
     if (initialStateSettled) return;
     initialStateSettled = true;
     loadingState.style.display = 'none';
+    clearOfflineNotice();
     if (!hasRows) emptyState.style.display = '';
   }
 
@@ -2183,9 +2185,13 @@
   // it in CLOSED for good and it never retries. Without our own retry the
   // indicator would then sit on `reconnecting` forever, so we retry ourselves
   // with a capped backoff that onopen resets once a connection is good.
-  const eventsReconnect = makeReconnector(function () {
-    connect();
-  }, setTimeout);
+  const eventsReconnect = makeReconnector(
+    function () {
+      connect();
+    },
+    setTimeout,
+    clearTimeout,
+  );
 
   // ── Multi-host fan-in (ADR-0048) ──
   // A peer instance's read data, merged into the local views and tagged by host.
@@ -2760,6 +2766,43 @@
 
   // ── SSE connection (/api/events) ──
 
+  // The live stream handle, or null before the first connect. Kept out here so
+  // the wake-up path (resumeStreams) can tell a surviving stream from a dead one.
+  let eventsSource = null;
+
+  const STREAM_OFFLINE_MSG = "Can't reach skipper — the deploy stream is offline.";
+
+  // Once attempts keep failing, the skeleton stops promising a connection and
+  // says so. Its spinner and shimmer rows mean "rows are on their way", which is
+  // exactly wrong when nothing can reach the server — a page left on a suspended
+  // device or off the network would otherwise sit on "Connecting…" forever.
+  // Reuses the load-error component rather than inventing a second failure look;
+  // its Retry reconnects on the spot instead of making the user reload.
+  let offlineNotice = null;
+
+  function showOfflineNotice() {
+    if (initialStateSettled) return; // the table is up — the indicator carries it
+    if (offlineNotice) offlineNotice.remove(); // replace one spent on "Retrying…"
+    offlineNotice = createLoadError(STREAM_OFFLINE_MSG, function () {
+      resumeStreams();
+    });
+    // Beside the skeleton, never inside it: the skeleton is aria-hidden
+    // decoration, and this is a real message carrying a real control. A
+    // focusable button in an aria-hidden subtree is reachable by keyboard but
+    // absent from the accessibility tree.
+    loadingState.style.display = 'none';
+    loadingState.parentElement.insertBefore(offlineNotice, loadingState.nextSibling);
+  }
+
+  function clearOfflineNotice() {
+    if (!offlineNotice) return;
+    offlineNotice.remove();
+    offlineNotice = null;
+    // Put the skeleton back if the picture is still unknown — a connection came
+    // up and the rows (or the synced marker) are on their way.
+    if (!initialStateSettled) loadingState.style.display = '';
+  }
+
   // The stream carries its own baseline: it subscribes, then sends the current
   // state, then the deltas. Reading the baseline over a second channel would
   // reopen the gap a change can vanish into (ADR-0039 amendment). Re-run on
@@ -2775,10 +2818,16 @@
   }
 
   function openStream() {
+    // Drop any previous stream before opening the next. Usually it is already
+    // CLOSED (close() is then a no-op), but a stream a suspension left behind
+    // can still be holding a connection — reopening over it would leak one.
+    if (eventsSource) eventsSource.close();
     const es = new EventSource('/api/events');
+    eventsSource = es; // the wake-up path reads its readyState; handlers keep `es`
 
     es.onopen = function () {
-      eventsReconnect.reset(); // a good connection resets the backoff
+      eventsReconnect.reset(); // a good connection resets the backoff and "offline"
+      clearOfflineNotice();
       connDot.className = 'indicator-dot';
       connText.textContent = 'connected';
       connDot.parentElement.dataset.state = 'connected';
@@ -2821,6 +2870,8 @@
     });
 
     es.onerror = function () {
+      eventsReconnect.failed();
+      if (eventsReconnect.isOffline()) showOfflineNotice();
       connDot.className = 'indicator-dot err';
       connText.textContent = 'reconnecting';
       connDot.parentElement.dataset.state = 'reconnecting';
@@ -4159,9 +4210,13 @@
   // (non-2xx / bad content-type, readyState CLOSED); without our own retry the
   // pane would then stop receiving lines with nothing on screen to explain it.
   // Backoff is the same mechanism the events stream uses, with its own state.
-  const logsReconnect = makeReconnector(function () {
-    connectLogs();
-  }, setTimeout);
+  const logsReconnect = makeReconnector(
+    function () {
+      connectLogs();
+    },
+    setTimeout,
+    clearTimeout,
+  );
 
   function connectLogs() {
     if (logSource) return;
@@ -4184,6 +4239,38 @@
       }
     };
   }
+
+  // ── Stream wake-up ──
+
+  // An OS that freezes a backgrounded tab — an installed PWA, a locked phone —
+  // tears the streams down and drops or throttles the retry timer that would
+  // have rebuilt them, so a page can come back to the foreground stuck on
+  // `reconnecting` with nothing left to wake it. The wake-up drives the
+  // reconnect itself instead of trusting that timer. `online` is the same
+  // recovery for the case where the network, not the tab, was what went away.
+
+  function streamIsOpen(src) {
+    return src !== null && src.readyState === EventSource.OPEN;
+  }
+
+  function resumeStreams() {
+    eventsReconnect.resume(streamIsOpen(eventsSource));
+    // Drop a log stream the suspension killed even when the Logs view is not
+    // active: connectLogs takes a non-null handle as "already connected", so one
+    // left behind dead would make the view come up silent when it is next
+    // opened. Reconnecting is what stays view-gated — that view is what opens
+    // the stream, and applyView connects it on arrival.
+    if (logSource && !streamIsOpen(logSource)) {
+      logSource.close();
+      logSource = null;
+    }
+    if (activeView === 'logs') logsReconnect.resume(streamIsOpen(logSource));
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') resumeStreams();
+  });
+  window.addEventListener('online', resumeStreams);
 
   // ── View switching ──
 

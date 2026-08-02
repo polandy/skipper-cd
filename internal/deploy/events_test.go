@@ -237,6 +237,52 @@ func TestCollectDiffs_ReturnsDiffs(t *testing.T) {
 	}
 }
 
+// The console renders the diff under the file name (internal/prettylog); it is
+// the one surface that cannot fetch it on demand the way the web UI does. That
+// only works if the record carries it, so the attr is part of the contract.
+func TestCollectDiffs_FileChangedLogCarriesTheDiff(t *testing.T) {
+	cr := &fakeCommitReader{
+		diffs: map[string]string{
+			"/repo/docker-compose.yml": "@@ -1 +1 @@\n-old line\n+new line\n",
+		},
+	}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
+
+	out := captureLogAt(t, slog.LevelInfo, func(t *testing.T) {
+		d.collectDiffs(context.Background(), []string{"/repo/docker-compose.yml"}, "old-sha")
+	})
+
+	if !strings.Contains(out, "file changed") || !strings.Contains(out, "docker-compose.yml") {
+		t.Fatalf("expected the file-changed line, got %q", out)
+	}
+	if !strings.Contains(out, "+new line") {
+		t.Errorf("expected the diff attached to the record, got %q", out)
+	}
+}
+
+// A file whose diff was truncated logs the truncated form, so what the console
+// prints is exactly what the deploy event stored — never more.
+func TestCollectDiffs_LoggedDiffMatchesTheStoredOne(t *testing.T) {
+	big := strings.Repeat("+x\n", maxDiffPerFile) // well past the per-file cap
+	cr := &fakeCommitReader{diffs: map[string]string{"/repo/big.yml": big}}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
+
+	var stored map[string]string
+	out := captureLogAt(t, slog.LevelInfo, func(t *testing.T) {
+		stored = d.collectDiffs(context.Background(), []string{"/repo/big.yml"}, "old-sha")
+	})
+
+	// Both the stored diff and the logged one end at the cap: the console
+	// prints exactly what the event kept, so a huge file cannot flood the
+	// journal past the limit the event already enforces.
+	if !strings.HasSuffix(stored["/repo/big.yml"], "... (truncated)") {
+		t.Fatal("expected the stored diff to be truncated at the per-file cap")
+	}
+	if !strings.Contains(out, "... (truncated)") {
+		t.Errorf("expected the logged diff truncated like the stored one, got %d bytes", len(out))
+	}
+}
+
 func TestCollectDiffs_NilWithoutCommitReader(t *testing.T) {
 	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
 	diffs := d.collectDiffs(context.Background(), []string{"file.yml"}, "old-sha")

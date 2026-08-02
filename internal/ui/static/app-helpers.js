@@ -302,18 +302,40 @@ function logLineLevel(entry) {
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
 
+// OFFLINE_AFTER_FAILURES is how many attempts must fail in a row before the UI
+// says the server is unreachable rather than that it is still connecting. More
+// than one, so a single blip during a normal connect never flashes "offline";
+// low enough that a page with no route to the server stops promising a
+// connection within seconds.
+const OFFLINE_AFTER_FAILURES = 3;
+
 // makeReconnector owns one stream's retry backoff: schedule() arms a capped,
 // doubling retry unless one is already pending, and reset() is what a good
 // connection calls so the next outage starts from the base delay again.
+// resume(isOpen) is the wake-up path — see below.
 //
-// setTimer is required rather than defaulting to setTimeout: this file reaches
-// for no ambient globals, which is what lets it run under node — and it puts
-// the timer a test drives in the signature instead of behind a fallback. The
-// returned state is per instance, so two streams back off independently.
-function makeReconnector(connect, setTimer) {
+// setTimer/clearTimer are required rather than defaulting to the globals: this
+// file reaches for no ambient globals, which is what lets it run under node —
+// and it puts the timer a test drives in the signature instead of behind a
+// fallback. The returned state is per instance, so two streams back off
+// independently.
+function makeReconnector(connect, setTimer, clearTimer) {
   let timer = null;
   let delay = RECONNECT_BASE_DELAY_MS;
+  let failures = 0;
   return {
+    // failed records one attempt that did not come up. It is counted separately
+    // from schedule() because the two do not coincide: a stream the browser is
+    // still retrying by itself (readyState CONNECTING) never schedules a retry
+    // here, and that is exactly the shape of a page with no route to the server.
+    failed: function () {
+      failures++;
+    },
+    // isOffline reports whether enough attempts have failed in a row to say the
+    // server is unreachable instead of still being reached for.
+    isOffline: function () {
+      return failures >= OFFLINE_AFTER_FAILURES;
+    },
     schedule: function () {
       if (timer !== null) return; // a retry is already pending
       timer = setTimer(function () {
@@ -322,8 +344,32 @@ function makeReconnector(connect, setTimer) {
       }, delay);
       delay = Math.min(delay * 2, RECONNECT_MAX_DELAY_MS);
     },
+    // reset is what a connection that came up calls: the next outage starts from
+    // the base delay, and only an answer from the server retracts "offline".
     reset: function () {
       delay = RECONNECT_BASE_DELAY_MS;
+      failures = 0;
+    },
+    // resume reconnects a page that just came back to the foreground. The
+    // scheduled retry cannot be relied on across a suspension: an OS that
+    // freezes a backgrounded tab (an installed PWA, a locked phone) drops or
+    // throttles its timers, so a stream torn down while hidden can sit in
+    // `reconnecting` forever with nothing left to wake it. The wake-up itself
+    // has to drive the reconnect.
+    //
+    // isOpen says whether the stream survived — a brief tab switch usually
+    // leaves it live, and reopening that would drop events for nothing. When it
+    // did not survive, the pending retry is cancelled (leaving it armed would
+    // open a second stream when it fires) and the backoff resets, since the
+    // delay reached while unreachable says nothing about reachability now.
+    resume: function (isOpen) {
+      if (isOpen) return;
+      if (timer !== null) {
+        clearTimer(timer);
+        timer = null;
+      }
+      delay = RECONNECT_BASE_DELAY_MS;
+      connect();
     },
   };
 }
@@ -783,6 +829,7 @@ if (typeof module !== 'undefined' && module.exports) {
     makeReconnector,
     RECONNECT_BASE_DELAY_MS,
     RECONNECT_MAX_DELAY_MS,
+    OFFLINE_AFTER_FAILURES,
     formatTime,
     fullTime,
     classifyDiffLine,

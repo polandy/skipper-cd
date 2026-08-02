@@ -40,7 +40,7 @@ Sticky frosted-glass header (56 px) + centred main (max 1040 px).
 - **Autosync control** — a single sync-arrows glyph showing global autosync state; **muted by default**, turning `--queued` (amber) when paused and `--accent` while its drawer is open. When deploys are queued it also shows an amber **pending count** pill (hidden at zero). Not a `localStorage` preference — it reflects server state from the `autosync`/`queue` SSE events. Click (or `Enter`/`Space`) toggles the [Autosync drawer](#autosync). Visible in all views.
 - **Theme picker** — a palette glyph over a transparent native `<select>` of the five built-in palettes (see [Theme override](#theme-override)); clicking opens the native option list. **Opt-in**: present only when `ui_theme_switcher: true` (see [`docs/configuration.md`](../../docs/configuration.md#web-ui-theme)); off by default, so the deployed theme is fixed. Desktop only (hidden ≤ 700 px). Visible in all views.
 - **Theme toggle** — a moon (dark, default) / sun (light) glyph switching between the configured theme's dark and light variant. State persisted in `localStorage` key `colorScheme` (`dark` / `light`). Visible in all views.
-- **Connection indicator** — a **chain-link** glyph: a closed link in `--success` when `connected`, a closed link pulsing `--accent` while `connecting`, and a **broken link** pulsing `--danger` while `reconnecting`. State is on `data-state`. Bound to `/api/events`; the log stream has no own indicator. `reconnecting` recovers on its own from *both* a transient drop (the browser's built-in retry) and a fatal stream error — a non-2xx response or bad content-type, which closes `EventSource` for good — via a capped-backoff retry the page runs itself.
+- **Connection indicator** — a **chain-link** glyph: a closed link in `--success` when `connected`, a closed link pulsing `--accent` while `connecting`, and a **broken link** pulsing `--danger` while `reconnecting`. State is on `data-state`. Bound to `/api/events`; the log stream has no own indicator. `reconnecting` recovers on its own from *both* a transient drop (the browser's built-in retry) and a fatal stream error — a non-2xx response or bad content-type, which closes `EventSource` for good — via a capped-backoff retry the page runs itself. That retry cannot be the only way back: an OS that freezes a backgrounded tab (an installed PWA, a locked phone) tears the stream down and drops or throttles the pending timer with it, so the page would return to the foreground stuck on `reconnecting` forever. A page becoming visible again — and a `window` `online` event, for when the network rather than the tab was away — therefore reconnects immediately, cancelling any armed retry and resetting the backoff. A stream that survived the suspension (still `OPEN`) is left alone, since reopening it would drop events for nothing.
 
 ### First-run header tour
 
@@ -313,6 +313,25 @@ state (`data-testid="empty-state"`, `No deployments yet`). A failed snapshot doe
 **not** settle it — the skeleton stays until a live event or the next reconnect
 resolves, so a transient outage never reads as "no deployments". The `synced`
 marker is the deterministic seam this hangs on (no timers).
+
+**Unreachable (offline).** Not settling must not mean promising forever: a page
+that cannot reach the server at all — an installed PWA opened off the network,
+which the service worker still paints from its cached shell — would otherwise sit
+on `Connecting to deployment stream…` with no way out. Once attempts have failed
+`OFFLINE_AFTER_FAILURES` times in a row (more than one, so a single blip during a
+normal connect never flashes it), the skeleton gives way to the same amber
+**load-error line** the [failed detail fetches](#failed-detail-fetches) use
+(`data-testid="load-error"`), reading `Can't reach skipper — the deploy stream is
+offline.`, whose **Retry** reconnects on the spot rather than reloading. The line
+stands **beside** the skeleton, not inside it: that subtree is `aria-hidden`
+decoration, and a focusable Retry placed in there would be tabbable while absent
+from the accessibility tree. Clearing the line restores the skeleton when the
+picture is still unknown. The count is
+kept per stream and only a connection that comes up clears it, so a wake-up that
+still cannot reach the server keeps saying offline. Failures are counted from the
+stream errors themselves rather than from the scheduled retries: a stream the
+browser is still retrying by itself never schedules one, and that is exactly the
+shape of an unreachable server.
 
 | Transition | Behaviour |
 |---|---|
