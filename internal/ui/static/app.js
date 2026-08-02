@@ -3065,11 +3065,13 @@
       if (row.classList.contains('disabled')) return;
       const html = linkCell(row.dataset.stack);
       if (html) {
-        // Keep the app-link before the ⋯ menu: a plain re-append would drop it
-        // after the ⋯ (the link is rebuilt on every health poll, the ⋯ is not).
-        const moreWrap = cell.querySelector('.row-more');
-        if (moreWrap) moreWrap.insertAdjacentHTML('beforebegin', html);
-        else cell.insertAdjacentHTML('beforeend', html);
+        // Back into the action cluster, ahead of the logs icon — the render
+        // order. A plain append to the cell would drop the link *outside* the
+        // cluster (it is rebuilt on every health poll, the cluster is not), so
+        // a narrow row would strand it on its own line again.
+        const logs = cell.querySelector('.clog-btn');
+        if (logs) logs.insertAdjacentHTML('beforebegin', html);
+        else (cell.querySelector('.row-actions') || cell).insertAdjacentHTML('beforeend', html);
       }
     });
   }

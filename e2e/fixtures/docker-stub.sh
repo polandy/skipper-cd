@@ -67,6 +67,31 @@ if [ -n "$STUB_DOCKER_UI" ]; then
       ;;
   esac
 
+  # App-link detection (ADR-0041): the detector lists compose-labelled
+  # containers (`ps --filter label=com.docker.compose.project`, one
+  # "<id>\t<working_dir>" line each) and then batch-inspects their labels
+  # (`inspect --format {{json .Config.Labels}} <id>…`). Both are answered from
+  # files the harness seeds; no seed means no app links, which is every other
+  # mask. Matched before the health `ps` case, which would otherwise swallow the
+  # listing. File names mirror harness.ts's APPLINK_* constants.
+  case " $* " in
+    *" label=com.docker.compose.project "*)
+      f="$STUB_DOCKER_PS_DIR/applinks-ps.txt"
+      [ -n "$STUB_DOCKER_PS_DIR" ] && [ -f "$f" ] && cat "$f"
+      exit 0
+      ;;
+    *" {{json .Config.Labels}} "*)
+      for a; do
+        case "$a" in
+          inspect | --format | *{{json*) continue ;;
+        esac
+        f="$STUB_DOCKER_PS_DIR/applink-labels-$a.json"
+        if [ -f "$f" ]; then cat "$f"; printf '\n'; else echo 'null'; fi
+      done
+      exit 0
+      ;;
+  esac
+
   # Health poll: emit the scripted `compose ps --format json` output for this
   # stack (keyed by the project dir's basename), else nothing (-> stopped).
   case " $* " in

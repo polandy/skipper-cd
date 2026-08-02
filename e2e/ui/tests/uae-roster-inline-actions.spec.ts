@@ -151,3 +151,37 @@ test.describe('UAE5: tablet — a wrapping row keeps its glyphs on one line', ()
     for (const y of boxes.glyphs) expect(Math.abs(y - boxes.glyphs[0])).toBeLessThanOrEqual(2);
   });
 });
+
+// UAE6 — the app-link icon is rebuilt on every health poll (updateAppLinks),
+// long after the row rendered. It must land back *inside* the cluster, ahead of
+// the logs icon: appended to the cell it would sit outside and wrap alone again.
+test.describe('UAE6: a re-polled app link stays in the cluster', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web', 'api'],
+      healthPoll: 1, // app-link detection rides the health cadence
+      appLinks: { web: ['web.e2e.test'] },
+    },
+  });
+
+  test('the app-link icon sits inside the cluster, before the logs icon', async ({
+    page,
+    skipper,
+  }) => {
+    await openStacks(page, skipper);
+    const cell = rosterRow(page, 'web').locator('.roster-stack');
+
+    // The link needs a detection poll, so this also waits out at least one
+    // updateAppLinks pass — the path that used to append it to the cell.
+    await expect(cell.locator('[data-testid="app-link-btn"]')).toBeVisible();
+
+    const shape = await cell.evaluate((c) => ({
+      strays: [...c.children].filter((e) =>
+        e.matches('.link-wrap, .jump-btn, .clog-btn, .hooks-badge'),
+      ).length,
+      cluster: [...c.querySelector('.row-actions')!.children].map((e) => e.className.split(' ')[0]),
+    }));
+    expect(shape.strays).toBe(0); // no glyph outside the cluster
+    expect(shape.cluster).toEqual(['jump-btn', 'link-wrap', 'clog-btn']);
+  });
+});

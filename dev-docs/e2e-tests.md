@@ -160,9 +160,10 @@ binary):
   vars, so one stub drives every UI status:
   - always appends `"$@"` to `$DOCKER_LOG` (one line per invocation);
   - `STUB_DOCKER_UI=1` → enable the branches only the UI suite needs (orphan
-    listings, container logs, per-stack health `ps`). The Playwright harness
-    sets it; the Go harness does not, and without it the stub behaves exactly as
-    that suite's own copy did;
+    listings, container logs, per-stack health `ps`, the app-link detector's
+    labelled `ps` + label `inspect`). The Playwright harness sets it; the Go
+    harness does not, and without it the stub behaves exactly as that suite's
+    own copy did;
   - `STUB_DOCKER_FAIL_ON=<subcmd>` → exit non-zero when args contain that
     subcommand (e.g. `up`);
   - `STUB_DOCKER_FAIL_NTH_UP=<n>[,<n>…]` → fail on the listed `compose … up`
@@ -1192,6 +1193,11 @@ hooks-declaring `web` stack and a plain `api` stack. Behaviour-only.
   that a wrap really happened) and every glyph in it shares one line. Before
   `.row-actions` each glyph was its own flex item and the row broke between two
   icons.
+- **UAE6 — A re-polled app link stays in the cluster.** With an app link seeded
+  (`appLinks` start option, detection rides the health poll) the icon is rebuilt
+  on every poll long after the row rendered: it must land back inside the
+  cluster ahead of the logs icon, leaving no glyph as a direct child of the
+  stack cell. Appending it to the cell would strand it on its own line again.
 
 ### 4.33 UI — Maske AF: Status-badge icons + solid worst states (T3.14)
 
