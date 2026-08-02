@@ -3254,6 +3254,11 @@
        Version. */
     .roster-list-header, .roster-row { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) 130px 104px; }
     .roster-list-header .rh-sha, .roster-row .roster-sha { display: none; }
+    /* Top-align once the stack cell can wrap: centred cells drop the version,
+       status and time to the middle of a two-line row, i.e. *below* the name
+       they belong to. Aligned to the top they stay on the name's line, which is
+       what the row reads as — identity first, then what runs. */
+    .roster-row { align-items: start; }
 
     /* Deploys: Duration and Files go, Time is trimmed to `22h ago`, and the two
        that carry the row's meaning — Stack and Version — take what is freed. */

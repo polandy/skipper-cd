@@ -121,12 +121,21 @@ test.describe('UAE4: portrait — inline actions stay usable', () => {
 test.describe('UAE5: tablet — a wrapping row keeps its glyphs on one line', () => {
   const LONG = 'docker-registry-proxy-service';
   test.use({
-    startOptions: { stacks: [LONG] },
+    // The health seed gives the row a version chip, so the alignment check
+    // below has something to measure.
+    startOptions: {
+      stacks: [LONG],
+      healthPoll: 1,
+      initialHealth: {
+        [LONG]: [{ Service: 'app', Image: 'nginx:1.25', State: 'running', Health: 'healthy' }],
+      },
+    },
     viewport: { width: 744, height: 1133 }, // iPad mini, portrait
   });
 
   test('the action cluster wraps whole, not glyph by glyph', async ({ page, skipper }) => {
     await openStacks(page, skipper);
+    await expect(rosterRow(page, LONG).locator('[data-testid="roster-version"] > *')).toBeVisible();
 
     const boxes = await rosterRow(page, LONG).evaluate((row) => {
       // Vertical centre, not top: the glyphs are centre-aligned and differ in
@@ -140,6 +149,7 @@ test.describe('UAE5: tablet — a wrapping row keeps its glyphs on one line', ()
         name: mid(row.querySelector('.roster-name')!),
         cluster: mid(cluster),
         glyphs: [...cluster.children].map(mid),
+        version: mid(row.querySelector('[data-testid="roster-version"] > *')!),
       };
     });
 
@@ -149,6 +159,9 @@ test.describe('UAE5: tablet — a wrapping row keeps its glyphs on one line', ()
     // …and every glyph moved with it.
     expect(boxes.glyphs.length).toBeGreaterThan(1);
     for (const y of boxes.glyphs) expect(Math.abs(y - boxes.glyphs[0])).toBeLessThanOrEqual(2);
+    // The taller row must not push the version down with it: it belongs to the
+    // name and stays on the name's line (top-aligned cells).
+    expect(Math.abs(boxes.version - boxes.name)).toBeLessThanOrEqual(3);
   });
 });
 

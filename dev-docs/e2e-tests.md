@@ -1192,7 +1192,9 @@ hooks-declaring `web` stack and a plain `api` stack. Behaviour-only.
   them down *together*: the cluster sits below the name (the positive signal
   that a wrap really happened) and every glyph in it shares one line. Before
   `.row-actions` each glyph was its own flex item and the row broke between two
-  icons.
+  icons. The same test asserts the row's **version chip stays on the name's
+  line**: a wrapped cell makes the row taller, and centred cells would drop the
+  version below the name it describes.
 - **UAE6 — A re-polled app link stays in the cluster.** With an app link seeded
   (`appLinks` start option, detection rides the health poll) the icon is rebuilt
   on every poll long after the row rendered: it must land back inside the
