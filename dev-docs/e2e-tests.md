@@ -1203,6 +1203,11 @@ hooks-declaring `web` stack and a plain `api` stack. Behaviour-only.
   on every poll long after the row rendered: it must land back inside the
   cluster ahead of the logs icon, leaving no glyph as a direct child of the
   stack cell. Appending it to the cell would strand it on its own line again.
+- **UAE7 — An over-long name clips instead of moving.** At the same width a
+  29-character stack name stays on the host chip's line, ellipsised, with the
+  version beside it and the full name in the element's `title`. Ungrouped, the
+  name took a line of its own below the chip and the version — aligned to the
+  row's first line — ended up above it.
 
 ### 4.33 UI — Maske AF: Status-badge icons + solid worst states (T3.14)
 

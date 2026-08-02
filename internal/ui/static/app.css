@@ -3055,6 +3055,13 @@
     color: var(--text-primary); letter-spacing: -0.3px;
   }
   .roster-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Host chip + icon + name are one identity group, and it never wraps: as
+     separate flex items a long name took a line of its own below the chip,
+     which put the version — aligned to the row's first line — above the name it
+     describes. As a group the name ellipsises instead, so the identity and its
+     version always share the first line. min-width: 0 is what lets it shrink;
+     the full name stays in the title. */
+  .roster-ident { display: flex; align-items: center; gap: 8px; min-width: 0; }
   /* The row's affordance glyphs are one cluster (rowActionClusterHTML): the
      same 8px rhythm as the cell around them, but a single flex item, so a
      narrow cell wraps them to the next line together instead of breaking
@@ -3202,6 +3209,8 @@
        width, and a floor there would pad short names out and shift every row. */
     .cell-stack, .roster-stack { flex-wrap: wrap; }
     .cell-stack .stack-name, .roster-stack .roster-name { min-width: 7ch; }
+    /* Only the action cluster is left to wrap, so it is what moves. */
+    .roster-ident { flex: 1 1 auto; }
   }
 
   @media (max-width: 700px) {

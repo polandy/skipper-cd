@@ -405,7 +405,7 @@
       const rowHealth = entry.disabled ? null : healthSnap[entry.name];
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
-        `<span class="roster-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${rowActionClusterHTML(
+        `<span class="roster-stack"><span class="roster-ident">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="${escapeAttr(entry.name)}">${escapeHtml(entry.name)}</span></span>${rowActionClusterHTML(
           jumpBtnHTML('deploys', entry.name),
           entry.disabled ? '' : linkCell(entry.name),
           rosterRowActionsHTML(entry),
@@ -480,7 +480,7 @@
         row.dataset.status = entry.last_status || '';
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
-          `<span class="roster-stack">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${rowActionClusterHTML(
+          `<span class="roster-stack"><span class="roster-ident">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="${escapeAttr(entry.name)}">${escapeHtml(entry.name)}</span></span>${rowActionClusterHTML(
             entry.disabled ? '' : linkCell(entry.name, p.name),
           )}</span>` +
           rosterVersionCellHTML(
@@ -2475,7 +2475,9 @@
       .querySelectorAll('.roster-row[data-stack]:not(.peer-row)')
       .forEach(function (row) {
         row.dataset.host = selfHost;
-        const cell = row.querySelector('.roster-stack');
+        // The chip leads the identity group, not the cell — the cell's first
+        // child is that group.
+        const cell = row.querySelector('.roster-ident');
         if (cell) setLeadingChip(cell, selfHost);
       });
   }

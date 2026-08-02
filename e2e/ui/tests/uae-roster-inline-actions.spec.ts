@@ -160,7 +160,7 @@ test.describe('UAE5: tablet — a wrapping row keeps its glyphs on one line', ()
       };
       const cluster = r.querySelector('.roster-stack > .row-actions')!;
       return {
-        chip: mid(r.querySelector('.roster-stack > :first-child')!),
+        chip: mid(r.querySelector('.roster-ident > :first-child')!),
         name: mid(r.querySelector('.roster-name')!),
         cluster: mid(cluster),
         glyphs: [...cluster.children].map(mid),
@@ -213,5 +213,54 @@ test.describe('UAE6: a re-polled app link stays in the cluster', () => {
     }));
     expect(shape.strays).toBe(0); // no glyph outside the cluster
     expect(shape.cluster).toEqual(['jump-btn', 'link-wrap', 'clog-btn']);
+  });
+});
+
+// UAE7 — the identity (host chip + icon + name) is one non-wrapping box, so a
+// name too long for the column ellipsises on the first line instead of taking a
+// line of its own below the chip — which would leave the version, aligned to the
+// row's first line, above the name it describes.
+test.describe('UAE7: tablet — an over-long name ellipsises instead of taking a line', () => {
+  const LONG = 'docker-registry-proxy-service';
+  test.use({
+    startOptions: {
+      stacks: [LONG],
+      healthPoll: 1,
+      initialHealth: {
+        [LONG]: [{ Service: 'app', Image: 'nginx:1.25', State: 'running', Health: 'healthy' }],
+      },
+    },
+    viewport: { width: 744, height: 1133 }, // iPad mini, portrait
+  });
+
+  test('the name clips on the first line and keeps the version beside it', async ({
+    page,
+    skipper,
+  }) => {
+    await openStacks(page, skipper);
+    const row = rosterRow(page, LONG);
+    await expect(row.locator('[data-testid="roster-version"] > *')).toBeVisible();
+
+    const boxes = await row.evaluate((r) => {
+      const mid = (el: Element) => {
+        const b = el.getBoundingClientRect();
+        return Math.round(b.top + b.height / 2);
+      };
+      const name = r.querySelector('.roster-name') as HTMLElement;
+      return {
+        chip: mid(r.querySelector('.roster-ident > :first-child')!),
+        name: mid(name),
+        version: mid(r.querySelector('[data-testid="roster-version"] > *')!),
+        clipped: name.scrollWidth > name.clientWidth,
+        title: name.title,
+      };
+    });
+
+    // Clipped, not moved: still on the chip's line, with the version beside it.
+    expect(boxes.clipped).toBe(true);
+    expect(Math.abs(boxes.name - boxes.chip)).toBeLessThanOrEqual(3);
+    expect(Math.abs(boxes.version - boxes.name)).toBeLessThanOrEqual(3);
+    // The clipped text stays reachable.
+    expect(boxes.title).toBe(LONG);
   });
 });
