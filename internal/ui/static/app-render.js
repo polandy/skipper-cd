@@ -831,8 +831,12 @@ function logLineHTML(entry) {
   // rather than one pair buried in the attrs blob. Hook output carries one too
   // (ADR-0038) so it reads like a deploy line and the filter matches it;
   // docker/git output has none.
+  // In the Logs view the prefix doubles as the control that filters to that
+  // stack (the CSS and the click handler are scoped to #log-pane, so the
+  // hook-log panel's reuse of this renderer stays inert).
   const stack = attrs.stack
-    ? `<span class="log-stack" data-testid="stack-prefix">[${escapeHtml(attrs.stack)}]</span>`
+    ? `<span class="log-stack" data-testid="stack-prefix" data-stack="${escapeAttr(attrs.stack)}"` +
+      ` role="button" tabindex="0" title="Filter the log to this stack">[${escapeHtml(attrs.stack)}]</span>`
     : '';
   const msg = `<span class="log-msg">${escapeHtml(entry.msg)}</span>`;
   let html = `<span class="log-time" title="${escapeAttr(fullTime(entry.time))}">${escapeHtml(logTime(entry.time))}</span>`;

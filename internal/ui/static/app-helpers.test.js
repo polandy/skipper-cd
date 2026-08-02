@@ -1087,3 +1087,100 @@ test('resolveUpdates returns the local snapshot for self and the fanned-in one f
   assert.equal(h.resolveUpdates(peers, 'nuc', 'bare', selfUpdates), null);
   assert.equal(h.resolveUpdates(null, 'nuc', 'nuc', null), null);
 });
+
+// ── Log quick filters ──
+
+const logEntry = (level, msg, attrs) => ({ time: '2026-08-02T14:31:04Z', level, msg, attrs });
+
+test('logKind separates child-process output, the deploy lifecycle and everything else', () => {
+  assert.equal(
+    logKindOf('INFO', 'Container app-1  Recreated', { cmd: 'docker', stream: 'stdout' }),
+    'output',
+  );
+  // A cmd attr without a stream is not child output — the pairing is what marks it.
+  assert.equal(logKindOf('INFO', 'something', { cmd: 'docker' }), 'plain');
+  assert.equal(logKindOf('INFO', 'deploying stack', { stack: 'gitea' }), 'deploy');
+  assert.equal(logKindOf('INFO', 'run complete', { skipped: '29' }), 'deploy');
+  assert.equal(logKindOf('ERROR', 'deploy failed', { stack: 'gitea' }), 'deploy');
+  assert.equal(logKindOf('INFO', 'web UI enabled', {}), 'plain');
+  assert.equal(logKindOf('WARN', 'peer unreachable', { peer: 'argoneon' }), 'plain');
+});
+
+function logKindOf(level, msg, attrs) {
+  return h.logKind(logEntry(level, msg, attrs));
+}
+
+test('the severity filter is a threshold, so narrowing never hides something worse', () => {
+  const info = logEntry('INFO', 'web UI enabled', {});
+  const warn = logEntry('WARN', 'peer unreachable', {});
+  const error = logEntry('ERROR', 'deploy failed', {});
+  const output = logEntry('INFO', 'Container app-1  Recreated', {
+    cmd: 'docker',
+    stream: 'stdout',
+  });
+
+  const at = (sev) =>
+    [info, warn, error, output].filter((e) => h.logQuickVisible(e, { sev, kinds: [], stacks: [] }));
+
+  assert.equal(at('ALL').length, 4);
+  assert.deepEqual(at('WARN'), [warn, error]);
+  assert.deepEqual(at('ERROR'), [error]);
+});
+
+test('kind and stack filters are membership tests, and an empty set means no restriction', () => {
+  const deploy = logEntry('INFO', 'deploying stack', { stack: 'gitea' });
+  const output = logEntry('INFO', 'Container app-1  Recreated', {
+    cmd: 'docker',
+    stream: 'stdout',
+    stack: 'gitea',
+  });
+  const other = logEntry('INFO', 'deploying stack', { stack: 'immich' });
+  const noStack = logEntry('INFO', 'web UI enabled', {});
+
+  const show = (f) => [deploy, output, other, noStack].filter((e) => h.logQuickVisible(e, f));
+
+  assert.equal(show({ sev: 'ALL', kinds: [], stacks: [] }).length, 4);
+  assert.deepEqual(show({ sev: 'ALL', kinds: ['deploy'], stacks: [] }), [deploy, other]);
+  assert.deepEqual(show({ sev: 'ALL', kinds: ['output'], stacks: [] }), [output]);
+  assert.deepEqual(show({ sev: 'ALL', kinds: ['deploy', 'output'], stacks: [] }), [
+    deploy,
+    output,
+    other,
+  ]);
+  assert.deepEqual(show({ sev: 'ALL', kinds: [], stacks: ['gitea'] }), [deploy, output]);
+  // The axes compose: a stack plus a kind narrows on both.
+  assert.deepEqual(show({ sev: 'ALL', kinds: ['deploy'], stacks: ['gitea'] }), [deploy]);
+  // An entry with no stack attr is not a member of any stack filter.
+  assert.deepEqual(show({ sev: 'ALL', kinds: [], stacks: ['immich'] }), [other]);
+});
+
+test('logQuickVisible without filters shows everything', () => {
+  const e = logEntry('INFO', 'web UI enabled', {});
+  assert.equal(h.logQuickVisible(e, null), true);
+  assert.equal(h.logQuickVisible(e, h.DEFAULT_LOG_FILTERS), true);
+});
+
+test('logFiltersActive reports whether the view is narrowed', () => {
+  assert.equal(h.logFiltersActive(h.DEFAULT_LOG_FILTERS), false);
+  assert.equal(h.logFiltersActive(null), false);
+  assert.equal(h.logFiltersActive({ sev: 'WARN', kinds: [], stacks: [] }), true);
+  assert.equal(h.logFiltersActive({ sev: 'ALL', kinds: ['deploy'], stacks: [] }), true);
+  assert.equal(h.logFiltersActive({ sev: 'ALL', kinds: [], stacks: ['gitea'] }), true);
+});
+
+test('parseLogFilters falls back to unfiltered for anything it cannot trust', () => {
+  assert.deepEqual(h.parseLogFilters(null), h.DEFAULT_LOG_FILTERS);
+  assert.deepEqual(h.parseLogFilters('not json'), h.DEFAULT_LOG_FILTERS);
+  assert.deepEqual(h.parseLogFilters('[1,2]'), h.DEFAULT_LOG_FILTERS);
+  assert.deepEqual(h.parseLogFilters('"a string"'), h.DEFAULT_LOG_FILTERS);
+  // An unknown severity would otherwise hide every line with no way to tell why.
+  assert.equal(h.parseLogFilters('{"sev":"LOUD"}').sev, 'ALL');
+  // Unknown kinds are dropped; a stray non-string never reaches the predicate.
+  assert.deepEqual(h.parseLogFilters('{"kinds":["deploy","nonsense",7]}').kinds, ['deploy']);
+  assert.deepEqual(h.parseLogFilters('{"stacks":["gitea","",null]}').stacks, ['gitea']);
+});
+
+test('parseLogFilters round-trips a state the UI wrote', () => {
+  const state = { sev: 'WARN', kinds: ['output'], stacks: ['gitea', 'immich'] };
+  assert.deepEqual(h.parseLogFilters(JSON.stringify(state)), state);
+});

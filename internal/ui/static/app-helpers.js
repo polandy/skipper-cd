@@ -295,6 +295,127 @@ function logLineLevel(entry) {
   return attrs.cmd && attrs.stream ? 'cmd' : entry.level;
 }
 
+// LOG_SEVERITIES ranks the log levels the quick filters treat as a threshold:
+// picking "warn" shows warnings *and* errors, so narrowing never hides
+// something worse than what was asked for. Child-process output (`cmd`) has no
+// level of its own and ranks with INFO — it is the detail under a deploy, not
+// a severity signal.
+const LOG_SEVERITIES = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+
+// LOG_DEPLOY_MESSAGES is the set of messages the `deploys` quick filter keeps:
+// skipper's deploy lifecycle, as opposed to startup/background chatter. The
+// message text is duplicated here from internal/deploy rather than shared,
+// following the same rule as internal/prettylog's anchor table — this is a
+// display-layer concern and must not gain influence over the core packages'
+// log wording. A message that drifts simply stops matching the filter; it is
+// never hidden from the unfiltered view.
+const LOG_DEPLOY_MESSAGES = [
+  'deploying stack',
+  'deploy complete',
+  'deploy failed',
+  'deploy failed but rolled back',
+  'deploy failed, rollback ran but stack is still unhealthy',
+  'deploy deferred: autosync paused',
+  'deploy deferred: waiting for queued dependency',
+  'deploy blocked by failed dependency',
+  'rolling back with previous compose file',
+  'rollback successful, old containers restored',
+  'rollback failed',
+  'rollback ran but the restored version is still unhealthy',
+  'running deploy hook',
+  'file changed',
+  'run complete',
+  'nixos-rebuild complete',
+  'nixos-rebuild failed, aborting all stack deploys',
+  'self-heal: restoring stack to its deployed running state',
+  'self-heal: stack restored',
+  'self-heal triggering corrective redeploy',
+];
+
+// logKind classifies one log entry for the kind quick filters: `output` is
+// child-process output (docker/git/nixos-rebuild), `deploy` is a
+// deploy-lifecycle message, and everything else is `plain` (startup lines,
+// background-loop warnings). Every entry has exactly one kind.
+function logKind(entry) {
+  if (logLineLevel(entry) === 'cmd') return 'output';
+  if (LOG_DEPLOY_MESSAGES.indexOf(entry.msg) !== -1) return 'deploy';
+  return 'plain';
+}
+
+// DEFAULT_LOG_FILTERS is the unfiltered state: every severity, no kind
+// restriction, no stack restriction.
+const DEFAULT_LOG_FILTERS = { sev: 'ALL', kinds: [], stacks: [] };
+
+// logFacets reduces an entry to the three values the quick filters test. The
+// renderer stashes them on the line's dataset so a re-filter reads the DOM
+// instead of re-deriving them from the buffer for every rendered line.
+function logFacets(entry) {
+  return {
+    level: entry.level,
+    kind: logKind(entry),
+    stack: (entry.attrs && entry.attrs.stack) || '',
+  };
+}
+
+// logMatchesFilters reports whether one line's facets survive the quick
+// filters. The three axes are independent and each is a narrowing: severity is
+// a minimum, while a non-empty kind or stack set is a membership test. An
+// empty set means "no restriction on this axis", never "match nothing" — a
+// filter a viewer cleared must not blank the pane.
+function logMatchesFilters(facets, filters) {
+  const f = filters || DEFAULT_LOG_FILTERS;
+  const min = LOG_SEVERITIES[f.sev];
+  const level = LOG_SEVERITIES[facets.level];
+  if (min !== undefined && (level === undefined ? LOG_SEVERITIES.INFO : level) < min) return false;
+  if (f.kinds && f.kinds.length && f.kinds.indexOf(facets.kind) === -1) return false;
+  if (f.stacks && f.stacks.length && f.stacks.indexOf(facets.stack || '') === -1) return false;
+  return true;
+}
+
+// logQuickVisible is logMatchesFilters for a whole entry — the form the stream
+// path and the tests use.
+function logQuickVisible(entry, filters) {
+  return logMatchesFilters(logFacets(entry), filters);
+}
+
+// logFiltersActive reports whether the quick filters are narrowing the view —
+// the signal that keeps a filtered pane from reading as an empty one.
+function logFiltersActive(filters) {
+  const f = filters || DEFAULT_LOG_FILTERS;
+  return f.sev !== 'ALL' || (f.kinds && f.kinds.length > 0) || (f.stacks && f.stacks.length > 0);
+}
+
+// parseLogFilters normalizes a persisted quick-filter state (localStorage,
+// so: any string a previous version — or a hand-edited entry — may have left
+// behind) into a usable one. Anything unrecognized falls back to the
+// unfiltered default rather than silently hiding lines a viewer cannot
+// explain.
+function parseLogFilters(raw) {
+  let saved;
+  try {
+    saved = JSON.parse(raw);
+  } catch {
+    return Object.assign({}, DEFAULT_LOG_FILTERS);
+  }
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) {
+    return Object.assign({}, DEFAULT_LOG_FILTERS);
+  }
+  const strings = function (v) {
+    return Array.isArray(v)
+      ? v.filter(function (x) {
+          return typeof x === 'string' && x !== '';
+        })
+      : [];
+  };
+  return {
+    sev: LOG_SEVERITIES[saved.sev] !== undefined ? saved.sev : 'ALL',
+    kinds: strings(saved.kinds).filter(function (k) {
+      return k === 'deploy' || k === 'output';
+    }),
+    stacks: strings(saved.stacks),
+  };
+}
+
 // RECONNECT_BASE_DELAY_MS is where a stream's manual retry backoff starts, and
 // RECONNECT_MAX_DELAY_MS is its cap. EventSource retries a transient drop by
 // itself, but gives up for good on a fatal error (non-2xx, bad content-type),
@@ -882,5 +1003,13 @@ if (typeof module !== 'undefined' && module.exports) {
     assignHostColors,
     hostFilterActive,
     reconcileHostFilter,
+    LOG_SEVERITIES,
+    DEFAULT_LOG_FILTERS,
+    logKind,
+    logFacets,
+    logMatchesFilters,
+    logQuickVisible,
+    logFiltersActive,
+    parseLogFilters,
   };
 }

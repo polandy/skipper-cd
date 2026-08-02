@@ -837,7 +837,30 @@ test('logLineHTML prefixes the stack for hook output too', () => {
     msg: 'hi',
     attrs: { cmd: 'sh', stream: 'stdout', stack: 'web' },
   });
-  assert.match(html, /class="log-stack" data-testid="stack-prefix">\[web\]</);
+  assert.match(html, /class="log-stack" data-testid="stack-prefix"[^>]*>\[web\]</);
+});
+
+test('the stack prefix carries the name and the affordances that make it a filter control', () => {
+  const html = r.logLineHTML({
+    time: '2026-07-28T10:00:00Z',
+    level: 'info',
+    msg: 'deploying stack',
+    attrs: { stack: 'arr-stack' },
+  });
+  assert.match(html, /data-stack="arr-stack"/);
+  assert.match(html, /role="button"/);
+  assert.match(html, /tabindex="0"/);
+});
+
+test('a stack name with quotes cannot break out of the data-stack attribute', () => {
+  const html = r.logLineHTML({
+    time: '2026-07-28T10:00:00Z',
+    level: 'info',
+    msg: 'deploying stack',
+    attrs: { stack: 'we"b<script>' },
+  });
+  assert.ok(!html.includes('<script>'), 'expected the raw tag escaped, got: ' + html);
+  assert.ok(!html.includes('data-stack="we"b'), 'expected the quote escaped, got: ' + html);
 });
 
 test('logLineHTML renders a level line with its badge, pill and attrs blob', () => {
