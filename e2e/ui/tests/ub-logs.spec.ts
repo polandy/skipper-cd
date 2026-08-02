@@ -215,11 +215,18 @@ test.describe('UB5: log-line prefixes', () => {
   });
 
   // The docker child line renders with data-level="cmd" (not a slog level).
+  // Selected by the echoed text, not by position: git's own clone/fetch output
+  // is a cmd line too, and which one comes first is a property of the run
+  // order, not of what this test is about.
   const cmdLine = (page: Page) =>
-    page.locator('[data-testid="log-line"][data-level="cmd"]').first();
-  // A deploy line for the "web" stack — the terminal ERROR is stable.
+    page.locator('[data-testid="log-line"][data-level="cmd"]', { hasText: CHILD_LINE }).first();
+  // A deploy line for the "web" stack — the terminal ERROR is stable. Pinned to
+  // the line that carries a stack prefix, for the same reason.
   const stackLine = (page: Page) =>
-    page.locator('[data-testid="log-line"][data-level="ERROR"]').first();
+    page
+      .locator('[data-testid="log-line"][data-level="ERROR"]')
+      .filter({ has: page.locator('[data-testid="stack-prefix"]') })
+      .first();
 
   test('renders a stack-prefix on deploy lines and a cmd-prefix (no badge) on child output', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
