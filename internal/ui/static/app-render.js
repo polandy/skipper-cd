@@ -380,6 +380,17 @@ function jumpBtnHTML(targetView, stack) {
   );
 }
 
+// rowActionClusterHTML groups a stack cell's affordance glyphs (jump, app
+// link, container logs, hooks) into one non-wrapping box. The cell itself
+// wraps on a narrow screen, and without the box each glyph is its own flex
+// item: the row broke *between* icons, leaving one stranded on a second line.
+// As a cluster the affordances move to the next line whole. Empty when the row
+// has none, so the cell's gap adds no phantom space after the name.
+function rowActionClusterHTML(...parts) {
+  const inner = parts.filter(Boolean).join('');
+  return inner ? `<span class="row-actions">${inner}</span>` : '';
+}
+
 // pendingTagHTML renders the tag on a pending deploy row. Queued rows show
 // "paused[: reason]"; blocked rows (ADR-0032) show the dependency reason
 // ("blocked by <dep>") directly. The caller draws reason from the queue
@@ -999,6 +1010,7 @@ if (typeof module !== 'undefined' && module.exports) {
     hookCount,
     hooksBadgeHTML,
     jumpBtnHTML,
+    rowActionClusterHTML,
     pendingTagHTML,
     hostChipHTML,
     linkCellHTML,

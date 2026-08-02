@@ -405,7 +405,11 @@
       const rowHealth = entry.disabled ? null : healthSnap[entry.name];
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
-        `<span class="roster-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${jumpBtnHTML('deploys', entry.name)}${entry.disabled ? '' : linkCell(entry.name)}${rosterRowActionsHTML(entry)}</span>` +
+        `<span class="roster-stack"><span class="roster-ident">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="${escapeAttr(entry.name)}">${escapeHtml(entry.name)}</span></span>${rowActionClusterHTML(
+          jumpBtnHTML('deploys', entry.name),
+          entry.disabled ? '' : linkCell(entry.name),
+          rosterRowActionsHTML(entry),
+        )}</span>` +
         rosterVersionCellHTML(
           entry.name,
           rowHealth,
@@ -476,7 +480,9 @@
         row.dataset.status = entry.last_status || '';
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
-          `<span class="roster-stack">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name">${escapeHtml(entry.name)}</span>${entry.disabled ? '' : linkCell(entry.name, p.name)}</span>` +
+          `<span class="roster-stack"><span class="roster-ident">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="${escapeAttr(entry.name)}">${escapeHtml(entry.name)}</span></span>${rowActionClusterHTML(
+            entry.disabled ? '' : linkCell(entry.name, p.name),
+          )}</span>` +
           rosterVersionCellHTML(
             entry.name,
             stackHealthFor(entry.name, p.name),
@@ -2469,7 +2475,9 @@
       .querySelectorAll('.roster-row[data-stack]:not(.peer-row)')
       .forEach(function (row) {
         row.dataset.host = selfHost;
-        const cell = row.querySelector('.roster-stack');
+        // The chip leads the identity group, not the cell — the cell's first
+        // child is that group.
+        const cell = row.querySelector('.roster-ident');
         if (cell) setLeadingChip(cell, selfHost);
       });
   }
@@ -3110,11 +3118,13 @@
       if (row.classList.contains('disabled')) return;
       const html = linkCell(row.dataset.stack);
       if (html) {
-        // Keep the app-link before the ⋯ menu: a plain re-append would drop it
-        // after the ⋯ (the link is rebuilt on every health poll, the ⋯ is not).
-        const moreWrap = cell.querySelector('.row-more');
-        if (moreWrap) moreWrap.insertAdjacentHTML('beforebegin', html);
-        else cell.insertAdjacentHTML('beforeend', html);
+        // Back into the action cluster, ahead of the logs icon — the render
+        // order. A plain append to the cell would drop the link *outside* the
+        // cluster (it is rebuilt on every health poll, the cluster is not), so
+        // a narrow row would strand it on its own line again.
+        const logs = cell.querySelector('.clog-btn');
+        if (logs) logs.insertAdjacentHTML('beforebegin', html);
+        else (cell.querySelector('.row-actions') || cell).insertAdjacentHTML('beforeend', html);
       }
     });
   }
