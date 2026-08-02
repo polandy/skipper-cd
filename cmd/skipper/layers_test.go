@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
@@ -164,6 +167,39 @@ func TestBuildHealthWatch_WatcherWithConfig(t *testing.T) {
 	}
 	if w == nil {
 		t.Error("expected a watcher with health_watch configured")
+	}
+}
+
+// The poller probes with the same ${VAR} interpolation the deploy path uses,
+// so vars_file must reach its environment — otherwise compose warns about
+// every unset variable on every tick.
+func TestHealthOutputEnv_CarriesVarsFile(t *testing.T) {
+	varsPath := filepath.Join(t.TempDir(), "vars.env")
+	if err := os.WriteFile(varsPath, []byte("DOMAIN=example.com\n"), 0o600); err != nil {
+		t.Fatalf("write vars file: %v", err)
+	}
+	cfg := uiConfig(true)
+	cfg.VarsFile = varsPath
+
+	env := healthOutputEnv(cfg)
+
+	if !slices.Contains(env, "DOMAIN=example.com") {
+		t.Errorf("expected the vars_file entry in the poller environment, got %v", env)
+	}
+	if !slices.Contains(env, "PATH="+os.Getenv("PATH")) {
+		t.Error("expected the process environment underneath vars_file (docker must stay on PATH)")
+	}
+}
+
+// An unreadable vars_file must degrade to the process environment rather than
+// leave the poller with a blank one — a poller that cannot run docker at all
+// is worse than one that warns.
+func TestHealthOutputEnv_UnreadableVarsFileFallsBackToProcessEnvironment(t *testing.T) {
+	cfg := uiConfig(true)
+	cfg.VarsFile = filepath.Join(t.TempDir(), "missing.env")
+
+	if env := healthOutputEnv(cfg); env != nil {
+		t.Errorf("expected a nil env (inherit the process environment) on a bad vars_file, got %v", env)
 	}
 }
 
