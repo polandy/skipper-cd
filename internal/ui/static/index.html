@@ -349,6 +349,9 @@
       </span>
       <span class="clog-live" id="logs-live" data-testid="logs-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>
       <span class="clog-grow"></span>
+      <button class="clog-tool on" id="log-quick-open" data-testid="log-quick" type="button" title="Quick filters" aria-expanded="true" aria-controls="log-quick-bar">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8L3 5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </button>
       <button class="clog-tool" id="log-search-open" data-testid="log-search" type="button" title="Search in log">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
@@ -362,6 +365,18 @@
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
+    <div class="clog-quick" id="log-quick-bar" data-testid="log-quick-bar">
+      <span class="clog-quick-lbl">show</span>
+      <button class="clog-chip" data-testid="log-sev-ALL" data-sev="ALL" type="button" aria-pressed="true">all</button>
+      <button class="clog-chip" data-testid="log-sev-WARN" data-sev="WARN" type="button" aria-pressed="false">warnings</button>
+      <button class="clog-chip" data-testid="log-sev-ERROR" data-sev="ERROR" type="button" aria-pressed="false">errors</button>
+      <span class="clog-quick-sep"></span>
+      <button class="clog-chip" data-testid="log-kind-deploy" data-kind="deploy" type="button" aria-pressed="false">deploys</button>
+      <button class="clog-chip" data-testid="log-kind-output" data-kind="output" type="button" aria-pressed="false">command output</button>
+      <span class="clog-quick-sep" id="log-stack-sep" hidden></span>
+      <span id="log-stack-chips" data-testid="log-stack-chips"></span>
+      <span class="clog-hits" id="log-quick-count" data-testid="log-quick-count"></span>
+    </div>
     <div class="clog-search" id="log-filter-wrap" data-testid="log-filter-wrap">
       <span class="clog-sic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
       <input type="text" id="log-filter" data-testid="log-filter" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log">
@@ -370,6 +385,7 @@
     <div class="clog-body" id="log-pane" data-testid="log-pane">
       <div class="log-empty" id="log-empty">Awaiting log output...</div>
     </div>
+    <button class="clog-newpill" id="log-newpill" data-testid="log-newpill" type="button" hidden></button>
     <div class="clog-foot"><span class="clog-stat" id="logs-stat" data-testid="logs-stat">live · streaming</span></div>
   </div>
 </main>

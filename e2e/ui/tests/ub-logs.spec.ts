@@ -121,13 +121,19 @@ test.describe('UB4: follow toggle', () => {
     page.evaluate(() => localStorage.getItem('followLogs'));
   const scrollTop = (page: Page) =>
     page.evaluate(() => document.getElementById('log-pane')!.scrollTop);
-  // Scroll to the oldest edge (the bottom in descending order) so the newest
-  // edge (top) is out of view — any autoscroll is then observable as scrollTop→0.
-  const scrollAwayFromNewest = (page: Page) =>
+  // The newest line sits at the *bottom* (chronological order), so "at the
+  // tail" means scrolled to the end, not to zero.
+  const atTail = (page: Page) =>
     page.evaluate(() => {
       const p = document.getElementById('log-pane')!;
-      p.scrollTop = p.scrollHeight;
+      return p.scrollTop + p.clientHeight >= p.scrollHeight - 40;
     });
+  // Scroll to the oldest edge (the top) so the newest edge is out of view.
+  const scrollAwayFromNewest = (page: Page) =>
+    page.evaluate(() => {
+      document.getElementById('log-pane')!.scrollTop = 0;
+    });
+  const newPill = (page: Page) => page.locator('[data-testid="log-newpill"]');
 
   test('autoscrolls to the newest edge only while following, and persists', async ({ page, skipper }) => {
     // Fill the ring so the log pane overflows and becomes scrollable. Each
@@ -147,30 +153,41 @@ test.describe('UB4: follow toggle', () => {
     });
     expect(overflows).toBe(true);
 
-    // Following is on by default (no explicit choice stored yet).
+    // Following is on by default (no explicit choice stored yet), and the pane
+    // sits at the tail.
     expect(await followLogs(page)).toBeNull();
+    expect(await atTail(page)).toBe(true);
 
-    // Scroll away from the newest edge, then a fresh line streams in: following
-    // snaps the pane back to the newest edge (scrollTop 0 in descending order).
+    // Scrolling away from the tail disengages following by itself — the control
+    // reports where the pane actually is instead of having to be toggled. A
+    // fresh line then leaves the reading position alone and is announced by the
+    // "N new lines" pill instead.
     await scrollAwayFromNewest(page);
-    expect(await scrollTop(page)).toBeGreaterThan(0);
+    await expect(followBtn(page)).not.toHaveClass(/\bon\b/);
+    expect(await followLogs(page)).toBe('false');
+    const parked = await scrollTop(page);
     let count = await logLines(page).count();
     expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
     await expect(logLines(page)).toHaveCount(count + 1);
-    expect(await scrollTop(page)).toBe(0);
+    expect(await scrollTop(page)).toBe(parked);
+    await expect(newPill(page)).toBeVisible();
 
-    // Turn following off; the choice is persisted.
-    await followBtn(page).click();
-    expect(await followLogs(page)).toBe('false');
+    // Clicking the pill re-engages following and jumps to the tail, which also
+    // settles the pill.
+    await newPill(page).click();
+    expect(await atTail(page)).toBe(true);
+    expect(await followLogs(page)).toBe('true');
+    await expect(newPill(page)).toBeHidden();
 
-    // Scroll away again: now a fresh line must NOT drag the pane to the newest
-    // edge — the reading position is left where the user put it.
-    await scrollAwayFromNewest(page);
-    expect(await scrollTop(page)).toBeGreaterThan(0);
+    // While following, a fresh line keeps the pane pinned to the tail.
     count = await logLines(page).count();
     expect(await skipper.sendBadWebhook('refs/heads/main')).toBe(401);
     await expect(logLines(page)).toHaveCount(count + 1);
-    expect(await scrollTop(page)).toBeGreaterThan(0);
+    expect(await atTail(page)).toBe(true);
+
+    // Turning it off by hand persists the choice too.
+    await followBtn(page).click();
+    expect(await followLogs(page)).toBe('false');
 
     // The unfollowed choice survives a reload.
     await page.reload();
@@ -198,11 +215,18 @@ test.describe('UB5: log-line prefixes', () => {
   });
 
   // The docker child line renders with data-level="cmd" (not a slog level).
+  // Selected by the echoed text, not by position: git's own clone/fetch output
+  // is a cmd line too, and which one comes first is a property of the run
+  // order, not of what this test is about.
   const cmdLine = (page: Page) =>
-    page.locator('[data-testid="log-line"][data-level="cmd"]').first();
-  // A deploy line for the "web" stack — the terminal ERROR is stable.
+    page.locator('[data-testid="log-line"][data-level="cmd"]', { hasText: CHILD_LINE }).first();
+  // A deploy line for the "web" stack — the terminal ERROR is stable. Pinned to
+  // the line that carries a stack prefix, for the same reason.
   const stackLine = (page: Page) =>
-    page.locator('[data-testid="log-line"][data-level="ERROR"]').first();
+    page
+      .locator('[data-testid="log-line"][data-level="ERROR"]')
+      .filter({ has: page.locator('[data-testid="stack-prefix"]') })
+      .first();
 
   test('renders a stack-prefix on deploy lines and a cmd-prefix (no badge) on child output', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
@@ -217,7 +241,10 @@ test.describe('UB5: log-line prefixes', () => {
     await expect(cmd.locator('[data-testid="level-badge"]')).toHaveCount(0);
 
     // Structured deploy line: a [web] stack-prefix next to a real level badge —
-    // the two coexist, unlike the child line which has neither a stack nor a badge.
+    // the two coexist, unlike the child line which has neither a stack nor a
+    // badge. This one is the rollback attempt, whose message is assembled at
+    // runtime ("<stage> failed, attempting rollback") and so has no narrative:
+    // it is exactly the fallback rendering, which must keep working.
     const stack = stackLine(page);
     await expect(stack).toBeVisible();
     await expect(stack.locator('[data-testid="stack-prefix"]')).toHaveText('[web]');
@@ -232,14 +259,14 @@ test.describe('UB5: log-line prefixes', () => {
 // log line (clicking again collapses it) — the log-view twin of UA8's deploy-row
 // diff. The startup deploy is the stack's first (no prior commit → empty diffs); a
 // second deploy that bumps the compose image is the first with a real diff, so its
-// `deploy complete` line — the newest, hence topmost under the default descending
-// sort — is the one whose pill expands a populated panel. We drive the real backend
+// `deploy complete` line — the newest, hence the last one in chronological
+// order — is the one whose pill expands a populated panel. We drive the real backend
 // (webhook → deploy → SSE) and select only by `data-testid`.
 test.describe('UB6: diff pill in logs', () => {
-  // Both deploy-complete lines carry a diff-pill; the newest (topmost) is the
-  // second deploy, the only one with a real diff to show.
+  // Both deploy-complete lines carry a diff-pill; the newest is the *last* one
+  // in chronological order — the second deploy, the only one with a real diff.
   const newestDiffPill = (page: Page) =>
-    page.locator('[data-testid="log-line"] [data-testid="diff-pill"]').first();
+    page.locator('[data-testid="log-line"] [data-testid="diff-pill"]').last();
   const diffPanel = (page: Page) => page.locator('[data-testid="diff-panel"]');
 
   test('clicking a deploy line pill expands the diff panel below it', async ({ page, skipper }) => {

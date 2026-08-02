@@ -172,3 +172,44 @@ already collected, under the caps that already applied to it — 10 KB per
 file, 50 KB per deploy (`internal/deploy/events.go`). A test pins the logged
 form to the stored one, so the console can never print more than the event
 kept.
+
+## Amendment (2026-08-02): the web UI's log view mirrors this rendering
+
+This ADR built the narrative for the console and said it mirrors the web
+UI's *Deploys* view. The web UI's own **Logs** view was left out, and it
+showed the raw record — `INFO deploy complete stack=nextcloud
+event_id=412`, and a run summary that was six sevenths `=0`. Two surfaces
+onto the same records, one narrating and one not.
+
+The Logs view now renders the same narrative: a status glyph in place of the
+level badge, the stack, the narrated text, the detail dimmed; the run
+summary lists only non-zero outcomes and takes its glyph from the worst one
+present. A changed file's diff is rendered inline beneath its line, as the
+console prints it.
+
+### Two tables, on purpose
+
+The obvious objection is that the message→narrative mapping now exists
+twice: `internal/prettylog/render.go` and `internal/ui/static/app-helpers.js`.
+Sharing one source would mean either shipping the table to the browser from
+Go (a build step this UI does not have — ADR-0035) or letting the UI import
+Go strings (it cannot). The alternative — a *different* idiom in each
+surface — is what this amendment exists to remove.
+
+So the duplication is deliberate and bounded by the rule this ADR already
+set for prettylog: **a display layer owns its own strings and must not gain
+influence over the core packages' log wording.** Both tables fall back the
+same way — a message that drifts stops matching and renders raw, never
+dropped — so drift degrades to the old rendering on one surface rather than
+breaking either.
+
+### Where the two deliberately differ
+
+- The `[stack]` prefix keeps its brackets in the UI: there it is also the
+  control that filters the log to that stack, and it must look the same on
+  narrated and unnarrated lines. A synthesised label (`peer argoneon`) is
+  not a control and is rendered plain.
+- The console prints a file's whole diff (capped at 10 KB); the UI renders
+  the copy the log ring clamped (~40 lines) and reaches the rest through the
+  deploy's diff pill. The console has no pill — that asymmetry is the reason
+  it prints the full one.

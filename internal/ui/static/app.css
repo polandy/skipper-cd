@@ -2976,14 +2976,91 @@
      page-sized, so live/search/wrap/auto-scroll/fullscreen live inline in its
      own header instead of the view-options popover. */
   #log-view { display: none; }
-  body.view-logs #log-view { display: flex; flex-direction: column; margin: 0; }
-  #log-view:not(.clog-fullscreen) { height: calc(100vh - 150px); }
+  /* The Logs view is one full-height panel and the page behind it must not
+     scroll. Rather than computing the panel's height from the header and
+     margins — which cannot work, since the first-run tour adds a banner above
+     <main> and makes the header taller, and the PWA update prompt is another
+     such banner — the view turns the page into a flex column and hands the
+     panel whatever is left. No constant to keep in sync with the chrome.
+     dvh, not vh: on mobile Safari `100vh` is the *large* viewport (toolbars
+     collapsed), which overshoots what is actually visible and scrolls the page
+     by the height of the browser chrome. The vh line is the fallback for
+     engines without dvh. */
+  body.view-logs {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    /* body's global `min-height: 100vh` would otherwise win over the dvh
+       height above and put the mobile-Safari overshoot straight back. */
+    min-height: 0;
+    overflow: hidden;
+  }
+  body.view-logs main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  body.view-logs #log-view { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; }
+  /* position: relative anchors the "N new lines" pill over the pane's lower
+     edge. It lives on the :not(.clog-fullscreen) rule deliberately: on
+     `body.view-logs #log-view` it would out-specify the fullscreen rule's
+     `position: fixed` and leave fullscreen merely offset down the page.
+     In fullscreen the panel is itself `position: fixed`, so the pill still
+     has its containing block. */
+  #log-view:not(.clog-fullscreen) { position: relative; }
   body.view-logs #deploy-table, body.view-logs #empty-state, body.view-logs #disabled-stacks { display: none !important; }
   /* Revealed by the search tool or type-to-search, like .clog-search's
      .clog-hide toggle in the container-log panel — just the opposite polarity
      (shown on .revealed, matching the deploys/stacks filter bars' own class). */
   #log-filter-wrap { display: none; }
   #log-filter-wrap.revealed { display: flex; }
+
+  /* Quick filters — the chip row under the Logs panel head. Same chrome as the
+     container-log panel's per-service chip row (.clog-svcs/.clog-chip) so the
+     two read as one control family; the difference is that this row is shown by
+     default. It has to be: the filter state persists across reloads, and a
+     narrowed pane that hides its own filter reads as an empty log. */
+  .clog-quick {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px 12px;
+    background: var(--bg-base); border-bottom: 1px solid var(--border);
+  }
+  .clog-quick.clog-hide { display: none; }
+  .clog-quick-lbl { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-right: 2px; }
+  .clog-quick-sep { width: 1px; height: 14px; background: var(--border-lit); margin: 0 3px; }
+  /* An active severity chip carries its own severity hue rather than the shared
+     accent: "errors only" has to read as a severity, not just as "selected", or
+     a deliberately narrowed pane looks like a broken one. */
+  .clog-chip.active[data-sev="WARN"] {
+    color: var(--hunk); background: color-mix(in srgb, var(--hunk) 12%, transparent);
+    border-color: color-mix(in srgb, var(--hunk) 40%, transparent);
+  }
+  .clog-chip.active[data-sev="ERROR"] {
+    color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  }
+  .clog-chip.stack-chip { display: inline-flex; align-items: center; gap: 6px; }
+  .clog-chip.stack-chip .chip-x { color: var(--text-muted); font-weight: 600; }
+  .clog-chip.stack-chip:hover .chip-x { color: var(--danger); }
+  #log-quick-count { margin-left: auto; }
+
+  /* A stack prefix in a log line doubles as the control that filters to it. */
+  #log-pane .log-stack { cursor: pointer; border-radius: 4px; padding: 0 2px; margin: 0 -2px; }
+  #log-pane .log-stack:hover { background: var(--accent-dim); }
+  #log-pane .log-stack:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* "N new lines" — shown only while auto-scroll is disengaged, so a viewer
+     reading history is told what arrived instead of being yanked to the tail. */
+  .clog-newpill {
+    position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 2;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    color: var(--accent); background: var(--bg-base);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    border-radius: 20px; padding: 4px 12px; cursor: pointer;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 28%);
+  }
+  .clog-newpill[hidden] { display: none; }
+  .clog-newpill:hover { background: var(--accent-dim); }
+  .clog-newpill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* In fullscreen the panel fills the viewport, so the pill follows the pane's
+     bottom edge there too (the foot bar keeps its height). */
+  #log-view.clog-fullscreen .clog-newpill { bottom: 34px; }
 
   /* ─── STACKS VIEW (roster / inventory, dev-docs/stack-roster-spec.md) ─── */
   /* The full set of stacks skipper owns (stack discovery, ADR-0034), each with
@@ -3111,8 +3188,13 @@
     font-size: 13px;
   }
 
+  /* flex-wrap is what lets a full-width child (the inline diff below, and the
+     attrs blob on a phone) break onto its own row; row-gap: 0 keeps those rows
+     reading as one entry rather than as separate lines. */
   .log-line {
     display: flex;
+    flex-wrap: wrap;
+    row-gap: 0;
     gap: 10px;
     align-items: baseline;
     padding: 0 14px;
@@ -3152,15 +3234,53 @@
     flex-shrink: 0;
   }
 
+  /* overflow-wrap: anywhere, not word-break: break-all — break-all splits at
+     any character even when a space would do, which turns a squeezed column
+     into "st / ac / k di / sc / ov / er / ed". `anywhere` breaks between words
+     first and only inside one that genuinely does not fit; it also lets the
+     flex item report a narrow min-content width, so the column can shrink
+     without forcing the row wider than the pane. */
   .log-msg {
     color: var(--text-primary);
     white-space: pre-wrap;
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
+
+  /* Narrated lines (the console's rendering, mirrored). The glyph replaces the
+     level badge and carries the status tone; it keeps a fixed width so lines
+     still align down the pane whether or not they are narrated. */
+  .log-glyph { flex-shrink: 0; width: 12px; text-align: center; color: var(--text-muted); }
+  .log-glyph.tone-ok { color: var(--success); }
+  .log-glyph.tone-bad { color: var(--danger); }
+  .log-glyph.tone-roll { color: var(--rollback); }
+  .log-glyph.tone-warn { color: var(--queued-text); }
+  .log-glyph.tone-accent { color: var(--accent); }
+  .log-msg.tone-ok, .log-seg.tone-ok { color: var(--success); }
+  .log-msg.tone-bad, .log-seg.tone-bad { color: var(--danger); }
+  .log-msg.tone-roll, .log-seg.tone-roll { color: var(--rollback); }
+  .log-msg.tone-warn, .log-seg.tone-warn { color: var(--queued-text); }
+  .log-seg { color: var(--text-primary); }
+  .log-dim { color: var(--text-muted); overflow-wrap: anywhere; }
+
+  /* A changed file's diff, inline under its line — the console prints it there
+     too, and the log is the one place both surfaces show the same thing. It
+     reuses the diff panel's line classes so one diff looks the same wherever
+     it is rendered. Breaks the flex row so it spans the full width. */
+  .log-diff {
+    flex: 1 0 100%;
+    margin: 2px 0 4px 62px;
+    padding: 4px 0;
+    border-left: 2px solid var(--border-lit);
+    font-size: 11px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .log-diff .diff-line { padding: 0 10px; }
 
   .log-attrs {
     color: var(--text-muted);
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
 
   /* ─── RESPONSIVE ─── */
@@ -3216,6 +3336,21 @@
   @media (max-width: 700px) {
     header { padding: 0 12px; height: 48px; }
     :root { --app-header-h: 48px; }
+
+    /* A log line is a flex row of identity (time · level · [stack]) plus the
+       message plus the dim attrs blob. On a phone the last two share what is
+       left of ~380px, so both end up a few characters wide and readable text
+       becomes a vertical ribbon. The row wraps instead, and the *attrs* are
+       what moves: they are the secondary, dim part, so they take their own
+       full-width line and stop competing with the message, which keeps line 1
+       beside the stack it belongs to. A message that still does not fit wraps
+       onto its own line too (the min-width is what pushes it there) rather
+       than shrinking further. Same collapse-under-pressure rule the deploy
+       table follows (UI_SPEC §Responsive): nothing is dropped, the parts just
+       stop sharing one row. */
+    .log-line .log-msg { min-width: 14ch; }
+    .log-line .log-attrs { flex: 1 0 100%; padding-left: 12px; }
+    .log-diff { margin-left: 12px; }
     .status-area { gap: 10px; }
     /* Wordmark is dropped — the ship logo alone carries the brand on mobile so
        the control row fits without horizontal scroll. The version is kept in
@@ -3626,3 +3761,7 @@
      background: var(--crust); display: flex; flex-direction: column; }
   #log-pane.wrap .log-msg, #log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .log-line.clog-out { display: none; }
+  /* The quick filters' own hide class. Separate from .clog-out (the in-log
+     search) so the two narrow independently — a line stays hidden while
+     either excludes it. */
+  .log-line.log-out { display: none; }

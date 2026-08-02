@@ -3978,17 +3978,16 @@
   const viewButtons = document.querySelectorAll('#view-toggle button');
 
   // The log view keeps a bounded client-side buffer (the backend replays at
-  // most its own ring on connect) and renders a sliding window of it. Default
-  // order is newest-first (descending); the sort toggle flips it. The window
+  // most its own ring on connect) and renders a sliding window of it. The
+  // order is chronological — newest line at the bottom, like `journalctl -f`
+  // and like the container-log panel this view borrows its chrome from, so
+  // "auto-scroll" points at the edge the tail is actually on. The window
   // starts at logPageSize lines and grows by logPageSize each time the user
-  // scrolls to the older edge.
+  // scrolls to the older (top) edge.
   const logPageSize = 500;
   const maxLogBuffer = 2000;
   const logEntries = []; // chronological, oldest → newest
   let logVisible = logPageSize; // number of newest entries currently rendered
-  // Fixed newest-first order; the oldest-first toggle was removed — auto-scroll
-  // (follow) covers keeping the newest line in view.
-  const logDescending = true;
   let followLogs = localStorage.getItem('followLogs') !== 'false';
   const savedView = localStorage.getItem('activeView');
   let activeView = savedView === 'logs' || savedView === 'stacks' ? savedView : 'deploys';
@@ -3997,12 +3996,34 @@
   // toolbar wiring (ADR-0037), a no-op until then and when no search is active.
   let logSearchApply = function () {};
 
+  // ── Logs-view quick filters ──
+  // Severity threshold + kind set + stack set, persisted per browser so a
+  // narrowed view survives a reload (and a PWA relaunch). Kept in one object
+  // so persisting is one write and the pure predicate takes one argument.
+  const LOG_FILTERS_KEY = 'logQuickFilters';
+  let logFilters = parseLogFilters(localStorage.getItem(LOG_FILTERS_KEY));
+  // Lines that arrived while auto-scroll was off, so the "N new lines" pill
+  // can offer to jump without moving the viewport under the reader.
+  let pendingLogLines = 0;
+
   function renderLogLine(entry) {
     const line = document.createElement('div');
     line.className = 'log-line';
     line.dataset.testid = 'log-line';
     line.dataset.level = logLineLevel(entry);
+    // The quick filters test these three facets; stashing them here keeps a
+    // re-filter a DOM walk instead of a second pass over the buffer.
+    const facets = logFacets(entry);
+    line.dataset.sev = facets.level;
+    line.dataset.kind = facets.kind;
+    if (facets.stack) line.dataset.stack = facets.stack;
+    if (!logMatchesFilters(facets, logFilters)) line.classList.add('log-out');
     line.innerHTML = logLineHTML(entry);
+    // A changed file carries its diff on the record (the console prints it the
+    // same way); render it under the line so the two surfaces read alike. The
+    // capture layer has already clamped it, so the block is bounded.
+    const attrs = entry.attrs || {};
+    if (attrs.diff) line.insertAdjacentHTML('beforeend', logDiffBlockHTML(attrs.diff));
     return line;
   }
 
@@ -4068,10 +4089,177 @@
     openLogDiff();
   });
 
-  // The newest line lives at the top when descending, the bottom when
-  // ascending; "follow" and fresh renders pin the view to that edge.
+  // The newest line lives at the bottom; "follow" and fresh renders pin the
+  // view to that edge.
   function scrollToNewest() {
-    logPane.scrollTop = logDescending ? 0 : logPane.scrollHeight;
+    logPane.scrollTop = logPane.scrollHeight;
+    clearPendingLines();
+  }
+
+  // ── Quick filters ──
+  const logQuickBar = document.getElementById('log-quick-bar');
+  const logQuickBtn = document.getElementById('log-quick-open');
+  const logQuickCount = document.getElementById('log-quick-count');
+  const logStackChips = document.getElementById('log-stack-chips');
+  const logStackSep = document.getElementById('log-stack-sep');
+  const logNewPill = document.getElementById('log-newpill');
+
+  function persistLogFilters() {
+    try {
+      localStorage.setItem(LOG_FILTERS_KEY, JSON.stringify(logFilters));
+    } catch (_) {
+      // Private mode / quota: the filter still applies for this session.
+    }
+  }
+
+  // Hide or reveal every rendered line for the current filters, then refresh
+  // the count. `.log-out` is the quick filters' own hide class, separate from
+  // the in-log search's — the two narrow independently and a line must stay
+  // hidden while either one excludes it.
+  function applyLogQuickFilters() {
+    logPane.querySelectorAll('.log-line').forEach(function (line) {
+      const facets = {
+        level: line.dataset.sev,
+        kind: line.dataset.kind,
+        stack: line.dataset.stack || '',
+      };
+      line.classList.toggle('log-out', !logMatchesFilters(facets, logFilters));
+    });
+    updateLogQuickCount();
+  }
+
+  function updateLogQuickCount() {
+    const lines = logPane.querySelectorAll('.log-line');
+    if (!logFiltersActive(logFilters)) {
+      logQuickCount.textContent = '';
+      return;
+    }
+    const shown = logPane.querySelectorAll('.log-line:not(.log-out)').length;
+    logQuickCount.textContent = shown + ' of ' + lines.length;
+  }
+
+  function renderLogQuickChips() {
+    logQuickBar.querySelectorAll('[data-sev]').forEach(function (b) {
+      const on = b.dataset.sev === logFilters.sev;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    logQuickBar.querySelectorAll('[data-kind]').forEach(function (b) {
+      const on = logFilters.kinds.indexOf(b.dataset.kind) !== -1;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    logStackChips.textContent = '';
+    logFilters.stacks.forEach(function (name) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'clog-chip active stack-chip';
+      chip.dataset.testid = 'log-stack-chip';
+      chip.dataset.stack = name;
+      chip.title = 'Remove this stack filter';
+      chip.append(name);
+      const x = document.createElement('span');
+      x.className = 'chip-x';
+      x.setAttribute('aria-hidden', 'true');
+      x.textContent = '×';
+      chip.appendChild(x);
+      logStackChips.appendChild(chip);
+    });
+    logStackSep.hidden = logFilters.stacks.length === 0;
+  }
+
+  // One entry point for every filter change: persist, repaint the chips,
+  // re-filter what is rendered. Following the tail keeps following it — the
+  // pane's position should not depend on which filter was last touched.
+  function setLogFilters(next) {
+    logFilters = next;
+    persistLogFilters();
+    renderLogQuickChips();
+    applyLogQuickFilters();
+    if (followLogs) scrollToNewest();
+  }
+
+  function toggleLogStackFilter(name) {
+    const stacks = logFilters.stacks.slice();
+    const i = stacks.indexOf(name);
+    if (i === -1) stacks.push(name);
+    else stacks.splice(i, 1);
+    setLogFilters(Object.assign({}, logFilters, { stacks: stacks }));
+  }
+
+  logQuickBar.addEventListener('click', function (e) {
+    const chip = e.target.closest('.clog-chip');
+    if (!chip) return;
+    if (chip.dataset.sev) {
+      setLogFilters(Object.assign({}, logFilters, { sev: chip.dataset.sev }));
+      return;
+    }
+    if (chip.dataset.kind) {
+      const kinds = logFilters.kinds.slice();
+      const i = kinds.indexOf(chip.dataset.kind);
+      if (i === -1) kinds.push(chip.dataset.kind);
+      else kinds.splice(i, 1);
+      setLogFilters(Object.assign({}, logFilters, { kinds: kinds }));
+      return;
+    }
+    if (chip.dataset.stack) toggleLogStackFilter(chip.dataset.stack);
+  });
+
+  // The chip row is shown by default (a persisted filter must stay visible),
+  // but it can be folded away when the pane is the only thing wanted.
+  logQuickBtn.addEventListener('click', function () {
+    const shown = logQuickBar.classList.toggle('clog-hide') === false;
+    logQuickBtn.classList.toggle('on', shown);
+    logQuickBtn.setAttribute('aria-expanded', String(shown));
+  });
+
+  // A stack prefix in a line is the fastest way to narrow to that stack.
+  logPane.addEventListener('click', function (e) {
+    const prefix = e.target.closest('.log-stack');
+    if (!prefix) return;
+    e.stopPropagation(); // never also toggle the line's diff panel
+    toggleLogStackFilter(prefix.dataset.stack);
+  });
+  logPane.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const prefix = e.target.closest('.log-stack');
+    if (!prefix) return;
+    e.preventDefault();
+    toggleLogStackFilter(prefix.dataset.stack);
+  });
+
+  // ── "N new lines" pill ──
+  function countPendingLine() {
+    pendingLogLines++;
+    logNewPill.textContent =
+      '↓ ' + pendingLogLines + (pendingLogLines === 1 ? ' new line' : ' new lines');
+    logNewPill.hidden = false;
+  }
+
+  function clearPendingLines() {
+    pendingLogLines = 0;
+    logNewPill.hidden = true;
+  }
+
+  logNewPill.addEventListener('click', function () {
+    setFollowLogs(true);
+  });
+
+  // setFollowLogs is the one place follow changes: it persists the choice and
+  // repaints the control. keepScroll is for the scroll handler itself — it
+  // already knows where the pane is, and jumping there again from inside a
+  // scroll event would fight the user's own scrolling.
+  function setFollowLogs(on, opts) {
+    if (followLogs === on) return;
+    followLogs = on;
+    localStorage.setItem('followLogs', String(followLogs));
+    if (opts && opts.keepScroll) {
+      followBtn.classList.toggle('on', followLogs);
+      followBtn.setAttribute('aria-pressed', String(followLogs));
+      clearPendingLines(); // reaching the tail by scrolling settles the pill too
+      return;
+    }
+    applyFollow();
   }
 
   // Remove a rendered line together with any diff/files panel opened below it,
@@ -4084,14 +4272,14 @@
     line.remove();
   }
 
-  // Keep at most logVisible rendered lines, dropping from the older edge
-  // (bottom when descending, top when ascending). The dropped entries stay in
-  // the buffer, so scrolling back can reveal them again.
+  // Keep at most logVisible rendered lines, dropping from the older (top)
+  // edge. The dropped entries stay in the buffer, so scrolling back can
+  // reveal them again.
   function trimLogDom() {
     const lines = logPane.querySelectorAll('.log-line');
     const over = lines.length - logVisible;
     for (let i = 0; i < over; i++) {
-      removeLogLine(logDescending ? lines[lines.length - 1 - i] : lines[i]);
+      removeLogLine(lines[i]);
     }
   }
 
@@ -4109,18 +4297,18 @@
     }
     const count = Math.min(logVisible, logEntries.length);
     const slice = logEntries.slice(logEntries.length - count); // oldest → newest
-    if (logDescending) slice.reverse();
     const frag = document.createDocumentFragment();
     slice.forEach(function (e) {
       frag.appendChild(renderLogLine(e));
     });
     logPane.appendChild(frag);
+    applyLogQuickFilters();
     scrollToNewest();
     logSearchApply();
   }
 
-  // Reveal another page of older entries at the older edge, preserving the
-  // reading position. No-op once the whole buffer is rendered.
+  // Reveal another page of older entries at the older (top) edge, preserving
+  // the reading position. No-op once the whole buffer is rendered.
   function loadMoreLogs() {
     const have = Math.min(logVisible, logEntries.length);
     const target = Math.min(logVisible + logPageSize, maxLogBuffer, logEntries.length);
@@ -4128,21 +4316,14 @@
     logVisible = target;
     const older = logEntries.slice(logEntries.length - target, logEntries.length - have);
     const frag = document.createDocumentFragment();
-    if (logDescending) {
-      older.reverse(); // append newest → oldest at the bottom
-      older.forEach(function (e) {
-        frag.appendChild(renderLogLine(e));
-      });
-      logPane.appendChild(frag); // grows below the fold; scrollTop unchanged
-    } else {
-      const prevHeight = logPane.scrollHeight,
-        prevTop = logPane.scrollTop;
-      older.forEach(function (e) {
-        frag.appendChild(renderLogLine(e));
-      }); // oldest → newest
-      logPane.insertBefore(frag, logPane.firstChild);
-      logPane.scrollTop = prevTop + (logPane.scrollHeight - prevHeight);
-    }
+    older.forEach(function (e) {
+      frag.appendChild(renderLogLine(e));
+    }); // oldest → newest
+    const prevHeight = logPane.scrollHeight,
+      prevTop = logPane.scrollTop;
+    logPane.insertBefore(frag, logPane.firstChild);
+    logPane.scrollTop = prevTop + (logPane.scrollHeight - prevHeight);
+    applyLogQuickFilters();
   }
 
   // A single fresh (newest) line arrived over the stream.
@@ -4150,14 +4331,18 @@
     const empty = logPane.querySelector('.log-empty');
     if (empty) empty.remove();
     const node = renderLogLine(entry);
-    if (logDescending) {
-      logPane.insertBefore(node, logPane.firstChild);
-    } else {
-      logPane.appendChild(node);
-    }
+    logPane.appendChild(node);
     trimLogDom();
     logSearchApply(); // a fresh line obeys an active in-log filter
-    if (followLogs) scrollToNewest();
+    if (followLogs) {
+      scrollToNewest();
+    } else if (!node.classList.contains('log-out')) {
+      // Reading history: don't move the viewport, but say what landed. Only
+      // lines that survive the quick filters count — offering to jump to
+      // arrivals the pane would not show is worse than staying quiet.
+      countPendingLine();
+    }
+    updateLogQuickCount();
   }
 
   function pushLog(entry) {
@@ -4199,11 +4384,20 @@
     }
   });
 
+  // SCROLL_EDGE_PX is how close to an edge counts as being at it — one line
+  // height's worth of slack, so a pane sitting a pixel off the bottom after a
+  // render still reads as "at the tail".
+  const SCROLL_EDGE_PX = 40;
+
   logPane.addEventListener('scroll', function () {
-    const nearOlderEdge = logDescending
-      ? logPane.scrollTop + logPane.clientHeight >= logPane.scrollHeight - 40
-      : logPane.scrollTop <= 40;
-    if (nearOlderEdge) loadMoreLogs();
+    if (logPane.scrollTop <= SCROLL_EDGE_PX) loadMoreLogs();
+    const atTail =
+      logPane.scrollTop + logPane.clientHeight >= logPane.scrollHeight - SCROLL_EDGE_PX;
+    // Scrolling away from the tail disengages follow: without this, every
+    // arriving line yanks the viewport back and reading history is impossible.
+    // Scrolling back to the tail re-arms it, so the control matches where the
+    // pane actually is rather than needing to be toggled by hand.
+    if (atTail !== followLogs) setFollowLogs(atTail, { keepScroll: true });
   });
 
   // The log stream has no connection indicator (see the events indicator for
@@ -4468,15 +4662,16 @@
 
   function applyFollow() {
     followBtn.classList.toggle('on', followLogs);
+    followBtn.setAttribute('aria-pressed', String(followLogs));
     if (followLogs) scrollToNewest();
+    else clearPendingLines(); // the pill only speaks for an armed-then-disarmed follow
   }
 
   followBtn.addEventListener('click', function () {
-    followLogs = !followLogs;
-    localStorage.setItem('followLogs', String(followLogs));
-    applyFollow();
+    setFollowLogs(!followLogs);
   });
 
+  renderLogQuickChips(); // paint the persisted filter before the first lines land
   applyFollow();
   applyView();
 
@@ -4917,7 +5112,10 @@
           line.classList.add('clog-out');
           return;
         }
-        if (q) {
+        // A line the quick filters exclude is not on screen, so it must not be
+        // counted as a hit — the two filters narrow independently and the count
+        // has to describe what a viewer can actually see.
+        if (q && !line.classList.contains('log-out')) {
           n++;
           highlightLine(line, q);
         }
