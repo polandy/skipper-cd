@@ -142,7 +142,7 @@ With the default `log_format: pretty`, startup logs the effective stack set (nam
 14:32:41  ✗ run complete  1 deployed · 1 rolled back · 1 skipped
 ```
 
-Each changed file is listed with its **diff** below it, in the usual add/remove/hunk colours — the console has no way to open a diff on demand the way the web UI does, so it prints the one the deploy recorded. It is the same content, and it is bounded the same way: 10 KB per file, 50 KB per deploy.
+Each changed file is listed with its **diff** below it, in the usual add/remove/hunk colours — the console has no way to open a diff on demand the way the web UI does, so it prints the one the deploy recorded. It is the same content, and it is bounded the same way: 10 KB per file, 50 KB per deploy. The diff is part of the `file changed` record, so `text` and `json` carry it too as a `diff` field; drop that field in the shipper if you do not want it there.
 
 Color auto-disables when stdout is not a terminal (e.g. redirected to a file) or `NO_COLOR` is set; icons still render. Use `log_format: text` or `log_format: json` for a log shipper (Loki, journald) or any other machine consumer.
 

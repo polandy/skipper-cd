@@ -115,15 +115,8 @@ func flattenAttr(dst map[string]string, prefix string, a slog.Attr) {
 // case what was left out so the entry never pretends the value was short.
 func clampValue(s string) string {
 	if total := strings.Count(s, "\n"); total >= maxAttrValueLines {
-		cut := 0
-		for i := 0; i < maxAttrValueLines; i++ {
-			next := strings.IndexByte(s[cut:], '\n')
-			if next < 0 {
-				break
-			}
-			cut += next + 1
-		}
-		return s[:cut] + fmt.Sprintf("… (%d lines omitted)", total-maxAttrValueLines)
+		kept := strings.SplitN(s, "\n", maxAttrValueLines+1)[:maxAttrValueLines]
+		return strings.Join(kept, "\n") + fmt.Sprintf("\n… (%d lines omitted)", total-maxAttrValueLines)
 	}
 	if len(s) > maxAttrValueLen {
 		return s[:maxAttrValueLen] + "… (truncated)"

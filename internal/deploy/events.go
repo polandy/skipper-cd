@@ -209,11 +209,9 @@ func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, 
 		if len(diff) > maxDiffPerFile {
 			diff = diff[:maxDiffPerFile] + "\n... (truncated)"
 		}
-		// The diff rides along on the log record: the console renders it under
-		// the file name (internal/prettylog), because it is the one surface
-		// that cannot fetch it — the web UI opens the same content from the
-		// deploy event on demand, and the in-memory log ring summarises the
-		// attr rather than carrying the payload (internal/logbuf).
+		// The diff rides along so the console can print it (internal/prettylog):
+		// it is the one surface that cannot fetch it the way the UI does. See
+		// the ADR-0042 amendment for what each sink then makes of it.
 		slog.Info("file changed", "file", d.repoRelative(filePath), "diff", diff)
 		if totalSize+len(diff) > maxDiffTotal {
 			remaining := maxDiffTotal - totalSize
