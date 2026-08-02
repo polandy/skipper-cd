@@ -373,7 +373,7 @@ func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName 
 		return true, fmt.Errorf("self-heal: unknown stack %q", stackName)
 	}
 
-	baseEnv, err := buildBaseEnv(cfg.VarsFile)
+	baseEnv, err := BaseEnv(cfg.VarsFile)
 	if err != nil {
 		return true, fmt.Errorf("self-heal: %w", err)
 	}
@@ -391,10 +391,14 @@ func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName 
 	return true, nil
 }
 
-// buildBaseEnv returns the process environment extended with the entries of
-// the optional global vars_file (Invariant 6: env_files > vars_file > environ,
-// with env_files appended later per compose call).
-func buildBaseEnv(varsFile string) ([]string, error) {
+// BaseEnv returns the process environment extended with the entries of the
+// optional global vars_file (Invariant 6: env_files > vars_file > environ,
+// with env_files appended later per compose call). Read-only compose callers
+// outside this package use it too: the health poller probes the same compose
+// file and --project-directory the deploy path uses (Invariant 1), so it must
+// resolve ${VAR} interpolation from the same environment — otherwise compose
+// warns about every unset variable on every poll.
+func BaseEnv(varsFile string) ([]string, error) {
 	baseEnv := os.Environ()
 	if varsFile == "" {
 		return baseEnv, nil
@@ -444,7 +448,7 @@ func (d *Deployer) WaitIdle() {
 // deploys on failure), then deploys every changed stack in dependency order.
 // Callers serialize on SyncAndDeployAll — this method does not lock itself.
 func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
-	baseEnv, err := buildBaseEnv(cfg.VarsFile)
+	baseEnv, err := BaseEnv(cfg.VarsFile)
 	if err != nil {
 		slog.Error("could not load vars_file, aborting", "err", err)
 		return

@@ -56,6 +56,55 @@ func TestShellRunner_OutputCapturesStdout(t *testing.T) {
 	}
 }
 
+// The health poller reads vars_file through this seam so its `compose ps`
+// interpolates ${VAR} the same way the deploy path does.
+func TestShellRunner_OutputRunsWithConfiguredEnv(t *testing.T) {
+	requireCommands(t, "sh")
+
+	r := NewShellRunnerWithOutputEnv(0, []string{"DOMAIN=example.com"})
+	out, err := r.Output(context.Background(), "", "sh", "-c", "printf %s \"$DOMAIN\"")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "example.com" {
+		t.Errorf("expected the configured env to reach the command, got %q", string(out))
+	}
+}
+
+// A nil env must not blank the child's environment — that would strip PATH and
+// break every existing Output caller.
+func TestShellRunner_OutputWithNilEnvInheritsProcessEnvironment(t *testing.T) {
+	requireCommands(t, "sh")
+
+	t.Setenv("SKIPPER_ENV_PROBE", "inherited")
+	for _, r := range []ShellRunner{NewShellRunner(0), NewShellRunnerWithOutputEnv(0, nil)} {
+		out, err := r.Output(context.Background(), "", "sh", "-c", "printf %s \"$SKIPPER_ENV_PROBE\"")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(out) != "inherited" {
+			t.Errorf("expected the process environment to be inherited, got %q", string(out))
+		}
+	}
+}
+
+// The configured env replaces the process environment rather than layering onto
+// it, matching exec.Cmd semantics — so callers must pass a full environment
+// (deploy.BaseEnv returns os.Environ() plus vars_file).
+func TestShellRunner_OutputEnvReplacesProcessEnvironment(t *testing.T) {
+	requireCommands(t, "sh")
+
+	t.Setenv("SKIPPER_ENV_PROBE", "inherited")
+	r := NewShellRunnerWithOutputEnv(0, []string{"DOMAIN=example.com"})
+	out, err := r.Output(context.Background(), "", "sh", "-c", "printf %s \"$SKIPPER_ENV_PROBE\"")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "" {
+		t.Errorf("expected the configured env to replace the process environment, got %q", string(out))
+	}
+}
+
 func TestShellRunner_OutputKillsCommandAfterTimeout(t *testing.T) {
 	requireCommands(t, "sleep")
 
