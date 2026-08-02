@@ -1051,7 +1051,7 @@ test('a narrated line renders the glyph, the stack and the story instead of the 
   });
   assert.match(html, /data-testid="log-glyph"[^>]*>✓</);
   assert.match(html, /tone-ok/);
-  assert.match(html, /data-testid="stack-prefix"[^>]*>nextcloud</);
+  assert.match(html, /data-testid="stack-prefix"[^>]*>\[nextcloud\]</);
   assert.match(html, />deployed</);
   // The level badge and the key=value blob are what the narrative replaces.
   assert.ok(

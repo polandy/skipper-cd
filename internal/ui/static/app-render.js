@@ -881,10 +881,13 @@ function narratedLineHTML(story, attrs) {
   let html = `<span class="log-glyph ${story.tone ? 'tone-' + story.tone : ''}" data-testid="log-glyph" aria-hidden="true">${escapeHtml(story.indent ? '' : story.glyph)}</span>`;
   if (story.stack) {
     // Only a real stack attr is a filter control; a synthesised label like
-    // "peer argoneon" is not one of the log's stacks.
+    // "peer argoneon" is not one of the log's stacks. A control keeps the
+    // bracketed form the unnarrated lines use — one pane, one shape for the
+    // same affordance — while the label is rendered plain, so the two cannot
+    // be mistaken for each other.
     html += attrs.stack
       ? `<span class="log-stack" data-testid="stack-prefix" data-stack="${escapeAttr(attrs.stack)}"` +
-        ` role="button" tabindex="0" title="Filter the log to this stack">${escapeHtml(story.stack)}</span>`
+        ` role="button" tabindex="0" title="Filter the log to this stack">[${escapeHtml(attrs.stack)}]</span>`
       : `<span class="log-stack">${escapeHtml(story.stack)}</span>`;
   }
   if (story.text) {
