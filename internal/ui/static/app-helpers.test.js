@@ -1110,7 +1110,7 @@ function logKindOf(level, msg, attrs) {
   return h.logKind(logEntry(level, msg, attrs));
 }
 
-test('the severity filter is a threshold, so narrowing never hides something worse', () => {
+test('the severity filter selects exactly one level, so the chip and the pane agree', () => {
   const info = logEntry('INFO', 'web UI enabled', {});
   const warn = logEntry('WARN', 'peer unreachable', {});
   const error = logEntry('ERROR', 'deploy failed', {});
@@ -1123,7 +1123,8 @@ test('the severity filter is a threshold, so narrowing never hides something wor
     [info, warn, error, output].filter((e) => h.logQuickVisible(e, { sev, kinds: [], stacks: [] }));
 
   assert.equal(at('ALL').length, 4);
-  assert.deepEqual(at('WARN'), [warn, error]);
+  // "warnings" means warnings — not warnings and everything worse.
+  assert.deepEqual(at('WARN'), [warn]);
   assert.deepEqual(at('ERROR'), [error]);
 });
 
@@ -1175,6 +1176,9 @@ test('parseLogFilters falls back to unfiltered for anything it cannot trust', ()
   assert.deepEqual(h.parseLogFilters('"a string"'), h.DEFAULT_LOG_FILTERS);
   // An unknown severity would otherwise hide every line with no way to tell why.
   assert.equal(h.parseLogFilters('{"sev":"LOUD"}').sev, 'ALL');
+  // A level with no chip is not a filter a viewer could have set or clear.
+  assert.equal(h.parseLogFilters('{"sev":"DEBUG"}').sev, 'ALL');
+  assert.equal(h.parseLogFilters('{"sev":"INFO"}').sev, 'ALL');
   // Unknown kinds are dropped; a stray non-string never reaches the predicate.
   assert.deepEqual(h.parseLogFilters('{"kinds":["deploy","nonsense",7]}').kinds, ['deploy']);
   assert.deepEqual(h.parseLogFilters('{"stacks":["gitea","",null]}').stacks, ['gitea']);
