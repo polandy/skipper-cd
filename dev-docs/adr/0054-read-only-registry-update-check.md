@@ -122,8 +122,8 @@ not phone registries outside a deploy sets `interval_seconds: 0`.
   marker, and the containers panel head gains a muted
   `⇡ N updates · registry check 12m ago` in its existing meta slot. Full
   references and the check time live in the chip `title`, like every chip.
-- **Notification** (opt-in `notify: true` and a sink configured): one message through
-  the existing pipe when a service first flips to a given advertised version —
+- **Notification** (opt-in `notify: true` and a sink configured): one message
+  through the existing pipe when a service first flips to an advertised version —
   "gitea: 1.22.6 available (running 1.22.3)". Deduped per
   stack/service/advertised identity, and the dedup map is persisted in its own
   small state file beside `state.yaml` (the healthwatch precedent —
