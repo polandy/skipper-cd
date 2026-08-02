@@ -240,15 +240,15 @@ test.describe('UB5: log-line prefixes', () => {
     await expect(cmd).toContainText(CHILD_LINE);
     await expect(cmd.locator('[data-testid="level-badge"]')).toHaveCount(0);
 
-    // Structured deploy line: a [web] stack-prefix next to the status glyph that
-    // replaces the level badge on a narrated line (the console renders the same
-    // glyph). Unlike the child line it has a stack; unlike an unnarrated line it
-    // has no level badge.
+    // Structured deploy line: a [web] stack-prefix next to a real level badge —
+    // the two coexist, unlike the child line which has neither a stack nor a
+    // badge. This one is the rollback attempt, whose message is assembled at
+    // runtime ("<stage> failed, attempting rollback") and so has no narrative:
+    // it is exactly the fallback rendering, which must keep working.
     const stack = stackLine(page);
     await expect(stack).toBeVisible();
     await expect(stack.locator('[data-testid="stack-prefix"]')).toHaveText('[web]');
-    await expect(stack.locator('[data-testid="log-glyph"]')).toBeVisible();
-    await expect(stack.locator('[data-testid="level-badge"]')).toHaveCount(0);
+    await expect(stack.locator('[data-testid="level-badge"]')).toHaveText('ERROR');
     await expect(stack.locator('[data-testid="cmd-prefix"]')).toHaveCount(0);
   });
 });
