@@ -412,6 +412,19 @@ The panel header (`clog-head`) carries a **live/pause** pill (`clog-live`; pause
 
 Timestamps show the time of day; lines from another day get a date prefix, and the full `toLocaleString()` timestamp is always in the tooltip.
 
+### Narrated lines
+
+A message skipper's console narrates ([`internal/prettylog`](../prettylog/render.go), ADR-0042) is narrated here too, so the two surfaces read alike: `✓ nextcloud deployed` rather than `INFO deploy complete stack=nextcloud event_id=412`. A narrated line drops the level badge for a **status glyph** (`data-testid="log-glyph"`, fixed width so lines stay aligned) carrying the outcome's colour — `▸` deploying, `✓` success, `✗` failure, `↺` rollback, `⟲` self-heal, `▪` no-op, `⇢` lifecycle, `↳` a step under the line above — then the stack, the narrated text, and any trailing detail dimmed.
+
+Two consequences worth stating:
+
+- The **run summary** lists only non-zero outcomes (`run complete · 1 deployed · 29 skipped`, or `· no changes`) and takes its glyph and colour from the worst one present, so a failed run reads as failed before the counts are read. The raw record's six `=0` counters never reach the pane.
+- A message with **no narrative falls back** to the level badge + message + attrs blob, complete. The narrative table duplicates the message strings from `internal/deploy` by hand — the same rule prettylog's anchor table documents, so a display layer cannot influence the core's log wording. A message that drifts stops matching and renders raw; it is never dropped.
+
+The `[stack]` prefix stays a filter control on narrated lines (see [Quick filters](#quick-filters)) — but only when the line has a real `stack` attr. A synthesised label (`peer argoneon`) is rendered plain, since filtering to it could only ever match nothing.
+
+**Inline diffs.** A `file changed` line carries the changed file's diff on the record, and the pane renders it as a block beneath the line (`data-testid="log-diff"`) in the diff panel's own line classes, so one diff looks the same wherever it is shown. The console prints the same block for the same reason. The content arrives already clamped by the capture layer (`internal/logbuf` keeps ~40 lines and appends `… (N lines omitted)`), which is what keeps the sliding window, auto-scroll and the [new-lines pill](#auto-scroll-and-arriving-lines) workable; the full diff stays one click away on the deploy's own [diff pill](#log-view).
+
 Level colours: `ERROR` → red, `WARN` → yellow, `DEBUG` → muted, `INFO` → secondary text. Lines with a `stack` attr (the deploy lifecycle: `deploying stack`, `deploy complete`, failures) render it as an accent-coloured `[gitea]`-style prefix and omit it from the trailing attrs, so what was deployed when is scannable. Child-process lines (attrs contain `cmd` and `stream`) render a muted `[docker]`-style command prefix instead of a level badge and the message in primary text; child output carries no stack attribution (known limitation — the runner does not know which stack it runs for). **Exception: deploy-hook output** — `runHooks` knows the stack, so hook child-lines additionally carry `stack` + `hook` attrs and render with the `[stack]` prefix + a hook marker, making a running hook's output filterable by stack (see [Deploy hooks](#deploy-hooks)).
 
 `deploy complete` lines carry the deploy event's ID as an `event_id` attr (logged only when an event sink is configured, i.e. `ui_enabled`). The log view renders it as a **diff pill** instead of a plain attr: clicking fetches the deploy's diff from `GET /api/events/{id}/diffs` and inserts the same collapsible diff panel used by the deploy table directly below the line (click again to close; a notice appears when no diff was recorded, e.g. the event fell out of the bounded history).
@@ -642,6 +655,8 @@ assert on.
 | `log-quick-bar` | The [quick-filter](#quick-filters) chip row | Holds the severity chips (`log-sev-ALL`/`-WARN`/`-ERROR`, exactly one `.active`, each selecting that level alone), the kind chips (`log-kind-deploy`/`-output`), the stack chips and the `log-quick-count` |
 | `log-stack-chips`, `log-stack-chip` | Container and chips for the per-stack filters | Added by clicking a line's `stack-prefix`; each carries `data-stack` and a `×` that removes it |
 | `log-quick-count` | `N of M` count while any quick filter narrows | Empty when nothing is filtered |
+| `log-glyph` | Status glyph on a [narrated line](#narrated-lines) | Replaces the level badge; carries the outcome tone |
+| `log-diff` | A changed file's inline diff block | Under its `file changed` line; diff-panel line classes; clamped upstream |
 | `log-newpill` | `↓ N new lines` pill over the pane's lower edge | Only while auto-scroll is disengaged and matching lines arrived; click re-engages and jumps to the tail |
 | `log-filter-wrap` / `log-filter` | Logs in-view search bar / input | Same reveal + type-to-search behaviour as `deploy-filter`; no separate clear button — closing the search tool clears it |
 | `log-filter-count` | Logs search hit count | |

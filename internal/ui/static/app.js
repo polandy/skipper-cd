@@ -4009,6 +4009,11 @@
     if (facets.stack) line.dataset.stack = facets.stack;
     if (!logMatchesFilters(facets, logFilters)) line.classList.add('log-out');
     line.innerHTML = logLineHTML(entry);
+    // A changed file carries its diff on the record (the console prints it the
+    // same way); render it under the line so the two surfaces read alike. The
+    // capture layer has already clamped it, so the block is bounded.
+    const attrs = entry.attrs || {};
+    if (attrs.diff) line.insertAdjacentHTML('beforeend', logDiffBlockHTML(attrs.diff));
     return line;
   }
 

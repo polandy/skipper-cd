@@ -1188,3 +1188,121 @@ test('parseLogFilters round-trips a state the UI wrote', () => {
   const state = { sev: 'WARN', kinds: ['output'], stacks: ['gitea', 'immich'] };
   assert.deepEqual(h.parseLogFilters(JSON.stringify(state)), state);
 });
+
+// ── Log narrative (mirrors internal/prettylog) ──
+
+const nar = (msg, attrs) => h.logNarrative({ level: 'INFO', msg, attrs: attrs || {} });
+
+test('the run summary drops zero counts and takes its tone from the worst outcome', () => {
+  const all = {
+    deployed: '1',
+    rolled_back: '1',
+    rolled_back_unhealthy: '0',
+    queued: '0',
+    blocked: '0',
+    skipped: '29',
+    failed: '0',
+  };
+  const n = nar('run complete', all);
+  assert.deepEqual(
+    n.segments.map((s) => s.text),
+    ['1 deployed', '1 rolled back', '29 skipped'],
+  );
+  // A rollback is worse than a success, so the line reads as a rollback.
+  assert.equal(n.tone, 'roll');
+  assert.equal(n.glyph, '↺');
+
+  // A failure outranks everything else.
+  assert.equal(nar('run complete', { ...all, failed: '1' }).tone, 'bad');
+  // Nothing but skips is the idle case, and says so instead of listing a zero.
+  const idle = nar('run complete', {
+    deployed: '0',
+    rolled_back: '0',
+    rolled_back_unhealthy: '0',
+    queued: '0',
+    blocked: '0',
+    skipped: '0',
+    failed: '0',
+  });
+  assert.equal(idle.dim, '· no changes');
+  assert.equal(idle.segments, undefined);
+});
+
+test('a deploy line names its stack and summarises the change without the path list', () => {
+  const one = nar('deploying stack', {
+    stack: 'gitea',
+    changed_files: '[gitea/docker-compose.yml]',
+  });
+  assert.equal(one.stack, 'gitea');
+  assert.equal(one.dim, 'changed · gitea/docker-compose.yml');
+
+  const many = nar('deploying stack', { stack: 'gitea', changed_files: '[a.yml b.yml c.yml]' });
+  assert.equal(many.dim, 'changed · 3 files');
+
+  assert.equal(nar('deploying stack', { stack: 'gitea', changed_files: '[]' }).dim, 'changed');
+});
+
+test('failure lines carry the error and the tone that matches it', () => {
+  const failed = nar('deploy failed', { stack: 'arr', err: 'health check failed' });
+  assert.equal(failed.tone, 'bad');
+  assert.equal(failed.dim, '— health check failed');
+
+  assert.equal(nar('deploy failed but rolled back', { stack: 'arr', err: 'boom' }).tone, 'roll');
+  assert.equal(
+    nar('deploy failed, rollback ran but stack is still unhealthy', { stack: 'arr' }).tone,
+    'bad',
+  );
+  // No err attr means no trailing detail, not a dangling dash.
+  assert.equal(nar('deploy failed', { stack: 'arr' }).dim, '');
+});
+
+test('a changed file carries its diff so the pane can render it like the console', () => {
+  const n = nar('file changed', { file: 'flake.nix', diff: '@@ -1 +1 @@\n-old\n+new\n' });
+  assert.equal(n.dim, 'flake.nix');
+  assert.equal(n.indent, true);
+  assert.match(n.diff, /\+new/);
+  // Without a diff attr the line is just the file name — no empty block.
+  assert.equal(nar('file changed', { file: 'flake.lock' }).diff, '');
+});
+
+test('the roster line reports hooks and watch dirs, with an em dash for neither', () => {
+  assert.equal(
+    nar('stack discovered', {
+      stack: 'nc',
+      pre_deploy_hooks: '1',
+      post_deploy_hooks: '1',
+      watch_dirs: '[./nc]',
+    }).dim,
+    'hooks pre_deploy·1 post_deploy·1   watch ./nc',
+  );
+  assert.equal(
+    nar('stack discovered', {
+      stack: 'nc',
+      pre_deploy_hooks: '0',
+      post_deploy_hooks: '0',
+      watch_dirs: '[]',
+    }).dim,
+    'hooks —   watch —',
+  );
+});
+
+test('a message with no narrative falls back rather than being dropped', () => {
+  assert.equal(
+    h.logNarrative({ level: 'INFO', msg: 'notifications enabled', attrs: { targets: '1' } }),
+    null,
+  );
+  assert.equal(
+    h.logNarrative({ level: 'WARN', msg: 'something new nobody mapped', attrs: {} }),
+    null,
+  );
+});
+
+test('classifyDiffLine already covers the log block, so it is not reimplemented', () => {
+  // The log's inline diff reuses the diff panel's classifier, which keeps the
+  // two renderings of the same content visually identical.
+  assert.equal(h.classifyDiffLine('+++ b/flake.nix'), 'diff-meta');
+  assert.equal(h.classifyDiffLine('@@ -1,2 +1,2 @@'), 'diff-hunk');
+  assert.equal(h.classifyDiffLine('+added'), 'diff-add');
+  assert.equal(h.classifyDiffLine('-removed'), 'diff-del');
+  assert.equal(h.classifyDiffLine(' context'), '');
+});

@@ -848,6 +848,11 @@ function logLineHTML(entry) {
       msg
     );
   }
+  // A message the console narrates is narrated here too, so the two surfaces
+  // read alike; anything else keeps the level badge + message + attrs blob.
+  const story = logNarrative(entry);
+  if (story) return html + narratedLineHTML(story, attrs);
+
   html +=
     `<span class="log-level ${levelClass(entry.level)}" data-testid="level-badge">${escapeHtml(entry.level)}</span>` +
     stack +
@@ -866,6 +871,55 @@ function logLineHTML(entry) {
     });
   if (pairs.length > 0) html += `<span class="log-attrs">${pairs.join(' ')}</span>`;
   return html;
+}
+
+// narratedLineHTML renders one narrated line's parts: the status glyph, the
+// stack (still the filter control), the narrated text and its trailing detail.
+// The parts a line does not have are simply absent — a missing stack must not
+// leave an empty column, or the lines stop aligning.
+function narratedLineHTML(story, attrs) {
+  let html = `<span class="log-glyph ${story.tone ? 'tone-' + story.tone : ''}" data-testid="log-glyph" aria-hidden="true">${escapeHtml(story.indent ? '' : story.glyph)}</span>`;
+  if (story.stack) {
+    // Only a real stack attr is a filter control; a synthesised label like
+    // "peer argoneon" is not one of the log's stacks.
+    html += attrs.stack
+      ? `<span class="log-stack" data-testid="stack-prefix" data-stack="${escapeAttr(attrs.stack)}"` +
+        ` role="button" tabindex="0" title="Filter the log to this stack">${escapeHtml(story.stack)}</span>`
+      : `<span class="log-stack">${escapeHtml(story.stack)}</span>`;
+  }
+  if (story.text) {
+    html += `<span class="log-msg ${story.textTone ? 'tone-' + story.textTone : ''}">${escapeHtml(story.text)}</span>`;
+  }
+  if (story.segments) {
+    html += story.segments
+      .map(function (s) {
+        return `<span class="log-seg ${s.tone ? 'tone-' + s.tone : 'log-dim'}">${escapeHtml(s.text)}</span>`;
+      })
+      .join('<span class="log-dim">·</span>');
+  }
+  if (story.dim) html += `<span class="log-dim">${escapeHtml(story.dim)}</span>`;
+  if (attrs.event_id) {
+    html += `<button class="files-pill log-diff-pill" data-testid="diff-pill" data-event-id="${escapeAttr(attrs.event_id)}">diff</button>`;
+  }
+  return html;
+}
+
+// logDiffBlockHTML renders a changed file's diff under its line, in the same
+// classes the diff panel uses so the two renderings of one diff look alike.
+// The content arrives already clamped by the capture layer (internal/logbuf),
+// which appends its own "… (N lines omitted)" marker — rendered as a plain
+// line, since it is not part of the diff.
+function logDiffBlockHTML(diff) {
+  const lines = String(diff).replace(/\n$/, '').split('\n');
+  return (
+    `<div class="log-diff" data-testid="log-diff">` +
+    lines
+      .map(function (l) {
+        return `<span class="diff-line ${classifyDiffLine(l)}">${escapeHtml(l)}</span>`;
+      })
+      .join('') +
+    `</div>`
+  );
 }
 
 // auditRowsHTML renders the deploy-history rows of one stack. absolute picks
@@ -971,6 +1025,7 @@ if (typeof module !== 'undefined' && module.exports) {
     diffPanelHTML,
     hookPhaseHTML,
     logLineHTML,
+    logDiffBlockHTML,
     auditRowsHTML,
     clogSvcsHTML,
   };

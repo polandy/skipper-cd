@@ -333,6 +333,202 @@ const LOG_DEPLOY_MESSAGES = [
   'self-heal triggering corrective redeploy',
 ];
 
+// ── Log narrative (the console's rendering, mirrored) ──
+//
+// internal/prettylog turns skipper's deploy-lifecycle records into a short
+// narrative — `▸ nextcloud  changed · 2 files` rather than the message plus a
+// key=value blob. This table is that same rendering for the Logs view, so the
+// two surfaces read alike; the console's own table is the reference.
+//
+// The message strings are duplicated from internal/deploy by hand, exactly as
+// prettylog duplicates them and for the same reason: a display layer must not
+// gain influence over the core packages' log wording. A message that drifts
+// stops matching and falls back to the raw rendering — it is never dropped.
+
+// narrate builds the parts of one narrated line, or null when the message has
+// no narrative. Parts: glyph + tone (the status marker), stack (the accent
+// name), text (+ its own tone), segments (a list of toned words, for the run
+// summary) and dim (trailing detail).
+function logNarrative(entry) {
+  const a = entry.attrs || {};
+  const stack = a.stack || '';
+  switch (entry.msg) {
+    case 'webhook accepted, starting deploy in background':
+      return { glyph: '⇢', tone: 'accent', text: 'webhook received, deploying' };
+    case 'starting deploy run':
+      return { glyph: '⇢', tone: 'accent', text: 'run starting', dim: '· ' + a.stacks + ' stacks' };
+    case 'pulling latest commits':
+    case 'cloning repository':
+      return {
+        glyph: '⇢',
+        tone: 'accent',
+        text: 'sync',
+        dim: a.branch ? 'branch=' + a.branch : '',
+      };
+    case 'deploying stack':
+      return { glyph: '▸', tone: 'accent', stack: stack, dim: changeSummary(a.changed_files) };
+    case 'running deploy hook':
+      return {
+        glyph: '↳',
+        tone: '',
+        indent: true,
+        dim: a.phase + ' [' + (Number(a.index) + 1) + ']',
+      };
+    case 'file changed':
+      return { glyph: '↳', tone: '', indent: true, dim: a.file, diff: a.diff || '' };
+    case 'deploy complete':
+      return { glyph: '✓', tone: 'ok', stack: stack, text: 'deployed', textTone: 'ok' };
+    case 'deploy failed':
+      return {
+        glyph: '✗',
+        tone: 'bad',
+        stack: stack,
+        text: 'failed',
+        textTone: 'bad',
+        dim: errDetail(a),
+      };
+    case 'deploy failed but rolled back':
+      return {
+        glyph: '↺',
+        tone: 'roll',
+        stack: stack,
+        text: 'rolled back',
+        textTone: 'roll',
+        dim: errDetail(a),
+      };
+    case 'deploy failed, rollback ran but stack is still unhealthy':
+      return {
+        glyph: '↺',
+        tone: 'bad',
+        stack: stack,
+        text: 'rolled back · still unhealthy',
+        textTone: 'bad',
+        dim: errDetail(a),
+      };
+    case 'skipping stack, no changes detected':
+      return { glyph: '▪', tone: '', stack: stack, dim: 'unchanged, skipped' };
+    case 'deploy deferred: autosync paused':
+      return {
+        glyph: '▪',
+        tone: 'warn',
+        stack: stack,
+        text: 'deferred · autosync paused',
+        textTone: 'warn',
+      };
+    case 'self-heal: restoring stack to its deployed running state':
+      return { glyph: '⟲', tone: 'ok', stack: stack, text: 'self-heal: restoring', textTone: 'ok' };
+    case 'self-heal: stack restored':
+      return { glyph: '⟲', tone: 'ok', stack: stack, text: 'self-heal: restored', textTone: 'ok' };
+    case 'multi-host fan-in enabled':
+      return {
+        glyph: '⇢',
+        tone: 'accent',
+        text: 'multi-host fan-in',
+        dim: '· ' + a.peers + ' peers · poll ' + a.poll_interval_seconds + 's',
+      };
+    case 'peer unreachable':
+      return {
+        glyph: '▲',
+        tone: 'warn',
+        stack: 'peer ' + a.peer,
+        text: 'unreachable',
+        textTone: 'warn',
+        dim: errDetail(a),
+      };
+    case 'peer reachable again':
+      return {
+        glyph: '✓',
+        tone: 'ok',
+        stack: 'peer ' + a.peer,
+        text: 'reachable again',
+        textTone: 'ok',
+      };
+    case 'stacks resolved':
+      return { glyph: '▣', tone: '', text: 'stacks', dim: '· ' + a.stacks + ' discovered' };
+    case 'stack discovered':
+      return { glyph: '◆', tone: 'accent', stack: stack, dim: discoveredDetail(a) };
+    case 'stacks disabled':
+      return { glyph: '▪', tone: '', dim: 'parked · disabled: ' + listItems(a.stacks).join(', ') };
+    case 'run complete':
+      return runCompleteNarrative(a);
+    default:
+      return null;
+  }
+}
+
+// listItems parses slog's rendered string slice (`[a b c]`) back into items.
+function listItems(rendered) {
+  return String(rendered || '')
+    .replace(/^\[|\]$/g, '')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+// changeSummary reports how many files changed without dumping the whole path
+// list onto the line — watch_dirs contents can be long.
+function changeSummary(renderedFiles) {
+  const files = listItems(renderedFiles);
+  if (files.length === 0) return 'changed';
+  if (files.length === 1) return 'changed · ' + files[0];
+  return 'changed · ' + files.length + ' files';
+}
+
+function errDetail(attrs) {
+  return attrs.err ? '— ' + attrs.err : '';
+}
+
+// discoveredDetail mirrors the console's roster line: hook counts and watch
+// dirs, with an em dash where a stack declares neither.
+function discoveredDetail(attrs) {
+  const pre = Number(attrs.pre_deploy_hooks) || 0;
+  const post = Number(attrs.post_deploy_hooks) || 0;
+  const parts = [];
+  if (pre > 0) parts.push('pre_deploy·' + pre);
+  if (post > 0) parts.push('post_deploy·' + post);
+  const dirs = listItems(attrs.watch_dirs);
+  return (
+    'hooks ' +
+    (parts.length ? parts.join(' ') : '—') +
+    '   watch ' +
+    (dirs.length ? dirs.join(', ') : '—')
+  );
+}
+
+// RUN_OUTCOMES orders the run summary's counts and gives each its tone. A zero
+// count is left out entirely: a line that is six sevenths `=0` reports nothing.
+const RUN_OUTCOMES = [
+  ['deployed', 'deployed', 'ok'],
+  ['rolled_back', 'rolled back', 'roll'],
+  ['rolled_back_unhealthy', 'rolled back · unhealthy', 'bad'],
+  ['queued', 'queued', 'warn'],
+  ['blocked', 'blocked', 'warn'],
+  ['skipped', 'skipped', ''],
+  ['failed', 'failed', 'bad'],
+];
+
+// runCompleteNarrative summarises a run, taking its glyph and tone from the
+// worst outcome present so a failed run is visible without reading the counts.
+function runCompleteNarrative(attrs) {
+  const segments = RUN_OUTCOMES.filter(function (o) {
+    return Number(attrs[o[0]]) > 0;
+  }).map(function (o) {
+    return { text: Number(attrs[o[0]]) + ' ' + o[1], tone: o[2] };
+  });
+  if (segments.length === 0) {
+    return { glyph: '▪', tone: '', text: 'run complete', dim: '· no changes' };
+  }
+  const worst =
+    Number(attrs.failed) > 0 || Number(attrs.rolled_back_unhealthy) > 0
+      ? 'bad'
+      : Number(attrs.rolled_back) > 0
+        ? 'roll'
+        : Number(attrs.deployed) > 0
+          ? 'ok'
+          : '';
+  const glyph = worst === 'bad' ? '✗' : worst === 'roll' ? '↺' : worst === 'ok' ? '✓' : '▪';
+  return { glyph: glyph, tone: worst, text: 'run complete', segments: segments };
+}
+
 // logKind classifies one log entry for the kind quick filters: `output` is
 // child-process output (docker/git/nixos-rebuild), `deploy` is a
 // deploy-lifecycle message, and everything else is `plain` (startup lines,
@@ -1004,6 +1200,7 @@ if (typeof module !== 'undefined' && module.exports) {
     reconcileHostFilter,
     LOG_SEVERITY_FILTERS,
     DEFAULT_LOG_FILTERS,
+    logNarrative,
     logKind,
     logFacets,
     logMatchesFilters,

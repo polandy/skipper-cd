@@ -3176,8 +3176,13 @@
     font-size: 13px;
   }
 
+  /* flex-wrap is what lets a full-width child (the inline diff below, and the
+     attrs blob on a phone) break onto its own row; row-gap: 0 keeps those rows
+     reading as one entry rather than as separate lines. */
   .log-line {
     display: flex;
+    flex-wrap: wrap;
+    row-gap: 0;
     gap: 10px;
     align-items: baseline;
     padding: 0 14px;
@@ -3228,6 +3233,38 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
+
+  /* Narrated lines (the console's rendering, mirrored). The glyph replaces the
+     level badge and carries the status tone; it keeps a fixed width so lines
+     still align down the pane whether or not they are narrated. */
+  .log-glyph { flex-shrink: 0; width: 12px; text-align: center; color: var(--text-muted); }
+  .log-glyph.tone-ok { color: var(--success); }
+  .log-glyph.tone-bad { color: var(--danger); }
+  .log-glyph.tone-roll { color: var(--rollback); }
+  .log-glyph.tone-warn { color: var(--queued-text); }
+  .log-glyph.tone-accent { color: var(--accent); }
+  .log-msg.tone-ok, .log-seg.tone-ok { color: var(--success); }
+  .log-msg.tone-bad, .log-seg.tone-bad { color: var(--danger); }
+  .log-msg.tone-roll, .log-seg.tone-roll { color: var(--rollback); }
+  .log-msg.tone-warn, .log-seg.tone-warn { color: var(--queued-text); }
+  .log-seg { color: var(--text-primary); }
+  .log-dim { color: var(--text-muted); overflow-wrap: anywhere; }
+
+  /* A changed file's diff, inline under its line — the console prints it there
+     too, and the log is the one place both surfaces show the same thing. It
+     reuses the diff panel's line classes so one diff looks the same wherever
+     it is rendered. Breaks the flex row so it spans the full width. */
+  .log-diff {
+    flex: 1 0 100%;
+    margin: 2px 0 4px 62px;
+    padding: 4px 0;
+    border-left: 2px solid var(--border-lit);
+    font-size: 11px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .log-diff .diff-line { padding: 0 10px; }
 
   .log-attrs {
     color: var(--text-muted);
@@ -3292,9 +3329,9 @@
        than shrinking further. Same collapse-under-pressure rule the deploy
        table follows (UI_SPEC §Responsive): nothing is dropped, the parts just
        stop sharing one row. */
-    .log-line { flex-wrap: wrap; row-gap: 0; }
     .log-line .log-msg { min-width: 14ch; }
     .log-line .log-attrs { flex: 1 0 100%; padding-left: 12px; }
+    .log-diff { margin-left: 12px; }
     .status-area { gap: 10px; }
     /* Wordmark is dropped — the ship logo alone carries the brand on mobile so
        the control row fits without horizontal scroll. The version is kept in
