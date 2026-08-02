@@ -889,7 +889,7 @@ function logLineHTML(entry) {
 // The parts a line does not have are simply absent — a missing stack must not
 // leave an empty column, or the lines stop aligning.
 function narratedLineHTML(story, attrs) {
-  let html = `<span class="log-glyph ${story.tone ? 'tone-' + story.tone : ''}" data-testid="log-glyph" aria-hidden="true">${escapeHtml(story.indent ? '' : story.glyph)}</span>`;
+  let html = `<span class="log-glyph ${story.tone ? 'tone-' + story.tone : ''}" data-testid="log-glyph" aria-hidden="true">${escapeHtml(story.glyph)}</span>`;
   if (story.stack) {
     // Only a real stack attr is a filter control; a synthesised label like
     // "peer argoneon" is not one of the log's stacks. A control keeps the

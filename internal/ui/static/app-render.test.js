@@ -1134,3 +1134,14 @@ test('the inline diff block reuses the diff panel classes and escapes its conten
   // A trailing newline must not produce an empty last line.
   assert.equal((html.match(/class="diff-line/g) || []).length, 3);
 });
+
+test('a step line renders its ↳ marker — the only thing tying it to the line above', () => {
+  const html = r.logLineHTML({
+    time: '2026-08-02T15:22:05Z',
+    level: 'INFO',
+    msg: 'file changed',
+    attrs: { file: 'flake.nix' },
+  });
+  assert.match(html, /data-testid="log-glyph"[^>]*>↳</);
+  assert.match(html, />flake\.nix</);
+});

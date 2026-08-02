@@ -368,14 +368,9 @@ function logNarrative(entry) {
     case 'deploying stack':
       return { glyph: '▸', tone: 'accent', stack: stack, dim: changeSummary(a.changed_files) };
     case 'running deploy hook':
-      return {
-        glyph: '↳',
-        tone: '',
-        indent: true,
-        dim: a.phase + ' [' + (Number(a.index) + 1) + ']',
-      };
+      return { glyph: '↳', tone: '', dim: a.phase + ' [' + (Number(a.index) + 1) + ']' };
     case 'file changed':
-      return { glyph: '↳', tone: '', indent: true, dim: a.file, diff: a.diff || '' };
+      return { glyph: '↳', tone: '', dim: a.file, diff: a.diff || '' };
     case 'deploy complete':
       return { glyph: '✓', tone: 'ok', stack: stack, text: 'deployed', textTone: 'ok' };
     case 'deploy failed':

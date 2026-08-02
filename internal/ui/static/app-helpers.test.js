@@ -1259,7 +1259,6 @@ test('failure lines carry the error and the tone that matches it', () => {
 test('a changed file carries its diff so the pane can render it like the console', () => {
   const n = nar('file changed', { file: 'flake.nix', diff: '@@ -1 +1 @@\n-old\n+new\n' });
   assert.equal(n.dim, 'flake.nix');
-  assert.equal(n.indent, true);
   assert.match(n.diff, /\+new/);
   // Without a diff attr the line is just the file name — no empty block.
   assert.equal(nar('file changed', { file: 'flake.lock' }).diff, '');
