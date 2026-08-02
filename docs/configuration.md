@@ -137,7 +137,7 @@ With the default `log_format: pretty`, startup logs the effective stack set (nam
 14:32:08    ↳ pre_deploy [1]
 14:32:20  ✓ nextcloud  deployed
 14:32:41  ↺ arr-stack  rolled back  — health check failed: GET /ping: context deadline exceeded
-14:32:41  ✗ run complete  1 deployed · 1 rolled back · 1 skipped
+14:32:41  ↺ run complete  1 deployed · 1 rolled back · 1 skipped
 ```
 
 Each changed file is listed with its **diff** below it, in the usual add/remove/hunk colours — the console has no way to open a diff on demand the way the web UI does, so it prints the one the deploy recorded. It is the same content, and it is bounded the same way: 10 KB per file, 50 KB per deploy. The diff is part of the `file changed` record, so `text` and `json` carry it too as a `diff` field; drop that field in the shipper if you do not want it there.
@@ -147,7 +147,7 @@ Color auto-disables when stdout is not a terminal (e.g. redirected to a file) or
 **A run that changes nothing logs one line** — its summary:
 
 ```
-14:37:41  ▪ run complete  12 skipped
+14:37:41  · run complete  12 skipped
 ```
 
 The [reconcile loop](#periodic-reconcile) syncs every few minutes whether or not anything moved, so the log reports what *happened*, not that it looked. An unchanged stack is still a `skipped` deploy event, still counted in the summary, and still shows its state in the web UI. There is no verbosity setting: filtering is done in the web UI's log view, on what it already has, without a restart.
