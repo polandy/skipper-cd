@@ -3217,15 +3217,21 @@
     flex-shrink: 0;
   }
 
+  /* overflow-wrap: anywhere, not word-break: break-all — break-all splits at
+     any character even when a space would do, which turns a squeezed column
+     into "st / ac / k di / sc / ov / er / ed". `anywhere` breaks between words
+     first and only inside one that genuinely does not fit; it also lets the
+     flex item report a narrow min-content width, so the column can shrink
+     without forcing the row wider than the pane. */
   .log-msg {
     color: var(--text-primary);
     white-space: pre-wrap;
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
 
   .log-attrs {
     color: var(--text-muted);
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
 
   /* ─── RESPONSIVE ─── */
@@ -3274,6 +3280,21 @@
   @media (max-width: 700px) {
     header { padding: 0 12px; height: 48px; }
     :root { --app-header-h: 48px; }
+
+    /* A log line is a flex row of identity (time · level · [stack]) plus the
+       message plus the dim attrs blob. On a phone the last two share what is
+       left of ~380px, so both end up a few characters wide and readable text
+       becomes a vertical ribbon. The row wraps instead, and the *attrs* are
+       what moves: they are the secondary, dim part, so they take their own
+       full-width line and stop competing with the message, which keeps line 1
+       beside the stack it belongs to. A message that still does not fit wraps
+       onto its own line too (the min-width is what pushes it there) rather
+       than shrinking further. Same collapse-under-pressure rule the deploy
+       table follows (UI_SPEC §Responsive): nothing is dropped, the parts just
+       stop sharing one row. */
+    .log-line { flex-wrap: wrap; row-gap: 0; }
+    .log-line .log-msg { min-width: 14ch; }
+    .log-line .log-attrs { flex: 1 0 100%; padding-left: 12px; }
     .status-area { gap: 10px; }
     /* Wordmark is dropped — the ship logo alone carries the brand on mobile so
        the control row fits without horizontal scroll. The version is kept in
