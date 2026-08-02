@@ -111,8 +111,8 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 // An unchanged stack must stay off the log at the default level: with the
 // reconcile loop running every few minutes, one line per stack per tick is
 // what buries the lines that matter (and evicts them from the UI's ring).
-// The information is not lost — the run summary counts the skips, and
-// log_level=debug brings the per-stack narrative back.
+// The information is not lost: the skip is still a `skipped` deploy event,
+// is counted in the run summary, and shows in the UI's per-stack state.
 func TestDeployStack_SkipIsLoggedAtDebugLevel(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "gitea")
@@ -911,28 +911,28 @@ func TestDeployStack_PullsOnlyRemoteServices(t *testing.T) {
 	assertCommandCalled(t, runner.calls, "build")
 }
 
-// --- buildBaseEnv: the vars_file layer of Invariant 6 -------------------------
+// --- BaseEnv: the vars_file layer of Invariant 6 -------------------------
 
-func TestBuildBaseEnv_NoVarsFileReturnsProcessEnvironment(t *testing.T) {
+func TestBaseEnv_NoVarsFileReturnsProcessEnvironment(t *testing.T) {
 	t.Setenv("SKIPPER_TEST_BASE", "from-env")
 
-	env, err := buildBaseEnv("")
+	env, err := BaseEnv("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !slices.Contains(env, "SKIPPER_TEST_BASE=from-env") {
-		t.Error("without a vars_file, buildBaseEnv must return the process environment")
+		t.Error("without a vars_file, BaseEnv must return the process environment")
 	}
 }
 
-func TestBuildBaseEnv_VarsFileOverridesProcessEnvironment(t *testing.T) {
+func TestBaseEnv_VarsFileOverridesProcessEnvironment(t *testing.T) {
 	// Invariant 6: vars_file > os.Environ(). exec.Cmd resolves duplicate keys
 	// last-wins, so the vars_file entry must appear after the inherited one.
 	t.Setenv("SKIPPER_TEST_VAR", "from-env")
 	varsPath := filepath.Join(t.TempDir(), "vars.env")
 	writeFile(t, varsPath, "# global vars\n\nSKIPPER_TEST_VAR=from-vars\nSKIPPER_TEST_EXTRA=added\n")
 
-	env, err := buildBaseEnv(varsPath)
+	env, err := BaseEnv(varsPath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -952,8 +952,8 @@ func TestBuildBaseEnv_VarsFileOverridesProcessEnvironment(t *testing.T) {
 	}
 }
 
-func TestBuildBaseEnv_UnreadableVarsFileFails(t *testing.T) {
-	_, err := buildBaseEnv(filepath.Join(t.TempDir(), "missing.env"))
+func TestBaseEnv_UnreadableVarsFileFails(t *testing.T) {
+	_, err := BaseEnv(filepath.Join(t.TempDir(), "missing.env"))
 	if err == nil {
 		t.Fatal("a configured vars_file that cannot be read must fail, not be silently skipped")
 	}

@@ -409,6 +409,18 @@ test('rosterRowActionsHTML is empty for a disabled stack', () => {
   assert.equal(r.rosterRowActionsHTML({ name: 'web', disabled: true }), '');
 });
 
+test('rowActionClusterHTML wraps the row glyphs in one box, dropping the empty ones', () => {
+  const html = r.rowActionClusterHTML('<b>jump</b>', '', '<i>logs</i>');
+  assert.equal(html, '<span class="row-actions"><b>jump</b><i>logs</i></span>');
+});
+
+test('rowActionClusterHTML is empty when the row has no actions at all', () => {
+  // No empty box: it would be a flex item, and the cell's gap would leave a
+  // phantom space after the stack name.
+  assert.equal(r.rowActionClusterHTML('', ''), '');
+  assert.equal(r.rowActionClusterHTML(), '');
+});
+
 test('rosterVersionInnerHTML is empty while the stack has no health entry', () => {
   assert.equal(r.rosterVersionInnerHTML('web', undefined), '');
   assert.equal(r.rosterVersionInnerHTML('web', { services: [] }), '');
@@ -837,14 +849,39 @@ test('logLineHTML prefixes the stack for hook output too', () => {
     msg: 'hi',
     attrs: { cmd: 'sh', stream: 'stdout', stack: 'web' },
   });
-  assert.match(html, /class="log-stack" data-testid="stack-prefix">\[web\]</);
+  assert.match(html, /class="log-stack" data-testid="stack-prefix"[^>]*>\[web\]</);
+});
+
+test('the stack prefix carries the name and the affordances that make it a filter control', () => {
+  const html = r.logLineHTML({
+    time: '2026-07-28T10:00:00Z',
+    level: 'info',
+    msg: 'deploying stack',
+    attrs: { stack: 'arr-stack' },
+  });
+  assert.match(html, /data-stack="arr-stack"/);
+  assert.match(html, /role="button"/);
+  assert.match(html, /tabindex="0"/);
+});
+
+test('a stack name with quotes cannot break out of the data-stack attribute', () => {
+  const html = r.logLineHTML({
+    time: '2026-07-28T10:00:00Z',
+    level: 'info',
+    msg: 'deploying stack',
+    attrs: { stack: 'we"b<script>' },
+  });
+  assert.ok(!html.includes('<script>'), 'expected the raw tag escaped, got: ' + html);
+  assert.ok(!html.includes('data-stack="we"b'), 'expected the quote escaped, got: ' + html);
 });
 
 test('logLineHTML renders a level line with its badge, pill and attrs blob', () => {
   const html = r.logLineHTML({
     time: '2026-07-28T10:00:00Z',
     level: 'error',
-    msg: 'deploy failed',
+    // A message with no narrative — this is the fallback rendering. (It used
+    // to say "deploy failed", which the narrative table now claims.)
+    msg: 'could not save deploy state',
     attrs: { stack: 'web', event_id: 'e1', took: '3s' },
   });
   assert.match(html, /data-testid="level-badge">error</);
@@ -1013,4 +1050,98 @@ test('updateCheckMetaHTML renders count and check age, and is empty without upda
   assert.match(html, /checked 12m ago/);
   assert.match(r.updateCheckMetaHTML(1, '2026-07-31T12:00:00Z', now), /⇡ 1 update\b/);
   assert.equal(r.updateCheckMetaHTML(0, '2026-07-31T12:00:00Z', now), '');
+});
+
+// ── Narrated log lines (the console's rendering, mirrored) ──
+
+test('a narrated line renders the glyph, the stack and the story instead of the attrs blob', () => {
+  const html = r.logLineHTML({
+    time: '2026-08-02T15:22:19Z',
+    level: 'INFO',
+    msg: 'deploy complete',
+    attrs: { stack: 'nextcloud', event_id: '412' },
+  });
+  assert.match(html, /data-testid="log-glyph"[^>]*>✓</);
+  assert.match(html, /tone-ok/);
+  assert.match(html, /data-testid="stack-prefix"[^>]*>\[nextcloud\]</);
+  assert.match(html, />deployed</);
+  // The level badge and the key=value blob are what the narrative replaces.
+  assert.ok(
+    !html.includes('data-testid="level-badge"'),
+    'expected no level badge on a narrated line',
+  );
+  assert.ok(!html.includes('event_id=412'), 'expected the id folded into the pill, not printed');
+  // The diff pill survives — it is how the full diff is reached.
+  assert.match(html, /data-testid="diff-pill"/);
+});
+
+test('the run summary renders one toned segment per non-zero outcome', () => {
+  const html = r.logLineHTML({
+    time: '2026-08-02T15:22:41Z',
+    level: 'INFO',
+    msg: 'run complete',
+    attrs: {
+      deployed: '1',
+      rolled_back: '1',
+      rolled_back_unhealthy: '0',
+      queued: '0',
+      blocked: '0',
+      skipped: '29',
+      failed: '0',
+    },
+  });
+  assert.match(html, />1 deployed</);
+  assert.match(html, />1 rolled back</);
+  assert.match(html, />29 skipped</);
+  assert.ok(!html.includes('blocked=0'), 'expected the zero counts gone, got: ' + html);
+});
+
+test('an unnarrated message keeps its level badge and attrs, so nothing is swallowed', () => {
+  const html = r.logLineHTML({
+    time: '2026-08-02T15:22:41Z',
+    level: 'WARN',
+    msg: 'a message nobody mapped',
+    attrs: { some: 'detail' },
+  });
+  assert.match(html, /data-testid="level-badge">WARN</);
+  assert.match(html, />a message nobody mapped</);
+  assert.match(html, />some=detail</);
+});
+
+test('a synthesised label is not offered as a stack filter', () => {
+  // "peer argoneon" is the narrative's own wording, not one of the log's
+  // stacks — clicking it could only filter to nothing.
+  const html = r.logLineHTML({
+    time: '2026-08-02T15:22:41Z',
+    level: 'WARN',
+    msg: 'peer unreachable',
+    attrs: { peer: 'argoneon', err: 'connection refused' },
+  });
+  assert.match(html, />peer argoneon</);
+  assert.ok(
+    !html.includes('data-testid="stack-prefix"'),
+    'expected no filter control on a synthesised label',
+  );
+  assert.match(html, /— connection refused/);
+});
+
+test('the inline diff block reuses the diff panel classes and escapes its content', () => {
+  const html = r.logDiffBlockHTML('@@ -1 +1 @@\n-old\n+new <script>\n');
+  assert.match(html, /class="diff-line diff-hunk"/);
+  assert.match(html, /class="diff-line diff-del"/);
+  assert.match(html, /class="diff-line diff-add"/);
+  assert.ok(!html.includes('<script>'), 'expected diff content escaped, got: ' + html);
+  // A trailing newline must not produce an empty last line.
+  assert.equal((html.match(/class="diff-line/g) || []).length, 3);
+});
+
+test('a step line renders its ↳ marker — the only thing tying it to the line above', () => {
+  const html = r.logLineHTML({
+    time: '2026-08-02T15:22:05Z',
+    level: 'INFO',
+    msg: 'file changed',
+    attrs: { file: 'flake.nix' },
+  });
+  assert.match(html, /data-testid="log-glyph"[^>]*>↳</);
+  assert.match(html, />flake\.nix</);
 });
