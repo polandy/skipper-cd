@@ -11,8 +11,10 @@ import (
 	"time"
 )
 
-// DefaultCapacity is the number of log lines kept in memory.
-const DefaultCapacity = 1000
+// DefaultCapacity is the number of log lines kept in memory. It matches the
+// web UI's own client-side buffer, so a reload replays the whole window a
+// viewer could have scrolled through rather than half of it.
+const DefaultCapacity = 2000
 
 // subscriberBuffer is the channel buffer per subscriber. It is larger than
 // the deploy-event buffer because child-process output arrives in bursts.

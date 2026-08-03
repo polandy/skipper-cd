@@ -484,7 +484,10 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		return
 	}
 
-	slog.Info("starting deploy run", "stacks", len(cfg.Stacks))
+	// Debug: a header per reconcile tick outweighs what it says; the run's
+	// outcome is the summary line the caller logs at the end (ADR-0042
+	// amendment).
+	slog.Debug("starting deploy run", "stacks", len(cfg.Stacks))
 	d.deployStacksGated(ctx, cfg, baseEnv, state, stackErrs)
 	d.finishRun(ctx, state)
 }

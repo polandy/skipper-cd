@@ -83,7 +83,10 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	changed := changedFiles(prep.currentHashes, state.hashesFor(stack.Name))
 	if len(changed) == 0 {
-		slog.Info("skipping stack, no changes detected", "stack", stack.Name)
+		// Debug: once per stack per reconcile tick, this is most of the log.
+		// The skip is still reported as a `skipped` event and in the run
+		// summary's count (ADR-0042 amendment).
+		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		d.clearQueued(stack.Name) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
 		d.emit(events.StatusSkipped, stack.Name, 0, "", changeSet{})

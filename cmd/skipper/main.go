@@ -405,6 +405,11 @@ func main() {
 // newLogHandler returns the slog handler for the configured log_format: a
 // JSON handler for "json", a logfmt text handler for "text", and prettylog's
 // colored console handler otherwise (the default, "pretty").
+//
+// All three log at Info and there is no key to change that: the level is a
+// property of what skipper has to say, not an operator setting. Narrowing
+// further is the web UI's job — its log view filters what it already has,
+// without a restart (ADR-0042 amendment).
 func newLogHandler(format string, w io.Writer) slog.Handler {
 	switch format {
 	case config.LogFormatJSON:

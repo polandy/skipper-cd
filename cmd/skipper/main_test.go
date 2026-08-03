@@ -117,6 +117,35 @@ func TestNewLogHandler_PrettyIsTheDefault(t *testing.T) {
 	}
 }
 
+// The Info threshold is fixed and identical in every format: there is no key
+// to lower or raise it, so the deploy narrative a viewer sees does not depend
+// on how the host happens to be configured. Narrowing is the UI's job.
+func TestNewLogHandler_EveryFormatLogsAtTheFixedInfoThreshold(t *testing.T) {
+	// Messages with no prettylog anchor, so all three formats render the text
+	// verbatim and one assertion fits every format.
+	const debugMsg = "reconcile tick skipped: deploy already in progress"
+	const infoMsg = "web UI enabled"
+
+	for _, format := range []string{config.LogFormatPretty, config.LogFormatText, config.LogFormatJSON} {
+		t.Run(format, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := slog.New(newLogHandler(format, &buf))
+
+			logger.Debug(debugMsg)
+			if buf.Len() != 0 {
+				t.Errorf("expected debug below the threshold, got %q", buf.String())
+			}
+			// Positive control: an Info record on the same handler does land,
+			// so the empty buffer above means the threshold gated it rather
+			// than the handler writing nowhere.
+			logger.Info(infoMsg)
+			if !strings.Contains(buf.String(), infoMsg) {
+				t.Errorf("expected info to pass the threshold, got %q", buf.String())
+			}
+		})
+	}
+}
+
 func TestHealthzHandler_OKWhileNoSyncRan(t *testing.T) {
 	deployer := deploy.New(deploy.Config{})
 

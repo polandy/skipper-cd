@@ -55,8 +55,34 @@ func TestSync_PullsWhenCloneExists(t *testing.T) {
 	}
 	assertArgPresent(t, runner.calls[1].args, "fetch")
 	assertArgPresent(t, runner.calls[2].args, "reset")
+	// The reset is silenced: "HEAD is now at <sha> <subject>" would otherwise
+	// land in the log on every sync, changed or not (child output is captured).
+	assertArgPresent(t, runner.calls[2].args, "--quiet")
 	if runner.calls[1].dir != repoDir {
 		t.Errorf("expected fetch in %s, got %s", repoDir, runner.calls[1].dir)
+	}
+}
+
+func TestSync_PullIsLoggedAtDebugLevel(t *testing.T) {
+	repoDir := makeFakeClone(t)
+
+	sync := func(level slog.Level) string {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: level})))
+		defer slog.SetDefault(prev)
+		s := newRepoSyncWithRunner(&recordingRunner{}, "ssh://git@example.com/repo.git", repoDir, "master")
+		if err := s.Sync(context.Background()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return buf.String()
+	}
+
+	if out := sync(slog.LevelInfo); strings.Contains(out, "pulling latest commits") {
+		t.Errorf("expected no sync line at info level, got %q", out)
+	}
+	if out := sync(slog.LevelDebug); !strings.Contains(out, "pulling latest commits") {
+		t.Errorf("expected the sync line at debug level, got %q", out)
 	}
 }
 

@@ -213,3 +213,53 @@ breaking either.
   the copy the log ring clamped (~40 lines) and reaches the rest through the
   deploy's diff pill. The console has no pill — that asymmetry is the reason
   it prints the full one.
+
+## Amendment (2026-08-02): the idle-run narrative moves back to Debug; no verbosity key
+
+The decision above promoted `skipping stack, no changes detected` from Debug
+to Info so a run's consideration of every stack was always visible. Measured
+against a real instance (29 stacks, `reconcile_interval_seconds: 300`), that
+made the *idle* case dominate the log: of 573 buffered entries over 75
+minutes, 464 (81%) were skip lines and another 64 the per-tick sync/run
+header pair — 92% of the log described nothing happening, and the two lines
+that carried real signal were one eviction away from falling out of the ring
+behind `/api/logs`.
+
+The premise was right for a single run watched live and wrong for a process
+that reconciles on a timer. So `skipping stack, no changes detected`,
+`starting deploy run` and `pulling latest commits` return to `slog.Debug`,
+and `git reset --hard` gains `--quiet`, which suppresses its per-sync
+`HEAD is now at <sha> <subject>` child line. An idle run now costs one line:
+the `run complete` summary, which already carries the skip count.
+
+### No `log_level` key
+
+The obvious companion — a `log_level` config key restoring the full
+narrative — was built and then deliberately dropped. Reasons:
+
+- **The level is a property of what skipper has to say, not of the host.** A
+  key makes the deploy narrative depend on how an instance happens to be
+  configured, so the same run reads differently on two hosts and every
+  consumer (console, journald, the web UI, a screenshot in an issue) has to
+  ask which setting produced it.
+- **The web UI is the better control surface.** It filters what it already
+  holds, per viewer, with no restart — where a config key costs a config
+  change plus a service restart to answer "show me only the failures", and
+  is global rather than per-viewer.
+- **Turning it *up* would undo the fix.** The ring behind `/api/logs` is the
+  UI's whole history; a host left at debug refills it with idle-run chatter
+  and evicts the deploys again. The measurement above is the argument
+  against making that a switch someone can flip.
+
+The three demoted `slog` lines stay `slog.Debug` rather than being deleted
+(the fourth, `HEAD is now at …`, is git's own output and is silenced at the
+source), matching what the codebase already does with its other stand-down
+diagnostics (`reconcile tick skipped`, `self-heal skipped`, `healthwatch
+baseline`): below the fixed threshold, but present for anyone attaching a
+lower-level handler in a test or a debugging build. The prettylog anchor
+table — and the web UI's mirror of it — keeps its entries for all three for
+the same reason.
+
+What is *not* changed: the skip is still reported everywhere it was before
+this ADR — as a `skipped` deploy event, in the run tally, and in the UI's
+per-stack state. Only the per-stack log line moved.

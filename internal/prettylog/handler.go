@@ -46,7 +46,8 @@ func colorEnabled(w io.Writer) bool {
 }
 
 // Enabled reports whether level is enabled. It matches the default slog
-// handlers' threshold (Info) since this handler exposes no HandlerOptions.
+// handlers' threshold (Info) since this handler exposes no HandlerOptions —
+// the threshold is deliberately fixed (see newLogHandler).
 func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= slog.LevelInfo
 }
