@@ -2018,7 +2018,10 @@
         if (!surface.classList.contains('open')) return; // toggled off already
         if (focusRestsInside(surface)) return; // observer moved focus in — don't override
         const target = focusablesIn(surface)[0] || surface;
-        target.focus();
+        // preventScroll: the surface is mid-open, so its scroll box is still a
+        // sliver — a scroll-into-view here leaves the drawer parked past its own
+        // first rows, with the control the viewer came for cut off at the top.
+        target.focus({ preventScroll: true });
         if (document.activeElement === target || --tries <= 0) return;
         requestAnimationFrame(settle);
       })();
@@ -2027,7 +2030,8 @@
       const returnFocus = surface._opener && (!ae || ae === document.body || surface.contains(ae));
       const opener = surface._opener;
       surface._opener = null;
-      if (returnFocus && opener && typeof opener.focus === 'function') opener.focus();
+      if (returnFocus && opener && typeof opener.focus === 'function')
+        opener.focus({ preventScroll: true });
     }
   }
   // trapFocus keeps Tab/Shift+Tab within an open dialog (wraps at the ends).
@@ -3889,6 +3893,10 @@
     // marks the end of that window so a test (or any caller) can wait for the
     // drawer to stop moving instead of clicking into the transition (T8).
     asDrawer.dataset.settled = 'false';
+    // Always open at the top: the drawer is taller than it is tall enough to
+    // show, so a leftover scroll offset from the previous visit would hide the
+    // global switch — the row the whole surface is about.
+    if (open) asDrawer.scrollTop = 0;
     manageSurfaceFocus(asDrawer, asBtn, open);
   }
   asDrawer.addEventListener('transitionend', function (e) {

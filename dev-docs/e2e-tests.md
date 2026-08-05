@@ -1592,9 +1592,10 @@ same report reshaped ([UI_SPEC](../internal/ui/UI_SPEC.md#log-view)):
   `clog-fullscreen` class cleared and the deploy table visible. It used to stay
   on top of whichever view followed.
 - **UAR5 — The header never scrolls sideways.** `scrollWidth <= clientWidth` on
-  a 390 px phone with the view switch still reachable, and on a 744 px tablet
-  with the first-run tour showing — the two cases that used to overflow. The row
-  wraps instead of dropping a control.
+  a 375 px phone with the view switch still reachable, and on a 744 px tablet
+  with the first-run tour showing — the two cases that used to overflow. Both
+  run against a deliberately loaded instance (fanned-in peer, unhealthy stack,
+  theme picker), because an empty header fits anywhere and would assert nothing.
 
 Behaviour-only, no snapshot.
 

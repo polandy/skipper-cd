@@ -307,8 +307,8 @@
     backdrop-filter: blur(20px) saturate(1.2);
     -webkit-backdrop-filter: blur(20px) saturate(1.2);
     border-bottom: 1px solid var(--border);
-    padding: 4px 28px;
-    min-height: 56px;
+    padding: 0 28px;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -368,19 +368,9 @@
 
   .brand-version:empty { display: none; }
 
-  /* The controls wrap rather than push the row past the viewport: with every
-     chip present (deploy indicator, beacon, incident badge, view switch, hosts,
-     autosync, theme, connection) they need ~456 px, which no phone has. The row
-     is the last thing that may scroll sideways — the header is how a viewer
-     reaches every other surface — so it takes a second line under pressure and
-     keeps every control reachable, the same collapse-under-pressure rule the
-     deploy row follows. Nothing moves while they fit. */
   .status-area {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    row-gap: 6px;
     gap: 20px;
   }
 
@@ -2303,6 +2293,12 @@
     gap: 6px;
   }
   html:not(.header-tour-seen) header { height: auto; min-height: 74px; }
+  /* The captions are wider than the glyphs they sit under, so for the one visit
+     they are up the row tightens rather than growing past the viewport. */
+  @media (min-width: 701px) and (max-width: 1000px) {
+    html:not(.header-tour-seen) .status-area { gap: 10px; }
+    html:not(.header-tour-seen) .ht-lbl { font-size: 9px; }
+  }
   /* A caption whose control isn't currently rendered would float with no glyph
      under it, so drop it: the Hosts control only exists on a multi-host instance
      (.hosts-btn.enabled). The wrapper then has no visible child and collapses to
@@ -3426,7 +3422,7 @@
   }
 
   @media (max-width: 700px) {
-    header { padding: 4px 12px; min-height: 48px; }
+    header { padding: 0 10px; height: 48px; }
 
     /* A log line is a flex row of identity (time · level · [stack]) plus the
        message plus the dim attrs blob. On a phone the last two share what is
@@ -3442,7 +3438,22 @@
     .log-line .log-msg { min-width: 14ch; }
     .log-line .log-attrs { flex: 1 0 100%; padding-left: 12px; }
     .log-diff { --log-diff-indent: 12px; }
-    .status-area { gap: 10px; }
+    /* The row is a fixed set of glyphs in a width that varies by phone, and it
+       must never scroll sideways — the header is how every other surface is
+       reached. Two things buy that room: a tighter gap, and dropping the
+       light/dark toggle. The toggle is the one control here whose job is done
+       once: the palette is a per-browser preference set once and then left
+       alone, unlike the beacon, the badges or the view switch, which report
+       state that changes under the viewer. It stays reachable from any wider
+       viewport, and the saved choice keeps applying on the phone. */
+    .status-area { gap: 6px; }
+    #theme-toggle { display: none; }
+    /* The Hosts control compacts to its glyph (plus the red dot when a peer is
+       unreachable — that is state, not decoration): the `n/m` count and the
+       chevron both restate what the drawer says the moment it opens, and the
+       drawer is one tap away. Same rule as the beacon and the incident badge
+       above — keep the identity token and the alarm, drop the read-out. */
+    .hosts-btn .hb-count, .hosts-btn .hb-chev { display: none; }
     /* Attention chips compact to one identity token + count each, so the
        beacon (pulsing dot — "broken now") and the incident badge (↺ —
        "broken recently") fit the 48px row side by side in the worst case,
@@ -3554,7 +3565,7 @@
     html:not(.header-tour-seen) .view-switch { flex-direction: row; gap: 0; }
     html:not(.header-tour-seen) .ht-lbl,
     html:not(.header-tour-seen) .ht-lbl-row { display: none; }
-    html:not(.header-tour-seen) header { min-height: 48px; }
+    html:not(.header-tour-seen) header { height: 48px; min-height: 0; }
     .header-tour { display: none; }
   }
 

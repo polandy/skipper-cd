@@ -193,10 +193,11 @@ test.describe('Maske AR: the Logs view fits the display', () => {
     });
   });
 
-  // UAR5 — the header is how every other surface is reached, so it is the last
-  // thing that may scroll sideways. With every control present it needs more
-  // width than a phone has, and the first-run tour's captions push it past a
-  // tablet: it wraps to a second line instead of overflowing, dropping nothing.
+  // UAR5 — the header is how every other surface is reached, so it stays one
+  // row and never scrolls sideways. With every control lit it needs ~456 px at
+  // desktop spacing, which no phone has, and the first-run tour's captions push
+  // it past a tablet; it gives up read-outs (the light/dark toggle, the Hosts
+  // count) and spacing instead of width.
   // The instance is deliberately loaded — a fanned-in peer (hosts control), an
   // unhealthy stack (beacon) and the theme picker — because the empty header
   // fits anywhere and would assert nothing.
@@ -222,9 +223,9 @@ test.describe('Maske AR: the Logs view fits the display', () => {
       });
 
     test.describe('phone', () => {
-      // 320 px: the narrowest phone still worth supporting, and the width where
-      // even this fixture's smaller control set stops fitting on one line.
-      test.use({ viewport: { width: 320, height: 568 } });
+      // 375 px: the narrowest current phone class (an SE). A fully lit header
+      // fits from 360 px up; below that it clips, which is a known limit.
+      test.use({ viewport: { width: 375, height: 667 } });
 
       test('every control fits without horizontal scroll', async ({ page, skipper }) => {
         await page.goto(`${skipper.baseURL}/`);
@@ -240,7 +241,7 @@ test.describe('Maske AR: the Logs view fits the display', () => {
       // Opt out of the global seed: the tour's captions are what widened the row.
       test.use({ viewport: { width: 744, height: 1133 }, seedTourSeen: false });
 
-      test('the tour captions wrap instead of widening the row', async ({ page, skipper }) => {
+      test('the tour captions tighten instead of widening the row', async ({ page, skipper }) => {
         await page.goto(`${skipper.baseURL}/`); // a fresh context: the tour is up
         await expect(page.locator('[data-testid="header-tour"]')).toBeVisible();
         const h = await headerFits(page);
