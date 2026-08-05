@@ -106,15 +106,31 @@ other automatic, harmless-when-absent features (icons, health pill).
   magnitude as the existing health/orphans polling; not yet measured on a
   large host.
 
-## Future extension: Traefik file-provider support (not implemented)
+## Traefik file-provider support: decided against (2026-08-05)
 
 v1 only detects routes declared via Traefik's **Docker provider** (container
-labels) — see the non-goal above. Some deployments use the file provider for a few
-services (dynamic config files under `/etc/traefik/dynamic` *inside* the
-Traefik container, no host bind-mount), which this release does not cover;
-discussed 2026-07-19 and deliberately deferred rather than built, given the
-jump in complexity below. Kept here so the design isn't re-derived from
-scratch if it's picked up later.
+labels) — see the non-goal above. The file provider (dynamic config files,
+typically under `/etc/traefik/dynamic`) is not covered; first discussed
+2026-07-19 and deferred, then **closed as decided-against on 2026-08-05**
+after checking the design against a real homelab deployment:
+
+- Every file-provider route there pointed at an **IP-literal backend on a
+  different host** (a native service on another machine, or another skipper
+  instance) — none at a compose container the skipper host manages. The
+  generic attribution below (backend URL → container/service name) would
+  therefore have matched nothing and rendered zero additional icons. That is
+  the expected shape of file-provider use: routes to local containers get
+  Docker labels for free, so the file provider tends to carry exactly the
+  routes that have no local stack to attribute to.
+- The access path did turn out cheaper than originally estimated — the
+  dynamic dir was host-bind-mounted, and both the Traefik container and the
+  host-side path are discoverable generically via `docker inspect` (a
+  `--providers.file.directory=…` flag in `.Config.Cmd`/`.Config.Env`, mapped
+  through `.Mounts`) — no `docker exec` needed. That lowers the cost, but
+  doesn't change the zero-value attribution result.
+
+The design below is kept for reference in case a setup with file-provider
+routes to *local* containers ever makes it worth reopening.
 
 The hard problem isn't reading the files — it's **attribution**: a
 docker-label router lives on the very container it routes to, so the stack is
@@ -126,10 +142,13 @@ couldn't route) is the router's backing **service address**
 (`http.services.<name>.loadBalancer.servers[].url`) — so a generic solution
 means resolving *that* back to a container, not trusting any name:
 
-1. Locate the Traefik container (e.g. by its own `traefik.enable` label or a
-   configured container name — itself an open question).
-2. `docker exec` into it to read `/etc/traefik/dynamic/*.yml` (YAML only, per
-   the setup described here — Traefik also accepts TOML, out of scope).
+1. Locate the Traefik container generically via `docker inspect`: the
+   container whose `.Config.Cmd`/`.Config.Env` carries
+   `--providers.file.directory=…`.
+2. Read the dynamic config files (YAML only — Traefik also accepts TOML, out
+   of scope): resolve the directory through the container's `.Mounts` to its
+   host-side path and read it directly; only a setup with no host bind-mount
+   would need a `docker exec`/`docker cp` fallback.
 3. Parse every `http.routers.*.rule` (reuse `extractHosts`) and resolve its
    `service` to that service's backend server URL(s).
 4. Match the backend URL's host component against known container
@@ -139,12 +158,13 @@ means resolving *that* back to a container, not trusting any name:
    name). An IP-literal or external-DNS backend simply won't match — no
    error, just no icon, same graceful degradation as today.
 
-Scope this adds beyond the shipped v1: a new `docker exec`-based access path
-(vs. today's `ps`/`inspect` only), a Traefik dynamic-config YAML parser,
+Scope this adds beyond the shipped v1: a new host-filesystem access path
+resolved through container mounts, a Traefik dynamic-config YAML parser, and
 backend-URL-to-container matching (with real edge cases: multiple servers
-per service, load-balancer weights, TCP/UDP routers to ignore), and finding
-"the Traefik container" reliably. Roughly a multiple of the v1 implementation
-size — likely its own ADR amendment and spec pass, not a quick follow-up.
+per service, load-balancer weights, TCP/UDP routers to ignore). Its own ADR
+amendment and spec pass, not a quick follow-up — and per the decision above,
+only worth it for a deployment whose file-provider routes actually target
+local containers.
 
 See [ADR-0041](adr/0041-traefik-app-link-detection.md) for the implementation
 decisions.
