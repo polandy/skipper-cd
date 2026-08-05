@@ -296,12 +296,79 @@ function logLineLevel(entry) {
 }
 
 // LOG_SEVERITY_FILTERS are the severity quick filters, exactly one of which is
-// active. `WARN` and `ERROR` select *only* that level — picking one answers
-// "show me the warnings" rather than "show me this and everything worse", so
-// the chip label and what lands on screen say the same thing. `ALL` is the
-// unfiltered state and is the only one that shows child-process output
-// (`cmd` lines carry no level of their own).
+// active. `WARN` and `ERROR` are thresholds — each shows its level *and worse*
+// (`WARN` = WARN + ERROR). They started as exact matches, but exact-match plus
+// persistence hid a rollback's WARN-level outcome line behind a sticky
+// `errors` chip (2026-08-05); a threshold keeps the promise a severity filter
+// actually makes ("at least this bad") and can never hide a worse line behind
+// a milder one. `ALL` is the unfiltered state and is the only one that shows
+// child-process output (`cmd` lines carry no level of their own).
 const LOG_SEVERITY_FILTERS = ['ALL', 'WARN', 'ERROR'];
+
+// LOG_LEVEL_RANK orders the slog levels for the threshold test; an unknown
+// level (child output's `cmd`) has no rank and only `ALL` shows it.
+const LOG_LEVEL_RANK = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+
+// LOG_OUTCOME_MESSAGES are the narrated lines that say how a deploy ended —
+// exempt from client-buffer eviction (mirroring internal/logbuf's pinned set),
+// so the outcome of a rollback survives the child-process bursts that follow
+// it. Duplicated by hand, per the same display-layer rule as
+// LOG_DEPLOY_MESSAGES: a drifted message stops being pinned, never hidden.
+const LOG_OUTCOME_MESSAGES = [
+  'deploy complete',
+  'deploy failed',
+  'deploy failed but rolled back',
+  'deploy failed, rollback ran but stack is still unhealthy',
+  'self-heal: stack restored',
+  'self-heal exhausted: stack still degraded after repeated redeploys',
+  'run complete',
+];
+
+// LOG_OUTCOME_ERROR_MESSAGES are the bad outcomes among them: lines the
+// severity axis must treat as errors-tier whatever level the core logged them
+// at — the rollback outcome is WARN on the record, and hiding it under an
+// `errors` filter is exactly the 2026-08-05 failure mode.
+const LOG_OUTCOME_ERROR_MESSAGES = [
+  'deploy failed',
+  'deploy failed but rolled back',
+  'deploy failed, rollback ran but stack is still unhealthy',
+  'self-heal exhausted: stack still degraded after repeated redeploys',
+];
+
+// isLogOutcome reports whether an entry is a terminal deploy-outcome line
+// (the client-side pinning predicate).
+function isLogOutcome(entry) {
+  return LOG_OUTCOME_MESSAGES.indexOf(entry.msg) !== -1;
+}
+
+// logFilterSeverity is the level the severity quick filter tests: the record's
+// own level, lifted to ERROR for a narrated outcome line that reports a
+// failure or rollback — including a run summary whose counts contain one. A
+// display-layer classification: the core packages' log levels stay untouched.
+function logFilterSeverity(entry) {
+  if (LOG_OUTCOME_ERROR_MESSAGES.indexOf(entry.msg) !== -1) return 'ERROR';
+  if (entry.msg === 'run complete') {
+    const a = entry.attrs || {};
+    if (Number(a.failed) > 0 || Number(a.rolled_back) > 0 || Number(a.rolled_back_unhealthy) > 0) {
+      return 'ERROR';
+    }
+  }
+  return entry.level;
+}
+
+// mergeLogView merges the pinned outcome entries back into the ring for
+// rendering: pinned entries older than the ring's first (i.e. already evicted;
+// IDs are monotonic), then the ring — chronological, no duplicates. Mirrors
+// internal/logbuf's replay merge.
+function mergeLogView(pinned, ring) {
+  if (!pinned.length) return ring;
+  const start = ring.length ? ring[0].id : Infinity;
+  return pinned
+    .filter(function (e) {
+      return e.id < start;
+    })
+    .concat(ring);
+}
 
 // LOG_DEPLOY_MESSAGES is the set of messages the `deploys` quick filter keeps:
 // skipper's deploy lifecycle, as opposed to startup/background chatter. The
@@ -541,9 +608,11 @@ const DEFAULT_LOG_FILTERS = { sev: 'ALL', kinds: [], stacks: [] };
 // logFacets reduces an entry to the three values the quick filters test. The
 // renderer stashes them on the line's dataset so a re-filter reads the DOM
 // instead of re-deriving them from the buffer for every rendered line.
+// `level` is the classified filter severity (logFilterSeverity), not always
+// the record's own level — the dataset path round-trips it as-is.
 function logFacets(entry) {
   return {
-    level: entry.level,
+    level: logFilterSeverity(entry),
     kind: logKind(entry),
     stack: (entry.attrs && entry.attrs.stack) || '',
   };
@@ -551,12 +620,16 @@ function logFacets(entry) {
 
 // logMatchesFilters reports whether one line's facets survive the quick
 // filters. The three axes are independent and each is a narrowing: severity
-// selects exactly one level (or `ALL`), while a non-empty kind or stack set is
-// a membership test. An empty set means "no restriction on this axis", never
-// "match nothing" — a filter a viewer cleared must not blank the pane.
+// is a threshold — the selected level and worse (or `ALL`) — while a
+// non-empty kind or stack set is a membership test. An empty set means "no
+// restriction on this axis", never "match nothing" — a filter a viewer
+// cleared must not blank the pane.
 function logMatchesFilters(facets, filters) {
   const f = filters || DEFAULT_LOG_FILTERS;
-  if (f.sev && f.sev !== 'ALL' && facets.level !== f.sev) return false;
+  if (f.sev && f.sev !== 'ALL') {
+    const rank = LOG_LEVEL_RANK[facets.level];
+    if (rank === undefined || rank < LOG_LEVEL_RANK[f.sev]) return false;
+  }
   if (f.kinds && f.kinds.length && f.kinds.indexOf(facets.kind) === -1) return false;
   if (f.stacks && f.stacks.length && f.stacks.indexOf(facets.stack || '') === -1) return false;
   return true;
@@ -1202,5 +1275,8 @@ if (typeof module !== 'undefined' && module.exports) {
     logQuickVisible,
     logFiltersActive,
     parseLogFilters,
+    isLogOutcome,
+    logFilterSeverity,
+    mergeLogView,
   };
 }

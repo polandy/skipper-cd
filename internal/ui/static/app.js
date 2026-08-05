@@ -3986,7 +3986,18 @@
   // scrolls to the older (top) edge.
   const logPageSize = 500;
   const maxLogBuffer = 2000;
+  // Outcome lines kept past buffer eviction (mirrors internal/logbuf's pinned
+  // set), so a busy run's child output can never push the line that says how a
+  // deploy ended out of the pane before it was read.
+  const maxPinnedLog = 50;
   const logEntries = []; // chronological, oldest → newest
+  const pinnedLogEntries = []; // narrated outcome lines, exempt from eviction
+
+  // The render window reads this merged view — evicted outcome lines back in
+  // chronological position ahead of the ring — never logEntries directly.
+  function logView() {
+    return mergeLogView(pinnedLogEntries, logEntries);
+  }
   let logVisible = logPageSize; // number of newest entries currently rendered
   let followLogs = localStorage.getItem('followLogs') !== 'false';
   const savedView = localStorage.getItem('activeView');
@@ -4287,7 +4298,8 @@
   // Used on view activation, sort toggle and other non-incremental changes.
   function renderLogWindow() {
     logPane.innerHTML = '';
-    if (logEntries.length === 0) {
+    const view = logView();
+    if (view.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'log-empty';
       empty.id = 'log-empty';
@@ -4295,8 +4307,8 @@
       logPane.appendChild(empty);
       return;
     }
-    const count = Math.min(logVisible, logEntries.length);
-    const slice = logEntries.slice(logEntries.length - count); // oldest → newest
+    const count = Math.min(logVisible, view.length);
+    const slice = view.slice(view.length - count); // oldest → newest
     const frag = document.createDocumentFragment();
     slice.forEach(function (e) {
       frag.appendChild(renderLogLine(e));
@@ -4310,11 +4322,12 @@
   // Reveal another page of older entries at the older (top) edge, preserving
   // the reading position. No-op once the whole buffer is rendered.
   function loadMoreLogs() {
-    const have = Math.min(logVisible, logEntries.length);
-    const target = Math.min(logVisible + logPageSize, maxLogBuffer, logEntries.length);
+    const view = logView();
+    const have = Math.min(logVisible, view.length);
+    const target = Math.min(logVisible + logPageSize, view.length);
     if (target <= have) return;
     logVisible = target;
-    const older = logEntries.slice(logEntries.length - target, logEntries.length - have);
+    const older = view.slice(view.length - target, view.length - have);
     const frag = document.createDocumentFragment();
     older.forEach(function (e) {
       frag.appendChild(renderLogLine(e));
@@ -4349,6 +4362,16 @@
     logEntries.push(entry);
     const overflow = logEntries.length - maxLogBuffer;
     if (overflow > 0) logEntries.splice(0, overflow);
+    // A reconnect can replay lines already held; the ID guard keeps the pinned
+    // set strictly increasing so nothing is pinned twice.
+    if (
+      isLogOutcome(entry) &&
+      (!pinnedLogEntries.length || pinnedLogEntries[pinnedLogEntries.length - 1].id < entry.id)
+    ) {
+      pinnedLogEntries.push(entry);
+      const over = pinnedLogEntries.length - maxPinnedLog;
+      if (over > 0) pinnedLogEntries.splice(0, over);
+    }
     // While the logs view is hidden, or its live pill is paused, we only
     // buffer; the pane is rebuilt from the buffer on reactivation or unpause.
     if (activeView === 'logs' && !logsPaused) appendNewestToDom(entry);

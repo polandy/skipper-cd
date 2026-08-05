@@ -1110,7 +1110,7 @@ function logKindOf(level, msg, attrs) {
   return h.logKind(logEntry(level, msg, attrs));
 }
 
-test('the severity filter selects exactly one level, so the chip and the pane agree', () => {
+test('the severity filter is a threshold: the selected level and worse', () => {
   const info = logEntry('INFO', 'web UI enabled', {});
   const warn = logEntry('WARN', 'peer unreachable', {});
   const error = logEntry('ERROR', 'deploy failed', {});
@@ -1123,9 +1123,64 @@ test('the severity filter selects exactly one level, so the chip and the pane ag
     [info, warn, error, output].filter((e) => h.logQuickVisible(e, { sev, kinds: [], stacks: [] }));
 
   assert.equal(at('ALL').length, 4);
-  // "warnings" means warnings — not warnings and everything worse.
-  assert.deepEqual(at('WARN'), [warn]);
+  // A threshold can never hide a worse line behind a milder one — and only
+  // ALL shows child output, which carries no level of its own.
+  assert.deepEqual(at('WARN'), [warn, error]);
   assert.deepEqual(at('ERROR'), [error]);
+});
+
+test('narrated outcome lines classify by outcome, not their record level', () => {
+  // The 2026-08-05 failure mode: the rollback outcome is WARN on the record,
+  // and a sticky `errors` chip hid it while showing the failure's ERROR lines.
+  const rolledBack = logEntry('WARN', 'deploy failed but rolled back', { stack: 'nextcloud' });
+  assert.equal(h.logFilterSeverity(rolledBack), 'ERROR');
+  assert.equal(h.logQuickVisible(rolledBack, { sev: 'ERROR', kinds: [], stacks: [] }), true);
+
+  // Every bad outcome lifts; the good outcome keeps its own level.
+  assert.equal(h.logFilterSeverity(logEntry('ERROR', 'deploy failed', {})), 'ERROR');
+  assert.equal(
+    h.logFilterSeverity(
+      logEntry('WARN', 'self-heal exhausted: stack still degraded after repeated redeploys', {}),
+    ),
+    'ERROR',
+  );
+  assert.equal(h.logFilterSeverity(logEntry('INFO', 'deploy complete', {})), 'INFO');
+  // An ordinary WARN line is not lifted — only outcome narrations classify.
+  assert.equal(h.logFilterSeverity(logEntry('WARN', 'peer unreachable', {})), 'WARN');
+});
+
+test('a run summary containing a failure or rollback classifies as errors-tier', () => {
+  const bad = logEntry('INFO', 'run complete', { deployed: '1', rolled_back: '1', failed: '0' });
+  const clean = logEntry('INFO', 'run complete', { deployed: '2', failed: '0' });
+  assert.equal(h.logFilterSeverity(bad), 'ERROR');
+  assert.equal(h.logQuickVisible(bad, { sev: 'ERROR', kinds: [], stacks: [] }), true);
+  assert.equal(h.logFilterSeverity(clean), 'INFO');
+});
+
+test('isLogOutcome marks exactly the terminal outcome lines', () => {
+  assert.equal(h.isLogOutcome(logEntry('INFO', 'deploy complete', {})), true);
+  assert.equal(h.isLogOutcome(logEntry('WARN', 'deploy failed but rolled back', {})), true);
+  assert.equal(h.isLogOutcome(logEntry('INFO', 'run complete', {})), true);
+  // Lifecycle and child output are ring-only.
+  assert.equal(h.isLogOutcome(logEntry('INFO', 'deploying stack', {})), false);
+  assert.equal(h.isLogOutcome(logEntry('INFO', 'Recreated', { cmd: 'docker' })), false);
+});
+
+test('mergeLogView folds evicted outcome lines back in chronological position', () => {
+  const e = (id, msg) => ({ id, msg });
+  const pinned = [e(1, 'deploy failed but rolled back'), e(5, 'deploy complete')];
+  const ring = [e(4, 'a'), e(5, 'deploy complete'), e(6, 'b')];
+  // id 1 was evicted → merged back in front; id 5 is still in the ring → not duplicated.
+  assert.deepEqual(
+    h.mergeLogView(pinned, ring).map((x) => x.id),
+    [1, 4, 5, 6],
+  );
+  // An empty ring keeps every pinned line; no pinned lines keeps the ring as-is.
+  assert.deepEqual(
+    h.mergeLogView(pinned, []).map((x) => x.id),
+    [1, 5],
+  );
+  assert.deepEqual(h.mergeLogView([], ring), ring);
 });
 
 test('kind and stack filters are membership tests, and an empty set means no restriction', () => {
