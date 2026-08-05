@@ -203,3 +203,90 @@ func TestLog_ConcurrentAppendAndSubscribeIsRaceFree(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// --- outcome-line pinning (UI_SPEC.md, Log API) ---
+
+func TestLog_OutcomeLinesSurviveRingEviction(t *testing.T) {
+	l := New(4)
+	l.Append(time.Now(), "WARN", "deploy failed but rolled back", map[string]string{"stack": "nextcloud"})
+	appendN(l, 10) // the child-process burst that used to evict the outcome
+
+	entries := l.Entries()
+	if len(entries) != 5 {
+		t.Fatalf("expected 4 ring entries + 1 pinned outcome, got %d", len(entries))
+	}
+	first := entries[0]
+	if first.Msg != "deploy failed but rolled back" || first.Attrs["stack"] != "nextcloud" {
+		t.Errorf("evicted outcome line missing or mangled: %+v", first)
+	}
+	// Chronological: the merged-in outcome precedes every ring entry.
+	for i := 1; i < len(entries); i++ {
+		if entries[i].ID <= entries[i-1].ID {
+			t.Errorf("entries out of order at %d: %d then %d", i, entries[i-1].ID, entries[i].ID)
+		}
+	}
+}
+
+func TestLog_OutcomeLineStillInRingIsNotDuplicated(t *testing.T) {
+	l := New(10)
+	l.Append(time.Now(), "INFO", "deploy complete", nil)
+	appendN(l, 2)
+
+	count := 0
+	for _, e := range l.Entries() {
+		if e.Msg == "deploy complete" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("outcome line inside the ring must appear exactly once, got %d", count)
+	}
+}
+
+func TestLog_EntriesAfterFiltersPinnedToo(t *testing.T) {
+	l := New(2)
+	l.Append(time.Now(), "ERROR", "deploy failed", nil)
+	afterID := l.Entries()[0].ID
+	l.Append(time.Now(), "WARN", "deploy failed but rolled back", nil)
+	appendN(l, 5) // evict both outcomes from the ring
+
+	for _, e := range l.EntriesAfter(afterID) {
+		if e.ID <= afterID {
+			t.Errorf("EntriesAfter leaked an already-seen entry: %+v", e)
+		}
+		if e.Msg == "deploy failed" {
+			t.Errorf("pinned entry at or before Last-Event-ID must be filtered: %+v", e)
+		}
+	}
+}
+
+func TestLog_PinnedSetIsBounded(t *testing.T) {
+	l := New(4)
+	for range pinnedCap + 20 {
+		l.Append(time.Now(), "INFO", "deploy complete", nil)
+	}
+	appendN(l, 4) // push every outcome line out of the ring
+
+	entries := l.Entries()
+	outcomes := 0
+	for _, e := range entries {
+		if e.Msg == "deploy complete" {
+			outcomes++
+		}
+	}
+	if outcomes != pinnedCap {
+		t.Errorf("pinned outcomes = %d, want the cap of %d", outcomes, pinnedCap)
+	}
+}
+
+func TestLog_NonOutcomeLinesAreNotPinned(t *testing.T) {
+	l := New(2)
+	l.Append(time.Now(), "INFO", "deploying stack", nil) // lifecycle, not an outcome
+	appendN(l, 5)
+
+	for _, e := range l.Entries() {
+		if e.Msg == "deploying stack" {
+			t.Errorf("non-outcome line survived eviction: %+v", e)
+		}
+	}
+}

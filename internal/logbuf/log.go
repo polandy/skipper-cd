@@ -20,6 +20,28 @@ const DefaultCapacity = 2000
 // the deploy-event buffer because child-process output arrives in bursts.
 const subscriberBuffer = 256
 
+// pinnedCap bounds the separate retention set for deploy-outcome lines. It is
+// deliberately small: outcome lines are rare (one per deploy attempt), so 50
+// covers far more runs than the ring itself ever holds.
+const pinnedCap = 50
+
+// outcomeMessages are the log messages that say how a deploy ended — the one
+// line a viewer must still find after the child-process burst of later runs
+// has rolled the ring over (UI_SPEC.md, Log API). The message text is
+// duplicated here from internal/deploy et al. by hand, following the same rule
+// as internal/prettylog's anchor table: a capture/display layer must not gain
+// influence over the core packages' log wording. A message that drifts simply
+// stops being pinned; it is never dropped from the ring.
+var outcomeMessages = map[string]bool{
+	"deploy complete":               true,
+	"deploy failed":                 true,
+	"deploy failed but rolled back": true,
+	"deploy failed, rollback ran but stack is still unhealthy":           true,
+	"self-heal: stack restored":                                          true,
+	"self-heal exhausted: stack still degraded after repeated redeploys": true,
+	"run complete": true,
+}
+
 // Entry is one captured log line.
 type Entry struct {
 	ID    int64             `json:"id"`
@@ -32,10 +54,16 @@ type Entry struct {
 // Log is a bounded ring of log entries combined with a broadcaster. One
 // mutex covers both so a subscriber can atomically subscribe and snapshot
 // the backlog without missing or duplicating entries in between.
+//
+// Deploy-outcome lines (outcomeMessages) are exempt from ring eviction: they
+// are additionally retained in a small pinned set and merged back into the
+// replay in chronological position, so the outcome of a rollback survives the
+// output bursts that follow it.
 type Log struct {
 	mu       sync.Mutex
 	capacity int
 	entries  []Entry
+	pinned   []Entry // outcome lines, chronological, bounded by pinnedCap
 	subs     map[uint64]chan Entry
 	nextSub  uint64
 	nextID   int64
@@ -67,6 +95,12 @@ func (l *Log) Append(t time.Time, level, msg string, attrs map[string]string) {
 	if len(l.entries) > l.capacity {
 		l.entries = l.entries[len(l.entries)-l.capacity:]
 	}
+	if outcomeMessages[msg] {
+		l.pinned = append(l.pinned, e)
+		if len(l.pinned) > pinnedCap {
+			l.pinned = l.pinned[len(l.pinned)-pinnedCap:]
+		}
+	}
 
 	for _, ch := range l.subs {
 		select {
@@ -86,21 +120,31 @@ func (l *Log) ChildLine(cmd, stream, line, stack string) {
 	l.Append(time.Now(), "INFO", line, attrs)
 }
 
-// Entries returns a copy of the buffered entries, oldest first.
+// Entries returns a copy of the buffered entries, oldest first, with evicted
+// outcome lines merged back in chronological position.
 func (l *Log) Entries() []Entry {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	out := make([]Entry, len(l.entries))
-	copy(out, l.entries)
-	return out
+	return l.EntriesAfter(0)
 }
 
 // EntriesAfter returns a copy of the buffered entries with ID > afterID,
-// oldest first (SSE reconnect via Last-Event-ID).
+// oldest first (SSE reconnect via Last-Event-ID), with evicted outcome lines
+// merged back in chronological position.
 func (l *Log) EntriesAfter(afterID int64) []Entry {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	// A pinned entry still inside the ring would duplicate; IDs are assigned
+	// monotonically, so "evicted" is exactly "older than the ring's oldest".
+	ringStart := l.nextID // one past the newest — an empty ring keeps every pinned line
+	if len(l.entries) > 0 {
+		ringStart = l.entries[0].ID
+	}
 	var out []Entry
+	for _, e := range l.pinned {
+		if e.ID < ringStart && e.ID > afterID {
+			out = append(out, e)
+		}
+	}
 	for _, e := range l.entries {
 		if e.ID > afterID {
 			out = append(out, e)
