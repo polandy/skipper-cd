@@ -143,6 +143,57 @@ func TestSplitTrackedPaths(t *testing.T) {
 	}
 }
 
+func TestBuildState_Incidents24hFiltersWindowAndStatuses(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	auditLog := audit.NewLog(t.TempDir())
+	// Inside the window: one rollback, one failure, one success (not counted).
+	auditLog.Record(events.DeployEvent{Stack: "nextcloud", Status: events.StatusRolledBack, Timestamp: now.Add(-time.Hour)})
+	auditLog.Record(events.DeployEvent{Stack: "web", Status: events.StatusFailed, Timestamp: now.Add(-2 * time.Hour)})
+	auditLog.Record(events.DeployEvent{Stack: "nextcloud", Status: events.StatusSuccess, Timestamp: now.Add(-30 * time.Minute)})
+	// Outside the window: an old failure that must not count.
+	auditLog.Record(events.DeployEvent{Stack: "web", Status: events.StatusFailed, Timestamp: now.Add(-25 * time.Hour)})
+
+	state := buildState([]config.Stack{{Name: "web"}, {Name: "nextcloud"}}, nil, auditLog, nil, RepoRef{}, nil, now)
+
+	if len(state.Incidents24h) != 2 {
+		t.Fatalf("incidents_24h = %+v, want the rollback and the fresh failure only", state.Incidents24h)
+	}
+	// Newest first, each naming its stack (the cross-stack list needs it).
+	if state.Incidents24h[0].Stack != "nextcloud" || state.Incidents24h[0].Status != events.StatusRolledBack {
+		t.Errorf("incidents_24h[0] = %+v, want the nextcloud rollback first", state.Incidents24h[0])
+	}
+	if state.Incidents24h[1].Stack != "web" || state.Incidents24h[1].Status != events.StatusFailed {
+		t.Errorf("incidents_24h[1] = %+v, want the web failure", state.Incidents24h[1])
+	}
+}
+
+func TestBuildState_Incidents24hOmittedWhenClean(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	auditLog := audit.NewLog(t.TempDir())
+	auditLog.Record(events.DeployEvent{Stack: "web", Status: events.StatusSuccess, Timestamp: now.Add(-time.Hour)})
+
+	state := buildState(nil, nil, auditLog, nil, RepoRef{}, nil, now)
+	body, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(body), "incidents_24h") {
+		t.Errorf("a clean day must omit incidents_24h from the JSON: %s", body)
+	}
+}
+
+func TestBuildState_Incidents24hCapped(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	auditLog := audit.NewLog(t.TempDir())
+	for i := range 60 {
+		auditLog.Record(events.DeployEvent{Stack: "web", Status: events.StatusFailed, Timestamp: now.Add(-time.Duration(i) * time.Minute)})
+	}
+	state := buildState(nil, nil, auditLog, nil, RepoRef{}, nil, now)
+	if len(state.Incidents24h) != incidentsCap {
+		t.Errorf("incidents_24h = %d records, want the cap of %d", len(state.Incidents24h), incidentsCap)
+	}
+}
+
 func TestBuildState_CarriesUpdateCheckSnapshot(t *testing.T) {
 	updates := &updatecheck.Snapshot{
 		Stacks: map[string]map[string]updatecheck.ServiceUpdate{

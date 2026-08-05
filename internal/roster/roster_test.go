@@ -9,12 +9,10 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-// lastFrom builds the `last` lookup Build expects from a fixed map.
-func lastFrom(recs map[string]audit.Record) func(string) (audit.Record, bool) {
-	return func(name string) (audit.Record, bool) {
-		r, ok := recs[name]
-		return r, ok
-	}
+// historyFrom builds the `history` lookup Build expects from a fixed map of
+// newest-first record slices.
+func historyFrom(recs map[string][]audit.Record) func(string) []audit.Record {
+	return func(name string) []audit.Record { return recs[name] }
 }
 
 func stacks(names ...string) []config.Stack {
@@ -31,7 +29,7 @@ func TestBuild_CarriesHookCommandsWhenDeclared(t *testing.T) {
 		PostDeploy:     []string{"curl -fsS http://localhost/health"},
 		TimeoutSeconds: 120, // deploy-time only — must not leak into the roster view
 	}}
-	got := Build([]config.Stack{withHooks, {Name: "traefik"}}, nil, lastFrom(nil), nil)
+	got := Build([]config.Stack{withHooks, {Name: "traefik"}}, nil, historyFrom(nil), nil)
 
 	byName := map[string]Entry{}
 	for _, e := range got {
@@ -52,8 +50,8 @@ func TestBuild_MergesLastOutcomePerStack(t *testing.T) {
 	got := Build(
 		stacks("traefik"),
 		nil,
-		lastFrom(map[string]audit.Record{
-			"traefik": {Stack: "traefik", Status: events.StatusSuccess, Timestamp: ts, CommitSHA: "a1b2c3d"},
+		historyFrom(map[string][]audit.Record{
+			"traefik": {{Stack: "traefik", Status: events.StatusSuccess, Timestamp: ts, CommitSHA: "a1b2c3d"}},
 		}),
 		nil,
 	)
@@ -73,7 +71,7 @@ func TestBuild_MergesLastOutcomePerStack(t *testing.T) {
 }
 
 func TestBuild_NeverDeployedHasNoOutcome(t *testing.T) {
-	got := Build(stacks("grafana"), nil, lastFrom(nil), nil)
+	got := Build(stacks("grafana"), nil, historyFrom(nil), nil)
 	if len(got) != 1 {
 		t.Fatalf("want 1 entry, got %d", len(got))
 	}
@@ -90,8 +88,8 @@ func TestBuild_DisabledStacksAppendedAndParked(t *testing.T) {
 	got := Build(
 		stacks("traefik"),
 		[]string{"experiments"},
-		lastFrom(map[string]audit.Record{
-			"experiments": {Stack: "experiments", Status: events.StatusFailed, Timestamp: ts, CommitSHA: "dead"},
+		historyFrom(map[string][]audit.Record{
+			"experiments": {{Stack: "experiments", Status: events.StatusFailed, Timestamp: ts, CommitSHA: "dead"}},
 		}),
 		nil,
 	)
@@ -115,7 +113,7 @@ func TestBuild_OrdersEnabledThenDisabledEachAlphabetical(t *testing.T) {
 	got := Build(
 		stacks("web", "authelia", "traefik"),
 		[]string{"scratch", "experiments"},
-		lastFrom(nil),
+		historyFrom(nil),
 		nil,
 	)
 	want := []struct {
@@ -139,7 +137,7 @@ func TestBuild_OrdersEnabledThenDisabledEachAlphabetical(t *testing.T) {
 }
 
 func TestBuild_EmptySetIsEmptyNotNilPanics(t *testing.T) {
-	got := Build(nil, nil, lastFrom(nil), nil)
+	got := Build(nil, nil, historyFrom(nil), nil)
 	if len(got) != 0 {
 		t.Errorf("want empty roster, got %d entries", len(got))
 	}
@@ -154,7 +152,7 @@ func TestBuild_CarriesWatchedFilesPerStack(t *testing.T) {
 	got := Build(
 		stacks("traefik", "grafana"),
 		nil,
-		lastFrom(nil),
+		historyFrom(nil),
 		watchedFrom(map[string][]string{
 			"traefik": {"modules/traefik/docker-compose.yml", "/run/secrets/compose.env"},
 		}),
@@ -180,7 +178,7 @@ func TestBuild_DisabledStacksCarryNoWatchedFiles(t *testing.T) {
 	got := Build(
 		stacks("traefik"),
 		[]string{"experiments"},
-		lastFrom(nil),
+		historyFrom(nil),
 		watchedFrom(map[string][]string{
 			"experiments": {"modules/experiments/docker-compose.yml"},
 		}),
@@ -192,13 +190,107 @@ func TestBuild_DisabledStacksCarryNoWatchedFiles(t *testing.T) {
 	}
 }
 
+// records builds a newest-first slice of n records, one hour apart, cycling
+// through the given statuses (newest gets statuses[0]).
+func records(n int, newest time.Time, statuses ...events.Status) []audit.Record {
+	out := make([]audit.Record, n)
+	for i := range out {
+		out[i] = audit.Record{
+			Status:    statuses[i%len(statuses)],
+			Timestamp: newest.Add(-time.Duration(i) * time.Hour),
+			CommitSHA: "sha",
+		}
+	}
+	return out
+}
+
+func TestBuild_RecentOutcomesCappedNewestFirst(t *testing.T) {
+	ts := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	got := Build(
+		stacks("web"),
+		nil,
+		historyFrom(map[string][]audit.Record{"web": records(15, ts, events.StatusSuccess)}),
+		nil,
+	)
+	recent := got[0].Recent
+	if len(recent) != 10 {
+		t.Fatalf("recent = %d records, want the cap of 10", len(recent))
+	}
+	if !recent[0].At.Equal(ts) {
+		t.Errorf("recent[0].At = %v, want the newest record %v", recent[0].At, ts)
+	}
+	if recent[0].Commit != "sha" || recent[0].Status != events.StatusSuccess {
+		t.Errorf("recent[0] = %+v, want status+commit carried", recent[0])
+	}
+	if recent[0].Stack != "" {
+		t.Errorf("per-stack refs must not repeat the stack name: %+v", recent[0])
+	}
+}
+
+func TestBuild_LastIncidentSurvivesLaterSuccesses(t *testing.T) {
+	// The 2026-08-05 shape: a rollback, then a successful retry that takes the
+	// badge. The incident must stay named on the entry.
+	ts := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	rolledBackAt := ts.Add(-time.Hour)
+	got := Build(
+		stacks("nextcloud"),
+		nil,
+		historyFrom(map[string][]audit.Record{"nextcloud": {
+			{Status: events.StatusSuccess, Timestamp: ts},
+			{Status: events.StatusRolledBack, Timestamp: rolledBackAt},
+			{Status: events.StatusSuccess, Timestamp: ts.Add(-2 * time.Hour)},
+		}}),
+		nil,
+	)
+	li := got[0].LastIncident
+	if li == nil {
+		t.Fatal("a rollback papered over by a later success must surface as last_incident")
+	}
+	if li.Status != events.StatusRolledBack || !li.At.Equal(rolledBackAt) {
+		t.Errorf("last_incident = %+v, want the rollback at %v", li, rolledBackAt)
+	}
+}
+
+func TestBuild_LastIncidentScansPastTheStripWindow(t *testing.T) {
+	// recentCap bounds the strip, not incident visibility: a rollback 12
+	// records back (beyond the 10-dot strip) must still surface.
+	ts := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	recs := records(12, ts, events.StatusSuccess)
+	recs = append(recs, audit.Record{Status: events.StatusRolledBack, Timestamp: ts.Add(-13 * time.Hour)})
+	got := Build(stacks("web"), nil, historyFrom(map[string][]audit.Record{"web": recs}), nil)
+	if got[0].LastIncident == nil {
+		t.Fatal("an incident beyond the strip window must still surface as last_incident")
+	}
+}
+
+func TestBuild_NoLastIncidentWhenBadgeAlreadySaysIt(t *testing.T) {
+	ts := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name string
+		recs []audit.Record
+	}{
+		{"newest record is itself bad", []audit.Record{
+			{Status: events.StatusFailed, Timestamp: ts},
+			{Status: events.StatusSuccess, Timestamp: ts.Add(-time.Hour)},
+		}},
+		{"no bad record at all", records(3, ts, events.StatusSuccess)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Build(stacks("web"), nil, historyFrom(map[string][]audit.Record{"web": tc.recs}), nil)
+			if got[0].LastIncident != nil {
+				t.Errorf("last_incident = %+v, want nil", got[0].LastIncident)
+			}
+		})
+	}
+}
+
 // The stack's deploy-shaping config is hashed under a synthetic key, not a
 // file — it travels as a flag so the UI never renders it as a path.
 func TestBuild_ConfigHashTravelsAsAFlagNotAPath(t *testing.T) {
 	got := Build(
 		stacks("traefik"),
 		nil,
-		lastFrom(nil),
+		historyFrom(nil),
 		func(string) ([]string, bool) { return []string{"modules/traefik/docker-compose.yml"}, true },
 	)
 	if len(got) != 1 {
