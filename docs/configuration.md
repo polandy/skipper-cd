@@ -254,6 +254,19 @@ As soon as any service in the stack's compose file declares a `healthcheck:`, sk
 
 Add an explicit `deploy_health_check` section only to change the default 60s timeout, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `deploy_health_check` itself.
 
+!!! warning "A healthcheck's first probe waits for `interval` — and can lose the race against the gate"
+    Docker runs a service's **first** health probe only after `interval` has elapsed. A healthcheck with `interval: 60s` and no `start_period`/`start_interval` therefore cannot prove health before the default 60-second wait budget expires — the first probe and the timeout fire in the same instant, and whether the deploy succeeds or rolls back is a coin flip, even though the container itself came up fine within seconds. The telltale symptom: a deploy is marked `rolled_back` with `docker compose up: exit status 1` (often as `dependency <service> failed to start` from a dependent container), and the **identical commit deploys cleanly on the next retry**. Before suspecting the new image, check the healthcheck timings. The fix is fast probing during startup only, which keeps the slow steady-state cadence:
+
+    ```yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 60s        # steady-state cadence stays slow
+      start_period: 60s
+      start_interval: 5s   # fast probes while starting (Docker Engine 25+ / Compose 2.20+)
+    ```
+
+    Alternatively, raise `timeout_seconds` comfortably above the largest `interval` in the stack — but that slows down every legitimate rollback by the same margin.
+
 **On-demand stacks are never auto-gated.** A stack with [`on_demand_containers`](#stack-fields) is stopped right after `up`, so skipper skips the automatic gate for it even when its compose file declares a `healthcheck:` — `--wait` would cold-start the on-demand container only for skipper to stop it again, and a slow warm-up would time out into a spurious rollback. No config is needed; set an explicit `deploy_health_check` only if you deliberately want a gate on such a stack.
 
 **Opting out on any other stack.** To keep a compose `healthcheck:` (for external monitoring, `docker ps` status, or an orchestrator) *without* letting skipper `--wait` on it and roll back, set the scalar `deploy_health_check: false`. It overrides the automatic gate so the stack deploys with a plain `up`. The scalar `deploy_health_check: true` is the inverse — gate on at the defaults, equivalent to an empty `deploy_health_check: {}` mapping.
