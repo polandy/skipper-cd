@@ -35,6 +35,7 @@ module.exports = [
         hostFilterActive: 'readonly',
         imageDelta: 'readonly',
         incidentBadgeLabel: 'readonly',
+        incidentPresetActive: 'readonly',
         isLogOutcome: 'readonly',
         logFacets: 'readonly',
         logFiltersActive: 'readonly',

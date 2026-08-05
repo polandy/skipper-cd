@@ -84,8 +84,9 @@ test.describe('Maske AQ: rollback visibility after the fact', () => {
 
   // UAQ3 — the header incident badge counts the last 24h's bad outcomes in
   // every view and lands on the Deploys view with the bad-outcome chips
-  // pre-selected — the click shows exactly the rows the count promised.
-  test('UAQ3: the incident badge opens the pre-filtered Deploys view', async ({
+  // pre-selected — the click shows exactly the rows the count promised, and a
+  // second click takes the filter back off.
+  test('UAQ3: the incident badge toggles the pre-filtered Deploys view', async ({
     page,
     skipper,
   }) => {
@@ -107,6 +108,20 @@ test.describe('Maske AQ: rollback visibility after the fact', () => {
     await expect(statusChip(page, 'failed')).toHaveAttribute('aria-pressed', 'true');
     await expect(deployRow(page, 'rolled_back')).toBeVisible();
     await expect(deployRow(page, 'success').first()).toBeHidden();
+
+    // From another view the badge is a jump, not a toggle: it re-applies the
+    // preset rather than clearing the filter the first click put there.
+    await page.locator('[data-testid="view-toggle"] button[data-view="stacks"]').click();
+    await badge.click();
+    await expect(page.locator('[data-testid="deploy-filter-wrap"]')).toHaveClass(/revealed/);
+    await expect(deployRow(page, 'success').first()).toBeHidden();
+
+    // Clicking it again on the Deploys view is the way back out: the preset
+    // clears and folds away.
+    await badge.click();
+    await expect(page.locator('[data-testid="deploy-filter-wrap"]')).not.toHaveClass(/revealed/);
+    await expect(deployRow(page, 'success').first()).toBeVisible();
+    await expect(deployRow(page, 'rolled_back')).toBeVisible();
   });
 
   // UAQ4 — the roster keeps the incident readable without opening anything:

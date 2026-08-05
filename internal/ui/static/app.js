@@ -4738,6 +4738,15 @@
   }
 
   incidentBadge.addEventListener('click', function () {
+    // Toggle: a second click on the badge, with its own preset still the whole
+    // filter, takes the filter back off rather than re-applying it.
+    if (
+      activeView === 'deploys' &&
+      incidentPresetActive(deployStatusFilter, deployFilter.value, BAD_OUTCOME_STATUSES)
+    ) {
+      clearDeployFilter(true);
+      return;
+    }
     if (activeView !== 'deploys') {
       activeView = 'deploys';
       localStorage.setItem('activeView', activeView);

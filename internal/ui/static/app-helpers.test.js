@@ -1388,3 +1388,17 @@ test('incidentBadgeLabel pluralises', () => {
   assert.equal(h.incidentBadgeLabel(1), '1 rollback/failure in the last 24h');
   assert.equal(h.incidentBadgeLabel(3), '3 rollbacks/failures in the last 24h');
 });
+
+test('incidentPresetActive is true only for the badge preset alone', () => {
+  const bad = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
+  // The preset itself, in any order — a second click deactivates it.
+  assert.equal(h.incidentPresetActive(bad, '', bad), true);
+  assert.equal(h.incidentPresetActive(bad.slice().reverse(), '', bad), true);
+  // A narrower or wider chip selection is the operator's own filter: the badge
+  // re-applies its preset instead of clearing what they built.
+  assert.equal(h.incidentPresetActive(['failed'], '', bad), false);
+  assert.equal(h.incidentPresetActive(bad.concat(['success']), '', bad), false);
+  assert.equal(h.incidentPresetActive([], '', bad), false);
+  // A name query on top means the view is narrower than the badge promised.
+  assert.equal(h.incidentPresetActive(bad, 'web', bad), false);
+});

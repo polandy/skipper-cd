@@ -388,6 +388,20 @@ function incidentBadgeLabel(n) {
   return n + (n === 1 ? ' rollback/failure' : ' rollbacks/failures') + ' in the last 24h';
 }
 
+// incidentPresetActive reports whether the Deploys filter currently shows
+// exactly what the incident badge put there — its status chips and nothing
+// else. The badge toggles on this: a second click clears the filter, while a
+// selection the operator has since changed (extra/missing chip, a name query)
+// is re-applied rather than thrown away.
+function incidentPresetActive(statusFilter, nameQuery, preset) {
+  if (nameQuery) return false;
+  const cur = statusFilter || [];
+  if (cur.length !== preset.length) return false;
+  return preset.every(function (s) {
+    return cur.indexOf(s) !== -1;
+  });
+}
+
 // mergeLogView merges the pinned outcome entries back into the ring for
 // rendering: pinned entries older than the ring's first (i.e. already evicted;
 // IDs are monotonic), then the ring — chronological, no duplicates. Mirrors
@@ -1313,5 +1327,6 @@ if (typeof module !== 'undefined' && module.exports) {
     INCIDENT_WINDOW_MS,
     recentIncidentCount,
     incidentBadgeLabel,
+    incidentPresetActive,
   };
 }
