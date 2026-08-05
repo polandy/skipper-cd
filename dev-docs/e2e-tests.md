@@ -1546,7 +1546,8 @@ surface keeps the rollback readable
 - **UAQ3 — Incident badge.** The header badge counts the window's bad
   outcomes, survives a view switch, and its click lands on the Deploys view
   with the bar revealed and the four bad-outcome chips pre-selected — showing
-  exactly the rows the count promised.
+  exactly the rows the count promised. Clicking it again clears the preset and
+  folds the bar away — the badge is the way out as well as the way in.
 - **UAQ4 — Roster.** The stack's roster row shows the outcome strip
   (oldest → newest: success, rolled_back, success) and the last-incident line
   naming the rollback the retry papered over.
