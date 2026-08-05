@@ -1160,7 +1160,16 @@ test('a run summary containing a failure or rollback classifies as errors-tier',
 test('isLogOutcome marks exactly the terminal outcome lines', () => {
   assert.equal(h.isLogOutcome(logEntry('INFO', 'deploy complete', {})), true);
   assert.equal(h.isLogOutcome(logEntry('WARN', 'deploy failed but rolled back', {})), true);
-  assert.equal(h.isLogOutcome(logEntry('INFO', 'run complete', {})), true);
+  // A run summary counts only with a real outcome: the reconcile's no-op line
+  // (one per tick) must not crowd the pinned set — skipped is a deferral
+  // tally, not an outcome.
+  assert.equal(h.isLogOutcome(logEntry('INFO', 'run complete', { deployed: '1' })), true);
+  assert.equal(h.isLogOutcome(logEntry('INFO', 'run complete', { rolled_back: '2' })), true);
+  assert.equal(h.isLogOutcome(logEntry('INFO', 'run complete', {})), false);
+  assert.equal(
+    h.isLogOutcome(logEntry('INFO', 'run complete', { deployed: '0', skipped: '21' })),
+    false,
+  );
   // Lifecycle and child output are ring-only.
   assert.equal(h.isLogOutcome(logEntry('INFO', 'deploying stack', {})), false);
   assert.equal(h.isLogOutcome(logEntry('INFO', 'Recreated', { cmd: 'docker' })), false);

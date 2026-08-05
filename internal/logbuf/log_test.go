@@ -290,3 +290,36 @@ func TestLog_NonOutcomeLinesAreNotPinned(t *testing.T) {
 		}
 	}
 }
+
+// The periodic reconcile logs one no-op run summary per tick; pinning those
+// would fill the pinned set within hours and evict the real outcomes the
+// exemption exists to keep.
+func TestLog_NoOpRunSummaryIsNotPinned(t *testing.T) {
+	l := New(2)
+	// Skipped stacks are a deferral tally, not an outcome — all-zero outcome
+	// counters make this the routine no-op line.
+	l.Append(time.Now(), "INFO", "run complete", map[string]string{
+		"deployed": "0", "failed": "0", "rolled_back": "0", "rolled_back_unhealthy": "0", "skipped": "21",
+	})
+	appendN(l, 5)
+	for _, e := range l.Entries() {
+		if e.Msg == "run complete" {
+			t.Errorf("no-op run summary survived eviction: %+v", e)
+		}
+	}
+}
+
+func TestLog_RunSummaryWithOutcomeIsPinned(t *testing.T) {
+	l := New(2)
+	l.Append(time.Now(), "INFO", "run complete", map[string]string{"deployed": "0", "rolled_back": "1"})
+	appendN(l, 5)
+	found := false
+	for _, e := range l.Entries() {
+		if e.Msg == "run complete" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("a run summary carrying a rollback must survive eviction")
+	}
+}

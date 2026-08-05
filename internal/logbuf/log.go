@@ -25,6 +25,10 @@ const subscriberBuffer = 256
 // covers far more runs than the ring itself ever holds.
 const pinnedCap = 50
 
+// msgRunComplete is the run summary's message; it needs its own pin rule
+// (isPinnedOutcome) because most of its occurrences are routine.
+const msgRunComplete = "run complete"
+
 // outcomeMessages are the log messages that say how a deploy ended — the one
 // line a viewer must still find after the child-process burst of later runs
 // has rolled the ring over (UI_SPEC.md, Log API). The message text is
@@ -39,7 +43,33 @@ var outcomeMessages = map[string]bool{
 	"deploy failed, rollback ran but stack is still unhealthy":           true,
 	"self-heal: stack restored":                                          true,
 	"self-heal exhausted: stack still degraded after repeated redeploys": true,
-	"run complete": true,
+	msgRunComplete: true,
+}
+
+// runOutcomeCounters are the run-summary attrs that mark a run as having a
+// real outcome. A summary where all of them are zero — the periodic
+// reconcile's no-op line, one per tick — is routine and must not be pinned:
+// at that rate it would fill the small pinned set within hours and evict
+// exactly the outcomes the exemption exists to keep.
+var runOutcomeCounters = []string{"deployed", "failed", "rolled_back", "rolled_back_unhealthy"}
+
+// isPinnedOutcome reports whether a line is retained past ring eviction: any
+// terminal outcome line, except a run summary whose outcome counters are all
+// zero. Attrs arrive stringified from the slog tee, so "nonzero" is any value
+// other than empty or "0".
+func isPinnedOutcome(msg string, attrs map[string]string) bool {
+	if !outcomeMessages[msg] {
+		return false
+	}
+	if msg != msgRunComplete {
+		return true
+	}
+	for _, k := range runOutcomeCounters {
+		if v := attrs[k]; v != "" && v != "0" {
+			return true
+		}
+	}
+	return false
 }
 
 // Entry is one captured log line.
@@ -55,7 +85,7 @@ type Entry struct {
 // mutex covers both so a subscriber can atomically subscribe and snapshot
 // the backlog without missing or duplicating entries in between.
 //
-// Deploy-outcome lines (outcomeMessages) are exempt from ring eviction: they
+// Deploy-outcome lines (isPinnedOutcome) are exempt from ring eviction: they
 // are additionally retained in a small pinned set and merged back into the
 // replay in chronological position, so the outcome of a rollback survives the
 // output bursts that follow it.
@@ -95,7 +125,7 @@ func (l *Log) Append(t time.Time, level, msg string, attrs map[string]string) {
 	if len(l.entries) > l.capacity {
 		l.entries = l.entries[len(l.entries)-l.capacity:]
 	}
-	if outcomeMessages[msg] {
+	if isPinnedOutcome(msg, attrs) {
 		l.pinned = append(l.pinned, e)
 		if len(l.pinned) > pinnedCap {
 			l.pinned = l.pinned[len(l.pinned)-pinnedCap:]

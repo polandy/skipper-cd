@@ -335,10 +335,22 @@ const LOG_OUTCOME_ERROR_MESSAGES = [
   'self-heal exhausted: stack still degraded after repeated redeploys',
 ];
 
-// isLogOutcome reports whether an entry is a terminal deploy-outcome line
-// (the client-side pinning predicate).
+// isLogOutcome reports whether an entry is a terminal deploy-outcome line —
+// the client-side pinning predicate, mirroring internal/logbuf's. A run
+// summary counts only when its counters contain a real outcome: the periodic
+// reconcile's no-op `run complete` (one per tick) would otherwise fill the
+// small pinned set within hours and evict exactly the outcomes the exemption
+// exists to keep.
 function isLogOutcome(entry) {
-  return LOG_OUTCOME_MESSAGES.indexOf(entry.msg) !== -1;
+  if (LOG_OUTCOME_MESSAGES.indexOf(entry.msg) === -1) return false;
+  if (entry.msg !== 'run complete') return true;
+  const a = entry.attrs || {};
+  return (
+    Number(a.deployed) > 0 ||
+    Number(a.failed) > 0 ||
+    Number(a.rolled_back) > 0 ||
+    Number(a.rolled_back_unhealthy) > 0
+  );
 }
 
 // logFilterSeverity is the level the severity quick filter tests: the record's
