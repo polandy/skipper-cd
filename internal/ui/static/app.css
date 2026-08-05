@@ -346,6 +346,12 @@
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.3px;
+    /* Same rule as the version label below: clip, never wrap. A squeezed header
+       broke `skipper-cd` across two lines, and the second line then sat under
+       the control row it had just been pushed out of. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .brand-name span {
