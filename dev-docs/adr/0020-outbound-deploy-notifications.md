@@ -215,3 +215,64 @@ error counter + no crash, buffer-full → dropped counter, shutdown drains witho
 blocking. `config` tests cover validation of the new section, including the
 `signal`-only `number`/`recipients` rules. No real network, matching the repo's
 fake-based convention.
+
+## Amendment (2026-08-05): the terminal set has grown; it has one authority
+
+This ADR enumerates the terminal set as three statuses (`success`, `failed`,
+`rolled_back`) and calls the default "all three". Two later decisions added to
+it — `rolled_back_unhealthy` (ADR-0022) and `heal_exhausted` (ADR-0029) — so the
+set is now five, and the default is all five.
+
+The second addition was only half-wired, and the shape of the gap is the point.
+`heal_exhausted` was added to the config vocabulary (`NotifyOnHealExhausted`, in
+the default `on` set, accepted by validation) and given its own formatter branch,
+but the notifier's own `isTerminal` guard — the filter in `Notify` that drops
+non-terminal statuses before they are queued — was never extended. A target
+could subscribe to a status that could not be delivered. ADR-0029's high-signal
+alarm ("a stack is down and I could not fix it") was therefore silently dropped
+for its entire lifetime, and nothing failed: the config was valid, no error was
+logged, the message simply never arrived.
+
+The vocabulary in `internal/config` is the authority. `isTerminal` mirrors it and
+must never be the narrower of the two; a status that is subscribable but not
+deliverable is a dead subscription, and dead subscriptions do not announce
+themselves. This is enforced by a test that walks every `NotifyOn*` constant and
+asserts it is deliverable, rather than by a per-status test that has to be
+remembered when the set grows again.
+
+## Amendment (2026-08-05): one digest per run for successes; alarms stay individual
+
+This ADR's delivery contract is one terminal event, one message. That is right
+per *stack* and wrong per *push*: a single commit touching many compose files
+deploys many stacks in one run, and each sends its own message. The run of
+2026-08-05 deployed 16 stacks in 2m54s and sent 16 messages that all reported the
+same thing — a change applied, verified healthy. The information was real; its
+granularity was not. The operator's unit of attention is the run, because the run
+is the unit of *cause*.
+
+**Decision: a run's `success` events are collected into one digest, flushed at
+the end of the run. Every other terminal status is delivered immediately and
+individually, exactly as before.** An alarm is the message meant to interrupt
+someone, and it is worth neither a delay nor the risk of being skimmed past
+inside a long list of successes. So the digest becomes the deliberately boring
+channel, and anything that is not fine leaves it and arrives alone — including
+when both happen in one run, which then sends two messages by design.
+
+The flush trigger is the **run boundary** (`PostRunHook`), not a wall-clock
+interval. A timed window was considered and rejected: it has no relationship to
+the cause (two pushes merge, one run splits), it adds latency that buys nothing
+once co-delivery with alarms is rejected, and it cannot be tested without an
+injected clock — the repo forbids tests that wait and hope. The signal travels
+through the notifier's own queue as a sentinel rather than as a direct method
+call, so it cannot overtake events still buffered ahead of it.
+
+Configured per target as `digest: per_run | off`, defaulting to `per_run`; `off`
+restores the behaviour this ADR originally specified. Per target rather than
+globally, because a phone and a log sink want opposite things. The full
+behaviour — message shape, degenerate runs, run-abort and shutdown handling — is
+specified in [`../notification-digest-spec.md`](../notification-digest-spec.md).
+
+Consequence to accept: the default changes delivery for every existing
+deployment that does not set the key. Deliberate — the previous default is the
+one the 16-message run showed to be wrong — and the `off` value is the exact
+escape hatch back.

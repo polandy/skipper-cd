@@ -33,6 +33,8 @@ These files deliberately live outside `docs/` so they are **not** published to t
 - [`orphan-detection-spec.md`](orphan-detection-spec.md) — detecting compose
   projects skipper no longer manages.
 - [`service-icons-spec.md`](service-icons-spec.md) — feature spec for service icons.
+- [`notification-digest-spec.md`](notification-digest-spec.md) — proposed:
+  one digest per run for successes, alarms still individual.
 - [`sync-windows-spec.md`](sync-windows-spec.md) — discarded proposal, kept
   for reference only.
 - [`sops-secrets-spec.md`](sops-secrets-spec.md) — undecided proposal for
