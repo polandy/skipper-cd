@@ -347,30 +347,12 @@
   </div>
 
   <div id="log-view" class="clog-panel" data-testid="logs-panel">
-    <div class="clog-head" data-taptip>
-      <span class="clog-title">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 6h14M5 11h14M5 16h9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="17" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
-        skipper logs
-      </span>
+    <!-- The Logs view has no title bar: the view switch already names it, so the
+         filter row is the panel's only chrome — live/pause on the left, the
+         quick-filter chips in the middle, the pane tools on the right. -->
+    <div class="clog-quick" id="log-quick-bar" data-testid="log-quick-bar" data-taptip>
       <span class="clog-live" id="logs-live" data-testid="logs-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>
-      <span class="clog-grow"></span>
-      <button class="clog-tool on" id="log-quick-open" data-testid="log-quick" type="button" title="Quick filters" aria-expanded="true" aria-controls="log-quick-bar">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8L3 5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-      </button>
-      <button class="clog-tool" id="log-search-open" data-testid="log-search" type="button" title="Search in log">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      </button>
-      <button class="clog-tool" id="log-wrap" data-testid="log-wrap" type="button" title="Wrap long lines">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 18h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 12h13a3 3 0 0 1 0 6h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 15l-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <button class="clog-tool on" id="follow-logs" data-testid="follow-logs" type="button" title="Auto-scroll to newest log lines">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      </button>
-      <button class="clog-tool" id="log-fs" data-testid="log-fs" type="button" title="Fullscreen">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-    </div>
-    <div class="clog-quick" id="log-quick-bar" data-testid="log-quick-bar">
+      <span class="clog-quick-sep"></span>
       <span class="clog-quick-lbl">show</span>
       <button class="clog-chip" data-testid="log-sev-ALL" data-sev="ALL" type="button" aria-pressed="true">all</button>
       <button class="clog-chip" data-testid="log-sev-WARN" data-sev="WARN" type="button" aria-pressed="false">warnings</button>
@@ -381,6 +363,20 @@
       <span class="clog-quick-sep" id="log-stack-sep" hidden></span>
       <span id="log-stack-chips" data-testid="log-stack-chips"></span>
       <span class="clog-hits" id="log-quick-count" data-testid="log-quick-count"></span>
+      <span class="clog-tools">
+        <button class="clog-tool" id="log-search-open" data-testid="log-search" type="button" title="Search in log">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="clog-tool" id="log-wrap" data-testid="log-wrap" type="button" title="Wrap long lines">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 18h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 12h13a3 3 0 0 1 0 6h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 15l-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="clog-tool on" id="follow-logs" data-testid="follow-logs" type="button" title="Auto-scroll to newest log lines">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="clog-tool" id="log-fs" data-testid="log-fs" type="button" title="Fullscreen">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </span>
     </div>
     <div class="clog-search" id="log-filter-wrap" data-testid="log-filter-wrap">
       <span class="clog-sic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>

@@ -7,8 +7,8 @@ import type { Page } from '@playwright/test';
 // type-to-search revealed it, so the primary filter was an easter egg. A quiet
 // magnifier now sits in the header (left of the view switch) and opens the same
 // bar with a click. It is view-aware (deploys → deploy filter, stacks → roster
-// filter), hidden on the Logs view (which has its own in-panel search), and
-// reflects the open state via .active + aria-expanded. Type-to-search still works.
+// filter, logs → the in-log search) and reflects the open state via .active +
+// aria-expanded. Type-to-search still works.
 
 test.use({ startOptions: { stacks: ['web', 'api', 'db'] } });
 
@@ -69,15 +69,42 @@ test('UAB2: the magnifier opens the stacks (roster) filter', async ({ page, skip
   await expect(searchBtn(page)).toHaveClass(/\bactive\b/);
 });
 
-// UAB3 — Logs: the header magnifier is hidden; log search lives in the log panel.
-test('UAB3: the magnifier is hidden on the Logs view', async ({ page, skipper }) => {
+// UAB3 — Logs: the same magnifier opens the in-log search, so the control is in
+// one place on every view. It used to be hidden here, which left the Logs view
+// as the one place the header's search glyph vanished.
+test('UAB3: the magnifier opens the in-log search on the Logs view', async ({ page, skipper }) => {
+  const logWrap = page.locator('[data-testid="log-filter-wrap"]');
+  const logInput = page.locator('[data-testid="log-filter"]');
+
   await page.goto(`${skipper.baseURL}/`);
   await expect(searchBtn(page)).toBeVisible(); // shown on deploys
   await viewBtn(page, 'logs').click();
-  await expect(searchBtn(page)).toBeHidden();
-  // Back on deploys it returns.
+  await expect(searchBtn(page)).toBeVisible();
+  await expect(logWrap).toBeHidden();
+
+  // Click reveals the in-log filter, focuses it, and marks the trigger open.
+  await searchBtn(page).click();
+  await expect(logWrap).toBeVisible();
+  await expect(logInput).toBeFocused();
+  await expect(searchBtn(page)).toHaveClass(/\bactive\b/);
+  await expect(searchBtn(page)).toHaveAttribute('aria-expanded', 'true');
+
+  // It filters the log, not the deploy rows.
+  await page.keyboard.type('deploy');
+  await expect(logInput).toHaveValue('deploy');
+  await expect(page.locator('[data-testid="log-line"]:not(.clog-out)')).not.toHaveCount(0);
+
+  // Second click folds it away and clears both the query and the open state.
+  await searchBtn(page).click();
+  await expect(logWrap).toBeHidden();
+  await expect(logInput).toHaveValue('');
+  await expect(searchBtn(page)).not.toHaveClass(/\bactive\b/);
+
+  // Back on deploys it drives the deploy filter again.
   await viewBtn(page, 'deploys').click();
   await expect(searchBtn(page)).toBeVisible();
+  await searchBtn(page).click();
+  await expect(deployWrap(page)).toBeVisible();
 });
 
 // UAB4 — Type-to-search still works, and the magnifier reflects a bar opened by

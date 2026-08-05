@@ -355,7 +355,7 @@ test('UB7: log stream reconnects after a fatal error and resumes live lines', as
 test.describe('UB8: Logs view panel controls (no popover)', () => {
   test.use({ startOptions: { stacks: ['web'] } });
 
-  test('search/wrap/fullscreen tools sit in the panel header and work without a popover', async ({
+  test('search/wrap/fullscreen work inline without a popover', async ({
     page,
     skipper,
   }) => {
@@ -363,30 +363,32 @@ test.describe('UB8: Logs view panel controls (no popover)', () => {
     await openLogsView(page);
 
     const panel = page.locator('[data-testid="logs-panel"]');
-    const searchBtn = page.locator('[data-testid="log-search"]');
+    // Above the mobile breakpoint the header magnifier is this view's search
+    // entry point (Maske AB), so the panel keeps only wrap/auto-scroll/fullscreen.
+    const searchBtn = page.locator('[data-testid="stack-search-btn"]');
     const wrapBtn = page.locator('[data-testid="log-wrap"]');
     const fsBtn = page.locator('[data-testid="log-fs"]');
     const filterWrap = page.locator('[data-testid="log-filter-wrap"]');
     const filterInput = page.locator('[data-testid="log-filter"]');
 
-    // All three tools are visible immediately in the header — no popover to open.
+    // The tools are visible immediately in the filter row — no popover to open.
     await expect(page.locator('[data-testid="view-options"]')).toBeHidden();
     await expect(searchBtn).toBeVisible();
     await expect(wrapBtn).toBeVisible();
     await expect(fsBtn).toBeVisible();
 
     // Type-to-search reveals the filter bar, seeded with the typed text, and
-    // lights the search tool.
+    // lights the search trigger.
     await page.keyboard.type('deploy', { delay: 25 });
     await expect(filterWrap).toHaveClass(/revealed/);
     await expect(filterInput).toHaveValue('deploy');
-    await expect(searchBtn).toHaveClass(/\bon\b/);
+    await expect(searchBtn).toHaveClass(/\bactive\b/);
 
-    // Clicking the search tool again closes it and clears the query.
+    // Clicking the search trigger again closes it and clears the query.
     await searchBtn.click();
     await expect(filterWrap).not.toHaveClass(/revealed/);
     await expect(filterInput).toHaveValue('');
-    await expect(searchBtn).not.toHaveClass(/\bon\b/);
+    await expect(searchBtn).not.toHaveClass(/\bactive\b/);
 
     // Clicking it once more reopens an empty, focused filter.
     await searchBtn.click();
