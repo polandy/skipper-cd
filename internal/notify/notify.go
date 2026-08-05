@@ -144,7 +144,12 @@ func statusSet(on []string) map[events.Status]bool {
 	return m
 }
 
+// isTerminal reports whether a status ends a stack's deploy attempt and is
+// therefore deliverable. It must stay in sync with the NotifyOn* vocabulary in
+// internal/config — a status accepted in a target's `on` list but missing here
+// is silently undeliverable.
 func isTerminal(s events.Status) bool {
 	return s == events.StatusSuccess || s == events.StatusFailed ||
-		s == events.StatusRolledBack || s == events.StatusRolledBackUnhealthy
+		s == events.StatusRolledBack || s == events.StatusRolledBackUnhealthy ||
+		s == events.StatusHealExhausted
 }

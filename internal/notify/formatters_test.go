@@ -256,6 +256,23 @@ func TestIsTerminal_IncludesRolledBackUnhealthy(t *testing.T) {
 	}
 }
 
+// Every status a target may subscribe to in `on` must be deliverable. A value
+// accepted by config validation but rejected by isTerminal is a silently dead
+// subscription — the shape the heal_exhausted alarm had.
+func TestIsTerminal_CoversEveryNotifiableStatus(t *testing.T) {
+	for _, s := range []string{
+		config.NotifyOnFailed,
+		config.NotifyOnSuccess,
+		config.NotifyOnRolledBack,
+		config.NotifyOnRolledBackUnhealthy,
+		config.NotifyOnHealExhausted,
+	} {
+		if !isTerminal(events.Status(s)) {
+			t.Errorf("status %q is subscribable in `on` but not deliverable", s)
+		}
+	}
+}
+
 func TestGenericFormatter_EventBodyAndHeaders(t *testing.T) {
 	f := genericFormatter{url: "https://ntfy.example/skipper", headers: map[string]string{"Authorization": "Bearer tok"}}
 	ev := events.DeployEvent{Stack: "web", Status: events.StatusFailed, DurationMs: 1200, Error: "x"}
