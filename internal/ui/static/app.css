@@ -3395,6 +3395,13 @@
     .log-line .log-attrs { flex: 1 0 100%; padding-left: 12px; }
     .log-diff { margin-left: 12px; }
     .status-area { gap: 10px; }
+    /* Attention chips compact to one identity token + count each, so the
+       beacon (pulsing dot — "broken now") and the incident badge (↺ —
+       "broken recently") fit the 48px row side by side in the worst case,
+       without the header ever scrolling horizontally. */
+    .health-beacon { padding: 3px 8px; gap: 5px; font-size: 11px; }
+    .health-beacon .hb-icon { display: none; }
+    .incident-badge { padding: 3px 8px; gap: 4px; font-size: 11px; }
     /* Wordmark is dropped — the ship logo alone carries the brand on mobile so
        the control row fits without horizontal scroll. The version is kept in
        portrait (re-shown below) but dropped in the tighter landscape. */

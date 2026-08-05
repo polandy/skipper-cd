@@ -743,6 +743,7 @@ A tablet still has columns, just not all of them: both tables carry a Stack cell
 
 - **Deploy indicator** — the deploying stack name and the look-ahead trail are dropped (both kept in `title`/`aria-label`); the anchor/ship glyph shows, and the trail collapses to a compact peach **`+N` count chip** (`deploy-count`) when stacks are still to come this run. Tapping the glyph still opens the run panel (which lists the names).
 - **Autosync control** — unchanged (already icon-only); keeps its glyph and pending-count pill.
+- **Health beacon / incident badge** — both compact to one identity token plus their count: the beacon drops its warning icon and keeps the pulsing dot ("broken *now*"), the incident badge keeps its `↺` ("broken *recently*") — so the worst case, something unhealthy *and* a fresh incident, still fits the row without horizontal scroll.
 - **View toggle / theme toggle / connection** — unchanged; already glyph-only.
 - **View-options popover** — unchanged; still opened from the active view button.
 - **Theme picker** — hidden entirely; overriding the palette is rarely needed on a phone. The configured theme (and any override already saved from a previous desktop visit) still applies.

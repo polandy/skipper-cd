@@ -163,6 +163,12 @@
   // panel's update summary.
   let updatesSnap = null;
 
+  // The bad terminal audit records of the last 24h from the same 'stacks'
+  // snapshot, driving the header incident badge. The badge re-filters the list
+  // against the window on the relative-time tick, so the count ages out
+  // between republishes.
+  let incidentsSnap = [];
+
   // The deploy repo's forge browse URL from the same 'stacks' snapshot, or ''
   // when the server could derive none from repo_url. Every commit SHA the UI
   // prints links to its commit page through it (commitLinkHTML); without it the
@@ -3105,7 +3111,10 @@
       } // second Esc folds away
     }
   });
-  deployFilter.addEventListener('blur', function () {
+  deployFilter.addEventListener('blur', function (e) {
+    // A click on a status chip blurs the input BEFORE the click lands; folding
+    // here would collapse the bar mid-click and take the chip with it.
+    if (e.relatedTarget && deployStatusFilterEl.contains(e.relatedTarget)) return;
     // Fold away only when nothing narrows — folding with chips active would
     // leave rows hidden by a filter that is no longer on screen.
     if (!deployFilter.value && deployStatusFilter.length === 0) revealDeployFilter(false);
@@ -3229,7 +3238,13 @@
       let pill = statusCell.querySelector('.health-pill');
       if (h && h.status) {
         if (!pill) {
-          statusCell.insertAdjacentHTML('beforeend', healthPillHTML(row.dataset.stack, h.status));
+          // Keep the render order (badge → pill → strip → incident line): a
+          // pill arriving with the first poll after a roster render must land
+          // where a full render would have put it, not at the cell's end.
+          const anchor = statusCell.querySelector('.outcome-strip, .last-incident');
+          const html = healthPillHTML(row.dataset.stack, h.status);
+          if (anchor) anchor.insertAdjacentHTML('beforebegin', html);
+          else statusCell.insertAdjacentHTML('beforeend', html);
           return;
         }
         pill.dataset.health = h.status;
@@ -4697,11 +4712,10 @@
   // stack has no row, exactly like jumpBtn).
   // ─── Incident badge (UI_SPEC.md "Incident badge") ───
   // The beacon answers "what is unhealthy NOW"; this badge answers "what went
-  // wrong RECENTLY" — the axis a recovered rollback disappears on. Counts the
-  // stacks snapshot's incidents_24h, re-filtered against the window on the
-  // client clock (the 30s tick), and lands on the Deploys view with the
-  // bad-outcome status chips pre-selected.
-  let incidentsSnap = [];
+  // wrong RECENTLY" — the axis a recovered rollback disappears on. Counts
+  // incidentsSnap (declared with the other 'stacks' snapshot state above),
+  // re-filtered against the window on the client clock (the 30s tick), and
+  // lands on the Deploys view with the bad-outcome status chips pre-selected.
   const BAD_OUTCOME_STATUSES = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
   const incidentBadge = document.getElementById('incident-badge');
   const incidentBadgeCount = document.getElementById('incident-badge-count');

@@ -1523,6 +1523,42 @@ events mid-test — and the fixture warns that such a listener changes the timin
 of the very race it observes (T8). It is covered deterministically at the unit
 layer instead (`makeReconnector` `resume`, injected timer).
 
+### 4.44 UI — Maske AQ: after-the-fact rollback visibility
+
+The 2026-08-05 incident: a rollback was recorded everywhere — event ring,
+audit log, notification — and visible nowhere five minutes later, because the
+successful retry became every surface's newest word on the stack. The mask
+drives that exact sequence against one instance (`STUB_DOCKER_FAIL_NTH_UP=2`:
+startup `up` succeeds, the deploy's `up` fails, the rollback `up` succeeds →
+`rolled_back`; a second push then retries successfully) and asserts each
+surface keeps the rollback readable
+([UI_SPEC](../internal/ui/UI_SPEC.md#rollback-linkage)):
+
+- **UAQ1 — Retry note.** The retry's success row (and only it) carries the
+  `↺ after rollback` note with the rollback's event id; activating it flashes
+  the rollback's own row (`.jump-target`). The pairing reads in both
+  directions instead of the success papering over the rollback.
+- **UAQ2 — Status filter.** The Deploys filter bar's status chips carry
+  per-status counts, narrow the log to the selected statuses (`1/3` count) and
+  clear together with the query on Escape. The chip click lands from a focused
+  input — the blur that folds an idle bar must not collapse the chip row out
+  from under the click.
+- **UAQ3 — Incident badge.** The header badge counts the window's bad
+  outcomes, survives a view switch, and its click lands on the Deploys view
+  with the bar revealed and the four bad-outcome chips pre-selected — showing
+  exactly the rows the count promised.
+- **UAQ4 — Roster.** The stack's roster row shows the outcome strip
+  (oldest → newest: success, rolled_back, success) and the last-incident line
+  naming the rollback the retry papered over.
+- **UAQ5 — Logs.** The severity chips are thresholds and narrated outcome
+  lines classify by outcome: the WARN-level `rolled back` outcome line stays
+  visible under the `errors` chip (hiding it there is the incident's exact
+  failure mode), while an ordinary INFO line is narrowed away.
+
+Behaviour-only, no snapshot. The pinning exemption (no-op run summaries are
+not pinned) is covered at the unit layer on both sides (`internal/logbuf`,
+`app-helpers`), where eviction can be driven precisely.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
