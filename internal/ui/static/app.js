@@ -3435,13 +3435,23 @@
     rosterFilter.focus();
   });
 
-  // The Logs view's in-log search, as the header trigger below sees it: both
-  // are set by the logs toolbar wiring further down and stay inert until then.
-  // Declared here, ahead of their first use, so no call can hit them uninitialised.
+  // Hooks into the Logs panel's own wiring, which is set up further down the
+  // file. Declared here, ahead of their first use, so no earlier call can hit
+  // them uninitialised; each is inert until then.
   let logSearchIsOpen = function () {
     return false;
   };
   let logSearchToggle = function () {};
+  // Re-applies the in-log filter after a re-render, so fresh lines obey it.
+  let logSearchApply = function () {};
+  // Drops the Logs panel out of fullscreen. A view switch calls it because
+  // fullscreen is a viewport-filling overlay: left on, it covers whichever view
+  // the viewer moved to.
+  let exitLogFullscreen = function () {};
+
+  // What the trigger below searches depends on the view, so its label does too.
+  const SEARCH_LABEL_STACKS = 'Search stacks';
+  const SEARCH_LABEL_LOG = 'Search in log';
 
   // T3.11 — always-visible search trigger. The stack filter used to be
   // desktop-invisible (type-to-search only, an easter egg); this header magnifier
@@ -3450,14 +3460,17 @@
   // on mobile (the popover entry covers it there) via CSS. syncStackSearchBtn
   // reflects the bar's open state on the trigger.
   function syncStackSearchBtn() {
-    const open =
-      activeView === 'deploys'
-        ? deployFilterWrap.classList.contains('revealed')
-        : activeView === 'stacks'
-          ? rosterFilterWrap.classList.contains('revealed')
-          : logSearchIsOpen();
+    const onLogs = activeView === 'logs';
+    const open = onLogs
+      ? logSearchIsOpen()
+      : activeView === 'stacks'
+        ? rosterFilterWrap.classList.contains('revealed')
+        : deployFilterWrap.classList.contains('revealed');
     stackSearchBtn.classList.toggle('active', open);
     stackSearchBtn.setAttribute('aria-expanded', String(open));
+    const label = onLogs ? SEARCH_LABEL_LOG : SEARCH_LABEL_STACKS;
+    stackSearchBtn.title = label;
+    stackSearchBtn.setAttribute('aria-label', label);
   }
   stackSearchBtn.addEventListener('click', function () {
     if (activeView === 'deploys') {
@@ -3472,7 +3485,7 @@
         revealRosterFilter(true);
         rosterFilter.focus();
       }
-    } else {
+    } else if (activeView === 'logs') {
       logSearchToggle();
     }
   });
@@ -4102,13 +4115,6 @@
   const savedView = localStorage.getItem('activeView');
   let activeView = savedView === 'logs' || savedView === 'stacks' ? savedView : 'deploys';
   let logSource = null;
-  // Re-applies the Logs-view in-log filter after a re-render; set by the logs
-  // toolbar wiring (ADR-0037), a no-op until then and when no search is active.
-  let logSearchApply = function () {};
-  // Drops the Logs panel out of fullscreen; set by the same wiring. A view
-  // switch calls it because fullscreen is a viewport-filling overlay: left on,
-  // it covers whichever view the viewer moved to.
-  let exitLogFullscreen = function () {};
 
   // ── Logs-view quick filters ──
   // Severity threshold + kind set + stack set, persisted per browser so a

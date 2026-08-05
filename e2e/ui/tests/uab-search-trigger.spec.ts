@@ -81,6 +81,8 @@ test('UAB3: the magnifier opens the in-log search on the Logs view', async ({ pa
   await viewBtn(page, 'logs').click();
   await expect(searchBtn(page)).toBeVisible();
   await expect(logWrap).toBeHidden();
+  // The label follows what it actually searches here.
+  await expect(searchBtn(page)).toHaveAttribute('aria-label', 'Search in log');
 
   // Click reveals the in-log filter, focuses it, and marks the trigger open.
   await searchBtn(page).click();
@@ -100,9 +102,10 @@ test('UAB3: the magnifier opens the in-log search on the Logs view', async ({ pa
   await expect(logInput).toHaveValue('');
   await expect(searchBtn(page)).not.toHaveClass(/\bactive\b/);
 
-  // Back on deploys it drives the deploy filter again.
+  // Back on deploys it drives the deploy filter again, under its own label.
   await viewBtn(page, 'deploys').click();
   await expect(searchBtn(page)).toBeVisible();
+  await expect(searchBtn(page)).toHaveAttribute('aria-label', 'Search stacks');
   await searchBtn(page).click();
   await expect(deployWrap(page)).toBeVisible();
 });

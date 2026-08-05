@@ -601,7 +601,7 @@ assert on.
 | `brand-name` | Header `skipper-cd` wordmark | Stacked over the version label; hidden ≤ 700 px (logo alone carries the brand) |
 | `brand-version` | Header version label | `v<semver> · <commit>` / branch; `dev` local; empty until `/api/version` resolves; full string in `title`; shown in portrait ≤ 700 px |
 | `view-toggle` | Deploys/Stacks/Logs segmented icon control | Active button (`.active`) opens the view-options popover on Deploys/Stacks; Logs has none — its controls live in its own panel header |
-| `stack-search-btn` | Always-visible search trigger (magnifier), left of the view switch | Opens the active view's filter — stack filter on Deploys/Stacks, in-log search on Logs (T3.11); `.active` + `aria-expanded` while open; hidden on mobile |
+| `stack-search-btn` | Always-visible search trigger (magnifier), left of the view switch | Opens the active view's filter — stack filter on Deploys/Stacks, in-log search on Logs (T3.11); `.active` + `aria-expanded` while open; `title`/`aria-label` follow the view (`Search stacks` / `Search in log`); hidden on mobile |
 | `deploy-indicator` | Deploy indicator (anchor/ship glyph) | `idle`/`deploying <stacks> · next <stacks>` in `title` + `aria-label`; `role="button"`, opens the run panel while active |
 | `deploy-next` | Look-ahead trail beside the active stack | Empty when nothing follows; hidden ≤ 700 px |
 | `deploy-count` | Mobile `+N` count chip (upcoming) | Shown only ≤ 700 px; empty when nothing follows |
