@@ -13,7 +13,8 @@ import type { Page } from '@playwright/test';
 // viewport on a tablet (UAR1) and a phone (UAR2) — the long line has to scroll
 // inside the pane instead. It also pins the chrome the same report reshaped:
 // the panel has no title bar and its filter row carries live + the tools
-// (UAR3), and fullscreen never outlives the view it belongs to (UAR4).
+// (UAR3), fullscreen covers the header and ends with the view (UAR4), and the
+// header itself wraps rather than scrolling sideways (UAR5).
 // Behaviour-only, no snapshot.
 
 // Long enough that its diff line cannot fit any of the viewports below, so the
@@ -129,9 +130,48 @@ test.describe('Maske AR: the Logs view fits the display', () => {
     });
   });
 
-  // UAR4 — fullscreen is a viewport-filling overlay, so it must not outlive the
-  // view it belongs to: switching to Deploys used to leave it covering the page.
-  test.describe('UAR4: fullscreen ends with the view', () => {
+  // UAR4 — fullscreen covers everything, header included: it exists to reclaim
+  // that strip of screen, and the way back out is the panel's own tool or Esc.
+  // It also must not outlive the view — switching to Deploys used to leave it
+  // covering the page.
+  test.describe('UAR4: fullscreen covers the header', () => {
+    test.use({ viewport: { width: 744, height: 1133 } });
+
+    // What is painted at the top-centre of the viewport, where the header sits.
+    const atTop = (page: Page) =>
+      page.evaluate(() => {
+        const el = document.elementFromPoint(Math.round(window.innerWidth / 2), 8);
+        const view = document.getElementById('log-view')!;
+        if (el && view.contains(el)) return 'log-view';
+        return el ? el.closest('header')
+            ? 'header'
+            : el.tagName
+          : 'none';
+      });
+
+    test('fullscreen paints over the header and Esc gives it back', async ({ page, skipper }) => {
+      await page.goto(`${skipper.baseURL}/`);
+      await openLogsView(page);
+      expect(await atTop(page)).toBe('header');
+
+      await page.locator('[data-testid="log-fs"]').click();
+      await expect(logView(page)).toHaveClass(/clog-fullscreen/);
+      // The panel is the whole viewport, and it is what the header's pixels now
+      // show — the panel sits inside `main`, whose stacking context is what has
+      // to outrank the sticky header for this to hold.
+      expect(await atTop(page)).toBe('log-view');
+      const box = await logView(page).boundingBox();
+      const vp = page.viewportSize()!;
+      expect(box).toMatchObject({ x: 0, y: 0, width: vp.width, height: vp.height });
+      // With the header covered, its magnifier is unreachable, so the panel's
+      // own search tool comes back — fullscreen must not cost the viewer search.
+      await expect(quickBar(page).locator('[data-testid="log-search"]')).toBeVisible();
+
+      await page.keyboard.press('Escape');
+      await expect(logView(page)).not.toHaveClass(/clog-fullscreen/);
+      expect(await atTop(page)).toBe('header');
+    });
+
     test('switching views drops fullscreen and reveals the new view', async ({ page, skipper }) => {
       await page.goto(`${skipper.baseURL}/`);
       await openLogsView(page);
@@ -139,17 +179,73 @@ test.describe('Maske AR: the Logs view fits the display', () => {
       await page.locator('[data-testid="log-fs"]').click();
       await expect(logView(page)).toHaveClass(/clog-fullscreen/);
 
+      await page.keyboard.press('Escape'); // the header is only reachable again after this
       await page.locator('[data-testid="view-toggle"] button[data-view="deploys"]').click();
       await expect(logView(page)).toBeHidden();
       await expect(logView(page)).not.toHaveClass(/clog-fullscreen/);
       await expect(page.locator('#deploy-table')).toBeVisible();
 
-      // Coming back shows an ordinary, windowed panel — fullscreen was exited,
-      // not merely hidden.
+      // Coming back shows an ordinary, windowed panel.
       await openLogsView(page);
       await expect(logView(page)).toBeVisible();
       await expect(logView(page)).not.toHaveClass(/clog-fullscreen/);
       await expect(page.locator('[data-testid="log-fs"]')).not.toHaveClass(/\bon\b/);
+    });
+  });
+
+  // UAR5 — the header is how every other surface is reached, so it is the last
+  // thing that may scroll sideways. With every control present it needs more
+  // width than a phone has, and the first-run tour's captions push it past a
+  // tablet: it wraps to a second line instead of overflowing, dropping nothing.
+  // The instance is deliberately loaded — a fanned-in peer (hosts control), an
+  // unhealthy stack (beacon) and the theme picker — because the empty header
+  // fits anywhere and would assert nothing.
+  test.describe('UAR5: the header never scrolls sideways', () => {
+    test.use({
+      startOptions: {
+        stacks: ['web', 'api'],
+        hostName: 'host-a',
+        peers: [{ name: 'host-b', reachable: false }],
+        themeSwitcher: true,
+        healthPoll: 1,
+        initialHealth: {
+          web: [{ Service: 'app', State: 'running', Health: 'healthy' }],
+          api: [{ Service: 'app', State: 'running', Health: 'unhealthy' }],
+        },
+      },
+    });
+
+    const headerFits = (page: Page) =>
+      page.evaluate(() => {
+        const h = document.querySelector('header')!;
+        return { scrollWidth: h.scrollWidth, clientWidth: h.clientWidth };
+      });
+
+    test.describe('phone', () => {
+      // 320 px: the narrowest phone still worth supporting, and the width where
+      // even this fixture's smaller control set stops fitting on one line.
+      test.use({ viewport: { width: 320, height: 568 } });
+
+      test('every control fits without horizontal scroll', async ({ page, skipper }) => {
+        await page.goto(`${skipper.baseURL}/`);
+        await openLogsView(page);
+        const h = await headerFits(page);
+        expect(h.scrollWidth).toBeLessThanOrEqual(h.clientWidth);
+        // Nothing was dropped to get there: the view switch is still reachable.
+        await expect(page.locator('[data-testid="view-toggle"]')).toBeVisible();
+      });
+    });
+
+    test.describe('tablet, first-run tour showing', () => {
+      // Opt out of the global seed: the tour's captions are what widened the row.
+      test.use({ viewport: { width: 744, height: 1133 }, seedTourSeen: false });
+
+      test('the tour captions wrap instead of widening the row', async ({ page, skipper }) => {
+        await page.goto(`${skipper.baseURL}/`); // a fresh context: the tour is up
+        await expect(page.locator('[data-testid="header-tour"]')).toBeVisible();
+        const h = await headerFits(page);
+        expect(h.scrollWidth).toBeLessThanOrEqual(h.clientWidth);
+      });
     });
   });
 });

@@ -1584,9 +1584,17 @@ same report reshaped ([UI_SPEC](../internal/ui/UI_SPEC.md#log-view)):
 - **UAR3 — One chrome row.** The panel has no `clog-head`; the live pill and the
   wrap/auto-scroll/fullscreen tools sit in the filter row, and pausing from
   there still reports paused in the footer. No second magnifier at this width.
-- **UAR4 — Fullscreen ends with the view.** Fullscreen on, then a switch to
-  Deploys: the panel is hidden, its `clog-fullscreen` class cleared and the
-  deploy table visible. It used to stay on top of whichever view followed.
+- **UAR4 — Fullscreen covers the header.** With fullscreen on, the element
+  painted at the top-centre of the viewport is the panel (not the header), its
+  box is the whole viewport, and the panel's own search tool is back because the
+  header's magnifier is unreachable; `Esc` gives the header back. Second case:
+  fullscreen on, `Esc`, switch to Deploys — the panel is hidden, its
+  `clog-fullscreen` class cleared and the deploy table visible. It used to stay
+  on top of whichever view followed.
+- **UAR5 — The header never scrolls sideways.** `scrollWidth <= clientWidth` on
+  a 390 px phone with the view switch still reachable, and on a 744 px tablet
+  with the first-run tour showing — the two cases that used to overflow. The row
+  wraps instead of dropping a control.
 
 Behaviour-only, no snapshot.
 
