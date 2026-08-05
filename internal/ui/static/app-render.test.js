@@ -1205,3 +1205,26 @@ test('retryNoteHTML marks only a follows_rollback success, carrying the rollback
   assert.equal(r.retryNoteHTML({ status: 'success' }), '');
   assert.equal(r.retryNoteHTML(null), '');
 });
+
+test('deployStatusChipsHTML renders one chip per present status, worst first, with counts', () => {
+  const html = r.deployStatusChipsHTML({ success: 5, failed: 1, rolled_back: 2 }, ['failed']);
+  const order = [...html.matchAll(/data-status="([a-z_]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ['failed', 'rolled_back', 'success']);
+  assert.match(
+    html,
+    /class="clog-chip status-chip active" data-status="failed" aria-pressed="true"/,
+  );
+  assert.match(html, /rolled back<span class="sc-count">2<\/span>/);
+  // Inactive chips carry aria-pressed=false.
+  assert.match(html, /data-status="success" aria-pressed="false"/);
+});
+
+test('deployStatusChipsHTML keeps an active status at count 0 so the narrowing stays clearable', () => {
+  const html = r.deployStatusChipsHTML({ rolled_back: 0, success: 3 }, ['rolled_back']);
+  assert.match(html, /data-status="rolled_back"[^>]*aria-pressed="true"/);
+  assert.match(html, /<span class="sc-count">0<\/span>/);
+});
+
+test('deployStatusChipsHTML renders nothing for no rows', () => {
+  assert.equal(r.deployStatusChipsHTML({}, []), '');
+});

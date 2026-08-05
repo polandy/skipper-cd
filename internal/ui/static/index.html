@@ -88,6 +88,10 @@
       </button>
       <div class="beacon-pop" id="beacon-pop" data-testid="health-beacon-pop" role="menu" aria-label="Unhealthy stacks"></div>
     </div>
+    <button class="incident-badge" id="incident-badge" data-testid="incident-badge" type="button" hidden>
+      <span class="ib-icon" aria-hidden="true">↺</span>
+      <span class="ib-count" id="incident-badge-count" data-testid="incident-badge-count"></span>
+    </button>
     <span class="ht-cap ht-cap-search">
     <button class="stack-search-btn" id="stack-search-btn" data-testid="stack-search-btn" type="button" title="Search stacks" aria-label="Search stacks" aria-expanded="false">
       <svg class="ss-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -291,6 +295,7 @@
       <span class="stack-filter-count" id="deploy-filter-count"></span>
       <button class="stack-filter-clear" id="deploy-filter-clear" data-testid="deploy-filter-clear" type="button" aria-label="Clear filter">&times;</button>
     </div>
+    <div class="status-filter" id="deploy-status-filter" data-testid="deploy-status-filter" role="group" aria-label="Filter deploys by status"></div>
     <div class="host-stale-banner" id="host-stale-banner" data-testid="host-stale-banner" role="status">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.5" r="1.1" fill="currentColor"/><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
       <span id="host-stale-text"></span>

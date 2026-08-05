@@ -2180,6 +2180,9 @@
         if (abs) cell.textContent = formatTime(abs);
       });
     }
+    // The incident badge's 24h window ages out on the same tick — the stacks
+    // snapshot only republishes after runs, and the count must not wait for one.
+    renderIncidentBadge();
   }, 30000);
 
   // EventSource auto-reconnects after a transient drop (readyState CONNECTING),
@@ -2747,9 +2750,11 @@
         rosterSnap = (d && d.roster) || [];
         repoWebURL = (d && d.repo_web_url) || '';
         updatesSnap = (d && d.updates) || null;
+        incidentsSnap = (d && d.incidents_24h) || [];
         renderDisabledStacks();
         renderRoster();
         updateStackAffordances(); // roster carries the hooks — (de)show the badge
+        renderIncidentBadge();
         break;
       case 'app_links':
         appLinksSnap = (d && d.stacks) || {};
@@ -2972,10 +2977,32 @@
   const deployFilterClear = document.getElementById('deploy-filter-clear');
   const deployFilterCount = document.getElementById('deploy-filter-count');
   const deployFilterEmpty = document.getElementById('deploy-filter-empty');
-  const deployFilterEmptyQ = document.getElementById('deploy-filter-empty-q');
+  const deployStatusFilterEl = document.getElementById('deploy-status-filter');
+
+  // Active status chips (UI_SPEC.md "Status filter"). Deliberately NOT
+  // persisted — a sticky exclusion filter silently hiding rows across sessions
+  // is exactly the failure mode the Logs view's persisted severity chips
+  // demonstrated on 2026-08-05.
+  let deployStatusFilter = [];
+
+  // renderDeployStatusChips rebuilds the chip row from the statuses present
+  // among the rendered rows (with counts); an active status whose rows have
+  // aged out stays rendered at 0 so the narrowing remains clearable.
+  function renderDeployStatusChips() {
+    const counts = {};
+    tbody.querySelectorAll('.event-row[data-status]').forEach(function (row) {
+      const s = row.dataset.status;
+      if (s) counts[s] = (counts[s] || 0) + 1;
+    });
+    deployStatusFilter.forEach(function (s) {
+      if (counts[s] === undefined) counts[s] = 0;
+    });
+    deployStatusFilterEl.innerHTML = deployStatusChipsHTML(counts, deployStatusFilter);
+  }
 
   function applyDeployFilter() {
     const q = (deployFilter.value || '').trim().toLowerCase();
+    const statuses = deployStatusFilter;
     deployFilterWrap.classList.toggle('has-value', q.length > 0);
     let total = 0,
       shown = 0,
@@ -2985,7 +3012,11 @@
       const el = kids[i];
       if (el.dataset && el.dataset.testid === 'deploy-row') {
         total++;
-        visible = el.dataset.stack.toLowerCase().indexOf(q) !== -1;
+        // The name query and the status chips narrow independently; a row
+        // shows only when it passes both.
+        visible =
+          el.dataset.stack.toLowerCase().indexOf(q) !== -1 &&
+          (statuses.length === 0 || statuses.indexOf(el.dataset.status) !== -1);
         if (visible) shown++;
       }
       // A panel (files/diff/error) trails its row and shares its visibility.
@@ -3000,23 +3031,40 @@
         if (orphanMatchesQuery(orphansSnap[j], q)) shown++;
       }
     }
-    deployFilterCount.textContent = q ? shown + '/' + total : '';
-    deployFilterEmpty.classList.toggle('show', q.length > 0 && total > 0 && shown === 0);
-    deployFilterEmptyQ.textContent = q;
+    const narrowing = q.length > 0 || statuses.length > 0;
+    deployFilterCount.textContent = narrowing ? shown + '/' + total : '';
+    const none = narrowing && total > 0 && shown === 0;
+    deployFilterEmpty.classList.toggle('show', none);
+    // With chips active the all-hidden note generalises — "no stack matches"
+    // would blame the name query for rows the status chips hid.
+    if (statuses.length > 0) {
+      deployFilterEmpty.textContent = 'Nothing matches the active filters.';
+    } else {
+      deployFilterEmpty.innerHTML = 'No stack matches “<span id="deploy-filter-empty-q"></span>”.';
+      document.getElementById('deploy-filter-empty-q').textContent = q;
+    }
+    renderDeployStatusChips();
   }
 
-  // Re-run the filter after live/replayed rows land so new stacks obey it too.
+  // Re-run the filter after live/replayed rows land so new stacks obey it too
+  // — and keep the chip counts current while the bar is open.
   function refilterDeploys() {
-    if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
+    if (deployFilterWrap.classList.contains('has-value') || deployStatusFilter.length > 0) {
+      applyDeployFilter();
+    } else if (deployFilterWrap.classList.contains('revealed')) {
+      renderDeployStatusChips();
+    }
   }
 
   function revealDeployFilter(on) {
     deployFilterWrap.classList.toggle('revealed', on);
+    if (on) renderDeployStatusChips();
     syncStackSearchBtn();
   }
 
   function clearDeployFilter(hide) {
     deployFilter.value = '';
+    deployStatusFilter = []; // Esc/clear drops the chips with the query
     applyDeployFilter();
     if (hide) {
       revealDeployFilter(false);
@@ -3024,12 +3072,33 @@
     }
   }
 
+  // Chip clicks: toggle the status in/out of the active set.
+  deployStatusFilterEl.addEventListener('click', function (e) {
+    const chip = e.target.closest('.status-chip');
+    if (!chip) return;
+    const s = chip.dataset.status;
+    const i = deployStatusFilter.indexOf(s);
+    if (i === -1) deployStatusFilter.push(s);
+    else deployStatusFilter.splice(i, 1);
+    applyDeployFilter();
+  });
+
+  // presetDeployStatusFilter is the incident badge's landing (UI_SPEC.md
+  // "Incident badge"): reveal the bar with the given chips pre-selected and
+  // the name query cleared, so the click lands on exactly the promised rows.
+  function presetDeployStatusFilter(statuses) {
+    deployFilter.value = '';
+    deployStatusFilter = statuses.slice();
+    revealDeployFilter(true);
+    applyDeployFilter();
+  }
+
   deployFilter.addEventListener('input', applyDeployFilter);
   deployFilter.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       e.stopPropagation();
-      if (deployFilter.value)
-        clearDeployFilter(false); // first Esc clears
+      if (deployFilter.value || deployStatusFilter.length > 0)
+        clearDeployFilter(false); // first Esc clears query and chips together
       else {
         revealDeployFilter(false);
         deployFilter.blur();
@@ -3037,7 +3106,9 @@
     }
   });
   deployFilter.addEventListener('blur', function () {
-    if (!deployFilter.value) revealDeployFilter(false); // fold away only when empty
+    // Fold away only when nothing narrows — folding with chips active would
+    // leave rows hidden by a filter that is no longer on screen.
+    if (!deployFilter.value && deployStatusFilter.length === 0) revealDeployFilter(false);
   });
   deployFilterClear.addEventListener('click', function () {
     clearDeployFilter(false);
@@ -4624,6 +4695,37 @@
   // above the log. Both render from attentionStacks(healthSnap) and jump to the
   // stack's newest row on activate (degrading to a plain view switch when the
   // stack has no row, exactly like jumpBtn).
+  // ─── Incident badge (UI_SPEC.md "Incident badge") ───
+  // The beacon answers "what is unhealthy NOW"; this badge answers "what went
+  // wrong RECENTLY" — the axis a recovered rollback disappears on. Counts the
+  // stacks snapshot's incidents_24h, re-filtered against the window on the
+  // client clock (the 30s tick), and lands on the Deploys view with the
+  // bad-outcome status chips pre-selected.
+  let incidentsSnap = [];
+  const BAD_OUTCOME_STATUSES = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
+  const incidentBadge = document.getElementById('incident-badge');
+  const incidentBadgeCount = document.getElementById('incident-badge-count');
+
+  function renderIncidentBadge() {
+    const n = recentIncidentCount(incidentsSnap, Date.now());
+    incidentBadge.hidden = n === 0;
+    if (n === 0) return;
+    incidentBadgeCount.textContent = String(n);
+    const label = incidentBadgeLabel(n);
+    incidentBadge.title = label;
+    incidentBadge.setAttribute('aria-label', label);
+  }
+
+  incidentBadge.addEventListener('click', function () {
+    if (activeView !== 'deploys') {
+      activeView = 'deploys';
+      localStorage.setItem('activeView', activeView);
+      setViewOptions(false);
+      applyView();
+    }
+    presetDeployStatusFilter(BAD_OUTCOME_STATUSES);
+  });
+
   const healthBeaconWrap = document.getElementById('health-beacon-wrap');
   const healthBeacon = document.getElementById('health-beacon');
   const healthBeaconIcon = healthBeacon.querySelector('.hb-icon');

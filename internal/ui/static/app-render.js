@@ -578,6 +578,46 @@ function lastIncidentHTML(incident, nowMs) {
   return `<span class="last-incident" data-testid="last-incident" title="${escapeAttr(fullTime(incident.at))}">${glyph} ${escapeHtml(outcomeLabel(incident.status))} · ${escapeHtml(age)} ago</span>`;
 }
 
+// DEPLOY_STATUS_ORDER fixes the Deploys status-filter chip order — worst
+// first, so the chips a triage reaches for lead the row. A status outside the
+// list (a future addition) still renders, sorted alphabetically after these.
+const DEPLOY_STATUS_ORDER = [
+  'failed',
+  'rolled_back_unhealthy',
+  'rolled_back',
+  'heal_exhausted',
+  'healed',
+  'success',
+  'deploying',
+  'queued',
+  'blocked',
+];
+
+// deployStatusChipsHTML renders the status-filter chip row under the Deploys
+// search input (UI_SPEC.md "Status filter"): one toggle chip per status
+// present among the rendered rows, each with its per-status count, in the
+// quick-filter chip idiom the Log view established. counts maps status →
+// row count; active is the selected set — an active status whose rows have
+// aged out still renders (count 0), or the narrowing could no longer be
+// cleared from where it shows.
+function deployStatusChipsHTML(counts, active) {
+  const known = DEPLOY_STATUS_ORDER.filter(function (s) {
+    return counts[s] !== undefined;
+  });
+  const rest = Object.keys(counts)
+    .filter(function (s) {
+      return DEPLOY_STATUS_ORDER.indexOf(s) === -1;
+    })
+    .sort();
+  return known
+    .concat(rest)
+    .map(function (s) {
+      const on = active.indexOf(s) !== -1;
+      return `<button type="button" class="clog-chip status-chip${on ? ' active' : ''}" data-status="${escapeAttr(s)}" aria-pressed="${on}">${escapeHtml(outcomeLabel(s))}<span class="sc-count">${counts[s]}</span></button>`;
+    })
+    .join('');
+}
+
 // retryNoteHTML pairs a success row with the rollback it supersedes
 // (follows_rollback on the event — UI_SPEC.md "Rollback linkage"): a small
 // rollback-tinted note under the badge, so the success names the rollback it
@@ -1089,6 +1129,8 @@ if (typeof module !== 'undefined' && module.exports) {
     outcomeStripHTML,
     lastIncidentHTML,
     retryNoteHTML,
+    DEPLOY_STATUS_ORDER,
+    deployStatusChipsHTML,
     autosyncDetailHTML,
     autosyncPosText,
     autosyncReasonChipHTML,

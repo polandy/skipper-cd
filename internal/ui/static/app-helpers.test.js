@@ -1360,3 +1360,22 @@ test('classifyDiffLine already covers the log block, so it is not reimplemented'
   assert.equal(h.classifyDiffLine('-removed'), 'diff-del');
   assert.equal(h.classifyDiffLine(' context'), '');
 });
+
+test('recentIncidentCount ages records out of the 24h window on the client clock', () => {
+  const now = Date.parse('2026-08-05T12:00:00Z');
+  const incidents = [
+    { stack: 'nextcloud', status: 'rolled_back', at: '2026-08-05T11:00:00Z' },
+    { stack: 'web', status: 'failed', at: '2026-08-04T13:00:00Z' }, // 23h — still in
+    { stack: 'web', status: 'failed', at: '2026-08-04T11:30:00Z' }, // 24.5h — aged out
+  ];
+  assert.equal(h.recentIncidentCount(incidents, now), 2);
+  // Six hours later the 23h record has aged out too — no republish needed.
+  assert.equal(h.recentIncidentCount(incidents, now + 6 * 3600 * 1000), 1);
+  assert.equal(h.recentIncidentCount([], now), 0);
+  assert.equal(h.recentIncidentCount(null, now), 0);
+});
+
+test('incidentBadgeLabel pluralises', () => {
+  assert.equal(h.incidentBadgeLabel(1), '1 rollback/failure in the last 24h');
+  assert.equal(h.incidentBadgeLabel(3), '3 rollbacks/failures in the last 24h');
+});

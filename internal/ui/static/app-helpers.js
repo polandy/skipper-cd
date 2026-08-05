@@ -356,6 +356,26 @@ function logFilterSeverity(entry) {
   return entry.level;
 }
 
+// INCIDENT_WINDOW_MS mirrors the server's incidents_24h window. The client
+// re-filters the snapshot's list against it on the relative-time tick, so the
+// header incident badge ages out deterministically between republishes — the
+// roster snapshot only lands after runs, and a stale count until the next
+// deploy would defeat a "last 24h" claim.
+const INCIDENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// recentIncidentCount counts the snapshot's incidents still inside the window
+// ending at nowMs.
+function recentIncidentCount(incidents, nowMs) {
+  return (incidents || []).filter(function (i) {
+    return i && i.at && nowMs - new Date(i.at).getTime() < INCIDENT_WINDOW_MS;
+  }).length;
+}
+
+// incidentBadgeLabel is the badge's pluralised title/aria-label.
+function incidentBadgeLabel(n) {
+  return n + (n === 1 ? ' rollback/failure' : ' rollbacks/failures') + ' in the last 24h';
+}
+
 // mergeLogView merges the pinned outcome entries back into the ring for
 // rendering: pinned entries older than the ring's first (i.e. already evicted;
 // IDs are monotonic), then the ring — chronological, no duplicates. Mirrors
@@ -1278,5 +1298,8 @@ if (typeof module !== 'undefined' && module.exports) {
     isLogOutcome,
     logFilterSeverity,
     mergeLogView,
+    INCIDENT_WINDOW_MS,
+    recentIncidentCount,
+    incidentBadgeLabel,
   };
 }
