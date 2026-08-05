@@ -3408,6 +3408,12 @@
 
   /* Both narrow layouts, tablet and phone. */
   @media (max-width: 1000px) {
+    /* The brand text goes: below this the control cluster wants the width, and
+       what is left squeezes the wordmark and the version label down to a
+       character and an ellipsis — a sliver beside the logo that reads as
+       breakage, not as identity. The ship alone carries the brand here, and the
+       full `v<semver> · <commit>` string moves to its tooltip / tap-tip. */
+    .brand-text { display: none; }
     /* With the files pill gone the row itself is the way into the diff — the
        click handler already falls back to the row's own pill. */
     .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
@@ -3467,11 +3473,6 @@
     .health-beacon { padding: 3px 8px; gap: 5px; font-size: 11px; }
     .health-beacon .hb-icon { display: none; }
     .incident-badge { padding: 3px 8px; gap: 4px; font-size: 11px; }
-    /* Wordmark is dropped — the ship logo alone carries the brand on mobile so
-       the control row fits without horizontal scroll. The version is kept in
-       portrait (re-shown below) but dropped in the tighter landscape. */
-    .brand-name { display: none; }
-    .brand-version { display: none; }
     /* Filter toggles are glyph-only on every viewport now (see base rules).
        Deploy-status and connection are already glyph-only via base rules; here
        we drop the deploying stack name and the look-ahead trail (both remain in
@@ -3573,20 +3574,6 @@
     html:not(.header-tour-seen) .ht-lbl-row { display: none; }
     html:not(.header-tour-seen) header { height: 48px; min-height: 0; }
     .header-tour { display: none; }
-  }
-
-  /* Portrait phones keep the build identity next to the logo. It clips with an
-     ellipsis and can shrink (min-width:0) so the header never scrolls sideways;
-     the full string stays available via the title tooltip / long-press. */
-  @media (max-width: 700px) and (orientation: portrait) {
-    .brand-version {
-      display: block;
-      max-width: 34vw;
-      min-width: 0;
-      flex-shrink: 1;
-      font-size: 10px;
-      margin-left: 0;
-    }
   }
 
   /* ── Container logs (ADR-0037): a live `docker compose logs` panel opened from

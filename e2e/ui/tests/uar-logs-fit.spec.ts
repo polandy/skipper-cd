@@ -234,6 +234,10 @@ test.describe('Maske AR: the Logs view fits the display', () => {
         expect(h.scrollWidth).toBeLessThanOrEqual(h.clientWidth);
         // Nothing was dropped to get there: the view switch is still reachable.
         await expect(page.locator('[data-testid="view-toggle"]')).toBeVisible();
+        // The brand text is not squeezed to a sliver beside the logo; the build
+        // identity moves to the logo's tooltip instead of being clipped away.
+        await expect(page.locator('[data-testid="brand-version"]')).toBeHidden();
+        await expect(page.locator('.brand-icon')).toHaveAttribute('title', /^v?\d|^dev/);
       });
     });
 

@@ -5129,9 +5129,12 @@
       const head = d.branch && d.branch !== 'main' ? d.branch : base;
       const text = d.commit ? head + ' · ' + d.commit : head;
       el.textContent = text;
-      // The label may be clipped (ellipsis) on narrow viewports or long branch
-      // names; the title exposes the full identity on hover / long-press.
+      // The label may be clipped (ellipsis) on a long branch name, and it is
+      // hidden entirely below 1000px — so the identity also rides the logo,
+      // where a hover tooltip or a tap-tip reaches it at every width.
       el.title = text;
+      const icon = document.querySelector('.brand-icon');
+      if (icon) icon.title = text;
     })
     .catch(function () {});
 
