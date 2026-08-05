@@ -107,6 +107,15 @@ type DeployEvent struct {
 	// deploy was called done, which is what a notification reports; on a failed
 	// one it says only that the gate was in effect (the error names what failed).
 	HealthGated bool `json:"health_gated,omitempty" yaml:"health_gated,omitempty"`
+	// FollowsRollback marks a success that redeploys a stack whose previous
+	// terminal outcome was a rollback — the retry of a rolled-back change. The
+	// UI pairs the two (retry note, UI_SPEC.md "Rollback linkage") so the
+	// success does not paper over the rollback it supersedes. Kept on the SSE
+	// payload like HealDrift (small, no on-demand endpoint).
+	FollowsRollback bool `json:"follows_rollback,omitempty" yaml:"follows_rollback,omitempty"`
+	// RollbackEventID names the superseded rollback's event when it is still in
+	// the bounded history; 0 when it has been evicted (the audit record remains).
+	RollbackEventID int64 `json:"rollback_event_id,omitempty" yaml:"rollback_event_id,omitempty"`
 }
 
 // SSEPayload returns a copy suitable for SSE streaming: diffs and commits are

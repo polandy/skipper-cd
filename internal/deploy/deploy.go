@@ -115,6 +115,13 @@ type Config struct {
 	// the zero value when a phase finishes. nil disables publishing (UI off).
 	HookRunSink func(HookRun)
 
+	// LastOutcome returns a stack's newest terminal audit outcome plus that
+	// outcome's event ID (0 when the event has left the bounded history). A
+	// success event consults it to mark itself as the retry of a rollback
+	// (follows_rollback — UI_SPEC.md "Rollback linkage"). nil disables the
+	// annotation; the field only feeds the UI payload.
+	LastOutcome func(stack string) (status events.Status, eventID int64, ok bool)
+
 	// The fields below are timing/probe seams. Zero values use the production
 	// defaults; tests set fakes and small values so waits resolve
 	// deterministically instead of racing wall-clock time.
@@ -159,6 +166,7 @@ type Deployer struct {
 	stackSetSink func()
 	runPlanSink  func(RunPlan)
 	hookRunSink  func(HookRun)
+	lastOutcome  func(stack string) (events.Status, int64, bool)
 	prober       *httpHealthProber
 
 	// Timing overrides from Config; 0 = derive from stack config / defaults.
@@ -211,6 +219,7 @@ func New(cfg Config) *Deployer {
 		stackSetSink:           cfg.StackSetSink,
 		runPlanSink:            cfg.RunPlanSink,
 		hookRunSink:            cfg.HookRunSink,
+		lastOutcome:            cfg.LastOutcome,
 		prober:                 newHealthProber(cfg.ProbeClient, cfg.ProbeInterval),
 		rolloutPollInterval:    cfg.RolloutPollInterval,
 		rolloutTimeoutOverride: cfg.RolloutTimeoutOverride,

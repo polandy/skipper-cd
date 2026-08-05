@@ -51,7 +51,7 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		return 0
 	}
 	id := d.nextEventID.Add(1)
-	d.eventSink(events.DeployEvent{
+	e := events.DeployEvent{
 		ID:           id,
 		Timestamp:    time.Now(),
 		Stack:        stack,
@@ -63,8 +63,29 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		Commits:      cs.commits,
 		ImageChanges: cs.imageChanges,
 		HealthGated:  cs.healthGated,
-	})
+	}
+	if status == events.StatusSuccess {
+		e.FollowsRollback, e.RollbackEventID = d.followsRollback(stack)
+	}
+	d.eventSink(e)
 	return id
+}
+
+// followsRollback reports whether a success event is the retry of a rollback:
+// the stack's newest terminal audit outcome is rolled_back /
+// rolled_back_unhealthy. It runs while emit builds the event — before any sink
+// records this success — so "newest" is exactly the outcome the retry
+// supersedes. The returned event ID is the rollback's (0 once evicted from
+// the bounded history), letting the UI jump to its row.
+func (d *Deployer) followsRollback(stack string) (bool, int64) {
+	if d.lastOutcome == nil {
+		return false, 0
+	}
+	status, eventID, ok := d.lastOutcome(stack)
+	if !ok || (status != events.StatusRolledBack && status != events.StatusRolledBackUnhealthy) {
+		return false, 0
+	}
+	return true, eventID
 }
 
 // emitDeployFailure counts the error and emits the terminal event that matches

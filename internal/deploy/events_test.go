@@ -56,6 +56,82 @@ func TestDeployStack_EmitsDeployingAndSuccessEvents(t *testing.T) {
 	}
 }
 
+// A success that redeploys a stack whose previous terminal outcome was a
+// rollback marks itself follows_rollback, carrying the rollback's event ID —
+// the UI's "retry note" pairing (UI_SPEC.md "Rollback linkage").
+func TestDeployStack_SuccessAfterRollbackMarksFollowsRollback(t *testing.T) {
+	tests := []struct {
+		name        string
+		lastOutcome func(string) (events.Status, int64, bool)
+		wantFollows bool
+		wantEventID int64
+	}{
+		{
+			name:        "previous outcome was a rollback",
+			lastOutcome: func(string) (events.Status, int64, bool) { return events.StatusRolledBack, 42, true },
+			wantFollows: true,
+			wantEventID: 42,
+		},
+		{
+			name:        "previous outcome was an unhealthy rollback, event evicted",
+			lastOutcome: func(string) (events.Status, int64, bool) { return events.StatusRolledBackUnhealthy, 0, true },
+			wantFollows: true,
+			wantEventID: 0,
+		},
+		{
+			name:        "previous outcome was a plain success",
+			lastOutcome: func(string) (events.Status, int64, bool) { return events.StatusSuccess, 41, true },
+			wantFollows: false,
+		},
+		{
+			name:        "no previous outcome",
+			lastOutcome: func(string) (events.Status, int64, bool) { return "", 0, false },
+			wantFollows: false,
+		},
+		{
+			name:        "no lookup wired (headless)",
+			lastOutcome: nil,
+			wantFollows: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			stackDir := filepath.Join(baseDir, "gitea")
+			if err := os.MkdirAll(stackDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+			var emitted []events.DeployEvent
+			d := New(Config{
+				Runner:      &recordingRunner{},
+				EventSink:   func(e events.DeployEvent) { emitted = append(emitted, e) },
+				LastOutcome: tc.lastOutcome,
+			})
+			if err := d.deployStackIfChanged(context.Background(), config.Stack{Name: "gitea"}, baseDir, "", nil, newEmptyState()); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(emitted) != 2 || emitted[1].Status != events.StatusSuccess {
+				t.Fatalf("expected deploying + success, got %+v", emitted)
+			}
+			success := emitted[1]
+			if success.FollowsRollback != tc.wantFollows {
+				t.Errorf("FollowsRollback = %v, want %v", success.FollowsRollback, tc.wantFollows)
+			}
+			if success.RollbackEventID != tc.wantEventID {
+				t.Errorf("RollbackEventID = %d, want %d", success.RollbackEventID, tc.wantEventID)
+			}
+			// The deploying event must never carry the pairing — only the
+			// settled success answers "what did this retry supersede".
+			if emitted[0].FollowsRollback || emitted[0].RollbackEventID != 0 {
+				t.Errorf("deploying event must not carry follows_rollback: %+v", emitted[0])
+			}
+		})
+	}
+}
+
 func TestDeployStack_EmitsSkippedEvent(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "gitea")

@@ -260,6 +260,24 @@ func main() {
 		StartEventID: uiw.startEventID,
 		Autosync:     autosyncCtrl,
 		Queue:        autosyncQueue,
+		// A success event marks itself as the retry of a rollback from the
+		// stack's newest audit record — read before the fanout records the
+		// success itself, so it names the outcome the retry supersedes.
+		LastOutcome: func(stack string) (events.Status, int64, bool) {
+			recs := auditLog.Stack(stack, 1)
+			if len(recs) == 0 {
+				return "", 0, false
+			}
+			id := recs[0].ID
+			// Only carry the event ID while the event is still in the bounded
+			// history — a jump target that has been evicted is no target.
+			if uiw.history == nil {
+				id = 0
+			} else if _, ok := uiw.history.EventByID(id); !ok {
+				id = 0
+			}
+			return recs[0].Status, id, true
+		},
 		PostRunHook: func() {
 			logRunSummary(tally.flush())
 			// In stack-discovery mode the set is only known once the first run
