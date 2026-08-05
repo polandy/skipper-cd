@@ -416,7 +416,7 @@
           entry.disabled,
           stackUpdatesFor(entry.name, ''),
         ) +
-        `<span class="roster-status">${rosterStatusHTML(entry, !!deployingRows[entry.name])}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, rowHealth)}</span>` +
+        `<span class="roster-status">${rosterStatusHTML(entry, !!deployingRows[entry.name])}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, rowHealth)}${entry.disabled ? '' : outcomeStripHTML(entry.recent, Date.now()) + lastIncidentHTML(entry.last_incident, Date.now())}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         commitLinkHTML(commit, { cls: 'roster-sha', base: repoWebURL, title: commit });
       populateIcon(row.querySelector('.stack-icon'), entry.name);
@@ -491,7 +491,7 @@
           ) +
           // deploying=false: deployingRows is the primary's own in-flight set,
           // never a peer's.
-          `<span class="roster-status">${rosterStatusHTML(entry, false)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, stackHealthFor(entry.name, p.name))}</span>` +
+          `<span class="roster-status">${rosterStatusHTML(entry, false)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, stackHealthFor(entry.name, p.name))}${entry.disabled ? '' : outcomeStripHTML(entry.recent, Date.now()) + lastIncidentHTML(entry.last_incident, Date.now())}</span>` +
           `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
           commitLinkHTML(commit, { cls: 'roster-sha', base: peerRepo, title: commit });
         populateIcon(row.querySelector('.stack-icon'), entry.name);
@@ -1560,7 +1560,7 @@
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
       `<span class="cell-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="col-version">${delta}</span>` +
-      `<span class="status-cell">${badgeHTML(evt.status)}</span>` +
+      `<span class="status-cell">${badgeHTML(evt.status)}${retryNoteHTML(evt)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
       `<span class="col-files">${filesCell}</span>`;
 
@@ -2134,7 +2134,9 @@
       existing.dataset.status = evt.status;
       existing.dataset.eventId = evt.id;
       if (evt.has_diffs) existing.dataset.hasDiffs = '1';
-      existing.querySelector('.status-cell').innerHTML = badgeHTML(evt.status);
+      // The terminal event alone knows whether this success retries a rollback,
+      // so the note lands as the row settles (like the Version column below).
+      existing.querySelector('.status-cell').innerHTML = badgeHTML(evt.status) + retryNoteHTML(evt);
       existing.querySelector('.cell-duration').textContent = formatDuration(evt.duration_ms);
       const tc = existing.querySelector('.cell-time');
       tc.dataset.ts = evt.timestamp;
@@ -4576,6 +4578,12 @@
         ? rosterList.querySelector(`.roster-row[data-stack="${escaped}"]`)
         : tbody.querySelector(`.event-row[data-stack="${escaped}"]`);
     if (!target) return;
+    flashRow(target);
+  }
+
+  // flashRow scrolls a row into view and flashes the accent jump highlight —
+  // shared by the cross-view jump and the retry note's rollback landing.
+  function flashRow(target) {
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.remove('jump-target');
     void target.offsetWidth; // restart the animation if it's already landed once
@@ -4583,6 +4591,29 @@
     setTimeout(function () {
       target.classList.remove('jump-target');
     }, 1800);
+  }
+
+  // openRollbackFor is the retry note's target (UI_SPEC.md "Rollback
+  // linkage"): flash the superseded rollback's own row while its event is
+  // still rendered, else open the note's row's deploy-history panel — the
+  // durable record the rollback always keeps.
+  function openRollbackFor(row, rollbackId) {
+    if (rollbackId) {
+      const escaped = window.CSS && CSS.escape ? CSS.escape(rollbackId) : rollbackId;
+      const target = tbody.querySelector(`.event-row[data-event-id="${escaped}"]`);
+      if (target) {
+        flashRow(target);
+        return;
+      }
+    }
+    if (!row) return;
+    const next = row.nextElementSibling;
+    if (next && next.classList.contains('audit-panel')) return; // already open
+    closeHealthPanel(row);
+    closeHooksPanel(row);
+    closeDiffPanel(row); // one panel per row
+    row.classList.add('audit-open');
+    row.after(createAuditPanel(row.dataset.stack));
   }
 
   // ─── Live-health attention surface (ADR-0027 extension) ───
@@ -4732,6 +4763,13 @@
     const jumpBtn = e.target.closest('.jump-btn');
     if (jumpBtn) {
       jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
+      return;
+    }
+    // Retry note: open the rollback this success supersedes. Before the files
+    // logic so a tap never also opens the row's own diff panel.
+    const retry = e.target.closest('.retry-note');
+    if (retry) {
+      openRollbackFor(retry.closest('.event-row'), retry.dataset.rollbackId);
       return;
     }
     // Hook-log icon: a .clog-btn, so match it before the container-logs handler.

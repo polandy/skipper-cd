@@ -1145,3 +1145,63 @@ test('a step line renders its ↳ marker — the only thing tying it to the line
   assert.match(html, /data-testid="log-glyph"[^>]*>↳</);
   assert.match(html, />flake\.nix</);
 });
+
+// ── Rollback visibility: outcome strip, last incident, retry note ──
+
+test('outcomeStripHTML renders one dot per record, oldest → newest', () => {
+  const now = Date.parse('2026-08-05T12:00:00Z');
+  const recent = [
+    { status: 'success', at: '2026-08-05T11:00:00Z', commit: 'a1b2c3d4' },
+    { status: 'rolled_back', at: '2026-08-05T10:00:00Z', commit: 'e5f6a7b8' },
+    { status: 'success', at: '2026-08-05T09:00:00Z' },
+  ];
+  const html = r.outcomeStripHTML(recent, now);
+  assert.match(html, /data-testid="outcome-strip"/);
+  assert.match(html, /aria-hidden="true"/);
+  // Reversed: the oldest record's dot comes first, the newest last.
+  const statuses = [...html.matchAll(/data-status="([a-z_]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(statuses, ['success', 'rolled_back', 'success']);
+  // Tooltips carry label · age · short SHA.
+  assert.match(html, /title="rolled back · 2h ago · e5f6a7b"/);
+});
+
+test('outcomeStripHTML is empty with fewer than two records — a lone dot only repeats the badge', () => {
+  const now = Date.parse('2026-08-05T12:00:00Z');
+  assert.equal(r.outcomeStripHTML([], now), '');
+  assert.equal(r.outcomeStripHTML(null, now), '');
+  assert.equal(r.outcomeStripHTML([{ status: 'success', at: '2026-08-05T11:00:00Z' }], now), '');
+});
+
+test('lastIncidentHTML names the papered-over outcome with its age', () => {
+  const now = Date.parse('2026-08-05T12:00:00Z');
+  const html = r.lastIncidentHTML({ status: 'rolled_back', at: '2026-08-05T10:00:00Z' }, now);
+  assert.match(html, /data-testid="last-incident"/);
+  assert.match(html, /↺ rolled back · 2h ago/);
+  // A failure wears the failure glyph, not the rollback arrow.
+  assert.match(
+    r.lastIncidentHTML({ status: 'failed', at: '2026-08-05T10:00:00Z' }, now),
+    /✗ failed/,
+  );
+  assert.match(
+    r.lastIncidentHTML({ status: 'heal_exhausted', at: '2026-08-05T10:00:00Z' }, now),
+    /✗ self-heal failed/,
+  );
+  // Absent field (server says the badge already covers it) renders nothing.
+  assert.equal(r.lastIncidentHTML(null, now), '');
+});
+
+test('retryNoteHTML marks only a follows_rollback success, carrying the rollback id', () => {
+  const html = r.retryNoteHTML({ follows_rollback: true, rollback_event_id: 42 });
+  assert.match(html, /^<button /);
+  assert.match(html, /data-testid="retry-note"/);
+  assert.match(html, /data-rollback-id="42"/);
+  assert.match(html, /↺ after rollback/);
+  // An evicted rollback event drops the id but keeps the note — the history
+  // panel still holds the record.
+  const evicted = r.retryNoteHTML({ follows_rollback: true });
+  assert.match(evicted, /data-testid="retry-note"/);
+  assert.doesNotMatch(evicted, /data-rollback-id/);
+  // An ordinary success renders nothing.
+  assert.equal(r.retryNoteHTML({ status: 'success' }), '');
+  assert.equal(r.retryNoteHTML(null), '');
+});

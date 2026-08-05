@@ -527,6 +527,72 @@ function rosterHealthPillHTML(stack, health) {
   return health && health.status ? healthPillHTML(stack, health.status) : '';
 }
 
+// outcomeLabel says a terminal status in words for the strip tooltips and the
+// last-incident line — same phrasing as the badges.
+function outcomeLabel(status) {
+  if (status === 'rolled_back') return 'rolled back';
+  if (status === 'rolled_back_unhealthy') return 'rolled back · unhealthy';
+  if (status === 'heal_exhausted') return 'self-heal failed';
+  return status;
+}
+
+// outcomeStripHTML is the roster status cell's mini-history: the stack's last
+// terminal outcomes as small status-coloured dots, oldest → newest left →
+// right, so the strip reads as a timeline running into the badge — a success
+// can no longer paper over the rollback right behind it. recent arrives
+// newest-first on the roster entry (`stacks` snapshot, audit order); the strip
+// reverses it. Decoration, not a control: the row's own click opens the
+// deploy-history panel where every dot's full record lives, and the dots are
+// aria-hidden (badge + incident line carry the same facts in words). Empty
+// with fewer than two records — a lone dot only repeats the badge. Takes the
+// clock (nowMs) for the dot tooltips, so it stays pure.
+function outcomeStripHTML(recent, nowMs) {
+  const recs = recent || [];
+  if (recs.length < 2) return '';
+  const dots = recs
+    .slice()
+    .reverse()
+    .map(function (r) {
+      const age = phaseDuration(nowMs - new Date(r.at).getTime());
+      const title =
+        outcomeLabel(r.status) +
+        ' · ' +
+        age +
+        ' ago' +
+        (r.commit ? ' · ' + shortSHA(r.commit) : '');
+      return `<span class="outcome-dot" data-testid="outcome-dot" data-status="${escapeAttr(r.status)}" title="${escapeAttr(title)}"></span>`;
+    })
+    .join('');
+  return `<span class="outcome-strip" data-testid="outcome-strip" aria-hidden="true">${dots}</span>`;
+}
+
+// lastIncidentHTML names the newest bad outcome when later successes have
+// taken the badge — the line that keeps a recovered rollback readable without
+// opening anything. The server omits last_incident when the badge already says
+// it (or no bad record is retained), so an empty render needs no client rule.
+// The full timestamp rides the title; the glyph matches the narrated log's.
+function lastIncidentHTML(incident, nowMs) {
+  if (!incident || !incident.status) return '';
+  const glyph = incident.status.indexOf('rolled_back') === 0 ? '↺' : '✗';
+  const age = phaseDuration(nowMs - new Date(incident.at).getTime());
+  return `<span class="last-incident" data-testid="last-incident" title="${escapeAttr(fullTime(incident.at))}">${glyph} ${escapeHtml(outcomeLabel(incident.status))} · ${escapeHtml(age)} ago</span>`;
+}
+
+// retryNoteHTML pairs a success row with the rollback it supersedes
+// (follows_rollback on the event — UI_SPEC.md "Rollback linkage"): a small
+// rollback-tinted note under the badge, so the success names the rollback it
+// redeems instead of papering over it. A real button: activating it jumps to
+// the rollback's own row when still rendered, else opens the row's
+// deploy-history panel (the click handler's job). data-rollback-id rides along
+// when the rollback event is still in the bounded history.
+function retryNoteHTML(ev) {
+  if (!ev || !ev.follows_rollback) return '';
+  const id = ev.rollback_event_id
+    ? ` data-rollback-id="${escapeAttr(String(ev.rollback_event_id))}"`
+    : '';
+  return `<button type="button" class="retry-note" data-testid="retry-note"${id} title="This success redeploys a change that was rolled back — open the rollback">↺ after rollback</button>`;
+}
+
 // autosyncDetailHTML is the second line of an autosync drawer row: what the
 // stack is waiting on when it is queued (item), else its resting state. entry
 // is the stack's autosync snapshot entry, item its pending queue entry (if any).
@@ -1019,6 +1085,10 @@ if (typeof module !== 'undefined' && module.exports) {
     rosterVersionCellHTML,
     rosterStatusHTML,
     rosterHealthPillHTML,
+    outcomeLabel,
+    outcomeStripHTML,
+    lastIncidentHTML,
+    retryNoteHTML,
     autosyncDetailHTML,
     autosyncPosText,
     autosyncReasonChipHTML,

@@ -3627,8 +3627,43 @@
      SUCCESS/FAILED badge, instead of competing with the .cell-stack icons. */
   .status-cell:has(.hook-phase),
   .status-cell:has(.health-pill),
+  .status-cell:has(.retry-note),
   .roster-status:has(.hook-phase),
-  .roster-status:has(.health-pill) { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+  .roster-status:has(.health-pill),
+  .roster-status:has(.outcome-strip),
+  .roster-status:has(.last-incident) { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+
+  /* Outcome strip: the roster row's mini-history — one dot per terminal audit
+     record, oldest → newest so it reads as a timeline into the badge. Colours
+     reuse the audit-row status tiers; dots are aria-hidden decoration (the
+     badge + incident line say the same in words). */
+  .outcome-strip { display: inline-flex; align-items: center; gap: 3px; }
+  .outcome-dot { width: 6px; height: 6px; border-radius: 50%; flex: none;
+    background: color-mix(in srgb, var(--oc, var(--overlay1)) 75%, transparent); }
+  .outcome-dot[data-status="success"]               { --oc: var(--success); }
+  .outcome-dot[data-status="failed"]                { --oc: var(--danger); }
+  .outcome-dot[data-status="rolled_back"]           { --oc: var(--rollback); }
+  .outcome-dot[data-status="rolled_back_unhealthy"] { --oc: var(--danger); }
+  .outcome-dot[data-status="healed"]                { --oc: var(--success); }
+  .outcome-dot[data-status="heal_exhausted"]        { --oc: var(--danger); }
+
+  /* Last-incident line: names the newest bad outcome that later successes have
+     papered over (server-side rule — absent when the badge already says it). */
+  .last-incident {
+    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
+    color: var(--rollback);
+  }
+
+  /* Retry note: pairs a success with the rollback it supersedes (the deploy
+     table's status cell; same tier as the incident line). Rendered as a real
+     button — it jumps to the rollback row or opens the history panel. */
+  .retry-note {
+    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
+    color: var(--rollback); background: none; border: 0; padding: 0; cursor: pointer;
+  }
+  .retry-note:hover { text-decoration: underline; }
   .hook-phase {
     display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
     font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
