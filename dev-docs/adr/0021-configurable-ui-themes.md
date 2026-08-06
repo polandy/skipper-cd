@@ -103,3 +103,26 @@ silent trap when someone forgets they set it. Full behaviour:
 - The per-browser override intentionally has no server-side counterpart (no
   endpoint, no persistence beyond `localStorage`) — it is a personal viewing
   preference, not a deployment setting, by design.
+
+## Amendment (2026-08-06): a sixth palette, and the lockstep is now tested
+
+`flake` joins the five palettes named above, added through exactly the
+mechanism this ADR predicted — one CSS block per variant plus a
+`themeIdentity` entry — so the decision itself is unchanged. Two notes the
+addition surfaced:
+
+The consequence above claims the three places a theme lives stay "in lockstep
+by construction". That held for two of them: `config.validateConfig` rejects a
+name outside `uitheme.ValidThemes`, and `themeIdentities` has a Catppuccin
+fallback. The **stylesheet** had no such guard — a name in `ValidThemes` whose
+`:root[data-theme="…"]` block is missing passes validation and serves a page
+styled by the bare-`:root` fallback, silently wearing Catppuccin's colours
+under another name's label. `internal/ui/theme_test.go` now asserts all three
+sides against `ValidThemes`, including the per-host `--host-*` slots and the
+picker's `<option>` list, so the gap is closed by test rather than by claim.
+
+A palette may also need its accent to be a *different colour* per variant
+rather than the same one retuned, when the source palette's accent cannot
+clear contrast on both grounds — `flake` is the first to do so. Nothing in the
+token design prevents this; it is worth naming because the other five made the
+opposite choice and it could otherwise read as an inconsistency.

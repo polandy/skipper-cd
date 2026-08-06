@@ -117,13 +117,10 @@
     color-scheme: light;
   }
 
-  /* Flake — Nix blue on a cool near-black, with an LED green for anything
-     running. The accent flips between the palette's two blues rather than
-     reusing one: the darker #5277c3 reaches only ~3.5:1 on the dark ground,
-     so dark takes the lighter #7ebae4 and light takes the darker blue. Amber
-     and red are status-only here; nothing decorative uses them. Rollback has
-     no counterpart in the source palette and takes a lighter tint of the red
-     rather than introducing a sixth hue. */
+  /* Flake — blue on a cool near-black, LED green for anything running. The one
+     palette whose accent is a different colour per variant, not the same one
+     retuned: #5277c3 reaches only ~3.5:1 on the dark ground (ADR-0021
+     amendment). Rollback has no counterpart here and tints the red. */
   :root[data-theme="flake"] {
     --crust: #0e1116; --mantle: #14181f; --base: #1a1f28; --surface0: #262e3a;
     --overlay1: #7b8698; --overlay2: #93a0b3; --subtext0: #a8b4c5; --text: #e4eaf2;
