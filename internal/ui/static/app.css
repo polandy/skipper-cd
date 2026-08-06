@@ -3889,16 +3889,17 @@
   .clog-foot .clog-stat.err::before { color: var(--h-unhealthy); }
   @media (prefers-reduced-motion: reduce) { .clog-live .clog-dot { animation: none; } .clog-body { scroll-behavior: auto; } }
 
-  /* Fullscreen fills the whole viewport, header included — it is the shared
-     .clog-panel.clog-fullscreen rule, nothing Logs-specific. The way back out
-     is the panel's own fullscreen tool (still on screen, in the filter row) or
-     Esc; the header is deliberately not one of them, since keeping it visible
-     is exactly the strip of screen fullscreen exists to reclaim. */
-  #log-view.clog-fullscreen { background: var(--crust); }
-  /* The panel sits inside `main`, whose own z-index opens a stacking context —
-     so the panel's z-index is scoped to it and cannot reach past the sticky
-     header on its own, however high it goes. main is what has to outrank the
-     header while fullscreen is on. */
+  /* Fullscreen fills the whole viewport, header included — that is the shared
+     .clog-panel.clog-fullscreen rule doing the work, nothing Logs-specific, so
+     there is no #log-view rule for the box itself. The way back out is the
+     panel's own fullscreen tool (still on screen, in the filter row) or Esc; the
+     header is deliberately not one of them, since keeping it visible is exactly
+     the strip of screen fullscreen exists to reclaim.
+
+     What *is* Logs-specific: the panel sits inside `main`, whose own z-index
+     opens a stacking context, so the panel's z-index is scoped to it and cannot
+     reach past the sticky header however high it goes. main is what has to
+     outrank the header, at the same layer the panel asks for. */
   body.view-logs:has(#log-view.clog-fullscreen) main { z-index: 300; }
   #log-pane.wrap .log-msg, #log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .log-line.clog-out { display: none; }

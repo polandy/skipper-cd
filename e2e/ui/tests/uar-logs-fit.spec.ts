@@ -14,7 +14,7 @@ import type { Page } from '@playwright/test';
 // inside the pane instead. It also pins the chrome the same report reshaped:
 // the panel has no title bar and its filter row carries live + the tools
 // (UAR3), fullscreen covers the header and ends with the view (UAR4), and the
-// header itself wraps rather than scrolling sideways (UAR5).
+// header itself stays one row that never scrolls sideways (UAR5).
 // Behaviour-only, no snapshot.
 
 // Long enough that its diff line cannot fit any of the viewports below, so the
