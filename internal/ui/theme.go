@@ -38,6 +38,10 @@ var themeIdentities = map[string]themeIdentity{
 		darkMantle: "#191724", darkBase: "#1f1d2e", darkText: "#e0def4", darkAccent: "#c4a7e7", darkSuccess: "#9ccfd8",
 		lightBase: "#fffaf3", lightText: "#575279", lightAccent: "#907aa9", lightSuccess: "#56949f",
 	},
+	uitheme.ThemeFlake: {
+		darkMantle: "#14181f", darkBase: "#1a1f28", darkText: "#e4eaf2", darkAccent: "#7ebae4", darkSuccess: "#3ddc84",
+		lightBase: "#f2f4f6", lightText: "#14181f", lightAccent: "#5277c3", lightSuccess: "#12794a",
+	},
 }
 
 // themeIdentityFor returns the identity for name, falling back to Catppuccin

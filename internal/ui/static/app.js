@@ -3573,6 +3573,7 @@
       solarized: 'Solarized',
       gruvbox: 'Gruvbox',
       'rose-pine': 'Rosé Pine',
+      flake: 'Flake',
     };
     const serverTheme = document.documentElement.getAttribute('data-server-theme');
     const themeSelect = document.getElementById('theme-select');

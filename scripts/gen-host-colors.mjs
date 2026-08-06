@@ -36,6 +36,7 @@ const themes = {
   solarized: [52, 66, 62, 44],
   gruvbox: [48, 70, 55, 42],
   'rose-pine': [50, 74, 46, 47],
+  flake: [58, 72, 58, 44],
 };
 
 const line = (hexes) => hexes.map((c, i) => `--host-${i}:${c};`).join(' ');
