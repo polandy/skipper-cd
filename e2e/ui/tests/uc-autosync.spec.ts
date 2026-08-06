@@ -604,3 +604,57 @@ test.describe('UC15: a re-render keeps the switch nodes', () => {
     await expect(web).toHaveAttribute('aria-checked', 'false');
   });
 });
+
+// UC16 — The drawer opens at its top. Opening it moves focus to the global
+// switch, and a plain focus() scrolls that switch into view. While the
+// max-height transition still has the drawer clipped to a sliver, that scroll
+// parks it past its own first rows: the global row — the one control the
+// surface is about — ends up cut off above the drawer's edge, and on a page
+// that cannot scroll (the Logs view) there is nothing obvious to scroll back
+// with. Reported from a tablet, 2026-08-05.
+//
+// The sliver window is what makes the bug, so this case holds the drawer inside
+// it: the open transition is slowed right down, and the assertion is taken at a
+// settled state within that window — the moment focus lands on the switch — not
+// after a wait. `focus({ preventScroll: true })` is what keeps it at zero.
+test.describe('UC16: the drawer opens at its top', () => {
+  // Enough stacks that the drawer's content is genuinely taller than the drawer:
+  // with nothing to scroll there is no offset to get wrong.
+  test.use({
+    startOptions: {
+      stacks: ['web', 'api', 'db', 'cache', 'queue', 'mail', 'wiki', 'vault', 'photos', 'notes'],
+    },
+    viewport: { width: 744, height: 620 },
+  });
+
+  test('focus lands on the global switch without scrolling the drawer', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
+    // Hold the drawer in its mid-open sliver: the bug needs the scroll box to be
+    // shorter than the focus target's offset at the moment focus lands.
+    await page.addStyleTag({ content: '.drawer { transition-duration: 3s !important; }' });
+
+    const drawer = page.locator('[data-testid="autosync-drawer"]');
+    await page.locator('[data-testid="autosync-btn"]').click();
+    // Focus landing is the settled state this asserts against — not a wait.
+    await expect(page.locator('[data-testid="global-switch"]')).toBeFocused();
+    expect(await drawer.evaluate((el) => Math.round(el.scrollTop))).toBe(0);
+
+    // And once it has finished opening, the global row is inside the drawer,
+    // not clipped above its top edge.
+    await expect(drawer).toHaveAttribute('data-settled', 'true');
+    const geom = await drawer.evaluate((el) => {
+      const row = el.querySelector('.global-row')!;
+      return {
+        scrollTop: Math.round(el.scrollTop),
+        drawerTop: Math.round(el.getBoundingClientRect().top),
+        rowTop: Math.round(row.getBoundingClientRect().top),
+      };
+    });
+    expect(geom.scrollTop).toBe(0);
+    expect(geom.rowTop).toBeGreaterThanOrEqual(geom.drawerTop);
+  });
+});

@@ -2018,7 +2018,10 @@
         if (!surface.classList.contains('open')) return; // toggled off already
         if (focusRestsInside(surface)) return; // observer moved focus in — don't override
         const target = focusablesIn(surface)[0] || surface;
-        target.focus();
+        // preventScroll: the surface is mid-open, so its scroll box is still a
+        // sliver — a scroll-into-view here leaves the drawer parked past its own
+        // first rows, with the control the viewer came for cut off at the top.
+        target.focus({ preventScroll: true });
         if (document.activeElement === target || --tries <= 0) return;
         requestAnimationFrame(settle);
       })();
@@ -2027,7 +2030,8 @@
       const returnFocus = surface._opener && (!ae || ae === document.body || surface.contains(ae));
       const opener = surface._opener;
       surface._opener = null;
-      if (returnFocus && opener && typeof opener.focus === 'function') opener.focus();
+      if (returnFocus && opener && typeof opener.focus === 'function')
+        opener.focus({ preventScroll: true });
     }
   }
   // trapFocus keeps Tab/Shift+Tab within an open dialog (wraps at the ends).
@@ -3435,20 +3439,42 @@
     rosterFilter.focus();
   });
 
+  // Hooks into the Logs panel's own wiring, which is set up further down the
+  // file. Declared here, ahead of their first use, so no earlier call can hit
+  // them uninitialised; each is inert until then.
+  let logSearchIsOpen = function () {
+    return false;
+  };
+  let logSearchToggle = function () {};
+  // Re-applies the in-log filter after a re-render, so fresh lines obey it.
+  let logSearchApply = function () {};
+  // Drops the Logs panel out of fullscreen. A view switch calls it because
+  // fullscreen is a viewport-filling overlay: left on, it covers whichever view
+  // the viewer moved to.
+  let exitLogFullscreen = function () {};
+
+  // What the trigger below searches depends on the view, so its label does too.
+  const SEARCH_LABEL_STACKS = 'Search stacks';
+  const SEARCH_LABEL_LOG = 'Search in log';
+
   // T3.11 — always-visible search trigger. The stack filter used to be
   // desktop-invisible (type-to-search only, an easter egg); this header magnifier
-  // opens the same bar for the active view. View-aware, and hidden on Logs (which
-  // has its own in-panel search) and on mobile (the popover entry covers it there)
-  // via CSS. syncStackSearchBtn reflects the bar's open state on the trigger.
+  // opens the same bar for the active view — on Logs too, where it opens the
+  // in-log search: one magnifier, same place, whichever view is up. Hidden only
+  // on mobile (the popover entry covers it there) via CSS. syncStackSearchBtn
+  // reflects the bar's open state on the trigger.
   function syncStackSearchBtn() {
-    const open =
-      activeView === 'deploys'
-        ? deployFilterWrap.classList.contains('revealed')
-        : activeView === 'stacks'
-          ? rosterFilterWrap.classList.contains('revealed')
-          : false;
+    const onLogs = activeView === 'logs';
+    const open = onLogs
+      ? logSearchIsOpen()
+      : activeView === 'stacks'
+        ? rosterFilterWrap.classList.contains('revealed')
+        : deployFilterWrap.classList.contains('revealed');
     stackSearchBtn.classList.toggle('active', open);
     stackSearchBtn.setAttribute('aria-expanded', String(open));
+    const label = onLogs ? SEARCH_LABEL_LOG : SEARCH_LABEL_STACKS;
+    stackSearchBtn.title = label;
+    stackSearchBtn.setAttribute('aria-label', label);
   }
   stackSearchBtn.addEventListener('click', function () {
     if (activeView === 'deploys') {
@@ -3463,6 +3489,8 @@
         revealRosterFilter(true);
         rosterFilter.focus();
       }
+    } else if (activeView === 'logs') {
+      logSearchToggle();
     }
   });
 
@@ -3865,6 +3893,10 @@
     // marks the end of that window so a test (or any caller) can wait for the
     // drawer to stop moving instead of clicking into the transition (T8).
     asDrawer.dataset.settled = 'false';
+    // Always open at the top: the drawer is taller than it is tall enough to
+    // show, so a leftover scroll offset from the previous visit would hide the
+    // global switch — the row the whole surface is about.
+    if (open) asDrawer.scrollTop = 0;
     manageSurfaceFocus(asDrawer, asBtn, open);
   }
   asDrawer.addEventListener('transitionend', function (e) {
@@ -4091,9 +4123,6 @@
   const savedView = localStorage.getItem('activeView');
   let activeView = savedView === 'logs' || savedView === 'stacks' ? savedView : 'deploys';
   let logSource = null;
-  // Re-applies the Logs-view in-log filter after a re-render; set by the logs
-  // toolbar wiring (ADR-0037), a no-op until then and when no search is active.
-  let logSearchApply = function () {};
 
   // ── Logs-view quick filters ──
   // Severity threshold + kind set + stack set, persisted per browser so a
@@ -4197,7 +4226,6 @@
 
   // ── Quick filters ──
   const logQuickBar = document.getElementById('log-quick-bar');
-  const logQuickBtn = document.getElementById('log-quick-open');
   const logQuickCount = document.getElementById('log-quick-count');
   const logStackChips = document.getElementById('log-stack-chips');
   const logStackSep = document.getElementById('log-stack-sep');
@@ -4302,14 +4330,6 @@
       return;
     }
     if (chip.dataset.stack) toggleLogStackFilter(chip.dataset.stack);
-  });
-
-  // The chip row is shown by default (a persisted filter must stay visible),
-  // but it can be folded away when the pane is the only thing wanted.
-  logQuickBtn.addEventListener('click', function () {
-    const shown = logQuickBar.classList.toggle('clog-hide') === false;
-    logQuickBtn.classList.toggle('on', shown);
-    logQuickBtn.setAttribute('aria-expanded', String(shown));
   });
 
   // A stack prefix in a line is the fastest way to narrow to that stack.
@@ -4583,6 +4603,7 @@
 
   function applyView() {
     clog.close(); // a container-log panel belongs to its row; drop it on a view switch
+    if (activeView !== 'logs') exitLogFullscreen(); // it would overlay the new view
     document.body.classList.toggle('view-logs', activeView === 'logs');
     document.body.classList.toggle('view-stacks', activeView === 'stacks');
     viewButtons.forEach(function (btn) {
@@ -5108,9 +5129,12 @@
       const head = d.branch && d.branch !== 'main' ? d.branch : base;
       const text = d.commit ? head + ' · ' + d.commit : head;
       el.textContent = text;
-      // The label may be clipped (ellipsis) on narrow viewports or long branch
-      // names; the title exposes the full identity on hover / long-press.
+      // The label may be clipped (ellipsis) on a long branch name, and it is
+      // hidden entirely below 1000px — so the identity also rides the logo,
+      // where a hover tooltip or a tap-tip reaches it at every width.
       el.title = text;
+      const icon = document.querySelector('.brand-icon');
+      if (icon) icon.title = text;
     })
     .catch(function () {});
 
@@ -5311,6 +5335,7 @@
     function revealLogFilter(on) {
       wrap.classList.toggle('revealed', on);
       searchBtn.classList.toggle('on', on);
+      syncStackSearchBtn(); // the header magnifier opens this same bar
     }
     function clearLogFilter(hide) {
       input.value = '';
@@ -5338,16 +5363,22 @@
     input.addEventListener('blur', function () {
       if (!input.value) revealLogFilter(false);
     });
-    // Clicking the tool again closes it (and clears the query), matching the
-    // container-log panel's search tool.
-    searchBtn.addEventListener('click', function () {
+    // Clicking again closes it (and clears the query), matching the
+    // container-log panel's search tool. The header magnifier drives the same
+    // toggle on this view, so both read and leave the one state.
+    function toggleLogSearch() {
       if (wrap.classList.contains('revealed')) {
         clearLogFilter(true);
         return;
       }
       revealLogFilter(true);
       input.focus();
-    });
+    }
+    logSearchToggle = toggleLogSearch;
+    logSearchIsOpen = function () {
+      return wrap.classList.contains('revealed');
+    };
+    searchBtn.addEventListener('click', toggleLogSearch);
 
     wrapBtn.addEventListener('click', function () {
       wrapBtn.classList.toggle('on', logPane.classList.toggle('wrap'));
@@ -5357,6 +5388,9 @@
       view.classList.toggle('clog-fullscreen', on);
       fsBtn.classList.toggle('on', on);
     }
+    exitLogFullscreen = function () {
+      setLogFullscreen(false);
+    };
     fsBtn.addEventListener('click', function () {
       setLogFullscreen(!view.classList.contains('clog-fullscreen'));
     });

@@ -202,7 +202,6 @@
     --font-display: 'DM Sans', 'DM Sans Fallback Ubuntu', 'DM Sans Fallback DejaVu', 'DM Sans Fallback Liberation', sans-serif;
     --font-mono: 'JetBrains Mono', 'JetBrains Mono Fallback Ubuntu', 'JetBrains Mono Fallback DejaVu', 'JetBrains Mono Fallback Liberation', 'SF Mono', 'Cascadia Code', monospace;
     --radius: 8px;
-    --app-header-h: 56px; /* the sticky header height; the Logs fullscreen fills below it */
   }
 
   /* Light themes: darken the queued amber used as text so tag/badge/count
@@ -347,6 +346,12 @@
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.3px;
+    /* Same rule as the version label below: clip, never wrap. A squeezed header
+       broke `skipper-cd` across two lines, and the second line then sat under
+       the control row it had just been pushed out of. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .brand-name span {
@@ -2294,12 +2299,16 @@
     gap: 6px;
   }
   html:not(.header-tour-seen) header { height: auto; min-height: 74px; }
-  html:not(.header-tour-seen) { --app-header-h: 74px; }
+  /* The captions are wider than the glyphs they sit under, so for the one visit
+     they are up the row tightens rather than growing past the viewport. */
+  @media (min-width: 701px) and (max-width: 1000px) {
+    html:not(.header-tour-seen) .status-area { gap: 10px; }
+    html:not(.header-tour-seen) .ht-lbl { font-size: 9px; }
+  }
   /* A caption whose control isn't currently rendered would float with no glyph
-     under it, so drop it: the search glyph is hidden on the Logs view, and the
-     Hosts control only exists on a multi-host instance (.hosts-btn.enabled). The
-     wrapper then has no visible child and collapses to nothing. */
-  html:not(.header-tour-seen) body.view-logs .ht-cap-search .ht-lbl { display: none; }
+     under it, so drop it: the Hosts control only exists on a multi-host instance
+     (.hosts-btn.enabled). The wrapper then has no visible child and collapses to
+     nothing. (The search glyph used to need this too — it is on every view now.) */
   html:not(.header-tour-seen) .ht-cap-hosts:not(:has(.hosts-btn.enabled)) .ht-lbl { display: none; }
 
   @keyframes ht-cap-in {
@@ -2562,7 +2571,6 @@
   .stack-search-btn:hover { color: var(--text-secondary); }
   .stack-search-btn.active { color: var(--accent); }
   .stack-search-btn .ss-ico { display: block; width: 18px; height: 18px; }
-  body.view-logs .stack-search-btn { display: none; }
 
   /* ─── AUTOSYNC HEADER CONTROL ─── */
   /* Icon-only, like the filter toggles: no box or label. Muted by default
@@ -3039,8 +3047,27 @@
     min-height: 0;
     overflow: hidden;
   }
-  body.view-logs main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  body.view-logs #log-view { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; }
+  /* The pane is the page here, so main drops its centred column, its padding
+     and its margins: a log line is the widest thing the UI renders, and margins
+     around it are screen a viewer paid for. Fullscreen is then only about hiding
+     the header too, not the only way to get the width.
+
+     `width: 100%` is load-bearing on top of that. main's side margins are `auto`
+     in the base rule, and auto margins in this flex column's *cross* axis
+     suppress the stretch that would size it to the viewport — leaving it
+     shrink-to-fit, i.e. at least its min-content width, which one pre-formatted
+     diff line inside the pane pushes past a tablet. An explicit width takes
+     shrink-to-fit out of the picture whatever the margins later become. */
+  body.view-logs main {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+    width: 100%; max-width: none; margin: 0; padding: 0;
+  }
+  body.view-logs #log-view {
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
+    margin: 0; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0;
+  }
+  /* Full width earns the fullscreen type size — the same one .clog-fullscreen uses. */
+  body.view-logs #log-pane.clog-body { font-size: 12px; }
   /* position: relative anchors the "N new lines" pill over the pane's lower
      edge. It lives on the :not(.clog-fullscreen) rule deliberately: on
      `body.view-logs #log-view` it would out-specify the fullscreen rule's
@@ -3055,16 +3082,33 @@
   #log-filter-wrap { display: none; }
   #log-filter-wrap.revealed { display: flex; }
 
-  /* Quick filters — the chip row under the Logs panel head. Same chrome as the
+  /* Quick filters — the Logs panel's one chrome row. Same chrome as the
      container-log panel's per-service chip row (.clog-svcs/.clog-chip) so the
-     two read as one control family; the difference is that this row is shown by
-     default. It has to be: the filter state persists across reloads, and a
-     narrowed pane that hides its own filter reads as an empty log. */
+     two read as one control family; the difference is that this row is always
+     shown. It has to be: the filter state persists across reloads, a narrowed
+     pane that hides its own filter reads as an empty log, and since the view
+     dropped its title bar (the view switch already names it) this row carries
+     the live pill and the pane tools too. It takes the head's background for
+     that reason — it *is* the head now. */
   .clog-quick {
     display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px 12px;
-    background: var(--bg-base); border-bottom: 1px solid var(--border);
+    background: var(--mantle); border-bottom: 1px solid var(--border);
   }
-  .clog-quick.clog-hide { display: none; }
+  /* First in the row, so it drops .clog-live's leading margin. */
+  .clog-quick .clog-live { margin-left: 0; }
+  /* Right-hand cluster: the count pushes it to the far end (margin-left: auto
+     below), and the tools stay together when the row wraps on a narrow screen. */
+  .clog-tools { display: inline-flex; align-items: center; gap: 2px; }
+  /* One magnifier per viewport. Above the mobile breakpoint the header trigger
+     (T3.11) opens this view's search, so an in-panel tool would be a second
+     control for the same state, a few pixels away. Below it the header glyph is
+     hidden (the view-options popover carries search there) and the Logs view has
+     no popover — so the in-panel tool is the only way in and stays. */
+  @media (min-width: 701px) {
+    #log-search-open { display: none; }
+    /* ...except in fullscreen, where the header magnifier is covered. */
+    #log-view.clog-fullscreen #log-search-open { display: inline-flex; }
+  }
   .clog-quick-lbl { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-right: 2px; }
   .clog-quick-sep { width: 1px; height: 14px; background: var(--border-lit); margin: 0 3px; }
   /* An active severity chip carries its own severity hue rather than the shared
@@ -3101,9 +3145,6 @@
   .clog-newpill[hidden] { display: none; }
   .clog-newpill:hover { background: var(--accent-dim); }
   .clog-newpill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  /* In fullscreen the panel fills the viewport, so the pill follows the pane's
-     bottom edge there too (the foot bar keeps its height). */
-  #log-view.clog-fullscreen .clog-newpill { bottom: 34px; }
 
   /* ─── STACKS VIEW (roster / inventory, dev-docs/stack-roster-spec.md) ─── */
   /* The full set of stacks skipper owns (stack discovery, ADR-0034), each with
@@ -3111,8 +3152,13 @@
   #stacks-view { display: none; }
   body.view-stacks #stacks-view { display: block; }
   body.view-stacks #deploy-table, body.view-stacks #empty-state,
-  body.view-stacks #disabled-stacks, body.view-stacks #orphans,
-  body.view-stacks #log-view { display: none !important; }
+  body.view-stacks #disabled-stacks, body.view-stacks #orphans { display: none !important; }
+  /* The Logs panel belongs to its view — and in fullscreen it is a fixed,
+     viewport-filling overlay whose own `display: flex` would otherwise outrank
+     the base `#log-view { display: none }`, leaving it covering whichever view
+     the viewer switched to. The class is cleared on a view switch as well
+     (applyView), so this is the backstop, not the mechanism. */
+  body:not(.view-logs) #log-view { display: none !important; }
 
   /* Roster rows reuse the deploy row frame minus the status left bar (status is
      the badge); open-state + panel binding are shared with .event-row.audit-open.
@@ -3310,8 +3356,13 @@
      reuses the diff panel's line classes so one diff looks the same wherever
      it is rendered. Breaks the flex row so it spans the full width. */
   .log-diff {
-    flex: 1 0 100%;
-    margin: 2px 0 4px 62px;
+    /* The basis discounts the indent: a full 100% *plus* a left margin is wider
+       than the row, and with flex-shrink 0 nothing takes it back — the block
+       then pushes the pane sideways on every viewport narrow enough to notice.
+       One variable so the phone's tighter indent below stays in step. */
+    --log-diff-indent: 62px;
+    flex: 1 0 calc(100% - var(--log-diff-indent));
+    margin: 2px 0 4px var(--log-diff-indent);
     padding: 4px 0;
     border-left: 2px solid var(--border-lit);
     font-size: 11px;
@@ -3357,6 +3408,12 @@
 
   /* Both narrow layouts, tablet and phone. */
   @media (max-width: 1000px) {
+    /* The brand text goes: below this the control cluster wants the width, and
+       what is left squeezes the wordmark and the version label down to a
+       character and an ellipsis — a sliver beside the logo that reads as
+       breakage, not as identity. The ship alone carries the brand here, and the
+       full `v<semver> · <commit>` string moves to its tooltip / tap-tip. */
+    .brand-text { display: none; }
     /* With the files pill gone the row itself is the way into the diff — the
        click handler already falls back to the row's own pill. */
     .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
@@ -3377,8 +3434,7 @@
   }
 
   @media (max-width: 700px) {
-    header { padding: 0 12px; height: 48px; }
-    :root { --app-header-h: 48px; }
+    header { padding: 0 10px; height: 48px; }
 
     /* A log line is a flex row of identity (time · level · [stack]) plus the
        message plus the dim attrs blob. On a phone the last two share what is
@@ -3393,8 +3449,23 @@
        stop sharing one row. */
     .log-line .log-msg { min-width: 14ch; }
     .log-line .log-attrs { flex: 1 0 100%; padding-left: 12px; }
-    .log-diff { margin-left: 12px; }
-    .status-area { gap: 10px; }
+    .log-diff { --log-diff-indent: 12px; }
+    /* The row is a fixed set of glyphs in a width that varies by phone, and it
+       must never scroll sideways — the header is how every other surface is
+       reached. Two things buy that room: a tighter gap, and dropping the
+       light/dark toggle. The toggle is the one control here whose job is done
+       once: the palette is a per-browser preference set once and then left
+       alone, unlike the beacon, the badges or the view switch, which report
+       state that changes under the viewer. It stays reachable from any wider
+       viewport, and the saved choice keeps applying on the phone. */
+    .status-area { gap: 6px; }
+    #theme-toggle { display: none; }
+    /* The Hosts control compacts to its glyph (plus the red dot when a peer is
+       unreachable — that is state, not decoration): the `n/m` count and the
+       chevron both restate what the drawer says the moment it opens, and the
+       drawer is one tap away. Same rule as the beacon and the incident badge
+       above — keep the identity token and the alarm, drop the read-out. */
+    .hosts-btn .hb-count, .hosts-btn .hb-chev { display: none; }
     /* Attention chips compact to one identity token + count each, so the
        beacon (pulsing dot — "broken now") and the incident badge (↺ —
        "broken recently") fit the 48px row side by side in the worst case,
@@ -3402,11 +3473,6 @@
     .health-beacon { padding: 3px 8px; gap: 5px; font-size: 11px; }
     .health-beacon .hb-icon { display: none; }
     .incident-badge { padding: 3px 8px; gap: 4px; font-size: 11px; }
-    /* Wordmark is dropped — the ship logo alone carries the brand on mobile so
-       the control row fits without horizontal scroll. The version is kept in
-       portrait (re-shown below) but dropped in the tighter landscape. */
-    .brand-name { display: none; }
-    .brand-version { display: none; }
     /* Filter toggles are glyph-only on every viewport now (see base rules).
        Deploy-status and connection are already glyph-only via base rules; here
        we drop the deploying stack name and the look-ahead trail (both remain in
@@ -3507,22 +3573,7 @@
     html:not(.header-tour-seen) .ht-lbl,
     html:not(.header-tour-seen) .ht-lbl-row { display: none; }
     html:not(.header-tour-seen) header { height: 48px; min-height: 0; }
-    html:not(.header-tour-seen) { --app-header-h: 48px; }
     .header-tour { display: none; }
-  }
-
-  /* Portrait phones keep the build identity next to the logo. It clips with an
-     ellipsis and can shrink (min-width:0) so the header never scrolls sideways;
-     the full string stays available via the title tooltip / long-press. */
-  @media (max-width: 700px) and (orientation: portrait) {
-    .brand-version {
-      display: block;
-      max-width: 34vw;
-      min-width: 0;
-      flex-shrink: 1;
-      font-size: 10px;
-      margin-left: 0;
-    }
   }
 
   /* ── Container logs (ADR-0037): a live `docker compose logs` panel opened from
@@ -3838,12 +3889,18 @@
   .clog-foot .clog-stat.err::before { color: var(--h-unhealthy); }
   @media (prefers-reduced-motion: reduce) { .clog-live .clog-dot { animation: none; } .clog-body { scroll-behavior: auto; } }
 
-  /* skipper Logs view fullscreen fills the viewport below the sticky header, so
-     the header stays reachable to toggle it back off (unlike a trailing
-     clog-panel, which fills the whole viewport — see .clog-panel.clog-fullscreen
-     above). */
-  #log-view.clog-fullscreen { position: fixed; inset: var(--app-header-h) 0 0 0; z-index: 80;
-     background: var(--crust); display: flex; flex-direction: column; }
+  /* Fullscreen fills the whole viewport, header included — that is the shared
+     .clog-panel.clog-fullscreen rule doing the work, nothing Logs-specific, so
+     there is no #log-view rule for the box itself. The way back out is the
+     panel's own fullscreen tool (still on screen, in the filter row) or Esc; the
+     header is deliberately not one of them, since keeping it visible is exactly
+     the strip of screen fullscreen exists to reclaim.
+
+     What *is* Logs-specific: the panel sits inside `main`, whose own z-index
+     opens a stacking context, so the panel's z-index is scoped to it and cannot
+     reach past the sticky header however high it goes. main is what has to
+     outrank the header, at the same layer the panel asks for. */
+  body.view-logs:has(#log-view.clog-fullscreen) main { z-index: 300; }
   #log-pane.wrap .log-msg, #log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .log-line.clog-out { display: none; }
   /* The quick filters' own hide class. Separate from .clog-out (the in-log

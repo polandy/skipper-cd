@@ -1113,8 +1113,11 @@ discoverable — before this it was type-to-search only, an easter egg. Behaviou
   `aria-expanded="true"`; a second click folds the bar away and clears both.
 - **UAB2 — Stacks.** On the Stacks view the same magnifier opens the roster
   filter (`roster-filter-wrap`) and focuses it — the trigger is view-aware.
-- **UAB3 — Logs hidden.** The magnifier is hidden on the Logs view (which has
-  its own in-panel search) and returns when switching back to Deploys.
+- **UAB3 — Logs.** On the Logs view the same magnifier opens the **in-log
+  search**: the bar reveals, the input focuses, typing narrows the log, and a
+  second click folds it away and clears the query. Back on Deploys it drives the
+  deploy filter again. (It used to be hidden here — the one view where the
+  header's search glyph vanished.)
 - **UAB4 — Type-to-search parity.** Typing still reveals the bar and seeds the
   first character, and the magnifier reflects a bar opened by typing (`.active`
   + `aria-expanded`); `Esc` folds it away and resets the trigger.
@@ -1560,6 +1563,41 @@ surface keeps the rollback readable
 Behaviour-only, no snapshot. The pinning exemption (no-op run summaries are
 not pinned) is covered at the unit layer on both sides (`internal/logbuf`,
 `app-helpers`), where eviction can be driven precisely.
+
+### 4.45 UI — Maske AR: the Logs view fits the display
+
+The 2026-08-05 report from a tablet: the log panel hung off the right edge of
+the screen. The cause was layout, not content — `main`'s auto side margins
+suppress the flex stretch in the Logs view's column, leaving it shrink-to-fit,
+i.e. no narrower than its min-content, and one pre-formatted diff line inside
+the pane is wider than a tablet. The mask pushes a change whose diff carries a
+deliberately long image reference, then asserts the column stays inside the
+viewport and the wide line scrolls where it belongs. It also pins the chrome the
+same report reshaped ([UI_SPEC](../internal/ui/UI_SPEC.md#log-view)):
+
+- **UAR1 — Tablet (744x1133).** `main` and the panel both end at or before the
+  viewport's right edge, and the diff block scrolls horizontally by itself — a
+  positive signal that the wide content is really rendered, not absent.
+- **UAR2 — Phone (390x844).** The same guarantee where the chrome row wraps,
+  plus the search hand-off: the header magnifier is hidden at this width, so the
+  panel's own `log-search` tool is shown and is the way into the in-log search.
+- **UAR3 — One chrome row.** The panel has no `clog-head`; the live pill and the
+  wrap/auto-scroll/fullscreen tools sit in the filter row, and pausing from
+  there still reports paused in the footer. No second magnifier at this width.
+- **UAR4 — Fullscreen covers the header.** With fullscreen on, the element
+  painted at the top-centre of the viewport is the panel (not the header), its
+  box is the whole viewport, and the panel's own search tool is back because the
+  header's magnifier is unreachable; `Esc` gives the header back. Second case:
+  fullscreen on, `Esc`, switch to Deploys — the panel is hidden, its
+  `clog-fullscreen` class cleared and the deploy table visible. It used to stay
+  on top of whichever view followed.
+- **UAR5 — The header never scrolls sideways.** `scrollWidth <= clientWidth` on
+  a 375 px phone with the view switch still reachable, and on a 744 px tablet
+  with the first-run tour showing — the two cases that used to overflow. Both
+  run against a deliberately loaded instance (fanned-in peer, unhealthy stack,
+  theme picker), because an empty header fits anywhere and would assert nothing.
+
+Behaviour-only, no snapshot.
 
 ## 5. Visual snapshot strategy
 
