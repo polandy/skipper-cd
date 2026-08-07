@@ -151,3 +151,12 @@
   --tp-mantle: #faf4ed; --tp-base: #fffaf3; --tp-text: #575279; --tp-sub: #797593;
   --tp-accent: #907aa9; --tp-success: #56949f; --tp-danger: #b4637a;
 }
+
+.tp[data-theme="flake"] {
+  --tp-mantle: #14181f; --tp-base: #1a1f28; --tp-text: #e4eaf2; --tp-sub: #a8b4c5;
+  --tp-accent: #7ebae4; --tp-success: #3ddc84; --tp-danger: #ff5e78;
+}
+.tp[data-theme="flake"].light {
+  --tp-mantle: #e9edf2; --tp-base: #f2f4f6; --tp-text: #14181f; --tp-sub: #49525f;
+  --tp-accent: #5277c3; --tp-success: #12794a; --tp-danger: #c42a45;
+}

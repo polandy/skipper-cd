@@ -15,10 +15,11 @@ const (
 	ThemeSolarized  = "solarized"
 	ThemeGruvbox    = "gruvbox"
 	ThemeRosePine   = "rose-pine"
+	ThemeFlake      = "flake"
 )
 
 // ValidThemes lists every built-in palette, in the order shown in docs.
-var ValidThemes = []string{ThemeCatppuccin, ThemeNord, ThemeSolarized, ThemeGruvbox, ThemeRosePine}
+var ValidThemes = []string{ThemeCatppuccin, ThemeNord, ThemeSolarized, ThemeGruvbox, ThemeRosePine, ThemeFlake}
 
 // HostColorCount is how many distinct per-host identity colours the merged
 // multi-host UI provides (ADR-0048): each host's name is hashed deterministically

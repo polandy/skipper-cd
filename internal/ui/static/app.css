@@ -117,6 +117,25 @@
     color-scheme: light;
   }
 
+  /* Flake — blue on a cool near-black, LED green for anything running. The one
+     palette whose accent is a different colour per variant, not the same one
+     retuned: #5277c3 reaches only ~3.5:1 on the dark ground (ADR-0021
+     amendment). Rollback has no counterpart here and tints the red. */
+  :root[data-theme="flake"] {
+    --crust: #0e1116; --mantle: #14181f; --base: #1a1f28; --surface0: #262e3a;
+    --overlay1: #7b8698; --overlay2: #93a0b3; --subtext0: #a8b4c5; --text: #e4eaf2;
+    --raw-accent: #7ebae4; --raw-success: #3ddc84; --raw-danger: #ff5e78;
+    --raw-rollback: #ff9baa; --raw-diffadd: #3ddc84; --raw-queued: #ffd54a;
+    color-scheme: dark;
+  }
+  :root[data-theme="flake"].light {
+    --crust: #dee4eb; --mantle: #e9edf2; --base: #f2f4f6; --surface0: #dce3ea;
+    --overlay1: #5b6675; --overlay2: #78828f; --subtext0: #49525f; --text: #14181f;
+    --raw-accent: #5277c3; --raw-success: #12794a; --raw-danger: #c42a45;
+    --raw-rollback: #b4485c; --raw-diffadd: #12794a; --raw-queued: #d99e00;
+    color-scheme: light;
+  }
+
   /* Per-host identity colours (multi-host fan-in). Six categorical slots per
      theme, deliberately kept clear of the status hues above so a host tint
      never reads as a deploy state. assignHostColors() (app-helpers.js) picks a
@@ -161,6 +180,12 @@
   }
   :root[data-theme="rose-pine"].light {
     --host-0:#419daf; --host-1:#7241af; --host-2:#4170af; --host-3:#a441af; --host-4:#4141af; --host-5:#af418a;
+  }
+  :root[data-theme="flake"] {
+    --host-0:#8ed3e1; --host-1:#b38ee1; --host-2:#8eb2e1; --host-3:#d98ee1; --host-4:#8e8ee1; --host-5:#e18ec5;
+  }
+  :root[data-theme="flake"].light {
+    --host-0:#2f9cb1; --host-1:#6a2fb1; --host-2:#2f68b1; --host-3:#a42fb1; --host-4:#2f2fb1; --host-5:#b12f86;
   }
   /* Semantic layer — everything below consumes only these tokens, so
      swapping a palette above restyles the whole page. */
@@ -213,6 +238,7 @@
   :root[data-theme="solarized"].light  { --queued-text: #805f00; }
   :root[data-theme="gruvbox"].light    { --queued-text: #88590f; }
   :root[data-theme="rose-pine"].light  { --queued-text: #985e10; }
+  :root[data-theme="flake"].light      { --queued-text: #835c11; }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

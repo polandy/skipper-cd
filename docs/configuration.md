@@ -106,7 +106,7 @@ nixos_rebuild:
 | `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
 | `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
 | `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
-| `ui_theme` | string | no | `catppuccin` | Web UI colour palette: one of `catppuccin`, `nord`, `solarized`, `gruvbox`, `rose-pine` (see [Web UI Theme](#web-ui-theme)). |
+| `ui_theme` | string | no | `catppuccin` | Web UI colour palette: one of `catppuccin`, `nord`, `solarized`, `gruvbox`, `rose-pine`, `flake` (see [Web UI Theme](#web-ui-theme)). |
 | `ui_theme_switcher` | bool | no | `false` | Show the in-UI theme picker so a browser can try other palettes locally. Off by default — the deployed `ui_theme` is then fixed (see [Web UI Theme](#web-ui-theme)). |
 | `runtime_health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
 | `reconcile_interval_seconds` | int | no | `300` | How often skipper re-runs its git sync + deploy on a timer — the convergence baseline that keeps each host caught up to the repo with or without a webhook (see [Periodic reconcile](#periodic-reconcile)). `0` disables it, leaving the webhook + startup as the only triggers (valid only when `webhook_secret` is set). Runs headless — not tied to the UI. |
@@ -505,7 +505,7 @@ The versions compared are the ones the containers **actually ran** — recorded 
 ui_theme: nord   # optional, default: catppuccin
 ```
 
-Five palettes ship, each with a dark and light variant (the header's dark/light toggle flips between them per browser). The previews below are scaled-down mockups of the header and stack list in each palette.
+Six palettes ship, each with a dark and light variant (the header's dark/light toggle flips between them per browser). The previews below are scaled-down mockups of the header and stack list in each palette.
 
 **`catppuccin`** — the default. Soft pastels on a muted indigo base (Mocha dark / Latte light).
 
@@ -540,6 +540,13 @@ Five palettes ship, each with a dark and light variant (the header's dark/light 
 <div class="theme-grid">
 <figure class="tp" data-theme="rose-pine"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
 <figure class="tp light" data-theme="rose-pine"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
+
+**`flake`** — blue on a cool near-black, with an LED green for anything running.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="flake"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="flake"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
 </div>
 
 Every palette drives the whole UI, including the PWA install identity (favicon, browser theme colour, app splash screen) — see [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#design) for the full token design and [PWA](pwa.md) for the installed-app behaviour.

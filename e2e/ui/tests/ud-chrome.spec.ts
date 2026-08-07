@@ -20,6 +20,7 @@ const THEME_LABELS: Record<string, string> = {
   solarized: 'Solarized',
   gruvbox: 'Gruvbox',
   'rose-pine': 'Rosé Pine',
+  flake: 'Flake',
 };
 
 // Maske D: Global chrome. See dev-docs/e2e-tests.md §4.5.
