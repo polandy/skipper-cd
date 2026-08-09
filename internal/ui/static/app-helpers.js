@@ -1345,14 +1345,19 @@ function watchedSummary(status, commit, count, disabled) {
   return deploys;
 }
 
-// AUDIT_BAD_STATUSES are the terminal outcomes that went wrong. They are never
-// folded away — the deploy history exists to make them findable.
+// AUDIT_BAD_STATUSES are the terminal outcomes that went wrong.
 const AUDIT_BAD_STATUSES = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
 
 // AUDIT_FOLD_MIN is the shortest run of identical routine outcomes worth
 // folding: below it the summary line replaces at most two rows while hiding
 // their commits, which costs more than the line it saves.
 const AUDIT_FOLD_MIN = 3;
+
+// AUDIT_FOLD_INCIDENT_MIN is the same threshold for the repeats *below* an
+// incident that stays expanded. It is lower because an incident row is two
+// lines — status plus its error — so collapsing even two of them is already a
+// clear gain, where two routine rows are not.
+const AUDIT_FOLD_INCIDENT_MIN = 2;
 
 // foldAuditRecords groups a stack's audit records (newest first, ADR-0033)
 // into the display items the deploy-history panel renders. A long-lived stack
@@ -1362,8 +1367,12 @@ const AUDIT_FOLD_MIN = 3;
 //   - the newest record is always its own line;
 //   - runs of AUDIT_FOLD_MIN or more consecutive identical routine outcomes
 //     collapse into one summary item;
-//   - a bad outcome is never folded, and the record directly below one stays
-//     expanded — what ran last before the failure is the failure's context.
+//   - the record directly below an incident stays expanded — what ran last
+//     before the failure is the failure's context.
+// An incident is never folded *away*: the newest of a repeated failure always
+// keeps its full row, error and all. Only its identical repeats below it fold
+// (same status and same error text — a different cause is information), which
+// is what a retry storm looks like: the same sentence printed nine times.
 // Pure: records in, items out. Item shapes:
 //   {kind:'record', record}
 //   {kind:'run', status, records}
@@ -1372,13 +1381,30 @@ function foldAuditRecords(records) {
   const routine = function (i) {
     return AUDIT_BAD_STATUSES.indexOf(recs[i].status) === -1;
   };
+  const sameIncident = function (a, b) {
+    return recs[a].status === recs[b].status && (recs[a].error || '') === (recs[b].error || '');
+  };
   const items = [];
   let afterIncident = false;
   let i = 0;
   while (i < recs.length) {
-    // The newest record and every incident stand alone.
-    if (i === 0 || !routine(i)) {
-      afterIncident = !routine(i);
+    if (!routine(i)) {
+      // The incident itself, then its identical repeats as one summary.
+      let j = i + 1;
+      while (j < recs.length && !routine(j) && sameIncident(i, j)) j++;
+      items.push({ kind: 'record', record: recs[i] });
+      if (j - i - 1 >= AUDIT_FOLD_INCIDENT_MIN) {
+        items.push({ kind: 'run', status: recs[i].status, records: recs.slice(i + 1, j) });
+      } else {
+        for (let s = i + 1; s < j; s++) items.push({ kind: 'record', record: recs[s] });
+      }
+      afterIncident = true;
+      i = j;
+      continue;
+    }
+    // The newest record always keeps its own line.
+    if (i === 0) {
+      afterIncident = false;
       items.push({ kind: 'record', record: recs[i] });
       i++;
       continue;
@@ -1465,6 +1491,7 @@ if (typeof module !== 'undefined' && module.exports) {
     foldPhases,
     AUDIT_BAD_STATUSES,
     AUDIT_FOLD_MIN,
+    AUDIT_FOLD_INCIDENT_MIN,
     foldAuditRecords,
     healthClass,
     attentionStacks,

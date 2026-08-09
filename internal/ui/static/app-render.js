@@ -1150,11 +1150,20 @@ function logDiffBlockHTML(diff) {
   );
 }
 
-// AUDIT_FOLD_NOUN names what a folded run of one routine outcome contains, so
-// the summary line reads as a sentence rather than "9 × success". Always
-// plural: a run is at least AUDIT_FOLD_MIN records long. The fallback keeps a
-// future routine status readable before it gets a noun here.
-const AUDIT_FOLD_NOUN = { success: 'successful deploys', healed: 'self-heals' };
+// AUDIT_FOLD_NOUN names what a folded run contains, so the summary line reads
+// as a sentence rather than "9 × success". Always plural: a run is never one
+// record. The incident nouns say *identical*, because that is the whole
+// licence for folding them — same status, same error, below the one that
+// stays expanded. The fallback keeps a future status readable before it gets
+// a noun here.
+const AUDIT_FOLD_NOUN = {
+  success: 'successful deploys',
+  healed: 'self-heals',
+  failed: 'identical failures',
+  rolled_back: 'identical rollbacks',
+  rolled_back_unhealthy: 'identical unhealthy rollbacks',
+  heal_exhausted: 'identical self-heal failures',
+};
 
 // auditRowsHTML renders the deploy-history rows of one stack. absolute picks
 // which of the two timestamps leads and which becomes the tooltip, following
@@ -1200,7 +1209,7 @@ function auditRowsHTML(records, repoBase, absolute, opts) {
         .join('') + (rest > 0 ? `<span class="hp-commit">+${rest}</span>` : '');
     return (
       `<div class="hp-phase hp-fold ar-fold" data-testid="audit-fold" data-status="${escapeAttr(run.status)}" ` +
-      `title="routine outcomes, folded — the full history is one click away">` +
+      `title="${AUDIT_BAD_STATUSES.indexOf(run.status) === -1 ? 'routine outcomes' : 'identical repeats of the failure above'}, folded — the full history is one click away">` +
       `<span class="hp-fold-glyph">↻</span>` +
       `<span><span class="hp-count">${run.records.length}</span> more ` +
       `${escapeHtml(noun)} since ${escapeHtml(time(oldest.timestamp))}` +

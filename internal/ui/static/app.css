@@ -1585,9 +1585,14 @@
     border-top: 1px solid color-mix(in srgb, var(--overlay2) 7%, transparent);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  /* Only routine outcomes ever fold, so those are the two tiers this needs. */
-  .audit-panel .ar-fold[data-status="success"] { --ac: var(--success); }
-  .audit-panel .ar-fold[data-status="healed"]  { --ac: var(--success); }
+  /* Same status tiers as the rows: a folded repeat of a rollback must not read
+     calmer than the rollback it sits under. */
+  .audit-panel .ar-fold[data-status="success"]               { --ac: var(--success); }
+  .audit-panel .ar-fold[data-status="healed"]                { --ac: var(--success); }
+  .audit-panel .ar-fold[data-status="failed"]                { --ac: var(--danger); }
+  .audit-panel .ar-fold[data-status="rolled_back"]           { --ac: var(--rollback); }
+  .audit-panel .ar-fold[data-status="rolled_back_unhealthy"] { --ac: var(--danger); }
+  .audit-panel .ar-fold[data-status="heal_exhausted"]        { --ac: var(--danger); }
   .audit-row .ar-dur { color: var(--text-muted); }
   .audit-row .ar-sha { color: var(--text-secondary); }
   .audit-row .ar-files { color: var(--text-muted); text-align: right; }

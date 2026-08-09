@@ -1471,3 +1471,38 @@ test('auditRowsHTML follows the time mode on the fold line', () => {
   assert.notEqual(since(abs), since(rel));
   assert.match(since(rel), /ago$/);
 });
+
+test('auditRowsHTML names a folded incident repeat by what failed', () => {
+  const boom = { error: 'compose up: exit status 1' };
+  const recs = [
+    { timestamp: '2026-08-09T10:00:00Z', status: 'rolled_back', duration_ms: 0, ...boom },
+    { timestamp: '2026-08-08T10:00:00Z', status: 'rolled_back', duration_ms: 0, ...boom },
+    { timestamp: '2026-08-07T10:00:00Z', status: 'rolled_back', duration_ms: 0, ...boom },
+    { timestamp: '2026-08-06T10:00:00Z', status: 'rolled_back', duration_ms: 0, ...boom },
+  ];
+  const html = r.auditRowsHTML(recs, '', false, { id: 'i1' });
+  // The newest rollback keeps its full row — error and all — above the fold.
+  const folded = html.slice(0, html.indexOf('audit-fold-toggle'));
+  assert.equal([...folded.matchAll(/data-testid="audit-row"/g)].length, 1);
+  assert.match(folded, /class="ar-err"/);
+  assert.match(folded, /data-testid="audit-fold" data-status="rolled_back"/);
+  assert.match(folded, /<span class="hp-count">3<\/span> more identical rollbacks since /);
+});
+
+test('auditRowsHTML names each incident kind separately', () => {
+  const repeat = (status, error) =>
+    [0, 1, 2, 3].map((d) => ({
+      timestamp: `2026-08-0${d + 1}T10:00:00Z`,
+      status,
+      duration_ms: 0,
+      error,
+    }));
+  const noun = (status) => {
+    const html = r.auditRowsHTML(repeat(status, 'boom').reverse(), '', false, { id: 'i2' });
+    return /more ([a-z -]+) since/.exec(html)[1];
+  };
+  assert.equal(noun('failed'), 'identical failures');
+  assert.equal(noun('rolled_back'), 'identical rollbacks');
+  assert.equal(noun('rolled_back_unhealthy'), 'identical unhealthy rollbacks');
+  assert.equal(noun('heal_exhausted'), 'identical self-heal failures');
+});

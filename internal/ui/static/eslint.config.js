@@ -140,6 +140,7 @@ module.exports = [
         module: 'readonly',
         require: 'readonly',
         // app-helpers.js constants it uses
+        AUDIT_BAD_STATUSES: 'readonly',
         FOLD_START_MAX_MS: 'readonly',
         UNCHANGED_SINCE: 'readonly',
         // app-helpers.js functions it calls

@@ -726,6 +726,12 @@ summary line, with the verbatim list behind a toggle (UI_SPEC "Deploy history").
 - **UM6 — Nothing to fold, no control.** With only two records the panel renders
   both as `audit-row`s and carries neither an `audit-fold` line nor the toggle —
   the fold must not appear on stacks where it collapsed nothing.
+- **UM7 — A repeated failure keeps its newest row.** With `STUB_DOCKER_FAIL_ON:
+  up` every deploy fails, so the failing startup deploy plus three failing bumps
+  give four records with one status and one error. The panel shows the newest
+  failure as a full `audit-row` *including* its `.ar-err` line, and its three
+  identical repeats as one `audit-fold` (`3 more identical failures since …`,
+  `data-status="failed"`); the toggle still reveals all four.
 
 ### 4.15 UI — Maske N: self-heal row detail (ADR-0029 amendment)
 

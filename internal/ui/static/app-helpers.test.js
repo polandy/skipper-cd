@@ -1697,3 +1697,65 @@ test('foldAuditRecords keeps every record reachable in order', () => {
     records.map((r) => r.timestamp),
   );
 });
+
+test('foldAuditRecords folds a repeat of one incident, keeping the newest expanded', () => {
+  const boom = { error: 'docker compose up: exit status 1' };
+  const records = [
+    rec('rolled_back', 20, boom),
+    rec('rolled_back', 19, boom),
+    rec('rolled_back', 18, boom),
+    rec('rolled_back', 17, boom),
+    rec('success', 16),
+  ];
+  const items = h.foldAuditRecords(records);
+  // The newest rollback stays a full row; the three identical repeats fold;
+  // the success below the run is still its context.
+  assert.deepEqual(
+    items.map((it) => it.kind),
+    ['record', 'run', 'record'],
+  );
+  assert.equal(items[0].record.timestamp, records[0].timestamp);
+  assert.equal(items[1].status, 'rolled_back');
+  assert.equal(items[1].records.length, 3);
+  assert.equal(items[2].record.timestamp, records[4].timestamp);
+});
+
+test('foldAuditRecords never merges incidents that failed differently', () => {
+  const records = [
+    rec('failed', 20, { error: 'port 8080 already allocated' }),
+    rec('failed', 19, { error: 'image pull denied' }),
+    rec('failed', 18, { error: 'image pull denied' }),
+  ];
+  const items = h.foldAuditRecords(records);
+  // A different cause is information, so only the matching pair could fold —
+  // and a single repeat is not worth a summary line.
+  assert.deepEqual(
+    items.map((it) => it.kind),
+    ['record', 'record', 'record'],
+  );
+});
+
+test('foldAuditRecords leaves a lone incident repeat expanded', () => {
+  const boom = { error: 'same cause' };
+  const items = h.foldAuditRecords([rec('failed', 20, boom), rec('failed', 19, boom)]);
+  assert.deepEqual(
+    items.map((it) => it.kind),
+    ['record', 'record'],
+  );
+});
+
+test('foldAuditRecords folds a repeat of errorless incidents too', () => {
+  // Older records can carry no error text at all; identical-by-status is then
+  // the whole identity, and the repeat is just as unreadable.
+  const items = h.foldAuditRecords([
+    rec('heal_exhausted', 20),
+    rec('heal_exhausted', 19),
+    rec('heal_exhausted', 18),
+    rec('heal_exhausted', 17),
+  ]);
+  assert.deepEqual(
+    items.map((it) => it.kind),
+    ['record', 'run'],
+  );
+  assert.equal(items[1].records.length, 3);
+});

@@ -198,3 +198,53 @@ test.describe('UM6: a short history keeps every row and offers no toggle', () =>
     await expect(panel.locator('[data-testid="audit-fold-toggle"]')).toHaveCount(0);
   });
 });
+
+// UM7 — a repeated failure folds its identical repeats, but never itself: the
+// newest failure keeps its full row and error. A retry storm is the same
+// sentence printed N times, which buries the history as thoroughly as a run of
+// successes does (UI_SPEC "Deploy history").
+test.describe('UM7: a repeated failure keeps the newest row and folds its repeats', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      stubEnv: { STUB_DOCKER_FAIL_ON: 'up' },
+      readiness: 'listening',
+    },
+  });
+
+  test('the newest failure stays expanded above a summary of its repeats', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    const records = async () =>
+      (await (await fetch(`${skipper.baseURL}/api/audit?stack=web`)).json()).length;
+
+    // The failing startup deploy plus three failing bumps — four records with
+    // the same status and the same error. Each is settled before the next
+    // (invariant 7: concurrent webhooks coalesce).
+    let want = 1;
+    for (const tag of ['1.26', '1.27', '1.28']) {
+      await expect.poll(records).toBe(want);
+      skipper.setStackImage('web', tag);
+      expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+      want++;
+    }
+    await expect.poll(records).toBe(4);
+
+    const newest = webRows(page).first();
+    await openRowMenu(newest);
+    await newest.locator('[data-testid="history-btn"]').click();
+    const panel = page.locator('[data-testid="audit-panel"]');
+
+    // One full failure row — with its error — and one fold line for the rest.
+    const rows = panel.locator('[data-testid="audit-row"]');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toHaveAttribute('data-status', 'failed');
+    await expect(rows.first().locator('.ar-err')).toBeVisible();
+    const fold = panel.locator('[data-testid="audit-fold"]');
+    await expect(fold).toHaveAttribute('data-status', 'failed');
+    await expect(fold).toContainText('3 more identical failures since');
+
+    // Every record is still there behind the toggle.
+    await panel.locator('[data-testid="audit-fold-toggle"]').click();
+    await expect(panel.locator('.ap-raw .audit-row')).toHaveCount(4);
+  });
+});
