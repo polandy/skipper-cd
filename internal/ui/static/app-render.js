@@ -280,6 +280,11 @@ function healPillHTML(drift) {
   );
 }
 
+// FOLD_COMMIT_CHIPS_MAX caps the commit chips on a folded-cycles summary line:
+// beyond a handful the chips outgrow the line they annotate, so the rest is a
+// `+N` counter and the raw list behind the toggle carries them per phase.
+const FOLD_COMMIT_CHIPS_MAX = 3;
+
 // healthStripHTML renders one service's phase history as a segmented bar,
 // oldest → newest — the same reading direction as the roster's outcome strip,
 // whose at-a-glance job it mirrors for health. Segment width is the phase's
@@ -310,8 +315,9 @@ function healthStripHTML(phases, nowMs) {
 // watchdog is off — and for a service with only its baseline phase, where a
 // one-line timeline would just repeat the inline age. The caller supplies the
 // service's phases, the forge base for the commit chips (repoBase — the
-// timeline may belong to a peer), the clock (nowMs) and opts ({onDemand}: fold
-// idle cycles too — skipper stops those containers by design).
+// timeline may belong to a peer), the clock (nowMs) and opts: {onDemand} folds
+// idle cycles too (skipper stops those containers by design), {id} is a
+// page-unique slug the toggle's aria-controls points at.
 function healthHistoryHTML(phases, repoBase, nowMs, opts) {
   if (!phases || phases.length < 2) return '';
   const o = opts || {};
@@ -343,7 +349,7 @@ function healthHistoryHTML(phases, repoBase, nowMs, opts) {
   };
 
   // The summary of a run of routine cycles: count, covered span, worst start,
-  // and the deploys that landed inside it as commit chips (capped at 3).
+  // and the deploys that landed inside it as commit chips (capped).
   const startsLine = function (it) {
     const noun = it.idle
       ? it.count === 1
@@ -356,9 +362,10 @@ function healthHistoryHTML(phases, repoBase, nowMs, opts) {
       it.maxStartMs > 0
         ? ` · up in ${it.count === 1 ? '' : '≤'}${phaseDuration(it.maxStartMs)}`
         : '';
+    const rest = it.commits.length - FOLD_COMMIT_CHIPS_MAX;
     const chips =
       it.commits
-        .slice(0, 3)
+        .slice(0, FOLD_COMMIT_CHIPS_MAX)
         .map(function (sha) {
           return commitLinkHTML(sha, {
             cls: 'hp-commit',
@@ -367,8 +374,7 @@ function healthHistoryHTML(phases, repoBase, nowMs, opts) {
             title: 'deployed at one of these starts',
           });
         })
-        .join('') +
-      (it.commits.length > 3 ? `<span class="hp-commit">+${it.commits.length - 3}</span>` : '');
+        .join('') + (rest > 0 ? `<span class="hp-commit">+${rest}</span>` : '');
     return (
       `<div class="hp-phase hp-fold" data-testid="health-fold" title="routine cycles, folded — each start settled within ${escapeAttr(phaseDuration(FOLD_START_MAX_MS))}">` +
       `<span class="hp-fold-glyph">${it.idle ? '⏾' : '↻'}</span>` +
@@ -396,9 +402,14 @@ function healthHistoryHTML(phases, repoBase, nowMs, opts) {
     return it.kind === 'starts' || it.startedInMs !== undefined;
   });
   if (collapsedAny) {
+    // aria-controls names the region the toggle reveals, so a screen reader
+    // follows the swap; it needs a page-unique id, which only the caller can
+    // supply (opts.id — host + stack + service). Omitted when it cannot.
+    const rawID = o.id ? `hp-raw-${o.id}` : '';
+    const controls = rawID ? ` aria-controls="${escapeAttr(rawID)}"` : '';
     html +=
-      `<button class="hp-fold-toggle" type="button" data-testid="health-fold-toggle" aria-expanded="false" data-label="all ${phases.length} phases">all ${phases.length} phases</button>` +
-      '<div class="hp-raw">' +
+      `<button class="hp-fold-toggle" type="button" data-testid="health-fold-toggle" aria-expanded="false"${controls} data-label="all ${phases.length} phases">all ${phases.length} phases</button>` +
+      `<div class="hp-raw"${rawID ? ` id="${escapeAttr(rawID)}"` : ''}>` +
       phases
         .map(function (p, i) {
           const end = i === 0 ? nowMs : new Date(phases[i - 1].since).getTime();
