@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.22.0](https://github.com/polandy/skipper-cd/compare/v0.21.0...v0.22.0) (2026-08-09)
+
+
+### Features
+
+* **deploy:** mark a success as the retry of a rollback ([67e73b0](https://github.com/polandy/skipper-cd/commit/67e73b0e401d9af119bd5077901493da0d57f895))
+* **logs:** a run that changes nothing logs one line ([5fd6761](https://github.com/polandy/skipper-cd/commit/5fd6761f4914e118f5d9dace0826a2dc82835f03))
+* **logs:** exempt deploy-outcome lines from log ring eviction ([91df771](https://github.com/polandy/skipper-cd/commit/91df7710683bd37c67a1c836fe98540594591192))
+* **logs:** print each changed file's diff on the console ([985c170](https://github.com/polandy/skipper-cd/commit/985c170a368a185ad97e2166c3ff71be0fd010ab))
+* **notify:** report the versions a deploy actually put into service ([#272](https://github.com/polandy/skipper-cd/issues/272)) ([8cd360b](https://github.com/polandy/skipper-cd/commit/8cd360b68554877abf7c7d10b223bffb6f02bd91))
+* read-only registry update check — "update available" in the Stacks view (ADR-0054) ([b2c8591](https://github.com/polandy/skipper-cd/commit/b2c8591a38d31191290424f9706199e2a2d55ef2))
+* **roster:** carry outcome history and incidents on the stacks snapshot ([c29cedb](https://github.com/polandy/skipper-cd/commit/c29cedbe1951685fcb383ea7e8c7d9a0bc870082))
+* **ui:** add the flake palette as a sixth built-in ui_theme ([a26b729](https://github.com/polandy/skipper-cd/commit/a26b72986c5dd8b7ff1b189eb45aef386098883f))
+* **ui:** chronological log view with quick filters and the console's narrative ([32c5380](https://github.com/polandy/skipper-cd/commit/32c538097e978f0b701957a490b3bb1aee19c61a))
+* **ui:** deploys status filter chips and header incident badge ([14182d9](https://github.com/polandy/skipper-cd/commit/14182d9a66b920971e9c9215eb0dc09e48b91a39))
+* **ui:** fold repetition out of the per-stack deploy history ([c087ca0](https://github.com/polandy/skipper-cd/commit/c087ca0da36308e8e4e67b870a96c7b6a3b45a54))
+* **ui:** fold routine health-timeline cycles and add a per-service phase strip ([caf5a9a](https://github.com/polandy/skipper-cd/commit/caf5a9aed19b7afc276b02d98492e18fd9b0b117))
+* **ui:** incident badge toggles its Deploys filter off ([850ee47](https://github.com/polandy/skipper-cd/commit/850ee479fbc20c4f553718530286c639cac4cabf))
+* **ui:** outcome strip, last-incident line and retry note ([cfa9edc](https://github.com/polandy/skipper-cd/commit/cfa9edc8cb3a303a364bbf665dca1f3bd05566ab))
+* **ui:** severity thresholds and outcome-aware filtering in the log view ([bebf19c](https://github.com/polandy/skipper-cd/commit/bebf19ccf2006e6965a462ffa99bdba9a302e561))
+* **update-check:** default update notifications off — the UI is the surface ([#285](https://github.com/polandy/skipper-cd/issues/285)) ([04e54ff](https://github.com/polandy/skipper-cd/commit/04e54ff989d1388e6d82019b6dcdcec7e2be52d7))
+
+
+### Bug Fixes
+
+* **deploy:** read running images the way docker actually reports them ([#275](https://github.com/polandy/skipper-cd/issues/275)) ([e6c2b70](https://github.com/polandy/skipper-cd/commit/e6c2b70b6dfc750f37484ea43393e2cfb34b7409))
+* **deploy:** report a service as removed only when it left the compose file ([#276](https://github.com/polandy/skipper-cd/issues/276)) ([cef5a60](https://github.com/polandy/skipper-cd/commit/cef5a6043e5f62a1b23169ceba206da68ea34266))
+* **health:** give the poller vars_file so compose stops warning ([f539108](https://github.com/polandy/skipper-cd/commit/f539108bbd52f6cc4f98ee616cbc66a301f95f1f))
+* log discarded persistence errors and close review hygiene items ([#280](https://github.com/polandy/skipper-cd/issues/280)) ([9ae87cf](https://github.com/polandy/skipper-cd/commit/9ae87cf269f53e3952df9f93b6a7828cab059203))
+* **logs:** don't pin the no-op run summary ([258b839](https://github.com/polandy/skipper-cd/commit/258b83942d6fbe697091b2802773fa4adee9bc93))
+* **notify:** deliver heal_exhausted notifications ([dd5e9f1](https://github.com/polandy/skipper-cd/commit/dd5e9f1a8f7ab0f1e70ff2d24b53d610f7cd519f))
+* **notify:** shorten image digests to docker's short form in version lines ([#277](https://github.com/polandy/skipper-cd/issues/277)) ([b4fd399](https://github.com/polandy/skipper-cd/commit/b4fd39909eb9f3e23b0357029f5e9c81e31c96c2))
+* **peers:** poll the versioned /api/v1/audit with a 404-only legacy fallback ([#283](https://github.com/polandy/skipper-cd/issues/283)) ([eff2d05](https://github.com/polandy/skipper-cd/commit/eff2d0582575c68c0546ea407a99ca3f5319ef80))
+* **test:** hold the wildcard address so the listen-failure test fails on macOS ([5ef0c9b](https://github.com/polandy/skipper-cd/commit/5ef0c9b06f4ca35a1df7dedf7d2d07ff006b6556))
+* **ui:** keep a roster row's glyphs, version and name on one line ([#286](https://github.com/polandy/skipper-cd/issues/286)) ([1a98331](https://github.com/polandy/skipper-cd/commit/1a983312646bdb7860ef58d8d75024d775eb5114))
+* **ui:** make the Logs view fit — and use — every display ([9559396](https://github.com/polandy/skipper-cd/commit/9559396acad7d0a0d15098f2dcf8df742abbafe0))
+* **ui:** publish the roster as soon as discovery knows the stack set ([#273](https://github.com/polandy/skipper-cd/issues/273)) ([402d121](https://github.com/polandy/skipper-cd/commit/402d121a54b4311a6ebe96c9f9e5256f8c78d82b))
+* **ui:** recover a page whose deploy stream went away ([#288](https://github.com/polandy/skipper-cd/issues/288)) ([2b88de4](https://github.com/polandy/skipper-cd/commit/2b88de453a5cc91912760122532ca444cfb94b16))
+* **ui:** subscribe to deploy events before replaying history on SSE connect ([#279](https://github.com/polandy/skipper-cd/issues/279)) ([1232d6d](https://github.com/polandy/skipper-cd/commit/1232d6ddaae7d893e45a03b583ff2ebee65eb140))
+
 ## [0.21.0](https://github.com/polandy/skipper-cd/compare/v0.20.0...v0.21.0) (2026-07-30)
 
 
