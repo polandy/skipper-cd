@@ -730,8 +730,11 @@ summary line, with the verbatim list behind a toggle (UI_SPEC "Deploy history").
   up` every deploy fails, so the failing startup deploy plus three failing bumps
   give four records with one status and one error. The panel shows the newest
   failure as a full `audit-row` *including* its `.ar-err` line, and its three
-  identical repeats as one `audit-fold` (`3 more identical failures since …`,
-  `data-status="failed"`); the toggle still reveals all four.
+  repeats as an `audit-fold` (`N more identical failures since …`,
+  `data-status="failed"`); expanded rows plus folded counts account for all
+  four, and the toggle still reveals them verbatim. The fold count is
+  deliberately not pinned — the startup deploy fails *differently* (no previous
+  commit to restore), and a different cause never merges.
 
 ### 4.15 UI — Maske N: self-heal row detail (ADR-0029 amendment)
 

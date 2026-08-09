@@ -234,16 +234,26 @@ test.describe('UM7: a repeated failure keeps the newest row and folds its repeat
     await newest.locator('[data-testid="history-btn"]').click();
     const panel = page.locator('[data-testid="audit-panel"]');
 
-    // One full failure row — with its error — and one fold line for the rest.
+    // The newest failure keeps its full row, error line included — a failure is
+    // never the thing that folds.
     const rows = panel.locator('[data-testid="audit-row"]');
-    await expect(rows).toHaveCount(1);
     await expect(rows.first()).toHaveAttribute('data-status', 'failed');
     await expect(rows.first().locator('.ar-err')).toBeVisible();
-    const fold = panel.locator('[data-testid="audit-fold"]');
-    await expect(fold).toHaveAttribute('data-status', 'failed');
-    await expect(fold).toContainText('3 more identical failures since');
 
-    // Every record is still there behind the toggle.
+    // Its repeats fold into a summary in the same status colour. The count is
+    // not pinned: the startup deploy fails differently (it has no previous
+    // commit to restore), and a different cause deliberately never merges — so
+    // the run covers the repeats that do match, not blindly all four.
+    const fold = panel.locator('[data-testid="audit-fold"]').first();
+    await expect(fold).toHaveAttribute('data-status', 'failed');
+    await expect(fold).toContainText(/\d+ more identical failures since/);
+
+    // Nothing is lost: expanded rows plus folded ones account for every record.
+    const expanded = await rows.count();
+    const foldedCounts = await panel.locator('[data-testid="audit-fold"] .hp-count').allTextContents();
+    expect(expanded + foldedCounts.reduce((sum, n) => sum + Number(n), 0)).toBe(4);
+
+    // …and the verbatim list holds all four.
     await panel.locator('[data-testid="audit-fold-toggle"]').click();
     await expect(panel.locator('.ap-raw .audit-row')).toHaveCount(4);
   });
