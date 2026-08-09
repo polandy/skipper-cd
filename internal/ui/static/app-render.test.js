@@ -287,6 +287,122 @@ test('healthHistoryHTML links a deploy-correlated phase commit through repoBase'
   assert.match(html, /title="deployed just before this phase began"/);
 });
 
+test('healthHistoryHTML shows no fold affordances when nothing folds', () => {
+  const phases = [
+    { status: 'healthy', since: '2026-07-01T12:00:00Z' },
+    { status: 'unhealthy', since: '2026-07-01T11:00:00Z' },
+  ];
+  const html = r.healthHistoryHTML(phases, '', Date.parse('2026-07-01T12:05:00Z'));
+  assert.doesNotMatch(html, /health-fold/);
+  assert.doesNotMatch(html, /hp-raw/);
+});
+
+test('healthHistoryHTML folds routine cycles behind a summary line, a toggle and a raw list', () => {
+  const phases = [
+    { status: 'healthy', since: '2026-08-09T12:00:00Z' },
+    { status: 'starting', since: '2026-08-09T11:59:00Z' },
+    { status: 'healthy', since: '2026-08-09T10:00:00Z' },
+    {
+      status: 'starting',
+      since: '2026-08-09T09:59:00Z',
+      deploy_correlated: true,
+      commit: 'aaa111bcd0000',
+    },
+    { status: 'healthy', since: '2026-08-09T08:00:00Z' },
+    {
+      status: 'starting',
+      since: '2026-08-09T07:59:30Z',
+      deploy_correlated: true,
+      commit: 'bbb222bcd0000',
+    },
+    { status: 'healthy', since: '2026-08-09T06:00:00Z' },
+  ];
+  const html = r.healthHistoryHTML(
+    phases,
+    'https://forge.example/repo',
+    Date.parse('2026-08-09T12:05:00Z'),
+  );
+  // The head line carries the folded start; the rest is one summary line.
+  assert.equal((html.match(/data-testid="health-phase"/g) || []).length, 1);
+  assert.match(html, /up in 1m/);
+  assert.match(html, /data-testid="health-fold"/);
+  assert.match(html, /hp-count">2<\/span> more starts since/);
+  assert.match(html, /up in ≤1m/);
+  // The correlated deploys ride the summary as commit chips.
+  assert.equal((html.match(/data-testid="health-fold-commit"/g) || []).length, 2);
+  // The raw list stays reachable behind the toggle, without duplicate testids.
+  assert.match(html, /data-testid="health-fold-toggle"[^>]*>all 7 phases</);
+  const raw = html.split('class="hp-raw"')[1];
+  assert.ok(raw);
+  assert.equal((raw.match(/class="hp-phase"/g) || []).length, 7);
+  assert.doesNotMatch(raw, /data-testid="health-phase"/);
+});
+
+test('healthHistoryHTML keeps an incident and its last-good phase as full lines', () => {
+  const phases = [
+    {
+      status: 'unhealthy',
+      since: '2026-08-09T12:00:00Z',
+      deploy_correlated: true,
+      commit: 'abcdef1234567890',
+    },
+    { status: 'healthy', since: '2026-08-09T09:00:00Z' },
+    { status: 'starting', since: '2026-08-09T08:59:00Z' },
+    { status: 'healthy', since: '2026-08-09T07:00:00Z' },
+    { status: 'starting', since: '2026-08-09T06:59:00Z' },
+    { status: 'healthy', since: '2026-08-09T05:00:00Z' },
+    { status: 'starting', since: '2026-08-09T04:59:00Z' },
+    { status: 'healthy', since: '2026-08-09T03:00:00Z' },
+  ];
+  const html = r.healthHistoryHTML(phases, '', Date.parse('2026-08-09T12:05:00Z'));
+  const rows = html.match(/data-testid="health-phase" data-health="(\w+)"/g);
+  assert.deepEqual(rows, [
+    'data-testid="health-phase" data-health="unhealthy"',
+    'data-testid="health-phase" data-health="healthy"',
+  ]);
+  assert.match(html, /data-testid="health-phase-commit"/); // the incident keeps its chip
+  assert.match(html, /hp-count">2<\/span> more starts since/);
+});
+
+test('healthHistoryHTML labels an on-demand service’s folded cycles as idle cycles', () => {
+  const phases = [
+    { status: 'stopped', since: '2026-08-09T12:00:00Z' },
+    { status: 'healthy', since: '2026-08-09T11:00:00Z' },
+    { status: 'starting', since: '2026-08-09T10:59:20Z' },
+    { status: 'stopped', since: '2026-08-09T08:00:00Z' },
+    { status: 'healthy', since: '2026-08-09T07:00:00Z' },
+    { status: 'starting', since: '2026-08-09T06:59:00Z' },
+    { status: 'stopped', since: '2026-08-09T04:00:00Z' },
+  ];
+  const html = r.healthHistoryHTML(phases, '', Date.parse('2026-08-09T12:05:00Z'), {
+    onDemand: true,
+  });
+  assert.match(html, /hp-count">2<\/span> idle cycles since/);
+});
+
+test('healthStripHTML renders one duration-weighted segment per phase, oldest first', () => {
+  const phases = [
+    { status: 'unhealthy', since: '2026-07-01T12:00:00Z' },
+    { status: 'starting', since: '2026-07-01T11:59:00Z' },
+    { status: 'healthy', since: '2026-07-01T10:00:00Z' },
+  ];
+  const html = r.healthStripHTML(phases, Date.parse('2026-07-01T12:05:00Z'));
+  assert.match(html, /^<div class="hp-strip" data-testid="health-strip" aria-hidden="true">/);
+  const segs = html.match(/data-health="(\w+)"/g);
+  assert.deepEqual(segs, [
+    'data-health="healthy"',
+    'data-health="starting"',
+    'data-health="unhealthy"',
+  ]);
+  // flex-grow carries the duration in seconds: 1h59m healthy, 1m starting,
+  // 5m (so far) unhealthy — and the current segment's title says so.
+  assert.match(html, /flex-grow:7140/);
+  assert.match(html, /flex-grow:60/);
+  assert.match(html, /flex-grow:300/);
+  assert.match(html, /title="unhealthy · [^"]*for 5m"/);
+  assert.equal(r.healthStripHTML([{ status: 'healthy', since: '2026-07-01T10:00:00Z' }], 0), '');
+});
+
 test('clogBtnHTML names the stack/service pair and escapes both into the data attributes', () => {
   const html = r.clogBtnHTML('web<x>', 'app "a"');
   assert.match(html, /^<button class="clog-btn" type="button" data-testid="clog-btn"/);

@@ -140,9 +140,11 @@ module.exports = [
         module: 'readonly',
         require: 'readonly',
         // app-helpers.js constants it uses
+        FOLD_START_MAX_MS: 'readonly',
         UNCHANGED_SINCE: 'readonly',
         // app-helpers.js functions it calls
         attentionLabel: 'readonly',
+        foldPhases: 'readonly',
         auditStatusLabel: 'readonly',
         classifyDiffLine: 'readonly',
         commitURL: 'readonly',
