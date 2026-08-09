@@ -1408,7 +1408,7 @@ function auditHistory() {
 test('auditRowsHTML folds a run of routine outcomes into one summary line', () => {
   const html = r.auditRowsHTML(auditHistory(), 'https://forge/r', false, { id: 'a1' });
   // Incident, the success below it as context, then one fold line for the rest.
-  const folded = html.slice(0, html.indexOf('ap-fold-toggle'));
+  const folded = html.slice(0, html.indexOf('audit-fold-toggle'));
   assert.equal([...folded.matchAll(/data-testid="audit-row"/g)].length, 2);
   assert.match(folded, /data-testid="audit-fold"[^>]*data-status="success"/);
   assert.match(folded, /<span class="hp-count">5<\/span> more successful deploys since /);
@@ -1421,7 +1421,10 @@ test('auditRowsHTML folds a run of routine outcomes into one summary line', () =
 
 test('auditRowsHTML keeps the verbatim list behind the toggle, without row testids', () => {
   const html = r.auditRowsHTML(auditHistory(), '', false, { id: 'a1' });
-  assert.match(html, /class="hp-fold-toggle ap-fold-toggle"[^>]*aria-expanded="false"/);
+  assert.match(
+    html,
+    /class="hp-fold-toggle"[^>]*data-testid="audit-fold-toggle"[^>]*aria-expanded="false"/,
+  );
   assert.match(html, /aria-controls="ap-raw-a1"/);
   assert.match(html, /data-label="all 7 deploys"/);
   assert.match(html, /data-fold-label="fold routine outcomes"/);
@@ -1440,7 +1443,7 @@ test('auditRowsHTML leaves an unfoldable history untouched and offers no toggle'
   ];
   const html = r.auditRowsHTML(recs, '', false, { id: 'a2' });
   assert.equal([...html.matchAll(/data-testid="audit-row"/g)].length, 3);
-  assert.ok(!html.includes('ap-fold-toggle'), `unexpected toggle: ${html}`);
+  assert.ok(!html.includes('audit-fold-toggle'), `unexpected toggle: ${html}`);
   assert.ok(!html.includes('audit-fold'), `unexpected fold line: ${html}`);
 });
 

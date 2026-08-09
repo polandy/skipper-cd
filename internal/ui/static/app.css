@@ -1402,15 +1402,17 @@
   .health-panel .hp-strip span[data-health="starting"]  { --hc: var(--h-starting); }
   .health-panel .hp-strip span[data-health="stopped"]   { --hc: var(--h-stopped); }
   .health-panel .hp-strip span[data-health="unknown"]   { --hc: var(--h-unknown); }
-  /* The fold rules are shared with the deploy-history panel below, which folds
-     runs of one outcome the same way — one set of selectors rather than a
-     parallel component per panel. */
-  .health-panel .hp-folded, .health-panel .hp-raw,
-  .audit-panel .ap-folded, .audit-panel .ap-raw { display: flex; flex-direction: column; gap: 2px; }
-  .health-panel .hp-raw, .audit-panel .ap-raw { display: none; }
-  .health-panel .hp-history.show-raw .hp-raw,
-  .audit-panel .ap-history.show-raw .ap-raw { display: flex; }
-  .health-panel .hp-history.show-raw .hp-folded,
+  /* The fold line and its toggle are shared with the deploy-history panel
+     below, which folds runs of one outcome the same way — one set of rules
+     rather than a parallel component per panel. Only the folded/raw swap is
+     per panel: the timeline's lines sit in a gapped column, the history's rows
+     stay flush behind their own separators. */
+  .health-panel .hp-folded, .health-panel .hp-raw { display: flex; flex-direction: column; gap: 2px; }
+  .health-panel .hp-raw { display: none; }
+  .health-panel .hp-history.show-raw .hp-raw { display: flex; }
+  .health-panel .hp-history.show-raw .hp-folded { display: none; }
+  .audit-panel .ap-raw { display: none; }
+  .audit-panel .ap-history.show-raw .ap-raw { display: block; }
   .audit-panel .ap-history.show-raw .ap-folded { display: none; }
   .health-panel .hp-upin { color: var(--text-muted); font-weight: 400; }
   .hp-fold .hp-fold-glyph { flex: none; color: var(--ac, var(--text-muted)); }
@@ -1583,7 +1585,6 @@
     border-top: 1px solid color-mix(in srgb, var(--overlay2) 7%, transparent);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .audit-panel .ar-fold:first-child { border-top: 0; }
   /* Only routine outcomes ever fold, so those are the two tiers this needs. */
   .audit-panel .ar-fold[data-status="success"] { --ac: var(--success); }
   .audit-panel .ar-fold[data-status="healed"]  { --ac: var(--success); }

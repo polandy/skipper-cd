@@ -1151,11 +1151,10 @@ function logDiffBlockHTML(diff) {
 }
 
 // AUDIT_FOLD_NOUN names what a folded run of one routine outcome contains, so
-// the summary line reads as a sentence rather than "9 × success".
-const AUDIT_FOLD_NOUN = {
-  success: ['successful deploy', 'successful deploys'],
-  healed: ['self-heal', 'self-heals'],
-};
+// the summary line reads as a sentence rather than "9 × success". Always
+// plural: a run is at least AUDIT_FOLD_MIN records long. The fallback keeps a
+// future routine status readable before it gets a noun here.
+const AUDIT_FOLD_NOUN = { success: 'successful deploys', healed: 'self-heals' };
 
 // auditRowsHTML renders the deploy-history rows of one stack. absolute picks
 // which of the two timestamps leads and which becomes the tooltip, following
@@ -1176,10 +1175,7 @@ function auditRowsHTML(records, repoBase, absolute, opts) {
   // changed, and the deploys inside it as commit chips (capped like the health
   // timeline's, whose chips these are).
   const foldLine = function (run) {
-    const noun = AUDIT_FOLD_NOUN[run.status] || [
-      auditStatusLabel(run.status),
-      auditStatusLabel(run.status),
-    ];
+    const noun = AUDIT_FOLD_NOUN[run.status] || auditStatusLabel(run.status);
     const oldest = run.records[run.records.length - 1];
     const files = run.records.reduce(function (sum, rec) {
       return sum + (rec.changed_files || 0);
@@ -1207,7 +1203,7 @@ function auditRowsHTML(records, repoBase, absolute, opts) {
       `title="routine outcomes, folded — the full history is one click away">` +
       `<span class="hp-fold-glyph">↻</span>` +
       `<span><span class="hp-count">${run.records.length}</span> more ` +
-      `${escapeHtml(run.records.length === 1 ? noun[0] : noun[1])} since ${escapeHtml(time(oldest.timestamp))}` +
+      `${escapeHtml(noun)} since ${escapeHtml(time(oldest.timestamp))}` +
       `${files ? escapeHtml(' · ' + files + ' file' + (files > 1 ? 's' : '')) : ''}</span>` +
       chips +
       `</div>`
@@ -1262,7 +1258,7 @@ function auditRowsHTML(records, repoBase, absolute, opts) {
   const controls = rawID ? ` aria-controls="${escapeAttr(rawID)}"` : '';
   return (
     `<div class="ap-history"><div class="ap-folded">${folded}</div>` +
-    `<button class="hp-fold-toggle ap-fold-toggle" type="button" data-testid="audit-fold-toggle" ` +
+    `<button class="hp-fold-toggle" type="button" data-testid="audit-fold-toggle" ` +
     `aria-expanded="false"${controls} data-label="all ${records.length} deploys" ` +
     `data-fold-label="fold routine outcomes">all ${records.length} deploys</button>` +
     `<div class="ap-raw"${rawID ? ` id="${escapeAttr(rawID)}"` : ''}>${rows(records, false)}</div>` +
