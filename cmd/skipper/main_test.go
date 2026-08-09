@@ -182,8 +182,11 @@ func TestHealthzHandler_ServiceUnavailableAfterFailedSync(t *testing.T) {
 // path, and the startup sync may already be running `docker compose up` by the
 // time a port turns out to be taken.
 func TestStartServer_ListenFailureIsReportedNotFatal(t *testing.T) {
-	// Hold a port so the server under test cannot bind it.
-	held, err := net.Listen("tcp", "127.0.0.1:0")
+	// Hold a port so the server under test cannot bind it — on the same
+	// wildcard address startServer uses: macOS (SO_REUSEADDR) permits a
+	// wildcard bind alongside a held 127.0.0.1 listener, which would let the
+	// server come up fine and this test hang on the channel instead.
+	held, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
