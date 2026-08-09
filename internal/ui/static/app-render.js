@@ -280,35 +280,132 @@ function healPillHTML(drift) {
   );
 }
 
-// healthHistoryHTML renders one service's status timeline from the
-// healthwatch snapshot (ADR-0031): newest first, each accepted phase with its
-// start, how long it held, and the deploy commit when correlated. Returns ''
-// when the watchdog is off — and for a service with only its baseline phase,
-// where a one-line timeline would just repeat the inline age. The caller
-// supplies the service's phases, the forge base for the commit chips
-// (repoBase — the timeline may belong to a peer) and the clock (nowMs).
-function healthHistoryHTML(phases, repoBase, nowMs) {
+// healthStripHTML renders one service's phase history as a segmented bar,
+// oldest → newest — the same reading direction as the roster's outcome strip,
+// whose at-a-glance job it mirrors for health. Segment width is the phase's
+// duration (flex-grow in seconds; CSS min-width keeps a short start visible as
+// a sliver), colour is the status, and the title carries the full phase line.
+// Decoration over the timeline below, which holds the same data as text — so
+// the strip is aria-hidden, like the outcome strip's dots.
+function healthStripHTML(phases, nowMs) {
   if (!phases || phases.length < 2) return '';
-  let html = '<div class="hp-history" data-testid="health-history">';
-  for (let i = 0; i < phases.length; i++) {
-    const p = phases[i];
+  let html = '<div class="hp-strip" data-testid="health-strip" aria-hidden="true">';
+  for (let i = phases.length - 1; i >= 0; i--) {
     const end = i === 0 ? nowMs : new Date(phases[i - 1].since).getTime();
-    const dur = phaseDuration(end - new Date(p.since).getTime());
-    html +=
-      `<div class="hp-phase" data-testid="health-phase" data-health="${escapeAttr(p.status)}">` +
+    const ms = end - new Date(phases[i].since).getTime();
+    const dur = phaseDuration(ms);
+    const title = `${phases[i].status} · ${phaseSince(phases[i].since, nowMs)} · ${i === 0 ? 'for ' + dur : dur}`;
+    html += `<span data-health="${escapeAttr(phases[i].status)}" style="flex-grow:${Math.max(1, Math.round(ms / 1000))}" title="${escapeAttr(title)}"></span>`;
+  }
+  return html + '</div>';
+}
+
+// healthHistoryHTML renders one service's status timeline from the
+// healthwatch snapshot (ADR-0031): the strip above, then the folded phase
+// items (foldPhases, app-helpers.js) — routine deploy/restart churn collapsed
+// into the settled lines and a summary, incidents kept line-by-line with their
+// start, how long they held, and the deploy commit when correlated. When
+// folding collapsed anything, the raw newest-first list stays reachable behind
+// a toggle (`.hp-fold-toggle`, handled in app.js). Returns '' when the
+// watchdog is off — and for a service with only its baseline phase, where a
+// one-line timeline would just repeat the inline age. The caller supplies the
+// service's phases, the forge base for the commit chips (repoBase — the
+// timeline may belong to a peer), the clock (nowMs) and opts ({onDemand}: fold
+// idle cycles too — skipper stops those containers by design).
+function healthHistoryHTML(phases, repoBase, nowMs, opts) {
+  if (!phases || phases.length < 2) return '';
+  const o = opts || {};
+
+  // One phase as a timeline line — the shape the timeline has always used,
+  // plus the folded "up in Xs" when a routine start was absorbed into it.
+  // Raw-list lines drop the testid so counting testids never sees a phase twice.
+  const phaseLine = function (p, endMs, current, startedInMs, withTestid) {
+    const dur = phaseDuration(endMs - new Date(p.since).getTime());
+    return (
+      `<div class="hp-phase"${withTestid ? ' data-testid="health-phase"' : ''} data-health="${escapeAttr(p.status)}">` +
       `<span class="hdot"></span>` +
       `<span class="hp-pstatus">${escapeHtml(p.status)}</span>` +
       `<span>${escapeHtml(phaseSince(p.since, nowMs))}</span>` +
-      `<span>${escapeHtml(i === 0 ? 'for ' + dur : dur)}</span>` +
+      `<span>${escapeHtml(current ? 'for ' + dur : dur)}</span>` +
+      (startedInMs !== undefined
+        ? `<span class="hp-upin">· up in ${escapeHtml(phaseDuration(startedInMs))}</span>`
+        : '') +
       (p.deploy_correlated && p.commit
         ? commitLinkHTML(p.commit, {
             cls: 'hp-commit',
             base: repoBase,
-            testid: 'health-phase-commit',
+            testid: withTestid ? 'health-phase-commit' : undefined,
             title: 'deployed just before this phase began',
           })
         : '') +
-      `</div>`;
+      `</div>`
+    );
+  };
+
+  // The summary of a run of routine cycles: count, covered span, worst start,
+  // and the deploys that landed inside it as commit chips (capped at 3).
+  const startsLine = function (it) {
+    const noun = it.idle
+      ? it.count === 1
+        ? 'idle cycle'
+        : 'idle cycles'
+      : it.count === 1
+        ? 'more start'
+        : 'more starts';
+    const up =
+      it.maxStartMs > 0
+        ? ` · up in ${it.count === 1 ? '' : '≤'}${phaseDuration(it.maxStartMs)}`
+        : '';
+    const chips =
+      it.commits
+        .slice(0, 3)
+        .map(function (sha) {
+          return commitLinkHTML(sha, {
+            cls: 'hp-commit',
+            base: repoBase,
+            testid: 'health-fold-commit',
+            title: 'deployed at one of these starts',
+          });
+        })
+        .join('') +
+      (it.commits.length > 3 ? `<span class="hp-commit">+${it.commits.length - 3}</span>` : '');
+    return (
+      `<div class="hp-phase hp-fold" data-testid="health-fold" title="routine cycles, folded — each start settled within ${escapeAttr(phaseDuration(FOLD_START_MAX_MS))}">` +
+      `<span class="hp-fold-glyph">${it.idle ? '⏾' : '↻'}</span>` +
+      `<span><span class="hp-count">${it.count}</span> ${noun} since ${escapeHtml(phaseSince(it.since, nowMs))}${escapeHtml(up)}</span>` +
+      chips +
+      `</div>`
+    );
+  };
+
+  const items = foldPhases(phases, { onDemand: o.onDemand, nowMs });
+  const folded = items
+    .map(function (it) {
+      if (it.kind === 'starts') return startsLine(it);
+      return phaseLine(it.phase, it.endMs, !!it.current, it.startedInMs, true);
+    })
+    .join('');
+
+  let html =
+    '<div class="hp-history" data-testid="health-history">' +
+    healthStripHTML(phases, nowMs) +
+    '<div class="hp-folded">' +
+    folded +
+    '</div>';
+  const collapsedAny = items.some(function (it) {
+    return it.kind === 'starts' || it.startedInMs !== undefined;
+  });
+  if (collapsedAny) {
+    html +=
+      `<button class="hp-fold-toggle" type="button" data-testid="health-fold-toggle" aria-expanded="false" data-label="all ${phases.length} phases">all ${phases.length} phases</button>` +
+      '<div class="hp-raw">' +
+      phases
+        .map(function (p, i) {
+          const end = i === 0 ? nowMs : new Date(phases[i - 1].since).getTime();
+          return phaseLine(p, end, i === 0, undefined, false);
+        })
+        .join('') +
+      '</div>';
   }
   return html + '</div>';
 }
@@ -1111,6 +1208,7 @@ if (typeof module !== 'undefined' && module.exports) {
     filesHTML,
     healPillHTML,
     healthHistoryHTML,
+    healthStripHTML,
     clogBtnHTML,
     healthPillHTML,
     hookCount,

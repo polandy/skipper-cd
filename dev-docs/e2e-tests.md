@@ -72,7 +72,8 @@ asserting **behaviour + visual snapshots**.
 > stack-health pill — **UH1** (pill per stack), **UH2** (per-service panel),
 > **UH3** (newest row per stack), **UH4** (health-watch status history:
 > age + phase timeline + deploy-correlated commit chip, ADR-0031), **UH5**
-> (an exited on-demand container reads stopped + labelled, ADR-0027 amendment) —
+> (an exited on-demand container reads stopped + labelled, ADR-0027 amendment),
+> **UH7** (routine restart folds into `up in Xs` + strip + raw-list toggle) —
 > driven by a health poller scripted through the stub docker's `ps` output. **Mask I** (§4.10) covers the diff panel's commit
 > metadata + variant-A row binding — **UI1** (commit header), **UI2** (row/panel
 > binding), **UI3** (multi-commit range) — driven by webhook image bumps. **Mask
@@ -617,6 +618,13 @@ real docker, no real containers. Behaviour-only (no snapshot).
 - **UH6 — Keyboard operability.** The pill is a real `<button>`: it takes focus
   (`Tab`-reachable) and `Enter` toggles the per-service panel open and closed —
   the keyboard twin of UH2's clicks.
+- **UH7 — Folded timeline.** A routine restart cycle (`ps` flips healthy →
+  starting → healthy, each accepted phase awaited via the pill) does **not**
+  grow a `starting` line: the timeline folds it into the current healthy line
+  as `· up in Xs` (two `health-phase` rows, not three), the `health-strip`
+  renders one segment per phase, and the `health-fold-toggle` (`all 3 phases`)
+  swaps the folded view for the verbatim `.hp-raw` list — starting in the
+  middle — and back (UI_SPEC "Status history").
 
 ### 4.10 UI — Maske I: Diff-panel commit metadata + row binding
 
@@ -1826,6 +1834,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: pill on the newest row per stack | **UH3** |
 | Stack health: status history — age, ≥2-phase timeline, deploy-correlated commit chip | **UH4** |
 | Stack health: exited on-demand container reads stopped + on-demand label | **UH5** |
+| Stack health: folded timeline — routine start absorbed, strip, raw-list toggle | **UH7** |
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |

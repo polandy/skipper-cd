@@ -1390,6 +1390,32 @@
     border: 1px solid var(--border);
     border-radius: 4px; padding: 0 4px;
   }
+  /* Folded timeline (healthHistoryHTML): the duration-weighted strip on top,
+     the folded view, and the raw phase list the toggle swaps in. The strip
+     reuses the outcome strip's reading direction (oldest → newest) and the
+     timeline's --hc status colours; min-width keeps a short start visible as
+     a sliver — that sliver IS the deploy. */
+  .health-panel .hp-strip { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 3px 0 3px; max-width: 420px; }
+  .health-panel .hp-strip span { flex-basis: 0; min-width: 3px; background: var(--hc, var(--h-unknown)); }
+  .health-panel .hp-strip span[data-health="healthy"]   { --hc: var(--h-healthy); }
+  .health-panel .hp-strip span[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-panel .hp-strip span[data-health="starting"]  { --hc: var(--h-starting); }
+  .health-panel .hp-strip span[data-health="stopped"]   { --hc: var(--h-stopped); }
+  .health-panel .hp-strip span[data-health="unknown"]   { --hc: var(--h-unknown); }
+  .health-panel .hp-folded, .health-panel .hp-raw { display: flex; flex-direction: column; gap: 2px; }
+  .health-panel .hp-raw { display: none; }
+  .health-panel .hp-history.show-raw .hp-raw { display: flex; }
+  .health-panel .hp-history.show-raw .hp-folded { display: none; }
+  .health-panel .hp-upin { color: var(--text-muted); font-weight: 400; }
+  .health-panel .hp-fold .hp-fold-glyph { flex: none; }
+  .health-panel .hp-fold .hp-count { color: var(--text-primary); font-weight: 600; }
+  .health-panel .hp-fold-toggle {
+    align-self: flex-start; margin: 2px 0; padding: 1px 7px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    color: var(--text-muted); background: none;
+    border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+  }
+  .health-panel .hp-fold-toggle:hover { color: var(--text-primary); border-color: var(--border-lit); }
 
   /* ─── AUDIT (per-stack deploy history, ADR-0033) ─── */
   /* A small clock button on the newest row per stack, next to the health pill.

@@ -1882,12 +1882,31 @@
             `<span class="hp-status" data-health="${escapeAttr(st)}"><span class="hdot"></span>${escapeHtml(st)}${age}</span>` +
             clogBtnHTML(stack, s.name, host) +
             `</div>` +
-            healthHistoryHTML(phases, repoWebURLFor(host), Date.now())
+            healthHistoryHTML(phases, repoWebURLFor(host), Date.now(), {
+              onDemand: !!s.on_demand,
+            })
           );
         })
         .join('');
     return el;
   }
+
+  // ── Health-timeline fold toggle ──
+  // The timeline folds routine deploy/restart cycles away (healthHistoryHTML);
+  // this swaps one service's folded view for its raw phase list and back. One
+  // delegated listener for every surface the panel appears on (deploy rows,
+  // roster card, peer detail) — the panel is rebuilt on each open/snapshot, so
+  // per-instance wiring would re-bind constantly. The panel lives outside any
+  // row element, so no row-toggle handler sees this click.
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest && e.target.closest('.hp-fold-toggle');
+    if (!btn) return;
+    const hist = btn.closest('.hp-history');
+    if (!hist) return;
+    const raw = hist.classList.toggle('show-raw');
+    btn.setAttribute('aria-expanded', String(raw));
+    btn.textContent = raw ? 'fold routine cycles' : btn.dataset.label;
+  });
 
   // ── Deploying indicator + run drawer ──
 

@@ -199,3 +199,60 @@ test.describe('UH6: health pill is keyboard-operable', () => {
     await expect(page.locator('[data-testid="health-panel"]')).toHaveCount(0);
   });
 });
+
+// UH7 — the timeline folds routine churn (UI_SPEC "Status history"): a short
+// starting → healthy cycle is absorbed into the settled line as `· up in Xs`
+// instead of standing as its own phase line, the strip summarizes the phases
+// as a bar, and the raw newest-first list stays reachable behind the toggle.
+test.describe('UH7: routine start folds away, raw list behind the toggle', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      healthPoll: 1,
+      healthWatch: true,
+      initialHealth: { web: [{ Service: 'app', State: 'running', Health: 'healthy' }] },
+    },
+  });
+
+  test('a restart cycle folds into "up in"; the toggle swaps in all phases', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    const p = pill(page, 'web');
+    await expect(p).toHaveAttribute('data-health', 'healthy');
+
+    // A routine restart: healthy → starting → healthy, each flip accepted
+    // immediately (debounce_polls 1). Wait for each accepted phase via the
+    // pill, so the history deterministically holds three phases.
+    skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'starting' }]);
+    await expect(p).toHaveAttribute('data-health', 'starting');
+    skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
+    await expect(p).toHaveAttribute('data-health', 'healthy');
+
+    await p.click();
+    const panel = page.locator('[data-testid="health-panel"]');
+    const history = panel.locator('[data-testid="health-history"]');
+    await expect(history).toBeVisible();
+
+    // Folded: the starting phase is no line of its own — it rides the current
+    // healthy line as "up in Xs". Two lines (current + baseline), not three.
+    const phases = history.locator('[data-testid="health-phase"]');
+    await expect(phases).toHaveCount(2);
+    await expect(phases.first()).toHaveAttribute('data-health', 'healthy');
+    await expect(phases.first().locator('.hp-upin')).toHaveText(/up in \d+s/);
+
+    // The strip carries one duration-weighted segment per phase.
+    await expect(history.locator('[data-testid="health-strip"] span')).toHaveCount(3);
+
+    // The toggle swaps in the verbatim list (3 phases, starting in the middle)
+    // and back.
+    const toggle = history.locator('[data-testid="health-fold-toggle"]');
+    await expect(toggle).toHaveText('all 3 phases');
+    await toggle.click();
+    const raw = history.locator('.hp-raw .hp-phase');
+    await expect(raw).toHaveCount(3);
+    await expect(raw.nth(1)).toHaveAttribute('data-health', 'starting');
+    await expect(phases.first()).toBeHidden(); // folded view is swapped out
+    await toggle.click();
+    await expect(phases.first()).toBeVisible();
+    await expect(raw.first()).toBeHidden();
+  });
+});

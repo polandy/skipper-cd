@@ -842,6 +842,133 @@ const HEALTH = {
   UNKNOWN: 'unknown',
 };
 
+// FOLD_START_MAX_MS bounds what the health timeline treats as a routine start:
+// a starting phase at most this long that settled healthy is deploy/restart
+// churn and is folded away; a slower start stays a full line — a service that
+// takes longer than this to come up is information, not routine.
+const FOLD_START_MAX_MS = 5 * 60 * 1000;
+
+// foldPhases groups a service's healthwatch phases (newest first, ADR-0031)
+// into the display items the timeline renders. Every deploy or restart records
+// a `starting → healthy` pair per service, so an uneventful history is almost
+// entirely that pattern repeated — folding it is what lets an actual incident
+// stand alone (see UI_SPEC "Status history"). Rules:
+//   - the current phase is always its own line; a routine start it rose from
+//     is absorbed into it (`startedInMs`);
+//   - consecutive routine cycles (healthy + short starting) collapse into one
+//     `starts` summary item — count, span, worst start, correlated commits;
+//   - the settled phase directly after an incident line stays expanded: how
+//     long the service was good before it broke is the incident's context;
+//   - anything involving unhealthy, a stop (unless on-demand — skipper stops
+//     those by design, so their idle cycles are the routine), a slow start or
+//     a start that never settled stays line-by-line.
+// Pure: phases + {onDemand, nowMs} in, items out. Item shapes:
+//   {kind:'phase', phase, endMs, current?, startedInMs?}
+//   {kind:'starts', count, since, maxStartMs, commits, idle}
+function foldPhases(phases, opts) {
+  const o = opts || {};
+  const n = phases.length;
+  const sinceMs = phases.map(function (p) {
+    return new Date(p.since).getTime();
+  });
+  const end = function (i) {
+    return i === 0 ? o.nowMs : sinceMs[i - 1];
+  };
+  const dur = function (i) {
+    return end(i) - sinceMs[i];
+  };
+  // settled OK: the status a routine cycle returns to. For an on-demand
+  // service `stopped` is the intended idle (ADR-0027 amendment), so its
+  // cycles settle there.
+  const okStatus = function (status) {
+    return status === HEALTH.HEALTHY || (!!o.onDemand && status === HEALTH.STOPPED);
+  };
+  const ok = function (i) {
+    return okStatus(phases[i].status);
+  };
+  // A routine start: short, and the phase it led to (its newer neighbour)
+  // settled OK. A start that led anywhere else is a failed start.
+  const routineStart = function (i) {
+    return phases[i].status === HEALTH.STARTING && i > 0 && ok(i - 1) && dur(i) < FOLD_START_MAX_MS;
+  };
+  const foldable = function (i) {
+    return ok(i) || routineStart(i);
+  };
+  const expanded = function (i) {
+    // One settled phase with its routine start folded in ("up in 22s").
+    return { kind: 'phase', phase: phases[i], endMs: end(i), startedInMs: dur(i + 1) };
+  };
+
+  const items = [];
+  // Head: the current phase, whatever it is.
+  const head = { kind: 'phase', phase: phases[0], endMs: end(0), current: true };
+  let i = 1;
+  if (ok(0) && n > 1 && routineStart(1)) {
+    head.startedInMs = dur(1);
+    i = 2;
+  }
+  items.push(head);
+
+  while (i < n) {
+    if (!foldable(i)) {
+      items.push({ kind: 'phase', phase: phases[i], endMs: end(i) });
+      i++;
+      continue;
+    }
+    // Maximal foldable run [i, j).
+    let j = i;
+    while (j < n && foldable(j)) j++;
+    let k = i;
+    const prev = items[items.length - 1];
+    const prevNotable = prev.kind === 'phase' && !okStatus(prev.phase.status);
+    if (prevNotable && ok(k) && k + 1 < j && phases[k + 1].status === HEALTH.STARTING) {
+      items.push(expanded(k));
+      k += 2;
+    }
+    if (k < j) {
+      const seg = [];
+      for (let s = k; s < j; s++) seg.push(s);
+      const startIdxs = seg.filter(function (s) {
+        return phases[s].status === HEALTH.STARTING;
+      });
+      const stoppedCount = seg.filter(function (s) {
+        return phases[s].status === HEALTH.STOPPED;
+      }).length;
+      if (startIdxs.length === 1 && j - k === 2 && ok(k)) {
+        // A lone cycle: an expanded line says the same as a summary of one.
+        items.push(expanded(k));
+      } else if (startIdxs.length === 0 && !(o.onDemand && stoppedCount >= 2)) {
+        // No starts to summarize (a trailing baseline phase): plain lines.
+        for (let s = k; s < j; s++) {
+          items.push({ kind: 'phase', phase: phases[s], endMs: end(s) });
+        }
+      } else {
+        const commits = [];
+        seg.forEach(function (s) {
+          const p = phases[s];
+          if (p.deploy_correlated && p.commit && commits.indexOf(p.commit) < 0)
+            commits.push(p.commit);
+        });
+        const idle = !!o.onDemand && stoppedCount > 0;
+        items.push({
+          kind: 'starts',
+          // Idle cycles are counted by their settled stops; deploy/restart
+          // cycles by their starts.
+          count: idle ? stoppedCount : startIdxs.length,
+          since: phases[j - 1].since,
+          maxStartMs: startIdxs.reduce(function (max, s) {
+            return Math.max(max, dur(s));
+          }, 0),
+          commits,
+          idle,
+        });
+      }
+    }
+    i = j;
+  }
+  return items;
+}
+
 // healthClass maps one service to the same status vocabulary as the rollup, so
 // the per-service dot colour matches the pill's tier.
 function healthClass(s) {
@@ -1277,6 +1404,8 @@ if (typeof module !== 'undefined' && module.exports) {
     phaseDuration,
     phaseSince,
     HEALTH,
+    FOLD_START_MAX_MS,
+    foldPhases,
     healthClass,
     attentionStacks,
     attentionLabel,

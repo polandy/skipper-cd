@@ -629,7 +629,7 @@ health_watch:                      # cadence = runtime_health_poll_interval_seco
 
 A new failure reads `🚨 stack health: <stack>/<service> healthy → unhealthy (was healthy 2h13m) — after deploy of a1b2c3d`; the recovery reads `✅ stack health recovered: <stack>/<service> after 4m12s`. The `generic` format posts the structured alert as JSON with a `"type": "health"` marker so a receiver shared with deploy notifications can tell the payloads apart.
 
-Transitions are persisted across restarts (no re-alerting of known failures; a failure that happened while skipper was down is alerted after startup), and with the web UI enabled each service's [Stack health](#stack-health) panel shows a timeline of its recent status phases. This watches **only skipper's own stacks** — it is not a host-wide container watchdog.
+Transitions are persisted across restarts (no re-alerting of known failures; a failure that happened while skipper was down is alerted after startup), and with the web UI enabled each service's [Stack health](#stack-health) panel shows a timeline of its recent status phases, summarized by a duration-weighted status bar. The timeline folds routine churn — a quick `starting → healthy` from a deploy or restart shows as `· up in 58s` on the settled line (repeats collapse into one `↻ N more starts …` summary; an on-demand service's idle cycles fold the same way) while anything unhealthy, a stop, or a slow start stays line-by-line, with a toggle to the unfolded list. This watches **only skipper's own stacks** — it is not a host-wide container watchdog.
 
 ## Deploy ordering
 

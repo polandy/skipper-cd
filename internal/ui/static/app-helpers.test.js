@@ -303,6 +303,176 @@ test('phaseDuration coarse units', () => {
   assert.equal(h.phaseDuration(2 * 86400000), '2d'); // exact day, no trailing hours
 });
 
+// foldPhases test data: phases are newest-first, statuses always alternate
+// (the watcher records transitions only). ph() keeps the fixtures readable.
+function ph(status, since, extra) {
+  return Object.assign({ status, since }, extra);
+}
+const FOLD_NOW = Date.parse('2026-08-09T12:05:00Z');
+
+test('foldPhases absorbs a routine start into the current phase and summarizes older cycles', () => {
+  const items = h.foldPhases(
+    [
+      ph('healthy', '2026-08-09T12:00:00Z'),
+      ph('starting', '2026-08-09T11:59:00Z'), // 1m — routine, absorbed into the head
+      ph('healthy', '2026-08-09T10:00:00Z'),
+      ph('starting', '2026-08-09T09:59:00Z', { deploy_correlated: true, commit: 'aaa111' }),
+      ph('healthy', '2026-08-09T08:00:00Z'),
+      ph('starting', '2026-08-09T07:59:30Z', { deploy_correlated: true, commit: 'bbb222' }),
+      ph('healthy', '2026-08-09T06:00:00Z'),
+    ],
+    { nowMs: FOLD_NOW },
+  );
+  assert.equal(items.length, 2);
+  assert.equal(items[0].kind, 'phase');
+  assert.equal(items[0].phase.status, 'healthy');
+  assert.equal(items[0].current, true);
+  assert.equal(items[0].startedInMs, 60000);
+  assert.equal(items[1].kind, 'starts');
+  assert.equal(items[1].count, 2);
+  assert.equal(items[1].since, '2026-08-09T06:00:00Z'); // oldest covered phase
+  assert.equal(items[1].maxStartMs, 60000);
+  assert.deepEqual(items[1].commits, ['aaa111', 'bbb222']);
+  assert.equal(items[1].idle, false);
+});
+
+test('foldPhases keeps an incident line-by-line and expands the last-good cycle after it', () => {
+  const items = h.foldPhases(
+    [
+      ph('unhealthy', '2026-08-09T12:00:00Z'),
+      ph('healthy', '2026-08-09T09:00:00Z'),
+      ph('starting', '2026-08-09T08:59:00Z'),
+      ph('healthy', '2026-08-09T07:00:00Z'),
+      ph('starting', '2026-08-09T06:59:00Z'),
+      ph('healthy', '2026-08-09T05:00:00Z'),
+      ph('starting', '2026-08-09T04:59:00Z'),
+      ph('healthy', '2026-08-09T03:00:00Z'),
+    ],
+    { nowMs: FOLD_NOW },
+  );
+  assert.equal(items.length, 3);
+  assert.equal(items[0].kind, 'phase');
+  assert.equal(items[0].phase.status, 'unhealthy'); // never folded
+  assert.equal(items[0].startedInMs, undefined);
+  // The healthy phase the service held before the incident stays expanded —
+  // "was good for X, came up in Y" is the incident's context.
+  assert.equal(items[1].kind, 'phase');
+  assert.equal(items[1].phase.status, 'healthy');
+  assert.equal(items[1].startedInMs, 60000);
+  assert.equal(items[1].current, undefined);
+  assert.equal(items[2].kind, 'starts');
+  assert.equal(items[2].count, 2);
+});
+
+test('foldPhases leaves a slow start, a failed start and a stop as full lines', () => {
+  // A starting phase over the threshold is information, not routine.
+  const slow = h.foldPhases(
+    [
+      ph('healthy', '2026-08-09T12:00:00Z'),
+      ph('starting', '2026-08-09T11:50:00Z'), // 10m — over FOLD_START_MAX_MS
+      ph('healthy', '2026-08-09T10:00:00Z'),
+    ],
+    { nowMs: FOLD_NOW },
+  );
+  assert.deepEqual(
+    slow.map((it) => [it.kind, it.phase.status]),
+    [
+      ['phase', 'healthy'],
+      ['phase', 'starting'],
+      ['phase', 'healthy'],
+    ],
+  );
+  // A starting that ended in unhealthy is a failed start; the stop before it
+  // (not on-demand) is intentional-downtime context. All full lines.
+  const crash = h.foldPhases(
+    [
+      ph('unhealthy', '2026-08-09T12:00:00Z'),
+      ph('starting', '2026-08-09T11:59:00Z'),
+      ph('stopped', '2026-08-09T11:00:00Z'),
+      ph('healthy', '2026-08-09T10:00:00Z'),
+    ],
+    { nowMs: FOLD_NOW },
+  );
+  assert.deepEqual(
+    crash.map((it) => [it.kind, it.phase.status]),
+    [
+      ['phase', 'unhealthy'],
+      ['phase', 'starting'],
+      ['phase', 'stopped'],
+      ['phase', 'healthy'],
+    ],
+  );
+});
+
+test('foldPhases folds an on-demand service’s idle cycles', () => {
+  const items = h.foldPhases(
+    [
+      ph('stopped', '2026-08-09T12:00:00Z'),
+      ph('healthy', '2026-08-09T11:00:00Z'),
+      ph('starting', '2026-08-09T10:59:20Z'),
+      ph('stopped', '2026-08-09T08:00:00Z'),
+      ph('healthy', '2026-08-09T07:00:00Z'),
+      ph('starting', '2026-08-09T06:59:00Z'),
+      ph('stopped', '2026-08-09T04:00:00Z'),
+    ],
+    { nowMs: FOLD_NOW, onDemand: true },
+  );
+  assert.equal(items.length, 2);
+  assert.equal(items[0].kind, 'phase');
+  assert.equal(items[0].phase.status, 'stopped'); // current idle — the head line
+  assert.equal(items[1].kind, 'starts');
+  assert.equal(items[1].idle, true);
+  assert.equal(items[1].count, 2); // two completed run→idle cycles
+  assert.equal(items[1].since, '2026-08-09T04:00:00Z');
+  // Without the on-demand flag the same history stays line-by-line.
+  const plain = h.foldPhases(
+    [
+      ph('stopped', '2026-08-09T12:00:00Z'),
+      ph('healthy', '2026-08-09T11:00:00Z'),
+      ph('starting', '2026-08-09T10:59:20Z'),
+      ph('stopped', '2026-08-09T08:00:00Z'),
+    ],
+    { nowMs: FOLD_NOW },
+  );
+  assert.equal(plain.filter((it) => it.kind === 'starts').length, 0);
+});
+
+test('foldPhases renders a lone trailing pair as an expanded line, not a summary of one', () => {
+  const items = h.foldPhases(
+    [
+      ph('healthy', '2026-08-09T12:00:00Z'),
+      ph('starting', '2026-08-09T11:59:00Z'),
+      ph('healthy', '2026-08-09T10:00:00Z'),
+      ph('starting', '2026-08-09T09:59:32Z'),
+    ],
+    { nowMs: FOLD_NOW },
+  );
+  assert.equal(items.length, 2);
+  assert.equal(items[0].startedInMs, 60000);
+  assert.equal(items[1].kind, 'phase');
+  assert.equal(items[1].phase.status, 'healthy');
+  assert.equal(items[1].startedInMs, 28000);
+});
+
+test('foldPhases keeps a trailing baseline phase as a plain line', () => {
+  const items = h.foldPhases(
+    [
+      ph('healthy', '2026-08-09T12:00:00Z'),
+      ph('unhealthy', '2026-08-09T11:00:00Z'),
+      ph('healthy', '2026-08-01T10:00:00Z'),
+    ],
+    { nowMs: FOLD_NOW },
+  );
+  assert.deepEqual(
+    items.map((it) => [it.kind, it.phase.status]),
+    [
+      ['phase', 'healthy'],
+      ['phase', 'unhealthy'],
+      ['phase', 'healthy'],
+    ],
+  );
+});
+
 test('healthClass maps state/health to the rollup vocabulary', () => {
   assert.equal(h.healthClass({ health: 'unhealthy' }), 'unhealthy');
   assert.equal(h.healthClass({ state: 'restarting' }), 'unhealthy');
