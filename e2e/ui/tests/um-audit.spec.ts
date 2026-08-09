@@ -135,15 +135,21 @@ test.describe('UM5: routine outcomes fold, verbatim list behind the toggle', () 
   test('a run of successes becomes one summary line the toggle unfolds', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
-    // Five deploys of one stack: the startup deploy plus four image bumps. The
-    // audit log is polled to five, so the panel opens on a settled history.
+    // Five deploys of one stack: the startup deploy plus four image bumps. Each
+    // bump is awaited through the audit log before the next is pushed —
+    // deploys serialize on one mutex and concurrent webhooks coalesce rather
+    // than queue (CLAUDE.md invariant 7), so pushing them in one burst would
+    // record fewer than four runs.
+    const records = async () =>
+      (await (await fetch(`${skipper.baseURL}/api/audit?stack=web`)).json()).length;
+    let want = 1;
     for (const tag of ['1.26', '1.27', '1.28', '1.29']) {
+      await expect.poll(records).toBe(want);
       skipper.setStackImage('web', tag);
       expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+      want++;
     }
-    await expect
-      .poll(async () => (await (await fetch(`${skipper.baseURL}/api/audit?stack=web`)).json()).length)
-      .toBe(5);
+    await expect.poll(records).toBe(5);
 
     const newest = webRows(page).first();
     await openRowMenu(newest);
