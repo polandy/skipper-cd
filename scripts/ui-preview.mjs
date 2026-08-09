@@ -688,6 +688,22 @@ git(origin, 'commit', '-am', 'chore(paperless): rebuild webserver (digest bump, 
 await webhook();
 await settled('paperless', 2);
 
+// gitea: a routine history — a run of identical converges, the shape a
+// long-lived stack actually has. It is what the deploy-history panel folds
+// (auditRowsHTML), so without it the fold is unreviewable here. Config-only
+// changes: the image never moves, so this stays a run of plain successes.
+const GITEA_ROUTINE_CONVERGES = 6;
+for (let i = 1; i <= GITEA_ROUTINE_CONVERGES; i++) {
+  writeFileSync(
+    join(origin, 'gitea', 'docker-compose.yml'),
+    composeYaml([[`server`, `${regHost}/gitea/gitea:1.22.3`], ['db', 'postgres:16']]) +
+      `# routine converge ${i}\n`,
+  );
+  git(origin, 'commit', '-am', `chore(gitea): routine converge ${i}`);
+  await webhook();
+  await settled('gitea', 1 + i);
+}
+
 // Failure states, so every badge the deploy log can render is reachable here
 // and not only in the e2e suite. One run produces all four, because a stack
 // that rolled back stays dirty by design and a later run would redeploy it —

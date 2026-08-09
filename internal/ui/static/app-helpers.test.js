@@ -1572,3 +1572,128 @@ test('incidentPresetActive is true only for the badge preset alone', () => {
   // A name query on top means the view is narrower than the badge promised.
   assert.equal(h.incidentPresetActive(bad, 'web', bad), false);
 });
+
+// ── foldAuditRecords (deploy-history fold) ─────────────────────────────────
+// Records are newest-first, like the audit API returns them.
+function rec(status, day, extra) {
+  return Object.assign(
+    {
+      status,
+      timestamp: new Date(Date.UTC(2026, 7, day, 12, 0, 0)).toISOString(),
+      duration_ms: 1000,
+      changed_files: 1,
+    },
+    extra || {},
+  );
+}
+
+test('foldAuditRecords folds a run of routine outcomes into one summary item', () => {
+  const records = [rec('success', 9), rec('success', 8), rec('success', 7), rec('success', 6)];
+  const items = h.foldAuditRecords(records);
+  // The newest record always stays a line of its own; the rest is one run.
+  assert.deepEqual(
+    items.map((it) => it.kind),
+    ['record', 'run'],
+  );
+  assert.equal(items[1].status, 'success');
+  assert.equal(items[1].records.length, 3);
+});
+
+test('foldAuditRecords leaves a short run line-by-line', () => {
+  // Two rows collapsing into a summary line saves one line and hides two
+  // commits — below AUDIT_FOLD_MIN nothing is folded.
+  const items = h.foldAuditRecords([rec('success', 9), rec('success', 8), rec('success', 7)]);
+  assert.deepEqual(
+    items.map((it) => it.kind),
+    ['record', 'record', 'record'],
+  );
+});
+
+test('foldAuditRecords never folds a bad outcome', () => {
+  const records = [
+    rec('heal_exhausted', 9),
+    rec('failed', 8),
+    rec('rolled_back', 7),
+    rec('rolled_back_unhealthy', 6),
+  ];
+  const items = h.foldAuditRecords(records);
+  assert.deepEqual(
+    items.map((it) => it.kind),
+    ['record', 'record', 'record', 'record'],
+  );
+});
+
+test('foldAuditRecords keeps the record below an incident expanded as its context', () => {
+  const records = [
+    rec('failed', 20),
+    rec('success', 19),
+    rec('success', 18),
+    rec('success', 17),
+    rec('success', 16),
+  ];
+  const items = h.foldAuditRecords(records);
+  // failed · the success that preceded it · then the rest folded.
+  assert.deepEqual(
+    items.map((it) => it.kind),
+    ['record', 'record', 'run'],
+  );
+  assert.equal(items[1].record.timestamp, records[1].timestamp);
+  assert.equal(items[2].records.length, 3);
+});
+
+test('foldAuditRecords splits runs by status, so healed and success never merge', () => {
+  const records = [
+    rec('healed', 20),
+    rec('healed', 19),
+    rec('healed', 18),
+    rec('healed', 17),
+    rec('success', 16),
+    rec('success', 15),
+    rec('success', 14),
+  ];
+  const items = h.foldAuditRecords(records);
+  assert.deepEqual(
+    items.map((it) => it.kind),
+    ['record', 'run', 'run'],
+  );
+  assert.equal(items[1].status, 'healed');
+  assert.equal(items[1].records.length, 3);
+  assert.equal(items[2].status, 'success');
+  assert.equal(items[2].records.length, 3);
+});
+
+test('foldAuditRecords is a no-op on a history too short or too varied to fold', () => {
+  assert.deepEqual(h.foldAuditRecords([]), []);
+  const alternating = [
+    rec('success', 9),
+    rec('healed', 8),
+    rec('success', 7),
+    rec('healed', 6),
+    rec('success', 5),
+  ];
+  assert.equal(
+    h.foldAuditRecords(alternating).every((it) => it.kind === 'record'),
+    true,
+  );
+});
+
+test('foldAuditRecords keeps every record reachable in order', () => {
+  const records = [
+    rec('success', 20),
+    rec('success', 19),
+    rec('success', 18),
+    rec('success', 17),
+    rec('failed', 16),
+    rec('success', 15),
+    rec('success', 14),
+    rec('success', 13),
+    rec('success', 12),
+  ];
+  const flat = h.foldAuditRecords(records).flatMap(function (it) {
+    return it.kind === 'run' ? it.records : [it.record];
+  });
+  assert.deepEqual(
+    flat.map((r) => r.timestamp),
+    records.map((r) => r.timestamp),
+  );
+});

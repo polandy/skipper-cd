@@ -145,6 +145,7 @@ module.exports = [
         // app-helpers.js functions it calls
         attentionLabel: 'readonly',
         foldPhases: 'readonly',
+        foldAuditRecords: 'readonly',
         auditStatusLabel: 'readonly',
         classifyDiffLine: 'readonly',
         commitURL: 'readonly',

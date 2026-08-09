@@ -698,6 +698,8 @@ stack's durable terminal deploy outcomes, fetched from `/api/audit`. The panel
 joins the one-open-panel-per-row rule (Maske L). The harness runs the real
 backend, so the records come from real deploys: the startup deploy plus a
 webhook image bump give two `success` records. Behaviour-only (no snapshot).
+UM5/UM6 cover the panel's fold — runs of routine outcomes collapse into one
+summary line, with the verbatim list behind a toggle (UI_SPEC "Deploy history").
 
 - **UM1 — History panel content.** Clicking the newest row's `history-btn` opens
   the `audit-panel` (row gains `audit-open`, panel is its direct sibling) with
@@ -714,6 +716,16 @@ webhook image bump give two `success` records. Behaviour-only (no snapshot).
   history button); the panel is opened on it, and resuming autosync drains the
   queue — the queued row is superseded by the real deploy and the open
   `audit-panel` is removed with it instead of stranding in the table.
+- **UM5 — Routine outcomes fold.** Five deploys of `web` (startup plus four
+  image bumps, awaited through `/api/audit`): the panel shows the newest record
+  as one `audit-row` and the four older ones as a single `audit-fold` line
+  (`4 more successful deploys since …`, three `audit-fold-commit` chips). The
+  `audit-fold-toggle` (`all 5 deploys` ⇄ `fold routine outcomes`) swaps in the
+  verbatim `.ap-raw` list of five rows, flips `aria-expanded`, and its
+  `aria-controls` target is visible; clicking again folds back.
+- **UM6 — Nothing to fold, no control.** With only two records the panel renders
+  both as `audit-row`s and carries neither an `audit-fold` line nor the toggle —
+  the fold must not appear on stacks where it collapsed nothing.
 
 ### 4.15 UI — Maske N: self-heal row detail (ADR-0029 amendment)
 

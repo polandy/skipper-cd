@@ -126,3 +126,69 @@ test.describe('UM4: history panel does not outlive a queued row', () => {
     await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(0);
   });
 });
+
+// UM5 — the history folds runs of routine outcomes (UI_SPEC "Deploy history"):
+// a long-lived stack converges the same way for weeks, so rendered verbatim its
+// history is one line repeated. Nothing is lost — the toggle swaps in the
+// verbatim list, and the deploys inside a run stay reachable as commit chips.
+test.describe('UM5: routine outcomes fold, verbatim list behind the toggle', () => {
+  test('a run of successes becomes one summary line the toggle unfolds', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+
+    // Five deploys of one stack: the startup deploy plus four image bumps. The
+    // audit log is polled to five, so the panel opens on a settled history.
+    for (const tag of ['1.26', '1.27', '1.28', '1.29']) {
+      skipper.setStackImage('web', tag);
+      expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
+    }
+    await expect
+      .poll(async () => (await (await fetch(`${skipper.baseURL}/api/audit?stack=web`)).json()).length)
+      .toBe(5);
+
+    const newest = webRows(page).first();
+    await openRowMenu(newest);
+    await newest.locator('[data-testid="history-btn"]').click();
+    const panel = page.locator('[data-testid="audit-panel"]');
+
+    // The newest record keeps its own line; the four older ones fold into one.
+    await expect(panel.locator('[data-testid="audit-row"]')).toHaveCount(1);
+    const fold = panel.locator('[data-testid="audit-fold"]');
+    await expect(fold).toHaveAttribute('data-status', 'success');
+    await expect(fold).toContainText('4 more successful deploys since');
+    await expect(fold.locator('[data-testid="audit-fold-commit"]')).toHaveCount(3);
+
+    // The toggle swaps in the verbatim list: every record, no fold line.
+    const toggle = panel.locator('[data-testid="audit-fold-toggle"]');
+    await expect(toggle).toHaveText('all 5 deploys');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle).toHaveText('fold routine outcomes');
+    await expect(panel.locator('.ap-raw .audit-row')).toHaveCount(5);
+    await expect(fold).toBeHidden();
+    // aria-controls names the list the toggle revealed.
+    const controls = await toggle.getAttribute('aria-controls');
+    await expect(page.locator(`#${controls}`)).toBeVisible();
+
+    // …and back.
+    await toggle.click();
+    await expect(fold).toBeVisible();
+    await expect(toggle).toHaveText('all 5 deploys');
+  });
+});
+
+// UM6 — a history with nothing routine to fold renders verbatim: no fold line
+// and no toggle. The fold must not add a control to every stack regardless of
+// whether it collapsed anything.
+test.describe('UM6: a short history keeps every row and offers no toggle', () => {
+  test('two deploys render as two rows', async ({ page, skipper }) => {
+    await twoDeploys(page, skipper);
+    const newest = webRows(page).first();
+    await openRowMenu(newest);
+    await newest.locator('[data-testid="history-btn"]').click();
+    const panel = page.locator('[data-testid="audit-panel"]');
+    await expect(panel.locator('[data-testid="audit-row"]')).toHaveCount(2);
+    await expect(panel.locator('[data-testid="audit-fold"]')).toHaveCount(0);
+    await expect(panel.locator('[data-testid="audit-fold-toggle"]')).toHaveCount(0);
+  });
+});

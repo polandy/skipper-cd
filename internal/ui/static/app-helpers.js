@@ -1345,6 +1345,63 @@ function watchedSummary(status, commit, count, disabled) {
   return deploys;
 }
 
+// AUDIT_BAD_STATUSES are the terminal outcomes that went wrong. They are never
+// folded away — the deploy history exists to make them findable.
+const AUDIT_BAD_STATUSES = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
+
+// AUDIT_FOLD_MIN is the shortest run of identical routine outcomes worth
+// folding: below it the summary line replaces at most two rows while hiding
+// their commits, which costs more than the line it saves.
+const AUDIT_FOLD_MIN = 3;
+
+// foldAuditRecords groups a stack's audit records (newest first, ADR-0033)
+// into the display items the deploy-history panel renders. A long-lived stack
+// converges the same way for weeks, so rendered verbatim its history is one
+// outcome repeated — noise that buries the deploy that went wrong. This is the
+// deploy-history counterpart of foldPhases above, and follows the same rules:
+//   - the newest record is always its own line;
+//   - runs of AUDIT_FOLD_MIN or more consecutive identical routine outcomes
+//     collapse into one summary item;
+//   - a bad outcome is never folded, and the record directly below one stays
+//     expanded — what ran last before the failure is the failure's context.
+// Pure: records in, items out. Item shapes:
+//   {kind:'record', record}
+//   {kind:'run', status, records}
+function foldAuditRecords(records) {
+  const recs = records || [];
+  const routine = function (i) {
+    return AUDIT_BAD_STATUSES.indexOf(recs[i].status) === -1;
+  };
+  const items = [];
+  let afterIncident = false;
+  let i = 0;
+  while (i < recs.length) {
+    // The newest record and every incident stand alone.
+    if (i === 0 || !routine(i)) {
+      afterIncident = !routine(i);
+      items.push({ kind: 'record', record: recs[i] });
+      i++;
+      continue;
+    }
+    // Maximal run of one routine status.
+    let j = i;
+    while (j < recs.length && routine(j) && recs[j].status === recs[i].status) j++;
+    let k = i;
+    if (afterIncident) {
+      items.push({ kind: 'record', record: recs[k] });
+      k++;
+    }
+    afterIncident = false;
+    if (j - k >= AUDIT_FOLD_MIN) {
+      items.push({ kind: 'run', status: recs[k].status, records: recs.slice(k, j) });
+    } else {
+      for (let s = k; s < j; s++) items.push({ kind: 'record', record: recs[s] });
+    }
+    i = j;
+  }
+  return items;
+}
+
 // deployAnnouncement builds the screen-reader phrase for a terminal deploy
 // outcome, so the a11y-live region can voice what a sighted user reads off the
 // row (T2.8). Returns null for non-terminal statuses (deploying/queued/blocked/
@@ -1406,6 +1463,9 @@ if (typeof module !== 'undefined' && module.exports) {
     HEALTH,
     FOLD_START_MAX_MS,
     foldPhases,
+    AUDIT_BAD_STATUSES,
+    AUDIT_FOLD_MIN,
+    foldAuditRecords,
     healthClass,
     attentionStacks,
     attentionLabel,

@@ -1381,3 +1381,90 @@ test('deployStatusChipsHTML keeps an active status at count 0 so the narrowing s
 test('deployStatusChipsHTML renders nothing for no rows', () => {
   assert.equal(r.deployStatusChipsHTML({}, []), '');
 });
+
+// ── deploy-history fold (auditRowsHTML) ────────────────────────────────────
+// A long routine history: one incident on top, then a month of successes.
+function auditHistory() {
+  const recs = [
+    {
+      timestamp: '2026-08-09T00:16:00Z',
+      status: 'heal_exhausted',
+      duration_ms: 0,
+      error: 'self-heal exhausted',
+    },
+  ];
+  for (let i = 6; i >= 1; i--) {
+    recs.push({
+      timestamp: `2026-08-0${i}T10:00:00Z`,
+      status: 'success',
+      duration_ms: 1000,
+      commit_sha: 'c0ffee' + i,
+      changed_files: 1,
+    });
+  }
+  return recs;
+}
+
+test('auditRowsHTML folds a run of routine outcomes into one summary line', () => {
+  const html = r.auditRowsHTML(auditHistory(), 'https://forge/r', false, { id: 'a1' });
+  // Incident, the success below it as context, then one fold line for the rest.
+  const folded = html.slice(0, html.indexOf('ap-fold-toggle'));
+  assert.equal([...folded.matchAll(/data-testid="audit-row"/g)].length, 2);
+  assert.match(folded, /data-testid="audit-fold"[^>]*data-status="success"/);
+  assert.match(folded, /<span class="hp-count">5<\/span> more successful deploys since /);
+  assert.match(folded, /· 5 files/);
+  // The deploys inside the run stay reachable as commit chips, capped.
+  const chips = [...folded.matchAll(/data-testid="audit-fold-commit"/g)].length;
+  assert.equal(chips, 3);
+  assert.match(folded, /class="hp-commit">\+2</);
+});
+
+test('auditRowsHTML keeps the verbatim list behind the toggle, without row testids', () => {
+  const html = r.auditRowsHTML(auditHistory(), '', false, { id: 'a1' });
+  assert.match(html, /class="hp-fold-toggle ap-fold-toggle"[^>]*aria-expanded="false"/);
+  assert.match(html, /aria-controls="ap-raw-a1"/);
+  assert.match(html, /data-label="all 7 deploys"/);
+  assert.match(html, /data-fold-label="fold routine outcomes"/);
+  const raw = html.slice(html.indexOf('id="ap-raw-a1"'));
+  // Every record is in the raw list — and none of it counts as an audit-row,
+  // so a testid count never sees one record twice.
+  assert.equal([...raw.matchAll(/class="audit-row"/g)].length, 7);
+  assert.equal([...raw.matchAll(/data-testid="audit-row"/g)].length, 0);
+});
+
+test('auditRowsHTML leaves an unfoldable history untouched and offers no toggle', () => {
+  const recs = [
+    { timestamp: '2026-08-09T10:00:00Z', status: 'success', duration_ms: 1000 },
+    { timestamp: '2026-08-08T10:00:00Z', status: 'failed', duration_ms: 1000 },
+    { timestamp: '2026-08-07T10:00:00Z', status: 'success', duration_ms: 1000 },
+  ];
+  const html = r.auditRowsHTML(recs, '', false, { id: 'a2' });
+  assert.equal([...html.matchAll(/data-testid="audit-row"/g)].length, 3);
+  assert.ok(!html.includes('ap-fold-toggle'), `unexpected toggle: ${html}`);
+  assert.ok(!html.includes('audit-fold'), `unexpected fold line: ${html}`);
+});
+
+test('auditRowsHTML folds self-heals and successes separately', () => {
+  const recs = [{ timestamp: '2026-08-09T12:00:00Z', status: 'healed', duration_ms: 0 }];
+  for (let i = 0; i < 3; i++)
+    recs.push({ timestamp: `2026-08-0${i + 5}T10:00:00Z`, status: 'healed', duration_ms: 0 });
+  for (let i = 0; i < 3; i++)
+    recs.push({ timestamp: `2026-08-0${i + 1}T10:00:00Z`, status: 'success', duration_ms: 1000 });
+  const html = r.auditRowsHTML(recs, '', false, { id: 'a3' });
+  const folds = [...html.matchAll(/data-testid="audit-fold" data-status="([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+  assert.deepEqual(folds, ['healed', 'success']);
+  assert.match(html, /more self-heals since /);
+  // A heal changes no files, so the fold line drops the file count entirely.
+  const healLine = /data-testid="audit-fold" data-status="healed".*?<\/div>/s.exec(html)[0];
+  assert.ok(!healLine.includes('files'), healLine);
+});
+
+test('auditRowsHTML follows the time mode on the fold line', () => {
+  const abs = r.auditRowsHTML(auditHistory(), '', true, { id: 'a4' });
+  const rel = r.auditRowsHTML(auditHistory(), '', false, { id: 'a4' });
+  const since = (h) => /more successful deploys since ([^<·]+)/.exec(h)[1].trim();
+  assert.notEqual(since(abs), since(rel));
+  assert.match(since(rel), /ago$/);
+});
