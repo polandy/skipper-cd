@@ -408,7 +408,7 @@ function healthHistoryHTML(phases, repoBase, nowMs, opts) {
     const rawID = o.id ? `hp-raw-${o.id}` : '';
     const controls = rawID ? ` aria-controls="${escapeAttr(rawID)}"` : '';
     html +=
-      `<button class="hp-fold-toggle" type="button" data-testid="health-fold-toggle" aria-expanded="false"${controls} data-label="all ${phases.length} phases">all ${phases.length} phases</button>` +
+      `<button class="hp-fold-toggle" type="button" data-testid="health-fold-toggle" aria-expanded="false"${controls} data-label="all ${phases.length} phases" data-fold-label="fold routine cycles">all ${phases.length} phases</button>` +
       `<div class="hp-raw"${rawID ? ` id="${escapeAttr(rawID)}"` : ''}>` +
       phases
         .map(function (p, i) {
@@ -1150,35 +1150,133 @@ function logDiffBlockHTML(diff) {
   );
 }
 
+// AUDIT_FOLD_NOUN names what a folded run contains, so the summary line reads
+// as a sentence rather than "9 × success". Always plural: a run is never one
+// record. The incident nouns say *identical*, because that is the whole
+// licence for folding them — same status, same error, below the one that
+// stays expanded. The fallback keeps a future status readable before it gets
+// a noun here.
+const AUDIT_FOLD_NOUN = {
+  success: 'successful deploys',
+  healed: 'self-heals',
+  failed: 'identical failures',
+  rolled_back: 'identical rollbacks',
+  rolled_back_unhealthy: 'identical unhealthy rollbacks',
+  heal_exhausted: 'identical self-heal failures',
+};
+
 // auditRowsHTML renders the deploy-history rows of one stack. absolute picks
 // which of the two timestamps leads and which becomes the tooltip, following
 // the app-wide time toggle. repoBase links the SHAs; '' renders them inert.
-function auditRowsHTML(records, repoBase, absolute) {
-  return records
-    .map(function (r) {
-      const abs = fullTime(r.timestamp),
-        rel = formatTime(r.timestamp);
-      const sha = r.commit_sha
-        ? commitLinkHTML(r.commit_sha, { cls: 'ar-sha', base: repoBase, title: r.commit_sha })
-        : '<span class="ar-sha">—</span>';
-      const files = r.changed_files
-        ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : ''))
-        : '—';
-      const err = r.error
-        ? `<span class="ar-err" title="${escapeAttr(r.error)}">${escapeHtml(r.error)}</span>`
-        : '';
-      return (
-        `<div class="audit-row" data-testid="audit-row" data-status="${escapeAttr(r.status)}">` +
-        `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absolute ? rel : abs)}">${escapeHtml(absolute ? abs : rel)}</span>` +
-        `<span class="ar-status"><span class="adot"></span>${escapeHtml(auditStatusLabel(r.status))}</span>` +
-        `<span class="ar-dur">${escapeHtml(formatDuration(r.duration_ms))}</span>` +
-        sha +
-        `<span class="ar-files">${files}</span>` +
-        err +
-        `</div>`
-      );
+// Runs of routine outcomes are folded away (foldAuditRecords, app-helpers.js)
+// exactly as the health timeline in the same card folds routine cycles — a
+// stack that converged the same way for a month is otherwise that one line
+// repeated, burying the deploy that did not. Whenever folding collapsed
+// anything, the verbatim list stays behind a toggle; opts.id is the
+// page-unique slug its aria-controls points at.
+function auditRowsHTML(records, repoBase, absolute, opts) {
+  const o = opts || {};
+  const time = function (ts) {
+    return absolute ? fullTime(ts) : formatTime(ts);
+  };
+
+  // The summary of one folded run: how many, since when, how many files they
+  // changed, and the deploys inside it as commit chips (capped like the health
+  // timeline's, whose chips these are).
+  const foldLine = function (run) {
+    const noun = AUDIT_FOLD_NOUN[run.status] || auditStatusLabel(run.status);
+    const what =
+      AUDIT_BAD_STATUSES.indexOf(run.status) === -1
+        ? 'routine outcomes'
+        : 'identical repeats of the failure above';
+    const oldest = run.records[run.records.length - 1];
+    const files = run.records.reduce(function (sum, rec) {
+      return sum + (rec.changed_files || 0);
+    }, 0);
+    const commits = run.records
+      .map(function (rec) {
+        return rec.commit_sha;
+      })
+      .filter(Boolean);
+    const rest = commits.length - FOLD_COMMIT_CHIPS_MAX;
+    const chips =
+      commits
+        .slice(0, FOLD_COMMIT_CHIPS_MAX)
+        .map(function (sha) {
+          return commitLinkHTML(sha, {
+            cls: 'hp-commit',
+            base: repoBase,
+            testid: 'audit-fold-commit',
+            title: 'deployed in one of these runs',
+          });
+        })
+        .join('') + (rest > 0 ? `<span class="hp-commit">+${rest}</span>` : '');
+    return (
+      `<div class="hp-phase hp-fold ar-fold" data-testid="audit-fold" data-status="${escapeAttr(run.status)}" ` +
+      `title="${what}, folded — the full history is one click away">` +
+      `<span class="hp-fold-glyph">↻</span>` +
+      `<span><span class="hp-count">${run.records.length}</span> more ` +
+      `${escapeHtml(noun)} since ${escapeHtml(time(oldest.timestamp))}` +
+      `${files ? escapeHtml(' · ' + files + ' file' + (files > 1 ? 's' : '')) : ''}</span>` +
+      chips +
+      `</div>`
+    );
+  };
+
+  const rows = function (recs, withTestid) {
+    return recs
+      .map(function (r) {
+        const abs = fullTime(r.timestamp),
+          rel = formatTime(r.timestamp);
+        const sha = r.commit_sha
+          ? commitLinkHTML(r.commit_sha, { cls: 'ar-sha', base: repoBase, title: r.commit_sha })
+          : '<span class="ar-sha">—</span>';
+        const files = r.changed_files
+          ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : ''))
+          : '—';
+        const err = r.error
+          ? `<span class="ar-err" title="${escapeAttr(r.error)}">${escapeHtml(r.error)}</span>`
+          : '';
+        return (
+          `<div class="audit-row"${withTestid ? ' data-testid="audit-row"' : ''} data-status="${escapeAttr(r.status)}">` +
+          `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absolute ? rel : abs)}">${escapeHtml(absolute ? abs : rel)}</span>` +
+          `<span class="ar-status"><span class="adot"></span>${escapeHtml(auditStatusLabel(r.status))}</span>` +
+          `<span class="ar-dur">${escapeHtml(formatDuration(r.duration_ms))}</span>` +
+          sha +
+          `<span class="ar-files">${files}</span>` +
+          err +
+          `</div>`
+        );
+      })
+      .join('');
+  };
+
+  const items = foldAuditRecords(records);
+  const folded = items
+    .map(function (it) {
+      return it.kind === 'run' ? foldLine(it) : rows([it.record], true);
     })
     .join('');
+  if (
+    !items.some(function (it) {
+      return it.kind === 'run';
+    })
+  ) {
+    return folded;
+  }
+  // aria-controls names the list the toggle reveals, so a screen reader
+  // follows the swap; the id must be document-unique (several rows can hold an
+  // open history at once), which only the caller can guarantee.
+  const rawID = o.id ? `ap-raw-${o.id}` : '';
+  const controls = rawID ? ` aria-controls="${escapeAttr(rawID)}"` : '';
+  return (
+    `<div class="ap-history"><div class="ap-folded">${folded}</div>` +
+    `<button class="hp-fold-toggle" type="button" data-testid="audit-fold-toggle" ` +
+    `aria-expanded="false"${controls} data-label="all ${records.length} deploys" ` +
+    `data-fold-label="fold routine outcomes">all ${records.length} deploys</button>` +
+    `<div class="ap-raw"${rawID ? ` id="${escapeAttr(rawID)}"` : ''}>${rows(records, false)}</div>` +
+    `</div>`
+  );
 }
 
 // clogSvcsHTML renders the container-log drawer's service filter: an "all" chip

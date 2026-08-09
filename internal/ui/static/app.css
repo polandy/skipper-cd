@@ -1384,7 +1384,7 @@
   .health-panel .hp-phase[data-health="starting"]  { --hc: var(--h-starting); }
   .health-panel .hp-phase[data-health="stopped"]   { --hc: var(--h-stopped); }
   .health-panel .hp-phase[data-health="unknown"]   { --hc: var(--h-unknown); }
-  .health-panel .hp-commit {
+  .health-panel .hp-commit, .audit-panel .hp-commit {
     font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
     background: color-mix(in srgb, var(--overlay2) 8%, transparent);
     border: 1px solid var(--border);
@@ -1402,20 +1402,28 @@
   .health-panel .hp-strip span[data-health="starting"]  { --hc: var(--h-starting); }
   .health-panel .hp-strip span[data-health="stopped"]   { --hc: var(--h-stopped); }
   .health-panel .hp-strip span[data-health="unknown"]   { --hc: var(--h-unknown); }
+  /* The fold line and its toggle are shared with the deploy-history panel
+     below, which folds runs of one outcome the same way — one set of rules
+     rather than a parallel component per panel. Only the folded/raw swap is
+     per panel: the timeline's lines sit in a gapped column, the history's rows
+     stay flush behind their own separators. */
   .health-panel .hp-folded, .health-panel .hp-raw { display: flex; flex-direction: column; gap: 2px; }
   .health-panel .hp-raw { display: none; }
   .health-panel .hp-history.show-raw .hp-raw { display: flex; }
   .health-panel .hp-history.show-raw .hp-folded { display: none; }
+  .audit-panel .ap-raw { display: none; }
+  .audit-panel .ap-history.show-raw .ap-raw { display: block; }
+  .audit-panel .ap-history.show-raw .ap-folded { display: none; }
   .health-panel .hp-upin { color: var(--text-muted); font-weight: 400; }
-  .health-panel .hp-fold .hp-fold-glyph { flex: none; }
-  .health-panel .hp-fold .hp-count { color: var(--text-primary); font-weight: 600; }
-  .health-panel .hp-fold-toggle {
+  .hp-fold .hp-fold-glyph { flex: none; color: var(--ac, var(--text-muted)); }
+  .hp-fold .hp-count { color: var(--text-primary); font-weight: 600; }
+  .hp-fold-toggle {
     align-self: flex-start; margin: 2px 0; padding: 1px 7px;
     font-family: var(--font-mono); font-size: 10px; font-weight: 600;
     color: var(--text-muted); background: none;
     border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
   }
-  .health-panel .hp-fold-toggle:hover { color: var(--text-primary); border-color: var(--border-lit); }
+  .hp-fold-toggle:hover { color: var(--text-primary); border-color: var(--border-lit); }
 
   /* ─── AUDIT (per-stack deploy history, ADR-0033) ─── */
   /* A small clock button on the newest row per stack, next to the health pill.
@@ -1567,6 +1575,24 @@
   .audit-row[data-status="rolled_back_unhealthy"] { --ac: var(--danger); }
   .audit-row[data-status="healed"]                { --ac: var(--success); }
   .audit-row[data-status="heal_exhausted"]        { --ac: var(--danger); }
+  /* A folded run of routine outcomes: the audit row's frame (border, padding,
+     status colour) carrying the health timeline's fold line instead of the
+     column grid — the two panels of the card fold in the same words. */
+  .audit-panel .ar-fold {
+    display: flex; align-items: baseline; gap: 7px;
+    padding: 3px 0;
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    border-top: 1px solid color-mix(in srgb, var(--overlay2) 7%, transparent);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Same status tiers as the rows: a folded repeat of a rollback must not read
+     calmer than the rollback it sits under. */
+  .audit-panel .ar-fold[data-status="success"]               { --ac: var(--success); }
+  .audit-panel .ar-fold[data-status="healed"]                { --ac: var(--success); }
+  .audit-panel .ar-fold[data-status="failed"]                { --ac: var(--danger); }
+  .audit-panel .ar-fold[data-status="rolled_back"]           { --ac: var(--rollback); }
+  .audit-panel .ar-fold[data-status="rolled_back_unhealthy"] { --ac: var(--danger); }
+  .audit-panel .ar-fold[data-status="heal_exhausted"]        { --ac: var(--danger); }
   .audit-row .ar-dur { color: var(--text-muted); }
   .audit-row .ar-sha { color: var(--text-secondary); }
   .audit-row .ar-files { color: var(--text-muted); text-align: right; }

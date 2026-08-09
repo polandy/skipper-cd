@@ -1345,6 +1345,94 @@ function watchedSummary(status, commit, count, disabled) {
   return deploys;
 }
 
+// AUDIT_BAD_STATUSES are the terminal outcomes that went wrong.
+const AUDIT_BAD_STATUSES = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
+
+// AUDIT_FOLD_MIN is the shortest run of identical routine outcomes worth
+// folding: below it the summary line replaces at most two rows while hiding
+// their commits, which costs more than the line it saves.
+const AUDIT_FOLD_MIN = 3;
+
+// AUDIT_FOLD_INCIDENT_MIN is the same threshold for the repeats *below* an
+// incident that stays expanded. It is lower because an incident row is two
+// lines — status plus its error — so collapsing even two of them is already a
+// clear gain, where two routine rows are not.
+const AUDIT_FOLD_INCIDENT_MIN = 2;
+
+// foldAuditRecords groups a stack's audit records (newest first, ADR-0033)
+// into the display items the deploy-history panel renders. A long-lived stack
+// converges the same way for weeks, so rendered verbatim its history is one
+// outcome repeated — noise that buries the deploy that went wrong. This is the
+// deploy-history counterpart of foldPhases above, and follows the same rules:
+//   - the newest record is always its own line;
+//   - runs of AUDIT_FOLD_MIN or more consecutive identical routine outcomes
+//     collapse into one summary item;
+//   - the record directly below an incident stays expanded — what ran last
+//     before the failure is the failure's context.
+// An incident is never folded *away*: the newest of a repeated failure always
+// keeps its full row, error and all. Only its identical repeats below it fold
+// (same status and same error text — a different cause is information), which
+// is what a retry storm looks like: the same sentence printed nine times.
+// Pure: records in, items out. Item shapes:
+//   {kind:'record', record}
+//   {kind:'run', status, records}
+function foldAuditRecords(records) {
+  const recs = records || [];
+  const routine = function (i) {
+    return AUDIT_BAD_STATUSES.indexOf(recs[i].status) === -1;
+  };
+  const sameIncident = function (a, b) {
+    return recs[a].status === recs[b].status && (recs[a].error || '') === (recs[b].error || '');
+  };
+  const items = [];
+  const record = function (i) {
+    items.push({ kind: 'record', record: recs[i] });
+  };
+  // [from, to) as one summary once it is long enough to be worth a line, and as
+  // plain records otherwise.
+  const foldOrList = function (from, to, min) {
+    if (to - from >= min) {
+      items.push({ kind: 'run', status: recs[from].status, records: recs.slice(from, to) });
+      return;
+    }
+    for (let s = from; s < to; s++) record(s);
+  };
+
+  let afterIncident = false;
+  let i = 0;
+  while (i < recs.length) {
+    if (!routine(i)) {
+      // The incident itself, then its identical repeats as one summary.
+      let j = i + 1;
+      while (j < recs.length && !routine(j) && sameIncident(i, j)) j++;
+      record(i);
+      foldOrList(i + 1, j, AUDIT_FOLD_INCIDENT_MIN);
+      afterIncident = true;
+      i = j;
+      continue;
+    }
+    // The newest record always keeps its own line.
+    if (i === 0) {
+      record(i);
+      i++;
+      continue;
+    }
+    // Maximal run of one routine status. The first of it stays expanded when it
+    // follows an incident: it is that incident's context.
+    let j = i;
+    while (j < recs.length && routine(j) && recs[j].status === recs[i].status) j++;
+    let k = i;
+    if (afterIncident) {
+      record(k);
+      k++;
+      afterIncident = false;
+    }
+    foldOrList(k, j, AUDIT_FOLD_MIN);
+    i = j;
+  }
+  return items;
+}
+
 // deployAnnouncement builds the screen-reader phrase for a terminal deploy
 // outcome, so the a11y-live region can voice what a sighted user reads off the
 // row (T2.8). Returns null for non-terminal statuses (deploying/queued/blocked/
@@ -1406,6 +1494,10 @@ if (typeof module !== 'undefined' && module.exports) {
     HEALTH,
     FOLD_START_MAX_MS,
     foldPhases,
+    AUDIT_BAD_STATUSES,
+    AUDIT_FOLD_MIN,
+    AUDIT_FOLD_INCIDENT_MIN,
+    foldAuditRecords,
     healthClass,
     attentionStacks,
     attentionLabel,

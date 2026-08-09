@@ -1701,6 +1701,10 @@
     row.classList.remove('diff-open');
   }
 
+  // Counter behind every deploy-history panel's raw-list id (see the fold
+  // toggle below); a panel is rebuilt on each open, so it only ever grows.
+  let auditHistorySeq = 0;
+
   // closeAuditPanel is the deploy-history counterpart, part of the same
   // one-panel-per-row rule (ADR-0033): opening the history panel closes the
   // health/diff panel and vice versa.
@@ -1795,7 +1799,9 @@
       if (empty) empty.textContent = 'No recorded deploys for this stack yet.';
       return;
     }
-    const body = auditRowsHTML(records, repoWebURL, absoluteTime);
+    // The fold toggle's aria-controls needs a document-unique id: several rows
+    // can hold an open history at once, so the stack name would not do.
+    const body = auditRowsHTML(records, repoWebURL, absoluteTime, { id: 'a' + ++auditHistorySeq });
     // Replace the loading line with the rows (keep the head).
     const head = el.querySelector('.ap-head');
     el.innerHTML = '';
@@ -1898,21 +1904,23 @@
     return el;
   }
 
-  // ── Health-timeline fold toggle ──
-  // The timeline folds routine deploy/restart cycles away (healthHistoryHTML);
-  // this swaps one service's folded view for its raw phase list and back. One
-  // delegated listener for every surface the panel appears on (deploy rows,
-  // roster card, peer detail) — the panel is rebuilt on each open/snapshot, so
-  // per-instance wiring would re-bind constantly. The panel lives outside any
-  // row element, so no row-toggle handler sees this click.
+  // ── Fold toggle (health timeline + deploy history) ──
+  // Both panels of the expand card fold routine repetition away — the timeline
+  // its deploy/restart cycles (healthHistoryHTML), the history its runs of one
+  // outcome (auditRowsHTML) — and both swap the folded view for the verbatim
+  // list through this one toggle. A single delegated listener covers every
+  // surface either panel appears on (deploy rows, roster card, peer detail);
+  // the panels are rebuilt on each open/snapshot, so per-instance wiring would
+  // re-bind constantly. Both live outside any row element, so no row-toggle
+  // handler sees this click.
   document.addEventListener('click', function (e) {
     const btn = e.target.closest && e.target.closest('.hp-fold-toggle');
     if (!btn) return;
-    const hist = btn.closest('.hp-history');
+    const hist = btn.closest('.hp-history, .ap-history');
     if (!hist) return;
     const raw = hist.classList.toggle('show-raw');
     btn.setAttribute('aria-expanded', String(raw));
-    btn.textContent = raw ? 'fold routine cycles' : btn.dataset.label;
+    btn.textContent = raw ? btn.dataset.foldLabel : btn.dataset.label;
   });
 
   // ── Deploying indicator + run drawer ──
