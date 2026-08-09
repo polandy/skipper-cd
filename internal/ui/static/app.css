@@ -1395,7 +1395,7 @@
      reuses the outcome strip's reading direction (oldest → newest) and the
      timeline's --hc status colours; min-width keeps a short start visible as
      a sliver — that sliver IS the deploy. */
-  .health-panel .hp-strip { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 3px 0 3px; max-width: 420px; }
+  .health-panel .hp-strip { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 3px 0; max-width: 420px; }
   .health-panel .hp-strip span { flex-basis: 0; min-width: 3px; background: var(--hc, var(--h-unknown)); }
   .health-panel .hp-strip span[data-health="healthy"]   { --hc: var(--h-healthy); }
   .health-panel .hp-strip span[data-health="unhealthy"] { --hc: var(--h-unhealthy); }

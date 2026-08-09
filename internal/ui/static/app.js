@@ -1803,6 +1803,12 @@
     el.insertAdjacentHTML('beforeend', body);
   }
 
+  // Feeds the ids the timeline's fold toggle points aria-controls at. A counter
+  // rather than stack+service: the same service can hold an open panel on two
+  // surfaces at once (a Deploys row and the roster card), and an id must be
+  // unique across the whole document.
+  let healthHistorySeq = 0;
+
   // host is optional: omitted (or the primary's own name) reads the live local
   // snapshot; a peer name reads that peer's fanned-in health (ADR-0048), so peer
   // rows render the same containers panel. The per-service log button is
@@ -1884,6 +1890,7 @@
             `</div>` +
             healthHistoryHTML(phases, repoWebURLFor(host), Date.now(), {
               onDemand: !!s.on_demand,
+              id: 'h' + ++healthHistorySeq,
             })
           );
         })

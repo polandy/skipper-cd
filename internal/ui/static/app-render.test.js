@@ -338,6 +338,43 @@ test('healthHistoryHTML folds routine cycles behind a summary line, a toggle and
   assert.doesNotMatch(raw, /data-testid="health-phase"/);
 });
 
+test('healthHistoryHTML caps the summary commit chips and counts the rest', () => {
+  // Six deploy-correlated cycles, one every two hours. The newest start is
+  // absorbed into the head line, so five reach the summary: three chips + "+2".
+  const HOUR = 3600000;
+  const iso = (ms) => new Date(ms).toISOString().replace('.000', '');
+  const base = Date.parse('2026-08-09T12:00:00Z');
+  const phases = [{ status: 'healthy', since: iso(base) }];
+  for (let i = 0; i < 6; i++) {
+    phases.push({
+      status: 'starting',
+      since: iso(base - 2 * i * HOUR - 60000),
+      deploy_correlated: true,
+      commit: `c${i}0000000000`,
+    });
+    phases.push({ status: 'healthy', since: iso(base - 2 * (i + 1) * HOUR) });
+  }
+  const html = r.healthHistoryHTML(phases, '', Date.parse('2026-08-09T12:05:00Z'));
+  assert.equal((html.match(/data-testid="health-fold-commit"/g) || []).length, 3);
+  assert.match(html, /<span class="hp-commit">\+2<\/span>/);
+});
+
+test('healthHistoryHTML points the fold toggle at the raw list it reveals', () => {
+  const phases = [
+    { status: 'healthy', since: '2026-08-09T12:00:00Z' },
+    { status: 'starting', since: '2026-08-09T11:59:00Z' },
+    { status: 'healthy', since: '2026-08-09T10:00:00Z' },
+  ];
+  const withID = r.healthHistoryHTML(phases, '', Date.parse('2026-08-09T12:05:00Z'), { id: 'h7' });
+  assert.match(withID, /aria-expanded="false" aria-controls="hp-raw-h7"/);
+  assert.match(withID, /<div class="hp-raw" id="hp-raw-h7">/);
+  // Without an id there is nothing unique to point at — the attribute is left off
+  // rather than pointing at a duplicate.
+  const noID = r.healthHistoryHTML(phases, '', Date.parse('2026-08-09T12:05:00Z'));
+  assert.doesNotMatch(noID, /aria-controls/);
+  assert.match(noID, /<div class="hp-raw">/);
+});
+
 test('healthHistoryHTML keeps an incident and its last-good phase as full lines', () => {
   const phases = [
     {

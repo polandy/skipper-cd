@@ -246,6 +246,10 @@ test.describe('UH7: routine start folds away, raw list behind the toggle', () =>
     // and back.
     const toggle = history.locator('[data-testid="health-fold-toggle"]');
     await expect(toggle).toHaveText('all 3 phases');
+    // It names the list it reveals, so the id the panel mints actually resolves.
+    const controls = await toggle.getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
+    await expect(history.locator(`#${controls}`)).toHaveClass(/hp-raw/);
     await toggle.click();
     const raw = history.locator('.hp-raw .hp-phase');
     await expect(raw).toHaveCount(3);
