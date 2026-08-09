@@ -1185,6 +1185,10 @@ function auditRowsHTML(records, repoBase, absolute, opts) {
   // timeline's, whose chips these are).
   const foldLine = function (run) {
     const noun = AUDIT_FOLD_NOUN[run.status] || auditStatusLabel(run.status);
+    const what =
+      AUDIT_BAD_STATUSES.indexOf(run.status) === -1
+        ? 'routine outcomes'
+        : 'identical repeats of the failure above';
     const oldest = run.records[run.records.length - 1];
     const files = run.records.reduce(function (sum, rec) {
       return sum + (rec.changed_files || 0);
@@ -1209,7 +1213,7 @@ function auditRowsHTML(records, repoBase, absolute, opts) {
         .join('') + (rest > 0 ? `<span class="hp-commit">+${rest}</span>` : '');
     return (
       `<div class="hp-phase hp-fold ar-fold" data-testid="audit-fold" data-status="${escapeAttr(run.status)}" ` +
-      `title="${AUDIT_BAD_STATUSES.indexOf(run.status) === -1 ? 'routine outcomes' : 'identical repeats of the failure above'}, folded — the full history is one click away">` +
+      `title="${what}, folded — the full history is one click away">` +
       `<span class="hp-fold-glyph">↻</span>` +
       `<span><span class="hp-count">${run.records.length}</span> more ` +
       `${escapeHtml(noun)} since ${escapeHtml(time(oldest.timestamp))}` +

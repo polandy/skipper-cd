@@ -1601,11 +1601,16 @@ test('foldAuditRecords folds a run of routine outcomes into one summary item', (
 
 test('foldAuditRecords leaves a short run line-by-line', () => {
   // Two rows collapsing into a summary line saves one line and hides two
-  // commits — below AUDIT_FOLD_MIN nothing is folded.
-  const items = h.foldAuditRecords([rec('success', 9), rec('success', 8), rec('success', 7)]);
-  assert.deepEqual(
-    items.map((it) => it.kind),
-    ['record', 'record', 'record'],
+  // commits — below AUDIT_FOLD_MIN nothing is folded. Built from the constant
+  // so the case follows it rather than drifting from it: the newest record is
+  // always expanded, so a run one short of the threshold needs MIN records.
+  const records = [];
+  for (let d = 0; d < h.AUDIT_FOLD_MIN; d++) records.push(rec('success', 9 - d));
+  const items = h.foldAuditRecords(records);
+  assert.equal(items.length, h.AUDIT_FOLD_MIN);
+  assert.equal(
+    items.every((it) => it.kind === 'record'),
+    true,
   );
 });
 
@@ -1737,11 +1742,15 @@ test('foldAuditRecords never merges incidents that failed differently', () => {
 
 test('foldAuditRecords leaves a lone incident repeat expanded', () => {
   const boom = { error: 'same cause' };
-  const items = h.foldAuditRecords([rec('failed', 20, boom), rec('failed', 19, boom)]);
-  assert.deepEqual(
-    items.map((it) => it.kind),
-    ['record', 'record'],
+  // One repeat below the expanded failure — one short of AUDIT_FOLD_INCIDENT_MIN.
+  const records = [rec('failed', 20, boom)];
+  for (let d = 1; d < h.AUDIT_FOLD_INCIDENT_MIN; d++) records.push(rec('failed', 20 - d, boom));
+  const items = h.foldAuditRecords(records);
+  assert.equal(
+    items.every((it) => it.kind === 'record'),
+    true,
   );
+  assert.equal(items.length, h.AUDIT_FOLD_INCIDENT_MIN);
 });
 
 test('foldAuditRecords folds a repeat of errorless incidents too', () => {

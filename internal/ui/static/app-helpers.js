@@ -1385,6 +1385,19 @@ function foldAuditRecords(records) {
     return recs[a].status === recs[b].status && (recs[a].error || '') === (recs[b].error || '');
   };
   const items = [];
+  const record = function (i) {
+    items.push({ kind: 'record', record: recs[i] });
+  };
+  // [from, to) as one summary once it is long enough to be worth a line, and as
+  // plain records otherwise.
+  const foldOrList = function (from, to, min) {
+    if (to - from >= min) {
+      items.push({ kind: 'run', status: recs[from].status, records: recs.slice(from, to) });
+      return;
+    }
+    for (let s = from; s < to; s++) record(s);
+  };
+
   let afterIncident = false;
   let i = 0;
   while (i < recs.length) {
@@ -1392,37 +1405,29 @@ function foldAuditRecords(records) {
       // The incident itself, then its identical repeats as one summary.
       let j = i + 1;
       while (j < recs.length && !routine(j) && sameIncident(i, j)) j++;
-      items.push({ kind: 'record', record: recs[i] });
-      if (j - i - 1 >= AUDIT_FOLD_INCIDENT_MIN) {
-        items.push({ kind: 'run', status: recs[i].status, records: recs.slice(i + 1, j) });
-      } else {
-        for (let s = i + 1; s < j; s++) items.push({ kind: 'record', record: recs[s] });
-      }
+      record(i);
+      foldOrList(i + 1, j, AUDIT_FOLD_INCIDENT_MIN);
       afterIncident = true;
       i = j;
       continue;
     }
     // The newest record always keeps its own line.
     if (i === 0) {
-      afterIncident = false;
-      items.push({ kind: 'record', record: recs[i] });
+      record(i);
       i++;
       continue;
     }
-    // Maximal run of one routine status.
+    // Maximal run of one routine status. The first of it stays expanded when it
+    // follows an incident: it is that incident's context.
     let j = i;
     while (j < recs.length && routine(j) && recs[j].status === recs[i].status) j++;
     let k = i;
     if (afterIncident) {
-      items.push({ kind: 'record', record: recs[k] });
+      record(k);
       k++;
+      afterIncident = false;
     }
-    afterIncident = false;
-    if (j - k >= AUDIT_FOLD_MIN) {
-      items.push({ kind: 'run', status: recs[k].status, records: recs.slice(k, j) });
-    } else {
-      for (let s = k; s < j; s++) items.push({ kind: 'record', record: recs[s] });
-    }
+    foldOrList(k, j, AUDIT_FOLD_MIN);
     i = j;
   }
   return items;
