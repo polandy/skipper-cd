@@ -53,7 +53,20 @@ test('versionChipHTML frames the body with an escaped service label, aria and ti
   assert.match(html, /^<span class="tag-delta" role="img"/);
   assert.match(html, /aria-label="we&lt;b&gt; &quot;up&quot;"/);
   assert.match(html, /title="we&lt;b&gt;: x"/);
-  assert.match(html, /<span class="td-svc">we&lt;b&gt;<\/span><span>1\.2<\/span>/);
+  assert.match(
+    html,
+    /<span class="td-svc">we&lt;b&gt;<\/span><span class="td-val"><span>1\.2<\/span><\/span>/,
+  );
+});
+
+test('versionChipHTML groups the change tokens so a wrap never splits a version', () => {
+  const html = r.versionChipHTML('web', '<span>1.5</span><span>→</span><span>1.6</span>', 'a', 't');
+  // Label outside the group, every change token inside it: the only wrap
+  // opportunity is between the service name and the change.
+  assert.match(
+    html,
+    /<span class="td-svc">web<\/span><span class="td-val"><span>1\.5<\/span><span>→<\/span><span>1\.6<\/span><\/span>/,
+  );
 });
 
 test('versionChipHTML drops the service label when service is empty', () => {

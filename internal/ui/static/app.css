@@ -1687,6 +1687,12 @@
     font-size: 10.5px;
     white-space: nowrap;
   }
+  /* The value tokens are one unwrappable group (see versionChipHTML): a chip
+     that must wrap breaks after the service label, never inside a version. */
+  .tag-delta .td-val {
+    display: inline-flex; align-items: center; gap: 5px;
+    white-space: nowrap; min-width: 0;
+  }
   .tag-delta .td-svc { color: var(--text-primary); font-weight: 600; }
   /* Shared tag shown as context on a digest-only change, so `1.25 ↻` reads as
      "same 1.25, image rebuilt" rather than a bare digest pair. */
@@ -3590,8 +3596,15 @@
     .event-row .col-version { grid-column: 2; grid-row: 2; }
     /* Spanning both lines, so the cell's second line — the health pill — sits
        level with the version line rather than above it (same reason as the
-       tablet layout, where Stack is one line and Status two). */
-    .event-row .status-cell { grid-column: 3; grid-row: 1 / span 2; }
+       tablet layout, where Stack is one line and Status two). Right-aligned for
+       the same reason the roster's cell is (below): badge, health pill and
+       retry note share one edge instead of agreeing only where the badge
+       happens to be the widest. The extra `.event-list` beats the `:has()`
+       stacking rules further down (equal specificity, later in the file). */
+    .event-list .event-row .status-cell {
+      grid-column: 3; grid-row: 1 / span 2;
+      justify-self: end; align-items: flex-end;
+    }
     /* Duration and Files go, exactly as they do on a tablet: the version is
        worth more on a narrow row than a `0s` and a file count, and the status
        cell now owns the right-hand column across both lines. Both stay in the
@@ -3609,7 +3622,23 @@
     }
     .roster-stack  { grid-column: 1 / 3; grid-row: 1; }
     .roster-row .col-version { grid-column: 2; grid-row: 2; }
-    .roster-row .roster-status { grid-column: 3; grid-row: 1 / span 2; justify-self: end; }
+    /* Right-aligned inside the cell so badge, health pill and outcome strip
+       share one edge — left-aligned they only agreed where the badge happened
+       to be the widest. The extra `.roster-list` beats the `:has()` stacking
+       rules further down (equal specificity, later in the file). */
+    .roster-list .roster-row .roster-status {
+      grid-column: 3; grid-row: 1 / span 2;
+      justify-self: end; align-items: flex-end;
+    }
+    /* The incident line is the widest thing a status cell can hold (nowrap,
+       ~230px): inside the cell it sized the whole status track and squeezed
+       the version chip to nothing. Out of flow it keeps its full wording on a
+       line of its own along the row's bottom edge, and only the rows that have
+       one pay the height. */
+    .roster-row:has(.last-incident) { padding-bottom: 30px; }
+    /* right: the row's own side padding, so the line ends on the status cell's
+       edge; bottom + the padding above are one pair — both change together. */
+    .roster-row .last-incident { position: absolute; right: 14px; bottom: 9px; }
     .roster-when   { grid-column: 1; grid-row: 2; font-size: 11px; }
     /* Commit goes, as on a tablet — the status column now spans both lines, and
        the SHA is in the row's deploy history. */

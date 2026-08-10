@@ -63,9 +63,12 @@ function commitLinkHTML(sha, opts) {
 // supply the version tokens (body) plus the accessible phrasing; the chip owns
 // the frame and the service label. An empty service drops that label, for a
 // caller whose surrounding line already names the service.
+// The tokens ride in one .td-val group so a chip too wide for its column
+// breaks after the service label and never between `1.22.3` and `↑1.22.6` —
+// half a version on each line reads as two versions.
 function versionChipHTML(service, body, aria, title) {
   const label = service ? `<span class="td-svc">${escapeHtml(service)}</span>` : '';
-  return `<span class="tag-delta" role="img" aria-label="${escapeAttr(aria)}" title="${escapeAttr(title)}">${label}${body}</span>`;
+  return `<span class="tag-delta" role="img" aria-label="${escapeAttr(aria)}" title="${escapeAttr(title)}">${label}<span class="td-val">${body}</span></span>`;
 }
 
 // imageDeltaHTML renders the per-service image change(s) a deploy carried as

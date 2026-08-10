@@ -1628,6 +1628,39 @@ same report reshaped ([UI_SPEC](../internal/ui/UI_SPEC.md#log-view)):
 
 Behaviour-only, no snapshot.
 
+### 4.46 UI — Maske AS: the rows line up on a phone
+
+The 2026-08-10 report from a phone: the Stacks rows looked untidy. The cause was
+the status column — an `auto` track whose contents were left-aligned, so the
+widest element of each row set that row's width. The last-incident line
+(`↺ rolled back · unhealthy · 8d21h ago`, nowrap) is by far the widest thing the
+cell can hold: measured at 448 px it grew the track from 92 px to 231 px, which
+left the version cell 0 px and cut the version chip off mid-glyph. The mask
+drives a real rollback-then-retry — the sequence that leaves a papered-over
+incident behind — at Pixel-9-Pro width and asserts the row's geometry
+([UI_SPEC](../internal/ui/UI_SPEC.md#responsive--700-px)):
+
+- **UAS1 — One right edge.** Badge, health pill and outcome strip end at the
+  same x (±1 px). Left-aligned they only agreed when the badge happened to be
+  the widest of the three.
+- **UAS2 — The incident line has its own line.** It sits below the version line
+  and inside the row's own box (the row's extra bottom padding is what contains
+  an out-of-flow line), and the version cell keeps a real width — the assertion
+  that fails against the unfixed build, where it was 0.
+- **UAS3 — A wrapping chip keeps its change on one line.** In the Deploys
+  column (where a chip may wrap) a long service name plus long tags at the same
+  width: the chip is really in the wrapped case (its box is taller than the
+  token group — a positive signal, so the assertion cannot hold trivially), the
+  label sits above, and every token of the change shares one line. Split across
+  lines, `1.5 → 1.6` reads as two versions.
+
+- **UAS4 — The Deploys row shares the edge.** The same assertion on a deploy
+  row: the two views are one look, so repairing the roster alone would have left
+  the sibling view ragged in exactly the way the report was about.
+
+All four fail against the unfixed build (three on geometry, UAS3 on the missing
+token group). Behaviour-only, no snapshot.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -1858,6 +1891,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: folded timeline — routine start absorbed, strip, raw-list toggle | **UH7** |
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
+| Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |
 | PWA update banner: dismiss keeps the current version | **UE2** |
