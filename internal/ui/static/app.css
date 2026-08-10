@@ -3596,8 +3596,15 @@
     .event-row .col-version { grid-column: 2; grid-row: 2; }
     /* Spanning both lines, so the cell's second line — the health pill — sits
        level with the version line rather than above it (same reason as the
-       tablet layout, where Stack is one line and Status two). */
-    .event-row .status-cell { grid-column: 3; grid-row: 1 / span 2; }
+       tablet layout, where Stack is one line and Status two). Right-aligned for
+       the same reason the roster's cell is (below): badge, health pill and
+       retry note share one edge instead of agreeing only where the badge
+       happens to be the widest. The extra `.event-list` beats the `:has()`
+       stacking rules further down (equal specificity, later in the file). */
+    .event-list .event-row .status-cell {
+      grid-column: 3; grid-row: 1 / span 2;
+      justify-self: end; align-items: flex-end;
+    }
     /* Duration and Files go, exactly as they do on a tablet: the version is
        worth more on a narrow row than a `0s` and a file count, and the status
        cell now owns the right-hand column across both lines. Both stay in the
@@ -3621,7 +3628,7 @@
        rules further down (equal specificity, later in the file). */
     .roster-list .roster-row .roster-status {
       grid-column: 3; grid-row: 1 / span 2;
-      justify-self: end; align-items: flex-end; text-align: right;
+      justify-self: end; align-items: flex-end;
     }
     /* The incident line is the widest thing a status cell can hold (nowrap,
        ~230px): inside the cell it sized the whole status track and squeezed

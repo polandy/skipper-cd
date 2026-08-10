@@ -1628,7 +1628,7 @@ same report reshaped ([UI_SPEC](../internal/ui/UI_SPEC.md#log-view)):
 
 Behaviour-only, no snapshot.
 
-### 4.46 UI — Maske AS: the Stacks row lines up on a phone
+### 4.46 UI — Maske AS: the rows line up on a phone
 
 The 2026-08-10 report from a phone: the Stacks rows looked untidy. The cause was
 the status column — an `auto` track whose contents were left-aligned, so the
@@ -1654,8 +1654,12 @@ incident behind — at Pixel-9-Pro width and asserts the row's geometry
   label sits above, and every token of the change shares one line. Split across
   lines, `1.5 → 1.6` reads as two versions.
 
-All three fail against the unfixed build (the first two on geometry, the third
-on the missing token group). Behaviour-only, no snapshot.
+- **UAS4 — The Deploys row shares the edge.** The same assertion on a deploy
+  row: the two views are one look, so repairing the roster alone would have left
+  the sibling view ragged in exactly the way the report was about.
+
+All four fail against the unfixed build (three on geometry, UAS3 on the missing
+token group). Behaviour-only, no snapshot.
 
 ## 5. Visual snapshot strategy
 
@@ -1887,7 +1891,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: folded timeline — routine start absorbed, strip, raw-list toggle | **UH7** |
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
-| Responsive ≤700px: roster status cell right-aligned, incident line on its own line, version chip uncut | **UAS1**, **UAS2**, **UAS3** |
+| Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |
 | PWA update banner: dismiss keeps the current version | **UE2** |

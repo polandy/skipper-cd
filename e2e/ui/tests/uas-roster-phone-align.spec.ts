@@ -1,7 +1,7 @@
 import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 
-// Maske AS: the Stacks row lines up on a phone. See dev-docs/e2e-tests.md §4.46.
+// Maske AS: the rows line up on a phone. See dev-docs/e2e-tests.md §4.46.
 //
 // The 2026-08-10 report from a phone: the Stacks rows looked untidy. The cause
 // was the status column — an `auto` track whose contents were left-aligned, so
@@ -12,8 +12,9 @@ import type { Page } from "@playwright/test";
 // drives a real rollback-then-retry (the sequence that produces an incident
 // line) at phone width and asserts the row's geometry: badge, health pill and
 // outcome strip share one right edge (UAS1), the incident line has a line of
-// its own and no longer costs the version cell its width (UAS2), and the
-// version chip stays inside its cell (UAS3). Behaviour-only, no snapshot.
+// its own and no longer costs the version cell its width (UAS2), a wrapping
+// version chip never splits a version (UAS3), and the Deploys row gets the same
+// edge, since the two views are one look (UAS4). Behaviour-only, no snapshot.
 
 const PHONE = { width: 448, height: 900 }; // Pixel 9 Pro, portrait
 
@@ -129,6 +130,30 @@ test.describe("Maske AS: the Stacks row lines up on a phone", () => {
     expect(incident.y + incident.height).toBeLessThanOrEqual(
       rowBox.y + rowBox.height,
     );
+  });
+
+  // UAS4 — the Deploys row gets the same edge. The two views share one look
+  // (dev-docs/ui-design-concept.md), so fixing the roster alone would have left
+  // the sibling view ragged in exactly the way the report was about.
+  test("UAS4: the deploy row status cell shares the same right edge", async ({
+    page,
+    skipper,
+  }) => {
+    await rollBackThenRetry(page, skipper);
+    await page
+      .locator('[data-testid="view-toggle"] button[data-view="deploys"]')
+      .click();
+
+    const row = page
+      .locator(
+        '[data-testid="deploy-row"][data-stack="web"][data-status="success"]',
+      )
+      .first();
+    const badge = await rect(row.locator('[data-testid="status-badge"]'));
+    const pill = await rect(row.locator('[data-testid="health-pill"]'));
+    expect(
+      Math.abs(pill.x + pill.width - (badge.x + badge.width)),
+    ).toBeLessThanOrEqual(1);
   });
 });
 
