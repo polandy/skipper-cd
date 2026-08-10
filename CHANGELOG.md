@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/polandy/skipper-cd/compare/v0.22.0...v0.22.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* **ui:** line up the deploy and stack rows on a phone ([#301](https://github.com/polandy/skipper-cd/issues/301)) ([3a28645](https://github.com/polandy/skipper-cd/commit/3a286450875c6367ec0b8e20268196c3b40b8842))
+
 ## [0.22.0](https://github.com/polandy/skipper-cd/compare/v0.21.0...v0.22.0) (2026-08-09)
 
 
