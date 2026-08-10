@@ -3629,6 +3629,8 @@
        line of its own along the row's bottom edge, and only the rows that have
        one pay the height. */
     .roster-row:has(.last-incident) { padding-bottom: 30px; }
+    /* right: the row's own side padding, so the line ends on the status cell's
+       edge; bottom + the padding above are one pair — both change together. */
     .roster-row .last-incident { position: absolute; right: 14px; bottom: 9px; }
     .roster-when   { grid-column: 1; grid-row: 2; font-size: 11px; }
     /* Commit goes, as on a tablet — the status column now spans both lines, and
