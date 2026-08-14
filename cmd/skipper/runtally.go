@@ -46,7 +46,7 @@ func (t *runTally) observe(e events.DeployEvent) {
 	switch e.Status {
 	case events.StatusSuccess, events.StatusFailed, events.StatusSkipped,
 		events.StatusRolledBack, events.StatusRolledBackUnhealthy,
-		events.StatusQueued, events.StatusBlocked:
+		events.StatusQueued, events.StatusBlocked, events.StatusRemoved:
 		t.mu.Lock()
 		t.counts[e.Status]++
 		t.mu.Unlock()
@@ -72,6 +72,7 @@ func logRunSummary(counts map[events.Status]int) {
 		"queued", counts[events.StatusQueued],
 		"blocked", counts[events.StatusBlocked],
 		"skipped", counts[events.StatusSkipped],
+		"removed", counts[events.StatusRemoved],
 		"failed", counts[events.StatusFailed],
 	)
 }

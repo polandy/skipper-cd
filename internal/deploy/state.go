@@ -91,6 +91,16 @@ func (s *persistedState) revertStack(stack string, previous stackFileHashes) {
 	s.Stacks[stack] = previous
 }
 
+// forgetStack drops everything recorded about a stack that left the deploy set,
+// so it is announced removed once and deploys from scratch if it ever comes
+// back. ProjectDirs is deliberately kept: orphan detection matches the still
+// running project against it to class it as formerly managed (ADR-0036).
+func (s *persistedState) forgetStack(stack string) {
+	delete(s.Stacks, stack)
+	delete(s.Images, stack)
+	delete(s.RunningImages, stack)
+}
+
 // markNixOSRebuildInFlight records that a nixos-rebuild is about to run for the
 // given changed files, so a self-restart that interrupts it can be reconciled
 // on the next startup.

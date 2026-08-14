@@ -515,6 +515,7 @@
   let orphansSnap = [];
   let orphansOpen = new Set();
   let orphansSectionOpen = false; // the user's manual toggle of the section header
+  let announcedOrphans = new Set(); // orphaned projects already surfaced, so a manual close sticks
 
   function orphanContainerRow(c) {
     const row = document.createElement('div');
@@ -564,11 +565,40 @@
     return line;
   }
 
+  // orphanedProjects are the projects skipper once deployed and the stack set no
+  // longer accounts for — the ones a removal leaves behind. Unmanaged projects
+  // (never deployed by skipper) are inventory, not news.
+  function orphanedProjects() {
+    return orphansSnap
+      .filter(function (o) {
+        return o.class === 'orphaned';
+      })
+      .map(function (o) {
+        return o.project;
+      });
+  }
+
+  // A newly appearing orphan opens the section once, so a stack that left the
+  // repo is not hidden behind a collapsed header. Tracked per project: a manual
+  // close then sticks until the next one shows up.
+  function openSectionForNewOrphans() {
+    const current = orphanedProjects();
+    const fresh = current.some(function (p) {
+      return !announcedOrphans.has(p);
+    });
+    announcedOrphans = new Set(current);
+    if (fresh) orphansSectionOpen = true;
+  }
+
   function renderOrphans() {
     const wrap = document.getElementById('orphans');
     const body = document.getElementById('orphans-body');
     const count = document.getElementById('orphans-count');
     body.textContent = '';
+    openSectionForNewOrphans();
+    // The pill carries the orphaned colour only when one is present — an
+    // all-unmanaged list is inventory and stays muted.
+    count.classList.toggle('has-orphaned', announcedOrphans.size > 0);
     // The badge shows matching orphans during a search, else the total.
     const q = (deployFilter.value || '').trim().toLowerCase();
     count.textContent = String(

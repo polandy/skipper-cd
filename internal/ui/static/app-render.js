@@ -702,6 +702,7 @@ const DEPLOY_STATUS_ORDER = [
   'deploying',
   'queued',
   'blocked',
+  'removed',
 ];
 
 // deployStatusChipsHTML renders the status-filter chip row under the Deploys

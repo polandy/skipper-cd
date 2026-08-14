@@ -43,6 +43,13 @@ const (
 	// sync; it is deliberately not a notification status (the dependency's own
 	// failure already pages, and this recurs on every reconcile tick).
 	StatusBlocked Status = "blocked"
+	// StatusRemoved marks a stack that left the deploy set — its directory is
+	// gone from the repo (or its entry from the host config). Nothing is torn
+	// down: it records in the history *when* the stack stopped being managed,
+	// against the commit that removed it, while its containers keep running and
+	// surface in the Orphans section (ADR-0036 amendment). Emitted once, on the
+	// first run that sees it gone.
+	StatusRemoved Status = "removed"
 )
 
 // CommitInfo describes one git commit deployed by an event: the metadata

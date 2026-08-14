@@ -63,12 +63,13 @@ var anchors = map[string]style{
 	"deploy complete":               {glyph: "✓", color: ansiSuccess, body: bodyDeployComplete},
 	"deploy failed":                 {glyph: "✗", color: ansiDanger, body: bodyFailed("failed", ansiDanger)},
 	"deploy failed but rolled back": {glyph: "↺", color: ansiRollback, body: bodyFailed("rolled back", ansiRollback)},
-	"deploy failed, rollback ran but stack is still unhealthy": {glyph: "↺", color: ansiDanger, body: bodyFailed("rolled back · still unhealthy", ansiDanger)},
-	"skipping stack, no changes detected":                      {glyph: "▪", color: ansiDim, body: bodySkipped},
-	"deploy deferred: autosync paused":                         {glyph: "▪", color: ansiWarn, body: bodyDeferred},
-	"self-heal: restoring stack to its deployed running state": {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restoring")},
-	"self-heal: stack restored":                                {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restored")},
-	"file changed":                                             {glyph: "↳", indent: true, body: bodyFileChanged, block: blockDiff},
+	"deploy failed, rollback ran but stack is still unhealthy":           {glyph: "↺", color: ansiDanger, body: bodyFailed("rolled back · still unhealthy", ansiDanger)},
+	"skipping stack, no changes detected":                                {glyph: "▪", color: ansiDim, body: bodySkipped},
+	"deploy deferred: autosync paused":                                   {glyph: "▪", color: ansiWarn, body: bodyDeferred},
+	"self-heal: restoring stack to its deployed running state":           {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restoring")},
+	"self-heal: stack restored":                                          {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restored")},
+	"file changed":                                                       {glyph: "↳", indent: true, body: bodyFileChanged, block: blockDiff},
+	"stack removed from the deploy set, its containers are left running": {glyph: "−", color: ansiRollback, body: bodyRemoved},
 
 	// Multi-host fan-in (ADR-0048): the startup line and per-peer reachability
 	// edges. Message text mirrors cmd/skipper and internal/peers by hand — same
@@ -199,6 +200,11 @@ func bodySkipped(attrs []attr, color bool) string {
 	return colorize(color, ansiDim, str(attrs, "stack")+"  unchanged, skipped")
 }
 
+func bodyRemoved(attrs []attr, color bool) string {
+	return colorize(color, ansiBold, str(attrs, "stack")) + "  " +
+		colorize(color, ansiRollback, "removed from the deploy set · containers left running")
+}
+
 func bodyDeferred(attrs []attr, color bool) string {
 	return colorize(color, ansiBold, str(attrs, "stack")) + "  " + colorize(color, ansiWarn, "deferred · autosync paused")
 }
@@ -307,6 +313,7 @@ func bodyRunComplete(attrs []attr, color bool) string {
 		{intAttr(attrs, "rolled_back_unhealthy"), "rolled back · unhealthy", ansiDanger},
 		{intAttr(attrs, "queued"), "queued", ansiWarn},
 		{intAttr(attrs, "blocked"), "blocked", ansiWarn},
+		{intAttr(attrs, "removed"), "removed", ansiDim},
 		{intAttr(attrs, "skipped"), "skipped", ansiDim},
 		{intAttr(attrs, "failed"), "failed", ansiDanger},
 	}

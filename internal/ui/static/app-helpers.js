@@ -228,6 +228,8 @@ const STATUS_ICON_PATHS = {
   heal_exhausted: '<path d="M12 4.5 21 19.5H3z"/><path d="M12 10v4.5"/><path d="M12 17.4h.01"/>',
   queued: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3.2 2"/>',
   blocked: '<circle cx="12" cy="12" r="8"/><path d="M6.3 6.3l11.4 11.4"/>',
+  // A stack taken out of the set — a minus, not a bin: nothing was deleted.
+  removed: '<circle cx="12" cy="12" r="8"/><path d="M8 12h8"/>',
 };
 
 // statusIcon returns the leading badge glyph for a deploy status as an inline
@@ -275,6 +277,7 @@ const ROW_STATUSES = [
   'heal_exhausted',
   'queued',
   'blocked',
+  'removed',
 ];
 
 // rowClass builds a deploy row's class list. isHistory marks rows replayed on
@@ -1446,6 +1449,7 @@ function deployAnnouncement(status, stack) {
     rolled_back: 'deploy failed, rolled back',
     rolled_back_unhealthy: 'rolled back, still unhealthy',
     heal_exhausted: 'self-heal failed',
+    removed: 'removed from the deploy set',
   }[status];
   return phrase ? stack + ' ' + phrase : null;
 }

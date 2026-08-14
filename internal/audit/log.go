@@ -38,6 +38,10 @@ var auditableStatuses = map[events.Status]bool{
 	events.StatusRolledBackUnhealthy: true,
 	events.StatusHealed:              true,
 	events.StatusHealExhausted:       true,
+	// A stack leaving the deploy set is not a deploy, but it is the durable
+	// answer to "when did this stop being managed" — and the one record that
+	// survives the bounded event ring if the stack ever comes back.
+	events.StatusRemoved: true,
 }
 
 // Record is one terminal deploy outcome for one stack: metadata only, no diffs.

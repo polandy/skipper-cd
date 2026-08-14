@@ -111,3 +111,49 @@ as "all stacks are gone".
 - Host-list mode (an explicit `stacks:` list) works too, but with `stacks_base_dir` often
   empty its `under-base` heuristic is inert; matching then rests on active dirs
   and recorded state. Orphan detection is most meaningful in discovery mode.
+
+## Amendment (2026-08-15): the removal itself is an event
+
+Detection answers *what is orphaned now*. It does not answer *when did this
+stack leave, and which commit removed it* — the Orphans section is an ambient
+inventory on the health-poll cadence, tied to no push. A stack could vanish
+from the repo and the deploy history, the surface an operator reads after a
+push, would say nothing at all about it.
+
+So the first run whose resolved stack set no longer contains a stack that
+`state.yaml` records emits a `removed` deploy event for it: it lands in the
+history, the audit log and the SSE stream like any other outcome, carrying the
+removing commit's changed files, diffs and commit metadata (collected from the
+recorded hashed inputs that are now gone from disk). Still nothing is torn
+down — prune stays discarded, the containers keep running, and the Orphans
+section keeps showing them.
+
+Three decisions this forced:
+
+- **Presence is measured against the *discovered directories*, not the
+  deployable set.** A stack parked with `disabled: true` or excluded by an
+  entry-level error is absent from `RepoStacks.Stacks` but is not gone — it is
+  paused or broken, and announcing it removed would be wrong every sync.
+  `RepoStacks` therefore also carries `Discovered`, every stack directory found.
+- **Dedup by forgetting the stack.** The event must fire once, not on every
+  reconcile tick. Rather than a second "already announced" ledger, the run drops
+  the stack's `stacks`/`images`/`running_images` entries — they describe a stack
+  that no longer exists, and their absence is exactly what makes the next run
+  silent. `project_dirs` is deliberately kept: it is what classifies the still
+  running project as *orphaned* rather than *unmanaged*. The cost is that a
+  stack added back later deploys from scratch, which is what should happen
+  anyway (its containers may be long gone).
+- **An empty stack set announces nothing.** A run that discovers zero stacks is
+  a broken or empty clone far more often than a deleted fleet — and the dedup
+  above would drop every stack's hashes and redeploy them all when the clone
+  returns. The check is skipped with a warning instead, the same reasoning the
+  discarded prune layer applied to a `_config` failure.
+
+`removed` is deliberately **not** notifiable. Nothing broke and nothing changed
+about what is running; it is a record for the UI and the audit log, the same
+call the update check made (ADR-0054). The UI shows it as a quiet
+`--rollback`-tinted row — the colour the Orphans section already tags these
+projects with, so the history row and the orphan read as one fact — and the
+Orphans section now opens itself when a formerly-managed project it has not
+shown before appears, so the containers left behind are not hidden behind a
+collapsed header.

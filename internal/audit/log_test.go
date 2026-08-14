@@ -76,6 +76,7 @@ func TestLog_RecordsAllTerminalStatuses(t *testing.T) {
 		events.StatusRolledBackUnhealthy,
 		events.StatusHealed,
 		events.StatusHealExhausted,
+		events.StatusRemoved,
 	}
 	for i, s := range terminals {
 		l.Record(terminalEvent("web", s, at(i+1)))
