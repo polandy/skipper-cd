@@ -595,10 +595,11 @@
     const body = document.getElementById('orphans-body');
     const count = document.getElementById('orphans-count');
     body.textContent = '';
-    openSectionForNewOrphans();
+    const orphaned = orphanedProjects();
+    openSectionForNewOrphans(orphaned);
     // The pill carries the orphaned colour only when one is present — an
     // all-unmanaged list is inventory and stays muted.
-    count.classList.toggle('has-orphaned', announcedOrphans.size > 0);
+    count.classList.toggle('has-orphaned', orphaned.length > 0);
     // The badge shows matching orphans during a search, else the total.
     const q = (deployFilter.value || '').trim().toLowerCase();
     count.textContent = String(

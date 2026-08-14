@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 )
@@ -276,5 +277,46 @@ func TestDeployAllStacks_ReservedStateKeysNeverReadAsRemoved(t *testing.T) {
 
 	if got := eventsWithStatus(recorded, events.StatusRemoved); len(got) != 0 {
 		t.Errorf("reserved state keys must never read as removed, got %v", got)
+	}
+}
+
+func TestDeployAllStacks_RemovedStackLeavesNothingPending(t *testing.T) {
+	// A stack removed while its change waits behind paused autosync must drop
+	// out of the pending registry too: nothing will ever deploy it, and a stuck
+	// entry pins last_deployed_commit for every other stack (finishRun holds the
+	// base back while anything is queued).
+	repoDir, cfg := discoveryRepo(t, []string{"alpha", "beta"}, nil)
+	stateDir := t.TempDir()
+	queue := autosync.NewQueue()
+	var recorded []events.DeployEvent
+	d := New(Config{
+		Runner:       &recordingRunner{},
+		RepoDir:      repoDir,
+		StateDir:     stateDir,
+		CommitReader: &fakeCommitReader{},
+		Autosync:     autosync.NewController(boolPtr(false), nil),
+		Queue:        queue,
+		EventSink:    func(e events.DeployEvent) { recorded = append(recorded, e) },
+	})
+	d.DeployAllStacks(context.Background(), cfg)
+	if !queue.Has("beta") {
+		t.Fatalf("setup: beta should be pending behind paused autosync, queue holds %d", queue.Count())
+	}
+
+	removeStackDir(t, cfg, "beta")
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if queue.Has("beta") {
+		t.Error("a removed stack must not stay pending")
+	}
+	// It is still announced: a deferred change records no hashes, so the removal
+	// has to be recognised from the pending entry alone.
+	if got := eventsWithStatus(recorded, events.StatusRemoved); len(got) != 1 || got[0] != "beta" {
+		t.Errorf("removed events = %v, want [beta]", got)
+	}
+	// alpha is still queued, so the base stays pinned for it — the positive
+	// signal that only the removed stack was dropped.
+	if !queue.Has("alpha") {
+		t.Error("the surviving stack must keep its pending entry")
 	}
 }

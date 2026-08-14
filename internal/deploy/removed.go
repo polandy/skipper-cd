@@ -16,8 +16,8 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-// announceRemovedStacks emits one removed event per stack that state records
-// but the current set no longer contains, and forgets its recorded hashes so
+// announceRemovedStacks emits one removed event per stack skipper still tracks
+// that the current set no longer contains, and forgets its recorded hashes so
 // the announcement happens exactly once. The project dir is deliberately kept:
 // it is what lets orphan detection recognize the still-running project as
 // formerly managed (ADR-0036).
@@ -37,13 +37,16 @@ func (d *Deployer) announceRemovedStacks(ctx context.Context, cfg *config.Config
 		return
 	}
 
-	for _, name := range recordedStackNames(state) {
+	for _, name := range d.trackedStackNames(state) {
 		if known[name] || isReservedStackKey(name) {
 			continue
 		}
-		files := d.vanishedRepoFiles(state.hashesFor(name), cfg.StacksBaseDir)
+		files := d.vanishedRepoFiles(d.trackedInputs(state, name), cfg.StacksBaseDir)
 		d.emit(events.StatusRemoved, name, 0, "", d.collectChange(ctx, files, state.LastDeployedCommit))
 		slog.Info("stack removed from the deploy set, its containers are left running", "stack", name)
+		// A change still waiting behind paused autosync will never deploy now,
+		// and a stuck entry holds the commit base back for every stack.
+		d.clearQueued(name)
 		state.forgetStack(name)
 	}
 }
@@ -73,15 +76,49 @@ func (d *Deployer) knownStackNames(cfg *config.Config) map[string]bool {
 	return known
 }
 
-// recordedStackNames returns the stacks state knows about, alphabetically, so
-// a run that removes several announces them in a stable order.
-func recordedStackNames(state *persistedState) []string {
-	names := make([]string, 0, len(state.Stacks))
+// trackedStackNames returns every stack skipper still holds something for,
+// alphabetically so a run that removes several announces them in a stable
+// order: the ones recorded in state, plus the ones pending behind paused
+// autosync — a change that was deferred and then removed was never recorded,
+// yet its pending entry would outlive the stack forever.
+func (d *Deployer) trackedStackNames(state *persistedState) []string {
+	tracked := make(map[string]bool, len(state.Stacks))
 	for name := range state.Stacks {
+		tracked[name] = true
+	}
+	if d.queue != nil {
+		for _, item := range d.queue.Snapshot(nil) {
+			tracked[item.Stack] = true
+		}
+	}
+	names := make([]string, 0, len(tracked))
+	for name := range tracked {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	return names
+}
+
+// trackedInputs are the paths skipper last knew as the stack's inputs: its
+// recorded hashes, or — for a stack whose only change was deferred, which
+// records nothing — the files that change was about.
+func (d *Deployer) trackedInputs(state *persistedState, stack string) []string {
+	if hashes := state.hashesFor(stack); len(hashes) > 0 {
+		paths := make([]string, 0, len(hashes))
+		for path := range hashes {
+			paths = append(paths, path)
+		}
+		return paths
+	}
+	if d.queue == nil {
+		return nil
+	}
+	for _, item := range d.queue.Snapshot(nil) {
+		if item.Stack == stack {
+			return item.ChangedFiles
+		}
+	}
+	return nil
 }
 
 // isReservedStackKey reports whether a state key is one of skipper's own
@@ -91,15 +128,15 @@ func isReservedStackKey(name string) bool {
 	return name == config.ReservedStackName || name == config.ReservedConfigStackName
 }
 
-// vanishedRepoFiles returns the stack's recorded hashed inputs that lived in
+// vanishedRepoFiles returns those of the stack's tracked inputs that lived in
 // the repo and are now gone from disk — what the removing commit deleted, and
 // the paths the event's diffs and commits are collected for. Files outside the
 // clone (an env file under /etc) and the synthetic per-stack config key
 // (addStackConfigHash — a label, never a file) are left out.
-func (d *Deployer) vanishedRepoFiles(hashes stackFileHashes, stacksBaseDir string) []string {
+func (d *Deployer) vanishedRepoFiles(paths []string, stacksBaseDir string) []string {
 	configKey := filepath.Join(stacksBaseDir, config.RepoConfigFileName)
 	var files []string
-	for path := range hashes {
+	for _, path := range paths {
 		if path == configKey || !d.insideRepo(path) {
 			continue
 		}
