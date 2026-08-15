@@ -1,7 +1,7 @@
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
-import { createServer, type AddressInfo } from 'node:net';
-import { createServer as createHttpServer, type Server } from 'node:http';
-import { createHmac } from 'node:crypto';
+import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { createServer, type AddressInfo } from "node:net";
+import { createServer as createHttpServer, type Server } from "node:http";
+import { createHmac } from "node:crypto";
 import {
   mkdtempSync,
   mkdirSync,
@@ -10,10 +10,10 @@ import {
   rmSync,
   existsSync,
   readFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, basename } from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, basename } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 // This is the Node twin of the Go E2E harness (e2e/harness_test.go): it runs the
 // real skipper binary against a local git origin and a stub docker on PATH, so
@@ -25,29 +25,35 @@ import { setTimeout as sleep } from 'node:timers/promises';
 // with the Go harness (e2e/harness_test.go) — one file so a change reaches
 // both. Its UI-only branches (orphans, container logs, per-stack health) are
 // gated behind STUB_DOCKER_UI, which this harness sets and the Go one does not.
-const stubDockerScript = readFileSync(join(__dirname, '..', '..', 'fixtures', 'docker-stub.sh'), 'utf8');
+const stubDockerScript = readFileSync(
+  join(__dirname, "..", "..", "fixtures", "docker-stub.sh"),
+  "utf8",
+);
 
-const defaultCompose = 'services:\n  app:\n    image: nginx:1.25\n';
+const defaultCompose = "services:\n  app:\n    image: nginx:1.25\n";
 
 /** Where the stub docker reads its app-link answers (ADR-0041), both under
  *  STUB_DOCKER_PS_DIR. Mirrored verbatim in e2e/fixtures/docker-stub.sh — a
  *  shell script cannot import them. */
-const APPLINK_PS_FILE = 'applinks-ps.txt';
-const APPLINK_LABELS_PREFIX = 'applink-labels-';
-const SECRET = 'e2e-secret';
+const APPLINK_PS_FILE = "applinks-ps.txt";
+const APPLINK_LABELS_PREFIX = "applink-labels-";
+const SECRET = "e2e-secret";
 
 /** The forge every commit SHA in the UI links to (repo_web_url). */
-export const FORGE_URL = 'https://forge.e2e.test/ops/deploy';
+export const FORGE_URL = "https://forge.e2e.test/ops/deploy";
 
 /** repoRoot is the repository root, derived from this file's location. */
 export function repoRoot(): string {
   // fixtures/harness.ts -> e2e/ui -> e2e -> <root>
-  return join(__dirname, '..', '..', '..');
+  return join(__dirname, "..", "..", "..");
 }
 
 /** skipperBinPath is where globalSetup builds (and the harness launches) the binary. */
 export function skipperBinPath(): string {
-  return process.env.SKIPPER_E2E_BIN || join(tmpdir(), 'skipper-ui-e2e-bin', 'skipper');
+  return (
+    process.env.SKIPPER_E2E_BIN ||
+    join(tmpdir(), "skipper-ui-e2e-bin", "skipper")
+  );
 }
 
 /** buildVersion is the semver globalSetup injects via -ldflags, mirroring
@@ -59,14 +65,14 @@ export function skipperBinPath(): string {
  *  real version is decoupled, so any release renders this same header in e2e.
  *  UD5 asserts the header against this same value, so the ldflags →
  *  /api/version → header through-line is still covered. */
-export const buildVersion = '10.10.10';
+export const buildVersion = "10.10.10";
 
 /** buildCommit is the short commit globalSetup injects via -ldflags (mirroring
  *  the Docker/Nix builds). A fixed value keeps the header assertion (UD5)
  *  deterministic — the real commit that Go stamps into the build info would vary
  *  per checkout. No branch is injected, so the header renders the version path
  *  `v<semver> · <commit>` rather than the feature-branch path. */
-export const buildCommit = 'e2ee2ee';
+export const buildCommit = "e2ee2ee";
 
 /** Reserve n distinct free TCP ports, holding all listeners open at once so the
  *  OS cannot hand out the same port twice, then releasing them (mirrors freePorts). */
@@ -76,13 +82,15 @@ async function freePorts(n: number): Promise<number[]> {
   for (let i = 0; i < n; i++) {
     const srv = createServer();
     await new Promise<void>((res, rej) => {
-      srv.once('error', rej);
-      srv.listen(0, '127.0.0.1', () => res());
+      srv.once("error", rej);
+      srv.listen(0, "127.0.0.1", () => res());
     });
     ports.push((srv.address() as { port: number }).port);
     servers.push(srv);
   }
-  await Promise.all(servers.map((s) => new Promise<void>((r) => s.close(() => r()))));
+  await Promise.all(
+    servers.map((s) => new Promise<void>((r) => s.close(() => r()))),
+  );
   return ports;
 }
 
@@ -96,7 +104,7 @@ const MAX_LAUNCH_ATTEMPTS = 3;
  *  peer stub's listen rejection. */
 function isStolenPort(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes('address already in use') || msg.includes('EADDRINUSE');
+  return msg.includes("address already in use") || msg.includes("EADDRINUSE");
 }
 
 /** Identity the harness commits as. Overridable per instance
@@ -107,11 +115,20 @@ export interface CommitIdentity {
   email: string;
 }
 
-const defaultIdentity: CommitIdentity = { name: 'e2e', email: 'e2e@example.com' };
+const defaultIdentity: CommitIdentity = {
+  name: "e2e",
+  email: "e2e@example.com",
+};
 
 function gitAs(id: CommitIdentity, dir: string, ...args: string[]): void {
-  const full = ['-c', `user.name=${id.name}`, '-c', `user.email=${id.email}`, ...args];
-  execFileSync('git', dir ? ['-C', dir, ...full] : full, { stdio: 'pipe' });
+  const full = [
+    "-c",
+    `user.name=${id.name}`,
+    "-c",
+    `user.email=${id.email}`,
+    ...args,
+  ];
+  execFileSync("git", dir ? ["-C", dir, ...full] : full, { stdio: "pipe" });
 }
 
 /** repoOverridesToHostStacks converts the former in-repo override shape
@@ -120,8 +137,8 @@ function gitAs(id: CommitIdentity, dir: string, ...args: string[]): void {
  *  keep their indentation. Returns the list-item body (no leading `stacks:`). */
 function repoOverridesToHostStacks(repoConfig: string): string {
   return repoConfig
-    .replace(/^stacks:[ \t]*\n/, '')
-    .replace(/^ {2}(\S+):[ \t]*$/gm, '  - name: $1');
+    .replace(/^stacks:[ \t]*\n/, "")
+    .replace(/^ {2}(\S+):[ \t]*$/gm, "  - name: $1");
 }
 
 export interface StartOptions {
@@ -159,7 +176,7 @@ export interface StartOptions {
    *    is expected to fail (e.g. driving a `failed` badge), which would keep
    *    /healthz at 503 and never write state.
    */
-  readiness?: 'deployed' | 'listening';
+  readiness?: "deployed" | "listening";
   /** Set `ui_theme_switcher: true` so the in-UI theme picker is present.
    *  Defaults to false, matching the server default (picker hidden, the
    *  configured theme fixed). */
@@ -309,22 +326,22 @@ function orphansListing(rows: OrphanContainer[]): string {
         [
           r.project,
           r.workingDir,
-          r.configFile ?? join(r.workingDir, 'docker-compose.yml'),
+          r.configFile ?? join(r.workingDir, "docker-compose.yml"),
           r.name,
-          r.service ?? '',
-          r.image ?? '',
-          r.state ?? 'running',
-          r.status ?? '',
-          r.ports ?? '',
-        ].join('\t'),
+          r.service ?? "",
+          r.image ?? "",
+          r.state ?? "running",
+          r.status ?? "",
+          r.ports ?? "",
+        ].join("\t"),
       )
-      .join('\n') + '\n'
+      .join("\n") + "\n"
   );
 }
 
 /** volumesListing renders volume specs into `project<TAB>volume` lines. */
 function volumesListing(vols: OrphanVolume[]): string {
-  return vols.map((v) => `${v.project}\t${v.volume}`).join('\n') + '\n';
+  return vols.map((v) => `${v.project}\t${v.volume}`).join("\n") + "\n";
 }
 
 /** Workspace is the on-disk layout one instance runs against: its temp tree, the
@@ -352,104 +369,113 @@ interface Workspace {
  *  Filesystem only — except for the update-check registry stub, which binds an
  *  ephemeral port here so its host can be substituted into the composes. */
 async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
-  const stacks = opts.stacks ?? ['web'];
+  const stacks = opts.stacks ?? ["web"];
   const stackIcons = opts.stackIcons ?? {};
   const initialCompose = opts.initialCompose ?? {};
   const author = opts.commitAuthor ?? defaultIdentity;
-  const base = mkdtempSync(join(tmpdir(), 'skipper-ui-e2e-'));
-  const origin = join(base, 'origin');
-  const repoDir = join(base, 'state', 'repo');
-  const stateDir = join(base, 'state');
-  const dockerLog = join(base, 'docker.log');
+  const base = mkdtempSync(join(tmpdir(), "skipper-ui-e2e-"));
+  const origin = join(base, "origin");
+  const repoDir = join(base, "state", "repo");
+  const stateDir = join(base, "state");
+  const dockerLog = join(base, "docker.log");
   // The hold file gates the stub's `up`. Present = proceed, absent = block.
   // Pre-created so the startup deploy is not held; hold()/release() toggle it.
-  const holdFile = join(base, 'hold');
+  const holdFile = join(base, "hold");
   // The hook-hold file gates a pre/post-deploy hook that waits on it (the
   // running-hook tests). Absent = block, present = proceed — and it is NOT
   // pre-created, so such a hook blocks from boot until releaseHook() creates
   // it. This makes the running-hook phase observable with no wall-clock race.
-  const hookHoldFile = join(base, 'hook-hold');
+  const hookHoldFile = join(base, "hook-hold");
   mkdirSync(stateDir, { recursive: true });
-  writeFileSync(holdFile, '');
+  writeFileSync(holdFile, "");
 
   // Registry stub (ADR-0054): tags/list + manifest HEAD for the update check.
   // Bound to an ephemeral port immediately (no reserve-release gap to steal),
   // so `{{registry}}` can resolve before the composes are committed.
   let registryServer: Server | null = null;
-  let registryHost = '';
+  let registryHost = "";
   if (opts.updateCheck) {
     const uc = opts.updateCheck;
     registryServer = createHttpServer((req, res) => {
       const tagsMatch = req.url?.match(/^\/v2\/(.+)\/tags\/list/);
       const manifestMatch = req.url?.match(/^\/v2\/(.+)\/manifests\//);
       if (tagsMatch && uc.tags?.[tagsMatch[1]]) {
-        res.setHeader('Content-Type', 'application/json');
+        res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify({ tags: uc.tags[tagsMatch[1]] }));
         return;
       }
       if (manifestMatch && uc.digest) {
-        res.setHeader('Docker-Content-Digest', uc.digest);
+        res.setHeader("Docker-Content-Digest", uc.digest);
         res.statusCode = 200;
         res.end();
         return;
       }
       res.statusCode = 404;
-      res.end('{}');
+      res.end("{}");
     });
-    await new Promise<void>((resolve) => registryServer!.listen(0, '127.0.0.1', resolve));
+    await new Promise<void>((resolve) =>
+      registryServer!.listen(0, "127.0.0.1", resolve),
+    );
     const addr = registryServer.address() as AddressInfo;
     registryHost = `127.0.0.1:${addr.port}`;
   }
   // Resolve the `{{registry}}` token wherever an image reference may carry it.
-  const sub = (v: string) => v.replaceAll('{{registry}}', registryHost);
+  const sub = (v: string) => v.replaceAll("{{registry}}", registryHost);
 
   // Origin repo with one committed compose per stack.
-  gitAs(author, '', 'init', '-b', 'main', origin);
+  gitAs(author, "", "init", "-b", "main", origin);
   for (const name of stacks) {
     mkdirSync(join(origin, name), { recursive: true });
-    writeFileSync(join(origin, name, 'docker-compose.yml'), sub(initialCompose[name] ?? defaultCompose));
+    writeFileSync(
+      join(origin, name, "docker-compose.yml"),
+      sub(initialCompose[name] ?? defaultCompose),
+    );
     if (stackIcons[name] !== undefined) {
-      writeFileSync(join(origin, name, 'icon.svg'), stackIcons[name]);
+      writeFileSync(join(origin, name, "icon.svg"), stackIcons[name]);
     }
   }
   // With no stacks there is nothing to stage, but the origin still needs a HEAD
   // on `main` for skipper to clone and reset onto; a placeholder gives the
   // stack-free instance (UA10 empty state) a valid, deploy-free repo.
   if (stacks.length === 0) {
-    writeFileSync(join(origin, '.keep'), '');
+    writeFileSync(join(origin, ".keep"), "");
   }
   // A tracked .nix file makes the startup sync detect a nix change and run the
   // (stubbed) nixos-rebuild, emitting a `_nixos` row.
   if (opts.nixosRebuild) {
-    writeFileSync(join(origin, 'configuration.nix'), '{ }\n');
+    writeFileSync(join(origin, "configuration.nix"), "{ }\n");
   }
   // ADR-0043: per-stack overrides go into the host config's stacks: list, not
   // an in-repo skipper.yaml (a leftover one is now a hard error). setRepoConfig
   // still writes one on purpose, to exercise that guard.
-  gitAs(author, origin, 'add', '.');
-  gitAs(author, origin, 'commit', '-m', 'initial');
+  gitAs(author, origin, "add", ".");
+  gitAs(author, origin, "commit", "-m", "initial");
 
   // Stub docker on its own dir, prepended to PATH.
-  const stubDir = join(base, 'stub-bin');
+  const stubDir = join(base, "stub-bin");
   mkdirSync(stubDir, { recursive: true });
-  writeFileSync(join(stubDir, 'docker'), stubDockerScript, { mode: 0o755 });
+  writeFileSync(join(stubDir, "docker"), stubDockerScript, { mode: 0o755 });
   // Stub the nixos-rebuild transition (ADR-0014): `systemd-run` starts the
   // (fake) unit and returns; `systemctl is-active` reports it already gone and
   // `is-failed` reports not-failed, so Rebuild sees an instant success without
   // any real switch. Harmless when nixos_rebuild is not configured.
-  writeFileSync(join(stubDir, 'systemd-run'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  writeFileSync(join(stubDir, "systemd-run"), "#!/bin/sh\nexit 0\n", {
+    mode: 0o755,
+  });
   writeFileSync(
-    join(stubDir, 'systemctl'),
+    join(stubDir, "systemctl"),
     '#!/bin/sh\ncase " $* " in\n  *" is-active "*) exit 1 ;;\n  *" is-failed "*) exit 1 ;;\n  *) exit 0 ;;\nesac\n',
     { mode: 0o755 },
   );
 
   // Where setStackHealth writes per-stack `compose ps` output for the stub.
-  const healthDir = join(base, 'health');
+  const healthDir = join(base, "health");
   mkdirSync(healthDir, { recursive: true });
   // Pre-boot health seed, so the very first poll already sees it.
   for (const [name, services] of Object.entries(opts.initialHealth ?? {})) {
-    const resolved = services.map((svc) => (svc.Image ? { ...svc, Image: sub(svc.Image) } : svc));
+    const resolved = services.map((svc) =>
+      svc.Image ? { ...svc, Image: sub(svc.Image) } : svc,
+    );
     writeFileSync(join(healthDir, `${name}.json`), JSON.stringify(resolved));
   }
   // App-link detection (ADR-0041): the stub answers the detector's labelled
@@ -457,27 +483,34 @@ async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
   // key the detector maps back to a stack) and its `docker inspect` with that
   // container's Traefik labels. Rides the health-poll cadence, so `healthPoll`
   // must be on for the links to appear.
-  for (const [i, [stack, hosts]] of Object.entries(opts.appLinks ?? {}).entries()) {
+  for (const [i, [stack, hosts]] of Object.entries(
+    opts.appLinks ?? {},
+  ).entries()) {
     const id = `applink${i}`;
-    appendFileSync(join(healthDir, APPLINK_PS_FILE), `${id}\t${join(repoDir, stack)}\n`);
+    appendFileSync(
+      join(healthDir, APPLINK_PS_FILE),
+      `${id}\t${join(repoDir, stack)}\n`,
+    );
     writeFileSync(
       join(healthDir, `${APPLINK_LABELS_PREFIX}${id}.json`),
       JSON.stringify({
-        'traefik.enable': 'true',
-        [`traefik.http.routers.${stack}.rule`]: `Host(${hosts.map((h) => `\`${h}\``).join(',')})`,
+        "traefik.enable": "true",
+        [`traefik.http.routers.${stack}.rule`]: `Host(${hosts.map((h) => `\`${h}\``).join(",")})`,
       }),
     );
   }
   // The stub docker's `image inspect` answers (local RepoDigests) — the update
   // check's local half. Keyed by the sanitized image name (/, : → _).
-  for (const [image, digests] of Object.entries(opts.updateCheck?.repoDigests ?? {})) {
-    const file = `rd-${sub(image).replace(/[/:]/g, '_')}.json`;
+  for (const [image, digests] of Object.entries(
+    opts.updateCheck?.repoDigests ?? {},
+  )) {
+    const file = `rd-${sub(image).replace(/[/:]/g, "_")}.json`;
     writeFileSync(join(healthDir, file), JSON.stringify(digests.map(sub)));
   }
 
   // Where setOrphans/setVolumes write the stub's `docker ps -a` / `volume ls`
   // listing (ADR-0036), consulted by orphan detection on the health-poll cadence.
-  const orphansDir = join(base, 'orphans');
+  const orphansDir = join(base, "orphans");
   mkdirSync(orphansDir, { recursive: true });
 
   return {
@@ -509,52 +542,56 @@ async function startPeerStubs(
   // serves its curated snapshot + audit; an unreachable one has no server, so
   // its reserved port refuses connections and the primary marks it offline.
   const peerServers: Server[] = [];
-  let peersCfg = '';
+  let peersCfg = "";
   if (peerSpecs.length) {
-    peersCfg = 'peers:\n';
+    peersCfg = "peers:\n";
     for (let i = 0; i < peerSpecs.length; i++) {
       const spec = peerSpecs[i];
       const peerPort = peerPorts[i];
       peersCfg += `  - name: ${JSON.stringify(spec.name)}\n    url: ${JSON.stringify(`http://127.0.0.1:${peerPort}`)}\n`;
       if (spec.reachable === false) continue; // dead port → unreachable
       const server = createHttpServer((req, res) => {
-        const path = (req.url ?? '').split('?')[0];
-        res.setHeader('Content-Type', 'application/json');
-        if (path === '/api/v1/snapshot') return void res.end(JSON.stringify(spec.snapshot ?? {}));
-        if (path === '/api/audit') return void res.end(JSON.stringify(spec.audit ?? []));
+        const path = (req.url ?? "").split("?")[0];
+        res.setHeader("Content-Type", "application/json");
+        if (path === "/api/v1/snapshot")
+          return void res.end(JSON.stringify(spec.snapshot ?? {}));
+        if (path === "/api/audit")
+          return void res.end(JSON.stringify(spec.audit ?? []));
         const diffMatch = path.match(/^\/api\/events\/([^/]+)\/diffs$/);
         if (diffMatch) {
           const d = (spec.diffs ?? {})[diffMatch[1]];
           if (d) return void res.end(JSON.stringify(d));
           res.statusCode = 404;
-          return void res.end('{}');
+          return void res.end("{}");
         }
         const logMatch = path.match(/^\/api\/container-logs\/(.+)$/);
         if (logMatch) {
-          const lines = (spec.logsByStack ?? {})[decodeURIComponent(logMatch[1])];
+          const lines = (spec.logsByStack ?? {})[
+            decodeURIComponent(logMatch[1])
+          ];
           if (!lines) {
             res.statusCode = 404;
-            return void res.end('{}');
+            return void res.end("{}");
           }
           // SSE follow: emit each line as a frame, then hold the stream open
           // (the primary proxies it; it drops when the client disconnects or
           // skipper is SIGKILLed at teardown, closing this socket).
-          res.setHeader('Content-Type', 'text/event-stream');
-          res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader("Content-Type", "text/event-stream");
+          res.setHeader("Cache-Control", "no-cache");
           res.writeHead(200);
           for (const ln of lines) res.write(`data: ${ln}\n\n`);
           return;
         }
         res.statusCode = 404;
-        res.end('{}');
+        res.end("{}");
       });
       // Reject on a listen error (a stolen reserved port raises EADDRINUSE)
       // instead of letting it escape as an uncaught exception; close the
       // stubs already up so a retried launch never leaks servers.
       try {
         await new Promise<void>((res, rej) => {
-          server.once('error', rej);
-          server.listen(peerPort, '127.0.0.1', () => res());
+          server.once("error", rej);
+          server.listen(peerPort, "127.0.0.1", () => res());
         });
       } catch (err) {
         for (const started of peerServers) started.close();
@@ -583,7 +620,9 @@ function buildConfig(
     `repo_dir: ${JSON.stringify(repoDir)}\n` +
     // The harness clones from a local path, which no forge URL can be derived
     // from — set one explicitly so commit SHAs render as links (Maske AL).
-    (opts.repoWebURL === null ? '' : `repo_web_url: ${JSON.stringify(opts.repoWebURL ?? FORGE_URL)}\n`) +
+    (opts.repoWebURL === null
+      ? ""
+      : `repo_web_url: ${JSON.stringify(opts.repoWebURL ?? FORGE_URL)}\n`) +
     // stacks_base_dir omitted: it is relative to repo_dir and defaults to the
     // repo root, which is exactly repoDir here (stacks live at the clone root).
     `branch: main\n` +
@@ -591,8 +630,8 @@ function buildConfig(
     `port: ${port}\n` +
     `metrics_port: ${metricsPort}\n` +
     `ui_enabled: true\n` +
-    (opts.themeSwitcher ? `ui_theme_switcher: true\n` : '') +
-    (opts.hostName ? `host_name: ${JSON.stringify(opts.hostName)}\n` : '') +
+    (opts.themeSwitcher ? `ui_theme_switcher: true\n` : "") +
+    (opts.hostName ? `host_name: ${JSON.stringify(opts.hostName)}\n` : "") +
     peersCfg +
     // Health polling off by default so masks predating it stay health-free;
     // Maske H opts in via healthPoll (ADR-0027).
@@ -600,28 +639,28 @@ function buildConfig(
     // Update check (ADR-0054) off by default, so no mask phones a registry for
     // its fake images (or renders unexpected markers); Maske AO opts in.
     `update_check:\n  interval_seconds: ${opts.updateCheck ? 21600 : 0}\n` +
-    (opts.healthWatch ? `health_watch:\n  debounce_polls: 1\n` : '') +
-    (opts.selfHeal ? `self_heal: true\n` : '') +
+    (opts.healthWatch ? `health_watch:\n  debounce_polls: 1\n` : "") +
+    (opts.selfHeal ? `self_heal: true\n` : "") +
     (opts.selfHealMinUnhealthyPolls !== undefined
       ? `self_heal_min_unhealthy_polls: ${opts.selfHealMinUnhealthyPolls}\n`
-      : '') +
+      : "") +
     (opts.selfHealMaxAttempts !== undefined
       ? `self_heal_max_attempts: ${opts.selfHealMaxAttempts}\n`
-      : '') +
+      : "") +
     (opts.selfHealCooldownSeconds !== undefined
       ? `self_heal_cooldown_seconds: ${opts.selfHealCooldownSeconds}\n`
-      : '') +
+      : "") +
     `command_timeout_seconds: 30\n` +
-    (opts.nixosRebuild ? `nixos_rebuild:\n  flake: ".#test"\n` : '') +
+    (opts.nixosRebuild ? `nixos_rebuild:\n  flake: ".#test"\n` : "") +
     // source_url points at a closed local port so auto-match icon fetches fail
     // fast and deterministically (connection refused → 404 → monogram), keeping
     // the whole UI suite offline. Repo icon.svg overrides still resolve.
-    `icons:\n  cache_dir: ${JSON.stringify(join(base, 'icons'))}\n  source_url: "http://127.0.0.1:1"\n` +
+    `icons:\n  cache_dir: ${JSON.stringify(join(base, "icons"))}\n  source_url: "http://127.0.0.1:1"\n` +
     (opts.discovery
       ? `stack_discovery: true\n` +
         (opts.discovery.repoConfig !== undefined
           ? `stacks:\n` + repoOverridesToHostStacks(opts.discovery.repoConfig)
-          : '')
+          : "")
       : // ADR-0043: discovery is the default, so explicit-list masks opt out.
         `stack_discovery: false\n` +
         `stacks:\n` +
@@ -630,17 +669,19 @@ function buildConfig(
             (n) =>
               `  - name: ${JSON.stringify(n)}\n` +
               ((opts.dependsOn?.[n] ?? []).length
-                ? `    depends_on: [${(opts.dependsOn?.[n] ?? []).map((d) => JSON.stringify(d)).join(', ')}]\n`
-                : '') +
+                ? `    depends_on: [${(opts.dependsOn?.[n] ?? []).map((d) => JSON.stringify(d)).join(", ")}]\n`
+                : "") +
               ((opts.healthCheck ?? []).includes(n)
                 ? `    deploy_health_check:\n      timeout_seconds: 1\n`
-                : '') +
+                : "") +
               ((opts.onDemand?.[n] ?? []).length
                 ? `    on_demand_containers:\n` +
-                  (opts.onDemand?.[n] ?? []).map((c) => `      - ${JSON.stringify(c)}\n`).join('')
-                : ''),
+                  (opts.onDemand?.[n] ?? [])
+                    .map((c) => `      - ${JSON.stringify(c)}\n`)
+                    .join("")
+                : ""),
           )
-          .join(''));
+          .join(""));
   return cfg;
 }
 
@@ -667,7 +708,7 @@ export class Skipper {
   private readonly peerServers: Server[];
   private readonly registryServer: Server | null;
   private proc: ChildProcess;
-  private out = '';
+  private out = "";
 
   private constructor(init: {
     baseURL: string;
@@ -710,8 +751,8 @@ export class Skipper {
   /** attach binds a freshly spawned process and pipes its output into the buffer. */
   private attach(proc: ChildProcess): void {
     this.proc = proc;
-    this.proc.stdout?.on('data', (b) => (this.out += b));
-    this.proc.stderr?.on('data', (b) => (this.out += b));
+    this.proc.stdout?.on("data", (b) => (this.out += b));
+    this.proc.stderr?.on("data", (b) => (this.out += b));
   }
 
   /** start builds an origin with one dir per stack, launches the binary, waits
@@ -741,8 +782,19 @@ export class Skipper {
    *  start peer stubs, write the config, spawn skipper and wait for readiness.
    *  A failure after spawn tears the instance down before rethrowing, so a
    *  retried launch never leaks a process or a stub server. */
-  private static async launch(opts: StartOptions, ws: Workspace): Promise<Skipper> {
-    const { base, origin, repoDir, stateDir, dockerLog, holdFile, hookHoldFile } = ws;
+  private static async launch(
+    opts: StartOptions,
+    ws: Workspace,
+  ): Promise<Skipper> {
+    const {
+      base,
+      origin,
+      repoDir,
+      stateDir,
+      dockerLog,
+      holdFile,
+      hookHoldFile,
+    } = ws;
     const { stubDir, healthDir, orphansDir, stacks, author } = ws;
 
     // Two ports for this instance, plus one per peer (reachable or dead).
@@ -753,11 +805,14 @@ export class Skipper {
     const baseURL = `http://127.0.0.1:${port}`;
     const metricsURL = `http://127.0.0.1:${metricsPort}`;
 
-    const { peerServers, peersCfg } = await startPeerStubs(peerSpecs, peerPorts);
+    const { peerServers, peersCfg } = await startPeerStubs(
+      peerSpecs,
+      peerPorts,
+    );
 
     const cfg = buildConfig(opts, ws, { port, metricsPort }, peersCfg);
 
-    const cfgPath = join(base, 'skipper.yml');
+    const cfgPath = join(base, "skipper.yml");
     writeFileSync(cfgPath, cfg);
 
     const spawnEnv: NodeJS.ProcessEnv = {
@@ -768,14 +823,14 @@ export class Skipper {
       // Inherited by hook commands (run via `sh -c` with os.Environ()); a hook
       // can wait on this path to hold the running-hook phase deterministically.
       SKIPPER_E2E_HOOK_HOLD: hookHoldFile,
-      STUB_DOCKER_UI: '1', // enables the stub's orphan/logs/per-stack-health branches
+      STUB_DOCKER_UI: "1", // enables the stub's orphan/logs/per-stack-health branches
       STUB_DOCKER_PS_DIR: healthDir,
       STUB_DOCKER_ORPHANS_DIR: orphansDir,
       ...opts.stubEnv,
     };
-    const proc = spawn(skipperBinPath(), ['-config', cfgPath], {
+    const proc = spawn(skipperBinPath(), ["-config", cfgPath], {
       env: spawnEnv,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
     const s = new Skipper({
@@ -798,14 +853,16 @@ export class Skipper {
       proc,
     });
     try {
-      if ((opts.readiness ?? 'deployed') === 'listening') {
+      if ((opts.readiness ?? "deployed") === "listening") {
         await s.waitListening();
       } else {
         await s.waitHealthy();
         const parked = new Set(opts.discovery?.disabled ?? []);
         for (const name of stacks) {
           if (parked.has(name)) continue; // disabled: never deploys, never in state
-          await s.waitFor(`startup deploy of ${name}`, () => s.stateHasStack(name));
+          await s.waitFor(`startup deploy of ${name}`, () =>
+            s.stateHasStack(name),
+          );
         }
       }
     } catch (err) {
@@ -823,22 +880,28 @@ export class Skipper {
 
   /** release unblocks a held `up`. */
   release(): void {
-    writeFileSync(this.holdFile, '');
+    writeFileSync(this.holdFile, "");
   }
 
   /** releaseHook unblocks a pre/post-deploy hook that waits on the hook-hold
    *  file (a hook of `while [ ! -f "$SKIPPER_E2E_HOOK_HOLD" ]; do …; done`), so
    *  the running-hook phase can be observed with no timeout, then let go. */
   releaseHook(): void {
-    writeFileSync(this.hookHoldFile, '');
+    writeFileSync(this.hookHoldFile, "");
   }
 
   /** setNixConfig rewrites the tracked configuration.nix and commits it, so the
    *  next sync runs a nixos-rebuild whose `_nixos` row carries a real git diff
    *  against the last deployed commit (has_diffs=true) — the realistic case. */
   setNixConfig(content: string): void {
-    writeFileSync(join(this.origin, 'configuration.nix'), content);
-    gitAs(this.author, this.origin, 'commit', '-am', 'update configuration.nix');
+    writeFileSync(join(this.origin, "configuration.nix"), content);
+    gitAs(
+      this.author,
+      this.origin,
+      "commit",
+      "-am",
+      "update configuration.nix",
+    );
   }
 
   /** setStackImage retags the FIRST service in a stack's compose and commits it,
@@ -847,13 +910,16 @@ export class Skipper {
    *  (initialCompose / setStackServices) it moves just that one tag, so the pushed
    *  diff is the single line a dependency bot would write. */
   setStackImage(stack: string, tag: string): void {
-    const path = join(this.origin, stack, 'docker-compose.yml');
-    const current = readFileSync(path, 'utf8');
+    const path = join(this.origin, stack, "docker-compose.yml");
+    const current = readFileSync(path, "utf8");
     // Only the tag after the last ':' of the first image line — a registry
     // `host:port` earlier in the reference must survive.
-    const bumped = current.replace(/^(\s+image: \S*?)(?::[^:/\s]+)?$/m, `$1:${tag}`);
+    const bumped = current.replace(
+      /^(\s+image: \S*?)(?::[^:/\s]+)?$/m,
+      `$1:${tag}`,
+    );
     writeFileSync(path, bumped);
-    gitAs(this.author, this.origin, 'commit', '-am', `bump ${stack} to ${tag}`);
+    gitAs(this.author, this.origin, "commit", "-am", `bump ${stack} to ${tag}`);
   }
 
   /** setStackServices rewrites a stack's compose to an explicit service→image map
@@ -864,9 +930,18 @@ export class Skipper {
   setStackServices(stack: string, services: Record<string, string>): void {
     const body = Object.entries(services)
       .map(([name, image]) => `  ${name}:\n    image: ${image}`)
-      .join('\n');
-    writeFileSync(join(this.origin, stack, 'docker-compose.yml'), `services:\n${body}\n`);
-    gitAs(this.author, this.origin, 'commit', '-am', `update ${stack} services`);
+      .join("\n");
+    writeFileSync(
+      join(this.origin, stack, "docker-compose.yml"),
+      `services:\n${body}\n`,
+    );
+    gitAs(
+      this.author,
+      this.origin,
+      "commit",
+      "-am",
+      `update ${stack} services`,
+    );
   }
 
   /** setStackHealth scripts the stub's `docker compose ps` output for a stack, so
@@ -883,37 +958,50 @@ export class Skipper {
       ExitCode?: number;
     }>,
   ): void {
-    writeFileSync(join(this.healthDir, `${stack}.json`), JSON.stringify(services));
+    writeFileSync(
+      join(this.healthDir, `${stack}.json`),
+      JSON.stringify(services),
+    );
   }
 
   /** setOrphans rewrites the stub's `docker ps -a` listing (ADR-0036), so the
    *  next orphan detection (health-poll cadence, UI-gated) sees exactly these
    *  compose containers. Passing [] clears it (nothing running). */
   setOrphans(rows: OrphanContainer[]): void {
-    writeFileSync(join(this.orphansDir, 'orphans.txt'), orphansListing(rows));
+    writeFileSync(join(this.orphansDir, "orphans.txt"), orphansListing(rows));
   }
 
   /** setVolumes rewrites the stub's `docker volume ls` listing — the named
    *  volumes an orphan holds, surfaced as its data-safety note. */
   setVolumes(vols: OrphanVolume[]): void {
-    writeFileSync(join(this.orphansDir, 'volumes.txt'), volumesListing(vols));
+    writeFileSync(join(this.orphansDir, "volumes.txt"), volumesListing(vols));
+  }
+
+  /** removeStack deletes a stack's directory from the deploy repo and commits it,
+   *  the push that takes a stack out of the set (ADR-0036 amendment). Its
+   *  containers are untouched — script them with setOrphans to see what the
+   *  removal leaves behind. */
+  removeStack(stack: string): void {
+    rmSync(join(this.origin, stack), { recursive: true, force: true });
+    gitAs(this.author, this.origin, "add", "-A", stack);
+    gitAs(this.author, this.origin, "commit", "-m", `remove ${stack}`);
   }
 
   /** setRepoConfig rewrites the repo-root skipper.yaml (stack discovery,
    *  ADR-0034) and commits it, simulating a pushed config change. */
   setRepoConfig(content: string): void {
-    writeFileSync(join(this.origin, 'skipper.yaml'), content);
-    gitAs(this.author, this.origin, 'add', 'skipper.yaml');
-    gitAs(this.author, this.origin, 'commit', '-m', 'update skipper.yaml');
+    writeFileSync(join(this.origin, "skipper.yaml"), content);
+    gitAs(this.author, this.origin, "add", "skipper.yaml");
+    gitAs(this.author, this.origin, "commit", "-m", "update skipper.yaml");
   }
 
   /** sendWebhook posts a correctly signed push payload for ref, returning the status. */
   async sendWebhook(ref: string): Promise<number> {
     const body = JSON.stringify({ ref });
-    const sig = createHmac('sha256', SECRET).update(body).digest('hex');
+    const sig = createHmac("sha256", SECRET).update(body).digest("hex");
     const resp = await fetch(`${this.baseURL}/webhook`, {
-      method: 'POST',
-      headers: { 'X-Gitea-Signature': sig },
+      method: "POST",
+      headers: { "X-Gitea-Signature": sig },
       body,
     });
     return resp.status;
@@ -924,8 +1012,8 @@ export class Skipper {
    *  signature") — a deterministic way to drive a WARN-level log line. */
   async sendBadWebhook(ref: string): Promise<number> {
     const resp = await fetch(`${this.baseURL}/webhook`, {
-      method: 'POST',
-      headers: { 'X-Gitea-Signature': 'not-a-valid-signature' },
+      method: "POST",
+      headers: { "X-Gitea-Signature": "not-a-valid-signature" },
       body: JSON.stringify({ ref }),
     });
     return resp.status;
@@ -933,10 +1021,10 @@ export class Skipper {
 
   /** postAutosync sets a global (stack === '') or per-stack autosync override. */
   async postAutosync(stack: string, enabled: boolean): Promise<number> {
-    const scope = stack === '' ? 'global' : 'stack';
+    const scope = stack === "" ? "global" : "stack";
     const resp = await fetch(`${this.baseURL}/api/autosync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scope, stack, enabled }),
     });
     return resp.status;
@@ -947,18 +1035,21 @@ export class Skipper {
   dockerUps(stack: string): number {
     let n = 0;
     for (const line of this.dockerLogLines()) {
-      const tab = line.indexOf('\t');
+      const tab = line.indexOf("\t");
       if (tab < 0) continue;
       const cwd = line.slice(0, tab);
       const args = line.slice(tab + 1);
-      if (basename(cwd) === stack && ` ${args} `.includes(' up ')) n++;
+      if (basename(cwd) === stack && ` ${args} `.includes(" up ")) n++;
     }
     return n;
   }
 
   private dockerLogLines(): string[] {
     try {
-      return readFileSync(this.dockerLog, 'utf8').trim().split('\n').filter(Boolean);
+      return readFileSync(this.dockerLog, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean);
     } catch {
       return [];
     }
@@ -966,14 +1057,16 @@ export class Skipper {
 
   private stateHasStack(stack: string): boolean {
     try {
-      return readFileSync(join(this.stateDir, 'state.yaml'), 'utf8').includes(`${stack}:`);
+      return readFileSync(join(this.stateDir, "state.yaml"), "utf8").includes(
+        `${stack}:`,
+      );
     } catch {
       return false;
     }
   }
 
   private async waitHealthy(): Promise<void> {
-    await this.waitFor('healthz 200', async () => {
+    await this.waitFor("healthz 200", async () => {
       try {
         return (await fetch(`${this.baseURL}/healthz`)).status === 200;
       } catch {
@@ -985,7 +1078,7 @@ export class Skipper {
   /** waitListening waits until the HTTP server responds at all (any status),
    *  used when the startup deploy is expected to fail so /healthz stays 503. */
   private async waitListening(): Promise<void> {
-    await this.waitFor('server listening', async () => {
+    await this.waitFor("server listening", async () => {
       try {
         await fetch(`${this.baseURL}/healthz`);
         return true;
@@ -995,7 +1088,10 @@ export class Skipper {
     });
   }
 
-  private async waitFor(what: string, cond: () => boolean | Promise<boolean>): Promise<void> {
+  private async waitFor(
+    what: string,
+    cond: () => boolean | Promise<boolean>,
+  ): Promise<void> {
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       if (await cond()) return;
@@ -1010,7 +1106,9 @@ export class Skipper {
       }
       await sleep(50);
     }
-    throw new Error(`timed out waiting for ${what}\n--- skipper output ---\n${this.out}`);
+    throw new Error(
+      `timed out waiting for ${what}\n--- skipper output ---\n${this.out}`,
+    );
   }
 
   /** Captured stdout+stderr, for attaching to a failed test. */
@@ -1039,8 +1137,10 @@ export class Skipper {
     }
     this.peerServers.length = 0;
     if (this.proc.exitCode !== null || this.proc.signalCode !== null) return;
-    const exited = new Promise<void>((res) => this.proc.once('exit', () => res()));
-    this.proc.kill('SIGKILL');
+    const exited = new Promise<void>((res) =>
+      this.proc.once("exit", () => res()),
+    );
+    this.proc.kill("SIGKILL");
     await exited;
   }
 
@@ -1052,9 +1152,9 @@ export class Skipper {
    *  (UE1/UE2). */
   async relaunch(bin: string = skipperBinPath()): Promise<void> {
     this.attach(
-      spawn(bin, ['-config', this.cfgPath], {
+      spawn(bin, ["-config", this.cfgPath], {
         env: this.spawnEnv,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ["ignore", "pipe", "pipe"],
       }),
     );
     await this.waitHealthy();

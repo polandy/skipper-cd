@@ -810,7 +810,9 @@ hand-started project outside it (unmanaged). Behaviour-only (no snapshot).
 
 - **UQ1 — Detection lists orphaned + unmanaged, expandable.** The section
   appears with a count of 2 — the managed `web`/`api` are matched by working_dir
-  and excluded. Opening it shows the two items with the right `data-class`;
+  and excluded. It opens itself (an `orphaned` project is present) with the count
+  pill tinted, and the header still toggles it shut and open by hand; the two
+  items carry the right `data-class`;
   expanding the orphaned row reveals its two containers and the data-safety facts
   (compose path, named volumes tagged `kept on prune`).
 - **UQ2 — The deploy search scans orphans.** A term only an orphan *container*
@@ -1660,6 +1662,27 @@ incident behind — at Pixel-9-Pro width and asserts the row's geometry
 
 All four fail against the unfixed build (three on geometry, UAS3 on the missing
 token group). Behaviour-only, no snapshot.
+
+### 4.47 UI — Maske AT: a stack removed from the repo (ADR-0036 amendment)
+
+Detection answers *what is orphaned now*; this mask covers the other half — the
+Deploys view recording *when* a stack left, against the commit that removed it.
+The instance boots in discovery mode (`web` + `blog`) with the health poll on,
+since the orphan half rides that cadence. The new `removeStack` harness helper
+deletes the stack's directory in the origin repo and commits it; the containers
+it leaves behind are scripted with `setOrphans`. Behaviour-only (no snapshot).
+
+- **UAT1 — The removal is its own row, and what it left behind is not hidden.**
+  Before the push nothing is orphaned, so the section is not even shown. After
+  deleting `blog` and pushing, a `data-status="removed"` row for `blog` carries
+  the `removed` badge, and the still-running project surfaces as `orphaned` with
+  the section **opened by itself** — the surviving `web` stays managed and out of
+  it.
+- **UAT2 — Announced once, not per sync.** Every later sync re-reads a repo that
+  still lacks the stack, so a naive comparison would post a row per reconcile
+  tick. A second push that bumps `web` gives the positive signal that the run
+  really happened and re-evaluated the set (its new success row — two now, with
+  the startup deploy's), while the removed row count stays at 1.
 
 ## 5. Visual snapshot strategy
 

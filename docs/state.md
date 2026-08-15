@@ -21,6 +21,8 @@ Two image maps are kept, and they answer different questions:
 
 A `project_dirs` map records each stack's compose project directory (its `project_directory`, or the compose file's own directory) from its last successful deploy. It lets skipper recognise a stack's running compose project by the `com.docker.compose.project.working_dir` label even after the stack is removed from the repo — the basis for [orphan detection](#orphaned-stacks).
 
+When a stack leaves the deploy set — its directory is gone from the repo, or its entry from the `stacks:` list — the first run that sees it gone records a `removed` deploy event for it and drops its `stacks`, `images` and `running_images` entries; its `project_dirs` entry is kept, so its still-running containers stay recognisable as [orphaned](#orphaned-stacks) rather than unmanaged. Nothing is torn down. A stack added back later therefore deploys from scratch. If a run discovers **no** stacks at all — usually a broken or empty clone, not a deleted fleet — nothing is reported removed and no state is dropped.
+
 If the state file is absent or cannot be parsed (e.g. after a fresh install or corruption), all stacks are redeployed on the next run — but that run deliberately does **not** refresh images already on the host, so no floating tag moves unattended (see [First run and state loss](configuration.md#first-run-and-state-loss)). **Back this directory up** with the rest of your host state.
 
 NixOS rebuild state (when [configured](nixos.md#nixos-rebuild)) is tracked under the reserved stack key `_nixos`. State is written atomically (temp file + rename).
@@ -39,7 +41,7 @@ When the [update check](configuration.md#update-check) is enabled, it keeps its 
 
 When the [web UI](configuration.md) is enabled, skipper keeps a durable per-stack deploy audit log at `deploy-audit.jsonl` in the same directory — the "what happened to this stack, and when" trail behind the UI's [deploy-history panel](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md). It is separate from the bounded, in-memory live event feed: one **append-only** JSON record per line, so it survives restarts and is not evicted when older events roll off the live window.
 
-Each record holds the metadata of one **terminal** deploy outcome — `stack`, `timestamp`, `status`, `duration_ms`, `commit_sha`, `changed_files` (a count), and `error` — with no diffs (the commit SHA identifies the change). Only `success`, `failed`, `rolled_back`, `rolled_back_unhealthy`, `healed`, and `heal_exhausted` are recorded; in-progress, skipped and deferred (`queued`/`blocked`) statuses are not. The log keeps the most recent 200 records **per stack** (so a busy stack never evicts a quiet one's history) and is compacted in place — atomically, temp file + rename — to stay bounded; a torn trailing line from a crash mid-append is skipped on load rather than failing the whole file.
+Each record holds the metadata of one **terminal** deploy outcome — `stack`, `timestamp`, `status`, `duration_ms`, `commit_sha`, `changed_files` (a count), and `error` — with no diffs (the commit SHA identifies the change). Only `success`, `failed`, `rolled_back`, `rolled_back_unhealthy`, `healed`, `heal_exhausted`, and `removed` are recorded; in-progress, skipped and deferred (`queued`/`blocked`) statuses are not. The log keeps the most recent 200 records **per stack** (so a busy stack never evicts a quiet one's history) and is compacted in place — atomically, temp file + rename — to stay bounded; a torn trailing line from a crash mid-append is skipped on load rather than failing the whole file.
 
 ## Orphaned stacks
 
@@ -49,3 +51,5 @@ With the [web UI](configuration.md) enabled, skipper shows compose projects runn
 - **unmanaged** — a project skipper never deployed (a manually started stack, another tool's containers). Never touched.
 
 Expand a row to see its containers (name, image, state, ports) and any named volumes it holds. Disabled stacks are hands-off and are not flagged. Detection is read-only; removing an orphan is a manual `docker compose down` for now.
+
+The section opens by itself when an orphaned project first appears, so a stack that left the repo is not hidden behind a collapsed header, and its count is tinted while one is present. The removal is also recorded in the **Deploys** view as a `removed` row against the commit that did it, so *when* a stack stopped being managed stays answerable after the containers are gone.

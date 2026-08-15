@@ -63,12 +63,13 @@ var anchors = map[string]style{
 	"deploy complete":               {glyph: "✓", color: ansiSuccess, body: bodyDeployComplete},
 	"deploy failed":                 {glyph: "✗", color: ansiDanger, body: bodyFailed("failed", ansiDanger)},
 	"deploy failed but rolled back": {glyph: "↺", color: ansiRollback, body: bodyFailed("rolled back", ansiRollback)},
-	"deploy failed, rollback ran but stack is still unhealthy": {glyph: "↺", color: ansiDanger, body: bodyFailed("rolled back · still unhealthy", ansiDanger)},
-	"skipping stack, no changes detected":                      {glyph: "▪", color: ansiDim, body: bodySkipped},
-	"deploy deferred: autosync paused":                         {glyph: "▪", color: ansiWarn, body: bodyDeferred},
-	"self-heal: restoring stack to its deployed running state": {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restoring")},
-	"self-heal: stack restored":                                {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restored")},
-	"file changed":                                             {glyph: "↳", indent: true, body: bodyFileChanged, block: blockDiff},
+	"deploy failed, rollback ran but stack is still unhealthy":           {glyph: "↺", color: ansiDanger, body: bodyFailed("rolled back · still unhealthy", ansiDanger)},
+	"skipping stack, no changes detected":                                {glyph: "▪", color: ansiDim, body: bodySkipped},
+	"deploy deferred: autosync paused":                                   {glyph: "▪", color: ansiWarn, body: bodyDeferred},
+	"self-heal: restoring stack to its deployed running state":           {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restoring")},
+	"self-heal: stack restored":                                          {glyph: "⟲", color: ansiSuccess, body: bodySelfHeal("self-heal: restored")},
+	"file changed":                                                       {glyph: "↳", indent: true, body: bodyFileChanged, block: blockDiff},
+	"stack removed from the deploy set, its containers are left running": {glyph: "−", color: ansiRollback, body: bodyRemoved},
 
 	// Multi-host fan-in (ADR-0048): the startup line and per-peer reachability
 	// edges. Message text mirrors cmd/skipper and internal/peers by hand — same
@@ -199,6 +200,29 @@ func bodySkipped(attrs []attr, color bool) string {
 	return colorize(color, ansiDim, str(attrs, "stack")+"  unchanged, skipped")
 }
 
+// bodyRemoved narrates a stack leaving the deploy set: what left, what the
+// removing commit deleted (the ↳ lines below carry the diff), and the standing
+// fact that nothing was torn down.
+func bodyRemoved(attrs []attr, color bool) string {
+	return colorize(color, ansiBold, str(attrs, "stack")) + "  " +
+		colorize(color, ansiRollback, "removed from the deploy set") +
+		colorize(color, ansiDim, deletedSummary(strSlice(attrs, "changed_files"))+" · containers left running")
+}
+
+// deletedSummary counts what the removing commit deleted, empty when the stack
+// tracked nothing inside the repo (a host-list stack, or inputs that all live
+// outside the clone).
+func deletedSummary(files []string) string {
+	switch len(files) {
+	case 0:
+		return ""
+	case 1:
+		return " · 1 file deleted"
+	default:
+		return fmt.Sprintf(" · %d files deleted", len(files))
+	}
+}
+
 func bodyDeferred(attrs []attr, color bool) string {
 	return colorize(color, ansiBold, str(attrs, "stack")) + "  " + colorize(color, ansiWarn, "deferred · autosync paused")
 }
@@ -307,6 +331,7 @@ func bodyRunComplete(attrs []attr, color bool) string {
 		{intAttr(attrs, "rolled_back_unhealthy"), "rolled back · unhealthy", ansiDanger},
 		{intAttr(attrs, "queued"), "queued", ansiWarn},
 		{intAttr(attrs, "blocked"), "blocked", ansiWarn},
+		{intAttr(attrs, "removed"), "removed", ansiDim},
 		{intAttr(attrs, "skipped"), "skipped", ansiDim},
 		{intAttr(attrs, "failed"), "failed", ansiDanger},
 	}

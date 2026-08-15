@@ -212,6 +212,13 @@ test('badgeHTML stacks rolled_back_unhealthy on two lines', () => {
   );
 });
 
+test('badgeHTML labels a removed stack with its own icon and chip class', () => {
+  const html = r.badgeHTML('removed');
+  assert.match(html, /badge badge-removed/);
+  assert.match(html, /<svg class="badge-ico"/);
+  assert.match(html, />removed</);
+});
+
 test('badgeHTML stacks heal_exhausted on two lines', () => {
   const html = r.badgeHTML('heal_exhausted');
   assert.match(html, /<span class="badge-lbl"><span>self-heal<\/span><span>failed<\/span><\/span>/);

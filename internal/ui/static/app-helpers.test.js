@@ -270,6 +270,7 @@ test('statusIcon maps each terminal status to a distinct leading glyph', () => {
     'heal_exhausted',
     'queued',
     'blocked',
+    'removed',
   ];
   for (const s of iconStatuses) {
     const svg = h.statusIcon(s);
@@ -288,6 +289,7 @@ test('statusIcon maps each terminal status to a distinct leading glyph', () => {
   // same warning glyph by design.
   assert.notEqual(h.statusIcon('success'), h.statusIcon('failed'));
   assert.notEqual(h.statusIcon('queued'), h.statusIcon('blocked'));
+  assert.notEqual(h.statusIcon('removed'), h.statusIcon('blocked'));
   assert.notEqual(h.statusIcon('healed'), h.statusIcon('rolled_back'));
   assert.equal(h.statusIcon('rolled_back_unhealthy'), h.statusIcon('heal_exhausted'));
 });
@@ -782,6 +784,7 @@ test('deployAnnouncement: only terminal outcomes get a spoken phrase (T2.8)', ()
   );
   assert.equal(h.deployAnnouncement('healed', 'gitea'), 'gitea self-healed');
   assert.equal(h.deployAnnouncement('heal_exhausted', 'gitea'), 'gitea self-heal failed');
+  assert.equal(h.deployAnnouncement('removed', 'blog'), 'blog removed from the deploy set');
   // Non-terminal statuses are never announced.
   for (const s of ['deploying', 'queued', 'blocked', 'skipped', '', undefined]) {
     assert.equal(h.deployAnnouncement(s, 'gitea'), null);
@@ -824,6 +827,7 @@ test('rowClass tints a row per deploy status', () => {
     'heal_exhausted',
     'queued',
     'blocked',
+    'removed',
   ]) {
     assert.equal(h.rowClass(s, true), 'event-row ' + s + '-row');
   }

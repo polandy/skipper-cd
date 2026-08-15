@@ -704,6 +704,30 @@ for (let i = 1; i <= GITEA_ROUTINE_CONVERGES; i++) {
   await settled('gitea', 1 + i);
 }
 
+// A stack that leaves the deploy set (ADR-0036 amendment): deployed once, then
+// its directory is deleted and pushed → a `removed` row against that commit,
+// while its containers keep running and surface in the Orphans section (the
+// scripted `docker ps -a` listing above already runs legacy-cache). This has to
+// happen before the failure block below, whose outcomes any later push would
+// overwrite.
+mkdirSync(join(origin, 'legacy-cache'), { recursive: true });
+writeFileSync(
+  join(origin, 'legacy-cache', 'docker-compose.yml'),
+  composeYaml([
+    ['redis', 'redis:7'],
+    ['worker', 'redis:7'],
+  ]),
+);
+git(origin, 'add', '.');
+git(origin, 'commit', '-m', 'feat(legacy-cache): add the cache stack');
+await webhook();
+await settled('legacy-cache', 1);
+rmSync(join(origin, 'legacy-cache'), { recursive: true, force: true });
+git(origin, 'add', '-A', 'legacy-cache');
+git(origin, 'commit', '-m', 'chore(legacy-cache): retire the cache stack');
+await webhook();
+await settled('legacy-cache', 2);
+
 // Failure states, so every badge the deploy log can render is reachable here
 // and not only in the e2e suite. One run produces all four, because a stack
 // that rolled back stays dirty by design and a later run would redeploy it —

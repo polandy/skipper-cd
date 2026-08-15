@@ -34,6 +34,11 @@ func (e StackError) Error() string { return fmt.Sprintf("stack %q: %v", e.Stack,
 type RepoStacks struct {
 	Stacks   []Stack
 	Disabled []string
+	// Discovered holds every stack directory found, alphabetically — including
+	// the disabled ones and those excluded by an entry-level error. It answers
+	// "does this stack still exist in the repo", which Stacks alone cannot: a
+	// broken or parked stack is absent from Stacks but was not removed.
+	Discovered []string
 }
 
 // LoadRepoStacks discovers the stack set from the deploy-repo clone and applies
@@ -161,7 +166,7 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 	}
 
 	sort.Slice(stackErrs, func(i, j int) bool { return stackErrs[i].Stack < stackErrs[j].Stack })
-	return RepoStacks{Stacks: stacks, Disabled: disabled}, stackErrs, nil
+	return RepoStacks{Stacks: stacks, Disabled: disabled, Discovered: discovered}, stackErrs, nil
 }
 
 // discoverStackDirs returns the names of the direct subdirectories of

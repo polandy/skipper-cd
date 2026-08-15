@@ -493,6 +493,11 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 		return
 	}
 
+	// The set is resolved: a stack recorded in state that is no longer in it has
+	// left the repo — report it before this run's deploys, so the history reads
+	// in the order the push happened.
+	d.announceRemovedStacks(ctx, cfg, state)
+
 	// Debug: a header per reconcile tick outweighs what it says; the run's
 	// outcome is the summary line the caller logs at the end (ADR-0042
 	// amendment).

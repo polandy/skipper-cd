@@ -933,6 +933,26 @@
     border-radius: 0 2px 2px 0;
   }
 
+  /* A stack that left the deploy set. It borrows the rollback colour the
+     Orphans section tags its rows with, so the history row and the orphan it
+     points at read as one fact. Nothing failed and nothing was torn down, so
+     the tint stays quieter than a danger one. */
+  .event-row.removed-row {
+    background: color-mix(in srgb, var(--rollback) 7%, transparent);
+  }
+
+  .event-row.removed-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: color-mix(in srgb, var(--rollback) 55%, transparent);
+    border-radius: 0 2px 2px 0;
+  }
+
   .paused-tag {
     font-family: var(--font-mono);
     font-size: 9.5px;
@@ -1125,6 +1145,14 @@
     background: var(--queued-dim);
     color: var(--queued-text);
     border: 1px solid color-mix(in srgb, var(--queued) 30%, transparent);
+  }
+
+  /* Left the deploy set — the same colour the Orphans section tags the still
+     running project with, so the two read as one fact. */
+  .badge-removed {
+    background: var(--rollback-dim);
+    color: var(--rollback);
+    border: 1px solid color-mix(in srgb, var(--rollback) 22%, transparent);
   }
 
   /* Self-heal restored a stack — recovery, so the success (teal) colours. */
@@ -2986,6 +3014,12 @@
     background: color-mix(in srgb, var(--text-muted) 15%, transparent);
     color: var(--text-muted); border-radius: 9px; padding: 0 7px;
     font-size: 10px; line-height: 16px;
+  }
+  /* A formerly-managed project among them is news, not inventory: the pill takes
+     the same colour its row's `orphaned` tag carries. */
+  .orphans-count.has-orphaned {
+    background: color-mix(in srgb, var(--rollback) 14%, transparent);
+    color: var(--rollback);
   }
   .orphans-body { display: none; margin-top: 6px; flex-direction: column; gap: 4px; }
   .orphans.open .orphans-body { display: flex; }
