@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/polandy/skipper-cd/compare/v0.22.1...v0.23.0) (2026-08-15)
+
+
+### Features
+
+* **deploy:** record a removed stack in the deploy history ([#303](https://github.com/polandy/skipper-cd/issues/303)) ([5e6fb30](https://github.com/polandy/skipper-cd/commit/5e6fb30bc30b9024e0a376397faae36985c0f70f))
+
 ## [0.22.1](https://github.com/polandy/skipper-cd/compare/v0.22.0...v0.22.1) (2026-08-10)
 
 
