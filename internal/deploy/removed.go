@@ -42,8 +42,11 @@ func (d *Deployer) announceRemovedStacks(ctx context.Context, cfg *config.Config
 			continue
 		}
 		files := d.vanishedRepoFiles(d.trackedInputs(state, name), cfg.StacksBaseDir)
+		// Announced before the change is collected, which logs a line per deleted
+		// file underneath — the same anchor-then-detail order a deploy logs in.
+		slog.Info("stack removed from the deploy set, its containers are left running",
+			"stack", name, "changed_files", d.repoRelativePaths(files))
 		d.emit(events.StatusRemoved, name, 0, "", d.collectChange(ctx, files, state.LastDeployedCommit))
-		slog.Info("stack removed from the deploy set, its containers are left running", "stack", name)
 		// A change still waiting behind paused autosync will never deploy now,
 		// and a stuck entry holds the commit base back for every stack.
 		d.clearQueued(name)

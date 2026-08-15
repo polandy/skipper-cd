@@ -141,11 +141,24 @@ func TestHandler_SkippedAnchorAtInfoLevel(t *testing.T) {
 
 func TestHandler_RemovedStackAnchor(t *testing.T) {
 	var buf bytes.Buffer
-	newTestLogger(&buf, false).Info("stack removed from the deploy set, its containers are left running", "stack", "legacy-cache")
+	log := newTestLogger(&buf, false)
+	log.Info("stack removed from the deploy set, its containers are left running",
+		"stack", "legacy-cache", "changed_files", []string{"legacy-cache/docker-compose.yml"})
+	log.Info("stack removed from the deploy set, its containers are left running",
+		"stack", "blog", "changed_files", []string{"blog/docker-compose.yml", "blog/.env"})
+	// A stack that tracked nothing inside the clone deletes nothing: the count
+	// clause is dropped rather than reading "0 files deleted".
+	log.Info("stack removed from the deploy set, its containers are left running", "stack", "bare")
 
 	out := buf.String()
-	if !strings.Contains(out, "− legacy-cache  removed from the deploy set · containers left running") {
-		t.Errorf("expected removal narrative, got %q", out)
+	for _, want := range []string{
+		"− legacy-cache  removed from the deploy set · 1 file deleted · containers left running",
+		"− blog  removed from the deploy set · 2 files deleted · containers left running",
+		"− bare  removed from the deploy set · containers left running",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in the removal narrative, got %q", want, out)
+		}
 	}
 }
 

@@ -200,9 +200,27 @@ func bodySkipped(attrs []attr, color bool) string {
 	return colorize(color, ansiDim, str(attrs, "stack")+"  unchanged, skipped")
 }
 
+// bodyRemoved narrates a stack leaving the deploy set: what left, what the
+// removing commit deleted (the ↳ lines below carry the diff), and the standing
+// fact that nothing was torn down.
 func bodyRemoved(attrs []attr, color bool) string {
 	return colorize(color, ansiBold, str(attrs, "stack")) + "  " +
-		colorize(color, ansiRollback, "removed from the deploy set · containers left running")
+		colorize(color, ansiRollback, "removed from the deploy set") +
+		colorize(color, ansiDim, deletedSummary(strSlice(attrs, "changed_files"))+" · containers left running")
+}
+
+// deletedSummary counts what the removing commit deleted, empty when the stack
+// tracked nothing inside the repo (a host-list stack, or inputs that all live
+// outside the clone).
+func deletedSummary(files []string) string {
+	switch len(files) {
+	case 0:
+		return ""
+	case 1:
+		return " · 1 file deleted"
+	default:
+		return fmt.Sprintf(" · %d files deleted", len(files))
+	}
 }
 
 func bodyDeferred(attrs []attr, color bool) string {
