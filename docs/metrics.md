@@ -9,6 +9,7 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 | `skipper_deploys_triggered_total` | counter | Total number of stack deploys triggered, labelled by `stack`. |
 | `skipper_deploys_skipped_total` | counter | Total number of stack deploys skipped (no changes), labelled by `stack`. |
 | `skipper_deploy_errors_total` | counter | Total number of failed deploys, labelled by `stack`. |
+| `skipper_stack_config_error` | gauge | Stacks currently excluded by a configuration error (`1` = broken), labelled by `stack` (incl. `_config` when stack discovery itself failed). |
 | `skipper_deploy_rollbacks_total` | counter | Total number of successful rollbacks after failed deploys, labelled by `stack`. |
 | `skipper_last_deploy_timestamp_seconds` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |
 | `skipper_deploy_lock_waits_total` | counter | Deploy runs that had to wait for a running deploy to finish (queueing indicator). |
@@ -32,6 +33,11 @@ Two alerts cover the failure modes that matter in practice:
 - **Deploy failed** — `increase(skipper_deploy_errors_total[5m]) > 0`.
   Covers failed stack deploys and failed `nixos-rebuild` runs (counted
   under the reserved stack label `_nixos`).
+- **Stack configuration broken** — `max_over_time(skipper_stack_config_error[15m]) > 0`.
+  A stack whose configuration is broken (an override without a stack
+  directory, an unparseable compose file) is reported once when the error
+  appears and then stays quiet, so the error counter above does not keep
+  moving. This gauge stands until the configuration is fixed.
 - **skipper-cd down** — `up{job="<your skipper job>"} == 0` for a few
   minutes. Without this, a dead skipper-cd drops webhooks silently and
   deployments stall with no signal: the error counter only moves when a
