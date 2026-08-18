@@ -177,8 +177,9 @@ type Deployer struct {
 	// mu serializes deploy runs (Invariant 7); the fields below it are only
 	// touched while it is held.
 	mu           sync.Mutex
-	plan         []string // stacks planned to deploy this run, in order
-	bootstrapRun bool     // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
+	plan         []string        // stacks planned to deploy this run, in order
+	bootstrapRun bool            // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
+	configErrors *configErrorLog // entry-level config errors already reported, so an unchanged one stays quiet (ADR-0055)
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64
@@ -224,6 +225,7 @@ func New(cfg Config) *Deployer {
 		rolloutPollInterval:    cfg.RolloutPollInterval,
 		rolloutTimeoutOverride: cfg.RolloutTimeoutOverride,
 		rolloutDrainOverride:   cfg.RolloutDrainOverride,
+		configErrors:           newConfigErrorLog(),
 	}
 	d.nextEventID.Store(cfg.StartEventID)
 
@@ -488,8 +490,10 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 
 	cfg, stackErrs, err := d.resolveStackSet(cfg)
 	if err != nil {
-		slog.Error("stack discovery failed, no stacks deploy this run", "err", err)
-		d.emitDeployFailure(ConfigStateKey, 0, err, changeSet{})
+		// The consequence rides on the error itself, so the event and the
+		// notification carry it too. Earlier stack errors stay remembered: this
+		// run never evaluated the stacks, so none of them is known to be fixed.
+		d.reportConfigError(ConfigStateKey, fmt.Errorf("stack discovery failed, no stacks deploy this run: %w", err))
 		return
 	}
 
@@ -554,8 +558,8 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 	// or (via emitDeployFailure) failed / rolled_back / rolled_back_unhealthy —
 	// so each carries its change context; we only track the outcome here.
 	gate := newDepGate()
+	d.reportConfigErrors(stackErrs)
 	for _, se := range stackErrs {
-		d.emitDeployFailure(se.Stack, 0, se.Err, changeSet{})
 		gate.record(se.Stack, depBlocked)
 	}
 	for _, stack := range orderStacks(cfg.Stacks) {

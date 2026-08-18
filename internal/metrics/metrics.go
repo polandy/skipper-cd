@@ -36,6 +36,18 @@ var (
 		Help: "Total number of deploys skipped (no changes detected) per stack.",
 	}, []string{"stack"})
 
+	// StackConfigError marks each stack currently excluded by an entry-level
+	// configuration error (a missing stack directory, a broken compose file,
+	// an invalid rollout), and the reserved _config key when stack discovery
+	// itself failed. Set to 1 while the error stands and deleted once it
+	// clears: the matching failed event is emitted only when the error appears
+	// or changes (ADR-0055), so this gauge — not DeployErrors — is what an
+	// alert on "config has been broken for a while" reads.
+	StackConfigError = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "skipper_stack_config_error",
+		Help: "Stacks currently excluded by a configuration error (1 = broken).",
+	}, []string{"stack"})
+
 	// DeployErrors counts failed deployments per stack.
 	DeployErrors = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "skipper_deploy_errors_total",
