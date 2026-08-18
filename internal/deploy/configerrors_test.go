@@ -148,6 +148,34 @@ func TestDeployAllStacks_ReportsConfigErrorAgainAfterItCleared(t *testing.T) {
 	}
 }
 
+func TestDeployAllStacks_ClearsDiscoveryFailureOnceItIsMigrated(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"alpha"}, nil)
+	repoConfig := filepath.Join(repoDir, "stacks", config.RepoConfigFileName)
+	writeFile(t, repoConfig, "stacks:\n  alpha:\n    icon: nginx\n")
+	d, _, recorded := discoveryDeployer(t, repoDir)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	// The leftover file is deleted: discovery succeeds, so the standing _config
+	// error is gone and must be forgotten along with its gauge.
+	if err := os.Remove(repoConfig); err != nil {
+		t.Fatal(err)
+	}
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if got := gaugeValue(t, ConfigStateKey); got != 0 {
+		t.Errorf("skipper_stack_config_error{stack=%s} = %v, want 0 once discovery succeeds", ConfigStateKey, got)
+	}
+
+	// And the same failure returns: it was forgotten, so it is announced again.
+	writeFile(t, repoConfig, "stacks:\n  alpha:\n    icon: nginx\n")
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if got := failedEvents(*recorded, ConfigStateKey); len(got) != 2 {
+		t.Errorf("failed events for %s = %d, want 2 (before the migration and after the regression)", ConfigStateKey, len(got))
+	}
+}
+
 func TestDeployAllStacks_ReportsStandingDiscoveryFailureOnce(t *testing.T) {
 	// A leftover in-repo skipper.yaml fails the whole stack phase (ADR-0043).
 	// It too stands until someone migrates it, so it is announced once.
