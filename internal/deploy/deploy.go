@@ -490,10 +490,9 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 
 	cfg, stackErrs, err := d.resolveStackSet(cfg)
 	if err != nil {
-		// The consequence rides on the error itself so the event and the
-		// notification say it too, not only the log. The stack errors of earlier
-		// runs are deliberately kept: this run never evaluated the stacks, so
-		// none of their errors is known to be gone.
+		// The consequence rides on the error itself, so the event and the
+		// notification carry it too. Earlier stack errors stay remembered: this
+		// run never evaluated the stacks, so none of them is known to be fixed.
 		d.reportConfigError(ConfigStateKey, fmt.Errorf("stack discovery failed, no stacks deploy this run: %w", err))
 		return
 	}
