@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -376,5 +377,26 @@ func TestAuditableStatusesMatchTerminalStatuses(t *testing.T) {
 			t.Errorf("%s: auditable = %t but events.Terminal = %t — the two classifications drifted",
 				s, auditableStatuses[s], events.Terminal(s))
 		}
+	}
+}
+
+// A zero FirstSeen must not reach the wire: omitempty does not drop a zero
+// time.Time, so every ordinary record would carry a meaningless "0001-01-01"
+// that a consumer has to know to ignore.
+func TestRecord_OmitsAnUnsetFirstSeen(t *testing.T) {
+	body, err := json.Marshal(Record{Stack: "web", Status: events.StatusSuccess, Timestamp: at(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "first_seen") {
+		t.Errorf("a one-off record must not serialise first_seen: %s", body)
+	}
+	rep := Record{Stack: "web", Status: events.StatusFailed, Timestamp: at(2), RepeatCount: 3, FirstSeen: at(1)}
+	body, err = json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "first_seen") {
+		t.Errorf("a collapsed record must carry first_seen: %s", body)
 	}
 }

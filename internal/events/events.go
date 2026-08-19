@@ -130,7 +130,7 @@ type DeployEvent struct {
 	RepeatCount int `json:"repeat_count,omitempty" yaml:"repeat_count,omitempty"`
 	// FirstSeen is when the collapsed run of identical outcomes started; zero
 	// unless RepeatCount is set.
-	FirstSeen time.Time `json:"first_seen,omitempty" yaml:"first_seen,omitempty"`
+	FirstSeen time.Time `json:"first_seen,omitzero" yaml:"first_seen,omitempty"`
 	// SupersedesID names the event this one replaced in the history when it
 	// absorbed it as a repeat, so a UI holding the earlier event can drop it
 	// instead of showing both. Zero unless this event collapsed a predecessor.

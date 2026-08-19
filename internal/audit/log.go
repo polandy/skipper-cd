@@ -66,7 +66,7 @@ type Record struct {
 	// then the newest occurrence and FirstSeen the oldest.
 	RepeatCount int `json:"repeat_count,omitempty"`
 	// FirstSeen is when the collapsed run started; zero unless RepeatCount is set.
-	FirstSeen time.Time `json:"first_seen,omitempty"`
+	FirstSeen time.Time `json:"first_seen,omitzero"`
 }
 
 // repeatsOf reports whether r merely repeats prev — the same standing outcome

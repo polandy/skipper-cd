@@ -199,11 +199,13 @@ test.describe('UM6: a short history keeps every row and offers no toggle', () =>
   });
 });
 
-// UM7 — a repeated failure folds its identical repeats, but never itself: the
-// newest failure keeps its full row and error. A retry storm is the same
-// sentence printed N times, which buries the history as thoroughly as a run of
-// successes does (UI_SPEC "Deploy history").
-test.describe('UM7: a repeated failure keeps the newest row and folds its repeats', () => {
+// UM7 — a repeated failure is one record carrying its count, not a run of rows
+// to fold. Since ADR-0056 the collapse happens where the records are stored, so
+// by the time the panel renders there is nothing left to fold — what this now
+// pins is that the collapse respects *cause*: the startup failure has no
+// previous commit to restore and so fails with a different message, and a
+// different cause is deliberately a separate incident.
+test.describe('UM7: a repeated failure is one counted record, split by cause', () => {
   test.use({
     startOptions: {
       stacks: ['web'],
@@ -212,49 +214,53 @@ test.describe('UM7: a repeated failure keeps the newest row and folds its repeat
     },
   });
 
-  test('the newest failure stays expanded above a summary of its repeats', async ({ page, skipper }) => {
+  test('the repeats collapse into one record while a differently-worded failure stays its own', async ({
+    page,
+    skipper,
+  }) => {
     await page.goto(`${skipper.baseURL}/`);
-    const records = async () =>
-      (await (await fetch(`${skipper.baseURL}/api/audit?stack=web`)).json()).length;
+    const recs = async () =>
+      (await (await fetch(`${skipper.baseURL}/api/audit?stack=web`)).json()) as Array<{
+        error?: string;
+        repeat_count?: number;
+      }>;
 
-    // The failing startup deploy plus three failing bumps — four records with
-    // the same status and the same error. Each is settled before the next
-    // (invariant 7: concurrent webhooks coalesce).
+    // Occurrences, not records: once repeats collapse the record count stops
+    // growing, so counting records would let the next push land mid-run and be
+    // coalesced away (invariant 7: concurrent webhooks wait, they do not queue).
+    const attempts = async () =>
+      (await recs()).reduce((sum, r) => sum + Math.max(r.repeat_count ?? 0, 1), 0);
+
+    // The failing startup deploy plus three failing bumps — four attempts, each
+    // settled before the next.
+    await expect.poll(attempts).toBe(1);
     let want = 1;
     for (const tag of ['1.26', '1.27', '1.28']) {
-      await expect.poll(records).toBe(want);
       skipper.setStackImage('web', tag);
       expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
       want++;
+      await expect.poll(attempts).toBe(want);
     }
-    await expect.poll(records).toBe(4);
+
+    // Two records: the startup failure (its own cause) and the run of three.
+    const settled = await recs();
+    expect(settled).toHaveLength(2);
+    expect(settled[0].repeat_count).toBe(3);
+    expect(settled[1].error).toMatch(/no previous commit available for rollback/);
+    expect(settled[1].repeat_count ?? 0).toBe(0);
 
     const newest = webRows(page).first();
     await openRowMenu(newest);
     await newest.locator('[data-testid="history-btn"]').click();
     const panel = page.locator('[data-testid="audit-panel"]');
 
-    // The newest failure keeps its full row, error line included — a failure is
-    // never the thing that folds.
+    // Both records keep a full row with their error; the run's carries the
+    // count, and nothing is folded away behind a toggle.
     const rows = panel.locator('[data-testid="audit-row"]');
+    await expect(rows).toHaveCount(2);
     await expect(rows.first()).toHaveAttribute('data-status', 'failed');
     await expect(rows.first().locator('.ar-err')).toBeVisible();
-
-    // Its repeats fold into a summary in the same status colour. The count is
-    // not pinned: the startup deploy fails differently (it has no previous
-    // commit to restore), and a different cause deliberately never merges — so
-    // the run covers the repeats that do match, not blindly all four.
-    const fold = panel.locator('[data-testid="audit-fold"]').first();
-    await expect(fold).toHaveAttribute('data-status', 'failed');
-    await expect(fold).toContainText(/\d+ more identical failures since/);
-
-    // Nothing is lost: expanded rows plus folded ones account for every record.
-    const expanded = await rows.count();
-    const foldedCounts = await panel.locator('[data-testid="audit-fold"] .hp-count').allTextContents();
-    expect(expanded + foldedCounts.reduce((sum, n) => sum + Number(n), 0)).toBe(4);
-
-    // …and the verbatim list holds all four.
-    await panel.locator('[data-testid="audit-fold-toggle"]').click();
-    await expect(panel.locator('.ap-raw .audit-row')).toHaveCount(4);
+    await expect(rows.first().locator('[data-testid="repeat-note"]')).toHaveText(/×3/);
+    await expect(panel.locator('[data-testid="audit-fold"]')).toHaveCount(0);
   });
 });

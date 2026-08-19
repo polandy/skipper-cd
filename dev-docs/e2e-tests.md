@@ -726,15 +726,17 @@ summary line, with the verbatim list behind a toggle (UI_SPEC "Deploy history").
 - **UM6 — Nothing to fold, no control.** With only two records the panel renders
   both as `audit-row`s and carries neither an `audit-fold` line nor the toggle —
   the fold must not appear on stacks where it collapsed nothing.
-- **UM7 — A repeated failure keeps its newest row.** With `STUB_DOCKER_FAIL_ON:
-  up` every deploy fails, so the failing startup deploy plus three failing bumps
-  give four records with one status and one error. The panel shows the newest
-  failure as a full `audit-row` *including* its `.ar-err` line, and its three
-  repeats as an `audit-fold` (`N more identical failures since …`,
-  `data-status="failed"`); expanded rows plus folded counts account for all
-  four, and the toggle still reveals them verbatim. The fold count is
-  deliberately not pinned — the startup deploy fails *differently* (no previous
-  commit to restore), and a different cause never merges.
+- **UM7 — A repeated failure is one counted record, split by cause.** With
+  `STUB_DOCKER_FAIL_ON: up` every deploy fails, so the failing startup deploy
+  plus three failing bumps give four *attempts*. Since ADR-0056 the repeats
+  collapse where the records are stored, so the panel holds **two** rows, both
+  with their `.ar-err` line: the startup failure (no previous commit to restore,
+  so it fails with its own message — a different cause is a separate incident)
+  and the run of three, whose row carries `repeat-note` `×3`. No `audit-fold`
+  appears: there is nothing left for the display-time fold to do. The loop
+  settles on **occurrences**, not record count — once repeats collapse the
+  record count stops growing, so counting records would let the next push land
+  mid-run and be coalesced away (Invariant 7).
 
 ### 4.15 UI — Maske N: self-heal row detail (ADR-0029 amendment)
 
