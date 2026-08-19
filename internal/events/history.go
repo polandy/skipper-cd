@@ -57,20 +57,47 @@ func (h *History) MaxEventID() int64 {
 	return maxID
 }
 
-// Add appends an event, trims to maxHistorySize, and persists to disk.
-func (h *History) Add(event DeployEvent) {
+// Add appends an event, trims to maxHistorySize, and persists to disk. An
+// event that merely repeats this stack's last outcome collapses into it
+// instead of taking a slot (ADR-0056). It returns the event as stored — the
+// collapsed form when one was absorbed — so the caller broadcasts what the
+// history actually holds rather than the raw occurrence.
+func (h *History) Add(event DeployEvent) DeployEvent {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	h.events = append(h.events, event)
-	if len(h.events) > maxHistorySize {
-		h.events = h.events[len(h.events)-maxHistorySize:]
-	}
+	stored := h.addLocked(event)
 	// Best-effort, but never silent: the persisted history feeds SSE
 	// reconnect recovery (EventsAfterID).
 	if err := h.save(); err != nil {
 		slog.Warn("persist deploy history failed", "path", h.filePath, "err", err)
 	}
+	return stored
+}
+
+// addLocked appends one event, collapsing it into this stack's previous
+// outcome when it only repeats it, trims to maxHistorySize, and returns the
+// event as stored.
+func (h *History) addLocked(event DeployEvent) DeployEvent {
+	if i, prev, ok := h.lastForStack(event.Stack); ok && event.RepeatsOf(prev) {
+		h.events = append(h.events[:i], h.events[i+1:]...)
+		event = event.absorb(prev)
+	}
+	h.events = append(h.events, event)
+	if len(h.events) > maxHistorySize {
+		h.events = h.events[len(h.events)-maxHistorySize:]
+	}
+	return event
+}
+
+// lastForStack returns the newest held event for a stack and its index.
+func (h *History) lastForStack(stack string) (int, DeployEvent, bool) {
+	for i := len(h.events) - 1; i >= 0; i-- {
+		if h.events[i].Stack == stack {
+			return i, h.events[i], true
+		}
+	}
+	return 0, DeployEvent{}, false
 }
 
 // Events returns a copy of all events in chronological order.
@@ -107,12 +134,22 @@ func (h *History) EventsAfterID(afterID int64) []DeployEvent {
 	return out
 }
 
+// load reads the persisted history and replays it through addLocked, so a file
+// written before the collapse existed — a past flood of one standing failure —
+// is folded down on startup instead of crowding the ring for another 100 events.
 func (h *History) load() error {
 	data, err := os.ReadFile(h.filePath)
 	if err != nil {
 		return err
 	}
-	return yaml.Unmarshal(data, &h.events)
+	var stored []DeployEvent
+	if err := yaml.Unmarshal(data, &stored); err != nil {
+		return err
+	}
+	for _, e := range stored {
+		h.addLocked(e)
+	}
+	return nil
 }
 
 func (h *History) save() error {

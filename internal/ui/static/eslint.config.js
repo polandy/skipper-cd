@@ -100,6 +100,7 @@ module.exports = [
         nextTrailHTML: 'readonly',
         outcomeStripHTML: 'readonly',
         pendingTagHTML: 'readonly',
+        repeatNoteHTML: 'readonly',
         retryNoteHTML: 'readonly',
         rosterHealthPillHTML: 'readonly',
         rosterRowActionsHTML: 'readonly',
@@ -141,6 +142,7 @@ module.exports = [
         require: 'readonly',
         // app-helpers.js constants it uses
         AUDIT_BAD_STATUSES: 'readonly',
+        AUDIT_FOLD_NOUN: 'readonly',
         FOLD_START_MAX_MS: 'readonly',
         UNCHANGED_SINCE: 'readonly',
         // app-helpers.js functions it calls
@@ -161,6 +163,7 @@ module.exports = [
         logTime: 'readonly',
         phaseDuration: 'readonly',
         phaseSince: 'readonly',
+        repeatNote: 'readonly',
         reasonFromSnap: 'readonly',
         rosterVersion: 'readonly',
         shortImageTag: 'readonly',

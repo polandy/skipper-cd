@@ -23,7 +23,7 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 - `internal/git` — local clone management (clone, reset --hard, diff, file-at-commit); also owns what skipper knows about Git remote URL *forms* — redacting credentials for logs, and deriving the forge browse URL the UI links commit SHAs through (`WebURL`)
 - `internal/webhook` — HMAC-verified push handler; responds 202 immediately, deploy runs in a goroutine
 - `internal/nixos` — nixos-rebuild; must stay free of docker/state/metrics/events knowledge
-- `internal/events` — SSE broadcaster + bounded persisted event history
+- `internal/events` — SSE broadcaster + bounded persisted event history. A terminal outcome that merely repeats a stack's previous one (same status, same error; failure statuses only) collapses into it rather than taking a slot, carrying `repeat_count`/`first_seen`/`supersedes_id` (ADR-0056) — the same rule `internal/audit` applies per stack, so one failure loop can never evict a stack's real history
 - `internal/metrics` — Prometheus metrics
 - `internal/roster` — builds the Stacks-view inventory (discovered/host stack set + last audit outcome per stack) and owns the `stacks` SSE snapshot that wraps it (`State`/`BuildState`/`RepoRef` in state.go); pure (dev-docs/stack-roster-spec.md)
 - `internal/registry` — minimal read-only Registry HTTP API v2 client (tags list + manifest-digest HEAD, docker-config credentials, challenge auth); exists solely for the update check (ADR-0054) and must never pull or push

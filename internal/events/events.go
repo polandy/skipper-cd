@@ -123,6 +123,89 @@ type DeployEvent struct {
 	// RollbackEventID names the superseded rollback's event when it is still in
 	// the bounded history; 0 when it has been evicted (the audit record remains).
 	RollbackEventID int64 `json:"rollback_event_id,omitempty" yaml:"rollback_event_id,omitempty"`
+	// RepeatCount is how many identical occurrences this event stands for when a
+	// standing failure was re-emitted every reconcile and the repeats collapsed
+	// into it (ADR-0056): >= 2 when collapsed, 0 for a single occurrence.
+	// Timestamp is then the newest occurrence and FirstSeen the oldest.
+	RepeatCount int `json:"repeat_count,omitempty" yaml:"repeat_count,omitempty"`
+	// FirstSeen is when the collapsed run of identical outcomes started; zero
+	// unless RepeatCount is set.
+	FirstSeen time.Time `json:"first_seen,omitempty" yaml:"first_seen,omitempty"`
+	// SupersedesID names the event this one replaced in the history when it
+	// absorbed it as a repeat, so a UI holding the earlier event can drop it
+	// instead of showing both. Zero unless this event collapsed a predecessor.
+	SupersedesID int64 `json:"supersedes_id,omitempty" yaml:"supersedes_id,omitempty"`
+}
+
+// repeatableStatuses are the outcomes an unchanged, still-broken stack
+// re-produces on every reconcile tick — the ones worth collapsing when they
+// repeat verbatim (ADR-0056). Progress statuses are excluded on purpose: two
+// successes in a row are two deploys, not one deploy seen twice.
+var repeatableStatuses = map[Status]bool{
+	StatusFailed:              true,
+	StatusRolledBack:          true,
+	StatusRolledBackUnhealthy: true,
+	StatusHealExhausted:       true,
+}
+
+// Repeatable reports whether a status is one an unchanged, still-broken stack
+// re-produces on every reconcile tick, and so may collapse when it repeats
+// verbatim (ADR-0056).
+func Repeatable(s Status) bool { return repeatableStatuses[s] }
+
+// RepeatsOf reports whether e is the same standing outcome as prev — same
+// stack, same repeatable status, same error text — and so should collapse into
+// it rather than take a slot of its own.
+func (e DeployEvent) RepeatsOf(prev DeployEvent) bool {
+	return repeatableStatuses[e.Status] &&
+		e.Stack == prev.Stack &&
+		e.Status == prev.Status &&
+		e.Error == prev.Error
+}
+
+// absorb returns e carrying prev's run: the occurrence count grows by one (or
+// starts at two), FirstSeen keeps the oldest occurrence, and SupersedesID names
+// the event prev was, so a UI can replace rather than append.
+func (e DeployEvent) absorb(prev DeployEvent) DeployEvent {
+	e.RepeatCount = prev.occurrences() + 1
+	e.FirstSeen = earlier(prev.firstOccurrence(), e.Timestamp)
+	e.Timestamp = later(prev.Timestamp, e.Timestamp)
+	e.SupersedesID = prev.ID
+	return e
+}
+
+// earlier and later keep a collapsed run's span honest regardless of the order
+// occurrences arrived in — a reloaded log can hold them out of order.
+func earlier(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
+}
+
+func later(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
+}
+
+// occurrences is how many identical outcomes an event stands for: 1 unless it
+// already collapsed a run.
+func (e DeployEvent) occurrences() int {
+	if e.RepeatCount > 1 {
+		return e.RepeatCount
+	}
+	return 1
+}
+
+// firstOccurrence is when an event's run started — its own timestamp unless it
+// already collapsed a run.
+func (e DeployEvent) firstOccurrence() time.Time {
+	if !e.FirstSeen.IsZero() {
+		return e.FirstSeen
+	}
+	return e.Timestamp
 }
 
 // SSEPayload returns a copy suitable for SSE streaming: diffs and commits are

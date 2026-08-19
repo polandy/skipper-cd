@@ -3870,6 +3870,7 @@
   .status-cell:has(.hook-phase),
   .status-cell:has(.health-pill),
   .status-cell:has(.retry-note),
+  .status-cell:has(.repeat-note),
   .roster-status:has(.hook-phase),
   .roster-status:has(.health-pill),
   .roster-status:has(.outcome-strip),
@@ -3906,6 +3907,19 @@
     color: var(--rollback); background: none; border: 0; padding: 0; cursor: pointer;
   }
   .retry-note:hover { text-decoration: underline; }
+
+  /* Repeat marker (ADR-0056): one row standing for a run of identical repeated
+     outcomes. Same shape as the retry note beside it, in the muted tier — the
+     count qualifies the outcome, it is not a second outcome — and carrying the
+     fold line's ↻ so both readings of "more than one occurrence" look alike. */
+  .repeat-note {
+    display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
+    color: var(--text-muted); font-variant-numeric: tabular-nums;
+  }
+  .repeat-note .hp-fold-glyph { font-size: 9.5px; }
+  /* In the deploy-history panel the marker leads the error text it qualifies. */
+  .audit-row .ar-err .repeat-note { margin-right: 6px; }
   .hook-phase {
     display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
     font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;

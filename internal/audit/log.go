@@ -60,11 +60,83 @@ type Record struct {
 	CommitSHA    string `json:"commit_sha,omitempty"`
 	ChangedFiles int    `json:"changed_files,omitempty"`
 	Error        string `json:"error,omitempty"`
+	// RepeatCount is how many identical occurrences this record stands for when
+	// a standing failure repeated every reconcile and the repeats collapsed into
+	// it (ADR-0056): >= 2 when collapsed, 0 for a single occurrence. Timestamp is
+	// then the newest occurrence and FirstSeen the oldest.
+	RepeatCount int `json:"repeat_count,omitempty"`
+	// FirstSeen is when the collapsed run started; zero unless RepeatCount is set.
+	FirstSeen time.Time `json:"first_seen,omitempty"`
 }
 
-// Log is a thread-safe, per-stack bounded audit trail with append-only NDJSON
-// persistence. Records are held in memory indexed by stack; the file is the
-// durable backing store, kept bounded by periodic compaction.
+// repeatsOf reports whether r merely repeats prev — the same standing outcome
+// with the same error — and so should collapse into it (ADR-0056). Callers
+// compare within one stack's records, so the stack matches by construction.
+func (r Record) repeatsOf(prev Record) bool {
+	return events.Repeatable(r.Status) && r.Status == prev.Status && r.Error == prev.Error
+}
+
+// absorb returns r carrying prev's run: one more occurrence, and the oldest
+// FirstSeen of the two.
+func (r Record) absorb(prev Record) Record {
+	r.RepeatCount = prev.occurrences() + 1
+	r.FirstSeen = earlier(prev.firstOccurrence(), r.Timestamp)
+	r.Timestamp = later(prev.Timestamp, r.Timestamp)
+	return r
+}
+
+// earlier and later keep a collapsed run's span honest regardless of the order
+// occurrences arrived in — a reloaded log can hold them out of order.
+func earlier(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
+}
+
+func later(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
+}
+
+// occurrences is how many identical outcomes a record stands for.
+func (r Record) occurrences() int {
+	if r.RepeatCount > 1 {
+		return r.RepeatCount
+	}
+	return 1
+}
+
+// firstOccurrence is when a record's run started.
+func (r Record) firstOccurrence() time.Time {
+	if !r.FirstSeen.IsZero() {
+		return r.FirstSeen
+	}
+	return r.Timestamp
+}
+
+// collapseRuns folds each run of identical repeated outcomes in a
+// chronological slice into its newest record. Idempotent: a slice the collapse
+// already produced holds no adjacent repeats and passes through unchanged.
+func collapseRuns(recs []Record) []Record {
+	out := make([]Record, 0, len(recs))
+	for _, r := range recs {
+		if n := len(out); n > 0 && r.repeatsOf(out[n-1]) {
+			out[n-1] = r.absorb(out[n-1])
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// Log is a thread-safe, per-stack bounded audit trail with NDJSON persistence.
+// Records are held in memory indexed by stack; the file is the durable backing
+// store, kept bounded by periodic compaction. Appends are the normal path — a
+// record that collapses a repeat (ADR-0056) rewrites the file instead, since it
+// supersedes a line already written.
 type Log struct {
 	mu          sync.RWMutex
 	byStack     map[string][]Record // per stack, chronological (oldest first)
@@ -98,13 +170,28 @@ func (l *Log) Record(e events.DeployEvent) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	// A record that only repeats this stack's last outcome replaces it instead
+	// of taking a slot, so a standing failure cannot evict the stack's real
+	// deploy history (ADR-0056).
 	recs := l.byStack[rec.Stack]
+	collapsed := false
+	if n := len(recs); n > 0 && rec.repeatsOf(recs[n-1]) {
+		rec = rec.absorb(recs[n-1])
+		recs = recs[:n-1]
+		collapsed = true
+	}
 	recs = append(recs, rec)
 	if over := len(recs) - l.perStackCap; over > 0 {
 		recs = recs[over:] // drop this stack's oldest, not another stack's
 	}
 	l.byStack[rec.Stack] = recs
 
+	if collapsed {
+		// The superseded line is still on disk; only a rewrite can drop it, and
+		// without one the file would grow per repeat exactly as before.
+		l.compact()
+		return
+	}
 	l.appendLine(rec)
 }
 
@@ -234,9 +321,13 @@ func (l *Log) load() {
 		l.byStack[r.Stack] = append(l.byStack[r.Stack], r)
 	}
 	for s, recs := range l.byStack {
+		// Fold runs first: a log written before the collapse existed holds a past
+		// flood as separate lines, and folding it frees the cap for real deploys.
+		recs = collapseRuns(recs)
 		if over := len(recs) - l.perStackCap; over > 0 {
-			l.byStack[s] = recs[over:]
+			recs = recs[over:]
 		}
+		l.byStack[s] = recs
 	}
 	l.compact()
 }

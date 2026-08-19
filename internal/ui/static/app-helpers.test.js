@@ -1772,3 +1772,47 @@ test('foldAuditRecords folds a repeat of errorless incidents too', () => {
   );
   assert.equal(items[1].records.length, 3);
 });
+
+// --- repeatNote (ADR-0056) ---
+
+test('repeatNote is null for an outcome that happened once', () => {
+  assert.equal(h.repeatNote({ status: 'failed', timestamp: '2026-08-18T02:43:00Z' }), null);
+  assert.equal(h.repeatNote({ status: 'failed', repeat_count: 1 }), null);
+  assert.equal(h.repeatNote(null), null);
+});
+
+test('repeatNote counts a collapsed run and spans its first and last occurrence', () => {
+  const note = h.repeatNote({
+    status: 'failed',
+    repeat_count: 199,
+    first_seen: '2026-08-18T02:43:00Z',
+    timestamp: '2026-08-18T19:13:00Z',
+    error: 'no stack directory',
+  });
+  assert.equal(note.count, 199);
+  assert.equal(note.label, '×199');
+  assert.match(note.title, /199 identical failures/);
+  // Both ends of the run are named, so the reader can see how long it has stood.
+  assert.match(note.title, /→/);
+});
+
+test('repeatNote names the outcome per status', () => {
+  assert.match(
+    h.repeatNote({ status: 'rolled_back', repeat_count: 4 }).title,
+    /identical rollbacks/,
+  );
+  assert.match(
+    h.repeatNote({ status: 'heal_exhausted', repeat_count: 2 }).title,
+    /identical self-heal failures/,
+  );
+});
+
+test('repeatNote survives a run with no recorded first_seen', () => {
+  const note = h.repeatNote({
+    status: 'failed',
+    repeat_count: 3,
+    timestamp: '2026-08-18T19:13:00Z',
+  });
+  assert.equal(note.count, 3);
+  assert.equal(note.title.includes('→'), false);
+});

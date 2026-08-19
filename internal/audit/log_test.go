@@ -206,3 +206,156 @@ func TestLog_CompactsSoDiskStaysBounded(t *testing.T) {
 		t.Fatalf("post-compaction live state wrong: %+v", got)
 	}
 }
+
+// --- repeated-outcome collapse (ADR-0056) ---
+
+// failEvent builds a failing deploy event for stack at the given minute.
+func failEvent(stack, errText string, minute int) events.DeployEvent {
+	e := terminalEvent(stack, events.StatusFailed, at(minute))
+	e.Error = errText
+	return e
+}
+
+func TestLog_CollapsesRepeatedFailureIntoOneRecord(t *testing.T) {
+	l := NewLog("")
+	const boom = "no stack directory /repo/modules/ryot with a docker-compose.yml"
+
+	for i := range 199 {
+		l.Record(failEvent("ryot", boom, i))
+	}
+	l.Record(terminalEvent("ryot", events.StatusSuccess, at(300)))
+
+	got := l.Stack("ryot", 0)
+	if len(got) != 2 {
+		t.Fatalf("want the flood collapsed to 1 record + the success, got %d", len(got))
+	}
+	if got[0].Status != events.StatusSuccess {
+		t.Errorf("newest record should be the success, got %+v", got[0])
+	}
+	rep := got[1]
+	if rep.RepeatCount != 199 {
+		t.Errorf("RepeatCount = %d, want 199", rep.RepeatCount)
+	}
+	if !rep.FirstSeen.Equal(at(0)) {
+		t.Errorf("FirstSeen = %v, want %v", rep.FirstSeen, at(0))
+	}
+	if !rep.Timestamp.Equal(at(198)) {
+		t.Errorf("Timestamp = %v, want the newest occurrence %v", rep.Timestamp, at(198))
+	}
+}
+
+// The point of collapsing: a standing failure must stop evicting the stack's
+// own real deploy history.
+func TestLog_CollapseKeepsEarlierDeploysWithinCap(t *testing.T) {
+	l := newLog("", 10)
+
+	for i := range 5 {
+		e := terminalEvent("ryot", events.StatusSuccess, at(i))
+		e.Commits = []events.CommitInfo{{SHA: "sha" + string(rune('a'+i))}}
+		l.Record(e)
+	}
+	for i := range 500 {
+		l.Record(failEvent("ryot", "compose file missing", 100+i))
+	}
+
+	got := l.Stack("ryot", 0)
+	if len(got) != 6 {
+		t.Fatalf("want 5 deploys + 1 collapsed failure, got %d: %+v", len(got), got)
+	}
+	if got[5].CommitSHA != "shaa" {
+		t.Errorf("the oldest real deploy should have survived, got %+v", got[5])
+	}
+}
+
+func TestLog_DoesNotCollapseDifferentErrors(t *testing.T) {
+	l := NewLog("")
+
+	l.Record(failEvent("ryot", "compose file missing", 1))
+	l.Record(failEvent("ryot", "port 8080 already allocated", 2))
+
+	if got := l.Stack("ryot", 0); len(got) != 2 {
+		t.Fatalf("a different error is a different incident; want 2 records, got %d", len(got))
+	}
+}
+
+func TestLog_DoesNotCollapseSuccessiveDeploys(t *testing.T) {
+	l := NewLog("")
+
+	l.Record(terminalEvent("gitea", events.StatusSuccess, at(1)))
+	l.Record(terminalEvent("gitea", events.StatusSuccess, at(2)))
+
+	if got := l.Stack("gitea", 0); len(got) != 2 {
+		t.Fatalf("two deploys are two outcomes; want 2 records, got %d", len(got))
+	}
+}
+
+func TestLog_CollapseSurvivesReload(t *testing.T) {
+	dir := t.TempDir()
+	const boom = "compose file missing"
+
+	l := NewLog(dir)
+	for i := range 20 {
+		l.Record(failEvent("ryot", boom, i))
+	}
+
+	reloaded := NewLog(dir)
+	got := reloaded.Stack("ryot", 0)
+	if len(got) != 1 {
+		t.Fatalf("want 1 collapsed record after reload, got %d: %+v", len(got), got)
+	}
+	if got[0].RepeatCount != 20 {
+		t.Errorf("RepeatCount = %d, want 20", got[0].RepeatCount)
+	}
+}
+
+// An updated record must not leave the superseded ones behind on disk, or the
+// file grows exactly as fast as before the collapse.
+func TestLog_CollapseRewritesBackingFile(t *testing.T) {
+	dir := t.TempDir()
+	l := NewLog(dir)
+
+	for i := range 50 {
+		l.Record(failEvent("ryot", "compose file missing", i))
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, auditFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Count(strings.TrimSpace(string(data)), "\n") + 1
+	if lines != 1 {
+		t.Fatalf("want 1 line on disk for the collapsed run, got %d", lines)
+	}
+}
+
+// A log written by an older skipper holds the flood as separate lines; loading
+// it folds them down so a past incident stops crowding the per-stack cap.
+func TestLog_LoadCollapsesLegacyRepeats(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, auditFileName)
+
+	var b strings.Builder
+	for i := range 30 {
+		b.WriteString(`{"stack":"ryot","timestamp":"2026-07-18T00:` +
+			leftPad(i) + `:00Z","status":"failed","error":"compose file missing"}` + "\n")
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := NewLog(dir).Stack("ryot", 0)
+	if len(got) != 1 {
+		t.Fatalf("want the legacy flood collapsed to 1 record, got %d", len(got))
+	}
+	if got[0].RepeatCount != 30 {
+		t.Errorf("RepeatCount = %d, want 30", got[0].RepeatCount)
+	}
+}
+
+// leftPad renders 0..59 as a two-digit minute.
+func leftPad(n int) string {
+	if n < 10 {
+		return "0" + string(rune('0'+n))
+	}
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}

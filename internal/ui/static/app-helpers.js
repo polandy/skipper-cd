@@ -1351,6 +1351,38 @@ function watchedSummary(status, commit, count, disabled) {
 // AUDIT_BAD_STATUSES are the terminal outcomes that went wrong.
 const AUDIT_BAD_STATUSES = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
 
+// AUDIT_FOLD_NOUN names what a folded run contains, so the summary line reads
+// as a sentence rather than "9 × success". Always plural: a run is never one
+// record. The incident nouns say *identical*, because that is the whole
+// licence for folding them — same status, same error, below the one that
+// stays expanded. The fallback keeps a future status readable before it gets
+// a noun here.
+const AUDIT_FOLD_NOUN = {
+  success: 'successful deploys',
+  healed: 'self-heals',
+  failed: 'identical failures',
+  rolled_back: 'identical rollbacks',
+  rolled_back_unhealthy: 'identical unhealthy rollbacks',
+  heal_exhausted: 'identical self-heal failures',
+};
+
+// repeatNote describes a collapsed run of identical repeated outcomes on one
+// record or event (ADR-0056): a standing failure re-emitted on every reconcile
+// tick is stored once with the occurrence count, so the row says how often and
+// for how long instead of printing the same sentence a hundred times. Returns
+// null when the outcome happened once — the overwhelmingly common case.
+function repeatNote(rec) {
+  const count = (rec && rec.repeat_count) || 0;
+  if (count < 2) return null;
+  const noun = AUDIT_FOLD_NOUN[rec.status] || 'identical outcomes';
+  const span = rec.first_seen ? fullTime(rec.first_seen) + ' → ' + fullTime(rec.timestamp) : '';
+  return {
+    count: count,
+    label: '\u00d7' + count,
+    title: count + ' ' + noun + (span ? ', ' + span : ''),
+  };
+}
+
 // AUDIT_FOLD_MIN is the shortest run of identical routine outcomes worth
 // folding: below it the summary line replaces at most two rows while hiding
 // their commits, which costs more than the line it saves.
@@ -1502,6 +1534,8 @@ if (typeof module !== 'undefined' && module.exports) {
     AUDIT_FOLD_MIN,
     AUDIT_FOLD_INCIDENT_MIN,
     foldAuditRecords,
+    AUDIT_FOLD_NOUN,
+    repeatNote,
     healthClass,
     attentionStacks,
     attentionLabel,

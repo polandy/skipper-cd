@@ -1597,7 +1597,7 @@
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
       `<span class="cell-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="col-version">${delta}</span>` +
-      `<span class="status-cell">${badgeHTML(evt.status)}${retryNoteHTML(evt)}</span>` +
+      `<span class="status-cell">${badgeHTML(evt.status)}${retryNoteHTML(evt)}${repeatNoteHTML(evt)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
       `<span class="col-files">${filesCell}</span>`;
 
@@ -2162,6 +2162,21 @@
     delete queuedRows[stack];
   }
 
+  // A repeat collapses into the event it absorbed (ADR-0056), so the incoming
+  // event replaces one already on screen rather than adding to it. Without this
+  // the row would be drawn twice — once at the old count, once at the new.
+  function removeSupersededRow(evt) {
+    if (!evt.supersedes_id) return;
+    const row = tbody.querySelector('.event-row[data-event-id="' + evt.supersedes_id + '"]');
+    if (!row) return;
+    closeDiffPanel(row);
+    closeHealthPanel(row);
+    closeAuditPanel(row);
+    const detail = row.nextElementSibling;
+    if (detail && detail.classList.contains('error-detail')) detail.remove();
+    row.remove();
+  }
+
   function handleEvent(evt, isHistory) {
     // A skipped deploy means an unchanged stack — no signal worth showing, so
     // it is never rendered (skipped events are live-only, never in history).
@@ -2188,6 +2203,7 @@
 
     // Any real deploy progress supersedes this stack's pending row.
     removeQueuedRow(evt.stack);
+    removeSupersededRow(evt);
 
     if (evt.status === 'deploying') {
       const row = createRow(evt, isHistory);
@@ -2211,7 +2227,8 @@
       if (evt.has_diffs) existing.dataset.hasDiffs = '1';
       // The terminal event alone knows whether this success retries a rollback,
       // so the note lands as the row settles (like the Version column below).
-      existing.querySelector('.status-cell').innerHTML = badgeHTML(evt.status) + retryNoteHTML(evt);
+      existing.querySelector('.status-cell').innerHTML =
+        badgeHTML(evt.status) + retryNoteHTML(evt) + repeatNoteHTML(evt);
       existing.querySelector('.cell-duration').textContent = formatDuration(evt.duration_ms);
       const tc = existing.querySelector('.cell-time');
       tc.dataset.ts = evt.timestamp;

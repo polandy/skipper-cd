@@ -1526,3 +1526,54 @@ test('auditRowsHTML names each incident kind separately', () => {
   assert.equal(noun('rolled_back_unhealthy'), 'identical unhealthy rollbacks');
   assert.equal(noun('heal_exhausted'), 'identical self-heal failures');
 });
+
+// --- repeatNoteHTML (ADR-0056) ---
+
+test('repeatNoteHTML marks a collapsed run with its count and span', () => {
+  const html = r.repeatNoteHTML({
+    status: 'failed',
+    repeat_count: 199,
+    first_seen: '2026-08-18T02:43:00Z',
+    timestamp: '2026-08-18T19:13:00Z',
+  });
+  assert.match(html, /data-testid="repeat-note"/);
+  assert.match(html, /×199/);
+  assert.match(html, /199 identical failures/);
+});
+
+test('repeatNoteHTML renders nothing for a one-off outcome', () => {
+  assert.equal(r.repeatNoteHTML({ status: 'failed', timestamp: '2026-08-18T02:43:00Z' }), '');
+  assert.equal(r.repeatNoteHTML(null), '');
+});
+
+test('auditRowsHTML marks a collapsed repeat on its row instead of listing it', () => {
+  const html = r.auditRowsHTML(
+    [
+      {
+        status: 'failed',
+        timestamp: '2026-08-18T19:13:00Z',
+        first_seen: '2026-08-18T02:43:00Z',
+        repeat_count: 199,
+        error: 'no stack directory',
+      },
+      { status: 'success', timestamp: '2026-08-17T10:00:00Z', commit_sha: 'abc1234' },
+    ],
+    '',
+    false,
+    {},
+  );
+  assert.match(html, /repeat-note/);
+  assert.match(html, /×199/);
+  // Still one row per record — the count is the row's, not extra rows.
+  assert.equal(html.match(/class="audit-row"/g).length, 2);
+});
+
+test('auditRowsHTML shows a repeat count on an incident that carries no error text', () => {
+  const html = r.auditRowsHTML(
+    [{ status: 'heal_exhausted', timestamp: '2026-08-18T19:13:00Z', repeat_count: 4 }],
+    '',
+    false,
+    {},
+  );
+  assert.match(html, /×4/);
+});
