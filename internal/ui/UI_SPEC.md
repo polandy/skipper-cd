@@ -220,6 +220,7 @@ Both surfaces mark such a record with the same **repeat note** (`data-testid="re
 
 - In the **Deploys** view it stacks under the status badge, like the [retry note](#rollback-linkage).
 - In the **[deploy-history panel](#deploy-history)** it leads the error text it qualifies, keeping the row's column grid unchanged.
+- On a **[peer row](#multi-host-federated-ui)** it sits in the same place as on a local row: the fan-in carries the peer's `repeat_count` through unchanged, and without the count one row would read as a one-off incident. A peer running an older build simply sends no count and gets no marker.
 
 Live, a collapsed repeat arrives as an event carrying `supersedes_id` — the id of the event it absorbed. The client **removes that row (and its error panel) before inserting the new one**, so the count moves in place instead of the list growing. An event whose superseded row is not on screen (a reconnect replay, a row already evicted) simply inserts.
 

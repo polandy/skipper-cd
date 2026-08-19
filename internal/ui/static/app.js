@@ -2381,6 +2381,9 @@
       '<span class="col-version"></span>' +
       '<span class="status-cell">' +
       badgeHTML(rec.status) +
+      // A peer's record collapses repeats the same way ours does (ADR-0056), and
+      // without the count its one row would read as a one-off incident.
+      repeatNoteHTML(rec) +
       pill +
       '</span>' +
       '<span class="cell-duration" data-testid="duration-cell">' +

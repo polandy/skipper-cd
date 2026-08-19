@@ -359,3 +359,22 @@ func leftPad(n int) string {
 	}
 	return string(rune('0'+n/10)) + string(rune('0'+n%10))
 }
+
+// The audit allowlist and events.Terminal now classify the same thing from two
+// sides — what is worth recording, and what counts as an outcome. Keeping the
+// allowlist explicit is deliberate (a new status opts in, it is not swept in),
+// but the two must not drift apart unnoticed.
+func TestAuditableStatusesMatchTerminalStatuses(t *testing.T) {
+	all := []events.Status{
+		events.StatusDeploying, events.StatusSuccess, events.StatusFailed,
+		events.StatusSkipped, events.StatusRolledBack, events.StatusRolledBackUnhealthy,
+		events.StatusQueued, events.StatusHealed, events.StatusHealExhausted,
+		events.StatusBlocked, events.StatusRemoved,
+	}
+	for _, s := range all {
+		if auditableStatuses[s] != events.Terminal(s) {
+			t.Errorf("%s: auditable = %t but events.Terminal = %t — the two classifications drifted",
+				s, auditableStatuses[s], events.Terminal(s))
+		}
+	}
+}

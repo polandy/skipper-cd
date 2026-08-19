@@ -442,3 +442,58 @@ func TestHistory_CollapsesAcrossTheDeployingEventBetweenRepeats(t *testing.T) {
 		t.Errorf("SupersedesID = %d, want the replaced terminal event 4", got[1].SupersedesID)
 	}
 }
+
+// A collapse must only touch its own stack: another stack deploying between two
+// repeats is unrelated history, and dropping it would trade one eviction bug
+// for a worse one.
+func TestHistory_CollapseKeepsInterleavedOtherStacks(t *testing.T) {
+	h := NewHistory("")
+	const boom = "docker compose up: exit status 1"
+
+	h.Add(repeatEvent(1, "wiki", boom, 0))
+	h.Add(DeployEvent{ID: 2, Stack: "gitea", Status: StatusDeploying})
+	h.Add(DeployEvent{ID: 3, Stack: "gitea", Status: StatusSuccess})
+	h.Add(DeployEvent{ID: 4, Stack: "wiki", Status: StatusDeploying})
+	h.Add(repeatEvent(5, "wiki", boom, 5))
+
+	got := h.Events()
+	if len(got) != 3 {
+		t.Fatalf("want gitea's two events + one collapsed wiki failure, got %d: %+v", len(got), got)
+	}
+	if got[0].ID != 2 || got[1].ID != 3 {
+		t.Errorf("gitea's events must survive untouched and in order, got %+v", got)
+	}
+	if got[2].Stack != "wiki" || got[2].RepeatCount != 2 {
+		t.Errorf("want the collapsed wiki failure last, got %+v", got[2])
+	}
+}
+
+func TestStatusClassification(t *testing.T) {
+	tests := []struct {
+		status     Status
+		terminal   bool
+		repeatable bool
+	}{
+		{StatusDeploying, false, false},
+		{StatusQueued, false, false},
+		{StatusBlocked, false, false},
+		{StatusSkipped, false, false},
+		{StatusSuccess, true, false},
+		{StatusHealed, true, false},
+		{StatusRemoved, true, false},
+		{StatusFailed, true, true},
+		{StatusRolledBack, true, true},
+		{StatusRolledBackUnhealthy, true, true},
+		{StatusHealExhausted, true, true},
+	}
+	for _, tc := range tests {
+		t.Run(string(tc.status), func(t *testing.T) {
+			if got := Terminal(tc.status); got != tc.terminal {
+				t.Errorf("Terminal(%s) = %t, want %t", tc.status, got, tc.terminal)
+			}
+			if got := Repeatable(tc.status); got != tc.repeatable {
+				t.Errorf("Repeatable(%s) = %t, want %t", tc.status, got, tc.repeatable)
+			}
+		})
+	}
+}
