@@ -79,8 +79,11 @@ func (h *History) Add(event DeployEvent) DeployEvent {
 // outcome when it only repeats it, trims to maxHistorySize, and returns the
 // event as stored.
 func (h *History) addLocked(event DeployEvent) DeployEvent {
-	if i, prev, ok := h.lastForStack(event.Stack); ok && event.RepeatsOf(prev) {
-		h.events = append(h.events[:i], h.events[i+1:]...)
+	if i, prev, ok := h.lastOutcomeForStack(event.Stack); ok && event.RepeatsOf(prev) {
+		// Drop the absorbed outcome *and* the in-flight phases the repeating run
+		// emitted after it — they describe the very attempt this event settles,
+		// so keeping them would let the ring fill at half speed instead.
+		h.events = append(h.events[:i], h.keepOthers(i+1, event.Stack)...)
 		event = event.absorb(prev)
 	}
 	h.events = append(h.events, event)
@@ -90,10 +93,25 @@ func (h *History) addLocked(event DeployEvent) DeployEvent {
 	return event
 }
 
-// lastForStack returns the newest held event for a stack and its index.
-func (h *History) lastForStack(stack string) (int, DeployEvent, bool) {
+// keepOthers returns the events from index `from` onwards that belong to
+// another stack, in order — the interleaved history a collapse must not touch.
+func (h *History) keepOthers(from int, stack string) []DeployEvent {
+	kept := make([]DeployEvent, 0, len(h.events)-from)
+	for _, e := range h.events[from:] {
+		if e.Stack != stack {
+			kept = append(kept, e)
+		}
+	}
+	return kept
+}
+
+// lastOutcomeForStack returns the newest *terminal* event held for a stack and
+// its index. In-flight phases are skipped: every reconcile emits `deploying`
+// before its result, so the newest event of a stack is almost never its newest
+// outcome.
+func (h *History) lastOutcomeForStack(stack string) (int, DeployEvent, bool) {
 	for i := len(h.events) - 1; i >= 0; i-- {
-		if h.events[i].Stack == stack {
+		if h.events[i].Stack == stack && Terminal(h.events[i].Status) {
 			return i, h.events[i], true
 		}
 	}

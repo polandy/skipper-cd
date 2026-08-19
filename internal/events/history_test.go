@@ -413,3 +413,32 @@ func TestHistory_LoadCollapsesExistingRepeats(t *testing.T) {
 		t.Errorf("collapsed event should keep the newest id 21, got %d", got[1].ID)
 	}
 }
+
+// The live path never emits two failures back to back: each reconcile emits
+// `deploying` first. Comparing against the newest event of the stack would
+// therefore never see the repeat — the collapse must look past the in-progress
+// phases of the run that produced it.
+func TestHistory_CollapsesAcrossTheDeployingEventBetweenRepeats(t *testing.T) {
+	h := NewHistory("")
+	const boom = "docker compose up: exit status 1"
+
+	h.Add(DeployEvent{ID: 1, Stack: "wiki", Status: StatusDeploying})
+	h.Add(repeatEvent(2, "wiki", boom, 0))
+	h.Add(DeployEvent{ID: 3, Stack: "wiki", Status: StatusDeploying})
+	h.Add(repeatEvent(4, "wiki", boom, 5))
+	h.Add(DeployEvent{ID: 5, Stack: "wiki", Status: StatusDeploying})
+	h.Add(repeatEvent(6, "wiki", boom, 10))
+
+	got := h.Events()
+	// The first deploying stays: it belongs to the run that first failed, and
+	// nothing has superseded it. Everything the repeats brought is gone.
+	if len(got) != 2 {
+		t.Fatalf("want the first deploying + one collapsed failure, got %d: %+v", len(got), got)
+	}
+	if got[0].Status != StatusDeploying || got[1].RepeatCount != 3 {
+		t.Fatalf("unexpected shape: %+v", got)
+	}
+	if got[1].SupersedesID != 4 {
+		t.Errorf("SupersedesID = %d, want the replaced terminal event 4", got[1].SupersedesID)
+	}
+}

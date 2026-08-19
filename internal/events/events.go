@@ -148,6 +148,19 @@ var repeatableStatuses = map[Status]bool{
 	StatusHealExhausted:       true,
 }
 
+// inFlightStatuses are the non-outcome statuses a run emits around its result —
+// the phases a repeat comparison must look past to find the previous outcome.
+var inFlightStatuses = map[Status]bool{
+	StatusDeploying: true,
+	StatusSkipped:   true,
+	StatusQueued:    true,
+	StatusBlocked:   true,
+}
+
+// Terminal reports whether a status is a deploy *outcome* rather than a phase
+// of one still running or deferred.
+func Terminal(s Status) bool { return !inFlightStatuses[s] }
+
 // Repeatable reports whether a status is one an unchanged, still-broken stack
 // re-produces on every reconcile tick, and so may collapse when it repeats
 // verbatim (ADR-0056).

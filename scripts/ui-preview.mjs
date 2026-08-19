@@ -174,6 +174,19 @@ async function settled(stack, want) {
   }
   console.error(`[ui-preview] warning: ${stack} did not settle in time; seeding continues`);
 }
+// repeated waits until a stack's newest record has absorbed `want` occurrences
+// (ADR-0056). A repeat does not add a record, so the record count settled()
+// polls stops moving — the count on the record is the signal instead.
+async function repeated(stack, want) {
+  for (let i = 0; i < 300; i++) {
+    try {
+      const recs = await (await fetch(`http://127.0.0.1:${PORT}/api/audit?stack=${stack}`)).json();
+      if ((recs?.[0]?.repeat_count ?? 0) >= want) return;
+    } catch {}
+    await sleep(200);
+  }
+  console.error(`[ui-preview] warning: ${stack} did not reach ×${want} in time; seeding continues`);
+}
 async function healthy() {
   try {
     return (await fetch(`http://127.0.0.1:${PORT}/healthz`)).status === 200;
@@ -734,7 +747,7 @@ await settled('legacy-cache', 2);
 // successfully this time — and overwrite the outcome we want to show.
 //
 //   vaultwarden  up fails once → rollback restores the previous compose  → rolled_back
-//   wiki         up always fails, rollback: false                        → failed
+//   wiki         up always fails, rollback: false                        → failed ×3
 //   backup       depends_on vaultwarden, which just failed               → blocked
 //   monitoring   paused through the API the autosync drawer calls        → queued
 //
@@ -747,15 +760,32 @@ await fetch(`http://127.0.0.1:${PORT}/api/autosync`, {
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ scope: 'stack', stack: 'monitoring', enabled: false }),
 });
-writeFileSync(join(failDir, 'vaultwarden'), 'once');
+// wiki first, and alone: it keeps failing the same way on every later sync —
+// the standing-failure shape that used to fill the history with one sentence
+// (ADR-0056) — so three pushes leave a counted repeat for the ×N marker to be
+// reviewable here. It has to run before the block below, whose pushes would
+// otherwise redeploy vaultwarden (its 'once' failure spent) into a success and
+// cost the preview its rolled_back row.
 writeFileSync(join(failDir, 'wiki'), 'always');
+for (let i = 1; i <= 3; i++) {
+  writeFileSync(
+    join(origin, 'wiki', 'docker-compose.yml'),
+    composeYaml([['app', 'wiki:1.1.0']]) + `# retry ${i}\n`,
+  );
+  git(origin, 'commit', '-am', `chore(wiki): retry the failing deploy (${i})`);
+  await webhook();
+  if (i === 1) await settled('wiki', 2);
+  else await repeated('wiki', i);
+}
+
+writeFileSync(join(failDir, 'vaultwarden'), 'once');
 for (const n of ['vaultwarden', 'wiki', 'backup', 'monitoring']) {
   writeFileSync(join(origin, n, 'docker-compose.yml'), composeYaml([['app', `${n}:1.1.0`]]));
 }
 git(origin, 'commit', '-am', 'chore: bump the vaultwarden, wiki, backup and monitoring images');
 await webhook();
 await settled('vaultwarden', 2);
-await settled('wiki', 2);
+await repeated('wiki', 4);
 
 if (SMOKE) {
   const fail = (msg) => {
