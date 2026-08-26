@@ -19,13 +19,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"gopkg.in/yaml.v3"
 )
-
-// overrideFilePattern is the temp-file pattern for the generated build
-// override. The .yml suffix is what makes compose accept it as a -f file.
-const overrideFilePattern = "skipper-build-context-*.yml"
 
 // buildContextOverrideFile is the generated compose override: nothing but the
 // build context of each service that needs pinning, so compose merges it into
@@ -52,7 +49,7 @@ type buildContextOverrideBuild struct {
 func buildContextOverride(cf *composeFile, repoDir string) ([]byte, error) {
 	services := make(map[string]buildContextOverrideService)
 	for name, spec := range cf.buildSpecs() {
-		if spec.context == "" || filepath.IsAbs(spec.context) {
+		if filepath.IsAbs(spec.context) {
 			continue
 		}
 		context := filepath.Clean(filepath.Join(repoDir, spec.context))
@@ -79,7 +76,7 @@ func (r stackRun) withClonedBuildContexts(cf *composeFile) (stackRun, func(), er
 		return r, noCleanup, err
 	}
 
-	f, err := os.CreateTemp("", overrideFilePattern)
+	f, err := os.CreateTemp("", "skipper-build-context-*.yml")
 	if err != nil {
 		return r, noCleanup, fmt.Errorf("create build context override: %w", err)
 	}
@@ -98,6 +95,6 @@ func (r stackRun) withClonedBuildContexts(cf *composeFile) (stackRun, func(), er
 		return r, noCleanup, fmt.Errorf("write build context override: %w", err)
 	}
 
-	r.extraComposeFiles = append(append([]string(nil), r.extraComposeFiles...), f.Name())
+	r.extraComposeFiles = append(slices.Clone(r.extraComposeFiles), f.Name())
 	return r, cleanup, nil
 }
