@@ -169,3 +169,11 @@ This ensures:
 - **Project identity** matches the NixOS systemd path (no container name conflicts)
 - **`.env` files** at `project_directory` are loaded automatically via `--project-directory`
 - **Manual `docker compose` commands work.** Running `docker compose up -d` (or `logs`, `ps`, …) by hand from `/etc/nixos/modules/<name>` — for local testing or troubleshooting — resolves to the *same* project as skipper's own deploys, so it reuses the existing containers/network/volumes instead of standing up a second, conflicting project. Without `project_directory` set to that path, skipper's own deploys use the repo clone's directory as project identity instead, and a manual command run from `/etc/nixos/modules/<name>` would create a separate project.
+
+#### Stacks that build their own image
+
+Docker Compose resolves relative paths in the compose file against the project directory, and a `build:` context is one of them. With `project_directory` set, a `context: .` would otherwise point at the NixOS modules directory rather than at the repo clone — so the build would read a Dockerfile that skipper never checked for changes, and a base-image bump merged into the repo would produce no new image.
+
+skipper-cd pins it: for the `docker compose build` call only, every relative build context is rewritten to its absolute path in the repo clone. A `dockerfile:` stays relative to that context and follows it. Everything else on the same call — project identity, `.env` loading, relative bind mounts — keeps resolving against `project_directory` unchanged.
+
+There is nothing to configure. Two cases are left alone: a stack without `project_directory` (compose already resolves against the clone), and an absolute `context:`, which names its own tree. If a stack's build inputs genuinely live outside the repo — generated artifacts, for example — give it an absolute `context:`; note that skipper does not watch such a directory for changes unless it is listed in `watch_dirs`.

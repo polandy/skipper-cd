@@ -74,6 +74,26 @@ func TestComposeFile_DockerfilePaths_MapForm(t *testing.T) {
 	}
 }
 
+func TestComposeFile_DockerfilePaths_MapFormWithoutContext(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build:
+      dockerfile: "Dockerfile.custom"
+`)
+	writeFile(t, filepath.Join(workDir, "Dockerfile.custom"), "FROM nginx:1.25\n")
+
+	paths := mustParseCompose(t, filepath.Join(workDir, "docker-compose.yml")).dockerfilePaths(workDir)
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path, got %d: %v", len(paths), paths)
+	}
+	// An omitted context defaults to "." — the same normalization the build
+	// override pins, so hashing and building read the same tree.
+	if paths[0] != filepath.Join(workDir, "Dockerfile.custom") {
+		t.Errorf("unexpected path: %s", paths[0])
+	}
+}
+
 func TestComposeFile_DockerfilePaths_MissingDockerfileSkipped(t *testing.T) {
 	workDir := t.TempDir()
 	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
