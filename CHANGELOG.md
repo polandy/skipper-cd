@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.24.0](https://github.com/polandy/skipper-cd/compare/v0.23.0...v0.24.0) (2026-08-27)
+
+
+### Features
+
+* **deploy:** report a standing config error once, not every run ([6f12bd2](https://github.com/polandy/skipper-cd/commit/6f12bd2b518b652e06c4ab0a3c4b88ba3c0dc2e0))
+* **events:** collapse a repeated outcome into the record it repeats ([725deec](https://github.com/polandy/skipper-cd/commit/725deecdfe4acd5eba18c167332ea669210fd944))
+
+
+### Bug Fixes
+
+* **deploy:** build from the tree skipper hashed, not the project directory ([d77eb96](https://github.com/polandy/skipper-cd/commit/d77eb96964a868e4a84c757d4472cedfb6570425))
+
 ## [0.23.0](https://github.com/polandy/skipper-cd/compare/v0.22.1...v0.23.0) (2026-08-15)
 
 
