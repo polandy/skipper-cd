@@ -253,6 +253,10 @@ type stackRun struct {
 	composePath string   // compose file, always from the repo clone
 	projectDir  string   // --project-directory; "" = compose file's own dir
 	baseEnv     []string // os.Environ() + vars_file (env_files are added per call)
+
+	// extraComposeFiles are layered on top of composePath as further -f files.
+	// Only the build call sets one, to pin its context to the clone.
+	extraComposeFiles []string
 }
 
 // effectiveProjectDir returns the directory docker compose uses as the project's
@@ -279,13 +283,22 @@ func newStackRun(stack config.Stack, baseDir string, baseEnv []string) stackRun 
 // composeInvocation returns the working directory and the leading `compose …`
 // args (project selection) shared by every docker compose call for this stack.
 // A non-empty projectDir is passed as --project-directory so compose uses it
-// for project identity and .env loading; when empty, compose runs from the
-// compose file's directory and discovers it there.
+// for project identity and .env loading; when empty and nothing is layered on,
+// compose runs from the compose file's directory and discovers it there.
+// extraComposeFiles are layered after the stack's own compose file, so their
+// values win — see withClonedBuildContexts.
 func (r stackRun) composeInvocation() (dir string, args []string) {
 	dir = filepath.Dir(r.composePath)
 	args = []string{"compose"}
+	if r.projectDir == "" && len(r.extraComposeFiles) == 0 {
+		return dir, args
+	}
+	args = append(args, "-f", r.composePath)
+	for _, f := range r.extraComposeFiles {
+		args = append(args, "-f", f)
+	}
 	if r.projectDir != "" {
-		args = append(args, "-f", r.composePath, "--project-directory", r.projectDir)
+		args = append(args, "--project-directory", r.projectDir)
 		dir = r.projectDir
 	}
 	return dir, args

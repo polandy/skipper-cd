@@ -14,6 +14,10 @@ import (
 // FileName is the compose file skipper reads per stack.
 const FileName = "docker-compose.yml"
 
+// DefaultDockerfile is the file a build: section without an explicit
+// dockerfile: builds from — compose's own default.
+const DefaultDockerfile = "Dockerfile"
+
 // File is a parsed docker-compose.yml.
 type File struct {
 	Services map[string]Service `yaml:"services"`

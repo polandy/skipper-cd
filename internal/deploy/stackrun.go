@@ -180,13 +180,21 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 
 	if len(prep.dockerfilePaths) > 0 {
 		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", prep.dockerfilePaths)
+		// The build reads the tree skipper hashed, not the project directory
+		// compose would otherwise resolve a relative context against (ADR-0057).
+		buildRun, cleanup, err := run.withClonedBuildContexts(compose)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+
 		buildArgs := []string{"build"}
 		if !d.bootstrapRun {
 			// --pull refreshes each Dockerfile's base image. On a bootstrap run
 			// that is the same unasked-for jump a forced pull would be.
 			buildArgs = append(buildArgs, "--pull")
 		}
-		if err := d.runDockerCompose(ctx, run, buildArgs...); err != nil {
+		if err := d.runDockerCompose(ctx, buildRun, buildArgs...); err != nil {
 			return fmt.Errorf("docker compose build: %w", err)
 		}
 	}
