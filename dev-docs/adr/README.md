@@ -60,3 +60,4 @@ One file per decision, numbered sequentially (see
 | [0053](0053-deploy-reports-running-image-versions.md) | A deploy reports the version it actually put into service (`running_images`, separate from the pull-deciding `images`), plus whether it was health-gated |
 | [0054](0054-read-only-registry-update-check.md) | Read-only registry update check — "update available" in the Stacks view + one notification; acting stays a git commit |
 | [0055](0055-standing-config-errors-are-reported-once.md) | A standing configuration error is reported once (and again when it changes), with `skipper_stack_config_error` as the live signal |
+| [0057](0057-build-context-pinned-to-the-repo-clone.md) | A relative `build:` context is pinned to the repo clone via a generated compose override, so the build reads the Dockerfile skipper hashed |

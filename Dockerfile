@@ -32,7 +32,10 @@ FROM alpine:3.24
 # docker-cli talks to the socket over HTTP, not Linux capabilities, so running
 # as this unprivileged user doesn't affect docker.sock access — that's gated
 # entirely by group membership (docs/docker.md's `group_add`).
-RUN apk add --no-cache git docker-cli docker-cli-compose \
+# apk upgrade first: pick up security patches the base image tag lags behind
+# (the CI vulnerability scan fails the build on known-fixed CVEs otherwise).
+RUN apk upgrade --no-cache \
+    && apk add --no-cache git docker-cli docker-cli-compose \
     && addgroup -g 1000 skipper \
     && adduser -D -u 1000 -G skipper -h /var/lib/skipper skipper \
     && mkdir -p /var/lib/skipper /etc/skipper \

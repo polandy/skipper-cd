@@ -95,46 +95,55 @@ func (cf *composeFile) pullableServices() []string {
 	return pullable
 }
 
-// dockerfilePaths returns the absolute paths of all Dockerfiles referenced by
-// services with a build: section. Both the string form (build: ".") and the
-// map form (build: {context: ".", dockerfile: "Dockerfile"}) are supported.
-// Missing Dockerfiles are skipped with a warning.
-func (cf *composeFile) dockerfilePaths(workDir string) []string {
-	seen := make(map[string]struct{})
-	var paths []string
+// buildSpec is one service's build: inputs as written in the compose file:
+// the context and the Dockerfile within it, both possibly relative.
+type buildSpec struct {
+	context    string
+	dockerfile string
+}
 
+// buildSpecs returns the build: section of every service that has one, in both
+// the string form (build: ".") and the map form (build: {context: ".",
+// dockerfile: "Dockerfile"}). Omitted fields get the defaults compose itself
+// assumes, so every caller reads one normalized shape.
+func (cf *composeFile) buildSpecs() map[string]buildSpec {
+	specs := make(map[string]buildSpec)
 	for name, svc := range cf.Services {
 		if svc.Build == nil {
 			continue
 		}
-
-		var context, dockerfile string
+		spec := buildSpec{context: ".", dockerfile: compose.DefaultDockerfile}
 		switch v := svc.Build.(type) {
 		case string:
-			context = v
-			dockerfile = "Dockerfile"
+			spec.context = v
 		case map[string]any:
-			if c, ok := v["context"].(string); ok {
-				context = c
+			if c, ok := v["context"].(string); ok && c != "" {
+				spec.context = c
 			}
 			if df, ok := v["dockerfile"].(string); ok {
-				dockerfile = df
-			} else {
-				dockerfile = "Dockerfile"
+				spec.dockerfile = df
 			}
 		default:
 			slog.Warn("unrecognized build field type, skipping", "service", name)
 			continue
 		}
+		specs[name] = spec
+	}
+	return specs
+}
 
-		var dfPath string
-		switch {
-		case filepath.IsAbs(dockerfile):
-			dfPath = dockerfile
-		case context != "":
-			dfPath = filepath.Join(workDir, context, dockerfile)
-		default:
-			dfPath = filepath.Join(workDir, dockerfile)
+// dockerfilePaths returns the absolute paths of all Dockerfiles referenced by
+// services with a build: section, resolved against workDir — the stack's
+// directory in the repo clone, which is also the tree the build reads from
+// (see buildcontext.go). Missing Dockerfiles are skipped with a warning.
+func (cf *composeFile) dockerfilePaths(workDir string) []string {
+	seen := make(map[string]struct{})
+	var paths []string
+
+	for name, spec := range cf.buildSpecs() {
+		dfPath := filepath.Join(workDir, spec.context, spec.dockerfile)
+		if filepath.IsAbs(spec.dockerfile) {
+			dfPath = spec.dockerfile
 		}
 		dfPath = filepath.Clean(dfPath)
 
