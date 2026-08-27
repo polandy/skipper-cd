@@ -726,15 +726,17 @@ summary line, with the verbatim list behind a toggle (UI_SPEC "Deploy history").
 - **UM6 — Nothing to fold, no control.** With only two records the panel renders
   both as `audit-row`s and carries neither an `audit-fold` line nor the toggle —
   the fold must not appear on stacks where it collapsed nothing.
-- **UM7 — A repeated failure keeps its newest row.** With `STUB_DOCKER_FAIL_ON:
-  up` every deploy fails, so the failing startup deploy plus three failing bumps
-  give four records with one status and one error. The panel shows the newest
-  failure as a full `audit-row` *including* its `.ar-err` line, and its three
-  repeats as an `audit-fold` (`N more identical failures since …`,
-  `data-status="failed"`); expanded rows plus folded counts account for all
-  four, and the toggle still reveals them verbatim. The fold count is
-  deliberately not pinned — the startup deploy fails *differently* (no previous
-  commit to restore), and a different cause never merges.
+- **UM7 — A repeated failure is one counted record, split by cause.** With
+  `STUB_DOCKER_FAIL_ON: up` every deploy fails, so the failing startup deploy
+  plus three failing bumps give four *attempts*. Since ADR-0056 the repeats
+  collapse where the records are stored, so the panel holds **two** rows, both
+  with their `.ar-err` line: the startup failure (no previous commit to restore,
+  so it fails with its own message — a different cause is a separate incident)
+  and the run of three, whose row carries `repeat-note` `×3`. No `audit-fold`
+  appears: there is nothing left for the display-time fold to do. The loop
+  settles on **occurrences**, not record count — once repeats collapse the
+  record count stops growing, so counting records would let the next push land
+  mid-run and be coalesced away (Invariant 7).
 
 ### 4.15 UI — Maske N: self-heal row detail (ADR-0029 amendment)
 
@@ -1683,6 +1685,30 @@ it leaves behind are scripted with `setOrphans`. Behaviour-only (no snapshot).
   tick. A second push that bumps `web` gives the positive signal that the run
   really happened and re-evaluated the set (its new success row — two now, with
   the startup deploy's), while the removed row count stays at 1.
+
+### 4.48 UI — Maske AU: a standing failure does not flood the history (ADR-0056)
+
+The shape this covers was measured on a live host: one stale override made every
+five-minute reconcile fail identically for 16½ hours, which filled that stack's
+whole 200-record audit window (one real deploy survived) and took 91 of the 100
+slots in the global event ring. The instance boots one stack with
+`STUB_DOCKER_FAIL_ON: 'up'` and `readiness: 'listening'`, so every sync produces
+the same `failed` outcome with no prior commit to roll back to. Behaviour-only
+(no snapshot).
+
+- **UAU1 — The repeats become a count, not more rows.** The startup failure
+  carries no marker (one occurrence). Each further webhook is settled through the
+  count before the next is sent — deploys serialize on one mutex, so a burst
+  would not produce one run each (Invariant 7) — and the row goes `×2`, `×3`
+  while its count stays 1. The count is the positive signal the "no second row"
+  assertion rests on: without the collapse it never appears while rows pile up.
+  The marker's `title` names the run and its span.
+- **UAU2 — It survives a reload.** The collapse lives in the stores, not in the
+  rendering, so a reload rebuilds from the persisted history with the same single
+  counted row.
+- **UAU3 — The stack's durable history reads the same.** The deploy-history panel
+  — the store the flood used to empty — holds one record for the run, carrying
+  the same marker, rather than one row per attempt.
 
 ## 5. Visual snapshot strategy
 

@@ -2,6 +2,7 @@ package roster
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -185,12 +186,41 @@ func TestBuildState_Incidents24hOmittedWhenClean(t *testing.T) {
 func TestBuildState_Incidents24hCapped(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	auditLog := audit.NewLog(t.TempDir())
+	// Distinct failures, not a repeat: identical ones collapse into a single
+	// incident (ADR-0056), which is the point — the cap is about how many
+	// separate incidents a day can surface.
 	for i := range 60 {
-		auditLog.Record(events.DeployEvent{Stack: "web", Status: events.StatusFailed, Timestamp: now.Add(-time.Duration(i) * time.Minute)})
+		auditLog.Record(events.DeployEvent{
+			Stack:     "web",
+			Status:    events.StatusFailed,
+			Timestamp: now.Add(-time.Duration(i) * time.Minute),
+			Error:     fmt.Sprintf("service %d failed to start", i),
+		})
 	}
 	state := buildState(nil, nil, auditLog, nil, RepoRef{}, nil, now)
 	if len(state.Incidents24h) != incidentsCap {
 		t.Errorf("incidents_24h = %d records, want the cap of %d", len(state.Incidents24h), incidentsCap)
+	}
+}
+
+// A standing failure re-emitted on every reconcile tick is one incident, not
+// hundreds — otherwise the badge reports the reconcile interval, not the day.
+func TestBuildState_Incidents24hCountsARepeatedFailureOnce(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	auditLog := audit.NewLog(t.TempDir())
+	for i := range 199 {
+		auditLog.Record(events.DeployEvent{
+			Stack:     "ryot",
+			Status:    events.StatusFailed,
+			Timestamp: now.Add(-time.Duration(199-i) * 5 * time.Minute),
+			Error:     "no stack directory /repo/modules/ryot with a docker-compose.yml",
+		})
+	}
+
+	state := buildState([]config.Stack{{Name: "ryot"}}, nil, auditLog, nil, RepoRef{}, nil, now)
+
+	if len(state.Incidents24h) != 1 {
+		t.Fatalf("incidents_24h = %d records, want the repeated failure counted once", len(state.Incidents24h))
 	}
 }
 

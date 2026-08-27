@@ -263,3 +263,237 @@ func TestHistory_EventsReturnsCopy(t *testing.T) {
 		t.Error("Events() should return a copy, not a reference to internal slice")
 	}
 }
+
+// --- repeated-outcome collapse (ADR-0056) ---
+
+// repeatEvent builds a failing event for stack at id/minute with the given error.
+func repeatEvent(id int64, stack, errText string, minute int) DeployEvent {
+	return DeployEvent{
+		ID:        id,
+		Stack:     stack,
+		Status:    StatusFailed,
+		Error:     errText,
+		Timestamp: time.Date(2026, 8, 18, 2, minute, 0, 0, time.UTC),
+	}
+}
+
+func TestHistory_CollapsesRepeatedFailure(t *testing.T) {
+	h := NewHistory("")
+	const boom = "no stack directory /repo/modules/ryot with a docker-compose.yml"
+
+	h.Add(repeatEvent(1, "ryot", boom, 0))
+	h.Add(repeatEvent(2, "ryot", boom, 5))
+	h.Add(repeatEvent(3, "ryot", boom, 10))
+
+	got := h.Events()
+	if len(got) != 1 {
+		t.Fatalf("expected the repeats to collapse into 1 event, got %d: %+v", len(got), got)
+	}
+	e := got[0]
+	if e.ID != 3 {
+		t.Errorf("collapsed event should carry the newest id, got %d", e.ID)
+	}
+	if e.RepeatCount != 3 {
+		t.Errorf("RepeatCount = %d, want 3", e.RepeatCount)
+	}
+	if want := time.Date(2026, 8, 18, 2, 0, 0, 0, time.UTC); !e.FirstSeen.Equal(want) {
+		t.Errorf("FirstSeen = %v, want the first occurrence %v", e.FirstSeen, want)
+	}
+	if want := time.Date(2026, 8, 18, 2, 10, 0, 0, time.UTC); !e.Timestamp.Equal(want) {
+		t.Errorf("Timestamp = %v, want the newest occurrence %v", e.Timestamp, want)
+	}
+	if e.SupersedesID != 2 {
+		t.Errorf("SupersedesID = %d, want the replaced event 2", e.SupersedesID)
+	}
+}
+
+func TestHistory_CollapseKeepsOtherStacksHistory(t *testing.T) {
+	h := NewHistory("")
+	const boom = "compose file missing"
+
+	// The flood that pushed every other stack out of the 100-slot ring.
+	for i := range 150 {
+		h.Add(repeatEvent(int64(i+1), "ryot", boom, i%60))
+	}
+	h.Add(DeployEvent{ID: 1000, Stack: "gitea", Status: StatusSuccess})
+
+	got := h.Events()
+	if len(got) != 2 {
+		t.Fatalf("expected 1 collapsed ryot event + 1 gitea event, got %d: %+v", len(got), got)
+	}
+	if got[1].Stack != "gitea" {
+		t.Errorf("gitea's deploy should have survived the flood, got %+v", got)
+	}
+	if got[0].RepeatCount != 150 {
+		t.Errorf("RepeatCount = %d, want 150", got[0].RepeatCount)
+	}
+}
+
+func TestHistory_DoesNotCollapseWhenErrorChanges(t *testing.T) {
+	h := NewHistory("")
+
+	h.Add(repeatEvent(1, "ryot", "compose file missing", 0))
+	h.Add(repeatEvent(2, "ryot", "port 8080 already allocated", 5))
+
+	if got := h.Events(); len(got) != 2 {
+		t.Fatalf("a different error is a different incident; want 2 events, got %d: %+v", len(got), got)
+	}
+}
+
+func TestHistory_DoesNotCollapseSuccess(t *testing.T) {
+	h := NewHistory("")
+
+	h.Add(DeployEvent{ID: 1, Stack: "gitea", Status: StatusSuccess})
+	h.Add(DeployEvent{ID: 2, Stack: "gitea", Status: StatusSuccess})
+
+	if got := h.Events(); len(got) != 2 {
+		t.Fatalf("successive deploys are distinct outcomes; want 2 events, got %d: %+v", len(got), got)
+	}
+}
+
+func TestHistory_DoesNotCollapseAcrossAnotherOutcome(t *testing.T) {
+	h := NewHistory("")
+	const boom = "compose file missing"
+
+	h.Add(repeatEvent(1, "ryot", boom, 0))
+	h.Add(DeployEvent{ID: 2, Stack: "ryot", Status: StatusSuccess})
+	h.Add(repeatEvent(3, "ryot", boom, 10))
+
+	got := h.Events()
+	if len(got) != 3 {
+		t.Fatalf("the failure recurred after a success — a new incident; want 3 events, got %d: %+v", len(got), got)
+	}
+	if got[2].RepeatCount != 0 {
+		t.Errorf("the recurrence starts a fresh count, got RepeatCount = %d", got[2].RepeatCount)
+	}
+}
+
+// A collapsed repeat must be reachable through the reconnect replay, or a UI
+// that saw the earlier event would never learn the count moved.
+func TestHistory_CollapsedRepeatIsDeliveredOnReconnect(t *testing.T) {
+	h := NewHistory("")
+	const boom = "compose file missing"
+
+	h.Add(repeatEvent(1, "ryot", boom, 0))
+	h.Add(repeatEvent(2, "ryot", boom, 5))
+
+	after := h.EventsAfterID(1)
+	if len(after) != 1 || after[0].ID != 2 || after[0].RepeatCount != 2 {
+		t.Fatalf("EventsAfterID(1) should replay the collapsed repeat, got %+v", after)
+	}
+}
+
+// A history written before the collapse existed (or by an older skipper) is
+// healed on load, so a past flood stops crowding the ring after one restart.
+func TestHistory_LoadCollapsesExistingRepeats(t *testing.T) {
+	dir := t.TempDir()
+	const boom = "compose file missing"
+
+	h := NewHistory(dir)
+	h.Add(DeployEvent{ID: 1, Stack: "gitea", Status: StatusSuccess})
+	// Write the flood past the collapse by going straight at the slice.
+	h.mu.Lock()
+	for i := range 20 {
+		h.events = append(h.events, repeatEvent(int64(i+2), "ryot", boom, i))
+	}
+	if err := h.save(); err != nil {
+		t.Fatal(err)
+	}
+	h.mu.Unlock()
+
+	reloaded := NewHistory(dir)
+	got := reloaded.Events()
+	if len(got) != 2 {
+		t.Fatalf("expected gitea + 1 collapsed ryot event after load, got %d: %+v", len(got), got)
+	}
+	if got[1].RepeatCount != 20 {
+		t.Errorf("RepeatCount = %d, want 20", got[1].RepeatCount)
+	}
+	if got[1].ID != 21 {
+		t.Errorf("collapsed event should keep the newest id 21, got %d", got[1].ID)
+	}
+}
+
+// The live path never emits two failures back to back: each reconcile emits
+// `deploying` first. Comparing against the newest event of the stack would
+// therefore never see the repeat — the collapse must look past the in-progress
+// phases of the run that produced it.
+func TestHistory_CollapsesAcrossTheDeployingEventBetweenRepeats(t *testing.T) {
+	h := NewHistory("")
+	const boom = "docker compose up: exit status 1"
+
+	h.Add(DeployEvent{ID: 1, Stack: "wiki", Status: StatusDeploying})
+	h.Add(repeatEvent(2, "wiki", boom, 0))
+	h.Add(DeployEvent{ID: 3, Stack: "wiki", Status: StatusDeploying})
+	h.Add(repeatEvent(4, "wiki", boom, 5))
+	h.Add(DeployEvent{ID: 5, Stack: "wiki", Status: StatusDeploying})
+	h.Add(repeatEvent(6, "wiki", boom, 10))
+
+	got := h.Events()
+	// The first deploying stays: it belongs to the run that first failed, and
+	// nothing has superseded it. Everything the repeats brought is gone.
+	if len(got) != 2 {
+		t.Fatalf("want the first deploying + one collapsed failure, got %d: %+v", len(got), got)
+	}
+	if got[0].Status != StatusDeploying || got[1].RepeatCount != 3 {
+		t.Fatalf("unexpected shape: %+v", got)
+	}
+	if got[1].SupersedesID != 4 {
+		t.Errorf("SupersedesID = %d, want the replaced terminal event 4", got[1].SupersedesID)
+	}
+}
+
+// A collapse must only touch its own stack: another stack deploying between two
+// repeats is unrelated history, and dropping it would trade one eviction bug
+// for a worse one.
+func TestHistory_CollapseKeepsInterleavedOtherStacks(t *testing.T) {
+	h := NewHistory("")
+	const boom = "docker compose up: exit status 1"
+
+	h.Add(repeatEvent(1, "wiki", boom, 0))
+	h.Add(DeployEvent{ID: 2, Stack: "gitea", Status: StatusDeploying})
+	h.Add(DeployEvent{ID: 3, Stack: "gitea", Status: StatusSuccess})
+	h.Add(DeployEvent{ID: 4, Stack: "wiki", Status: StatusDeploying})
+	h.Add(repeatEvent(5, "wiki", boom, 5))
+
+	got := h.Events()
+	if len(got) != 3 {
+		t.Fatalf("want gitea's two events + one collapsed wiki failure, got %d: %+v", len(got), got)
+	}
+	if got[0].ID != 2 || got[1].ID != 3 {
+		t.Errorf("gitea's events must survive untouched and in order, got %+v", got)
+	}
+	if got[2].Stack != "wiki" || got[2].RepeatCount != 2 {
+		t.Errorf("want the collapsed wiki failure last, got %+v", got[2])
+	}
+}
+
+func TestStatusClassification(t *testing.T) {
+	tests := []struct {
+		status     Status
+		terminal   bool
+		repeatable bool
+	}{
+		{StatusDeploying, false, false},
+		{StatusQueued, false, false},
+		{StatusBlocked, false, false},
+		{StatusSkipped, false, false},
+		{StatusSuccess, true, false},
+		{StatusHealed, true, false},
+		{StatusRemoved, true, false},
+		{StatusFailed, true, true},
+		{StatusRolledBack, true, true},
+		{StatusRolledBackUnhealthy, true, true},
+		{StatusHealExhausted, true, true},
+	}
+	for _, tc := range tests {
+		t.Run(string(tc.status), func(t *testing.T) {
+			if got := Terminal(tc.status); got != tc.terminal {
+				t.Errorf("Terminal(%s) = %t, want %t", tc.status, got, tc.terminal)
+			}
+			if got := Repeatable(tc.status); got != tc.repeatable {
+				t.Errorf("Repeatable(%s) = %t, want %t", tc.status, got, tc.repeatable)
+			}
+		})
+	}
+}

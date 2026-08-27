@@ -87,7 +87,10 @@ func (l uiLayer) deploySink() func(events.DeployEvent) {
 	}
 	return func(e events.DeployEvent) {
 		if e.Status != events.StatusSkipped {
-			l.history.Add(e)
+			// Broadcast what the history stored: a repeat collapses into the
+			// event it absorbed, and clients need that form to replace their row
+			// rather than append a duplicate (ADR-0056).
+			e = l.history.Add(e)
 		}
 		l.broadcaster.Publish(e)
 	}

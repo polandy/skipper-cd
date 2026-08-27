@@ -745,6 +745,20 @@ function retryNoteHTML(ev) {
   return `<button type="button" class="retry-note" data-testid="retry-note"${id} title="This success redeploys a change that was rolled back — open the rollback">↺ after rollback</button>`;
 }
 
+// repeatNoteHTML marks a row whose outcome collapsed a run of identical
+// repeats (ADR-0056) — a standing failure re-emitted on every reconcile tick is
+// one record carrying the count, so the row says "×199" where it used to print
+// the same sentence 199 times. It borrows the fold line's ↻ glyph: both mean
+// "this stands for more than one occurrence". Empty for a one-off outcome.
+function repeatNoteHTML(rec) {
+  const note = repeatNote(rec);
+  if (!note) return '';
+  return (
+    `<span class="repeat-note" data-testid="repeat-note" title="${escapeAttr(note.title)}">` +
+    `<span class="hp-fold-glyph">↻</span>${escapeHtml(note.label)}</span>`
+  );
+}
+
 // autosyncDetailHTML is the second line of an autosync drawer row: what the
 // stack is waiting on when it is queued (item), else its resting state. entry
 // is the stack's autosync snapshot entry, item its pending queue entry (if any).
@@ -1154,21 +1168,6 @@ function logDiffBlockHTML(diff) {
   );
 }
 
-// AUDIT_FOLD_NOUN names what a folded run contains, so the summary line reads
-// as a sentence rather than "9 × success". Always plural: a run is never one
-// record. The incident nouns say *identical*, because that is the whole
-// licence for folding them — same status, same error, below the one that
-// stays expanded. The fallback keeps a future status readable before it gets
-// a noun here.
-const AUDIT_FOLD_NOUN = {
-  success: 'successful deploys',
-  healed: 'self-heals',
-  failed: 'identical failures',
-  rolled_back: 'identical rollbacks',
-  rolled_back_unhealthy: 'identical unhealthy rollbacks',
-  heal_exhausted: 'identical self-heal failures',
-};
-
 // auditRowsHTML renders the deploy-history rows of one stack. absolute picks
 // which of the two timestamps leads and which becomes the tooltip, following
 // the app-wide time toggle. repoBase links the SHAs; '' renders them inert.
@@ -1238,9 +1237,13 @@ function auditRowsHTML(records, repoBase, absolute, opts) {
         const files = r.changed_files
           ? escapeHtml(r.changed_files + ' file' + (r.changed_files > 1 ? 's' : ''))
           : '—';
-        const err = r.error
-          ? `<span class="ar-err" title="${escapeAttr(r.error)}">${escapeHtml(r.error)}</span>`
-          : '';
+        // The repeat marker rides the error cell rather than taking a column of
+        // its own: it belongs to what failed, and the row's grid stays put.
+        const rep = repeatNoteHTML(r);
+        const err =
+          r.error || rep
+            ? `<span class="ar-err"${r.error ? ` title="${escapeAttr(r.error)}"` : ''}>${rep}${escapeHtml(r.error || '')}</span>`
+            : '';
         return (
           `<div class="audit-row"${withTestid ? ' data-testid="audit-row"' : ''} data-status="${escapeAttr(r.status)}">` +
           `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absolute ? rel : abs)}">${escapeHtml(absolute ? abs : rel)}</span>` +
@@ -1340,6 +1343,7 @@ if (typeof module !== 'undefined' && module.exports) {
     outcomeStripHTML,
     lastIncidentHTML,
     retryNoteHTML,
+    repeatNoteHTML,
     DEPLOY_STATUS_ORDER,
     deployStatusChipsHTML,
     autosyncDetailHTML,
