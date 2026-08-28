@@ -4768,6 +4768,7 @@
       renderLogWindow();
     }
     if (activeView === 'stacks') renderRoster();
+    renderUpdateBadge(); // its .active state is view-dependent (Stacks only)
     syncStackSearchBtn(); // the trigger is view-aware + logs-hidden (T3.11)
   }
 
@@ -4954,7 +4955,6 @@
     // the narrowing back off rather than re-applying it.
     if (activeView === 'stacks' && updatePresetActive(rosterUpdatesOnly, rosterFilter.value)) {
       clearRosterFilter(true);
-      renderUpdateBadge();
       return;
     }
     if (activeView !== 'stacks') {

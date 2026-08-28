@@ -243,6 +243,20 @@ test("UAV6: the chip works from the search trigger, and the badge follows its st
   await chip(page).click();
   await expect(rows(page)).toHaveCount(2);
   await expect(badge(page)).toHaveClass(/active/); // its own preset now stands
+
+  // The lit state means "the roster below is the list this badge points at", so
+  // it has to go out over a view that has no roster — and come back with it.
+  await page
+    .locator('[data-testid="view-toggle"] button[data-view="deploys"]')
+    .click();
+  await expect(page.locator('[data-testid="stacks-view"]')).toBeHidden();
+  await expect(badge(page)).not.toHaveClass(/active/);
+  await page
+    .locator('[data-testid="view-toggle"] button[data-view="stacks"]')
+    .click();
+  await expect(badge(page)).toHaveClass(/active/);
+  await expect(rows(page)).toHaveCount(2); // the narrowing survived the round trip
+
   await chip(page).click();
   await expect(rows(page)).toHaveCount(3);
   await expect(badge(page)).not.toHaveClass(/active/);

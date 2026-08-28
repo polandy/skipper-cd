@@ -1746,7 +1746,9 @@ Behaviour-only (no snapshot).
   blaming the name. `Esc` clears both, then folds.
 - **UAV6 — The chip stands on its own.** Revealed by the header search trigger,
   toggled by hand, with the badge's `.active` state tracking the same state in
-  both directions.
+  both directions — including over a view switch: the lit state means "the
+  roster below is the list this badge points at", so it goes out on the
+  Deploys view and comes back with the narrowing intact.
 
 ## 5. Visual snapshot strategy
 
