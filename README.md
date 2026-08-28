@@ -104,4 +104,4 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 
 ## AI-Assisted Development
 
-Much of this codebase was written with AI assistance ([Claude Code](https://claude.com/claude-code)), reviewed and maintained by the author. Every change goes through the same gate as any other: tests first, `go vet`/`gofmt`/`go test -race` in CI, and a human review before it lands on `main`.
+This codebase is written **and reviewed** with AI assistance ([Claude Code](https://claude.com/claude-code)) — there is no line-by-line human review, so CI is the gate: `go vet`, `gofmt`, `go test -race`, `golangci-lint`, `govulncheck`, an end-to-end suite, and a browser-driven UI suite with pixel-compared baselines. Tests come first, and nothing merges red. The author sets the scope, checks how UI changes render, and approves every merge — bar Dependabot's patch and minor bumps, which automerge on green.
