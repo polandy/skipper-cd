@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.1](https://github.com/polandy/skipper-cd/compare/v0.25.0...v0.25.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **deploy:** retry a failed git sync before giving up the run ([#314](https://github.com/polandy/skipper-cd/issues/314)) ([27a6dd6](https://github.com/polandy/skipper-cd/commit/27a6dd601528b577abeacf26c345bf1b9ee8e330))
+
 ## [0.25.0](https://github.com/polandy/skipper-cd/compare/v0.24.0...v0.25.0) (2026-08-28)
 
 
