@@ -106,9 +106,9 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 
 This codebase is written **and reviewed** with AI assistance ([Claude Code](https://claude.com/claude-code)). There is no line-by-line human code review — so the gate is built not to need one:
 
-- **Tests come first, and they have to be able to fail.** A new behaviour ships with tests that specify it; a bug fix starts with a test reproducing it. Every regression guard is run against the *unfixed* build to prove it goes red — a green test that cannot fail is treated as no test at all.
+- **Tests come first, and the ones asserting an absence have to be able to fail.** A new behaviour ships with tests that specify it; a bug fix starts with a test reproducing it. A test claiming something did *not* happen is run against the unfixed build to prove it goes red — a green test that cannot fail is treated as no test at all.
 - **Every PR gets a structured review pass** against this repo's own written standards — the invariants, engineering principles, docs/ADR sync and test coverage in [`CLAUDE.md`](CLAUDE.md) — with the findings fixed on the branch before it merges.
 - **CI is the hard gate:** `go vet`, `gofmt`, `go test -race`, `golangci-lint`, `govulncheck`, an end-to-end suite, and a browser-driven UI suite with pixel-compared visual baselines. Nothing merges red.
-- **A human decides what gets built and what lands.** Scope, design tradeoffs and the rendered look of every UI change are reviewed by the author, and **every merge is an explicit human decision** — nothing self-merges.
+- **A human decides what gets built and what lands.** Scope, design tradeoffs and the rendered look of every UI change are reviewed by the author, and **every code change is merged by an explicit human decision**. The one exception is deliberate and narrow: Dependabot's patch and minor dependency bumps auto-merge once CI is green — major bumps never do.
 
 Design decisions are recorded as [ADRs](dev-docs/adr/), so the reasoning behind the code is auditable, not just the diff.
