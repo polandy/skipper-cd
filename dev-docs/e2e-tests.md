@@ -1596,6 +1596,12 @@ surface keeps the rollback readable
 Behaviour-only, no snapshot. The pinning exemption (no-op run summaries are
 not pinned) is covered at the unit layer on both sides (`internal/logbuf`,
 `app-helpers`), where eviction can be driven precisely.
+- **UAQ6 — A clean window costs nothing.** Its own instance, with no bad outcome
+  at all: the badge takes up no space, measured (`offsetWidth 0`) rather than
+  assumed. The component's `display` beats the UA `[hidden]` rule, so hiding at
+  zero has to be said explicitly in CSS — without that line an empty
+  rollback-tinted pill sits in the header of every instance with a clean 24 h.
+  Verified to fail against the unfixed CSS.
 
 ### 4.45 UI — Maske AR: the Logs view fits the display
 
