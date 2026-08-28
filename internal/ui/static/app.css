@@ -1275,6 +1275,10 @@
     border-color: color-mix(in srgb, var(--queued) 70%, transparent);
   }
   .update-badge .ub-icon { font-size: 13px; line-height: 1; }
+  /* The component's own display beats the UA [hidden] rule, so hiding at zero
+     needs saying explicitly — otherwise an empty pill sits in the header on
+     every instance with nothing to report (measured: 42px wide). */
+  .update-badge[hidden] { display: none; }
 
   /* Beacon popover — same surface language as the run/view popovers. */
   .beacon-pop {

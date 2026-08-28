@@ -1749,6 +1749,12 @@ Behaviour-only (no snapshot).
   both directions — including over a view switch: the lit state means "the
   roster below is the list this badge points at", so it goes out on the
   Deploys view and comes back with the narrowing intact.
+- **UAV7 — Nothing to report costs nothing.** Its own instance, with no update
+  check running: the badge takes up no space and the chip row is empty. The
+  component's `display` beats the UA `[hidden]` rule, so hiding at zero has to
+  be said explicitly in CSS — without that line an empty amber pill sits in the
+  header of every fully-up-to-date instance, which is how it was caught (200 px
+  of the `theme-dark` baseline). Verified to fail against the unfixed CSS.
 
 ## 5. Visual snapshot strategy
 

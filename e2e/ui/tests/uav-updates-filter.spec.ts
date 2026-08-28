@@ -261,3 +261,28 @@ test("UAV6: the chip works from the search trigger, and the badge follows its st
   await expect(rows(page)).toHaveCount(3);
   await expect(badge(page)).not.toHaveClass(/active/);
 });
+
+// UAV7 — with nothing to report the badge takes up no space at all. Its own
+// `display` beats the UA `[hidden]` rule, so hiding at zero has to be said
+// explicitly in CSS; without that line an empty amber pill sits in the header
+// of every instance that is fully up to date (it cost 200 px of the theme-dark
+// baseline before it was caught). Its own instance: no update check at all.
+test.describe("with no update check running", () => {
+  test.use({ startOptions: { stacks: ["web"], healthPoll: 1 } });
+
+  test("UAV7: the badge occupies no space when nothing has an update", async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    // Positive signal: the header is rendered and its other controls are there,
+    // so the badge's absence is a decision rather than an unpainted page.
+    await expect(page.locator('[data-testid="view-toggle"]')).toBeVisible();
+    await expect(badge(page)).toBeHidden();
+    await expect(badge(page)).toHaveJSProperty("offsetWidth", 0);
+    // The chip row collapses with it — an empty bar, not an empty chip.
+    await expect(
+      page.locator('[data-testid="roster-update-chip"]'),
+    ).toHaveCount(0);
+  });
+});
