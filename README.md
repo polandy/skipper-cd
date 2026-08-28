@@ -104,4 +104,11 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 
 ## AI-Assisted Development
 
-Much of this codebase was written with AI assistance ([Claude Code](https://claude.com/claude-code)), reviewed and maintained by the author. Every change goes through the same gate as any other: tests first, `go vet`/`gofmt`/`go test -race` in CI, and a human review before it lands on `main`.
+This codebase is written **and reviewed** with AI assistance ([Claude Code](https://claude.com/claude-code)). There is no line-by-line human code review — so the gate is built not to need one:
+
+- **Tests come first, and they have to be able to fail.** A new behaviour ships with tests that specify it; a bug fix starts with a test reproducing it. Every regression guard is run against the *unfixed* build to prove it goes red — a green test that cannot fail is treated as no test at all.
+- **Every PR gets a structured review pass** against this repo's own written standards — the invariants, engineering principles, docs/ADR sync and test coverage in [`CLAUDE.md`](CLAUDE.md) — with the findings fixed on the branch before it merges.
+- **CI is the hard gate:** `go vet`, `gofmt`, `go test -race`, `golangci-lint`, `govulncheck`, an end-to-end suite, and a browser-driven UI suite with pixel-compared visual baselines. Nothing merges red.
+- **A human decides what gets built and what lands.** Scope, design tradeoffs and the rendered look of every UI change are reviewed by the author, and **every merge is an explicit human decision** — nothing self-merges.
+
+Design decisions are recorded as [ADRs](dev-docs/adr/), so the reasoning behind the code is auditable, not just the diff.
