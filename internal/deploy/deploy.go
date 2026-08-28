@@ -146,6 +146,10 @@ type Config struct {
 	// RolloutDrainOverride forces the wait between a healthy canary and
 	// draining the old container; 0 uses the stack's rollout.drain_seconds.
 	RolloutDrainOverride time.Duration
+
+	// SyncRetryDelay is the base backoff between two git sync attempts
+	// (ADR-0058); 0 uses defaultSyncRetryDelay.
+	SyncRetryDelay time.Duration
 }
 
 // Deployer orchestrates deployments for all configured stacks. Construct it
@@ -173,6 +177,7 @@ type Deployer struct {
 	rolloutPollInterval    time.Duration
 	rolloutTimeoutOverride time.Duration
 	rolloutDrainOverride   time.Duration
+	syncRetryDelay         time.Duration
 
 	// mu serializes deploy runs (Invariant 7); the fields below it are only
 	// touched while it is held.
@@ -225,6 +230,7 @@ func New(cfg Config) *Deployer {
 		rolloutPollInterval:    cfg.RolloutPollInterval,
 		rolloutTimeoutOverride: cfg.RolloutTimeoutOverride,
 		rolloutDrainOverride:   cfg.RolloutDrainOverride,
+		syncRetryDelay:         cfg.SyncRetryDelay,
 		configErrors:           newConfigErrorLog(),
 	}
 	d.nextEventID.Store(cfg.StartEventID)
@@ -438,7 +444,7 @@ func BaseEnv(varsFile string) ([]string, error) {
 // must hold d.mu.
 func (d *Deployer) syncAndDeployLocked(ctx context.Context, cfg *config.Config) {
 	if d.syncer != nil {
-		if err := d.syncer.Sync(ctx); err != nil {
+		if err := d.syncRepository(ctx); err != nil {
 			slog.Error("git sync failed, aborting deploy", "err", err)
 			d.lastSyncErr.Store(&syncOutcome{err: err})
 			return
@@ -446,6 +452,49 @@ func (d *Deployer) syncAndDeployLocked(ctx context.Context, cfg *config.Config) 
 	}
 	d.lastSyncErr.Store(&syncOutcome{})
 	d.DeployAllStacks(ctx, cfg)
+}
+
+// syncAttempts is how often one run tries the git sync before it gives up,
+// and defaultSyncRetryDelay the base of the linear backoff between two
+// attempts — so the last attempt happens ~15s in, well inside a reconcile
+// interval (ADR-0058).
+const (
+	syncAttempts          = 3
+	defaultSyncRetryDelay = 5 * time.Second
+)
+
+// syncRepository syncs the repo clone, retrying a failed sync a few times
+// before the run gives up. A remote that is briefly unreachable right after
+// a restart — a reverse proxy in front of it still loading its routes, a
+// network not fully up at boot — would otherwise leave the host unconverged
+// until the next reconcile tick (ADR-0058).
+func (d *Deployer) syncRepository(ctx context.Context) error {
+	delay := d.syncRetryDelay
+	if delay <= 0 {
+		delay = defaultSyncRetryDelay
+	}
+	var err error
+	for attempt := 1; attempt <= syncAttempts; attempt++ {
+		if err = d.syncer.Sync(ctx); err == nil {
+			return nil
+		}
+		if attempt == syncAttempts {
+			break
+		}
+		// Checked before the select: with both cases ready, select picks at
+		// random — an already-cancelled context must stop, not flip a coin.
+		if ctx.Err() != nil {
+			return err
+		}
+		wait := time.Duration(attempt) * delay
+		slog.Warn("git sync failed, retrying", "attempt", attempt, "attempts", syncAttempts, "retry_in", wait, "err", err)
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(wait):
+		}
+	}
+	return err
 }
 
 // Health reports the outcome of the most recent repository sync: nil while
