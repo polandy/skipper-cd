@@ -131,11 +131,16 @@ function imageRepoName(ref) {
 // single version can speak for the stack, so `service` comes back '' and the row
 // reports only the count (`more`) rather than picking arbitrarily.
 //
+// A service with an available update (ADR-0054) outranks the lead, because the
+// header update badge counts STACKS: a row whose only update sits on a non-lead
+// service would carry no marker, and the count could not be checked against the
+// list it points at (a `monitoring` stack updating `grafana` read as 4 vs 3).
+//
 // Returns { service, image, more } — the raw image reference, so the caller
 // renders the same shortened token (and full-reference tooltip) as everywhere
 // else — or null when no service reports an image (nothing running, or a snapshot
 // from a skipper too old to carry one), so the caller renders an empty cell.
-function rosterVersion(stack, services) {
+function rosterVersion(stack, services, updates) {
   const all = (services || []).filter(function (s) {
     return s && s.name;
   });
@@ -146,12 +151,30 @@ function rosterVersion(stack, services) {
   ) {
     return null;
   }
-  const lead = leadService(stack, all);
+  const pick = updatedService(stack, all, updates) || leadService(stack, all);
   return {
-    service: lead ? lead.name : '',
-    image: lead ? lead.image : '',
-    more: all.length - (lead ? 1 : 0),
+    service: pick ? pick.name : '',
+    image: pick ? pick.image : '',
+    more: all.length - (pick ? 1 : 0),
   };
+}
+
+// updatedService resolves the service a Stacks row shows on account of its
+// update: the lead when the lead itself has one (the row then reads exactly as
+// before the check existed), else the shortest-named service that does — the
+// same stable tie-break leadService uses, never render order. null when the
+// stack advertises no update, or none for a service it actually runs.
+function updatedService(stack, services, updates) {
+  if (!updates) return null;
+  const marked = services.filter(function (s) {
+    return s.image && updates[s.name];
+  });
+  if (!marked.length) return null;
+  const lead = leadService(stack, services);
+  if (lead && updates[lead.name]) return lead;
+  return marked.slice().sort(function (a, b) {
+    return a.name.length - b.name.length || a.name.localeCompare(b.name);
+  })[0];
 }
 
 // leadService resolves rosterVersion's "the service this stack is named after",
@@ -403,6 +426,29 @@ function incidentPresetActive(statusFilter, nameQuery, preset) {
   return preset.every(function (s) {
     return cur.indexOf(s) !== -1;
   });
+}
+
+// stackHasUpdate reports whether a stack's update map (service → {latest,
+// rebuilt}, ADR-0054) advertises anything at all — the roster row's
+// updates-only filter flag, and what the header badge counts.
+function stackHasUpdate(updates) {
+  return !!(updates && Object.keys(updates).length > 0);
+}
+
+// updateBadgeLabel is the header update badge's pluralised title/aria-label. It
+// counts STACKS, not services: the badge lands on a filtered row list, so the
+// number has to be the number of rows that come back.
+function updateBadgeLabel(n) {
+  return n + (n === 1 ? ' stack has' : ' stacks have') + ' an update available';
+}
+
+// updatePresetActive reports whether the Stacks filter currently shows exactly
+// what the update badge put there — updates-only and no name query. The badge
+// toggles on this, exactly like the incident badge: a second click clears,
+// while a selection the operator has since narrowed further is re-applied
+// rather than thrown away.
+function updatePresetActive(updatesOnly, nameQuery) {
+  return !!updatesOnly && !(nameQuery || '').trim();
 }
 
 // mergeLogView merges the pinned outcome entries back into the ring for
@@ -1586,6 +1632,9 @@ if (typeof module !== 'undefined' && module.exports) {
     INCIDENT_WINDOW_MS,
     recentIncidentCount,
     incidentBadgeLabel,
+    stackHasUpdate,
+    updateBadgeLabel,
+    updatePresetActive,
     incidentPresetActive,
   };
 }

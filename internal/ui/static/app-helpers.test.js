@@ -1262,6 +1262,82 @@ test('resolveUpdates returns the local snapshot for self and the fanned-in one f
   assert.equal(h.resolveUpdates(null, 'nuc', 'nuc', null), null);
 });
 
+test('rosterVersion — a service with an available update outranks the lead', () => {
+  // monitoring names none of its services, so without an update the cell can
+  // only report the count; the update makes grafana the one it can show.
+  const services = [
+    { name: 'prometheus', image: 'prom/prometheus:v3.1.0' },
+    { name: 'grafana', image: 'grafana/grafana:11.6.0' },
+    { name: 'loki', image: 'grafana/loki:3.4.1' },
+  ];
+  assert.deepEqual(h.rosterVersion('monitoring', services), {
+    service: '',
+    image: '',
+    more: 3,
+  });
+  assert.deepEqual(h.rosterVersion('monitoring', services, { grafana: { latest: '12.0.1' } }), {
+    service: 'grafana',
+    image: 'grafana/grafana:11.6.0',
+    more: 2,
+  });
+});
+
+test('rosterVersion — the lead keeps the cell when the lead itself has the update', () => {
+  const services = [
+    { name: 'immich-server', image: 'immich-app/immich-server:v1.140.1' },
+    { name: 'redis', image: 'redis:7.4' },
+  ];
+  assert.deepEqual(
+    h.rosterVersion('immich', services, {
+      'immich-server': { latest: 'v1.141.0' },
+      redis: { rebuilt: true },
+    }),
+    { service: 'immich-server', image: 'immich-app/immich-server:v1.140.1', more: 1 },
+  );
+});
+
+test('rosterVersion — shortest name wins among several updated non-lead services', () => {
+  const services = [
+    { name: 'broker', image: 'nats:2.10' },
+    { name: 'db', image: 'postgres:17' },
+  ];
+  assert.deepEqual(
+    h.rosterVersion('platform', services, { broker: { latest: '2.11' }, db: { latest: '18' } }),
+    { service: 'db', image: 'postgres:17', more: 1 },
+  );
+});
+
+test('rosterVersion — an update for a service the stack no longer runs falls back to the lead', () => {
+  const services = [{ name: 'gitea', image: 'gitea/gitea:1.23.5' }];
+  assert.deepEqual(h.rosterVersion('gitea', services, { retired: { latest: '9' } }), {
+    service: 'gitea',
+    image: 'gitea/gitea:1.23.5',
+    more: 0,
+  });
+});
+
+// ── Update filter + badge (ADR-0054 amendment) ──
+
+test('stackHasUpdate is true only for a non-empty update map', () => {
+  assert.equal(h.stackHasUpdate({ web: { latest: '2' } }), true);
+  assert.equal(h.stackHasUpdate({ web: { rebuilt: true } }), true);
+  assert.equal(h.stackHasUpdate({}), false);
+  assert.equal(h.stackHasUpdate(null), false);
+  assert.equal(h.stackHasUpdate(undefined), false);
+});
+
+test('updateBadgeLabel counts stacks and pluralises', () => {
+  assert.equal(h.updateBadgeLabel(1), '1 stack has an update available');
+  assert.equal(h.updateBadgeLabel(4), '4 stacks have an update available');
+});
+
+test('updatePresetActive holds only while updates-only is the whole filter', () => {
+  assert.equal(h.updatePresetActive(true, ''), true);
+  assert.equal(h.updatePresetActive(true, '   '), true);
+  assert.equal(h.updatePresetActive(true, 'immich'), false); // narrowed since
+  assert.equal(h.updatePresetActive(false, ''), false);
+});
+
 // ── Log quick filters ──
 
 const logEntry = (level, msg, attrs) => ({ time: '2026-08-02T14:31:04Z', level, msg, attrs });

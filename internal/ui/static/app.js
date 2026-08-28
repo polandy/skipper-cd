@@ -405,6 +405,9 @@
       row.dataset.testid = 'roster-row';
       row.dataset.stack = entry.name;
       row.dataset.host = selfHost; // local stacks belong to the primary host
+      // The updates-only filter's flag (UI_SPEC.md "Updates filter") — the
+      // check rides the same 'stacks' snapshot that rebuilds these rows.
+      if (stackHasUpdate(stackUpdatesFor(entry.name, ''))) row.dataset.updates = '1';
       // Mark the row with its live health so CSS can give an unhealthy row the
       // same severity bar + tint as a failed deploy row (kept in sync live by
       // updateRosterHealth). Only enabled locals — disabled stacks aren't polled.
@@ -433,6 +436,7 @@
     applyHostFilter(); // dots + host filtering on the rebuilt roster
     refilterRoster(); // a re-render replaces the rows; re-apply any active filter
     applyHookRun(); // re-paint a running hook's phase on the rebuilt roster rows
+    renderUpdateBadge(); // the badge counts these rows, so it follows them
   }
 
   // reopenRosterPanel restores the panel renderRoster noted before the rebuild.
@@ -483,6 +487,7 @@
         row.dataset.testid = 'roster-row';
         row.dataset.stack = entry.name;
         row.dataset.host = p.name;
+        if (stackHasUpdate(stackUpdatesFor(entry.name, p.name))) row.dataset.updates = '1';
         row.dataset.status = entry.last_status || '';
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
         row.innerHTML =
@@ -2718,6 +2723,7 @@
 
     hostHideRows(tbody);
     hostHideRows(roster);
+    renderUpdateBadge(); // a host taken out of view takes its updates with it
 
     const staleSel = (peersSnap.peers || []).filter(function (p) {
       return isHostSelected(p.name) && (p.stale || !p.reachable);
@@ -3257,7 +3263,14 @@
   const rosterFilterClear = document.getElementById('roster-filter-clear');
   const rosterFilterCount = document.getElementById('roster-filter-count');
   const rosterFilterEmpty = document.getElementById('roster-filter-empty');
-  const rosterFilterEmptyQ = document.getElementById('roster-filter-empty-q');
+  const rosterUpdateFilterEl = document.getElementById('roster-update-filter');
+
+  // Updates-only narrowing (UI_SPEC.md "Updates filter"). One toggle, not a
+  // chip per status: an update is a single yes/no fact about a stack. Like the
+  // Deploys status chips it is deliberately NOT persisted — a sticky filter
+  // hiding rows across sessions is the failure mode the Logs view's persisted
+  // severity chips demonstrated.
+  let rosterUpdatesOnly = false;
 
   // Toggle a stack's deploy-history panel (ADR-0033), reusing the deploy table's
   // audit panel. One open at a time; the panel trails its row as a sibling, so
@@ -3460,6 +3473,17 @@
     refilterRoster(); // a freshly opened panel obeys an active filter
   }
 
+  // countRosterUpdates counts the roster rows a registry update is waiting on,
+  // skipping rows a host filter has taken out of view — the badge and the chip
+  // must both promise exactly the rows the filter can hand back.
+  function countRosterUpdates() {
+    return rosterList.querySelectorAll('.roster-row[data-updates="1"]:not(.host-hidden)').length;
+  }
+
+  function renderRosterUpdateChip() {
+    rosterUpdateFilterEl.innerHTML = rosterUpdateChipHTML(countRosterUpdates(), rosterUpdatesOnly);
+  }
+
   function applyRosterFilter() {
     const q = (rosterFilter.value || '').trim().toLowerCase();
     rosterFilterWrap.classList.toggle('has-value', q.length > 0);
@@ -3471,46 +3495,90 @@
       const el = kids[i];
       if (el.dataset && el.dataset.testid === 'roster-row') {
         total++;
-        visible = el.dataset.stack.toLowerCase().indexOf(q) !== -1;
+        // The name query and the updates toggle narrow independently; a row
+        // shows only when it passes both.
+        visible =
+          el.dataset.stack.toLowerCase().indexOf(q) !== -1 &&
+          (!rosterUpdatesOnly || el.dataset.updates === '1');
         if (visible) shown++;
       }
       // A trailing history panel shares its row's visibility.
       el.classList.toggle('filtered-out', !visible);
     }
-    rosterFilterCount.textContent = q ? shown + '/' + total : '';
-    rosterFilterEmpty.classList.toggle('show', q.length > 0 && total > 0 && shown === 0);
-    rosterFilterEmptyQ.textContent = q;
+    const narrowing = q.length > 0 || rosterUpdatesOnly;
+    rosterFilterCount.textContent = narrowing ? shown + '/' + total : '';
+    rosterFilterEmpty.classList.toggle('show', narrowing && total > 0 && shown === 0);
+    // With the updates toggle on, "no stack matches <query>" would blame the
+    // name for rows the toggle hid.
+    if (rosterUpdatesOnly) {
+      rosterFilterEmpty.textContent = q
+        ? 'Nothing matches the active filters.'
+        : 'No stack has an update available.';
+    } else {
+      rosterFilterEmpty.innerHTML = 'No stack matches “<span id="roster-filter-empty-q"></span>”.';
+      document.getElementById('roster-filter-empty-q').textContent = q;
+    }
+    renderRosterUpdateChip();
+    renderUpdateBadge();
   }
   // Re-run after the roster re-renders (a new snapshot) so new stacks obey it too.
   function refilterRoster() {
-    if (rosterFilterWrap.classList.contains('has-value')) applyRosterFilter();
+    if (rosterFilterWrap.classList.contains('has-value') || rosterUpdatesOnly) {
+      applyRosterFilter();
+    } else if (rosterFilterWrap.classList.contains('revealed')) {
+      renderRosterUpdateChip();
+    }
   }
   function revealRosterFilter(on) {
     rosterFilterWrap.classList.toggle('revealed', on);
+    if (on) renderRosterUpdateChip();
     syncStackSearchBtn();
   }
   function clearRosterFilter(hide) {
     rosterFilter.value = '';
+    rosterUpdatesOnly = false; // Esc/clear drops the toggle with the query
     applyRosterFilter();
     if (hide) {
       revealRosterFilter(false);
       rosterFilter.blur();
     }
   }
+
+  // Chip click: the single updates-only toggle.
+  rosterUpdateFilterEl.addEventListener('click', function (e) {
+    if (!e.target.closest('.status-chip')) return;
+    rosterUpdatesOnly = !rosterUpdatesOnly;
+    applyRosterFilter();
+  });
+
+  // presetRosterUpdateFilter is the update badge's landing (UI_SPEC.md
+  // "Updates filter"): reveal the bar with the toggle on and the name query
+  // cleared, so the click lands on exactly the stacks the count promised.
+  function presetRosterUpdateFilter() {
+    rosterFilter.value = '';
+    rosterUpdatesOnly = true;
+    revealRosterFilter(true);
+    applyRosterFilter();
+  }
   rosterFilter.addEventListener('input', applyRosterFilter);
   rosterFilter.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       e.stopPropagation();
-      if (rosterFilter.value)
-        clearRosterFilter(false); // first Esc clears
+      if (rosterFilter.value || rosterUpdatesOnly)
+        clearRosterFilter(false); // first Esc clears query and toggle together
       else {
         revealRosterFilter(false);
         rosterFilter.blur();
       } // second Esc folds away
     }
   });
-  rosterFilter.addEventListener('blur', function () {
-    if (!rosterFilter.value) revealRosterFilter(false);
+  rosterFilter.addEventListener('blur', function (e) {
+    // A click on the chip blurs the input BEFORE the click lands; folding here
+    // would collapse the bar mid-click and take the chip with it.
+    if (e.relatedTarget && rosterUpdateFilterEl.contains(e.relatedTarget)) return;
+    // Fold away only when nothing narrows — folding with the toggle on would
+    // leave rows hidden by a filter that is no longer on screen.
+    if (!rosterFilter.value && !rosterUpdatesOnly) revealRosterFilter(false);
   });
   rosterFilterClear.addEventListener('click', function () {
     clearRosterFilter(false);
@@ -4854,6 +4922,48 @@
       applyView();
     }
     presetDeployStatusFilter(BAD_OUTCOME_STATUSES);
+  });
+
+  // ─── Update badge (UI_SPEC.md "Updates filter") ───
+  // The registry check (ADR-0054) marks individual version chips; this badge is
+  // the fleet-level answer — how many stacks are waiting on one — and the only
+  // always-visible way into the Stacks view's updates-only filter, which would
+  // otherwise sit behind a filter bar nobody opens. It counts the rendered
+  // roster rows rather than the snapshot, so the number is always the number of
+  // rows the filter hands back. A filter, never a trigger: applying an update
+  // stays a git commit.
+  const updateBadge = document.getElementById('update-badge');
+  const updateBadgeCount = document.getElementById('update-badge-count');
+
+  function renderUpdateBadge() {
+    const n = countRosterUpdates();
+    updateBadge.hidden = n === 0;
+    updateBadge.classList.toggle(
+      'active',
+      activeView === 'stacks' && updatePresetActive(rosterUpdatesOnly, rosterFilter.value),
+    );
+    if (n === 0) return;
+    updateBadgeCount.textContent = String(n);
+    const label = updateBadgeLabel(n);
+    updateBadge.title = label;
+    updateBadge.setAttribute('aria-label', label);
+  }
+
+  updateBadge.addEventListener('click', function () {
+    // Toggle: a second click, with its own preset still the whole filter, takes
+    // the narrowing back off rather than re-applying it.
+    if (activeView === 'stacks' && updatePresetActive(rosterUpdatesOnly, rosterFilter.value)) {
+      clearRosterFilter(true);
+      renderUpdateBadge();
+      return;
+    }
+    if (activeView !== 'stacks') {
+      activeView = 'stacks';
+      localStorage.setItem('activeView', activeView);
+      setViewOptions(false);
+      applyView();
+    }
+    presetRosterUpdateFilter();
   });
 
   const healthBeaconWrap = document.getElementById('health-beacon-wrap');

@@ -204,3 +204,39 @@ the Stacks view (the version chip's `⇡` marker) and nowhere else. Setting
 dedup identity and its persistence in `update-check.yaml` is unchanged — only
 the default flips. The dedup file is still written whenever notifications are
 on, and is simply unused when they are not.
+
+## Amendment (2026-08-28): a fleet-level surface — the update badge and filter
+
+The per-chip `⇡` marker answers "does *this* stack have an update" for a stack
+already on screen. It never answered the question an operator actually opens
+the UI with — *what is waiting on one?* — and the Stacks roster is long enough
+that scanning it for amber is not an answer. A check nobody looks at is a check
+that does not exist.
+
+Two controls, one state (spec: `internal/ui/UI_SPEC.md` §Updates filter):
+
+- an always-visible **header badge** counting the stacks with an update, and
+- a single **updates-only toggle** in the Stacks filter bar, which the badge
+  presets and clears (the incident-badge → status-filter pattern, reused
+  wholesale rather than invented again).
+
+Both count **stacks**, not services: the badge lands on a filtered row list, so
+the number has to be the number of rows that come back. It is counted off the
+rendered roster rows rather than the snapshot, so a host the Hosts filter has
+taken out of view takes its updates with it.
+
+This forces one behaviour change on the roster's Version cell. The original
+rule was "the row's chip is the lead service, and carries a marker only if the
+lead itself is updating" — a marker on the `+N` would claim the wrong service.
+But then a role-named stack (`monitoring` over prometheus/grafana/loki, with
+`grafana` updating) shows no marker at all, and the badge's stack count cannot
+be counted off the list it points at: 4 claimed, 3 visible. Rather than weaken
+the badge to a services count (which answers a question nobody asked) or mark
+the `+N` (rejected above, still wrong), **a service with an available update
+now outranks the lead** in `rosterVersion()`. The lead still wins when the lead
+is the one updating, and among several updating services the shortest name wins
+— the same stable tie-break `leadService` uses. The cell's job is to say *which*
+service moved, so it has to be free to step off the lead to do it.
+
+The badge remains a filter. Applying an update is still a git commit; nothing
+in this amendment triggers a deploy.

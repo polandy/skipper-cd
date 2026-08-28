@@ -592,11 +592,12 @@ function rosterRowActionsHTML(entry) {
 // stackHealthFor wraps the lookup); empty while none exists for the stack
 // (parked, stopped, or the first health poll still outstanding —
 // updateRosterHealth fills it in then). updates is the stack's update-check
-// map (service → {latest, rebuilt}, ADR-0054) — the lead chip carries its own
-// service's marker; a non-lead service's update surfaces in the containers
-// panel and the panel-head count, not on the row.
+// map (service → {latest, rebuilt}, ADR-0054) — it also picks the cell's
+// service: one with an available update outranks the lead, so a marked stack
+// always shows WHICH service moved and the header badge's stack count can be
+// counted off the list it points at (see rosterVersion).
 function rosterVersionInnerHTML(stack, health, updates) {
-  const v = rosterVersion(stack, health && health.services);
+  const v = rosterVersion(stack, health && health.services, updates);
   if (!v) return '';
   // No lead service: naming one of several equals would be arbitrary, so the
   // cell only says how many there are and defers to the panel.
@@ -728,6 +729,24 @@ function deployStatusChipsHTML(counts, active) {
       return `<button type="button" class="clog-chip status-chip${on ? ' active' : ''}" data-status="${escapeAttr(s)}" aria-pressed="${on}">${escapeHtml(outcomeLabel(s))}<span class="sc-count">${counts[s]}</span></button>`;
     })
     .join('');
+}
+
+// rosterUpdateChipHTML renders the Stacks filter bar's updates-only chip
+// (UI_SPEC.md "Updates filter"): the single toggle that narrows the roster to
+// the stacks a registry update is waiting on. It borrows the Deploys status
+// filter's chip, in the queued amber the update markers already use —
+// data-status="queued" is what the shared .status-chip.active rule colours by,
+// not a deploy status of its own. Empty when nothing is advertised, so the row
+// collapses and the bar looks exactly as it did before the check existed.
+function rosterUpdateChipHTML(count, active) {
+  if (!count) return '';
+  const on = !!active;
+  return (
+    `<button type="button" class="clog-chip status-chip${on ? ' active' : ''}" ` +
+    `data-status="queued" data-testid="roster-update-chip" aria-pressed="${on}" ` +
+    `title="Show only stacks a registry update is available for">` +
+    `\u21e1 updates<span class="sc-count">${count}</span></button>`
+  );
 }
 
 // retryNoteHTML pairs a success row with the rollback it supersedes
@@ -1337,6 +1356,7 @@ if (typeof module !== 'undefined' && module.exports) {
     rosterRowActionsHTML,
     rosterVersionInnerHTML,
     rosterVersionCellHTML,
+    rosterUpdateChipHTML,
     rosterStatusHTML,
     rosterHealthPillHTML,
     outcomeLabel,
