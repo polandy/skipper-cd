@@ -216,3 +216,21 @@ func captureLogAt(t *testing.T, level slog.Level, fn func(*testing.T)) string {
 	fn(t)
 	return buf.String()
 }
+
+// testSyncRetryDelay keeps the sync retry backoff out of the wall clock:
+// tests assert the attempt count, never how long a wait took.
+const testSyncRetryDelay = time.Nanosecond
+
+// flakyRepoSyncer fails its first failCount Sync calls and succeeds after.
+type flakyRepoSyncer struct {
+	called    atomic.Int32
+	failCount int32
+	err       error
+}
+
+func (f *flakyRepoSyncer) Sync(_ context.Context) error {
+	if f.called.Add(1) <= f.failCount {
+		return f.err
+	}
+	return nil
+}

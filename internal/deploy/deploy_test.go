@@ -645,7 +645,7 @@ func TestHealth_NilBeforeFirstRun(t *testing.T) {
 
 func TestHealth_ReportsFailedSync(t *testing.T) {
 	syncer := &fakeRepoSyncer{err: errors.New("remote unreachable")}
-	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir()})
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir(), SyncRetryDelay: testSyncRetryDelay})
 	cfg := &config.Config{RepoURL: "ssh://git@example.com/repo.git", StacksBaseDir: t.TempDir()}
 
 	d.SyncAndDeployAll(context.Background(), cfg)
@@ -657,7 +657,7 @@ func TestHealth_ReportsFailedSync(t *testing.T) {
 
 func TestHealth_RecoversAfterSuccessfulRun(t *testing.T) {
 	syncer := &fakeRepoSyncer{err: errors.New("remote unreachable")}
-	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir()})
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir(), SyncRetryDelay: testSyncRetryDelay})
 	cfg := &config.Config{RepoURL: "ssh://git@example.com/repo.git", StacksBaseDir: t.TempDir()}
 
 	d.SyncAndDeployAll(context.Background(), cfg)
@@ -960,5 +960,54 @@ func TestBaseEnv_UnreadableVarsFileFails(t *testing.T) {
 	// The error names vars_file so the operator knows which config key to fix.
 	if !strings.Contains(err.Error(), "vars_file") {
 		t.Errorf("error should name vars_file; got %v", err)
+	}
+}
+
+func TestSyncAndDeployAll_RetriesTransientSyncFailure(t *testing.T) {
+	syncer := &flakyRepoSyncer{failCount: 1, err: errors.New("remote unreachable")}
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir(), SyncRetryDelay: testSyncRetryDelay})
+	cfg := &config.Config{RepoURL: "ssh://git@example.com/repo.git", StacksBaseDir: t.TempDir()}
+
+	d.SyncAndDeployAll(context.Background(), cfg)
+
+	if got := syncer.called.Load(); got != 2 {
+		t.Errorf("expected the failed sync to be retried once, got %d attempt(s)", got)
+	}
+	if err := d.Health(); err != nil {
+		t.Errorf("expected a retried sync to leave the deployer healthy, got %v", err)
+	}
+}
+
+func TestSyncAndDeployAll_AbortsAfterSyncAttemptsExhausted(t *testing.T) {
+	runner := &recordingRunner{}
+	syncer := &fakeRepoSyncer{err: errors.New("remote unreachable")}
+	d := New(Config{Runner: runner, Syncer: syncer, StateDir: t.TempDir(), SyncRetryDelay: testSyncRetryDelay})
+	cfg := &config.Config{RepoURL: "ssh://git@example.com/repo.git", StacksBaseDir: t.TempDir()}
+
+	d.SyncAndDeployAll(context.Background(), cfg)
+
+	if got := syncer.called.Load(); got != syncAttempts {
+		t.Errorf("expected %d sync attempts, got %d", syncAttempts, got)
+	}
+	// Positive signal that the run really aborted: no command was ever run.
+	if len(runner.calls) != 0 {
+		t.Errorf("expected no commands after a failed sync, got %v", runner.calls)
+	}
+	if err := d.Health(); err == nil {
+		t.Error("expected Health to report the exhausted sync")
+	}
+}
+
+func TestSyncAndDeployAll_StopsRetryingOnShutdown(t *testing.T) {
+	syncer := &fakeRepoSyncer{err: errors.New("remote unreachable")}
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir(), SyncRetryDelay: testSyncRetryDelay})
+	cfg := &config.Config{RepoURL: "ssh://git@example.com/repo.git", StacksBaseDir: t.TempDir()}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	d.SyncAndDeployAll(ctx, cfg)
+
+	if got := syncer.called.Load(); got != 1 {
+		t.Errorf("expected a cancelled context to stop after the first attempt, got %d", got)
 	}
 }
