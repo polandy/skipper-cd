@@ -692,7 +692,7 @@ skipper periodically asks each registry what it offers for the images your stack
 - `1.22.3 ⇡ 1.22.6` — a newer tag of the same shape exists. Only same-shaped tags are compared: same `v`-or-no prefix, same number of version components, same suffix (`6.2-alpine` is only ever compared against other `-alpine` tags), so the marker never suggests `latest` or a different variant.
 - `v3.1 ⇡ rebuilt` — the tag you run was republished upstream (its digest moved). This is the only check for non-version tags like `latest`.
 
-The expanded containers panel marks each affected service and shows when the registry was last asked. The check reports in the UI only; set `notify: true` (and configure [notifications](#notifications)) to also have each update's first appearance sent once — deploying it (or a newer one appearing) re-arms the message.
+The expanded containers panel marks each affected service and shows when the registry was last asked. A counter in the header says how many stacks have an update; clicking it filters the Stacks view down to exactly those, and clicking it again clears the filter. The check reports in the UI only; set `notify: true` (and configure [notifications](#notifications)) to also have each update's first appearance sent once — deploying it (or a newer one appearing) re-arms the message.
 
 ```yaml
 update_check:

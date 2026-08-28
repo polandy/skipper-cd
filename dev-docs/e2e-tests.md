@@ -1710,6 +1710,52 @@ the same `failed` outcome with no prior commit to roll back to. Behaviour-only
   — the store the flood used to empty — holds one record for the run, carrying
   the same marker, rather than one row per attempt.
 
+### 4.49 UI — Maske AV: the Stacks view's updates filter (ADR-0054 amendment)
+
+Maske AO covers the per-chip `⇡` marker — "does *this* stack have an update".
+This one covers the fleet-level surface on top of it: the always-visible header
+badge counting the **stacks** an update is waiting on, and the single
+updates-only toggle in the Stacks filter bar it presets and clears. The instance
+reuses AO's registry stub, with one deliberate addition: `monitoring` (over
+prometheus + grafana) updates **grafana**, a non-lead service. That is the case
+that made the badge un-countable before the amendment — the row showed only
+`2 services`, so the badge claimed a stack no marker on screen accounted for.
+Behaviour-only (no snapshot).
+
+- **UAV1 — The badge counts stacks, not services.** `monitoring` contributes one
+  though only one of its two services updates; the pluralised
+  `title`/`aria-label` says so in words. The badge reaching its final count is
+  the positive signal every case below waits on — the check publishes after the
+  startup deploys, so an assertion made earlier would pass against a UI that
+  never counted anything.
+- **UAV2 — Activating it lands on exactly what it promised.** The Stacks view,
+  the bar revealed, the chip pressed, and only the two updated stacks standing.
+  The control stack is hidden **by** the filter, not missing: UAV3's unfiltered
+  count is what makes that absence meaningful.
+- **UAV3 — The way out is the way in.** A second activation clears the filter,
+  folds the bar and brings every row back.
+- **UAV4 — The count is countable off the list.** Every row the filter leaves
+  standing carries a visible `.td-upd`. `gitea` keeps its lead service (`server`,
+  the one updating); `monitoring` steps off the lead to `grafana` with a `+1`
+  pointer. Run against the pre-amendment build this fails on the `monitoring`
+  cell, which reads `2 services` — the regression guard for the 3-against-2 the
+  feature was reported over.
+- **UAV5 — The toggle and the query narrow independently.** A query narrows
+  within the updated set; a query no updated stack matches empties the list and
+  the note generalises to *Nothing matches the active filters.* rather than
+  blaming the name. `Esc` clears both, then folds.
+- **UAV6 — The chip stands on its own.** Revealed by the header search trigger,
+  toggled by hand, with the badge's `.active` state tracking the same state in
+  both directions — including over a view switch: the lit state means "the
+  roster below is the list this badge points at", so it goes out on the
+  Deploys view and comes back with the narrowing intact.
+- **UAV7 — Nothing to report costs nothing.** Its own instance, with no update
+  check running: the badge takes up no space and the chip row is empty. The
+  component's `display` beats the UA `[hidden]` rule, so hiding at zero has to
+  be said explicitly in CSS — without that line an empty amber pill sits in the
+  header of every fully-up-to-date instance, which is how it was caught (200 px
+  of the `theme-dark` baseline). Verified to fail against the unfixed CSS.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -1941,6 +1987,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
+| Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |
 | PWA update banner: dismiss keeps the current version | **UE2** |

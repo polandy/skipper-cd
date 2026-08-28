@@ -92,6 +92,10 @@
       <span class="ib-icon" aria-hidden="true">↺</span>
       <span class="ib-count" id="incident-badge-count" data-testid="incident-badge-count"></span>
     </button>
+    <button class="update-badge" id="update-badge" data-testid="update-badge" type="button" hidden>
+      <span class="ub-icon" aria-hidden="true">&#8673;</span>
+      <span class="ub-count" id="update-badge-count" data-testid="update-badge-count"></span>
+    </button>
     <span class="ht-cap ht-cap-search">
     <button class="stack-search-btn" id="stack-search-btn" data-testid="stack-search-btn" type="button" title="Search stacks" aria-label="Search stacks" aria-expanded="false">
       <svg class="ss-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -326,6 +330,7 @@
       <span class="stack-filter-count" id="roster-filter-count" data-testid="roster-filter-count"></span>
       <button class="stack-filter-clear" id="roster-filter-clear" data-testid="roster-filter-clear" type="button" aria-label="Clear filter">&times;</button>
     </div>
+    <div class="status-filter" id="roster-update-filter" data-testid="roster-update-filter" role="group" aria-label="Filter stacks by available update"></div>
     <div class="roster-list-header">
       <span>Stack</span>
       <span class="rh-ver">Version</span>

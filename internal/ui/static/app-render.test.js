@@ -1202,7 +1202,9 @@ test('rosterVersionInnerHTML marks the lead chip when its service has an update'
   assert.match(html, /\+1/); // the +N pointer stays
 });
 
-test('rosterVersionInnerHTML stays unmarked when only a non-lead service has an update', () => {
+test('rosterVersionInnerHTML shows the updated service even when it is not the lead', () => {
+  // The header update badge counts stacks, so a marked stack must be able to
+  // say which service moved — the cell steps off the lead to do it.
   const health = {
     services: [
       { name: 'immich-server', image: 'ghcr.io/immich-app/immich-server:v1.135.3' },
@@ -1212,7 +1214,28 @@ test('rosterVersionInnerHTML stays unmarked when only a non-lead service has an 
   const html = r.rosterVersionInnerHTML('immich', health, {
     redis: { running: '6.2', rebuilt: true },
   });
-  assert.doesNotMatch(html, /td-upd/);
+  assert.match(html, /td-upd/);
+  assert.match(html, />redis</);
+  assert.match(html, /rebuilt/);
+  assert.doesNotMatch(html, />immich-server</);
+  assert.match(html, /\+1/); // the other service is still pointed at
+});
+
+test('rosterUpdateChipHTML renders the updates-only toggle with its stack count', () => {
+  const html = r.rosterUpdateChipHTML(4, false);
+  assert.match(html, /data-testid="roster-update-chip"/);
+  assert.match(html, /data-status="queued"/); // amber, via the shared chip rule
+  assert.match(html, /aria-pressed="false"/);
+  assert.doesNotMatch(html, /\bactive\b/);
+  assert.match(html, /⇡ updates/);
+  assert.match(html, /<span class="sc-count">4<\/span>/);
+});
+
+test('rosterUpdateChipHTML marks the chip pressed while it narrows, and is empty at zero', () => {
+  assert.match(r.rosterUpdateChipHTML(1, true), /class="clog-chip status-chip active"/);
+  assert.match(r.rosterUpdateChipHTML(1, true), /aria-pressed="true"/);
+  assert.equal(r.rosterUpdateChipHTML(0, false), '');
+  assert.equal(r.rosterUpdateChipHTML(0, true), '');
 });
 
 test('updateCheckMetaHTML renders count and check age, and is empty without updates', () => {

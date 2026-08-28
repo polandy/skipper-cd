@@ -1248,6 +1248,38 @@
   .incident-badge:focus-visible { outline: 2px solid var(--rollback); outline-offset: 2px; }
   .incident-badge .ib-icon { font-size: 13px; line-height: 1; }
 
+  /* Update badge (UI_SPEC.md "Updates filter"): the incident badge's shape in
+     the queued amber the update markers already wear — the app's "waiting to be
+     applied" colour, which is exactly what an available update is. Counts
+     STACKS, not services: it lands on a filtered roster, so the number has to
+     be the number of rows that come back. Applying stays a git commit; the
+     badge is a filter, never a trigger. */
+  .update-badge {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 600; font-family: var(--font-mono);
+    color: var(--queued-text);
+    /* Not --queued-dim (14%): the amber is far lighter than the incident
+       badge's rosé, and at that strength the pill all but disappears on the
+       light ground. Matched by eye against .incident-badge instead. */
+    background: color-mix(in srgb, var(--queued) 22%, transparent);
+    border: 1px solid color-mix(in srgb, var(--queued) 45%, transparent);
+    border-radius: 999px; padding: 4px 11px 4px 9px;
+    transition: background 0.16s, border-color 0.16s;
+  }
+  .update-badge:hover { background: color-mix(in srgb, var(--queued) 32%, transparent); }
+  .update-badge:focus-visible { outline: 2px solid var(--queued); outline-offset: 2px; }
+  /* Steady state while its own preset is the whole filter — the badge shows
+     that the roster below is the list it points at. */
+  .update-badge.active {
+    background: color-mix(in srgb, var(--queued) 38%, transparent);
+    border-color: color-mix(in srgb, var(--queued) 70%, transparent);
+  }
+  .update-badge .ub-icon { font-size: 13px; line-height: 1; }
+  /* The component's own display beats the UA [hidden] rule, so hiding at zero
+     needs saying explicitly — otherwise an empty pill sits in the header on
+     every instance with nothing to report (measured: 42px wide). */
+  .update-badge[hidden] { display: none; }
+
   /* Beacon popover — same surface language as the run/view popovers. */
   .beacon-pop {
     position: absolute; top: calc(100% + 8px); right: 0; min-width: 220px;
@@ -2937,6 +2969,7 @@
      narrowed log reads as narrowed by that status rather than as broken. */
   .status-filter { display: none; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 2px 10px; }
   #deploy-filter-wrap.revealed + .status-filter:not(:empty) { display: flex; }
+  #roster-filter-wrap.revealed + .status-filter:not(:empty) { display: flex; }
   .status-chip .sc-count { margin-left: 6px; font-weight: 700; opacity: 0.75; }
   .status-chip.active[data-status="failed"],
   .status-chip.active[data-status="rolled_back_unhealthy"],
@@ -3591,6 +3624,7 @@
     .health-beacon { padding: 3px 8px; gap: 5px; font-size: 11px; }
     .health-beacon .hb-icon { display: none; }
     .incident-badge { padding: 3px 8px; gap: 4px; font-size: 11px; }
+    .update-badge { padding: 3px 8px; gap: 4px; font-size: 11px; }
     /* Filter toggles are glyph-only on every viewport now (see base rules).
        Deploy-status and connection are already glyph-only via base rules; here
        we drop the deploying stack name and the look-ahead trail (both remain in

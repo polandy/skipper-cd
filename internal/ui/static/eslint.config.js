@@ -60,6 +60,9 @@ module.exports = [
         rosterOrdered: 'readonly',
         rowClass: 'readonly',
         snapshotIsFresh: 'readonly',
+        stackHasUpdate: 'readonly',
+        updateBadgeLabel: 'readonly',
+        updatePresetActive: 'readonly',
         // app-render.js constants
         CLOG_ICON: 'readonly',
         LINK_ICON: 'readonly',
@@ -105,6 +108,7 @@ module.exports = [
         rosterHealthPillHTML: 'readonly',
         rosterRowActionsHTML: 'readonly',
         rosterStatusHTML: 'readonly',
+        rosterUpdateChipHTML: 'readonly',
         rosterVersionCellHTML: 'readonly',
         rosterVersionInnerHTML: 'readonly',
         runListHTML: 'readonly',
