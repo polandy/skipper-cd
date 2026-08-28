@@ -1247,6 +1247,10 @@
   .incident-badge:hover { background: color-mix(in srgb, var(--rollback) 20%, transparent); }
   .incident-badge:focus-visible { outline: 2px solid var(--rollback); outline-offset: 2px; }
   .incident-badge .ib-icon { font-size: 13px; line-height: 1; }
+  /* The component's own display beats the UA [hidden] rule, so hiding at zero
+     needs saying explicitly — otherwise an empty pill sits in the header of
+     every instance with a clean 24h (measured: 46px wide). */
+  .incident-badge[hidden] { display: none; }
 
   /* Update badge (UI_SPEC.md "Updates filter"): the incident badge's shape in
      the queued amber the update markers already wear — the app's "waiting to be
