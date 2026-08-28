@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.0](https://github.com/polandy/skipper-cd/compare/v0.24.0...v0.25.0) (2026-08-28)
+
+
+### Features
+
+* **ui:** filter the Stacks view to the stacks with an available update ([#310](https://github.com/polandy/skipper-cd/issues/310)) ([453d3d0](https://github.com/polandy/skipper-cd/commit/453d3d0e98729aa12603c5ad1d1c9240451f9b64))
+
+
+### Bug Fixes
+
+* **ui:** hide the incident badge at zero instead of leaving an empty pill ([#312](https://github.com/polandy/skipper-cd/issues/312)) ([e937b85](https://github.com/polandy/skipper-cd/commit/e937b85740992e089b2be2287b7af849a4c5ac99))
+
 ## [0.24.0](https://github.com/polandy/skipper-cd/compare/v0.23.0...v0.24.0) (2026-08-27)
 
 
