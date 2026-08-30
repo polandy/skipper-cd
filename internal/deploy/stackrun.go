@@ -164,6 +164,16 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 // deferred failure emitter).
 func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persistedState) error {
 	run, compose := prep.run, prep.compose
+
+	// Pinned once for the whole apply, not just the build: a `pull_policy: build`
+	// service builds again inside `up`, and that build must read the same tree
+	// (ADR-0057).
+	run, cleanup, err := run.withClonedBuildContexts(compose)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	stack := run.stack
 
 	// pre_deploy hooks run before any container is touched — the point at which
@@ -180,21 +190,13 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 
 	if len(prep.dockerfilePaths) > 0 {
 		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", prep.dockerfilePaths)
-		// The build reads the tree skipper hashed, not the project directory
-		// compose would otherwise resolve a relative context against (ADR-0057).
-		buildRun, cleanup, err := run.withClonedBuildContexts(compose)
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-
 		buildArgs := []string{"build"}
 		if !d.bootstrapRun {
 			// --pull refreshes each Dockerfile's base image. On a bootstrap run
 			// that is the same unasked-for jump a forced pull would be.
 			buildArgs = append(buildArgs, "--pull")
 		}
-		if err := d.runDockerCompose(ctx, buildRun, buildArgs...); err != nil {
+		if err := d.runDockerCompose(ctx, run, buildArgs...); err != nil {
 			return fmt.Errorf("docker compose build: %w", err)
 		}
 	}

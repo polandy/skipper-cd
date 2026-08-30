@@ -140,10 +140,102 @@ func TestDeployStack_BuildsFromCloneNotProjectDirectory(t *testing.T) {
 	if !slices.Contains(build.args, "--project-directory") || !slices.Contains(build.args, projectDir) {
 		t.Errorf("build lost the project directory: %v", build.args)
 	}
-	// Only the build reads the override; every other call stays as it was.
+}
+
+// The same divergence one step later: a service with `pull_policy: build` makes
+// `docker compose up` build again. Unpinned, that second build resolves the
+// context against the project directory and re-tags the stale image over the one
+// the pinned build just produced — a green deploy that changed nothing, exactly
+// the ADR-0057 no-op the build-only override left open.
+func TestDeployStack_UpBuildsFromCloneToo(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "myapp")
+	projectDir := t.TempDir()
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), `services:
+  app:
+    build: "."
+    image: myapp:latest
+    pull_policy: build
+`)
+	writeFile(t, filepath.Join(stackDir, "Dockerfile"), "FROM nginx:1.27\n")
+	writeFile(t, filepath.Join(projectDir, "Dockerfile"), "FROM nginx:1.25\n")
+
+	runner := &recordingRunner{}
+	// The override is a temp file removed when the apply returns, so read it
+	// while the up call is in flight.
+	var override []byte
+	runner.failFn = func(_ string, args []string) error {
+		if slices.Contains(args, "up") {
+			override = readOverrideFile(t, args)
+		}
+		return nil
+	}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "myapp", ProjectDirectory: projectDir}
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertOverrideContexts(t, override, map[string]string{"app": stackDir})
+
+	// The project directory still governs identity, .env and bind mounts on the
+	// very call that now reads the clone for its build inputs.
 	up := findCall(t, runner.calls, "up")
-	if got := countArg(up.args, "-f"); got != 1 {
-		t.Errorf("expected up to pass exactly one -f, got %d: %v", got, up.args)
+	if !slices.Contains(up.args, "--project-directory") || !slices.Contains(up.args, projectDir) {
+		t.Errorf("up lost the project directory: %v", up.args)
+	}
+}
+
+// A rollback restores the previous compose file but not the previous Dockerfile.
+// Carrying the override there would point the restored version's build at the
+// clone — the failed version — and can name services the old file does not have.
+func TestRollback_DropsTheBuildContextOverride(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "myapp")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	writeFile(t, composePath, `services:
+  app:
+    build: "."
+    image: myapp:latest
+`)
+	writeFile(t, filepath.Join(stackDir, "Dockerfile"), "FROM nginx:1.27\n")
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{},
+		files: map[string][]byte{"old-sha:" + composePath: []byte("services:\n  app:\n    image: myapp:previous\n")},
+	}
+	runner := &recordingRunner{errOnCommand: "up"}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
+
+	state := newEmptyState()
+	state.LastDeployedCommit = "old-sha"
+	stack := config.Stack{Name: "myapp", ProjectDirectory: t.TempDir()}
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state); err == nil {
+		t.Fatal("expected the failed up to surface as an error")
+	}
+
+	// Two ups: the failed deploy (pinned) and the rollback (not).
+	var ups []runCall
+	for _, c := range runner.calls {
+		if slices.Contains(c.args, "up") {
+			ups = append(ups, c)
+		}
+	}
+	if len(ups) != 2 {
+		t.Fatalf("expected a deploy up and a rollback up, got %d: %v", len(ups), runner.calls)
+	}
+	if got := countArg(ups[0].args, "-f"); got != 2 {
+		t.Errorf("expected the deploy up to carry the override, got %d -f: %v", got, ups[0].args)
+	}
+	if got := countArg(ups[1].args, "-f"); got != 1 {
+		t.Errorf("expected the rollback up to pass only the restored compose file, got %d -f: %v", got, ups[1].args)
 	}
 }
 

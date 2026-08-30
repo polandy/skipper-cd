@@ -8,9 +8,10 @@
 // image from a stale base, and the run reports a success that changed nothing.
 //
 // A generated compose override closes the gap by rewriting each relative build
-// context to its absolute path under the clone. It is layered on for the build
-// call only, so project identity, .env loading and every relative bind mount
-// keep resolving against the project directory exactly as before (ADR-0057).
+// context to its absolute path under the clone. It is layered on for the whole
+// apply — `up` builds too when a service sets `pull_policy: build` — while
+// --project-directory stays on every call, so project identity, .env loading and
+// every relative bind mount keep resolving there exactly as before (ADR-0057).
 
 package deploy
 
@@ -62,8 +63,9 @@ func buildContextOverride(cf *composeFile, repoDir string) ([]byte, error) {
 }
 
 // withClonedBuildContexts returns a copy of the run whose `docker compose`
-// invocation layers on a generated override pinning the build contexts to the
-// clone, plus a cleanup func that removes the generated file. The run is
+// invocations layer on a generated override pinning the build contexts to the
+// clone, plus a cleanup func that removes the generated file — call it once for
+// the stack's whole apply, so build and up read the same tree. The run is
 // returned unchanged, with a no-op cleanup, when there is nothing to pin or no
 // project directory to diverge from.
 func (r stackRun) withClonedBuildContexts(cf *composeFile) (stackRun, func(), error) {

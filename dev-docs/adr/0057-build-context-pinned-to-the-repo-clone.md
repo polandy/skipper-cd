@@ -68,8 +68,9 @@ relative to the context and therefore follows it into the clone.
 directory, unchanged and untouched: the override moves the build inputs and
 nothing else.
 
-It is generated for the **build call only**. Every other compose invocation —
-`pull`, `up`, the rollout's `ps` reads, rollback — runs exactly as before.
+It is generated once per apply and layered on **every compose call of that
+apply** — `pull`, `build`, `up`, the rollout's cutover. The rollback is the one
+exception; see the amendment below.
 
 Two cases produce no override at all, because there is nothing to pin:
 
@@ -121,3 +122,49 @@ Two cases produce no override at all, because there is nothing to pin:
   Rejected: skipper would be writing into the operator's tree to work around
   path resolution, and a partial copy leaves the two trees disagreeing in a new
   way.
+
+## Amendment: `up` builds too
+
+Date: 2026-08-30
+
+Restricting the override to the build call left the same hole one step later.
+`docker compose up` does not only start containers — it builds, whenever a
+service says so:
+
+```yaml
+services:
+  app:
+    build: "."
+    image: nextcloud:34-ghostscript
+    pull_policy: build      # up builds this service, every time
+```
+
+The pinned build ran first and produced the right image. The `up` that followed
+was unpinned, built the same service again from the project directory, and
+re-tagged the stale result over it. The image id never moved, so nothing was
+recreated and no version change was reported — the original failure mode
+verbatim, reached by a different call.
+
+It showed up the way the first one did: the same stack, a base-image digest bump
+merged on 2026-08-30, a 5.9 s deploy with a green health gate, and containers
+that had been up for three days. The build log gave it away by naming both
+digests, one per build.
+
+**The override is therefore generated once for the stack's whole apply**, not
+per call, and every compose invocation of that apply carries it. Nothing about
+its content changes; `--project-directory` is still passed alongside, so
+identity, `.env` and bind mounts are as unaffected on `up` as they were on
+`build`.
+
+**The rollback deliberately drops it.** The override describes the compose file
+skipper just hashed, while the rollback runs the previous version restored from
+git: it can name services that version does not have, and pinning its build to
+the clone would rebuild the failed version under the old file's name. The
+rollback restores a compose file, never a Dockerfile — the tree it builds from
+is the operator's, which is the closer match to what was running before.
+
+The narrower alternative — passing `--no-build` to `up` because skipper has
+already built — was rejected: it makes the deploy depend on skipper's build
+having covered every service compose would have built, a claim that is true
+today and silently breaks the day it is not. Pinning the context makes the
+second build correct instead of forbidding it.

@@ -93,6 +93,11 @@ func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persi
 	if rbRun.projectDir == "" {
 		rbRun.projectDir = filepath.Dir(run.composePath)
 	}
+	// The build-context override is dropped: it was generated from the *current*
+	// compose file, so against the restored one it can name services that version
+	// does not have — and pinning a rollback's build to the clone would rebuild
+	// the very version that just failed (ADR-0057).
+	rbRun.extraComposeFiles = nil
 
 	slog.Info("rolling back with previous compose file", "stack", run.stack.Name, "commit", state.LastDeployedCommit)
 	upArgs := []string{"up", "-d"}
