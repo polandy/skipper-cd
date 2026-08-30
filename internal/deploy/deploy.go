@@ -261,7 +261,7 @@ type stackRun struct {
 	baseEnv     []string // os.Environ() + vars_file (env_files are added per call)
 
 	// extraComposeFiles are layered on top of composePath as further -f files.
-	// Only the build call sets one, to pin its context to the clone.
+	// Only the apply pipeline sets one, to pin build contexts to the clone.
 	extraComposeFiles []string
 }
 

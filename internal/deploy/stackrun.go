@@ -166,6 +166,17 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 	run, compose := prep.run, prep.compose
 	stack := run.stack
 
+	// Every compose call of this apply reads the tree skipper hashed, not the
+	// project directory a relative build context would otherwise resolve against
+	// (ADR-0057). It covers `up` and not just `build` because a service with
+	// `pull_policy: build` builds again inside `up` — an unpinned second build
+	// re-tags the stale image over the one the build just produced.
+	run, cleanup, err := run.withClonedBuildContexts(compose)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	// pre_deploy hooks run before any container is touched — the point at which
 	// the old version is still up, so a backup can dump it (ADR-0038). A failure
 	// here aborts before pull/up with no rollback (nothing changed): the deferred
@@ -180,21 +191,13 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 
 	if len(prep.dockerfilePaths) > 0 {
 		slog.Info("building images from Dockerfile", "stack", stack.Name, "dockerfiles", prep.dockerfilePaths)
-		// The build reads the tree skipper hashed, not the project directory
-		// compose would otherwise resolve a relative context against (ADR-0057).
-		buildRun, cleanup, err := run.withClonedBuildContexts(compose)
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-
 		buildArgs := []string{"build"}
 		if !d.bootstrapRun {
 			// --pull refreshes each Dockerfile's base image. On a bootstrap run
 			// that is the same unasked-for jump a forced pull would be.
 			buildArgs = append(buildArgs, "--pull")
 		}
-		if err := d.runDockerCompose(ctx, buildRun, buildArgs...); err != nil {
+		if err := d.runDockerCompose(ctx, run, buildArgs...); err != nil {
 			return fmt.Errorf("docker compose build: %w", err)
 		}
 	}
