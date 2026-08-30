@@ -164,18 +164,17 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 // deferred failure emitter).
 func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persistedState) error {
 	run, compose := prep.run, prep.compose
-	stack := run.stack
 
-	// Every compose call of this apply reads the tree skipper hashed, not the
-	// project directory a relative build context would otherwise resolve against
-	// (ADR-0057). It covers `up` and not just `build` because a service with
-	// `pull_policy: build` builds again inside `up` — an unpinned second build
-	// re-tags the stale image over the one the build just produced.
+	// Pinned once for the whole apply, not just the build: a `pull_policy: build`
+	// service builds again inside `up`, and that build must read the same tree
+	// (ADR-0057).
 	run, cleanup, err := run.withClonedBuildContexts(compose)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
+
+	stack := run.stack
 
 	// pre_deploy hooks run before any container is touched — the point at which
 	// the old version is still up, so a backup can dump it (ADR-0038). A failure
