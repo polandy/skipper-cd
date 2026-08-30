@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.2](https://github.com/polandy/skipper-cd/compare/v0.25.1...v0.25.2) (2026-08-30)
+
+
+### Bug Fixes
+
+* **deploy:** pin the build context on up, not just on build ([7034b2d](https://github.com/polandy/skipper-cd/commit/7034b2d8b37802c3053f2c02a9d56b2e9763795a))
+
 ## [0.25.1](https://github.com/polandy/skipper-cd/compare/v0.25.0...v0.25.1) (2026-08-28)
 
 
