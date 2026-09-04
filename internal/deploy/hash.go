@@ -8,7 +8,26 @@ import (
 	"path/filepath"
 
 	"github.com/polandy/skipper-cd/internal/compose"
+	"github.com/polandy/skipper-cd/internal/config"
 )
+
+// hashStackInputs hashes a stack's tracked inputs (Invariant 2). It is their
+// single definition: the deploy path and the run-plan look-ahead both resolve
+// here, so neither can track an input the other misses. cf is nil for an
+// unparseable compose file — no Dockerfile is tracked then. The Dockerfile
+// paths come back because the deploy path needs them again to decide on a build.
+func (d *Deployer) hashStackInputs(stack config.Stack, baseDir, repoDir, varsFile string, cf *composeFile) (stackFileHashes, []string, error) {
+	var dockerfilePaths []string
+	if cf != nil {
+		dockerfilePaths = cf.dockerfilePaths(repoDir)
+	}
+	hashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
+	if err != nil {
+		return nil, nil, err
+	}
+	d.addStackConfigHash(hashes, stack, baseDir)
+	return hashes, dockerfilePaths, nil
+}
 
 // computePerFileHashes returns a SHA-256 hash for each tracked file in the stack.
 // Any change to any of these files triggers a new deployment.
