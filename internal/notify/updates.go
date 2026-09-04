@@ -3,7 +3,6 @@ package notify
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -31,10 +30,8 @@ type updateTarget struct {
 // `on:` filters deploy statuses only, so every target receives updates.
 // Dedup is the update checker's job — Fire delivers what it is handed.
 type UpdateAlerter struct {
+	*transport[updatecheck.Alert]
 	targets []updateTarget
-	doer    Doer
-	timeout time.Duration
-	queue   chan updatecheck.Alert
 }
 
 // NewUpdateAlerter builds an UpdateAlerter from notification targets. A nil
@@ -49,17 +46,9 @@ func NewUpdateAlerter(cfgTargets []config.NotificationTarget, doer Doer, timeout
 		}
 		targets = append(targets, updateTarget{format: ct.Format, formatter: f})
 	}
-	if doer == nil {
-		doer = http.DefaultClient
-	}
-	if timeout <= 0 {
-		timeout = defaultRequestTimeout
-	}
 	return &UpdateAlerter{
-		targets: targets,
-		doer:    doer,
-		timeout: timeout,
-		queue:   make(chan updatecheck.Alert, notifyBufferSize),
+		transport: newTransport[updatecheck.Alert](doer, timeout, "update notification dropped: buffer full"),
+		targets:   targets,
 	}, nil
 }
 
@@ -72,41 +61,11 @@ func (a *UpdateAlerter) Fire(al updatecheck.Alert) {
 	if !a.Enabled() {
 		return
 	}
-	select {
-	case a.queue <- al:
-	default:
-		slog.Warn("update notification dropped: buffer full", "stack", al.Stack, "service", al.Service)
-		metrics.NotificationsDropped.Inc()
-	}
+	a.push(al, "stack", al.Stack, "service", al.Service)
 }
 
-// Run consumes queued alerts until ctx is cancelled, then best-effort drains
-// what is buffered within one timeout and returns. Intended to run in its own
-// goroutine; the caller must not block shutdown on it (ADR-0014 ethos).
-func (a *UpdateAlerter) Run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			a.drain()
-			return
-		case al := <-a.queue:
-			a.handle(ctx, al)
-		}
-	}
-}
-
-func (a *UpdateAlerter) drain() {
-	ctx, cancel := context.WithTimeout(context.Background(), a.timeout)
-	defer cancel()
-	for {
-		select {
-		case al := <-a.queue:
-			a.handle(ctx, al)
-		default:
-			return
-		}
-	}
-}
+// Run delivers queued alerts until ctx is cancelled, then drains what is left.
+func (a *UpdateAlerter) Run(ctx context.Context) { a.run(ctx, a.handle) }
 
 // handle delivers one alert to every target. A failing target is logged and
 // skipped; it never aborts the others.

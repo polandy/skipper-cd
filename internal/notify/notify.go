@@ -6,7 +6,6 @@ package notify
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -42,10 +41,8 @@ type target struct {
 
 // Notifier fans terminal deploy events out to its configured targets.
 type Notifier struct {
+	*transport[events.DeployEvent]
 	targets []target
-	doer    Doer
-	timeout time.Duration
-	queue   chan events.DeployEvent
 }
 
 // New builds a Notifier from the config targets. A nil doer uses
@@ -60,17 +57,9 @@ func New(cfgTargets []config.NotificationTarget, doer Doer, timeout time.Duratio
 		}
 		targets = append(targets, target{format: ct.Format, formatter: f, on: statusSet(ct.On)})
 	}
-	if doer == nil {
-		doer = http.DefaultClient
-	}
-	if timeout <= 0 {
-		timeout = defaultRequestTimeout
-	}
 	return &Notifier{
-		targets: targets,
-		doer:    doer,
-		timeout: timeout,
-		queue:   make(chan events.DeployEvent, notifyBufferSize),
+		transport: newTransport[events.DeployEvent](doer, timeout, "notification dropped: buffer full"),
+		targets:   targets,
 	}, nil
 }
 
@@ -83,41 +72,11 @@ func (n *Notifier) Notify(ev events.DeployEvent) {
 	if !n.Enabled() || !isTerminal(ev.Status) {
 		return
 	}
-	select {
-	case n.queue <- ev:
-	default:
-		slog.Warn("notification dropped: buffer full", "stack", ev.Stack, "status", ev.Status)
-		metrics.NotificationsDropped.Inc()
-	}
+	n.push(ev, "stack", ev.Stack, "status", ev.Status)
 }
 
-// Run consumes queued events until ctx is cancelled, then best-effort drains
-// what is buffered within one timeout and returns. Intended to run in its own
-// goroutine; the caller must not block shutdown on it (ADR-0014 ethos).
-func (n *Notifier) Run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			n.drain()
-			return
-		case ev := <-n.queue:
-			n.handle(ctx, ev)
-		}
-	}
-}
-
-func (n *Notifier) drain() {
-	ctx, cancel := context.WithTimeout(context.Background(), n.timeout)
-	defer cancel()
-	for {
-		select {
-		case ev := <-n.queue:
-			n.handle(ctx, ev)
-		default:
-			return
-		}
-	}
-}
+// Run delivers queued events until ctx is cancelled, then drains what is left.
+func (n *Notifier) Run(ctx context.Context) { n.run(ctx, n.handle) }
 
 // handle delivers one event to every target subscribed to its status. A failing
 // target is logged and skipped; it never aborts the others.
