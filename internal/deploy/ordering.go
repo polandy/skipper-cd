@@ -191,18 +191,18 @@ func (d *Deployer) markPending(stack string, changed []string, reason string) {
 // it. A hash error yields no changes; the real deploy would surface it.
 func (d *Deployer) pendingChanges(stack config.Stack, baseDir, varsFile string, state *persistedState) ([]string, bool) {
 	repoDir := filepath.Join(baseDir, stack.Name)
-	composePath := filepath.Join(repoDir, compose.FileName)
 
-	var dockerfilePaths []string
-	if compose, err := parseComposeFile(composePath); err == nil && compose != nil {
-		dockerfilePaths = compose.dockerfilePaths(repoDir)
+	// Parsed quietly: this look-ahead runs over every stack on every tick, and
+	// prepareStackRun already warns once per deploy about an unparseable file.
+	cf, err := parseComposeFile(filepath.Join(repoDir, compose.FileName))
+	if err != nil {
+		cf = nil
 	}
 
-	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
+	currentHashes, _, err := d.hashStackInputs(stack, baseDir, repoDir, varsFile, cf)
 	if err != nil {
 		return nil, false
 	}
-	d.addStackConfigHash(currentHashes, stack, baseDir)
 	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
 	return changed, len(changed) > 0
 }
