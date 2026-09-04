@@ -52,19 +52,11 @@ func (c *Config) UpdateCheckNotify() bool {
 }
 
 // EffectiveUpdateCheck reports whether the named stack takes part in the
-// update check, over an explicit stack set (the discovered stacks under
-// discovery, ADR-0034). Per-stack update_check: false opts out; the default is
-// on. Like self_heal/autosync/rollback this is runtime policy, never hashed.
+// update check, over an explicit stack set (see EffectiveSelfHeal). Per-stack
+// update_check: false opts out; the default is on. Like self_heal, autosync
+// and rollback this is runtime policy, never hashed.
 func (c *Config) EffectiveUpdateCheck(stacks []Stack, name string) bool {
-	for _, s := range stacks {
-		if s.Name == name {
-			if s.UpdateCheck != nil {
-				return *s.UpdateCheck
-			}
-			break
-		}
-	}
-	return true
+	return stackFlag(stacks, name, func(s Stack) *bool { return s.UpdateCheck }, true)
 }
 
 // validateUpdateCheck checks the optional update_check section.

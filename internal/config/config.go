@@ -239,6 +239,22 @@ func (c *Config) StackByName(name string) (Stack, bool) {
 	return Stack{}, false
 }
 
+// stackFlag resolves a per-stack boolean policy: the stack's own override when
+// it sets one, otherwise def. A name that is not in stacks falls back to def
+// too, so a removed or parked stack answers with the global default rather
+// than a stale override.
+func stackFlag(stacks []Stack, name string, override func(Stack) *bool, def bool) bool {
+	for _, s := range stacks {
+		if s.Name == name {
+			if v := override(s); v != nil {
+				return *v
+			}
+			break
+		}
+	}
+	return def
+}
+
 // SelfHealEnabled reports whether self-heal is effective for the named stack:
 // the per-stack override when set, otherwise the global default (off when
 // unset). An unknown name falls back to the global default.
@@ -246,19 +262,11 @@ func (c *Config) SelfHealEnabled(name string) bool {
 	return c.EffectiveSelfHeal(c.Stacks, name)
 }
 
-// EffectiveSelfHeal is SelfHealEnabled over an explicit stack set — the
-// discovered stacks in stack-discovery mode, where c.Stacks is empty
-// (ADR-0034).
+// EffectiveSelfHeal is SelfHealEnabled over an explicit stack set. Callers in
+// stack-discovery mode pass the discovered stacks, which carry the host
+// config's per-stack overrides merged in (ADR-0043).
 func (c *Config) EffectiveSelfHeal(stacks []Stack, name string) bool {
-	for _, s := range stacks {
-		if s.Name == name {
-			if s.SelfHeal != nil {
-				return *s.SelfHeal
-			}
-			break
-		}
-	}
-	return c.SelfHeal != nil && *c.SelfHeal
+	return stackFlag(stacks, name, func(s Stack) *bool { return s.SelfHeal }, c.SelfHeal != nil && *c.SelfHeal)
 }
 
 // RollbackEnabled reports whether automatic rollback is effective for the named
@@ -269,20 +277,11 @@ func (c *Config) RollbackEnabled(name string) bool {
 	return c.EffectiveRollback(c.Stacks, name)
 }
 
-// EffectiveRollback is RollbackEnabled over an explicit stack set — the
-// discovered stacks in stack-discovery mode, where c.Stacks is empty
-// (ADR-0034). The default is on: rollback happens unless a per-stack or the
-// global rollback is explicitly false.
+// EffectiveRollback is RollbackEnabled over an explicit stack set (see
+// EffectiveSelfHeal). The default is on: rollback happens unless a per-stack
+// or the global rollback is explicitly false.
 func (c *Config) EffectiveRollback(stacks []Stack, name string) bool {
-	for _, s := range stacks {
-		if s.Name == name {
-			if s.Rollback != nil {
-				return *s.Rollback
-			}
-			break
-		}
-	}
-	return c.Rollback == nil || *c.Rollback
+	return stackFlag(stacks, name, func(s Stack) *bool { return s.Rollback }, c.Rollback == nil || *c.Rollback)
 }
 
 // SelfHealActive reports whether self-heal is effective for at least one stack.
