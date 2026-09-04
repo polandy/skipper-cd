@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
@@ -208,24 +207,16 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 		}
 	} else {
 		// --remove-orphans removes containers for services deleted from docker-compose.yml.
-		upArgs := []string{"up", "-d", "--remove-orphans"}
-		if hc := stack.DeployHealthCheck; hc != nil {
-			// First health gate: --wait makes the up itself fail when the services'
-			// compose healthchecks do not turn healthy in time (ADR-0022).
-			upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
-		}
+		// First health gate: withHealthGate adds --wait when the stack is gated.
+		upArgs := withHealthGate(stack.DeployHealthCheck, "up", "-d", "--remove-orphans")
 		if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
 		}
 	}
 
-	// Second health gate: the optional HTTP probe verifies the stack from the
-	// outside after a successful up (ADR-0022).
-	if hc := stack.DeployHealthCheck; hc != nil && hc.URL != "" {
-		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
-		if err := d.prober.waitHealthy(ctx, hc.URL, timeout); err != nil {
-			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
-		}
+	// Second health gate: the optional HTTP probe.
+	if err := d.probeHealthURL(ctx, stack.DeployHealthCheck); err != nil {
+		return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
 	}
 
 	// post_deploy hooks validate the new version from outside compose (a smoke
