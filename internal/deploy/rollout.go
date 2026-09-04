@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
 
@@ -48,11 +47,7 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 	// Non-rolled services first, so a rolled service's dependencies are up before
 	// its canary starts.
 	if nonRolled := cf.servicesExcept(rolled); len(nonRolled) > 0 {
-		upArgs := []string{"up", "-d", "--remove-orphans"}
-		if hc := run.stack.DeployHealthCheck; hc != nil {
-			upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
-		}
-		upArgs = append(upArgs, nonRolled...)
+		upArgs := append(withHealthGate(run.stack.DeployHealthCheck, "up", "-d", "--remove-orphans"), nonRolled...)
 		if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
 		}
@@ -177,15 +172,9 @@ func (d *Deployer) cleanupCanary(ctx context.Context, run stackRun, service stri
 // `docker compose ps --format json <service>`, using the same project identity
 // the deploy path uses.
 func (d *Deployer) serviceContainers(ctx context.Context, run stackRun, service string) ([]containerLine, error) {
-	dir, args := run.composeInvocation()
-	args = append(args, "ps", "--format", "json", service)
-	out, err := d.outputter.Output(ctx, dir, "docker", args...)
+	lines, err := composeJSONRead[containerLine](ctx, d, run, "ps", "--format", "json", service)
 	if err != nil {
-		return nil, err
-	}
-	lines, err := parseComposeJSON[containerLine](out)
-	if err != nil {
-		return nil, fmt.Errorf("parse compose ps output: %w", err)
+		return nil, fmt.Errorf("read compose ps for service %s: %w", service, err)
 	}
 	// Defensive: compose already filters by the service arg.
 	out2 := make([]containerLine, 0, len(lines))

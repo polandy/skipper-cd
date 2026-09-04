@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
-	"time"
 
 	"github.com/polandy/skipper-cd/internal/metrics"
 )
@@ -100,21 +98,15 @@ func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persi
 	rbRun.extraComposeFiles = nil
 
 	slog.Info("rolling back with previous compose file", "stack", run.stack.Name, "commit", state.LastDeployedCommit)
-	upArgs := []string{"up", "-d"}
-	if hc := run.stack.DeployHealthCheck; hc != nil {
-		upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
-	}
+	upArgs := withHealthGate(run.stack.DeployHealthCheck, "up", "-d")
 	if err := d.runDockerCompose(ctx, rbRun, upArgs...); err != nil {
 		if run.stack.DeployHealthCheck != nil {
 			return fmt.Errorf("restored version did not come up healthy: %w (%w)", err, ErrRollbackUnhealthy)
 		}
 		return err
 	}
-	if hc := run.stack.DeployHealthCheck; hc != nil && hc.URL != "" {
-		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
-		if err := d.prober.waitHealthy(ctx, hc.URL, timeout); err != nil {
-			return fmt.Errorf("restored version failed the health probe: %w (%w)", err, ErrRollbackUnhealthy)
-		}
+	if err := d.probeHealthURL(ctx, run.stack.DeployHealthCheck); err != nil {
+		return fmt.Errorf("restored version failed the health probe: %w (%w)", err, ErrRollbackUnhealthy)
 	}
 	return nil
 }
