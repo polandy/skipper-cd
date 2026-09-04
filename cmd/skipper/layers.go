@@ -189,12 +189,7 @@ func buildUpdateCheck(ctx context.Context, cfg *config.Config, stateDir string, 
 		Interval:  interval,
 		Registry:  registry.New(nil, registry.DockerConfigCredentials(registry.DockerConfigPath())),
 		Outputter: command.NewShellRunner(timeout),
-		Running: func() map[string]map[string]string {
-			if d := ref.get(); d != nil {
-				return d.CurrentRunningImages()
-			}
-			return nil
-		},
+		Running:   func() map[string]map[string]string { return ref.get().CurrentRunningImages() },
 		Include: func(name string) bool {
 			stacks := views.effective()
 			for _, s := range stacks {

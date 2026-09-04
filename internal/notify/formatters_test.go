@@ -251,13 +251,13 @@ func TestGenericFormatter_CarriesImageChanges(t *testing.T) {
 }
 
 func TestIsTerminal_IncludesRolledBackUnhealthy(t *testing.T) {
-	if !isTerminal(events.StatusRolledBackUnhealthy) {
+	if !notifiable(events.StatusRolledBackUnhealthy) {
 		t.Error("rolled_back_unhealthy must be a terminal status so it can be delivered")
 	}
 }
 
 // Every status a target may subscribe to in `on` must be deliverable. A value
-// accepted by config validation but rejected by isTerminal is a silently dead
+// accepted by config validation but rejected by notifiable is a silently dead
 // subscription — the shape the heal_exhausted alarm had.
 func TestIsTerminal_CoversEveryNotifiableStatus(t *testing.T) {
 	for _, s := range []string{
@@ -267,7 +267,7 @@ func TestIsTerminal_CoversEveryNotifiableStatus(t *testing.T) {
 		config.NotifyOnRolledBackUnhealthy,
 		config.NotifyOnHealExhausted,
 	} {
-		if !isTerminal(events.Status(s)) {
+		if !notifiable(events.Status(s)) {
 			t.Errorf("status %q is subscribable in `on` but not deliverable", s)
 		}
 	}
