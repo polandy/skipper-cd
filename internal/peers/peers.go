@@ -126,9 +126,6 @@ func New(self string, peers []config.Peer, client Client, timeout time.Duration)
 	return &Registry{self: self, peers: peers, client: client, timeout: timeout, cache: cache}
 }
 
-// Self returns the primary's own host label.
-func (r *Registry) Self() string { return r.self }
-
 // Poll fetches every peer concurrently and updates the cache. A peer that
 // errors or times out keeps its last-known data (marked stale via State); a
 // peer that succeeds refreshes its data and lastSeen. Poll blocks until all

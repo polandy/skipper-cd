@@ -3,7 +3,6 @@ package healthwatch
 import (
 	"log/slog"
 	"os"
-	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -152,24 +151,7 @@ func (s *state) save(path string) error {
 		return err
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name()) // no-op after a successful rename
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(fsatomic.PrivateFileMode); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return fsatomic.WriteFile(path, data, fsatomic.PrivateFileMode)
 }
 
 // normalizeTime truncates to seconds and converts to UTC — the persistence

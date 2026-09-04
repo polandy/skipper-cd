@@ -69,7 +69,7 @@ func (n *Notifier) Enabled() bool { return n != nil && len(n.targets) > 0 }
 // Notify enqueues a terminal deploy event for asynchronous delivery. It never
 // blocks: non-terminal statuses are ignored, and a full buffer drops the event.
 func (n *Notifier) Notify(ev events.DeployEvent) {
-	if !n.Enabled() || !isTerminal(ev.Status) {
+	if !n.Enabled() || !notifiable(ev.Status) {
 		return
 	}
 	n.push(ev, "stack", ev.Stack, "status", ev.Status)
@@ -103,11 +103,11 @@ func statusSet(on []string) map[events.Status]bool {
 	return m
 }
 
-// isTerminal reports whether a status ends a stack's deploy attempt and is
+// notifiable reports whether a status ends a stack's deploy attempt and is
 // therefore deliverable. It must stay in sync with the NotifyOn* vocabulary in
 // internal/config — a status accepted in a target's `on` list but missing here
 // is silently undeliverable.
-func isTerminal(s events.Status) bool {
+func notifiable(s events.Status) bool {
 	return s == events.StatusSuccess || s == events.StatusFailed ||
 		s == events.StatusRolledBack || s == events.StatusRolledBackUnhealthy ||
 		s == events.StatusHealExhausted
