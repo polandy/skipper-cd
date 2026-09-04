@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -423,5 +424,69 @@ func TestRebuildNixOS_ReconciledSuccessCarriesDiffs(t *testing.T) {
 	}
 	if got := reconciled.Diffs["flake.nix"]; got == "" {
 		t.Errorf("reconciled success must carry the diff for flake.nix, got diffs=%v", reconciled.Diffs)
+	}
+}
+
+// TestDeployAllStacks_UnhashableNixFilesFailsInsteadOfSkipping covers the
+// nixos phase's own failure path: when the repo's nix files cannot be hashed,
+// skipper cannot tell whether the host config changed. Reporting the phase as
+// skipped and deploying the stacks anyway would mark a rebuild that never ran
+// as done — the silent no-op ADR-0015 exists to prevent.
+func TestDeployAllStacks_UnhashableNixFilesFailsInsteadOfSkipping(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "modules", "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	var emitted []events.DeployEvent
+	runner := &recordingRunner{}
+	// RepoDir points at a path that does not exist, so the hash walk fails.
+	d := New(Config{
+		Runner:    runner,
+		RepoDir:   filepath.Join(baseDir, "gone"),
+		StateDir:  t.TempDir(),
+		EventSink: func(e events.DeployEvent) { emitted = append(emitted, e) },
+	})
+
+	enabled := true
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: filepath.Join(baseDir, "modules"),
+		Stacks:        []config.Stack{{Name: "gitea"}},
+		NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a"},
+	}
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	// Positive signal that the phase reported the condition rather than
+	// swallowing it: exactly one _nixos event, and it is a failure naming the
+	// hash error.
+	var nixEvents []events.DeployEvent
+	for _, e := range emitted {
+		if e.Stack == NixosStateKey {
+			nixEvents = append(nixEvents, e)
+		}
+	}
+	if len(nixEvents) != 1 {
+		t.Fatalf("expected exactly one %s event, got %d: %+v", NixosStateKey, len(nixEvents), nixEvents)
+	}
+	if nixEvents[0].Status != events.StatusFailed {
+		t.Errorf("%s status = %q, want %q", NixosStateKey, nixEvents[0].Status, events.StatusFailed)
+	}
+	if !strings.Contains(nixEvents[0].Error, "hash") {
+		t.Errorf("event error %q should name the hash failure", nixEvents[0].Error)
+	}
+
+	// Invariant 4: the stacks must not deploy when the nixos phase did not.
+	for _, c := range runner.calls {
+		if c.name == "docker" && slices.Contains(c.args, "compose") {
+			t.Errorf("stacks must not deploy when the nix files could not be hashed; got %v", c.args)
+			break
+		}
+	}
+	if nixosRebuildCalled(runner.calls) {
+		t.Error("no rebuild must be dispatched when the nix files could not be hashed")
 	}
 }

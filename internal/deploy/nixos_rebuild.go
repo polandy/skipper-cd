@@ -25,7 +25,19 @@ const NixosStateKey = config.ReservedStackName
 func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config, state *persistedState) bool {
 	startTime := time.Now()
 
-	currentNixHashes, _ := nixos.HashFiles(d.repoDir)
+	currentNixHashes, err := nixos.HashFiles(d.repoDir)
+	if err != nil {
+		// Without the hashes nothing can be said about the host config. Diffing
+		// an empty set would report the phase as skipped and deploy the stacks
+		// against a config that may never have been applied — the silent
+		// never-applied rebuild ADR-0015 exists to prevent. Report it and abort
+		// like a failed rebuild does; nothing has been persisted yet, so there is
+		// no pre-saved state to revert.
+		slog.Error("could not hash the repo's nix files, aborting all stack deploys", "err", err)
+		metrics.DeployErrors.WithLabelValues(NixosStateKey).Inc()
+		d.emit(events.StatusFailed, NixosStateKey, time.Since(startTime), err.Error(), changeSet{})
+		return false
+	}
 	changed := nixos.DiffHashes(currentNixHashes, state.hashesFor(NixosStateKey))
 
 	// Reconcile a rebuild that a self-restart (the switch restarting skipper-cd)
