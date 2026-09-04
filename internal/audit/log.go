@@ -76,45 +76,17 @@ func (r Record) repeatsOf(prev Record) bool {
 	return events.Repeatable(r.Status) && r.Status == prev.Status && r.Error == prev.Error
 }
 
-// absorb returns r carrying prev's run: one more occurrence, and the oldest
-// FirstSeen of the two.
+// absorb returns r carrying prev's run, through the same collapse rule the
+// event history applies (ADR-0056).
 func (r Record) absorb(prev Record) Record {
-	r.RepeatCount = prev.occurrences() + 1
-	r.FirstSeen = earlier(prev.firstOccurrence(), r.Timestamp)
-	r.Timestamp = later(prev.Timestamp, r.Timestamp)
+	s := r.span().AbsorbInto(prev.span())
+	r.RepeatCount, r.FirstSeen, r.Timestamp = s.Count, s.FirstSeen, s.Latest
 	return r
 }
 
-// earlier and later keep a collapsed run's span honest regardless of the order
-// occurrences arrived in — a reloaded log can hold them out of order.
-func earlier(a, b time.Time) time.Time {
-	if b.Before(a) {
-		return b
-	}
-	return a
-}
-
-func later(a, b time.Time) time.Time {
-	if b.After(a) {
-		return b
-	}
-	return a
-}
-
-// occurrences is how many identical outcomes a record stands for.
-func (r Record) occurrences() int {
-	if r.RepeatCount > 1 {
-		return r.RepeatCount
-	}
-	return 1
-}
-
-// firstOccurrence is when a record's run started.
-func (r Record) firstOccurrence() time.Time {
-	if !r.FirstSeen.IsZero() {
-		return r.FirstSeen
-	}
-	return r.Timestamp
+// span reads the record's collapsed-run bookkeeping.
+func (r Record) span() events.Span {
+	return events.Span{Count: r.RepeatCount, FirstSeen: r.FirstSeen, Latest: r.Timestamp}
 }
 
 // collapseRuns folds each run of identical repeated outcomes in a

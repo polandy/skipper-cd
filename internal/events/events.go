@@ -176,49 +176,18 @@ func (e DeployEvent) RepeatsOf(prev DeployEvent) bool {
 		e.Error == prev.Error
 }
 
-// absorb returns e carrying prev's run: the occurrence count grows by one (or
-// starts at two), FirstSeen keeps the oldest occurrence, and SupersedesID names
-// the event prev was, so a UI can replace rather than append.
+// absorb returns e carrying prev's run, plus SupersedesID naming the event
+// prev was so a UI can replace its row rather than append one.
 func (e DeployEvent) absorb(prev DeployEvent) DeployEvent {
-	e.RepeatCount = prev.occurrences() + 1
-	e.FirstSeen = earlier(prev.firstOccurrence(), e.Timestamp)
-	e.Timestamp = later(prev.Timestamp, e.Timestamp)
+	s := e.span().AbsorbInto(prev.span())
+	e.RepeatCount, e.FirstSeen, e.Timestamp = s.Count, s.FirstSeen, s.Latest
 	e.SupersedesID = prev.ID
 	return e
 }
 
-// earlier and later keep a collapsed run's span honest regardless of the order
-// occurrences arrived in — a reloaded log can hold them out of order.
-func earlier(a, b time.Time) time.Time {
-	if b.Before(a) {
-		return b
-	}
-	return a
-}
-
-func later(a, b time.Time) time.Time {
-	if b.After(a) {
-		return b
-	}
-	return a
-}
-
-// occurrences is how many identical outcomes an event stands for: 1 unless it
-// already collapsed a run.
-func (e DeployEvent) occurrences() int {
-	if e.RepeatCount > 1 {
-		return e.RepeatCount
-	}
-	return 1
-}
-
-// firstOccurrence is when an event's run started — its own timestamp unless it
-// already collapsed a run.
-func (e DeployEvent) firstOccurrence() time.Time {
-	if !e.FirstSeen.IsZero() {
-		return e.FirstSeen
-	}
-	return e.Timestamp
+// span reads the event's collapsed-run bookkeeping.
+func (e DeployEvent) span() Span {
+	return Span{Count: e.RepeatCount, FirstSeen: e.FirstSeen, Latest: e.Timestamp}
 }
 
 // SSEPayload returns a copy suitable for SSE streaming: diffs and commits are
