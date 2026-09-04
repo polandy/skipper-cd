@@ -11,15 +11,11 @@ import (
 	"github.com/polandy/skipper-cd/internal/config"
 )
 
-// hashStackInputs hashes every tracked input of a stack (Invariant 2): the
-// compose file, env_files, the global vars_file and the watch_dirs contents
-// under repoDir, the Dockerfiles of its build: services, and the stack's
-// deploy-shaping config hash. It is the single definition of what change
-// detection reads — the deploy path and the run-plan look-ahead both resolve
-// their inputs here, so neither can start tracking one the other misses.
-// cf is nil for an unparseable compose file: no Dockerfile is tracked then.
-// The Dockerfile paths are returned because the deploy path needs them again
-// to decide whether to build.
+// hashStackInputs hashes a stack's tracked inputs (Invariant 2). It is their
+// single definition: the deploy path and the run-plan look-ahead both resolve
+// here, so neither can track an input the other misses. cf is nil for an
+// unparseable compose file — no Dockerfile is tracked then. The Dockerfile
+// paths come back because the deploy path needs them again to decide on a build.
 func (d *Deployer) hashStackInputs(stack config.Stack, baseDir, repoDir, varsFile string, cf *composeFile) (stackFileHashes, []string, error) {
 	var dockerfilePaths []string
 	if cf != nil {

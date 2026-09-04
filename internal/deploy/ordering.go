@@ -192,12 +192,10 @@ func (d *Deployer) markPending(stack string, changed []string, reason string) {
 func (d *Deployer) pendingChanges(stack config.Stack, baseDir, varsFile string, state *persistedState) ([]string, bool) {
 	repoDir := filepath.Join(baseDir, stack.Name)
 
-	// Parsed quietly: this look-ahead runs over every stack on every tick, and
-	// prepareStackRun already warns once per deploy about an unparseable file.
-	cf, err := parseComposeFile(filepath.Join(repoDir, compose.FileName))
-	if err != nil {
-		cf = nil
-	}
+	// The parse error is deliberately dropped: it yields a nil file, which
+	// hashStackInputs reads as "no build services", and prepareStackRun reports
+	// it once per deploy — this look-ahead runs over every stack on every tick.
+	cf, _ := parseComposeFile(filepath.Join(repoDir, compose.FileName))
 
 	currentHashes, _, err := d.hashStackInputs(stack, baseDir, repoDir, varsFile, cf)
 	if err != nil {
