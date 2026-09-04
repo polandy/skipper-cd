@@ -52,18 +52,15 @@ func (d *Deployer) prepareStackRun(stack config.Stack, baseDir, varsFile string,
 	// false (ADR-0049). See resolveHealthCheck.
 	run.stack.DeployHealthCheck = resolveHealthCheck(stack, compose)
 
-	var dockerfilePaths []string
 	var currentImages serviceImageByName
 	if compose != nil {
-		dockerfilePaths = compose.dockerfilePaths(repoDir)
 		currentImages = compose.images()
 	}
 
-	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
+	currentHashes, dockerfilePaths, err := d.hashStackInputs(stack, baseDir, repoDir, varsFile, compose)
 	if err != nil {
 		return stackPrep{}, fmt.Errorf("compute per-file hashes: %w", err)
 	}
-	d.addStackConfigHash(currentHashes, stack, baseDir)
 
 	return stackPrep{
 		run:             run,
