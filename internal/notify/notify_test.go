@@ -29,17 +29,59 @@ func counterValue(t *testing.T, c prometheus.Counter) float64 {
 }
 
 // fakeDoer records every request it is handed and returns a configurable status.
+// deliverySignalCap bounds the delivery signal buffer; a test never awaits
+// more deliveries than this.
+const deliverySignalCap = 64
+
+// failTimeout only keeps a broken test from hanging forever. No assertion
+// depends on it elapsing: awaitDeliveries blocks on a signal Do sends.
+const failTimeout = 5 * time.Second
+
 type fakeDoer struct {
-	mu     sync.Mutex
-	reqs   []*http.Request
-	bodies []string
-	status int
-	err    error
+	mu        sync.Mutex
+	reqs      []*http.Request
+	bodies    []string
+	status    int
+	err       error
+	delivered chan struct{} // one send per Do, so a test can await a delivery
+}
+
+// signals returns the delivery channel, creating it on first use so the
+// zero-value &fakeDoer{} literals throughout these tests keep working.
+func (d *fakeDoer) signals() chan struct{} {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.signalsLocked()
+}
+
+func (d *fakeDoer) signalsLocked() chan struct{} {
+	if d.delivered == nil {
+		d.delivered = make(chan struct{}, deliverySignalCap)
+	}
+	return d.delivered
+}
+
+// awaitDeliveries blocks until n requests have been delivered, so a test
+// observes asynchronous delivery instead of sleeping and hoping.
+func (d *fakeDoer) awaitDeliveries(t *testing.T, n int) {
+	t.Helper()
+	ch := d.signals()
+	for i := range n {
+		select {
+		case <-ch:
+		case <-time.After(failTimeout):
+			t.Fatalf("delivery %d of %d did not happen", i+1, n)
+		}
+	}
 }
 
 func (d *fakeDoer) Do(r *http.Request) (*http.Response, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	select {
+	case d.signalsLocked() <- struct{}{}:
+	default: // an unread signal must never block a delivery
+	}
 	var body string
 	if r.Body != nil {
 		b, _ := io.ReadAll(r.Body)
@@ -226,15 +268,7 @@ func TestNotifier_RunThreadsRunCtxIntoLiveDelivery(t *testing.T) {
 	go func() { n.Run(ctx); close(done) }()
 
 	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusFailed})
-	deadline := time.After(2 * time.Second)
-	for doer.count() == 0 {
-		select {
-		case <-deadline:
-			t.Fatal("notification was not delivered")
-		default:
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
+	doer.awaitDeliveries(t, 1)
 	cancel()
 	<-done
 
