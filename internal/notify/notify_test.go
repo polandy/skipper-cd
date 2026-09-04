@@ -127,13 +127,13 @@ func TestNotifier_NotifyEnqueuesTerminalOnly(t *testing.T) {
 	// A removed stack is a UI/history record, not an alert: nothing broke and
 	// nothing is running that was not running before (ADR-0036 amendment).
 	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusRemoved})
-	if len(n.queue) != 0 {
-		t.Fatalf("non-terminal statuses must not enqueue, got %d", len(n.queue))
+	if len(n.items) != 0 {
+		t.Fatalf("non-terminal statuses must not enqueue, got %d", len(n.items))
 	}
 
 	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusFailed})
-	if len(n.queue) != 1 {
-		t.Fatalf("terminal status should enqueue, got %d", len(n.queue))
+	if len(n.items) != 1 {
+		t.Fatalf("terminal status should enqueue, got %d", len(n.items))
 	}
 }
 
@@ -145,8 +145,8 @@ func TestNotifier_NotifyDropsWhenBufferFull(t *testing.T) {
 	for range notifyBufferSize * 2 {
 		n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusFailed})
 	}
-	if len(n.queue) != notifyBufferSize {
-		t.Fatalf("queue should cap at %d, got %d", notifyBufferSize, len(n.queue))
+	if len(n.items) != notifyBufferSize {
+		t.Fatalf("queue should cap at %d, got %d", notifyBufferSize, len(n.items))
 	}
 }
 
@@ -156,7 +156,7 @@ func TestNotifier_DrainDeliversQueued(t *testing.T) {
 
 	n.Notify(events.DeployEvent{Stack: "a", Status: events.StatusFailed})
 	n.Notify(events.DeployEvent{Stack: "b", Status: events.StatusFailed})
-	n.drain()
+	n.drain(n.handle)
 
 	if doer.count() != 2 {
 		t.Fatalf("drain should deliver all queued events, got %d", doer.count())

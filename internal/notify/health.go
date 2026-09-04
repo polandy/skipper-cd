@@ -3,7 +3,6 @@ package notify
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -30,10 +29,8 @@ type healthTarget struct {
 // timeout, Doer) but is fully separate from the deploy-event Notifier
 // (ADR-0031). It satisfies healthwatch.Alerter.
 type HealthAlerter struct {
+	*transport[healthwatch.Alert]
 	targets []healthTarget
-	doer    Doer
-	timeout time.Duration
-	queue   chan healthwatch.Alert
 }
 
 // NewHealthAlerter builds a HealthAlerter from health_watch targets. A nil
@@ -48,17 +45,9 @@ func NewHealthAlerter(cfgTargets []config.NotificationTarget, doer Doer, timeout
 		}
 		targets = append(targets, healthTarget{format: ct.Format, formatter: f})
 	}
-	if doer == nil {
-		doer = http.DefaultClient
-	}
-	if timeout <= 0 {
-		timeout = defaultRequestTimeout
-	}
 	return &HealthAlerter{
-		targets: targets,
-		doer:    doer,
-		timeout: timeout,
-		queue:   make(chan healthwatch.Alert, notifyBufferSize),
+		transport: newTransport[healthwatch.Alert](doer, timeout, "health alert dropped: buffer full"),
+		targets:   targets,
 	}, nil
 }
 
@@ -72,41 +61,11 @@ func (a *HealthAlerter) Fire(al healthwatch.Alert) {
 	if !a.Enabled() {
 		return
 	}
-	select {
-	case a.queue <- al:
-	default:
-		slog.Warn("health alert dropped: buffer full", "stack", al.Stack, "service", al.Service)
-		metrics.NotificationsDropped.Inc()
-	}
+	a.push(al, "stack", al.Stack, "service", al.Service)
 }
 
-// Run consumes queued alerts until ctx is cancelled, then best-effort drains
-// what is buffered within one timeout and returns. Intended to run in its own
-// goroutine; the caller must not block shutdown on it (ADR-0014 ethos).
-func (a *HealthAlerter) Run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			a.drain()
-			return
-		case al := <-a.queue:
-			a.handle(ctx, al)
-		}
-	}
-}
-
-func (a *HealthAlerter) drain() {
-	ctx, cancel := context.WithTimeout(context.Background(), a.timeout)
-	defer cancel()
-	for {
-		select {
-		case al := <-a.queue:
-			a.handle(ctx, al)
-		default:
-			return
-		}
-	}
-}
+// Run delivers queued alerts until ctx is cancelled, then drains what is left.
+func (a *HealthAlerter) Run(ctx context.Context) { a.run(ctx, a.handle) }
 
 // handle delivers one alert to every target. A failing target is logged and
 // skipped; it never aborts the others.
