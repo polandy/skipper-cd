@@ -20,7 +20,7 @@ Or run a single job:
 make test            # go build/vet/gofmt + go test -race + coverage summary
 make vendor-check    # go mod tidy && vendor, then diff go.mod/go.sum/vendor
 make lint            # golangci-lint run ./...
-make govulncheck     # govulncheck ./...
+make govulncheck     # govulncheck over the module's packages (npm trees excluded)
 make e2e             # go test -tags e2e ./e2e (stub docker, no daemon)
 make e2e-ui          # npm ci + Playwright against the embedded UI
 make docs            # mkdocs build --strict
