@@ -175,8 +175,23 @@ func validateStackDependencies(stacks []Stack) error {
 		}
 	}
 
-	// Kahn's algorithm: peel stacks whose dependencies are all resolved; any
-	// leftover is part of (or downstream of) a cycle.
+	if stuck := cyclicStacks(stacks); len(stuck) > 0 {
+		return cycleError(stuck)
+	}
+	return nil
+}
+
+// cyclicStacks returns the names that depends_on cannot order, in config
+// order: Kahn's algorithm peels every stack whose dependencies are resolved,
+// and whatever is left is part of — or downstream of — a cycle. A dependency
+// outside the given set is ignored, so a stack the caller already rejected on
+// its own does not make every dependent look cyclic.
+func cyclicStacks(stacks []Stack) []string {
+	inSet := make(map[string]bool, len(stacks))
+	for _, s := range stacks {
+		inSet[s.Name] = true
+	}
+
 	resolved := make(map[string]bool, len(stacks))
 	for remaining := len(stacks); remaining > 0; {
 		progressed := false
@@ -186,7 +201,7 @@ func validateStackDependencies(stacks []Stack) error {
 			}
 			allResolved := true
 			for _, dep := range s.DependsOn {
-				if !resolved[dep] {
+				if inSet[dep] && !resolved[dep] {
 					allResolved = false
 					break
 				}
@@ -198,16 +213,23 @@ func validateStackDependencies(stacks []Stack) error {
 			}
 		}
 		if !progressed {
-			var stuck []string
-			for _, s := range stacks {
-				if !resolved[s.Name] {
-					stuck = append(stuck, s.Name)
-				}
-			}
-			return fmt.Errorf("depends_on cycle involving stacks: %s", strings.Join(stuck, ", "))
+			break
 		}
 	}
-	return nil
+
+	var stuck []string
+	for _, s := range stacks {
+		if !resolved[s.Name] {
+			stuck = append(stuck, s.Name)
+		}
+	}
+	return stuck
+}
+
+// cycleError is the message both modes report for a depends_on cycle: the
+// host config rejects the whole file, stack discovery fails the stacks named.
+func cycleError(stuck []string) error {
+	return fmt.Errorf("depends_on cycle involving stacks: %s", strings.Join(stuck, ", "))
 }
 
 // validateHooks checks a stack's optional hooks section: no blank command
