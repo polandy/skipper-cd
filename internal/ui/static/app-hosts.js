@@ -262,7 +262,7 @@ App.hosts = (function () {
     items.sort(function (a, b) {
       return a.rec.timestamp < b.rec.timestamp ? 1 : a.rec.timestamp > b.rec.timestamp ? -1 : 0;
     });
-    if (items.length) App.chrome.showTable();
+    if (items.length) App.deploys.showTable();
     // The first row seen per (host, stack) is the newest — it carries the live
     // health pill (a current per-stack value), like the local newest row.
     const seenNewest = {};

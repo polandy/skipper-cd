@@ -46,7 +46,7 @@ vendor-check:
 ui-unit:
 	node --test internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js
 
-# Prettier/ESLint for the embedded UI's plain-script JS (app.js, app-state.js, app-panels.js, app-hosts.js, app-roster.js, app-autosync.js, app-logs.js, app-clog.js,
+# Prettier/ESLint for the embedded UI's plain-script JS (app.js, app-state.js, app-panels.js, app-hosts.js, app-roster.js, app-deploys.js, app-autosync.js, app-logs.js, app-clog.js,
 # app-render.js, app-helpers.js, the .test.js files, sw.js). Dev-only npm devDependencies, scoped to
 # internal/ui/static — never shipped in the binary (ADR-0035). app.css keeps
 # its hand-tuned compact style and is intentionally not formatted here.
