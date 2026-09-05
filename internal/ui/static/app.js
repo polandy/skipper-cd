@@ -1,4 +1,17 @@
 (function () {
+  // Shared state and the per-host resolvers come from app-state.js (loaded
+  // before this file); S is the store every view reads and applyState /
+  // applyPeers / handleEvent below write.
+  const S = App.state;
+  const {
+    healthMapFor,
+    healthwatchMapFor,
+    appLinksMapFor,
+    repoWebURLFor,
+    updatesFor,
+    stackUpdatesFor,
+    stackHealthFor,
+  } = App.resolve;
   const tbody = document.getElementById('tbody');
   const table = document.getElementById('deploy-table');
   const emptyState = document.getElementById('empty-state');
@@ -101,47 +114,18 @@
   // rather than duplicated, and removed once it deploys or drains.
   const queuedRows = {};
   let hasRows = false;
-  let absoluteTime = localStorage.getItem('timeMode') === 'absolute';
-  // Whether the deploy table's Version column is shown. On by default; the
-  // Deploys view-options toggle persists an off choice per browser. Only the
-  // explicit 'off' hides it, so a first-time visitor sees the column.
-  let imageDeltaOn = localStorage.getItem('imageDelta') !== 'off';
-
-  // Autosync state, populated from the 'autosync' and 'queue' SSE events.
-  let autosyncSnap = null; // GET /api/autosync shape
-  let autosyncVersion = null; // version of the applied snapshot
-  let queueSnap = { count: 0, pending: [] }; // GET /api/queue shape
-  let queueByStack = {}; // stack name -> pending item
-
-  // Run look-ahead, from the 'upcoming' SSE event: stacks that will deploy after
-  // the one currently deploying, in deploy order.
-  let upcomingSnap = [];
-
-  // Live stack health, from the 'health' SSE snapshot: stack name -> { status,
-  // services }. Rendered as a pill on the newest row of each stack (ADR-0027).
-  let healthSnap = {};
-
-  // Health-watch status history, from the 'healthwatch' SSE snapshot: stack ->
-  // service -> phases (newest first, <= 10). Empty when the watchdog is off —
-  // the health panel then renders without age/timeline (ADR-0031).
-  let healthwatchSnap = {};
 
   // ── Disabled-stacks strip (ADR-0034) ──
-
-  // Names parked with disabled: true, from the 'stacks' SSE snapshot (stack
-  // discovery, ADR-0034). Rendered as a quiet chip line below the deploy table;
-  // empty (and the line hidden) in host-list mode.
-  let disabledSnap = [];
 
   function renderDisabledStacks() {
     const wrap = document.getElementById('disabled-stacks');
     const list = document.getElementById('disabled-list');
     list.textContent = '';
-    if (!disabledSnap.length) {
+    if (!S.disabledSnap.length) {
       wrap.classList.remove('shown');
       return;
     }
-    disabledSnap.forEach(function (name) {
+    S.disabledSnap.forEach(function (name) {
       const chip = document.createElement('span');
       chip.className = 'dis-chip';
       chip.textContent = name;
@@ -152,83 +136,19 @@
 
   // The Stacks view roster: the full stack set (stack discovery, ADR-0034, or
   // the host stacks: list) with each stack's last outcome, from the
-  // 'stacks' SSE snapshot. Inventory, not an event log — every declared stack
-  // appears, including never-deployed and disabled ones. See
-  // dev-docs/stack-roster-spec.md.
-  let rosterSnap = [];
-
-  // The registry update-check snapshot ({stacks, checked_at}, ADR-0054) from
-  // the same 'stacks' snapshot, or null while the check is disabled or has not
-  // run. Drives the amber ⇡ markers on version chips and the containers
-  // panel's update summary.
-  let updatesSnap = null;
-
-  // The bad terminal audit records of the last 24h from the same 'stacks'
-  // snapshot, driving the header incident badge. The badge re-filters the list
-  // against the window on the relative-time tick, so the count ages out
-  // between republishes.
-  let incidentsSnap = [];
-
-  // The deploy repo's forge browse URL from the same 'stacks' snapshot, or ''
-  // when the server could derive none from repo_url. Every commit SHA the UI
-  // prints links to its commit page through it (commitLinkHTML); without it the
-  // SHAs stay plain text. A peer's SHAs use that peer's own value — its repo may
-  // live on a different forge — so this one is the local set's base only.
-  let repoWebURL = '';
 
   // ── Multi-host state + per-host resolvers (ADR-0048) ──
 
-  // peersSnap is the 'peers' state payload
-  // ({self, peers:[{name,url,reachable,stale,last_seen,state,deploys}]}) or null
-  // on a single-host instance with no peers configured — in which case the whole
-  // multi-host surface (Hosts control, Host column, peer rows) stays hidden and
-  // the UI is exactly the single-host one. selfHost is the primary's own host
-  // label, the identity every local row is tagged with. hostColors maps each
-  // host name to its palette slot (assignHostColors, collision-avoiding).
-  // hostSelected is the set of in-view host names (the Hosts filter); null means
-  // all hosts. Persisted per browser (localStorage key hostFilter) and restored
-  // once, the first time the peers snapshot arrives (see applyPeers) — the host
-  // set isn't known any earlier — reconciled against it via reconcileHostFilter
-  // so a saved host that no longer exists can't strand the view.
-  let peersSnap = null;
-  let selfHost = '';
+  // hostColors maps each host name to its palette slot (assignHostColors,
+  // collision-avoiding). hostSelected is the set of in-view host names (the
+  // Hosts filter); null means all hosts. Persisted per browser (localStorage
+  // key hostFilter) and restored once, the first time the peers snapshot
+  // arrives (see applyPeers) — the host set isn't known any earlier —
+  // reconciled against it via reconcileHostFilter so a saved host that no
+  // longer exists can't strand the view.
   let hostColors = {};
   let hostSelected = null;
   let hostFilterRestored = false;
-
-  // healthMapFor / healthwatchMapFor / appLinksMapFor / repoWebURLFor resolve
-  // the per-stack map (or forge browse URL) for a host: the primary's own live
-  // snapshot for self, else the peer's fanned-in state (ADR-0048), so peer rows
-  // render the same container/health/app-link detail the primary shows for its
-  // own stacks. Thin wrappers binding the module-scoped snapshots to the pure
-  // resolve* helpers (app-helpers.js), which own — and unit-test — the
-  // self-vs-peer fallback and the tolerance for older peers missing a section.
-  function healthMapFor(host) {
-    return resolveHealthMap(peersSnap, selfHost, host, healthSnap);
-  }
-  function healthwatchMapFor(host) {
-    return resolveHealthwatchMap(peersSnap, selfHost, host, healthwatchSnap);
-  }
-  function appLinksMapFor(host) {
-    return resolveAppLinksMap(peersSnap, selfHost, host, appLinksSnap);
-  }
-  function repoWebURLFor(host) {
-    return resolveRepoWebURL(peersSnap, selfHost, host, repoWebURL);
-  }
-  function updatesFor(host) {
-    return resolveUpdates(peersSnap, selfHost, host, updatesSnap);
-  }
-  // stackUpdatesFor resolves one stack's update map (service → {latest,
-  // rebuilt}) on a host — the parameter the version-chip renderers take.
-  function stackUpdatesFor(stack, host) {
-    const u = updatesFor(host);
-    return (u && u.stacks && u.stacks[stack]) || null;
-  }
-  // stackHealthFor resolves one stack's live-health entry on a host — the
-  // parameter the roster cell renderers in app-render.js take.
-  function stackHealthFor(stack, host) {
-    return healthMapFor(host)[stack];
-  }
 
   // The reserved stack key for nixos-rebuild deploys (invariant 4). It is a
   // pseudo-stack, not a Docker Compose project and not in the Stacks roster, so
@@ -238,10 +158,6 @@
 
   // ── App links (Traefik-routed hostnames) ──
 
-  // Traefik-routed hostnames per stack, from the 'app_links' SSE snapshot
-  // (dev-docs/traefik-app-links-spec.md): stack name -> hostnames, absent
-  // when none were discovered. Feeds the roster row's link icon.
-  let appLinksSnap = {};
   // The currently open app-link popover's wrapping element (multi-host case),
   // or null. One open at a time; a stale reference (its row was replaced by a
   // re-render) simply fails every future .contains() check and self-clears.
@@ -382,20 +298,20 @@
     // Attention-ranked, stable (rosterOrdered, app-helpers.js): unhealthy first,
     // backend order kept within each group. Applied only here, at full render —
     // never on a live health poll — so rows never jump under an open panel.
-    rosterOrdered(rosterSnap, healthSnap).forEach(function (entry) {
+    rosterOrdered(S.rosterSnap, S.healthSnap).forEach(function (entry) {
       const deploying = !!deployingRows[entry.name];
       // Time + commit only apply to a real past deploy.
       const showMeta = !entry.disabled && !deploying && !!entry.last_status;
       // Shared time mode; title carries the opposite (relative <-> absolute).
       const when =
         showMeta && entry.last_at
-          ? absoluteTime
+          ? S.absoluteTime
             ? fullTime(entry.last_at)
             : formatTime(entry.last_at)
           : '';
       const whenTitle =
         showMeta && entry.last_at
-          ? absoluteTime
+          ? S.absoluteTime
             ? formatTime(entry.last_at)
             : fullTime(entry.last_at)
           : '';
@@ -404,17 +320,17 @@
       row.className = entry.disabled ? 'roster-row disabled' : 'roster-row';
       row.dataset.testid = 'roster-row';
       row.dataset.stack = entry.name;
-      row.dataset.host = selfHost; // local stacks belong to the primary host
+      row.dataset.host = S.selfHost; // local stacks belong to the primary host
       // The updates-only filter's flag (UI_SPEC.md "Updates filter") — the
       // check rides the same 'stacks' snapshot that rebuilds these rows.
       if (stackHasUpdate(stackUpdatesFor(entry.name, ''))) row.dataset.updates = '1';
       // Mark the row with its live health so CSS can give an unhealthy row the
       // same severity bar + tint as a failed deploy row (kept in sync live by
       // updateRosterHealth). Only enabled locals — disabled stacks aren't polled.
-      const rowHealth = entry.disabled ? null : healthSnap[entry.name];
+      const rowHealth = entry.disabled ? null : S.healthSnap[entry.name];
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
       row.innerHTML =
-        `<span class="roster-stack"><span class="roster-ident">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="${escapeAttr(entry.name)}">${escapeHtml(entry.name)}</span></span>${rowActionClusterHTML(
+        `<span class="roster-stack"><span class="roster-ident">${hostChip(S.selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="${escapeAttr(entry.name)}">${escapeHtml(entry.name)}</span></span>${rowActionClusterHTML(
           jumpBtnHTML('deploys', entry.name),
           entry.disabled ? '' : linkCell(entry.name),
           rosterRowActionsHTML(entry),
@@ -427,7 +343,7 @@
         ) +
         `<span class="roster-status">${rosterStatusHTML(entry, !!deployingRows[entry.name])}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, rowHealth)}${entry.disabled ? '' : outcomeStripHTML(entry.recent, Date.now()) + lastIncidentHTML(entry.last_incident, Date.now())}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
-        commitLinkHTML(commit, { cls: 'roster-sha', base: repoWebURL, title: commit });
+        commitLinkHTML(commit, { cls: 'roster-sha', base: S.repoWebURL, title: commit });
       populateIcon(row.querySelector('.stack-icon'), entry.name);
       list.appendChild(row);
     });
@@ -460,21 +376,21 @@
   // a peer's stack. A click expands the row's read-only detail (containers, from
   // the peer's fanned-in health). Rows are grouped per host after the local set.
   function renderPeerRosterRows(list) {
-    if (!peersSnap) return;
-    (peersSnap.peers || []).forEach(function (p) {
+    if (!S.peersSnap) return;
+    (S.peersSnap.peers || []).forEach(function (p) {
       const roster = (p.state && p.state.stacks && p.state.stacks.roster) || [];
       const peerRepo = repoWebURLFor(p.name); // a peer's commits live on its own forge
       roster.forEach(function (entry) {
         const showMeta = !entry.disabled && !!entry.last_status;
         const when =
           showMeta && entry.last_at
-            ? absoluteTime
+            ? S.absoluteTime
               ? fullTime(entry.last_at)
               : formatTime(entry.last_at)
             : '';
         const whenTitle =
           showMeta && entry.last_at
-            ? absoluteTime
+            ? S.absoluteTime
               ? formatTime(entry.last_at)
               : fullTime(entry.last_at)
             : '';
@@ -513,11 +429,8 @@
 
   // ── Orphan compose projects (ADR-0036) ──
 
-  // Orphans (ADR-0036): compose projects the discovered stack set no longer
-  // accounts for, from the 'orphans' SSE snapshot — a collapsed section below
-  // the table, hidden when empty. orphansOpen remembers expanded rows so the
-  // per-poll re-render does not collapse them.
-  let orphansSnap = [];
+  // orphansOpen remembers expanded rows so the per-poll re-render does not
+  // collapse them.
   let orphansOpen = new Set();
   let orphansSectionOpen = false; // the user's manual toggle of the section header
   let announcedOrphans = new Set(); // orphaned projects already surfaced, so a manual close sticks
@@ -574,7 +487,7 @@
   // longer accounts for — the ones a removal leaves behind. Unmanaged projects
   // (never deployed by skipper) are inventory, not news.
   function orphanedProjects() {
-    return orphansSnap
+    return S.orphansSnap
       .filter(function (o) {
         return o.class === 'orphaned';
       })
@@ -609,16 +522,16 @@
     const q = (deployFilter.value || '').trim().toLowerCase();
     count.textContent = String(
       q
-        ? orphansSnap.filter(function (o) {
+        ? S.orphansSnap.filter(function (o) {
             return orphanMatchesQuery(o, q);
           }).length
-        : orphansSnap.length,
+        : S.orphansSnap.length,
     );
-    if (!orphansSnap.length) {
+    if (!S.orphansSnap.length) {
       wrap.classList.remove('shown');
       return;
     }
-    orphansSnap.forEach(function (o) {
+    S.orphansSnap.forEach(function (o) {
       const conts = o.containers || [];
       const item = document.createElement('div');
       item.className = 'orphan-item';
@@ -704,7 +617,7 @@
     const q = (deployFilter.value || '').trim().toLowerCase();
     const searchOpen =
       !!q &&
-      orphansSnap.some(function (o) {
+      S.orphansSnap.some(function (o) {
         return orphanMatchesQuery(o, q);
       });
     const open = orphansSectionOpen || searchOpen;
@@ -793,7 +706,7 @@
     }
     // The diff panel only ever shows the local repo's commits — a peer's diff
     // arrives without commit metadata — so the local forge base is right here.
-    el.innerHTML = diffPanelHTML(diffs, commits, meta, repoWebURL);
+    el.innerHTML = diffPanelHTML(diffs, commits, meta, S.repoWebURL);
     return el;
   }
 
@@ -884,12 +797,9 @@
   }
 
   // ─── Deploy hooks (ADR-0038) ───
-  // Hook commands ride inline on the stacks snapshot (no fetch); hookRunSnap is
-  // the currently-executing hook ({} when none) from the hookrun SSE snapshot.
-  let hookRunSnap = {};
 
   function hooksFor(stack) {
-    const e = rosterSnap.find(function (r) {
+    const e = S.rosterSnap.find(function (r) {
       return r.name === stack;
     });
     return e && e.hooks ? e.hooks : null;
@@ -937,7 +847,7 @@
   }
 
   // Paint the running-hook phase + pulse the badge on the stack's row in both
-  // views; clear it when hookRunSnap has no stack.
+  // views; clear it when S.hookRunSnap has no stack.
   function applyHookRun() {
     document.querySelectorAll('.hook-phase').forEach(function (n) {
       n.remove();
@@ -947,7 +857,7 @@
       .forEach(function (b) {
         b.removeAttribute('data-hook-active');
       });
-    const hr = hookRunSnap;
+    const hr = S.hookRunSnap;
     if (!hr || !hr.stack) return;
 
     // Deploys view: the stack's newest row while deploying. The hooks badge now
@@ -1566,7 +1476,7 @@
   // pendingReason draws a stack's pause/block reason from the queue snapshot
   // for pendingTagHTML (app-render.js).
   function pendingReason(stack) {
-    const item = queueByStack[stack];
+    const item = S.queueByStack[stack];
     return item && item.reason;
   }
 
@@ -1577,7 +1487,7 @@
     row.dataset.stack = evt.stack;
     row.dataset.status = evt.status;
     row.dataset.eventId = evt.id;
-    row.dataset.host = selfHost; // local rows belong to the primary host
+    row.dataset.host = S.selfHost; // local rows belong to the primary host
     if (evt.has_diffs) row.dataset.hasDiffs = '1';
 
     const absTs = fullTime(evt.timestamp);
@@ -1597,10 +1507,11 @@
     if (evt.status !== 'healed' && evt.image_changes && evt.image_changes.length) {
       row.dataset.imageChanges = JSON.stringify(evt.image_changes);
     }
-    const delta = imageDeltaOn && evt.status !== 'healed' ? imageDeltaHTML(evt.image_changes) : '';
+    const delta =
+      S.imageDeltaOn && evt.status !== 'healed' ? imageDeltaHTML(evt.image_changes) : '';
     row.innerHTML =
-      `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(absoluteTime ? relTs : absTs)}">${absoluteTime ? absTs : relTs}</span>` +
-      `<span class="cell-stack">${hostChip(selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
+      `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(S.absoluteTime ? relTs : absTs)}">${S.absoluteTime ? absTs : relTs}</span>` +
+      `<span class="cell-stack">${hostChip(S.selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="col-version">${delta}</span>` +
       `<span class="status-cell">${badgeHTML(evt.status)}${retryNoteHTML(evt)}${repeatNoteHTML(evt)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
@@ -1647,7 +1558,7 @@
       // .cell-stack, so it reads as row state next to the other state badge
       // instead of competing with the stack-name icon cluster.
       let pill = statusCell.querySelector('.health-pill');
-      const h = newest ? healthSnap[stack] : null;
+      const h = newest ? S.healthSnap[stack] : null;
       if (h && h.status) {
         if (!pill) {
           // A real <button> (healthPillHTML) so the panel is keyboard-reachable
@@ -1799,14 +1710,14 @@
   // there is no fetch and no loading state.
   function createWatchedPanel(stack) {
     const entry =
-      rosterSnap.find(function (r) {
+      S.rosterSnap.find(function (r) {
         return r.name === stack;
       }) || {};
     const el = document.createElement('div');
     el.className = 'watched-panel';
     el.dataset.testid = 'watched-panel';
     el.dataset.watchedFor = stack;
-    el.innerHTML = watchedPanelHTML(entry, repoWebURL);
+    el.innerHTML = watchedPanelHTML(entry, S.repoWebURL);
     return el;
   }
 
@@ -1837,7 +1748,9 @@
     }
     // The fold toggle's aria-controls needs a document-unique id: several rows
     // can hold an open history at once, so the stack name would not do.
-    const body = auditRowsHTML(records, repoWebURL, absoluteTime, { id: 'a' + ++auditHistorySeq });
+    const body = auditRowsHTML(records, S.repoWebURL, S.absoluteTime, {
+      id: 'a' + ++auditHistorySeq,
+    });
     // Replace the loading line with the rows (keep the head).
     const head = el.querySelector('.ap-head');
     el.innerHTML = '';
@@ -1963,7 +1876,7 @@
 
   function updateDeployingIndicator() {
     const active = Object.keys(deployingRows);
-    const up = upcomingSnap;
+    const up = S.upcomingSnap;
     if (active.length > 0) {
       deployStatus.className = 'deploy-status active';
       dsActive.textContent = active.join(', ');
@@ -1986,7 +1899,7 @@
   // upcoming snapshot. Read-only — no switches.
   function renderRunPanel() {
     const active = Object.keys(deployingRows);
-    const up = upcomingSnap;
+    const up = S.upcomingSnap;
     runSub.innerHTML = runSummaryHTML(active, up);
     const total = active.length + up.length;
     runCount.textContent = total ? total : '';
@@ -2237,8 +2150,8 @@
       existing.querySelector('.cell-duration').textContent = formatDuration(evt.duration_ms);
       const tc = existing.querySelector('.cell-time');
       tc.dataset.ts = evt.timestamp;
-      tc.textContent = absoluteTime ? fullTime(evt.timestamp) : formatTime(evt.timestamp);
-      tc.title = absoluteTime ? formatTime(evt.timestamp) : fullTime(evt.timestamp);
+      tc.textContent = S.absoluteTime ? fullTime(evt.timestamp) : formatTime(evt.timestamp);
+      tc.title = S.absoluteTime ? formatTime(evt.timestamp) : fullTime(evt.timestamp);
       if (evt.changed_files && evt.changed_files.length > 0) {
         existing.querySelector('.col-files').innerHTML = filesHTML(evt.changed_files);
       }
@@ -2254,7 +2167,7 @@
       }
       const versionCell = existing.querySelector('.col-version');
       if (versionCell)
-        versionCell.innerHTML = imageDeltaOn ? imageDeltaHTML(evt.image_changes) : '';
+        versionCell.innerHTML = S.imageDeltaOn ? imageDeltaHTML(evt.image_changes) : '';
       if (evt.error) {
         existing.after(createErrorDetail(evt));
       }
@@ -2271,7 +2184,7 @@
   }
 
   setInterval(function () {
-    if (!absoluteTime) {
+    if (!S.absoluteTime) {
       tbody.querySelectorAll('.cell-time').forEach(function (cell) {
         const abs = cell.dataset.ts;
         if (abs) cell.textContent = formatTime(abs);
@@ -2297,13 +2210,13 @@
 
   // ── Multi-host fan-in (ADR-0048) ──
   // A peer instance's read data, merged into the local views and tagged by host.
-  // Everything here is inert on a single-host instance (peersSnap null): the
+  // Everything here is inert on a single-host instance (S.peersSnap null): the
   // Hosts control, Host column and peer rows never appear.
 
   // hostList is the effective host set: the primary (self) first, then each
   // peer — buildHostList (app-helpers.js) with the live peers snapshot bound.
   function hostList() {
-    return buildHostList(peersSnap, selfHost);
+    return buildHostList(S.peersSnap, S.selfHost);
   }
 
   // isHostSelected reports whether a host is in view. hostSelected null means the
@@ -2315,7 +2228,7 @@
   // recomputeHostColors reassigns palette slots whenever the host set changes,
   // keeping the no-two-hosts-share-a-colour guarantee (assignHostColors).
   function recomputeHostColors() {
-    if (!peersSnap) {
+    if (!S.peersSnap) {
       hostColors = {};
       return;
     }
@@ -2372,9 +2285,9 @@
       '<span class="cell-time" data-testid="time-cell" data-ts="' +
       escapeAttr(rec.timestamp) +
       '" title="' +
-      escapeAttr(absoluteTime ? relTs : absTs) +
+      escapeAttr(S.absoluteTime ? relTs : absTs) +
       '">' +
-      (absoluteTime ? absTs : relTs) +
+      (S.absoluteTime ? absTs : relTs) +
       '</span>' +
       '<span class="cell-stack">' +
       hostChip(hostName) +
@@ -2535,9 +2448,9 @@
     tbody.querySelectorAll('.peer-row, .peer-detail').forEach(function (r) {
       r.remove();
     });
-    if (!peersSnap) return;
+    if (!S.peersSnap) return;
     const items = [];
-    (peersSnap.peers || []).forEach(function (p) {
+    (S.peersSnap.peers || []).forEach(function (p) {
       (p.deploys || []).forEach(function (rec) {
         if (rec.status === 'skipped') return; // an unchanged stack is not shown, as locally
         items.push({ rec: rec, host: p.name, stale: !!p.stale });
@@ -2567,23 +2480,23 @@
   }
 
   // retagLocalRows fills in the host dot + data-host on local rows created before
-  // the first peers snapshot set selfHost (deploy history and the roster are both
+  // the first peers snapshot set S.selfHost (deploy history and the roster are both
   // painted just before it), across both merged views.
   function retagLocalRows() {
     tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function (row) {
-      row.dataset.host = selfHost;
+      row.dataset.host = S.selfHost;
       const cell = row.querySelector('.cell-stack');
-      if (cell) setLeadingChip(cell, selfHost);
+      if (cell) setLeadingChip(cell, S.selfHost);
     });
     document
       .getElementById('roster-list')
       .querySelectorAll('.roster-row[data-stack]:not(.peer-row)')
       .forEach(function (row) {
-        row.dataset.host = selfHost;
+        row.dataset.host = S.selfHost;
         // The chip leads the identity group, not the cell — the cell's first
         // child is that group.
         const cell = row.querySelector('.roster-ident');
-        if (cell) setLeadingChip(cell, selfHost);
+        if (cell) setLeadingChip(cell, S.selfHost);
       });
   }
 
@@ -2603,7 +2516,7 @@
   function renderHosts() {
     const btn = document.getElementById('hosts-btn');
     const hosts = hostList();
-    const hasPeers = !!(peersSnap && (peersSnap.peers || []).length);
+    const hasPeers = !!(S.peersSnap && (S.peersSnap.peers || []).length);
     btn.classList.toggle('enabled', hasPeers);
     if (!hasPeers) return;
 
@@ -2697,7 +2610,7 @@
     const stacksView = document.getElementById('stacks-view');
     const banner = document.getElementById('host-stale-banner');
     const roster = document.getElementById('roster-list');
-    if (!peersSnap || !(peersSnap.peers || []).length) {
+    if (!S.peersSnap || !(S.peersSnap.peers || []).length) {
       table.classList.remove('show-hosts', 'host-filter-active');
       stacksView.classList.remove('show-hosts', 'host-filter-active');
       banner.classList.remove('show');
@@ -2725,7 +2638,7 @@
     hostHideRows(roster);
     renderUpdateBadge(); // a host taken out of view takes its updates with it
 
-    const staleSel = (peersSnap.peers || []).filter(function (p) {
+    const staleSel = (S.peersSnap.peers || []).filter(function (p) {
       return isHostSelected(p.name) && (p.stale || !p.reachable);
     });
     if (staleSel.length) {
@@ -2771,7 +2684,7 @@
   // afterwards. Coalesced to one pass per frame so a history replay reflows once.
   let peerReflowScheduled = false;
   function schedulePeerReflow() {
-    if (!peersSnap || peerReflowScheduled) return;
+    if (!S.peersSnap || peerReflowScheduled) return;
     peerReflowScheduled = true;
     setTimeout(function () {
       peerReflowScheduled = false;
@@ -2783,9 +2696,9 @@
 
   // applyPeers ingests a fresh 'peers' snapshot end to end.
   function applyPeers(d) {
-    peersSnap = d || null;
-    selfHost = (peersSnap && peersSnap.self) || '';
-    if (!hostFilterRestored && peersSnap) {
+    S.peersSnap = d || null;
+    S.selfHost = (S.peersSnap && S.peersSnap.self) || '';
+    if (!hostFilterRestored && S.peersSnap) {
       hostFilterRestored = true; // once only — later refreshes must not override interactive picks
       const saved = (localStorage.getItem('hostFilter') || '').split(',').filter(Boolean);
       const restored = reconcileHostFilter(
@@ -2816,53 +2729,53 @@
         applyAutosyncSnapshot(d);
         break;
       case 'queue':
-        queueSnap = d;
-        queueByStack = {};
-        (queueSnap.pending || []).forEach(function (it) {
-          queueByStack[it.stack] = it;
+        S.queueSnap = d;
+        S.queueByStack = {};
+        (S.queueSnap.pending || []).forEach(function (it) {
+          S.queueByStack[it.stack] = it;
         });
         // A stack that left the pending set without a deploy event (e.g. resumed
         // then found unchanged) must lose its now-stale queued row.
         Object.keys(queuedRows).forEach(function (stack) {
-          if (!queueByStack[stack]) removeQueuedRow(stack);
+          if (!S.queueByStack[stack]) removeQueuedRow(stack);
         });
         refreshPendingTags();
         renderAutosync();
         break;
       case 'upcoming':
-        upcomingSnap = (d && d.upcoming) || [];
+        S.upcomingSnap = (d && d.upcoming) || [];
         updateDeployingIndicator();
         break;
       case 'hookrun':
-        hookRunSnap = d || {};
+        S.hookRunSnap = d || {};
         applyHookRun();
         break;
       case 'health':
-        healthSnap = (d && d.stacks) || {};
+        S.healthSnap = (d && d.stacks) || {};
         updateStackAffordances();
         updateRosterHealth();
         renderHealthAttention(); // beacon + band read the same snapshot
         break;
       case 'healthwatch':
-        healthwatchSnap = (d && d.stacks) || {};
+        S.healthwatchSnap = (d && d.stacks) || {};
         break;
       case 'stacks':
-        disabledSnap = (d && d.disabled) || [];
-        rosterSnap = (d && d.roster) || [];
-        repoWebURL = (d && d.repo_web_url) || '';
-        updatesSnap = (d && d.updates) || null;
-        incidentsSnap = (d && d.incidents_24h) || [];
+        S.disabledSnap = (d && d.disabled) || [];
+        S.rosterSnap = (d && d.roster) || [];
+        S.repoWebURL = (d && d.repo_web_url) || '';
+        S.updatesSnap = (d && d.updates) || null;
+        S.incidentsSnap = (d && d.incidents_24h) || [];
         renderDisabledStacks();
         renderRoster();
         updateStackAffordances(); // roster carries the hooks — (de)show the badge
         renderIncidentBadge();
         break;
       case 'app_links':
-        appLinksSnap = (d && d.stacks) || {};
+        S.appLinksSnap = (d && d.stacks) || {};
         updateAppLinks();
         break;
       case 'orphans':
-        orphansSnap = (d && d.orphans) || [];
+        S.orphansSnap = (d && d.orphans) || [];
         // Under an active search, re-run the filter so new data obeys the query;
         // otherwise a plain render.
         if (deployFilterWrap.classList.contains('has-value')) applyDeployFilter();
@@ -2923,7 +2836,7 @@
     connDot.parentElement.dataset.state = 'connecting';
     connDot.parentElement.title = 'connecting';
     armAnnounceGate(); // re-hydrate silently; the replay burst must not announce (T2.8)
-    autosyncVersion = null; // the version restarts with the server; the baseline re-seeds it
+    S.autosyncVersion = null; // the version restarts with the server; the baseline re-seeds it
     openStream();
   }
 
@@ -3005,22 +2918,22 @@
   function applyTimeMode() {
     timeModeBtns.forEach(function (btn) {
       if (!btn) return;
-      btn.classList.toggle('active', absoluteTime);
-      btn.title = absoluteTime ? 'Switch to relative time' : 'Switch to absolute time';
+      btn.classList.toggle('active', S.absoluteTime);
+      btn.title = S.absoluteTime ? 'Switch to relative time' : 'Switch to absolute time';
     });
     tbody.querySelectorAll('.cell-time').forEach(function (cell) {
       const ts = cell.dataset.ts;
       if (!ts) return;
-      cell.textContent = absoluteTime ? fullTime(ts) : formatTime(ts);
-      cell.title = absoluteTime ? formatTime(ts) : fullTime(ts);
+      cell.textContent = S.absoluteTime ? fullTime(ts) : formatTime(ts);
+      cell.title = S.absoluteTime ? formatTime(ts) : fullTime(ts);
     });
   }
 
   timeModeBtns.forEach(function (btn) {
     if (!btn) return;
     btn.addEventListener('click', function () {
-      absoluteTime = !absoluteTime;
-      localStorage.setItem('timeMode', absoluteTime ? 'absolute' : 'relative');
+      S.absoluteTime = !S.absoluteTime;
+      localStorage.setItem('timeMode', S.absoluteTime ? 'absolute' : 'relative');
       applyTimeMode();
       // Kept out of applyTimeMode: its setup-time call runs before the roster
       // block is initialized (would TDZ). Reached only on a click here.
@@ -3034,22 +2947,22 @@
   // collapses the whole Version column when off (.no-version — an empty column
   // would keep taking width, and its header would lie), and fills/empties every
   // already-rendered row's cell from its stashed image_changes, so flipping it
-  // takes effect live without a reload. New rows honour imageDeltaOn in
+  // takes effect live without a reload. New rows honour S.imageDeltaOn in
   // createRow / the settle path.
   const imageDeltaBtn = document.getElementById('image-delta-toggle');
   const deployTable = document.getElementById('deploy-table');
 
   function applyImageDelta() {
     if (imageDeltaBtn) {
-      imageDeltaBtn.classList.toggle('active', imageDeltaOn);
-      imageDeltaBtn.title = imageDeltaOn ? 'Hide the Version column' : 'Show the Version column';
+      imageDeltaBtn.classList.toggle('active', S.imageDeltaOn);
+      imageDeltaBtn.title = S.imageDeltaOn ? 'Hide the Version column' : 'Show the Version column';
     }
-    if (deployTable) deployTable.classList.toggle('no-version', !imageDeltaOn);
+    if (deployTable) deployTable.classList.toggle('no-version', !S.imageDeltaOn);
     tbody.querySelectorAll('.event-row[data-stack]').forEach(function (row) {
       const cell = row.querySelector('.col-version');
       if (!cell) return;
       cell.innerHTML =
-        imageDeltaOn && row.dataset.imageChanges
+        S.imageDeltaOn && row.dataset.imageChanges
           ? imageDeltaHTML(JSON.parse(row.dataset.imageChanges))
           : '';
     });
@@ -3057,10 +2970,10 @@
 
   if (imageDeltaBtn) {
     imageDeltaBtn.addEventListener('click', function () {
-      imageDeltaOn = !imageDeltaOn;
+      S.imageDeltaOn = !S.imageDeltaOn;
       // Store only the off choice; absence means the default (on), so a cleared
       // browser and a first-time visitor both get the delta.
-      if (imageDeltaOn) localStorage.removeItem('imageDelta');
+      if (S.imageDeltaOn) localStorage.removeItem('imageDelta');
       else localStorage.setItem('imageDelta', 'off');
       applyImageDelta();
     });
@@ -3127,9 +3040,9 @@
     // hits/total.
     renderOrphans();
     if (q) {
-      for (let j = 0; j < orphansSnap.length; j++) {
+      for (let j = 0; j < S.orphansSnap.length; j++) {
         total++;
-        if (orphanMatchesQuery(orphansSnap[j], q)) shown++;
+        if (orphanMatchesQuery(S.orphansSnap[j], q)) shown++;
       }
     }
     const narrowing = q.length > 0 || statuses.length > 0;
@@ -3289,7 +3202,7 @@
   }
 
   // updateAppLinks patches each already-rendered row's link icon in place from
-  // the current appLinksSnap, without a full renderRoster() rebuild — app_links
+  // the current S.appLinksSnap, without a full renderRoster() rebuild — app_links
   // updates on the health-poll cadence, far more often than the 'stacks'
   // snapshot, and a rebuild at that rate would tear down and refetch an open
   // card every few seconds (see reopenRosterPanel) for a single icon.
@@ -3332,7 +3245,7 @@
           stackHealthFor(row.dataset.stack, row.dataset.host),
           stackUpdatesFor(row.dataset.stack, row.dataset.host),
         );
-      const h = healthSnap[row.dataset.stack];
+      const h = S.healthSnap[row.dataset.stack];
       // Keep the row's health marker (drives the severity bar + tint) in sync
       // in place — no re-sort, so a row never jumps out from under an open panel.
       if (h && h.status) row.dataset.health = h.status;
@@ -3452,7 +3365,7 @@
     const stack = row.dataset.stack;
     // Containers (health, if known) above deploy history, bound as one card.
     let anchor = row;
-    const h = healthSnap[stack];
+    const h = S.healthSnap[stack];
     if (h && h.services && h.services.length) {
       const health = createHealthPanel(stack);
       anchor.after(health);
@@ -3658,7 +3571,7 @@
       (e.target && e.target.isContentEditable)
     )
       return;
-    if (activeView !== 'stacks' || !rosterSnap.length) return;
+    if (activeView !== 'stacks' || !S.rosterSnap.length) return;
     if (e.key === 'Escape') {
       if (rosterFilterWrap.classList.contains('revealed')) clearRosterFilter(true);
       return;
@@ -3679,7 +3592,7 @@
       `.roster-row[data-stack="${window.CSS && CSS.escape ? CSS.escape(name) : name}"]:not(.peer-row)`,
     );
     if (!row) return;
-    const entry = rosterSnap.find(function (x) {
+    const entry = S.rosterSnap.find(function (x) {
       return x.name === name;
     });
     const cell = row.querySelector('.roster-status');
@@ -3824,7 +3737,7 @@
   const asFilterClear = document.getElementById('autosync-filter-clear');
 
   function autosyncStacks() {
-    return (autosyncSnap && autosyncSnap.stacks) || [];
+    return (S.autosyncSnap && S.autosyncSnap.stacks) || [];
   }
 
   function stackByName(name) {
@@ -3834,8 +3747,8 @@
   }
 
   function anyPaused() {
-    if (!autosyncSnap) return false;
-    if (!autosyncSnap.global) return true;
+    if (!S.autosyncSnap) return false;
+    if (!S.autosyncSnap.global) return true;
     return autosyncStacks().some(function (s) {
       return !s.effective;
     });
@@ -3882,20 +3795,20 @@
   // can overtake each other, which would make a switch snap back
   // (dev-docs/autosync-spec.md, "Snapshot ordering").
   function applyAutosyncSnapshot(snap) {
-    if (!snapshotIsFresh(autosyncVersion, snap)) {
+    if (!snapshotIsFresh(S.autosyncVersion, snap)) {
       // A drop is invisible by design, so leave a trace of it.
-      uiNote('debug', 'autosync: dropped a stale snapshot', snap.version, '<', autosyncVersion);
+      uiNote('debug', 'autosync: dropped a stale snapshot', snap.version, '<', S.autosyncVersion);
       return;
     }
-    autosyncSnap = snap;
-    if (typeof snap.version === 'number') autosyncVersion = snap.version;
+    S.autosyncSnap = snap;
+    if (typeof snap.version === 'number') S.autosyncVersion = snap.version;
     renderAutosync();
   }
 
   // patchStackRow updates an existing row's cells without touching the row or
   // switch nodes themselves — see renderRowList for why that matters.
   function patchStackRow(row, s, pos) {
-    const item = queueByStack[s.name];
+    const item = S.queueByStack[s.name];
     const qpos = row.querySelector('.qpos');
     qpos.className = pos !== null ? 'qpos' : 'qpos blank';
     qpos.textContent = autosyncPosText(pos, item);
@@ -3933,16 +3846,16 @@
     const now = Date.now();
     el.innerHTML = rows
       .map(function (r) {
-        return autosyncRowHTML(r.stack, r.pos, queueByStack[r.stack.name], now);
+        return autosyncRowHTML(r.stack, r.pos, S.queueByStack[r.stack.name], now);
       })
       .join('');
   }
 
   function renderAutosyncBtn() {
-    const count = queueSnap.count || 0;
+    const count = S.queueSnap.count || 0;
     asBtn.classList.toggle('has-pending', count > 0);
     asBtn.classList.toggle('paused', anyPaused());
-    if (autosyncSnap) asBtn.dataset.global = String(autosyncSnap.global);
+    if (S.autosyncSnap) asBtn.dataset.global = String(S.autosyncSnap.global);
     asCountEl.textContent = count;
     asBtn.title =
       count > 0
@@ -3954,7 +3867,7 @@
     const paused = autosyncStacks().filter(function (s) {
       return !s.effective;
     }).length;
-    const q = queueSnap.count || 0;
+    const q = S.queueSnap.count || 0;
     if (q === 0 && paused === 0) asSub.textContent = 'All stacks in sync.';
     else if (q === 0)
       asSub.textContent = `${paused} stack${paused === 1 ? '' : 's'} paused · nothing waiting.`;
@@ -3969,18 +3882,18 @@
   // `data-ready` is "false" it is inert (aria-disabled, and pointer-events off
   // in CSS, so a click waits for the state instead of falling into the void).
   function renderGlobal() {
-    if (!autosyncSnap) return;
+    if (!S.autosyncSnap) return;
     asDrawer.dataset.ready = 'true';
     asGlobalSw.removeAttribute('aria-disabled');
-    asGlobalSw.classList.toggle('on', autosyncSnap.global);
-    asGlobalSw.setAttribute('aria-checked', String(autosyncSnap.global));
-    asGlobalNote.textContent = autosyncSnap.global
+    asGlobalSw.classList.toggle('on', S.autosyncSnap.global);
+    asGlobalSw.setAttribute('aria-checked', String(S.autosyncSnap.global));
+    asGlobalNote.textContent = S.autosyncSnap.global
       ? 'on · deploys apply automatically'
       : 'off · stacks pause unless individually enabled';
   }
 
   function renderQueueList() {
-    const pending = queueSnap.pending || [];
+    const pending = S.queueSnap.pending || [];
     asQCount.textContent = pending.length ? `(${pending.length})` : '';
     if (pending.length === 0) {
       asQueueList.dataset.rowKey = '';
@@ -4071,7 +3984,7 @@
   });
 
   asGlobalSw.addEventListener('click', function () {
-    if (autosyncSnap) autosyncPost('global', '', !autosyncSnap.global);
+    if (S.autosyncSnap) autosyncPost('global', '', !S.autosyncSnap.global);
   });
   asGlobalSw.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -4883,13 +4796,13 @@
   // of the chronological deploy log — where its row-bound health pill can sit far
   // down, or vanish once the row ages out of the bounded log: a header BEACON
   // (present in every view) and, in the Deploys view, an attention BAND pinned
-  // above the log. Both render from attentionStacks(healthSnap) and jump to the
+  // above the log. Both render from attentionStacks(S.healthSnap) and jump to the
   // stack's newest row on activate (degrading to a plain view switch when the
   // stack has no row, exactly like jumpBtn).
   // ─── Incident badge (UI_SPEC.md "Incident badge") ───
   // The beacon answers "what is unhealthy NOW"; this badge answers "what went
   // wrong RECENTLY" — the axis a recovered rollback disappears on. Counts
-  // incidentsSnap (declared with the other 'stacks' snapshot state above),
+  // S.incidentsSnap (declared with the other 'stacks' snapshot state above),
   // re-filtered against the window on the client clock (the 30s tick), and
   // lands on the Deploys view with the bad-outcome status chips pre-selected.
   const BAD_OUTCOME_STATUSES = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
@@ -4897,7 +4810,7 @@
   const incidentBadgeCount = document.getElementById('incident-badge-count');
 
   function renderIncidentBadge() {
-    const n = recentIncidentCount(incidentsSnap, Date.now());
+    const n = recentIncidentCount(S.incidentsSnap, Date.now());
     incidentBadge.hidden = n === 0;
     if (n === 0) return;
     incidentBadgeCount.textContent = String(n);
@@ -5012,7 +4925,7 @@
   // Single entry point, called from applyState's 'health' case — the snapshot
   // bootstrap and the live SSE stream both route through it.
   function renderHealthAttention() {
-    const att = attentionStacks(healthSnap);
+    const att = attentionStacks(S.healthSnap);
     renderHealthBeacon(att);
     renderAttentionBand(att);
   }

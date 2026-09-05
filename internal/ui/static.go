@@ -11,7 +11,7 @@ import (
 // Each is served from the embedded FS through staticAsset, so a gzip-capable
 // client gets the pre-compressed body (compress.go).
 
-//go:embed static/index.html static/app.css static/app.js static/app-render.js static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
+//go:embed static/index.html static/app.css static/app.js static/app-state.js static/app-render.js static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
 
 // IndexHandler serves the embedded UI HTML page, with the configured theme
@@ -139,10 +139,29 @@ func AppRenderJSHandler() http.Handler {
 	})
 }
 
+// AppStateJSHandler serves GET /app-state.js — the App namespace and the
+// shared snapshot store the view files read (ADR-0035 amendment). The app
+// shell loads it after app-helpers.js and app-render.js (whose resolve*
+// helpers it binds) and before app.js. Served no-cache so it stays in
+// lockstep with the shell; the service worker caches it in the app shell for
+// offline use. Served via staticAsset, so a gzip-capable client gets the
+// pre-compressed body (see compress.go).
+func AppStateJSHandler() http.Handler {
+	data, err := staticFS.ReadFile("static/app-state.js")
+	if err != nil {
+		panic(err) // staticFS embeds static/app-state.js at compile time, so this cannot fail.
+	}
+	asset := newStaticAsset("text/javascript; charset=utf-8", data)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		asset.ServeHTTP(w, r)
+	})
+}
+
 // AppJSHandler serves GET /app.js — the main app script, extracted from
 // index.html's inline <script> (ADR-0035 amendment) so it is lintable and
-// formattable as a plain-script file. The app shell loads it
-// after app-helpers.js because it calls the helpers as globals. Served
+// formattable as a plain-script file. The app shell loads it last: it calls
+// the helpers and renderers as globals and reads the store app-state.js set up. Served
 // no-cache so it stays in lockstep with the shell that loads it; the service
 // worker caches it in the app shell for offline use. Served via staticAsset,
 // so a gzip-capable client gets the pre-compressed body (see compress.go).

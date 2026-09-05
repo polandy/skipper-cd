@@ -140,3 +140,35 @@ set — `& < >` — is exactly what the DOM's text-node serialization escapes), 
 `renderCommitHead` takes the forge base as a `repoBase` parameter instead of
 reading the module-scope `repoWebURL`. That purity is what lets
 `app-render.test.js` exercise the layer under `node --test`.
+
+## Amendment (2026-09-05): cut the app script by view, sharing state through one namespace
+
+`app.js` had grown to ~5500 lines: one IIFE holding ~170 functions and ~47
+mutable module variables across every view (Deploys, Stacks, Hosts, Logs,
+container logs, autosync, chrome, the SSE dispatcher). The two earlier
+extractions split by *kind* — pure vs. DOM-bound — which is the right seam for
+the unit layer but no structure for the app: nothing bounded what a change to
+one view could reach.
+
+The app is cut into plain-script files **by view**, the way the Go packages are
+cut by feature area. The constraint of this ADR stands — no bundler, no build
+step, classic `<script>` tags in a fixed order — so the files need a way to
+share state that is not the global lexical scope (a top-level `let` in one
+classic script *is* visible and assignable from every other, which would have
+preserved the old coupling invisibly). They share one namespace object:
+`static/app-state.js` defines `window.App`, with `App.state` holding every SSE
+snapshot the views read (written only by the stream dispatcher) and
+`App.resolve` the per-host resolvers over it; each view file attaches its API
+as `App.<view>` from a module IIFE and never reads another file's variables —
+every cross-file access is a greppable `App.x.y`. Same serving pattern as the
+other extractions (embedded, `AppStateJSHandler`, no-cache, pre-gzipped, in the
+service worker's `SHELL`), loaded after `app-render.js` and before the views.
+
+Rejected: 170 prefixed globals like `app-helpers.js` uses. Bundler-free too,
+but the shared-state problem is the whole difficulty, and globals hide it.
+
+This first step moves only the store and the resolvers; the views follow one
+file per PR (clog, autosync, logs, panels, hosts, roster, deploys, chrome),
+each a pure move with the e2e suite as the net, until what is left in `app.js`
+is the dispatcher.
+
