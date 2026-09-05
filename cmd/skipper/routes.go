@@ -159,6 +159,7 @@ func registerAppRoutes(mux *http.ServeMux, cfg *config.Config, build ui.BuildInf
 	mux.Handle("GET /app.js", ui.AppJSHandler())
 	mux.Handle("GET /app-render.js", ui.AppRenderJSHandler())
 	mux.Handle("GET /app-state.js", ui.AppStateJSHandler())
+	mux.Handle("GET /app-autosync.js", ui.AppAutosyncJSHandler())
 	mux.Handle("GET /app-clog.js", ui.AppClogJSHandler())
 	mux.Handle("GET /app-helpers.js", ui.AppHelpersHandler())
 	mux.Handle("GET /app.css", ui.AppCSSHandler())

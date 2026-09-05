@@ -412,6 +412,10 @@
      after the pure layers it binds to, before every view file. See
      internal/ui/static/app-state.js. -->
 <script src="/app-state.js"></script>
+<!-- The autosync control and drawer (ADR-0016), cut out of the app script by
+     view (ADR-0035 amendment); attaches itself as App.autosync and is wired by
+     the app's init call. See internal/ui/static/app-autosync.js. -->
+<script src="/app-autosync.js"></script>
 <!-- The container-logs panel (ADR-0037), the first view file cut out of the app
      script (ADR-0035 amendment); attaches itself as App.clog. Loaded after
      app-state.js, before the app. See internal/ui/static/app-clog.js. -->
