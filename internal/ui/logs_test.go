@@ -122,13 +122,13 @@ func TestIndexHandler_ContainsLogsViewToggle(t *testing.T) {
 		}
 	}
 
-	// The behaviour behind the markup lives in the extracted app script.
+	// The behaviour behind the markup lives in the Logs view file.
 	rec = httptest.NewRecorder()
-	AppJSHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/app.js", nil))
+	AppLogsJSHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/app-logs.js", nil))
 	body = rec.Body.String()
 	for _, want := range []string{"/api/logs", "log-diff-pill"} {
 		if !strings.Contains(body, want) {
-			t.Errorf("expected app.js to contain %q", want)
+			t.Errorf("expected app-logs.js to contain %q", want)
 		}
 	}
 }
