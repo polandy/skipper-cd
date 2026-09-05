@@ -37,15 +37,6 @@ module.exports = [
         imageDelta: 'readonly',
         incidentBadgeLabel: 'readonly',
         incidentPresetActive: 'readonly',
-        isLogOutcome: 'readonly',
-        logFacets: 'readonly',
-        logFiltersActive: 'readonly',
-        logLineLevel: 'readonly',
-        logLineVisible: 'readonly',
-        logDiffBlockHTML: 'readonly',
-        logMatchesFilters: 'readonly',
-        mergeLogView: 'readonly',
-        parseLogFilters: 'readonly',
         makeReconnector: 'readonly',
         orphanMatchesQuery: 'readonly',
         orphanMeta: 'readonly',
@@ -85,7 +76,6 @@ module.exports = [
         jumpBtnHTML: 'readonly',
         rowActionClusterHTML: 'readonly',
         linkCellHTML: 'readonly',
-        logLineHTML: 'readonly',
         deployStatusChipsHTML: 'readonly',
         lastIncidentHTML: 'readonly',
         nextTrailHTML: 'readonly',
@@ -149,6 +139,33 @@ module.exports = [
         autosyncRowHTML: 'readonly',
         autosyncSwitchTitle: 'readonly',
         escapeHtml: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-logs.js is the Logs view file: a plain browser <script> loaded after
+    // app-state.js that attaches itself as App.logs and calls the pure layers
+    // by bare name — the globals below are that contract.
+    files: ['app-logs.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        isLogOutcome: 'readonly',
+        logDiffBlockHTML: 'readonly',
+        logFacets: 'readonly',
+        logFiltersActive: 'readonly',
+        logLineHTML: 'readonly',
+        logLineLevel: 'readonly',
+        logLineVisible: 'readonly',
+        logMatchesFilters: 'readonly',
+        makeReconnector: 'readonly',
+        mergeLogView: 'readonly',
+        parseLogFilters: 'readonly',
       },
     },
     rules: {
