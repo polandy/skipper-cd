@@ -24,6 +24,7 @@ const SHELL = [
   '/app-state.js',
   '/app-panels.js',
   '/app-hosts.js',
+  '/app-roster.js',
   '/app-autosync.js',
   '/app-logs.js',
   '/app-clog.js',
