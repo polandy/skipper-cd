@@ -18,6 +18,8 @@ module.exports = [
       sourceType: 'script',
       globals: {
         ...globals.browser,
+        // app-state.js: the namespace object the view files share
+        App: 'readonly',
         // app-helpers.js functions
         assignHostColors: 'readonly',
         auditCountText: 'readonly',
@@ -52,11 +54,6 @@ module.exports = [
         phaseDuration: 'readonly',
         recentIncidentCount: 'readonly',
         reconcileHostFilter: 'readonly',
-        resolveAppLinksMap: 'readonly',
-        resolveHealthMap: 'readonly',
-        resolveHealthwatchMap: 'readonly',
-        resolveRepoWebURL: 'readonly',
-        resolveUpdates: 'readonly',
         rosterOrdered: 'readonly',
         rowClass: 'readonly',
         snapshotIsFresh: 'readonly',
@@ -121,6 +118,25 @@ module.exports = [
     rules: {
       // catch (_) is this file's established ignore idiom.
       'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-state.js defines the App namespace and the shared snapshot store; a
+    // plain browser <script> loaded after app-helpers.js, whose resolve*
+    // helpers its per-host resolvers bind by bare name.
+    files: ['app-state.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        // defined here (window.App) and read back by bare name below
+        App: 'writable',
+        resolveAppLinksMap: 'readonly',
+        resolveHealthMap: 'readonly',
+        resolveHealthwatchMap: 'readonly',
+        resolveRepoWebURL: 'readonly',
+        resolveUpdates: 'readonly',
+      },
     },
   },
   {

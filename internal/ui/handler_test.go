@@ -1129,3 +1129,48 @@ func TestPeerContainerLogsHandler_StreamsAndForwardsStatus(t *testing.T) {
 		t.Errorf("unknown peer: got %d, want 404", rec.Code)
 	}
 }
+
+func TestAppStateJSHandler_ServesJS(t *testing.T) {
+	handler := AppStateJSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-state.js", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/javascript") {
+		t.Errorf("content type = %q, want text/javascript", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("cache-control = %q, want no-cache (lockstep with the app shell)", cc)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "window.App = {") {
+		t.Error("body does not define the App namespace")
+	}
+}
+
+func TestAppStateJSHandler_ServesGzipWhenAccepted(t *testing.T) {
+	handler := AppStateJSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-state.js", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if enc := rec.Header().Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", enc)
+	}
+	gr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	got, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatalf("reading gzip body: %v", err)
+	}
+	if !strings.Contains(string(got), "window.App = {") {
+		t.Error("gzip body does not define the App namespace")
+	}
+}

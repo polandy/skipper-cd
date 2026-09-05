@@ -406,6 +406,12 @@
      amendment). Loaded after app-helpers.js, whose functions they call as
      globals. See internal/ui/static/app-render.js. -->
 <script src="/app-render.js"></script>
+<!-- The App namespace and the shared snapshot store the views read, plus the
+     per-host resolvers over it (ADR-0035 amendment: the app is cut into plain
+     script files by view, sharing state through one namespace object). Loaded
+     after the pure layers it binds to, before every view file. See
+     internal/ui/static/app-state.js. -->
+<script src="/app-state.js"></script>
 <!-- The main app script, extracted to its own embedded plain-script file
      (ADR-0035 amendment) so it is lintable and formattable; loaded after
      app-helpers.js and app-render.js because it calls both as globals.
