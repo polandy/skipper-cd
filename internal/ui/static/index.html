@@ -412,6 +412,12 @@
      after the pure layers it binds to, before every view file. See
      internal/ui/static/app-state.js. -->
 <script src="/app-state.js"></script>
+<!-- The app chrome: announcements, the surface registry and focus management,
+     header controls, theme, view switching, badges and beacon, PWA prompt — cut
+     out of the app script (ADR-0035 amendment); attaches itself as App.chrome
+     and is wired by the app's first init call, so every view can register its
+     surfaces with it. See internal/ui/static/app-chrome.js. -->
+<script src="/app-chrome.js"></script>
 <!-- The per-stack detail panels every view opens (diff, files, heal, history,
      health, hooks, watched) and the row affordances that open them (⋯ menu,
      app-link popover, icons), cut out of the app script (ADR-0035 amendment);

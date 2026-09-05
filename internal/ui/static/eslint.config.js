@@ -21,18 +21,9 @@ module.exports = [
         // app-state.js: the namespace object the view files share
         App: 'readonly',
         // app-helpers.js functions
-        attentionLabel: 'readonly',
-        attentionStacks: 'readonly',
-        formatTime: 'readonly',
-        incidentBadgeLabel: 'readonly',
         makeReconnector: 'readonly',
-        recentIncidentCount: 'readonly',
-        updateBadgeLabel: 'readonly',
         // app-render.js constants
-        WARN_ICON: 'readonly',
         // app-render.js functions
-        attentionBandHTML: 'readonly',
-        beaconPopHTML: 'readonly',
       },
     },
     rules: {
@@ -57,6 +48,31 @@ module.exports = [
         resolveRepoWebURL: 'readonly',
         resolveUpdates: 'readonly',
       },
+    },
+  },
+  {
+    // app-chrome.js is the app chrome: a plain browser <script> loaded right
+    // after app-state.js that attaches itself as App.chrome and calls the pure
+    // layers by bare name — the globals below are that contract.
+    files: ['app-chrome.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        attentionLabel: 'readonly',
+        attentionStacks: 'readonly',
+        formatTime: 'readonly',
+        incidentBadgeLabel: 'readonly',
+        recentIncidentCount: 'readonly',
+        updateBadgeLabel: 'readonly',
+        WARN_ICON: 'readonly',
+        attentionBandHTML: 'readonly',
+        beaconPopHTML: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
     },
   },
   {
