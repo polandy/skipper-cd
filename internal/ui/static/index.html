@@ -412,6 +412,10 @@
      after the pure layers it binds to, before every view file. See
      internal/ui/static/app-state.js. -->
 <script src="/app-state.js"></script>
+<!-- The container-logs panel (ADR-0037), the first view file cut out of the app
+     script (ADR-0035 amendment); attaches itself as App.clog. Loaded after
+     app-state.js, before the app. See internal/ui/static/app-clog.js. -->
+<script src="/app-clog.js"></script>
 <!-- The main app script, extracted to its own embedded plain-script file
      (ADR-0035 amendment) so it is lintable and formattable; loaded after
      app-helpers.js and app-render.js because it calls both as globals.
