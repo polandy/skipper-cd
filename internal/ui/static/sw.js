@@ -22,6 +22,7 @@ const SHELL = [
   '/app.css',
   '/app.js',
   '/app-state.js',
+  '/app-panels.js',
   '/app-autosync.js',
   '/app-logs.js',
   '/app-clog.js',
