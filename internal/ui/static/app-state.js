@@ -8,7 +8,7 @@
 // later file attaches its own API to it.
 //
 // App.state holds what the SSE streams publish and every view only reads —
-// populated by the stream dispatcher in app.js (applyState / applyPeers /
+// populated by the stream dispatcher in app-stream.js (applyState / applyPeers /
 // handleEvent), rendered by all views. Two display modes live here too
 // (absoluteTime, imageDeltaOn): not snapshots, but read by five and three
 // files respectively, so they belong at the same address. State a single view

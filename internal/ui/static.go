@@ -11,7 +11,7 @@ import (
 // Each is served from the embedded FS through staticAsset, so a gzip-capable
 // client gets the pre-compressed body (compress.go).
 
-//go:embed static/index.html static/app.css static/app.js static/app-state.js static/app-chrome.js static/app-panels.js static/app-hosts.js static/app-roster.js static/app-deploys.js static/app-autosync.js static/app-logs.js static/app-clog.js static/app-render.js static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
+//go:embed static/index.html static/app.css static/app-stream.js static/app-state.js static/app-chrome.js static/app-panels.js static/app-hosts.js static/app-roster.js static/app-deploys.js static/app-autosync.js static/app-logs.js static/app-clog.js static/app-render.js static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
 
 // IndexHandler serves the embedded UI HTML page, with the configured theme
@@ -123,7 +123,7 @@ func AppHelpersHandler() http.Handler {
 // AppRenderJSHandler serves GET /app-render.js — the pure HTML-string render
 // layer extracted from the app script so a node --test unit layer can exercise
 // it without a browser. The app shell loads it after app-helpers.js (whose
-// functions it calls as globals) and before app.js. Served no-cache so it
+// functions it calls as globals) and before app-stream.js. Served no-cache so it
 // stays in lockstep with the shell; the service worker caches it in the app
 // shell for offline use. Served via staticAsset, so a gzip-capable client gets
 // the pre-compressed body (see compress.go).
@@ -142,7 +142,7 @@ func AppRenderJSHandler() http.Handler {
 // AppStateJSHandler serves GET /app-state.js — the App namespace and the
 // shared snapshot store the view files read (ADR-0035 amendment). The app
 // shell loads it after app-helpers.js and app-render.js (whose resolve*
-// helpers it binds) and before app.js. Served no-cache so it stays in
+// helpers it binds) and before app-stream.js. Served no-cache so it stays in
 // lockstep with the shell; the service worker caches it in the app shell for
 // offline use. Served via staticAsset, so a gzip-capable client gets the
 // pre-compressed body (see compress.go).
@@ -198,7 +198,7 @@ func AppPanelsJSHandler() http.Handler {
 
 // AppHostsJSHandler serves GET /app-hosts.js — the multi-host surface
 // (ADR-0048), cut out of the app script by view (ADR-0035 amendment). The app
-// shell loads it after app-panels.js and before app.js. Served no-cache so it
+// shell loads it after app-panels.js and before app-stream.js. Served no-cache so it
 // stays in lockstep with the shell; the service worker caches it in the app
 // shell for offline use. Served via staticAsset, so a gzip-capable client gets
 // the pre-compressed body (see compress.go).
@@ -216,7 +216,7 @@ func AppHostsJSHandler() http.Handler {
 
 // AppRosterJSHandler serves GET /app-roster.js — the Stacks view, cut out of
 // the app script by view (ADR-0035 amendment). The app shell loads it after
-// app-hosts.js and before app.js. Served no-cache so it
+// app-hosts.js and before app-stream.js. Served no-cache so it
 // stays in lockstep with the shell; the service worker caches it in the app
 // shell for offline use. Served via staticAsset, so a gzip-capable client gets
 // the pre-compressed body (see compress.go).
@@ -234,7 +234,7 @@ func AppRosterJSHandler() http.Handler {
 
 // AppDeploysJSHandler serves GET /app-deploys.js — the Deploys view, cut out
 // of the app script by view (ADR-0035 amendment). The app shell loads it after
-// app-roster.js and before app.js. Served no-cache so it
+// app-roster.js and before app-stream.js. Served no-cache so it
 // stays in lockstep with the shell; the service worker caches it in the app
 // shell for offline use. Served via staticAsset, so a gzip-capable client gets
 // the pre-compressed body (see compress.go).
@@ -252,7 +252,7 @@ func AppDeploysJSHandler() http.Handler {
 
 // AppAutosyncJSHandler serves GET /app-autosync.js — the autosync control and
 // drawer (ADR-0016), cut out of the app script by view (ADR-0035 amendment).
-// The app shell loads it after app-state.js and before app.js. Served no-cache
+// The app shell loads it after app-state.js and before app-stream.js. Served no-cache
 // so it stays in lockstep with the shell; the service worker caches it in the
 // app shell for offline use. Served via staticAsset, so a gzip-capable client
 // gets the pre-compressed body (see compress.go).
@@ -270,7 +270,7 @@ func AppAutosyncJSHandler() http.Handler {
 
 // AppLogsJSHandler serves GET /app-logs.js — the Logs view, cut out of the app
 // script by view (ADR-0035 amendment). The app shell loads it after
-// app-state.js and before app.js. Served no-cache so it stays in lockstep with
+// app-state.js and before app-stream.js. Served no-cache so it stays in lockstep with
 // the shell; the service worker caches it in the app shell for offline use.
 // Served via staticAsset, so a gzip-capable client gets the pre-compressed
 // body (see compress.go).
@@ -288,7 +288,7 @@ func AppLogsJSHandler() http.Handler {
 
 // AppClogJSHandler serves GET /app-clog.js — the container-logs panel
 // (ADR-0037), the first view file cut out of the app script (ADR-0035
-// amendment). The app shell loads it after app-state.js and before app.js.
+// amendment). The app shell loads it after app-state.js and before app-stream.js.
 // Served no-cache so it stays in lockstep with the shell; the service worker
 // caches it in the app shell for offline use. Served via staticAsset, so a
 // gzip-capable client gets the pre-compressed body (see compress.go).
@@ -304,17 +304,17 @@ func AppClogJSHandler() http.Handler {
 	})
 }
 
-// AppJSHandler serves GET /app.js — the main app script, extracted from
-// index.html's inline <script> (ADR-0035 amendment) so it is lintable and
-// formattable as a plain-script file. The app shell loads it last: it calls
-// the helpers and renderers as globals and reads the store app-state.js set up. Served
-// no-cache so it stays in lockstep with the shell that loads it; the service
-// worker caches it in the app shell for offline use. Served via staticAsset,
-// so a gzip-capable client gets the pre-compressed body (see compress.go).
-func AppJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app.js")
+// AppStreamJSHandler serves GET /app-stream.js — the SSE stream dispatcher and
+// the bootstrap, the last file of the app script cut by view (ADR-0035
+// amendment). The app shell loads it last: it imports every view's API at load
+// and runs the ordered init() sequence that starts the app. Served no-cache so
+// it stays in lockstep with the shell that loads it; the service worker caches
+// it in the app shell for offline use. Served via staticAsset, so a
+// gzip-capable client gets the pre-compressed body (see compress.go).
+func AppStreamJSHandler() http.Handler {
+	data, err := staticFS.ReadFile("static/app-stream.js")
 	if err != nil {
-		panic(err) // staticFS embeds static/app.js at compile time, so this cannot fail.
+		panic(err) // staticFS embeds static/app-stream.js at compile time, so this cannot fail.
 	}
 	asset := newStaticAsset("text/javascript; charset=utf-8", data)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

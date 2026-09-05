@@ -1,14 +1,14 @@
 // app-logs.js — the Logs view (the skipper log stream, its bounded buffer and
 // sliding window, quick filters, the "N new lines" pill, follow mode and the
-// inline search/wrap/fullscreen controls), cut out of app.js by view
+// inline search/wrap/fullscreen controls), cut out of the app script by view
 // (ADR-0035 amendment) and attached as App.logs.
 //
 // The log stream connects lazily on first activation and stays open;
 // the connection indicator remains bound to /api/events.
 //
-// Loads before app.js, so what it needs from the chrome, the panels and the
+// Loads before the stream, so what it needs from the chrome, the panels and the
 // stream (App.chrome, App.panels, App.stream) is read at call time, never
-// imported at load. app.js calls init() and initControls() at the two spots
+// imported at load. The bootstrap calls init() and initControls() at the two spots
 // the wiring used to run, so listener registration order is unchanged.
 App.logs = (function () {
   // Hooks into the Logs panel's own wiring, which is set up further down the
@@ -396,7 +396,7 @@ App.logs = (function () {
   }
 
   // resume rebuilds the log stream after a tab suspension (the stream wake-up
-  // in app.js calls it). Drop a stream the suspension killed even when the
+  // in app-stream.js calls it). Drop a stream the suspension killed even when the
   // Logs view is not active: connectLogs takes a non-null handle as "already
   // connected", so one left behind dead would make the view come up silent
   // when it is next opened. Reconnecting is what stays view-gated — that view

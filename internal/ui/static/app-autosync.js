@@ -1,5 +1,5 @@
 // app-autosync.js — the autosync control and drawer (dev-docs/autosync-spec.md,
-// ADR-0016), cut out of app.js by view (ADR-0035 amendment) and attached as
+// ADR-0016), cut out of the app script by view (ADR-0035 amendment) and attached as
 // App.autosync.
 //
 // State comes from the 'autosync' and 'queue' SSE events (initial snapshots
@@ -8,8 +8,8 @@
 // and a filterable per-stack switch list. Toggles POST to /api/autosync; the
 // server pushes back an 'autosync' event so other tabs stay in sync.
 //
-// Loads before app.js, so the chrome and deploy surfaces it calls (App.chrome,
-// App.deploys) are read at call time, never imported at load; app.js calls
+// Loads before the stream, so the chrome and deploy surfaces it calls (App.chrome,
+// App.deploys) are read at call time, never imported at load; the bootstrap calls
 // init() at the spot this block used to occupy.
 App.autosync = (function () {
   const S = App.state;

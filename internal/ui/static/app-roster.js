@@ -1,12 +1,12 @@
 // app-roster.js — the Stacks view (dev-docs/stack-roster-spec.md): the roster
 // of every declared stack with its last outcome and live health, the peer
 // roster rows, the disabled-stacks strip, the row-click card, and the stack
-// search with its updates-only preset. Cut out of app.js by view (ADR-0035
+// search with its updates-only preset. Cut out of the app script by view (ADR-0035
 // amendment) and attached as App.roster.
 //
 // Loads after app-panels.js and app-hosts.js (imported at load) and before
-// app.js, so what it needs from the chrome, the deploys table and the stream
-// (App.chrome, App.deploys, App.stream) is read at call time. app.js calls
+// the stream, so what it needs from the chrome, the deploys table and the stream
+// (App.chrome, App.deploys, App.stream) is read at call time. The bootstrap calls
 // init() at the spot the view's listeners used to register, so the stacks
 // type-to-search keeps its place behind the deploys one.
 App.roster = (function () {

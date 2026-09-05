@@ -20,7 +20,7 @@ const CACHE = 'skipper-shell-__VERSION__';
 const SHELL = [
   '/',
   '/app.css',
-  '/app.js',
+  '/app-stream.js',
   '/app-state.js',
   '/app-chrome.js',
   '/app-panels.js',

@@ -1,15 +1,15 @@
 // app-hosts.js — the multi-host surface (ADR-0048, dev-docs/multi-host-spec.md):
 // peer rows merged into the deploy feed, host chips and colours, the Hosts
-// drawer and filter, the peer detail panel. Cut out of app.js by view
+// drawer and filter, the peer detail panel. Cut out of the app script by view
 // (ADR-0035 amendment) and attached as App.hosts.
 //
 // A peer instance's read data, merged into the local views and tagged by host.
 // Everything here is inert on a single-host instance (S.peersSnap null): the
 // Hosts control, Host column and peer rows never appear.
 //
-// Loads after app-panels.js (imported at load) and before app.js, so what it
+// Loads after app-panels.js (imported at load) and before the stream, so what it
 // needs from the chrome, the deploys table and the roster (App.chrome,
-// App.deploys, App.roster, App.autosync) is read at call time. app.js calls
+// App.deploys, App.roster, App.autosync) is read at call time. The bootstrap calls
 // init() at the spot the drawer wiring used to run, and applyPeers() after it
 // has stored a peers snapshot.
 App.hosts = (function () {
@@ -488,7 +488,7 @@ App.hosts = (function () {
     }, 0);
   }
 
-  // applyPeers applies the 'peers' snapshot the dispatcher (app.js) has just
+  // applyPeers applies the 'peers' snapshot the dispatcher (app-stream.js) has just
   // stored in S.peersSnap / S.selfHost: restores the saved host filter once,
   // recolours, retags and re-renders, then re-filters both views.
   function applyPeers() {

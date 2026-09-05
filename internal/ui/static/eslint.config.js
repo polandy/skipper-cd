@@ -8,26 +8,19 @@ const globals = require('globals');
 module.exports = [
   js.configs.recommended,
   {
-    // app.js is the main app script, a plain browser <script> loaded after
-    // app-helpers.js and app-render.js. The globals list below is the contract
-    // it calls by bare name — a new use fails no-undef until it is added here.
-    // The reverse has no linter behind it: when the last call moves out of
-    // app.js, drop the entry by hand or the list drifts.
-    files: ['app.js'],
+    // app-stream.js is the SSE stream dispatcher and the bootstrap, a plain
+    // browser <script> loaded last that attaches itself as App.stream and calls
+    // the pure layers by bare name — the globals below are that contract.
+    files: ['app-stream.js'],
     languageOptions: {
       sourceType: 'script',
       globals: {
         ...globals.browser,
-        // app-state.js: the namespace object the view files share
         App: 'readonly',
-        // app-helpers.js functions
         makeReconnector: 'readonly',
-        // app-render.js constants
-        // app-render.js functions
       },
     },
     rules: {
-      // catch (_) is this file's established ignore idiom.
       'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
     },
   },

@@ -3,7 +3,7 @@
 //
 // Like app-helpers.js this file is embedded and served same-origin
 // (GET /app-render.js), loaded after app-helpers.js (whose functions it calls
-// by bare name) and before app.js; in the browser its functions become globals,
+// by bare name) and before the app files; in the browser its functions become globals,
 // under `node --test` it exports them — no bundler, no build step (ADR-0035).
 //
 // Keep every function pure: input in, HTML string out — no DOM reads, no
@@ -314,7 +314,7 @@ function healthStripHTML(phases, nowMs) {
 // into the settled lines and a summary, incidents kept line-by-line with their
 // start, how long they held, and the deploy commit when correlated. When
 // folding collapsed anything, the raw newest-first list stays reachable behind
-// a toggle (`.hp-fold-toggle`, handled in app.js). Returns '' when the
+// a toggle (`.hp-fold-toggle`, handled in app-panels.js). Returns '' when the
 // watchdog is off — and for a service with only its baseline phase, where a
 // one-line timeline would just repeat the inline age. The caller supplies the
 // service's phases, the forge base for the commit chips (repoBase — the
@@ -427,7 +427,7 @@ function healthHistoryHTML(phases, repoBase, nowMs, opts) {
 // ── Row-affordance widgets ──
 // The small per-row buttons and chips shared by the Deploys feed, the roster
 // and peer rows. Pure string builders; the DOM-node wrappers (clogButton,
-// hooksBadgeButton) and all click handling stay in app.js.
+// hooksBadgeButton) and all click handling stay in app-panels.js.
 
 // clogBtnHTML builds the logs icon that opens a container log (ADR-0037), used
 // from templates (health-panel lines, roster rows). host is optional: a peer's
@@ -519,7 +519,7 @@ function pendingTagHTML(status, reason) {
 // dot: a dot already means deploy status). Empty (and hidden by CSS) on a
 // single-host instance; CSS shows it only when more than one host is in view.
 // The caller supplies the host's colour slot from the live assignment
-// (app.js hostChip wraps that lookup).
+// (app-hosts.js hostChip wraps that lookup).
 function hostChipHTML(hostName, slot) {
   if (!hostName) return '';
   const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
@@ -552,7 +552,7 @@ const LINK_ICON =
 // linkCellHTML renders the app-link icon for a stack: nothing when no host
 // was discovered, a plain external link for exactly one, or a button that
 // opens a popover listing each when there are several. hosts is the stack's
-// discovered hostnames (app.js linkCell wraps the per-host lookup).
+// discovered hostnames (app-panels.js linkCell wraps the per-host lookup).
 function linkCellHTML(hosts) {
   if (!hosts || !hosts.length) return '';
   if (hosts.length === 1) {
@@ -588,8 +588,8 @@ function rosterRowActionsHTML(entry) {
 // click away in the containers panel, so the row stays a single line (unlike
 // the Deploys Version column, which lists every changed service: a deploy
 // touches a few services, while a stack HAS all of them).
-// health is the stack's live-health entry on the row's host (app.js
-// stackHealthFor wraps the lookup); empty while none exists for the stack
+// health is the stack's live-health entry on the row's host (App.resolve
+// .stackHealthFor wraps the lookup); empty while none exists for the stack
 // (parked, stopped, or the first health poll still outstanding —
 // updateRosterHealth fills it in then). updates is the stack's update-check
 // map (service → {latest, rebuilt}, ADR-0054) — it also picks the cell's

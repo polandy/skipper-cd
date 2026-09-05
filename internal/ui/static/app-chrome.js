@@ -3,12 +3,12 @@
 // and popover shares, the header search trigger, theme toggle and switcher,
 // the first-run tour, view switching and the cross-view jump, the header
 // badges and the live-health beacon/band, the relative-time tick, the build
-// identity, touch tap-tips and the PWA update prompt. Cut out of app.js by
+// identity, touch tap-tips and the PWA update prompt. Cut out of the app script by
 // view (ADR-0035 amendment) and attached as App.chrome.
 //
 // Loads right after app-state.js, before every view, so a view's init() can
 // register its surfaces here; everything the chrome needs from the views and
-// the stream (App.<view>, App.stream) is read at call time. app.js calls
+// the stream (App.<view>, App.stream) is read at call time. The bootstrap calls
 // init() first thing, before any view's init — the chrome's own load-time
 // statements ran ahead of the views' before as well.
 App.chrome = (function () {
