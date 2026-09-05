@@ -1762,6 +1762,33 @@ Behaviour-only (no snapshot).
   header of every fully-up-to-date instance, which is how it was caught (200 px
   of the `theme-dark` baseline). Verified to fail against the unfixed CSS.
 
+### 4.50 UI — Maske AW: one open header pop-out at a time
+
+The header carries five pop-out surfaces — the autosync, hosts and run drawers,
+the view-options popover and the health-beacon popover — and they all park under
+the header at the same anchor, so two open at once is never a layout the UI
+means to show. Maske L pins the same rule one level down, on a deploy row's two
+panels. Behaviour-only (no snapshot).
+
+Every surface registers with the chrome, which both dismisses it on an outside
+click and closes it when another one opens. Those are two different paths, and
+the beacon is what separates them: its own click handler stops propagation, so
+a click on it never reaches the shared outside-click dismissal. A surface that
+relied on that dismissal alone therefore stayed open behind the beacon popover.
+
+- **UAW1 — Opening the beacon popover closes an open drawer.** With the autosync
+  drawer open, a click on the beacon leaves the popover showing and the drawer
+  both closed and no longer reporting `aria-expanded="true"` — the drawer's
+  button is the positive signal that the close actually ran, rather than the
+  drawer merely being painted over. Verified to fail against the unfixed build.
+- **UAW2 — And the other direction.** Beacon popover first, then the autosync
+  button: the drawer opens and the popover is hidden with the beacon back to
+  `aria-expanded="false"`.
+- **UAW3 — The two header drawers replace each other, both orders.** Hosts then
+  autosync, then hosts again: the one opening second is open, the first is
+  closed, and its button reports it. Neither drawer named the other before the
+  registry, so this is the pair the refactor must keep working.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -1991,6 +2018,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: exited on-demand container reads stopped + on-demand label | **UH5** |
 | Stack health: folded timeline — routine start absorbed, strip, raw-list toggle | **UH7** |
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
+| One open header pop-out at a time (drawers ↔ beacon/view-options popovers) | **UAW1**–**UAW3** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |
