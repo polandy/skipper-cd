@@ -167,8 +167,12 @@ service worker's `SHELL`), loaded after `app-render.js` and before the views.
 Rejected: 170 prefixed globals like `app-helpers.js` uses. Bundler-free too,
 but the shared-state problem is the whole difficulty, and globals hide it.
 
-This first step moves only the store and the resolvers; the views follow one
+The first step moved only the store and the resolvers; the views followed one
 file per PR (clog, autosync, logs, panels, hosts, roster, deploys, chrome),
-each a pure move with the e2e suite as the net, until what is left in `app.js`
-is the dispatcher.
+each a pure move with the e2e suite as the net. A view's load-time statements
+become its `init()`, called from one bootstrap at the exact spot the block used
+to run, so the order of `document`-level listeners is unchanged. The last step
+renamed what was left — the SSE dispatcher that writes the store, and that
+bootstrap — to `static/app-stream.js` (`App.stream`, loaded last); `app.js` is
+gone, and the start sequence of the app is written down in one place.
 

@@ -1,11 +1,17 @@
-(function () {
-  // Shared state comes from app-state.js (loaded before this file); S is the
-  // store every view reads and applyState / applyPeers / handleEvent below
-  // write. The views that have moved out are imported from App.<view>.
+// app-stream.js — the SSE stream: the /api/events connection, the state
+// dispatcher that writes App.state (applyState / applyPeers / applyHookRun),
+// the offline notice and the stream wake-up. The last file of cutting the app
+// script by view (ADR-0035 amendment); attaches its API as App.stream and,
+// at the bottom, runs the bootstrap — the ordered init() calls that start the
+// app, written down in one place.
+//
+// Loads last. Every view is already attached, so the dispatcher imports what
+// it routes to at load; the views read App.stream at call time.
+App.stream = (function () {
+  // S is the store every view reads and only this dispatcher writes.
   const S = App.state;
   const chrome = App.chrome;
-  const { armAnnounceGate, applyView, renderIncidentBadge, renderHealthAttention } = chrome;
-  const clog = App.clog;
+  const { armAnnounceGate, renderIncidentBadge, renderHealthAttention } = chrome;
   const autosync = App.autosync;
   const logs = App.logs;
   const roster = App.roster;
@@ -32,17 +38,9 @@
   const { schedulePeerReflow } = hosts;
   const panels = App.panels;
   const { createLoadError, hookPhaseNode } = panels;
-  App.stream = { streamIsOpen, applyHookRun, clearOfflineNotice };
   const loadingState = document.getElementById('loading-state');
   const connDot = document.getElementById('conn-dot');
   const connText = document.getElementById('conn-text');
-  // ── Chrome ── lives in app-chrome.js (App.chrome); wired first, so every
-  // view can register its surfaces with it.
-  chrome.init();
-  // ── Row panels, ⋯ menu, app-link popover, icons ── live in app-panels.js
-  // (App.panels); their document-level listeners are wired here, at the spot
-  // they used to register.
-  panels.init();
 
   // Paint the running-hook phase + pulse the badge on the stack's row in both
   // views; clear it when S.hookRunSnap has no stack.
@@ -97,10 +95,6 @@
       }
     }
   }
-
-  // ── Deploys view ── lives in app-deploys.js (App.deploys); wired here, once
-  // the surface registry above exists — the spot its run drawer registered.
-  deploys.init();
 
   // EventSource auto-reconnects after a transient drop (readyState CONNECTING),
   // but a *fatal* stream error — a non-2xx response or a bad content-type — puts
@@ -303,21 +297,6 @@
     };
   }
 
-  // ── Stacks view ── lives in app-roster.js (App.roster); wired here, at the
-  // spot the block occupied, so its type-to-search stays behind the deploys one.
-  roster.init();
-
-  // ── Autosync controls ── live in app-autosync.js (App.autosync); wired here,
-  // at the spot the block occupied, once the surfaces it registers with exist.
-  autosync.init();
-
-  // ── Hosts drawer ── lives in app-hosts.js (App.hosts); wired here, at the
-  // spot the block occupied.
-  hosts.init();
-
-  // ── Logs view ── lives in app-logs.js (App.logs); wired here, at the spot the block occupied.
-  logs.init();
-
   // ── Stream wake-up ──
 
   // An OS that freezes a backgrounded tab — an installed PWA, a locked phone —
@@ -336,21 +315,39 @@
     logs.resume();
   }
 
-  document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') resumeStreams();
-  });
-  window.addEventListener('online', resumeStreams);
+  function init() {
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') resumeStreams();
+    });
+    window.addEventListener('online', resumeStreams);
+  }
 
+  return { init, connect, streamIsOpen, applyHookRun, clearOfflineNotice };
+})();
+
+// ── Bootstrap ── the start sequence, in the order the blocks ran when they
+// were one script: each init() registers its document-level listeners, so the
+// order is what decides who sees a key first.
+(function boot() {
+  const { chrome, panels, deploys, roster, autosync, hosts, logs, clog, stream } = App;
+  // The chrome first, so every view can register its surfaces with it.
+  chrome.init();
+  // The row panels' document-level listeners (popover, ⋯ menu, folds).
+  panels.init();
+  // The deploys table and its run drawer, once the surface registry exists.
+  deploys.init();
+  // The Stacks view — its type-to-search stays behind the deploys one.
+  roster.init();
+  autosync.init();
+  hosts.init();
+  logs.init();
+  stream.init(); // the wake-up listeners
   logs.renderLogQuickChips(); // paint the persisted filter before the first lines land
   logs.applyFollow();
-  applyView();
-
-  connect();
-
-  // ── Logs view controls ── live in app-logs.js; wired here, at the spot the
-  // block occupied, so its document-level key handler keeps its place in line.
+  chrome.applyView();
+  stream.connect();
+  // The Logs view's document-level key handler keeps its place in line.
   logs.initControls();
-
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') clog.escape();
   });

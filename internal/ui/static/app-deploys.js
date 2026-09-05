@@ -3,12 +3,12 @@
 // deploy-event ingest (queued rows, handleEvent), the time-mode / version /
 // stack-filter controls with the status chips, the orphan projects section
 // below the table, and the row-click delegation that opens the panels. Cut out
-// of app.js by view (ADR-0035 amendment) and attached as App.deploys.
+// of the app script by view (ADR-0035 amendment) and attached as App.deploys.
 //
 // Loads after app-panels.js and app-hosts.js (imported at load) and before
-// app.js, so what it needs from the chrome, the stream and the other views
+// the stream, so what it needs from the chrome, the stream and the other views
 // (App.chrome, App.stream, App.roster, App.logs, App.autosync) is read at call
-// time. app.js calls init() after its surface registry exists, at the spot the
+// time. The bootstrap calls init() after the surface registry exists, at the spot the
 // run drawer used to register — every load-time statement of the view runs
 // there, in its original order, so the deploys type-to-search keeps its place
 // between the panels' Escape handler and the stacks one.

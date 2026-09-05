@@ -1,5 +1,5 @@
 // app-clog.js — the container-logs panel (ADR-0037), the first view file cut
-// out of app.js (ADR-0035 amendment). Attaches its API as App.clog; reads the
+// out of the app script (ADR-0035 amendment). Attaches its API as App.clog; reads the
 // per-host resolvers from App.resolve and the log-line renderer from App.logs.
 //
 // A live `docker compose logs` panel opened from a logs icon, per stack

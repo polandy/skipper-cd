@@ -2,11 +2,11 @@
   "name": "skipper-cd-ui-static",
   "version": "0.0.0",
   "private": true,
-  "description": "Dev-only formatting/linting for the embedded UI's plain-script JS (app.js, app-state.js, app-chrome.js, app-panels.js, app-hosts.js, app-roster.js, app-deploys.js, app-autosync.js, app-logs.js, app-clog.js, app-render.js, app-helpers.js, sw.js) and its node --test unit layer. Never shipped in the binary — see ADR-0035 (self-contained, no build step, no bundler for the app itself).",
+  "description": "Dev-only formatting/linting for the embedded UI's plain-script JS (app-stream.js, app-state.js, app-chrome.js, app-panels.js, app-hosts.js, app-roster.js, app-deploys.js, app-autosync.js, app-logs.js, app-clog.js, app-render.js, app-helpers.js, sw.js) and its node --test unit layer. Never shipped in the binary — see ADR-0035 (self-contained, no build step, no bundler for the app itself).",
   "scripts": {
-    "fmt": "prettier --write app.js app-state.js app-chrome.js app-panels.js app-hosts.js app-roster.js app-deploys.js app-autosync.js app-logs.js app-clog.js app-render.js app-render.test.js app-helpers.js app-helpers.test.js sw.js",
-    "fmt:check": "prettier --check app.js app-state.js app-chrome.js app-panels.js app-hosts.js app-roster.js app-deploys.js app-autosync.js app-logs.js app-clog.js app-render.js app-render.test.js app-helpers.js app-helpers.test.js sw.js",
-    "lint": "eslint app.js app-state.js app-chrome.js app-panels.js app-hosts.js app-roster.js app-deploys.js app-autosync.js app-logs.js app-clog.js app-render.js app-render.test.js app-helpers.js app-helpers.test.js sw.js"
+    "fmt": "prettier --write app-stream.js app-state.js app-chrome.js app-panels.js app-hosts.js app-roster.js app-deploys.js app-autosync.js app-logs.js app-clog.js app-render.js app-render.test.js app-helpers.js app-helpers.test.js sw.js",
+    "fmt:check": "prettier --check app-stream.js app-state.js app-chrome.js app-panels.js app-hosts.js app-roster.js app-deploys.js app-autosync.js app-logs.js app-clog.js app-render.js app-render.test.js app-helpers.js app-helpers.test.js sw.js",
+    "lint": "eslint app-stream.js app-state.js app-chrome.js app-panels.js app-hosts.js app-roster.js app-deploys.js app-autosync.js app-logs.js app-clog.js app-render.js app-render.test.js app-helpers.js app-helpers.test.js sw.js"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

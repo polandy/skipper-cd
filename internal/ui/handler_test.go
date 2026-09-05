@@ -477,9 +477,9 @@ func TestAppHelpersHandler_ServesJS(t *testing.T) {
 	}
 }
 
-func TestAppJSHandler_ServesJS(t *testing.T) {
-	handler := AppJSHandler()
-	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
+func TestAppStreamJSHandler_ServesJS(t *testing.T) {
+	handler := AppStreamJSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-stream.js", nil)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -493,14 +493,14 @@ func TestAppJSHandler_ServesJS(t *testing.T) {
 	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
 		t.Errorf("cache-control = %q, want no-cache (lockstep with the app shell)", cc)
 	}
-	if body := rec.Body.String(); !strings.Contains(body, "document.getElementById('tbody')") {
-		t.Error("body does not contain the extracted app script")
+	if body := rec.Body.String(); !strings.Contains(body, "App.stream = (function () {") {
+		t.Error("body does not attach the stream module to the App namespace")
 	}
 }
 
-func TestAppJSHandler_ServesGzipWhenAccepted(t *testing.T) {
-	handler := AppJSHandler()
-	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
+func TestAppStreamJSHandler_ServesGzipWhenAccepted(t *testing.T) {
+	handler := AppStreamJSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-stream.js", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
 
@@ -517,8 +517,8 @@ func TestAppJSHandler_ServesGzipWhenAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading gzip body: %v", err)
 	}
-	if !strings.Contains(string(got), "document.getElementById('tbody')") {
-		t.Error("gzip body does not contain the extracted app script")
+	if !strings.Contains(string(got), "App.stream = (function () {") {
+		t.Error("gzip body does not attach the stream module to the App namespace")
 	}
 }
 

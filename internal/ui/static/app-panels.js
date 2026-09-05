@@ -4,11 +4,11 @@
 // health (ADR-0027/0031), deploy hooks (ADR-0038), watched files — plus the
 // row-cell affordances that open them: the ⋯ overflow menu, the app-link
 // popover, the container-logs and hooks buttons, and the stack icon. Cut out of
-// app.js by view (ADR-0035 amendment) and attached as App.panels.
+// the app script by view (ADR-0035 amendment) and attached as App.panels.
 //
 // Loads after app-state.js and before every view. Reads only the store and the
 // per-host resolvers; a view passes in the row or cell it wants a panel on.
-// app.js calls init() at the spot the popover/menu/fold listeners used to
+// The bootstrap calls init() at the spot the popover/menu/fold listeners used to
 // register, so document-level listener order is unchanged.
 App.panels = (function () {
   const S = App.state;
