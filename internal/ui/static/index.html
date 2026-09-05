@@ -418,6 +418,11 @@
      attaches itself as App.panels, before every view that uses it. See
      internal/ui/static/app-panels.js. -->
 <script src="/app-panels.js"></script>
+<!-- The multi-host surface (ADR-0048): peer rows, host chips and colours, the
+     Hosts drawer and filter, the peer detail panel — cut out of the app script
+     (ADR-0035 amendment); attaches itself as App.hosts and is wired by the app's
+     init call. See internal/ui/static/app-hosts.js. -->
+<script src="/app-hosts.js"></script>
 <!-- The autosync control and drawer (ADR-0016), cut out of the app script by
      view (ADR-0035 amendment); attaches itself as App.autosync and is wired by
      the app's init call. See internal/ui/static/app-autosync.js. -->
