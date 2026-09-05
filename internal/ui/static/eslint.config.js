@@ -55,7 +55,6 @@ module.exports = [
         reconcileHostFilter: 'readonly',
         rosterOrdered: 'readonly',
         rowClass: 'readonly',
-        snapshotIsFresh: 'readonly',
         stackHasUpdate: 'readonly',
         updateBadgeLabel: 'readonly',
         updatePresetActive: 'readonly',
@@ -64,11 +63,6 @@ module.exports = [
         WARN_ICON: 'readonly',
         // app-render.js functions
         attentionBandHTML: 'readonly',
-        autosyncDetailHTML: 'readonly',
-        autosyncPosText: 'readonly',
-        autosyncReasonChipHTML: 'readonly',
-        autosyncRowHTML: 'readonly',
-        autosyncSwitchTitle: 'readonly',
         auditRowsHTML: 'readonly',
         badgeHTML: 'readonly',
         beaconPopHTML: 'readonly',
@@ -134,6 +128,31 @@ module.exports = [
         resolveRepoWebURL: 'readonly',
         resolveUpdates: 'readonly',
       },
+    },
+  },
+  {
+    // app-autosync.js is the autosync view file: a plain browser <script>
+    // loaded after app-state.js that attaches itself as App.autosync and calls
+    // the pure layers by bare name — the globals below are that contract.
+    files: ['app-autosync.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        // app-helpers.js functions
+        snapshotIsFresh: 'readonly',
+        // app-render.js functions
+        autosyncDetailHTML: 'readonly',
+        autosyncPosText: 'readonly',
+        autosyncReasonChipHTML: 'readonly',
+        autosyncRowHTML: 'readonly',
+        autosyncSwitchTitle: 'readonly',
+        escapeHtml: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
     },
   },
   {
