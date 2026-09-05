@@ -26,7 +26,6 @@ module.exports = [
         attentionLabel: 'readonly',
         attentionStacks: 'readonly',
         buildHostList: 'readonly',
-        clogStreamStatus: 'readonly',
         containerMatchesQuery: 'readonly',
         deployAnnouncement: 'readonly',
         deployStatusLabel: 'readonly',
@@ -61,7 +60,6 @@ module.exports = [
         updateBadgeLabel: 'readonly',
         updatePresetActive: 'readonly',
         // app-render.js constants
-        CLOG_ICON: 'readonly',
         LINK_ICON: 'readonly',
         WARN_ICON: 'readonly',
         // app-render.js functions
@@ -75,7 +73,6 @@ module.exports = [
         badgeHTML: 'readonly',
         beaconPopHTML: 'readonly',
         clogBtnHTML: 'readonly',
-        clogSvcsHTML: 'readonly',
         commitLinkHTML: 'readonly',
         diffPanelHTML: 'readonly',
         escapeAttr: 'readonly',
@@ -137,6 +134,29 @@ module.exports = [
         resolveRepoWebURL: 'readonly',
         resolveUpdates: 'readonly',
       },
+    },
+  },
+  {
+    // app-clog.js is the container-logs view file: a plain browser <script>
+    // loaded after app-state.js that attaches itself as App.clog and calls the
+    // pure layers by bare name — the globals below are that contract.
+    files: ['app-clog.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        // app-helpers.js functions
+        clogStreamStatus: 'readonly',
+        logLineVisible: 'readonly',
+        // app-render.js constants and functions
+        CLOG_ICON: 'readonly',
+        clogSvcsHTML: 'readonly',
+        escapeHtml: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
     },
   },
   {
