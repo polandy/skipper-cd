@@ -412,6 +412,12 @@
      after the pure layers it binds to, before every view file. See
      internal/ui/static/app-state.js. -->
 <script src="/app-state.js"></script>
+<!-- The per-stack detail panels every view opens (diff, files, heal, history,
+     health, hooks, watched) and the row affordances that open them (⋯ menu,
+     app-link popover, icons), cut out of the app script (ADR-0035 amendment);
+     attaches itself as App.panels, before every view that uses it. See
+     internal/ui/static/app-panels.js. -->
+<script src="/app-panels.js"></script>
 <!-- The autosync control and drawer (ADR-0016), cut out of the app script by
      view (ADR-0035 amendment); attaches itself as App.autosync and is wired by
      the app's init call. See internal/ui/static/app-autosync.js. -->
