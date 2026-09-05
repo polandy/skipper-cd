@@ -53,6 +53,7 @@ module.exports = [
       globals: {
         ...globals.browser,
         App: 'readonly',
+        makeSurfaceRegistry: 'readonly',
         attentionLabel: 'readonly',
         attentionStacks: 'readonly',
         formatTime: 'readonly',

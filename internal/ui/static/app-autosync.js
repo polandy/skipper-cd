@@ -244,10 +244,7 @@ App.autosync = (function () {
   }
 
   function setDrawer(open) {
-    if (open) {
-      App.chrome.setViewOptions(false);
-      App.deploys.setRunDrawer(false);
-    } // surfaces are mutually exclusive
+    if (open) App.chrome.closeOtherSurfaces(asDrawer);
     asDrawer.classList.toggle('open', open);
     asBtn.classList.toggle('open', open);
     asBtn.setAttribute('aria-expanded', String(open));
@@ -371,6 +368,7 @@ App.autosync = (function () {
     });
 
     App.chrome.registerSurface({
+      surface: asDrawer,
       isOpen: function () {
         return asDrawer.classList.contains('open');
       },

@@ -9,7 +9,7 @@
 //
 // Loads after app-panels.js (imported at load) and before the stream, so what it
 // needs from the chrome, the deploys table and the roster (App.chrome,
-// App.deploys, App.roster, App.autosync) is read at call time. The bootstrap calls
+// App.deploys, App.roster) is read at call time. The bootstrap calls
 // init() at the spot the drawer wiring used to run, and applyPeers() after it
 // has stored a peers snapshot.
 App.hosts = (function () {
@@ -516,11 +516,7 @@ App.hosts = (function () {
   const hostsDrawer = document.getElementById('hosts-drawer');
 
   function setHostsDrawer(open) {
-    if (open) {
-      App.chrome.setViewOptions(false);
-      App.deploys.setRunDrawer(false);
-      App.autosync.setDrawer(false);
-    } // surfaces are mutually exclusive
+    if (open) App.chrome.closeOtherSurfaces(hostsDrawer);
     hostsDrawer.classList.toggle('open', open);
     hostsBtn.classList.toggle('open', open);
     hostsBtn.setAttribute('aria-expanded', String(open));
@@ -583,6 +579,7 @@ App.hosts = (function () {
     });
 
     App.chrome.registerSurface({
+      surface: hostsDrawer,
       isOpen: function () {
         return hostsDrawer.classList.contains('open');
       },

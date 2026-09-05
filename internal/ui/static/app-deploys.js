@@ -7,7 +7,7 @@
 //
 // Loads after app-panels.js and app-hosts.js (imported at load) and before
 // the stream, so what it needs from the chrome, the stream and the other views
-// (App.chrome, App.stream, App.roster, App.logs, App.autosync) is read at call
+// (App.chrome, App.stream, App.roster, App.logs) is read at call
 // time. The bootstrap calls init() after the surface registry exists, at the spot the
 // run drawer used to register — every load-time statement of the view runs
 // there, in its original order, so the deploys type-to-search keeps its place
@@ -485,13 +485,9 @@ App.deploys = (function () {
     runList.innerHTML = runListHTML(active, up);
   }
 
-  // setRunDrawer opens/closes the run panel. It is mutually exclusive with the
-  // autosync drawer and the view-options popover.
+  // setRunDrawer opens/closes the run panel.
   function setRunDrawer(open) {
-    if (open) {
-      App.chrome.setViewOptions(false);
-      App.autosync.setDrawer(false);
-    }
+    if (open) App.chrome.closeOtherSurfaces(runDrawer);
     runDrawer.classList.toggle('open', open);
     deployStatus.setAttribute('aria-expanded', String(open));
     App.chrome.manageSurfaceFocus(runDrawer, deployStatus, open);
@@ -892,6 +888,7 @@ App.deploys = (function () {
     App.chrome.trapFocus(runDrawer); // asDrawer/hostsDrawer are trapped in their own sections (declared later)
 
     App.chrome.registerSurface({
+      surface: runDrawer,
       isOpen: function () {
         return runDrawer.classList.contains('open');
       },

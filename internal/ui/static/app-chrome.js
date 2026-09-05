@@ -93,13 +93,21 @@ App.chrome = (function () {
     }, ANNOUNCE_SETTLE_MS);
   }
 
-  // registerSurface wires the shared dismiss behaviour for a pop-out surface (a
-  // drawer or popover): Escape closes it, and a click outside it closes it. Each
-  // surface used to copy-paste its own pair of global document handlers; this
-  // centralizes them. `isOpen` reports whether the surface is showing, `close`
-  // dismisses it, and `within` lists the elements (the surface plus its trigger)
-  // whose clicks are internal and must not dismiss it.
+  // The header's pop-out surfaces — the autosync, hosts and run drawers, the
+  // view-options and beacon popovers — all park under the header at the same
+  // anchor, so only one may be open at a time.
+  const surfaces = makeSurfaceRegistry();
+
+  // registerSurface wires the shared behaviour of a pop-out surface (a drawer or
+  // popover): Escape closes it, a click outside it closes it, and another
+  // surface opening closes it. Each surface used to copy-paste its own pair of
+  // global document handlers and name its siblings to close them; this
+  // centralizes both. `surface` is the element that shows and hides (the
+  // identity closeOtherSurfaces exempts), `isOpen` reports whether it is
+  // showing, `close` dismisses it, and `within` lists the elements (the surface
+  // plus its trigger) whose clicks are internal and must not dismiss it.
   function registerSurface(opts) {
+    surfaces.add({ surface: opts.surface, isOpen: opts.isOpen, close: opts.close });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') opts.close();
     });
@@ -118,6 +126,14 @@ App.chrome = (function () {
         return;
       opts.close();
     });
+  }
+
+  // closeOtherSurfaces dismisses every open pop-out except `surface`, which is
+  // what a surface calls as it opens. Relying on the outside-click dismissal
+  // instead would leave the pairs it cannot see: the beacon stops propagation on
+  // its own click, so that click never reaches it.
+  function closeOtherSurfaces(surface) {
+    surfaces.closeOthers(surface);
   }
 
   // --- Pop-out focus management (T2.7) -----------------------------------
@@ -273,10 +289,7 @@ App.chrome = (function () {
   const viewOptions = document.getElementById('view-options');
 
   function setViewOptions(open) {
-    if (open) {
-      App.autosync.setDrawer(false);
-      App.deploys.setRunDrawer(false);
-    } // surfaces are mutually exclusive
+    if (open) closeOtherSurfaces(viewOptions);
     viewOptions.classList.toggle('open', open);
     let activeBtn = null;
     viewButtons.forEach(function (btn) {
@@ -395,6 +408,7 @@ App.chrome = (function () {
   const attentionBand = document.getElementById('attention-band');
 
   function setBeaconPop(open) {
+    if (open) closeOtherSurfaces(beaconPop);
     beaconPop.classList.toggle('open', open);
     healthBeacon.setAttribute('aria-expanded', String(open));
   }
@@ -735,6 +749,7 @@ App.chrome = (function () {
     });
 
     registerSurface({
+      surface: beaconPop,
       isOpen: function () {
         return beaconPop.classList.contains('open');
       },
@@ -745,6 +760,7 @@ App.chrome = (function () {
     });
 
     registerSurface({
+      surface: viewOptions,
       isOpen: function () {
         return viewOptions.classList.contains('open');
       },
@@ -840,6 +856,7 @@ App.chrome = (function () {
     announceOutcome,
     armAnnounceGate,
     registerSurface,
+    closeOtherSurfaces,
     manageSurfaceFocus,
     trapFocus,
     syncStackSearchBtn,
