@@ -1444,3 +1444,48 @@ func TestAppRosterJSHandler_ServesGzipWhenAccepted(t *testing.T) {
 		t.Error("gzip body does not attach the roster module to the App namespace")
 	}
 }
+
+func TestAppDeploysJSHandler_ServesJS(t *testing.T) {
+	handler := AppDeploysJSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-deploys.js", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/javascript") {
+		t.Errorf("content type = %q, want text/javascript", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("cache-control = %q, want no-cache (lockstep with the app shell)", cc)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "App.deploys = (function () {") {
+		t.Error("body does not attach the deploys module to the App namespace")
+	}
+}
+
+func TestAppDeploysJSHandler_ServesGzipWhenAccepted(t *testing.T) {
+	handler := AppDeploysJSHandler()
+	req := httptest.NewRequest(http.MethodGet, "/app-deploys.js", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if enc := rec.Header().Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", enc)
+	}
+	gr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	got, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatalf("reading gzip body: %v", err)
+	}
+	if !strings.Contains(string(got), "App.deploys = (function () {") {
+		t.Error("gzip body does not attach the deploys module to the App namespace")
+	}
+}
