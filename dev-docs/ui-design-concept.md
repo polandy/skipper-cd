@@ -45,11 +45,12 @@ purpose rather than one justified feature at a time.
 
 One row = one stack. The two table views (Deploys · Stacks) differ only in
 **what** the columns say, not in **how** rows, columns, and expansions look. The
-single sanctioned difference: Deploys rows carry a **status-coloured left bar**
-(it is an event log), the Stacks roster does not (status is a badge, since it is
-inventory). Everything else — frame, hover, columns, the expand card — is
-identical, and where practical the *same CSS rules* are shared rather than
-duplicated.
+single sanctioned difference is what the left gutter is keyed to: **deploy
+status** in Deploys (it is an event log) and **health** in the Stacks roster
+(status there is the badge, since it is inventory). Both follow the same rule —
+the gutter marks the exception and stays empty for the normal case. Everything
+else — sheet, hover, columns, the expand card — is identical, and where
+practical the *same CSS rules* are shared rather than duplicated.
 
 ## Rows
 
@@ -80,7 +81,8 @@ duplicated.
 - Header row + data rows share **one fixed-track grid** so columns line up
   across rows (auto/`1fr`-only grids self-size per row and look ragged). Each
   view has a header (`.event-list-header`, `.roster-list-header`) with the same
-  type treatment (10 px uppercase, muted, bottom rule).
+  type treatment: the sheet's head strip (`.sheet-head`), 12 px sentence-case
+  labels in the display face on a faintly sunken ground.
   - Deploys: `Time · Stack · Version · Status · Duration · Files`.
   - Stacks: `Stack · Version · Status · Last deploy · Commit`.
 - **One version chip everywhere** (`.tag-delta`): both views render versions with
@@ -110,16 +112,15 @@ directly below it. The open row and its trailing panels read as **one card**:
 - **Continuous left bar**: the open row and every bound panel carry the same
   3 px inset bar — the row's **status colour** in Deploys, the neutral
   **accent** for the history/containers panels (they are not a single status).
-- **Seam**: the panel sets `margin-top: -2px` (closing the inter-row gap) and
-  squares its **top** corners; the row squares its **bottom** corners. The bar
-  runs unbroken from row into panel.
-- **Closed card**: a bound panel keeps a **right + bottom border** and a
-  **rounded bottom**, so the card is visibly closed on the right — identical for
-  every panel type (`.diff-panel`, `.files-list`, `.health-panel`,
-  `.audit-panel`, `.heal-panel`).
-- **Stacking**: when panels stack (containers → history, or diff → error
-  detail), every panel *except the last* squares its bottom (`…:has(+ …)`), so
-  only the final card rounds off.
+- **Part of the sheet, not a card on it**: a panel sits flush under its row
+  inside the same border, drawing no frame and no radius of its own — the only
+  edges it adds are that left bar and the hairline the list puts between every
+  child. Panels stack the same way, so a row with three of them is one unbroken
+  run down the sheet.
+- **Closing the card**: whichever panel ends the run follows the sheet's bottom
+  corners, through the one `.sheet-body > :last-child` rule rather than a
+  per-panel `:has(+ …)` chain. That is what the negative margins and
+  corner-squaring the gapped-row layout needed used to buy.
 
 ### Panel types
 
