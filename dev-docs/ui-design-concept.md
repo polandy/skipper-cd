@@ -53,11 +53,19 @@ duplicated.
 
 ## Rows
 
-- **Borderless**, `var(--radius)` corners, transparent background; a subtle
-  `--overlay2` wash on `:hover`. Rows sit in a flex column with a **2 px** gap.
-  (`.event-row`, `.roster-row`.)
-- **Left status bar** (Deploys only): a 3 px `::before` bar coloured by status
-  (success/failed/queued/…). The roster omits it.
+- Rows live **on a sheet**, not on the page: the column header (`.sheet-head`)
+  and the row list (`.sheet-body`) are one bordered `--r-sheet` surface, rows sit
+  flush inside it with a hairline between them and no radius of their own — only
+  the last child follows the sheet's bottom corners. A subtle `--overlay2` wash
+  on `:hover`. (`.event-row`, `.roster-row`.)
+- **Left status bar**: a 3 px `::before` running the row's **full height**,
+  coloured by `data-status` in Deploys, so a column of them reads as a status
+  gutter. The roster draws it only for a health state that needs it (unhealthy,
+  stopped) — status there is the badge.
+- **No row tint.** A status is said once by the bar and once by the badge; the
+  full-row wash that used to say it a third time is gone. What still tints is the
+  **error strip** under a failed row, which is the part that needs the alarm, and
+  the row of a deploy running right now.
 - **Padding** `12px 20px` desktop, `10px 14px` mobile.
 
 ## Columns
@@ -126,6 +134,38 @@ Relative by default (`Xs ago`). A **shared time-mode toggle** lives in each
 view's options popover (one mode, flipping it re-renders both views). Hovering a
 relative time reveals the absolute value via `title` — a **mouse** affordance;
 touch has no hover, so the toggle is the touch path.
+
+## Type roles
+
+Two faces, split by what the text **is** — not by which surface it sits on:
+
+- **DM Sans** (`--font-display`) for anything a person wrote or reads as a label:
+  stack names, times and durations, column headers, status and health words,
+  panel section headings, file counts.
+- **JetBrains Mono** (`--font-mono`) for machine output only: image versions,
+  commit SHAs, diffs, log lines, paths.
+
+A stack name in mono made every row read as a terminal dump; the split is what
+gives a row a first and a second tier.
+
+## Frame budget
+
+Border, fill and radius each say "this is a separate object", so they are spent
+where that is true rather than on every token in a row:
+
+- **A status is a word with an icon.** Only the states that want attention take a
+  fill — `failed` and `rolled_back` a tinted pill, the two worst outcomes
+  (`rolled_back_unhealthy`, `heal_exhausted`) a solid one. Settled states are the
+  icon plus the word.
+- **Health is a dot and a word**, filled only on hover, where it says "this
+  opens".
+- **File counts, durations and times are text.** They gain a surface on hover if
+  they are a control.
+- **The row's glyph cluster rests at 0.62 opacity** and comes up on hover, focus,
+  or while its own surface is open — legible on touch, quiet while scanning.
+- **Radius is a scale, not a value**: `--r-sheet` (12px) for a sheet or band,
+  `--radius` (8px) for a control or popover, `--r-chip` (5px) for a chip inside a
+  row, `999px` for a state token.
 
 ## Tokens
 

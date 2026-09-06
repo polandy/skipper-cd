@@ -226,7 +226,13 @@
     --queued-dim: color-mix(in srgb, var(--queued) 14%, transparent);
     --font-display: 'DM Sans', 'DM Sans Fallback Ubuntu', 'DM Sans Fallback DejaVu', 'DM Sans Fallback Liberation', sans-serif;
     --font-mono: 'JetBrains Mono', 'JetBrains Mono Fallback Ubuntu', 'JetBrains Mono Fallback DejaVu', 'JetBrains Mono Fallback Liberation', 'SF Mono', 'Cascadia Code', monospace;
+    /* Radius says what kind of thing an element is, so it is a scale, not one
+       value: the sheet a table sits on, a control/panel (--radius), a chip
+       inside a row, and a full pill for the states that need to read as a
+       token. */
+    --r-sheet: 12px;
     --radius: 8px;
+    --r-chip: 5px;
   }
 
   /* Light themes: darken the queued amber used as text so tag/badge/count
@@ -297,29 +303,16 @@
     text-underline-offset: 2px;
   }
 
-  /* Subtle grid pattern overlay */
+  /* Page ground: one quiet vertical wash, nothing drawn on top of it. The
+     tables are the figure and they now sit on their own sheet (--r-sheet), so a
+     48px grid and an accent glow behind them competed with the content for the
+     eye — the grid lines in particular showed THROUGH every transparent row and
+     read as cell borders the layout never had. */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
-    background:
-      linear-gradient(color-mix(in srgb, var(--overlay2) 7%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--overlay2) 7%, transparent) 1px, transparent 1px);
-    background-size: 48px 48px;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  /* Ambient glow at top */
-  body::after {
-    content: '';
-    position: fixed;
-    top: -200px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 800px;
-    height: 400px;
-    background: radial-gradient(ellipse, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 70%);
+    background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--bg-sunken) 55%, transparent) 100%);
     pointer-events: none;
     z-index: 0;
   }
@@ -620,26 +613,43 @@
   }
 
   /* ─── EVENT LIST ─── */
-  .event-list {
+  /* One sheet, not a stack of floating rows: the column header is the sheet's
+     top strip and the row list its body, so the two are a single bordered
+     surface with hairlines between the rows. Rows used to be transparent cards
+     with a 2px gap, which left the page ground (and, before it went, its grid)
+     showing between and through them. The shared .sheet-* rules below give the
+     roster the same treatment. */
+  .sheet-head {
+    align-items: center;
+    height: 36px;
+    padding: 0 20px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: color-mix(in srgb, var(--bg-sunken) 45%, var(--bg-base));
+    border: 1px solid var(--border);
+    border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  }
+  .sheet-body {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 var(--r-sheet) var(--r-sheet);
   }
-
+  /* Nothing to frame: an empty sheet is a 1px box around nothing (the views
+     render their own empty state beside it). */
+  .sheet-body:empty { border: 0; }
+  /* Rows are square inside the sheet; only the last one follows its corners, so
+     a hover wash or an open panel never paints past the rounded edge. */
+  .sheet-body > :last-child { border-radius: 0 0 var(--r-sheet) var(--r-sheet); }
   .event-list-header {
     display: grid;
     grid-template-columns: var(--deploy-cols);
     gap: 12px;
-    padding: 0 20px 10px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 4px;
   }
+
 
   /* Deploy-table columns: Time · Stack · Version · Status · Duration · Files.
      Held in a variable because the header and the rows must stay in lockstep, and
@@ -665,18 +675,16 @@
        hanging beneath it. */
     align-items: start;
     padding: 12px 20px;
-    border-radius: var(--radius);
     transition: background 0.2s, transform 0.2s;
     position: relative;
   }
 
-  /* With variable row heights the spacing alone no longer says where one row ends
-     and the next begins, so rows carry a hairline separator. Not on the first row,
-     and the rule applies after an expanded panel too — there the line marks the
-     return to the log. Tied to the Version column: with it off every row is a
-     single line again, so the separators are chrome the spacing already provides. */
-  #deploy-table:not(.no-version) .event-list > .event-row:not(:first-child) {
-    border-top: 1px solid color-mix(in srgb, var(--overlay2) 10%, transparent);
+  /* Rows sit flush inside the sheet, separated by a hairline rather than by a
+     gap that shows the page through. The last one has none — the sheet's own
+     edge closes the table. Panels between rows carry the same line, so the rule
+     is on every child of the list, not just the rows. */
+  .event-list > *:not(:last-child), .roster-list > *:not(:last-child) {
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay2) 10%, transparent);
   }
 
   .event-row:hover {
@@ -705,10 +713,9 @@
     letter-spacing: 0.4px;
     cursor: pointer;
     color: color-mix(in srgb, var(--host-slot) 85%, var(--text));
-    background: color-mix(in srgb, var(--host-slot) 16%, transparent);
-    border: 1px solid color-mix(in srgb, var(--host-slot) 34%, transparent);
+    background: color-mix(in srgb, var(--host-slot) 18%, transparent);
   }
-  .host-mono:hover { background: color-mix(in srgb, var(--host-slot) 26%, transparent); }
+  .host-mono:hover { background: color-mix(in srgb, var(--host-slot) 30%, transparent); }
   /* While a host filter is active the visible chips wear a steady selected-state
      halo so it is clear the filter is on and any chip clears it on re-click.
      Steady, not pulsing (a row of pulsing chips reads as an alert). */
@@ -807,167 +814,57 @@
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
 
-  /* Active deploy glow */
-  .event-row.deploying-row {
-    background: var(--accent-dim);
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
-    margin: 2px 0;
-  }
-
-  .event-row.deploying-row::before {
+  /* One status bar rule for every outcome, driven by the row's own
+     data-status. It replaces a per-status pair of rules (a full-row tint plus a
+     centred 60%-tall ::before) that said the same thing three times over — bar,
+     tint, and the badge itself — and left a busy feed looking blotchy once the
+     rows sat flush on one sheet. The bar now runs the row's full height, so a
+     column of them reads as a status gutter down the left edge of the table;
+     what a row still tints is the ERROR strip under it, which is the part that
+     needs the alarm. */
+  .event-row { --sc: transparent; }
+  .event-row[data-status="success"]                { --sc: var(--success); }
+  .event-row[data-status="healed"]                 { --sc: var(--success); }
+  .event-row[data-status="failed"]                 { --sc: var(--danger); }
+  .event-row[data-status="rolled_back_unhealthy"]  { --sc: var(--danger); }
+  .event-row[data-status="heal_exhausted"]         { --sc: var(--danger); }
+  .event-row[data-status="rolled_back"]            { --sc: var(--rollback); }
+  .event-row[data-status="removed"]                { --sc: color-mix(in srgb, var(--rollback) 55%, transparent); }
+  .event-row[data-status="queued"],
+  .event-row[data-status="blocked"]                { --sc: var(--queued); }
+  .event-row[data-status="deploying"]              { --sc: var(--accent); }
+  .event-row::before {
     content: '';
     position: absolute;
     left: 0;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 0;
+    bottom: 0;
     width: 3px;
-    height: 60%;
-    background: var(--accent);
-    border-radius: 0 2px 2px 0;
+    background: var(--sc);
+  }
+
+  /* The one row that still carries a wash: a deploy running right now is the
+     only transient state in the table, and the glow is what makes it findable
+     while it lasts. */
+  .event-row.deploying-row {
+    background: var(--accent-dim);
+  }
+  .event-row.deploying-row::before {
     box-shadow: 0 0 12px var(--accent-glow);
   }
 
-  .event-row.failed-row {
-    background: var(--danger-dim);
-  }
-
-  .event-row.failed-row::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: var(--danger);
-    border-radius: 0 2px 2px 0;
-  }
-
-  .event-row.rolled_back-row {
-    background: var(--rollback-dim);
-  }
-
-  /* Rollback ran but the restored version is also unhealthy — the worst
-     terminal state, so it borrows the failed (danger) colours. */
-  .event-row.rolled_back_unhealthy-row {
-    background: var(--danger-dim);
-  }
-
-  .event-row.rolled_back_unhealthy-row::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: var(--danger);
-    border-radius: 0 2px 2px 0;
-  }
-
-  .event-row.rolled_back-row::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: var(--rollback);
-    border-radius: 0 2px 2px 0;
-  }
-
-  /* Self-heal restored a stack — a positive recovery, so it borrows the
-     success (teal) colours to read distinctly from a git deploy (ADR-0029). */
-  .event-row.healed-row {
-    background: var(--success-dim);
-  }
-
-  .event-row.healed-row::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: var(--success);
-    border-radius: 0 2px 2px 0;
-  }
-
-  /* Self-heal gave up — the worst self-heal outcome, so it borrows the failed
-     (danger) colours like rolled_back_unhealthy (ADR-0029). */
-  .event-row.heal_exhausted-row {
-    background: var(--danger-dim);
-  }
-
-  .event-row.heal_exhausted-row::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: var(--danger);
-    border-radius: 0 2px 2px 0;
-  }
-
-  /* Queued (autosync paused) and blocked (a failed depends_on dependency,
-     ADR-0032) are both pending, leave-dirty states that retry on the next sync,
-     so they share the amber pending treatment; the badge label and the row tag
-     carry the distinction (paused vs blocked by a dependency). */
-  .event-row.queued-row, .event-row.blocked-row {
-    background: var(--queued-dim);
-  }
-
-  .event-row.queued-row::before, .event-row.blocked-row::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: var(--queued);
-    border-radius: 0 2px 2px 0;
-  }
-
-  /* A stack that left the deploy set. It borrows the rollback colour the
-     Orphans section tags its rows with, so the history row and the orphan it
-     points at read as one fact. Nothing failed and nothing was torn down, so
-     the tint stays quieter than a danger one. */
-  .event-row.removed-row {
-    background: color-mix(in srgb, var(--rollback) 7%, transparent);
-  }
-
-  .event-row.removed-row::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: color-mix(in srgb, var(--rollback) 55%, transparent);
-    border-radius: 0 2px 2px 0;
-  }
-
   .paused-tag {
-    font-family: var(--font-mono);
-    font-size: 9.5px;
-    font-weight: 600;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
+    font-family: var(--font-display);
+    font-size: 11.5px;
+    font-weight: 500;
     color: var(--queued-text);
     background: var(--queued-dim);
-    border: 1px solid color-mix(in srgb, var(--queued) 26%, transparent);
-    padding: 1px 5px;
-    border-radius: 4px;
+    padding: 2px 7px;
+    border-radius: var(--r-chip);
     margin-left: 8px;
     white-space: nowrap;
-    /* Yields before the stack name does: the badge already says BLOCKED or
-       QUEUED, and the full reason stays in the autosync drawer. */
+    /* Yields before the stack name does: the badge already says blocked or
+       queued, and the full reason stays in the autosync drawer. */
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -975,34 +872,17 @@
 
   /* Narrower than this the tag has no room to say anything useful — it shrank
      to a one-letter stub, which reads worse than absent. The status badge still
-     says BLOCKED or QUEUED and the full reason stays in the autosync drawer. */
+     says blocked or queued and the full reason stays in the autosync drawer. */
   @media (max-width: 1000px) {
     .paused-tag { display: none; }
   }
 
-  .event-row.success-row::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: var(--success);
-    border-radius: 0 2px 2px 0;
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-
-  .event-row.success-row:hover::before {
-    opacity: 1;
-  }
-
   /* ─── CELLS ─── */
   .cell-time {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-muted);
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
     white-space: nowrap;
     /* Absolute mode (the view option) prints a full locale timestamp, which is
        wider than the column on a narrow viewport — clip it inside the cell
@@ -1012,16 +892,20 @@
     text-overflow: ellipsis;
   }
 
+  /* The stack name is a name, not a machine token: it reads in the display face
+     like every other label, and the mono face is kept for what is literally
+     machine output — versions, SHAs, diffs, log lines. Same treatment in the
+     roster (.roster-stack), so the two views name a stack identically. */
   .cell-stack {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
-    font-family: var(--font-mono);
-    font-size: 13px;
+    font-family: var(--font-display);
+    font-size: 15px;
     font-weight: 500;
     color: var(--text-primary);
-    letter-spacing: -0.3px;
+    letter-spacing: -0.005em;
   }
 
   /* The name is the row's identity, the pending tag beside it is context, so
@@ -1070,25 +954,36 @@
   }
 
   .cell-duration {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-muted);
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
   }
 
   /* ─── STATUS BADGES ─── */
+  /* A status is a word with an icon, not a box. Every outcome used to be an
+     outlined uppercase chip of the same weight, so a failure had to be read
+     rather than seen; now only the states that want attention take a surface
+     (see the -failed/-rolled_back fills below), and the settled ones are just
+     their icon plus the word. Sentence-cased by the source labels, which stay
+     lowercase to speak with the health pill sitting right under them. */
   .badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 3px 10px;
-    border-radius: 5px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.3px;
+    padding: 3px 0;
+    border-radius: 999px;
+    font-family: var(--font-display);
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.25;
     white-space: nowrap;
-    text-transform: uppercase;
+    color: var(--text-primary);
   }
+  /* The states that carry a fill get their padding back — without it the tint
+     would sit tight against the glyph. */
+  .badge-failed, .badge-rolled_back,
+  .badge-rolled_back_unhealthy, .badge-heal_exhausted { padding: 3px 10px 3px 8px; }
 
   /* Every status badge leads with a small icon in a fixed slot, so the glyphs
      read at one optical size regardless of the label (T3.14). deploying keeps
@@ -1096,28 +991,24 @@
   .badge-ico { flex: none; width: 13px; height: 13px; }
   .badge-lbl { display: inline-flex; flex-direction: column; gap: 0; line-height: 1.15; }
 
-  .badge-success {
-    background: var(--success-dim);
-    color: var(--success);
-    border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
-  }
+  /* Settled and good: the icon carries the colour, the word stays in the
+     body colour so a page of successes reads as quiet text. */
+  .badge-success .badge-ico { color: var(--success); }
+  .badge-healed .badge-ico { color: var(--success); }
 
+  /* Wrong now: a tinted pill, the only fill in a column of plain words. */
   .badge-failed {
     background: var(--danger-dim);
     color: var(--danger);
-    border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
   }
 
   .badge-deploying {
-    background: var(--accent-dim);
     color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   }
 
   .badge-rolled_back {
     background: var(--rollback-dim);
     color: var(--rollback);
-    border: 1px solid color-mix(in srgb, var(--rollback) 22%, transparent);
   }
 
   /* Rollback ran but the restored version is also unhealthy, and self-heal
@@ -1130,36 +1021,24 @@
   .badge-heal_exhausted {
     background: var(--danger);
     color: var(--crust);
-    border: 1px solid var(--danger);
     gap: 5px;
-    font-size: 9.5px;
+    font-size: 11px;
     line-height: 1.2;
-    padding: 3px 9px 3px 7px;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 30%, transparent),
-                0 2px 8px color-mix(in srgb, var(--danger) 26%, transparent);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--danger) 26%, transparent);
   }
   .badge-rolled_back_unhealthy .badge-ico,
   .badge-heal_exhausted .badge-ico { width: 14px; height: 14px; }
 
+  /* Pending, not wrong: the amber says "waiting", and no fill — the row's
+     amber status bar already places it. */
   .badge-queued, .badge-blocked {
-    background: var(--queued-dim);
     color: var(--queued-text);
-    border: 1px solid color-mix(in srgb, var(--queued) 30%, transparent);
   }
 
   /* Left the deploy set — the same colour the Orphans section tags the still
      running project with, so the two read as one fact. */
   .badge-removed {
-    background: var(--rollback-dim);
     color: var(--rollback);
-    border: 1px solid color-mix(in srgb, var(--rollback) 22%, transparent);
-  }
-
-  /* Self-heal restored a stack — recovery, so the success (teal) colours. */
-  .badge-healed {
-    background: var(--success-dim);
-    color: var(--success);
-    border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
   }
 
   .spinner {
@@ -1181,26 +1060,28 @@
     align-items: center;
     gap: 5px;
     padding: 2px 8px 2px 6px;
+    margin-left: -6px; /* the dot, not the padding box, starts the line */
+    border: 0;
     border-radius: 999px;
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 12.5px;
+    font-weight: 500;
     line-height: 1.4;
-    letter-spacing: -0.1px;
     cursor: pointer;
     color: var(--hc);
-    border: 1px solid color-mix(in srgb, var(--hc) 32%, transparent);
-    background: color-mix(in srgb, var(--hc) 13%, transparent);
-    transition: background 0.15s, border-color 0.15s;
+    background: transparent;
+    transition: background 0.15s;
     user-select: none;
   }
-  .health-pill:hover { background: color-mix(in srgb, var(--hc) 20%, transparent); border-color: color-mix(in srgb, var(--hc) 45%, transparent); }
+  /* The dot is the state; the frame around it was one more box in a row that
+     had nine. Hover fills it in so it still reads as a control. */
+  .health-pill:hover { background: color-mix(in srgb, var(--hc) 16%, transparent); }
   .health-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--hc); flex-shrink: 0; }
-  .health-pill[data-health="healthy"]   { --hc: var(--h-healthy); }
+  .health-pill[data-health="healthy"]   { --hc: var(--h-healthy); color: var(--text-secondary); }
   .health-pill[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
   .health-pill[data-health="starting"]  { --hc: var(--h-starting); }
   .health-pill[data-health="stopped"]   { --hc: var(--h-stopped); }
-  .health-pill[data-health="unknown"]   { --hc: var(--h-unknown); border-style: dashed; }
+  .health-pill[data-health="unknown"]   { --hc: var(--h-unknown); color: var(--text-muted); }
   .health-pill[data-health="starting"] .hdot,
   .health-pill[data-health="unhealthy"] .hdot { animation: hpulse 1.4s ease-in-out infinite; }
   @keyframes hpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
@@ -1220,9 +1101,9 @@
     display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
     font: inherit; font-size: 12px; font-weight: 600; font-family: var(--font-mono);
     color: var(--danger); background: var(--danger-dim);
-    border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+    border: 0;
     border-radius: 999px; padding: 4px 11px 4px 9px;
-    transition: background 0.16s, border-color 0.16s;
+    transition: background 0.16s;
   }
   .health-beacon:hover { background: color-mix(in srgb, var(--danger) 20%, transparent); }
   .health-beacon:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
@@ -1240,9 +1121,9 @@
     display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
     font: inherit; font-size: 12px; font-weight: 600; font-family: var(--font-mono);
     color: var(--rollback); background: color-mix(in srgb, var(--rollback) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--rollback) 32%, transparent);
+    border: 0;
     border-radius: 999px; padding: 4px 11px 4px 9px;
-    transition: background 0.16s, border-color 0.16s;
+    transition: background 0.16s;
   }
   .incident-badge:hover { background: color-mix(in srgb, var(--rollback) 20%, transparent); }
   .incident-badge:focus-visible { outline: 2px solid var(--rollback); outline-offset: 2px; }
@@ -1266,9 +1147,9 @@
        badge's rosé, and at that strength the pill all but disappears on the
        light ground. Matched by eye against .incident-badge instead. */
     background: color-mix(in srgb, var(--queued) 22%, transparent);
-    border: 1px solid color-mix(in srgb, var(--queued) 45%, transparent);
+    border: 0;
     border-radius: 999px; padding: 4px 11px 4px 9px;
-    transition: background 0.16s, border-color 0.16s;
+    transition: background 0.16s;
   }
   .update-badge:hover { background: color-mix(in srgb, var(--queued) 32%, transparent); }
   .update-badge:focus-visible { outline: 2px solid var(--queued); outline-offset: 2px; }
@@ -1276,7 +1157,7 @@
      that the roster below is the list it points at. */
   .update-badge.active {
     background: color-mix(in srgb, var(--queued) 38%, transparent);
-    border-color: color-mix(in srgb, var(--queued) 70%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--queued) 70%, transparent);
   }
   .update-badge .ub-icon { font-size: 13px; line-height: 1; }
   /* The component's own display beats the UA [hidden] rule, so hiding at zero
@@ -1370,7 +1251,7 @@
     font-family: var(--font-mono);
     font-size: 11px;
   }
-  .health-panel .hp-head-label { color: var(--text-muted); letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; }
+  .health-panel .hp-head-label { color: var(--text-secondary); font-family: var(--font-display); font-size: 12px; font-weight: 600; }
   .health-panel .hp-head-who { color: var(--text-primary); font-size: 12.5px; font-weight: 600; }
   /* Update summary in the panel head (ADR-0054): amber count + muted check
      freshness. Takes over the right-alignment when present; the pill then
@@ -1496,7 +1377,7 @@
   .history-btn {
     display: inline-flex; align-items: center; justify-content: center;
     width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
-    border: 1px solid var(--border); border-radius: 5px;
+    border: 0; border-radius: var(--r-chip);
     background: transparent; color: var(--text-muted); cursor: pointer;
   }
   .history-btn:hover {
@@ -1514,7 +1395,7 @@
   .jump-btn {
     display: inline-flex; align-items: center; justify-content: center;
     width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
-    border: 1px solid var(--border); border-radius: 5px;
+    border: 0; border-radius: var(--r-chip);
     background: transparent; color: var(--text-muted); cursor: pointer;
   }
   .jump-btn:hover {
@@ -1523,6 +1404,20 @@
     background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
   .jump-btn svg { width: 12px; height: 12px; }
+
+  /* The row's affordance glyphs rest at a low weight and lift on hover, focus,
+     or while their own surface is open. On touch there is no hover, so the
+     resting state stays legible rather than invisible (0.62, measured against
+     --text-muted, not a dimming of the colour itself). */
+  .event-row .row-actions, .roster-row .row-actions,
+  .event-row .link-wrap, .roster-row .link-wrap { opacity: 0.62; transition: opacity 0.15s; }
+  .event-row:hover .row-actions, .roster-row:hover .row-actions,
+  .event-row:hover .link-wrap, .roster-row:hover .link-wrap,
+  .event-row:focus-within .row-actions, .roster-row:focus-within .row-actions,
+  .event-row:focus-within .link-wrap, .roster-row:focus-within .link-wrap,
+  .event-row[class*="-open"] .row-actions, .roster-row[class*="-open"] .row-actions {
+    opacity: 1;
+  }
 
   /* ─── TOUCH TARGETS (T2.9) ───
      The row-cluster glyph buttons and status pills render small by design, but
@@ -1590,7 +1485,7 @@
     display: flex; align-items: center; gap: 8px; padding: 0 0 8px;
     font-family: var(--font-mono); font-size: 11px;
   }
-  .audit-panel .ap-count { color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+  .audit-panel .ap-count { color: var(--text-secondary); font-family: var(--font-display); font-size: 12px; font-weight: 600; }
   .audit-panel .ap-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
   /* Change detection: the last card of the roster's expand stack, same bound
      accent frame as the history panel above it. */
@@ -1604,7 +1499,7 @@
     animation: expand 0.2s ease-out;
   }
   .watched-panel .wp-head { padding: 0 0 8px; font-family: var(--font-mono); font-size: 11px; }
-  .watched-panel .wp-label { color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+  .watched-panel .wp-label { color: var(--text-secondary); font-family: var(--font-display); font-size: 12px; font-weight: 600; }
   .watched-panel .wp-lead { color: var(--text-secondary); font-size: 12px; padding-bottom: 8px; }
   .watched-panel .wp-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
   .watched-panel .wp-file {
@@ -1663,25 +1558,28 @@
   .audit-row .ar-err { color: var(--danger); grid-column: 2 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* ─── FILES PILL ─── */
+  /* A file count is a fact the eye should be able to skip, so it is text with
+     an icon; the surface appears on hover, where it says "this opens the diff". */
   .files-pill {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     padding: 3px 8px;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--overlay2) 9%, transparent);
-    border: 1px solid var(--border);
+    margin-left: -8px;
+    border: 0;
+    border-radius: var(--r-chip);
+    background: transparent;
     color: var(--text-secondary);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background 0.15s, color 0.15s;
   }
 
   .files-pill:hover {
-    background: color-mix(in srgb, var(--overlay2) 14%, transparent);
-    border-color: var(--border-lit);
+    background: color-mix(in srgb, var(--overlay2) 12%, transparent);
     color: var(--text-primary);
   }
 
@@ -1698,21 +1596,21 @@
   .heal-pill {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     padding: 3px 8px;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--success) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--success) 30%, var(--border));
+    margin-left: -8px;
+    border: 0;
+    border-radius: var(--r-chip);
+    background: transparent;
     color: var(--success);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 500;
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 400;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background 0.15s;
   }
   .heal-pill:hover {
-    background: color-mix(in srgb, var(--success) 18%, transparent);
-    border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+    background: color-mix(in srgb, var(--success) 14%, transparent);
   }
   .heal-pill svg { width: 12px; height: 12px; opacity: 0.8; }
 
@@ -2124,37 +2022,17 @@
     box-shadow: inset 3px 0 0 var(--dc, var(--accent));
   }
 
-  /* Keep the variant-A left bar continuous across every row→panel→error seam:
-     square the adjoining corners and close the .event-list 2px inter-row gap, so
-     an open row and all its bound trailers read as one card with an unbroken left
-     bar. Applies to the health panel too — it shares the same binding. */
-  .event-row.health-open, .event-row.diff-open, .event-row.audit-open,
-  .roster-row.audit-open, .roster-row.hooks-open {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
-  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel, .heal-panel.bound, .peer-detail.bound,
-  .watched-panel {
-    margin-top: -2px;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-  }
-  /* A bound panel with the error detail stacked below it is mid-stack, not the
-     last card: square its bottom too so the bar runs straight into the error box. */
-  .diff-panel.bound:has(+ .error-detail),
-  .files-list.bound:has(+ .error-detail),
-  .health-panel:has(+ .audit-panel),
-  .audit-panel:has(+ .watched-panel) {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
-  /* The diff/files panels carry a full 1px border (needed unbound, in the log
-     view). Bound, their top and left borders would sit beside the shared 3px status
-     bar and double the line — offsetting the bar from the row's. Drop them so the
-     bar is the left edge, exactly as the health panel (border-bottom only) does. */
-  .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound {
+  /* A bound panel is part of the sheet, not a card resting on it: it sits flush
+     under its row inside the same border, so the only edges it draws are the
+     shared 3px status bar on the left and the hairline the list puts between
+     every child. The sheet's own :last-child rule rounds whichever panel ends
+     the card, so no panel carries a radius of its own. */
+  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel,
+  .heal-panel.bound, .peer-detail.bound, .watched-panel {
+    border-radius: 0;
     border-top: none;
     border-left: none;
+    border-right: none;
   }
 
   /* Commit-metadata header — the message/author/time/SHA of what shipped, above
@@ -2175,7 +2053,7 @@
     font-size: 11px;
   }
   .diff-head-echo .dh-who { color: var(--text-primary); font-size: 12.5px; font-weight: 700; }
-  .diff-head-echo .dh-label { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.09em; font-weight: 600; }
+  .diff-head-echo .dh-label { color: var(--text-muted); font-family: var(--font-display); font-size: 12px; font-weight: 500; }
   .diff-head-echo .dh-pill {
     margin-left: auto;
     display: inline-flex;
@@ -2438,18 +2316,13 @@
      the pre-tour header — so each caption wrapper is display:contents when seen,
      collapsing to nothing, and only becomes a column during the one-time tour. */
   .ht-cap { display: contents; }
-  .ht-lbl, .ht-lbl-row { display: none; }
+  .ht-lbl { display: none; }
 
   /* First run = <html> without .header-tour-seen. Captions appear, controls
      stack over their label, and the header grows to fit (var kept in sync so
      the Logs fullscreen offset stays correct). */
   html:not(.header-tour-seen) .ht-cap {
     display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-  html:not(.header-tour-seen) .view-switch {
     flex-direction: column;
     align-items: center;
     gap: 4px;
@@ -2465,12 +2338,6 @@
     white-space: nowrap;
     line-height: 1;
     animation: ht-cap-in 0.22s ease;
-  }
-  html:not(.header-tour-seen) .ht-lbl-row {
-    display: flex;
-    justify-content: space-around;
-    width: 100%;
-    gap: 6px;
   }
   html:not(.header-tour-seen) header { height: auto; min-height: 74px; }
   /* The captions are wider than the glyphs they sit under, so for the one visit
@@ -2610,24 +2477,33 @@
   .view-toggle {
     display: flex;
     gap: 2px;
-    padding: 2px;
-    background: var(--bg-raised);
+    padding: 3px;
+    background: var(--bg-sunken);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 9px;
   }
 
   .view-toggle button {
     display: flex;
     align-items: center;
-    color: var(--text-muted);
+    gap: 7px;
+    color: var(--text-secondary);
     background: none;
     border: none;
-    border-radius: 4px;
-    padding: 4px 8px;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
     transition: color 0.15s, background 0.15s;
   }
-  .vt-ico { display: block; width: 17px; height: 17px; }
+  .vt-ico { display: block; width: 16px; height: 16px; }
+  /* The one navigation control in the header says what it navigates to. The
+     labels are the first thing to go when the row runs out of width (below), and
+     the glyph plus the button's aria-label carry it from there — which is what
+     the first-run tour used to have to explain with a caption row of its own. */
+  .vt-lbl { line-height: 1; }
 
   .view-toggle button:hover:not(.active) { color: var(--text-secondary); }
 
@@ -2677,6 +2553,10 @@
   @media (prefers-reduced-motion: reduce) {
     .vt-caret { transition: none; }
   }
+
+  /* Splits the controls that report what the instance is doing from the two
+     that are only this browser's preference. */
+  .hdr-sep { width: 1px; height: 20px; flex: none; background: var(--border); margin: 0 2px; }
 
   /* ─── VIEW OPTIONS POPOVER ─── */
   /* View-specific toggles (deploys: time mode; logs: sort + auto-scroll) live
@@ -3344,7 +3224,7 @@
   /* Roster rows reuse the deploy row frame minus the status left bar (status is
      the badge); open-state + panel binding are shared with .event-row.audit-open.
      Header + rows share one fixed grid so columns align, like the deploy table. */
-  .roster-list { display: flex; flex-direction: column; gap: 2px; }
+  .roster-list { display: flex; flex-direction: column; }
   /* Stack · Version · Status · Last deploy · Commit. The Version column stays a
      single line (one lead version + a "+N" pointer, not the Deploys column's full
      per-service stack), so the roster keeps its one-line-per-stack inventory
@@ -3362,20 +3242,11 @@
      version is what the cell is for. */
   .roster-row .col-version .tag-delta { flex-wrap: nowrap; }
   .roster-row .col-version .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .roster-list-header {
-    padding: 0 20px 10px;
-    font-family: var(--font-mono);
-    font-size: 10px; font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase; letter-spacing: 1px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 4px;
-  }
+
   /* Empty set: drop the lone column header. */
   .roster-list-header:has(+ .roster-list:empty) { display: none; }
   .roster-row {
     padding: 12px 20px;
-    border-radius: var(--radius);
     position: relative;
     cursor: pointer;
     transition: background 0.2s;
@@ -3388,18 +3259,21 @@
      bar + faint tint), not just a small pill. Guarded so the jump flash and the
      open-row accent bar still win; the extra :not() specificity also keeps the
      tint through :hover, which is defined earlier and would otherwise override. */
-  .roster-row[data-health="unhealthy"]:not(.audit-open):not(.jump-target) {
-    background: var(--danger-dim);
-  }
   .roster-row[data-health="unhealthy"]:not(.audit-open):not(.jump-target)::before {
-    content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-    width: 3px; height: 60%; background: var(--danger); border-radius: 0 2px 2px 0;
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--h-unhealthy);
+  }
+  /* Health is what the inventory is about, so a stopped stack gets the gutter
+     too — quieter than the unhealthy red, since stopped is a choice, not a fault. */
+  .roster-row[data-health="stopped"]:not(.audit-open):not(.jump-target)::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: color-mix(in srgb, var(--h-stopped) 70%, transparent);
   }
   .roster-list .filtered-out { display: none !important; }
   .roster-stack {
     display: flex; align-items: center; gap: 8px; min-width: 0;
-    font-family: var(--font-mono); font-size: 13px; font-weight: 500;
-    color: var(--text-primary); letter-spacing: -0.3px;
+    font-family: var(--font-display); font-size: 15px; font-weight: 500;
+    color: var(--text-primary); letter-spacing: -0.005em;
   }
   .roster-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Host chip + icon + name are one identity group, and it never wraps: as
@@ -3414,9 +3288,15 @@
      narrow cell wraps them to the next line together instead of breaking
      between two icons. flex: none keeps the name the part that yields. */
   .row-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; }
-  .roster-when, .roster-sha {
+  .roster-when {
+    font-family: var(--font-display); font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .roster-sha {
     font-family: var(--font-mono); font-size: 12px;
-    color: var(--text-muted); white-space: nowrap;
+    color: var(--text-secondary); white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis;
   }
   .roster-flag {
@@ -3589,6 +3469,11 @@
 
   /* Both narrow layouts, tablet and phone. */
   @media (max-width: 1000px) {
+    /* The view labels go first: the glyphs and the buttons' aria-labels carry
+       the switch from here down, and the row needs the width for the read-outs
+       that change under the viewer. */
+    .vt-lbl { display: none; }
+    .view-toggle button { padding: 5px 8px; }
     /* The brand text goes: below this the control cluster wants the width, and
        what is left squeezes the wordmark and the version label down to a
        character and an ellipsis — a sliver beside the logo that reads as
@@ -3667,6 +3552,8 @@
     /* The theme picker doesn't fit the compact row and switching palettes is
        rarely needed on a phone; the configured theme still applies as-is. */
     .theme-picker { display: none; }
+    /* Nothing left on its right-hand side to separate from. */
+    .hdr-sep { display: none; }
     main { margin: 16px auto; padding: 0 12px; }
 
     .event-list-header { display: none; }
@@ -3774,9 +3661,7 @@
        headerTourSeen, so it still greets them the first time they open a wider
        viewport. */
     html:not(.header-tour-seen) .ht-cap { display: contents; }
-    html:not(.header-tour-seen) .view-switch { flex-direction: row; gap: 0; }
-    html:not(.header-tour-seen) .ht-lbl,
-    html:not(.header-tour-seen) .ht-lbl-row { display: none; }
+    html:not(.header-tour-seen) .ht-lbl { display: none; }
     html:not(.header-tour-seen) header { height: 48px; min-height: 0; }
     .header-tour { display: none; }
   }
@@ -3790,7 +3675,7 @@
   .clog-btn {
     display: inline-flex; align-items: center; justify-content: center;
     width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
-    border: 1px solid var(--border); border-radius: 5px;
+    border: 0; border-radius: var(--r-chip);
     background: transparent; color: var(--text-muted); cursor: pointer;
   }
   .clog-btn:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
@@ -3806,7 +3691,7 @@
   .link-btn {
     display: inline-flex; align-items: center; justify-content: center;
     width: 20px; height: 18px; padding: 0; flex: none;
-    border: 1px solid var(--border); border-radius: 5px;
+    border: 0; border-radius: var(--r-chip);
     background: transparent; color: var(--text-muted); cursor: pointer;
     text-decoration: none;
   }
@@ -3843,12 +3728,11 @@
     margin-left: 2px; padding: 1px 6px 1px 4px; flex: none; cursor: pointer;
     border-radius: 999px; font-family: var(--font-mono); font-size: 10px; font-weight: 700;
     line-height: 1.4; color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-    background: color-mix(in srgb, var(--accent) 11%, transparent);
-    transition: background 0.15s, border-color 0.15s;
+    border: 0;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    transition: background 0.15s;
   }
-  .hooks-badge:hover { background: color-mix(in srgb, var(--accent) 20%, transparent);
-    border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+  .hooks-badge:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
   .hooks-badge svg { width: 11px; height: 11px; }
   .hooks-badge .hk-count { font-variant-numeric: tabular-nums; }
   .event-row.hooks-open .hooks-badge,
@@ -3872,7 +3756,7 @@
   .more-btn {
     display: inline-flex; align-items: center; justify-content: center;
     width: 22px; height: 20px; padding: 0; flex: none;
-    border: 1px solid var(--border); border-radius: 5px;
+    border: 0; border-radius: var(--r-chip);
     background: transparent; color: var(--text-muted); cursor: pointer;
     transition: color .15s, border-color .15s, background .15s;
   }

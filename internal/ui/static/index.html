@@ -106,17 +106,16 @@
       <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
         <button data-view="deploys" class="active" title="Deploys" aria-label="Deploys" aria-haspopup="true" aria-expanded="false">
           <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3.5 9.5h17M9 9.5V19" stroke="currentColor" stroke-width="2"/></svg>
-          <span class="vt-caret" aria-hidden="true"></span>
+          <span class="vt-lbl">Deploys</span><span class="vt-caret" aria-hidden="true"></span>
         </button>
         <button data-view="stacks" title="Stacks" aria-label="Stacks" aria-haspopup="true" aria-expanded="false">
           <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l8 4-8 4-8-4 8-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 12l8 4 8-4M4 16.5l8 4 8-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span class="vt-caret" aria-hidden="true"></span>
+          <span class="vt-lbl">Stacks</span><span class="vt-caret" aria-hidden="true"></span>
         </button>
         <button data-view="logs" title="Logs" aria-label="Logs" aria-haspopup="true" aria-expanded="false">
-          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12h4l2-6 3 12 2-8 2 4h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12h4l2-6 3 12 2-8 2 4h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vt-lbl">Logs</span>
         </button>
       </div>
-      <div class="ht-lbl-row" aria-hidden="true"><span class="ht-lbl">Deploys</span><span class="ht-lbl">Stacks</span><span class="ht-lbl">Logs</span></div>
       <div class="view-options" id="view-options" data-testid="view-options" role="menu" aria-label="View options">
         <div class="vo-group" data-view="deploys">
           <button class="filter-toggle vo-search" id="deploy-search-open" data-testid="deploy-search" type="button" title="Search stacks">
@@ -164,6 +163,7 @@
     </div>
       <span class="ht-lbl" aria-hidden="true">Autosync</span>
     </span>
+    <span class="hdr-sep" aria-hidden="true"></span>
     <span class="ht-cap">
     <div class="theme-picker" title="UI theme (this browser only — does not change the deployed environment's theme)">
       <svg class="tp-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-3.9-4-6.6-9-6.6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="7.5" cy="12" r="1.1" fill="currentColor"/><circle cx="9.5" cy="7.8" r="1.1" fill="currentColor"/><circle cx="14" cy="7.3" r="1.1" fill="currentColor"/><circle cx="17" cy="10.5" r="1.1" fill="currentColor"/></svg>
@@ -306,7 +306,7 @@
       <span id="host-stale-text"></span>
     </div>
     <div class="attention-band" id="attention-band" data-testid="attention-band" hidden></div>
-    <div class="event-list-header">
+    <div class="event-list-header sheet-head">
       <span>Time</span>
       <span>Stack</span>
       <span class="col-version">Changes</span>
@@ -314,7 +314,7 @@
       <span class="eh-dur">Duration</span>
       <span class="eh-files">Files</span>
     </div>
-    <div class="event-list" id="tbody"></div>
+    <div class="event-list sheet-body" id="tbody"></div>
     <div class="filter-empty" id="deploy-filter-empty" data-testid="deploy-filter-empty">No stack matches &ldquo;<span id="deploy-filter-empty-q"></span>&rdquo;.</div>
   </div>
 
@@ -331,14 +331,14 @@
       <button class="stack-filter-clear" id="roster-filter-clear" data-testid="roster-filter-clear" type="button" aria-label="Clear filter">&times;</button>
     </div>
     <div class="status-filter" id="roster-update-filter" data-testid="roster-update-filter" role="group" aria-label="Filter stacks by available update"></div>
-    <div class="roster-list-header">
+    <div class="roster-list-header sheet-head">
       <span>Stack</span>
       <span class="rh-ver">Version</span>
       <span>Status</span>
       <span>Last deploy</span>
       <span class="rh-sha">Commit</span>
     </div>
-    <div class="roster-list" id="roster-list" data-testid="roster-list"></div>
+    <div class="roster-list sheet-body" id="roster-list" data-testid="roster-list"></div>
     <div class="filter-empty" id="roster-filter-empty" data-testid="roster-filter-empty">No stack matches &ldquo;<span id="roster-filter-empty-q"></span>&rdquo;.</div>
     <div class="roster-empty" id="roster-empty" data-testid="roster-empty">No stacks to show.</div>
   </div>

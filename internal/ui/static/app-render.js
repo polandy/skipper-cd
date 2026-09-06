@@ -269,7 +269,7 @@ function renderCommitHead(commits, meta, repoBase) {
     html +=
       `<div class="diff-head-echo">` +
       `<span class="dh-who">${escapeHtml(meta.stack)}</span>` +
-      `<span class="dh-label">deploy diff</span>` +
+      `<span class="dh-label">Deploy diff</span>` +
       `<span class="dh-pill"><span class="hdot"></span>${escapeHtml(statusText(meta.status))}</span>` +
       `</div>`;
   }
@@ -1123,7 +1123,7 @@ function watchedPanelHTML(entry, repoBase) {
     );
   }
   return (
-    `<div class="wp-head"><span class="wp-label">change detection</span></div>` +
+    `<div class="wp-head"><span class="wp-label">Change detection</span></div>` +
     `<div class="wp-lead" data-testid="watched-lead">${watchedLeadHTML(entry, items.length, repoBase)}</div>` +
     (items.length ? `<ul class="wp-files">${items.join('')}</ul>` : '')
   );

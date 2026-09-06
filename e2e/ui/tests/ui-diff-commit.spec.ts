@@ -30,9 +30,9 @@ test.describe('UI1: commit metadata header', () => {
 
     const head = diffHead(page);
     await expect(head).toBeVisible();
-    // Row echo: the panel names its own row (stack + "deploy diff" + status pill).
+    // Row echo: the panel names its own row (stack + "Deploy diff" + status pill).
     await expect(head.locator('.dh-who')).toHaveText('web');
-    await expect(head.locator('.dh-label')).toHaveText('deploy diff');
+    await expect(head.locator('.dh-label')).toHaveText('Deploy diff');
     await expect(head.locator('.dh-pill')).toContainText('success');
     // Commit metadata: subject, author, and a 7-char short SHA.
     await expect(head.locator('.dh-subject')).toHaveText('bump web to 1.26');

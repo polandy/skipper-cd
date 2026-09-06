@@ -216,7 +216,7 @@ test('renderCommitHead renders the row echo alone', () => {
   const html = r.renderCommitHead(null, { stack: 'blog', status: 'success' }, '');
   assert.match(html, /^<div class="diff-head" data-testid="diff-head">/);
   assert.match(html, /<span class="dh-who">blog<\/span>/);
-  assert.match(html, /deploy diff/);
+  assert.match(html, /Deploy diff/);
   assert.match(html, /dh-pill/);
   assert.doesNotMatch(html, /diff-commit/);
 });
