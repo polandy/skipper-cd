@@ -846,10 +846,10 @@
   /* The one row that still carries a wash: a deploy running right now is the
      only transient state in the table, and the glow is what makes it findable
      while it lasts. */
-  .event-row.deploying-row {
+  .event-row[data-status="deploying"] {
     background: var(--accent-dim);
   }
-  .event-row.deploying-row::before {
+  .event-row[data-status="deploying"]::before {
     box-shadow: 0 0 12px var(--accent-glow);
   }
 
@@ -3254,7 +3254,7 @@
   .roster-row:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
   .roster-row.disabled { opacity: 0.55; }
 
-  /* Unhealthy roster row — the same severity idiom as .event-row.failed-row, so
+  /* Unhealthy roster row — the same severity idiom a failed deploy row uses, so
      the Stacks view and the deploy log mark a bad row the same way (a red left
      bar + faint tint), not just a small pill. Guarded so the jump flash and the
      open-row accent bar still win; the extra :not() specificity also keeps the
@@ -3482,7 +3482,7 @@
     .brand-text { display: none; }
     /* With the files pill gone the row itself is the way into the diff — the
        click handler already falls back to the row's own pill. */
-    .event-row:has(.files-pill), .event-row.healed-row { cursor: pointer; }
+    .event-row:has(.files-pill), .event-row[data-status="healed"] { cursor: pointer; }
     /* The pending tag is dropped at this width (see .paused-tag), so nothing is
        left for the name to yield to — it shrinks and ellipsises inside its own
        column again instead of overflowing into the next one. */

@@ -83,7 +83,7 @@ App.hosts = (function () {
   // same rule updateStackAffordances applies to local rows).
   function createPeerRow(rec, hostName, stale, newest) {
     const row = document.createElement('div');
-    row.className = rowClass(rec.status, true) + ' peer-row' + (stale ? ' peer-stale' : '');
+    row.className = rowClass(true) + ' peer-row' + (stale ? ' peer-stale' : '');
     row.dataset.testid = 'deploy-row';
     row.dataset.stack = rec.stack;
     row.dataset.status = rec.status;

@@ -287,29 +287,12 @@ function auditCountText(n) {
   return n + (n === 1 ? ' deploy' : ' deploys');
 }
 
-// ROW_STATUSES are the deploy statuses that tint their row. Each one adds a
-// `<status>-row` class; a status outside this list stays untinted rather than
-// inventing a class no stylesheet defines.
-const ROW_STATUSES = [
-  'deploying',
-  'failed',
-  'success',
-  'rolled_back',
-  'rolled_back_unhealthy',
-  'healed',
-  'heal_exhausted',
-  'queued',
-  'blocked',
-  'removed',
-];
-
 // rowClass builds a deploy row's class list. isHistory marks rows replayed on
-// load — live arrivals get `new-row` so they can flash in.
-function rowClass(status, isHistory) {
-  let cls = 'event-row';
-  if (ROW_STATUSES.indexOf(status) !== -1) cls += ' ' + status + '-row';
-  if (!isHistory) cls += ' new-row';
-  return cls;
+// load — live arrivals get `new-row` so they can flash in. The row's status is
+// not in the class list: it rides `data-status`, which is what the stylesheet
+// and the row handlers read.
+function rowClass(isHistory) {
+  return isHistory ? 'event-row' : 'event-row new-row';
 }
 
 // logLineLevel is the level a log line renders as: child-process output (a
