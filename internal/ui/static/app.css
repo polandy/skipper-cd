@@ -818,10 +818,21 @@
      data-status. It replaces a per-status pair of rules (a full-row tint plus a
      centred 60%-tall ::before) that said the same thing three times over — bar,
      tint, and the badge itself — and left a busy feed looking blotchy once the
-     rows sat flush on one sheet. The bar now runs the row's full height, so a
-     column of them reads as a status gutter down the left edge of the table;
-     what a row still tints is the ERROR strip under it, which is the part that
-     needs the alarm. */
+     rows sat flush on one sheet. The bar runs the row's full height, so the
+     left edge of the table is a status gutter; what a row still tints is the
+     ERROR strip under it, which is the part that needs the alarm.
+
+     The gutter belongs to the EXCEPTIONS: `success` is over nine rows in ten,
+     and painting it turned the gutter into an unbroken green line that the two
+     rows worth finding had to compete with. So success stays silent at rest and
+     only answers a hover (as it did before the sheet), which keeps the gutter
+     explicable to a mouse without spending it on the normal case. Nothing is
+     lost by the silence — the status column says `success` in words and an icon
+     either way, which is exactly why the redundant channel can afford to drop
+     the norm and keep the exception. `healed` is not covered by this: it shares
+     the success green but is rare, so a green bar comes to mean "self-heal
+     acted here", which is worth seeing. The Stacks roster already followed this
+     rule (healthy draws nothing), so the two views now read alike. */
   .event-row { --sc: transparent; }
   .event-row[data-status="success"]                { --sc: var(--success); }
   .event-row[data-status="healed"]                 { --sc: var(--success); }
@@ -842,6 +853,11 @@
     width: 3px;
     background: var(--sc);
   }
+  .event-row[data-status="success"]::before {
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .event-row[data-status="success"]:hover::before { opacity: 1; }
 
   /* The one row that still carries a wash: a deploy running right now is the
      only transient state in the table, and the glow is what makes it findable

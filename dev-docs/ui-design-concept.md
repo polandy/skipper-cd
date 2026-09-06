@@ -59,9 +59,16 @@ duplicated.
   the last child follows the sheet's bottom corners. A subtle `--overlay2` wash
   on `:hover`. (`.event-row`, `.roster-row`.)
 - **Left status bar**: a 3 px `::before` running the row's **full height**,
-  coloured by `data-status` in Deploys, so a column of them reads as a status
-  gutter. The roster draws it only for a health state that needs it (unhealthy,
-  stopped) — status there is the badge.
+  coloured by `data-status` in Deploys, so the table's left edge is a status
+  gutter. **The gutter marks exceptions, not the norm**: `success` is silent at
+  rest and only answers a hover, because it is over nine rows in ten and
+  painting it left an unbroken green line for the two rows worth finding to
+  compete with. Nothing is lost — the status column says it in words and an icon
+  regardless, which is what lets the redundant channel drop the norm and keep
+  the exception. `healed` stays drawn (it shares the success green but is rare,
+  so green comes to mean "self-heal acted"). The roster follows the same rule on
+  its own axis: it draws the bar only for a health state that needs it
+  (unhealthy, stopped), since status there is the badge.
 - **No row tint.** A status is said once by the bar and once by the badge; the
   full-row wash that used to say it a third time is gone. What still tints is the
   **error strip** under a failed row, which is the part that needs the alarm, and
