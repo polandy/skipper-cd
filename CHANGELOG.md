@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.26.0](https://github.com/polandy/skipper-cd/compare/v0.25.2...v0.26.0) (2026-09-06)
+
+
+### Features
+
+* **deploy:** fast-forward the project_directory checkout before the stack phase ([#342](https://github.com/polandy/skipper-cd/issues/342)) ([41db0df](https://github.com/polandy/skipper-cd/commit/41db0df161fe957fb1f43ae289f6ffa802804445))
+* **ui:** name which containers a deploy's change reached ([#340](https://github.com/polandy/skipper-cd/issues/340)) ([5c87bb1](https://github.com/polandy/skipper-cd/commit/5c87bb1a4e94da9868ff2870a806ae7a9224734e))
+
+
+### Bug Fixes
+
+* **deploy:** fail the nixos phase when its files cannot be hashed ([#321](https://github.com/polandy/skipper-cd/issues/321)) ([8416f02](https://github.com/polandy/skipper-cd/commit/8416f02636e21c6998519a2341d365e0c2bf2501))
+* **preview:** move the stub's running images with the pushes that bump them ([#341](https://github.com/polandy/skipper-cd/issues/341)) ([84d4183](https://github.com/polandy/skipper-cd/commit/84d4183ffe06825155a460f9315e75a6ecedce13))
+* **ui:** close header pop-outs through one surface registry ([3f14107](https://github.com/polandy/skipper-cd/commit/3f14107131e02382f39889f272c0733275d029e7))
+
 ## [0.25.2](https://github.com/polandy/skipper-cd/compare/v0.25.1...v0.25.2) (2026-08-30)
 
 
