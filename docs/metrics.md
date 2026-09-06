@@ -29,17 +29,21 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 
 ## Recommended Alerts
 
-Two alerts cover the failure modes that matter in practice:
+These alerts cover the failure modes that matter in practice:
 
 - **Deploy failed** — `increase(skipper_deploy_errors_total[5m]) > 0`.
   Covers failed stack deploys and failed `nixos-rebuild` runs (counted
   under the reserved stack label `_nixos`).
 - **Stack configuration broken** — `max_over_time(skipper_stack_config_error[15m]) > 0`.
-- **Project directory stale** — `max_over_time(skipper_project_dir_sync_error[30m]) > 0`.
   A stack whose configuration is broken (an override without a stack
   directory, an unparseable compose file) is reported once when the error
   appears and then stays quiet, so the error counter above does not keep
   moving. This gauge stands until the configuration is fixed.
+- **Project directory stale** — `max_over_time(skipper_project_dir_sync_error[30m]) > 0`.
+  With [`project_directory_sync`](configuration.md#keeping-the-project-directory-current)
+  on, this stands while the checkout the stacks bind-mount from cannot be
+  fast-forwarded — so the content behind those mounts may be older than the
+  compose files that mount it. Reported once as a row for the same reason.
 - **skipper-cd down** — `up{job="<your skipper job>"} == 0` for a few
   minutes. Without this, a dead skipper-cd drops webhooks silently and
   deployments stall with no signal: the error counter only moves when a
