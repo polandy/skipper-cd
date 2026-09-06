@@ -816,34 +816,16 @@ test('attentionLabel pluralises the unhealthy-stack count', () => {
   assert.equal(h.attentionLabel(2), '2 stacks unhealthy');
 });
 
-test('rowClass tints a row per deploy status', () => {
-  for (const s of [
-    'deploying',
-    'failed',
-    'success',
-    'rolled_back',
-    'rolled_back_unhealthy',
-    'healed',
-    'heal_exhausted',
-    'queued',
-    'blocked',
-    'removed',
-  ]) {
-    assert.equal(h.rowClass(s, true), 'event-row ' + s + '-row');
-  }
-});
-
-test('rowClass leaves an unknown status untinted', () => {
-  // No stylesheet defines a class for it, so inventing one would be a silent
-  // no-op that reads as styled.
-  assert.equal(h.rowClass('pending_review', true), 'event-row');
-  assert.equal(h.rowClass('', true), 'event-row');
-  assert.equal(h.rowClass(undefined, true), 'event-row');
-});
-
 test('rowClass marks live arrivals as new but replayed history not', () => {
-  assert.equal(h.rowClass('success', false), 'event-row success-row new-row');
-  assert.equal(h.rowClass('success', true), 'event-row success-row');
+  assert.equal(h.rowClass(false), 'event-row new-row');
+  assert.equal(h.rowClass(true), 'event-row');
+});
+
+test('rowClass carries no status class — the row states that in data-status', () => {
+  // Two mechanisms for one fact drift apart; the stylesheet and the row
+  // handlers read data-status, so the class list must not repeat it.
+  assert.equal(h.rowClass(true).includes('-row '), false);
+  assert.equal(h.rowClass(false), 'event-row new-row');
 });
 
 test('auditCountText pluralises the history count and hides a zero', () => {

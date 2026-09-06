@@ -485,7 +485,7 @@ App.panels = (function () {
     // Header echoes the stack + status so the panel names its own row.
     const head =
       `<div class="health-panel-head">` +
-      `<span class="hp-head-label">health</span>` +
+      `<span class="hp-head-label">Health</span>` +
       `<span class="hp-head-who">${escapeHtml(stack)}</span>` +
       updMeta +
       `<span class="hp-head-pill"><span class="hdot"></span>${escapeHtml(status)}</span>` +

@@ -26,9 +26,12 @@ test('UAG1: a fresh browser shows the banner and control captions', async ({ pag
   await expect(page.locator('[data-testid="deploy-row"]')).toHaveCount(2);
 
   await expect(banner(page)).toBeVisible();
-  // Captions naming the frequently-consulted controls are visible during the tour.
-  await expect(caption(page, 'Deploys')).toBeVisible();
+  // Captions naming the frequently-consulted controls are visible during the
+  // tour. The view switch is not among them: its buttons carry their own
+  // labels at this width, so a caption would say the same word twice.
   await expect(caption(page, 'Autosync')).toBeVisible();
+  await expect(caption(page, 'Theme')).toBeVisible();
+  await expect(page.locator('.ht-lbl', { hasText: 'Deploys' })).toHaveCount(0);
   await expect(page.locator('html')).not.toHaveClass(/\bheader-tour-seen\b/);
 });
 
@@ -43,7 +46,7 @@ test('UAG2: Got it dismisses the tour and it stays gone after reload', async ({
 
   await dismiss(page).click();
   await expect(banner(page)).toBeHidden();
-  await expect(caption(page, 'Deploys')).toBeHidden();
+  await expect(caption(page, 'Autosync')).toBeHidden();
   await expect(page.locator('html')).toHaveClass(/\bheader-tour-seen\b/);
   expect(await seen(page)).toBe('1');
 
@@ -51,7 +54,7 @@ test('UAG2: Got it dismisses the tour and it stays gone after reload', async ({
   await page.reload();
   await expect(page.locator('[data-testid="deploy-row"]')).toHaveCount(2);
   await expect(banner(page)).toBeHidden();
-  await expect(caption(page, 'Deploys')).toBeHidden();
+  await expect(caption(page, 'Autosync')).toBeHidden();
 });
 
 // UAG3 — Esc is an equivalent dismiss, so a keyboard user is never trapped by
@@ -76,7 +79,7 @@ test('UAG4: a returning browser never shows the tour', async ({ page, skipper })
 
   await expect(page.locator('html')).toHaveClass(/\bheader-tour-seen\b/);
   await expect(banner(page)).toBeHidden();
-  await expect(caption(page, 'Deploys')).toBeHidden();
+  await expect(caption(page, 'Autosync')).toBeHidden();
 });
 
 // UAG5 — On the compact ≤700px header the captions don't fit, so the tour is
@@ -90,7 +93,7 @@ test('UAG5: the tour is suppressed on the compact mobile header', async ({ page,
 
   // Fresh browser, but neither the banner nor the captions show at this width.
   await expect(banner(page)).toBeHidden();
-  await expect(caption(page, 'Deploys')).toBeHidden();
+  await expect(caption(page, 'Autosync')).toBeHidden();
   // Not dismissed — a phone visitor stays un-seen for their first desktop visit.
   await expect(page.locator('html')).not.toHaveClass(/\bheader-tour-seen\b/);
   expect(await seen(page)).toBeNull();
@@ -98,5 +101,5 @@ test('UAG5: the tour is suppressed on the compact mobile header', async ({ page,
   // Widening the viewport reveals the tour on the same fresh session.
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect(banner(page)).toBeVisible();
-  await expect(caption(page, 'Deploys')).toBeVisible();
+  await expect(caption(page, 'Autosync')).toBeVisible();
 });

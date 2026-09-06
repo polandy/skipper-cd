@@ -1281,8 +1281,10 @@ the one-time tour) is what all other baselines and behaviour tests see — which
 why §5 needed no baseline churn.
 
 - **UAG1 — Fresh browser shows the tour.** On first load the banner and the
-  per-control captions (`Deploys`, `Autosync`) are visible, and `<html>` is not
-  yet marked `header-tour-seen`.
+  per-control captions (`Autosync`, `Theme`) are visible, and `<html>` is not
+  yet marked `header-tour-seen`. The view switch has **no** caption — its buttons
+  carry their own labels at this width — which the test asserts positively, so
+  the caption row cannot creep back and double-label them.
 - **UAG2 — Got it dismisses and persists.** Clicking **Got it** hides the banner
   and captions, marks `<html>.header-tour-seen`, and sets `headerTourSeen='1'`; a
   reload of the same context never re-shows the tour.
@@ -1363,10 +1365,12 @@ image change — no hand-fed events.
   line, the widest state the row reaches. The stack name is asserted present:
   squeezing all six columns rendered an icon cluster with no stack behind it.
 - **UAI6 — View-options toggle.** The Deploys popover's **Version changes** toggle
-  (on by default) collapses the whole column when flipped off — no chips, no
-  `Version` header, and no row separators (they exist only because the column
-  makes rows variable-height); the off choice persists across a reload
-  (`localStorage`), and toggling back on restores all three.
+  (on by default) collapses the whole column when flipped off — no chips and no
+  `Version` header; the off choice persists across a reload (`localStorage`), and
+  toggling back on restores both. The row hairline is asserted present in **both**
+  states: rows sit flush on one sheet, so the line is the sheet's structure, not
+  the column's — the assertion is what keeps it from being tied back to the
+  column.
 
 Behaviour-only (no snapshot): the delta is structural (`data-testid="svc-delta"` +
 per-part text), and the per-reference token logic is exhaustively covered by the

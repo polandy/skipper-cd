@@ -327,7 +327,7 @@ App.deploys = (function () {
 
   function createRow(evt, isHistory) {
     const row = document.createElement('div');
-    row.className = rowClass(evt.status, isHistory);
+    row.className = rowClass(isHistory);
     row.dataset.testid = 'deploy-row';
     row.dataset.stack = evt.stack;
     row.dataset.status = evt.status;
@@ -603,7 +603,7 @@ App.deploys = (function () {
       deployingRows[evt.stack]
     ) {
       const existing = deployingRows[evt.stack];
-      existing.className = rowClass(evt.status, isHistory);
+      existing.className = rowClass(isHistory);
       existing.dataset.status = evt.status;
       existing.dataset.eventId = evt.id;
       if (evt.has_diffs) existing.dataset.hasDiffs = '1';
@@ -1143,7 +1143,7 @@ App.deploys = (function () {
       const healPill = e.target.closest('.heal-pill');
       const healRow = healPill
         ? healPill.closest('.event-row')
-        : e.target.closest('.event-row.healed-row');
+        : e.target.closest('.event-row[data-status="healed"]');
       if (healRow) {
         const healBtn = healPill || healRow.querySelector('.heal-pill');
         if (!healBtn) return;
