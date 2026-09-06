@@ -156,7 +156,7 @@ App.panels = (function () {
       el.classList.add('bound');
       el.dataset.status = meta.status;
     }
-    el.innerHTML = filesPanelHTML(files);
+    el.innerHTML = filesPanelHTML(files, meta && meta.fileChanges);
     return el;
   }
 

@@ -73,13 +73,13 @@ test('versionChipHTML drops the service label when service is empty', () => {
   assert.doesNotMatch(r.versionChipHTML('', 'v', 'a', 't'), /td-svc/);
 });
 
-test('imageDeltaHTML returns empty for no changes', () => {
-  assert.equal(r.imageDeltaHTML(null), '');
-  assert.equal(r.imageDeltaHTML([]), '');
+test('changeCellHTML returns empty for no changes', () => {
+  assert.equal(r.changeCellHTML(null, null), '');
+  assert.equal(r.changeCellHTML([], null), '');
 });
 
-test('imageDeltaHTML renders a tag bump as old→new with per-service chip', () => {
-  const html = r.imageDeltaHTML([
+test('changeCellHTML renders a tag bump as old→new with per-service chip', () => {
+  const html = r.changeCellHTML([
     { service: 'web', old: 'ghcr.io/app:1.25', new: 'ghcr.io/app:1.26' },
   ]);
   assert.match(html, /^<span class="svc-delta" data-testid="svc-delta">/);
@@ -91,23 +91,23 @@ test('imageDeltaHTML renders a tag bump as old→new with per-service chip', () 
   assert.match(html, /title="web: ghcr\.io\/app:1\.25 → ghcr\.io\/app:1\.26"/);
 });
 
-test('imageDeltaHTML renders a first image without an old side', () => {
-  const html = r.imageDeltaHTML([{ service: 'db', old: '', new: 'postgres:16' }]);
+test('changeCellHTML renders a first image without an old side', () => {
+  const html = r.changeCellHTML([{ service: 'db', old: '', new: 'postgres:16' }]);
   assert.match(html, /<span class="td-new">16<\/span>/);
   assert.doesNotMatch(html, /td-old|td-arr/);
   assert.match(html, /aria-label="db set to postgres:16"/);
   assert.match(html, /title="db: \(first image\) → postgres:16"/);
 });
 
-test('imageDeltaHTML renders a removed service', () => {
-  const html = r.imageDeltaHTML([{ service: 'db', old: 'postgres:16', new: '' }]);
+test('changeCellHTML renders a removed service', () => {
+  const html = r.changeCellHTML([{ service: 'db', old: 'postgres:16', new: '' }]);
   assert.match(html, /<span class="td-old">16<\/span>/);
   assert.match(html, /<span class="td-gone">removed<\/span>/);
   assert.match(html, /aria-label="db removed \(was postgres:16\)"/);
 });
 
-test('imageDeltaHTML renders a same-tag digest move as a rebuilt marker', () => {
-  const html = r.imageDeltaHTML([
+test('changeCellHTML renders a same-tag digest move as a rebuilt marker', () => {
+  const html = r.changeCellHTML([
     { service: 'web', old: 'app:1.5@sha256:aaaa1111', new: 'app:1.5@sha256:bbbb2222' },
   ]);
   assert.match(
@@ -117,14 +117,94 @@ test('imageDeltaHTML renders a same-tag digest move as a rebuilt marker', () => 
   assert.match(html, /aria-label="web rebuilt, tag 1\.5 unchanged"/);
 });
 
-test('imageDeltaHTML lists every changed service, one chip each', () => {
-  const html = r.imageDeltaHTML([
+test('changeCellHTML lists every changed service, one chip each', () => {
+  const html = r.changeCellHTML([
     { service: 'web', old: 'app:1', new: 'app:2' },
     { service: 'db', old: 'pg:15', new: 'pg:16' },
   ]);
   assert.equal((html.match(/class="tag-delta"/g) || []).length, 2);
   assert.match(html, /web/);
   assert.match(html, /db/);
+});
+
+// --- change chips (which container a change without a new image reached) ---
+
+test('changeChipsHTML names the services a compose change reached', () => {
+  const html = r.changeChipsHTML(
+    [{ file: 'mealie/docker-compose.yml', kind: 'compose', services: ['mealie-restic'] }],
+    null,
+  );
+  assert.match(html, /<span class="td-kind">compose<\/span>/);
+  assert.match(html, /<span class="td-svc">mealie-restic<\/span>/);
+  assert.match(html, /aria-label="compose changed for mealie-restic"/);
+});
+
+test('changeChipsHTML folds one chip per kind, in a fixed order', () => {
+  const html = r.changeChipsHTML(
+    [
+      { file: 'vars.env', kind: 'vars', wide: true },
+      { file: 'web/Dockerfile', kind: 'build', services: ['api'] },
+      { file: 'web/docker-compose.yml', kind: 'compose', services: ['web'] },
+    ],
+    null,
+  );
+  const kinds = [...html.matchAll(/class="td-kind">(\w+)</g)].map((m) => m[1]);
+  assert.deepEqual(kinds, ['compose', 'build', 'vars']);
+});
+
+test('changeChipsHTML caps the names it prints and counts the rest', () => {
+  const html = r.changeChipsHTML(
+    [{ file: 'x/docker-compose.yml', kind: 'compose', services: ['a', 'b', 'c', 'd'] }],
+    null,
+  );
+  assert.equal((html.match(/class="td-svc"/g) || []).length, 2);
+  assert.match(html, /<span class="td-count">\+2 more<\/span>/);
+  assert.match(html, /aria-label="compose changed for a, b and 2 more services"/);
+});
+
+test('changeChipsHTML drops a compose service the image delta already names', () => {
+  const html = r.changeChipsHTML(
+    [{ file: 'x/docker-compose.yml', kind: 'compose', services: ['app'] }],
+    [{ service: 'app', old: 'app:1', new: 'app:2' }],
+  );
+  assert.equal(html, '');
+});
+
+test('changeChipsHTML keeps a stack-wide vars change but not a stack-wide compose one', () => {
+  assert.match(
+    r.changeChipsHTML([{ file: 'vars.env', kind: 'vars', wide: true }], null),
+    /<span class="td-wide">stack-wide<\/span>/,
+  );
+  assert.equal(
+    r.changeChipsHTML([{ file: 'x/docker-compose.yml', kind: 'compose', wide: true }], null),
+    '',
+  );
+});
+
+test('changeChipsHTML renders nothing for a change that touched no service', () => {
+  assert.equal(r.changeChipsHTML([{ file: 'x/docker-compose.yml', kind: 'compose' }], null), '');
+});
+
+test('changeCellHTML puts the image chips before the change chips', () => {
+  const html = r.changeCellHTML(
+    [{ service: 'app', old: 'app:1', new: 'app:2' }],
+    [{ file: 'x/docker-compose.yml', kind: 'compose', services: ['sidecar'] }],
+  );
+  assert.ok(html.indexOf('td-old') < html.indexOf('td-kind'));
+  assert.match(html, /<span class="td-svc">sidecar<\/span>/);
+});
+
+test('changeAttributionHTML labels the three attribution states', () => {
+  const files = [
+    { file: 'a.yml', kind: 'compose', services: ['db'] },
+    { file: 'b.env', kind: 'env', wide: true },
+    { file: 'c.yml', kind: 'compose' },
+  ];
+  assert.match(r.changeAttributionHTML(files, 'a.yml'), />db</);
+  assert.match(r.changeAttributionHTML(files, 'b.env'), /stack-wide/);
+  assert.match(r.changeAttributionHTML(files, 'c.yml'), /no service changed/);
+  assert.equal(r.changeAttributionHTML(files, 'unknown.yml'), '');
+  assert.equal(r.changeAttributionHTML(null, 'a.yml'), '');
 });
 
 test('renderCommitHead returns empty with neither row echo nor commits', () => {

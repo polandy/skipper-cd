@@ -132,20 +132,43 @@ func (cf *composeFile) buildSpecs() map[string]buildSpec {
 	return specs
 }
 
+// dockerfilePath resolves one service's Dockerfile to an absolute path against
+// workDir — the stack's directory in the repo clone, which is also the tree the
+// build reads from (see buildcontext.go). An absolute dockerfile: is taken as
+// written.
+func dockerfilePath(workDir string, spec buildSpec) string {
+	if filepath.IsAbs(spec.dockerfile) {
+		return filepath.Clean(spec.dockerfile)
+	}
+	return filepath.Clean(filepath.Join(workDir, spec.context, spec.dockerfile))
+}
+
+// dockerfileServices maps each build: service's Dockerfile to the services that
+// build from it — several services can share one — so a changed Dockerfile can
+// be attributed to the containers it rebuilds (attribution.go). Unlike
+// dockerfilePaths this is a pure mapping over the compose file: it never stats,
+// because only an already-hashed path is ever looked up in it.
+func (cf *composeFile) dockerfileServices(workDir string) map[string][]string {
+	services := make(map[string][]string)
+	for name, spec := range cf.buildSpecs() {
+		path := dockerfilePath(workDir, spec)
+		services[path] = append(services[path], name)
+	}
+	for _, names := range services {
+		sort.Strings(names)
+	}
+	return services
+}
+
 // dockerfilePaths returns the absolute paths of all Dockerfiles referenced by
-// services with a build: section, resolved against workDir — the stack's
-// directory in the repo clone, which is also the tree the build reads from
-// (see buildcontext.go). Missing Dockerfiles are skipped with a warning.
+// services with a build: section, resolved against workDir. Missing Dockerfiles
+// are skipped with a warning.
 func (cf *composeFile) dockerfilePaths(workDir string) []string {
 	seen := make(map[string]struct{})
 	var paths []string
 
 	for name, spec := range cf.buildSpecs() {
-		dfPath := filepath.Join(workDir, spec.context, spec.dockerfile)
-		if filepath.IsAbs(spec.dockerfile) {
-			dfPath = spec.dockerfile
-		}
-		dfPath = filepath.Clean(dfPath)
+		dfPath := dockerfilePath(workDir, spec)
 
 		if _, err := os.Stat(dfPath); err != nil {
 			slog.Warn("dockerfile not found, skipping", "service", name, "path", dfPath)

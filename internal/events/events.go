@@ -88,6 +88,34 @@ type ServiceImageChange struct {
 	New     string `json:"new,omitempty" yaml:"new,omitempty"`
 }
 
+// Change kinds a FileChange carries: which tracked input moved, so a row can
+// say `compose`, `env` or `build` instead of only counting files.
+const (
+	ChangeKindCompose = "compose" // the stack's docker-compose.yml
+	ChangeKindBuild   = "build"   // a Dockerfile of a build: service
+	ChangeKindEnv     = "env"     // a stack env_files entry
+	ChangeKindVars    = "vars"    // the global vars_file
+	ChangeKindWatch   = "watch"   // a file under a watch_dirs entry
+	ChangeKindConfig  = "config"  // the stack's deploy-shaping config
+)
+
+// FileChange attributes one changed tracked file to the services it reaches, so
+// the UI can name which container of a stack a deploy actually hit (ADR-0059).
+// Display only — never a hashed input, a pull input or a deploy trigger. Rides
+// the SSE payload like ImageChanges.
+//
+// The three states are distinct on purpose: Services names the containers the
+// file reached; Wide says it reaches every service (a project-wide --env-file,
+// the global vars_file, a watch_dirs entry) or could not be resolved; neither
+// means the comparison ran and found no service definition changed at all — a
+// comment or formatting edit, which no container should be blamed for.
+type FileChange struct {
+	File     string   `json:"file" yaml:"file"`
+	Kind     string   `json:"kind" yaml:"kind"`
+	Services []string `json:"services,omitempty" yaml:"services,omitempty"`
+	Wide     bool     `json:"wide,omitempty" yaml:"wide,omitempty"`
+}
+
 // DeployEvent represents a single deployment status change.
 type DeployEvent struct {
 	ID           int64             `json:"id" yaml:"id"`
@@ -108,6 +136,11 @@ type DeployEvent struct {
 	// (old → new), set on deploy attempts so notifications and the UI can name what
 	// updated. Kept on the SSE payload like HealDrift.
 	ImageChanges []ServiceImageChange `json:"image_changes,omitempty" yaml:"image_changes,omitempty"`
+	// FileChanges attributes each changed file to the services it reaches, so a
+	// row can say which container a change hit and not just how many files
+	// moved. Same files as ChangedFiles, with the kind and the attribution
+	// added; empty when nothing was attributed (a heal, a removed stack).
+	FileChanges []FileChange `json:"file_changes,omitempty" yaml:"file_changes,omitempty"`
 	// HealthGated marks a deploy that ran under an effective deploy_health_check
 	// — explicit config or one inferred from a compose healthcheck (ADR-0046).
 	// On a success event it means the stack was verified healthy before the

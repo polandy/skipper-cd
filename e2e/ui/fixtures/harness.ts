@@ -12,7 +12,7 @@ import {
   readFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 // This is the Node twin of the Go E2E harness (e2e/harness_test.go): it runs the
@@ -156,6 +156,14 @@ export interface StartOptions {
    *  real thing — used by the docs-screenshot renderer, where a
    *  placeholder-to-real migration would show up as junk rows in the feed. */
   initialCompose?: Record<string, string>;
+  /** Extra files committed at the origin root, keyed by repo-relative path —
+   *  the shared, non-compose inputs a stack can track. Paired with `envFiles`
+   *  it drives the project-wide change kinds (Maske AX). */
+  repoFiles?: Record<string, string>;
+  /** Per-stack `env_files:` entries, as repo-relative paths (rendered into the
+   *  host config as their absolute path in the clone, which is what host-list
+   *  mode requires). The files themselves come from `repoFiles`. */
+  envFiles?: Record<string, string[]>;
   /** Identity the harness commits as (default `e2e <e2e@example.com>`). The
    *  docs-screenshot renderer sets Renovate, since a Renovate-driven bump is the
    *  loop skipper exists for and the diff panel shows the author. */
@@ -434,6 +442,10 @@ async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
       writeFileSync(join(origin, name, "icon.svg"), stackIcons[name]);
     }
   }
+  for (const [path, content] of Object.entries(opts.repoFiles ?? {})) {
+    mkdirSync(dirname(join(origin, path)), { recursive: true });
+    writeFileSync(join(origin, path), content);
+  }
   // With no stacks there is nothing to stage, but the origin still needs a HEAD
   // on `main` for skipper to clone and reset onto; a placeholder gives the
   // stack-free instance (UA10 empty state) a valid, deploy-free repo.
@@ -673,6 +685,12 @@ function buildConfig(
                 : "") +
               ((opts.healthCheck ?? []).includes(n)
                 ? `    deploy_health_check:\n      timeout_seconds: 1\n`
+                : "") +
+              ((opts.envFiles?.[n] ?? []).length
+                ? `    env_files:\n` +
+                  (opts.envFiles?.[n] ?? [])
+                    .map((f) => `      - ${JSON.stringify(join(repoDir, f))}\n`)
+                    .join("")
                 : "") +
               ((opts.onDemand?.[n] ?? []).length
                 ? `    on_demand_containers:\n` +
@@ -985,6 +1003,23 @@ export class Skipper {
     rmSync(join(this.origin, stack), { recursive: true, force: true });
     gitAs(this.author, this.origin, "add", "-A", stack);
     gitAs(this.author, this.origin, "commit", "-m", `remove ${stack}`);
+  }
+
+  /** setRepoFile rewrites a repo file (repo-relative path) and commits it — the
+   *  pushed change to a shared, non-compose input such as an env file listed in
+   *  a stack's `env_files`. */
+  setRepoFile(path: string, content: string): void {
+    writeFileSync(join(this.origin, path), content);
+    gitAs(this.author, this.origin, "add", path);
+    gitAs(this.author, this.origin, "commit", "-m", `update ${path}`);
+  }
+
+  /** setStackCompose rewrites a stack's compose to a literal body and commits it
+   *  — the pushed change whose service blocks the row must attribute when no
+   *  image moved (an added environment: entry, a changed command). */
+  setStackCompose(stack: string, body: string): void {
+    writeFileSync(join(this.origin, stack, "docker-compose.yml"), body);
+    gitAs(this.author, this.origin, "commit", "-am", `update ${stack} compose`);
   }
 
   /** setRepoConfig rewrites the repo-root skipper.yaml (stack discovery,
