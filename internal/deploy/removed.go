@@ -38,7 +38,9 @@ func (d *Deployer) announceRemovedStacks(ctx context.Context, cfg *config.Config
 	}
 
 	for _, name := range d.trackedStackNames(state) {
-		if known[name] || isReservedStackKey(name) {
+		// A pseudo-stack key names a run phase, is never discovered, and must
+		// never read as removed.
+		if known[name] || config.IsReservedStackName(name) {
 			continue
 		}
 		files := d.vanishedRepoFiles(d.trackedInputs(state, name), cfg.StacksBaseDir)
@@ -122,13 +124,6 @@ func (d *Deployer) trackedInputs(state *persistedState, stack string) []string {
 		}
 	}
 	return nil
-}
-
-// isReservedStackKey reports whether a state key is one of skipper's own
-// pseudo-stacks rather than a real stack — they are never discovered and must
-// never read as removed.
-func isReservedStackKey(name string) bool {
-	return name == config.ReservedStackName || name == config.ReservedConfigStackName
 }
 
 // vanishedRepoFiles returns those of the stack's tracked inputs that lived in

@@ -127,6 +127,13 @@ func validateConfig(cfg *Config) error {
 		// process cwd, not the repo clone — silently wrong --project-directory.
 		return fmt.Errorf("project_directory_base %q must be an absolute path (start it with \"/\")", cfg.ProjectDirectoryBase)
 	}
+	// project_directory_sync has nothing to fast-forward without a base: every
+	// stack then either sets its own project_directory or resolves against the
+	// clone skipper already syncs (ADR-0060). Silently ignoring the key would
+	// leave the operator believing stale mounts are being kept current.
+	if cfg.ProjectDirectorySync && cfg.ProjectDirectoryBase == "" {
+		return fmt.Errorf("project_directory_sync: true needs project_directory_base — set it to the checkout holding the stacks' project directories, or drop project_directory_sync")
+	}
 	// stacks_base_dir is relative to repo_dir (Load resolves it afterwards). An
 	// absolute value would be silently mangled by the resolution join and, by
 	// definition, could point outside the clone — which breaks invariant #1
@@ -151,8 +158,8 @@ func validateConfig(cfg *Config) error {
 		if s.Name == "" {
 			return fmt.Errorf("stacks[%d] has no name — add a name: field to this entry", i)
 		}
-		if s.Name == ReservedStackName || s.Name == ReservedConfigStackName {
-			return fmt.Errorf("stack name %q is reserved for skipper's internal use (%s, %s) — rename this stack", s.Name, ReservedStackName, ReservedConfigStackName)
+		if IsReservedStackName(s.Name) {
+			return fmt.Errorf("stack name %q is reserved for skipper's internal use (%s) — rename this stack", s.Name, strings.Join(ReservedStackNames(), ", "))
 		}
 		if _, dup := seen[s.Name]; dup {
 			return fmt.Errorf("duplicate stack name %q — stack names must be unique, rename one of the two entries", s.Name)

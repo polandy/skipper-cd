@@ -1823,6 +1823,36 @@ both stacks list under `env_files`.
   title spelling out the kind, so a reader in the diff does not have to carry
   the row's chip in their head.
 
+### 4.52 UI — Maske AY: the project_directory checkout is kept current (ADR-0060)
+
+Compose serves a stack's relative bind mounts out of `--project-directory`, not
+out of the clone the compose file was read from, so a project-directory checkout
+nobody advances mounts stale content behind a green deploy.
+`project_directory_sync` makes skipper fast-forward that checkout once per run,
+before the stack phase — and refuse when the tree is dirty, which is the state
+the operator who edits that tree leaves it in. Behaviour-only (no snapshot).
+
+The fixture (`projectDirSync: true`) gives the instance a second clone of the
+origin as `project_directory_base`; `dirtyProjectDir()` edits a tracked file in
+it and `projectDirHead()` reads the commit it sits on.
+
+- **UAY1 — A working fast-forward reports nothing.** A pushed compose change
+  deploys and leaves no `_project_dir` row: the phase is plumbing, like the
+  clone sync at the top of every run. The stack's own second row is the
+  positive signal that the run really ran.
+- **UAY2 — A dirty checkout is reported without blocking the deploys.** The
+  refusal renders as a `failed` `_project_dir` row whose error panel names the
+  uncommitted changes, the stack still deploys in the same run, and
+  `projectDirHead()` proves the checkout did not move.
+- **UAY3 — A standing refusal is reported once.** Two more pushes over a
+  still-dirty tree add two stack rows and no second phase row (ADR-0055). The
+  climbing stack-row count is the positive signal that the extra runs happened.
+- **UAY4 — The phase row carries no container-logs or jump affordance.**
+  `_project_dir` names a run phase, not a Compose project, so its `⋯` menu holds
+  only the deploy history — the same treatment `_nixos` and `_config` get
+  (`isPseudoStack`). The menu's history entry and the stack row's own jump
+  button are the positive signals that the omissions are omissions.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -2054,6 +2084,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
 | One open header pop-out at a time (drawers ↔ beacon/view-options popovers) | **UAW1**–**UAW3** |
 | Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
+| project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |

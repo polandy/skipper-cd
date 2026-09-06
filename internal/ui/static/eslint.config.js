@@ -189,6 +189,7 @@ module.exports = [
         formatTime: 'readonly',
         fullTime: 'readonly',
         incidentPresetActive: 'readonly',
+        isPseudoStack: 'readonly',
         orphanMatchesQuery: 'readonly',
         orphanMeta: 'readonly',
         orphanStateClass: 'readonly',

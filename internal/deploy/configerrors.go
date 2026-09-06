@@ -37,6 +37,16 @@ func (l *configErrorLog) record(stack, message string) bool {
 	return true
 }
 
+// clear forgets stack's remembered error and reports whether one was standing,
+// so a caller can announce the recovery exactly once.
+func (l *configErrorLog) clear(stack string) bool {
+	if _, ok := l.reported[stack]; !ok {
+		return false
+	}
+	delete(l.reported, stack)
+	return true
+}
+
 // forgetOthers drops every remembered stack absent from current and returns
 // their names alphabetically: their error is gone, so the next one they hit is
 // announced again.
