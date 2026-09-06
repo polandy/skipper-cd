@@ -359,10 +359,9 @@ App.deploys = (function () {
     if (evt.status !== 'healed') {
       stashChanges(row, evt);
     }
-    const delta =
-      S.imageDeltaOn && evt.status !== 'healed'
-        ? changeCellHTML(evt.image_changes, evt.file_changes)
-        : '';
+    // Rendered from the stash, like the settle path below: one source for the
+    // cell, so a healed row's empty stash is the only thing that empties it.
+    const delta = S.imageDeltaOn ? stashedChangeCellHTML(row) : '';
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(S.absoluteTime ? relTs : absTs)}">${S.absoluteTime ? absTs : relTs}</span>` +
       `<span class="cell-stack">${hostChip(S.selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +

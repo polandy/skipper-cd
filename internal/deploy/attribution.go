@@ -76,6 +76,9 @@ func (d *Deployer) attributeChanges(ctx context.Context, a attribution, changed 
 		}
 		out = append(out, fc)
 	}
+	// changedFiles walks a map, so its order varies run to run — sort, or the
+	// same change would serialize differently into the history each time.
+	sort.Slice(out, func(i, j int) bool { return out[i].File < out[j].File })
 	return out
 }
 

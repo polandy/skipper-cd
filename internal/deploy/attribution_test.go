@@ -340,3 +340,19 @@ func TestAttributeChanges_ComposeCommentEditNamesNoServiceAndIsNotStackWide(t *t
 		t.Errorf("expected a comment-only change attributed to nothing, got %+v", changes[0])
 	}
 }
+
+// The change set comes from a map walk, so the attribution must impose an order
+// of its own: an unordered one would rewrite the persisted history on every
+// identical run.
+func TestAttributeChanges_IsOrderedByFile(t *testing.T) {
+	f := newAttributionFixture(t, "")
+
+	changes := f.deployer.attributeChanges(context.Background(), f.att,
+		[]string{f.watchedFile, f.composePath, f.varsFile, f.envFile}, "old-sha")
+
+	for i := 1; i < len(changes); i++ {
+		if changes[i-1].File > changes[i].File {
+			t.Fatalf("expected the attribution ordered by file, got %+v", changes)
+		}
+	}
+}

@@ -201,3 +201,23 @@ func TestBroadcaster_HasSubscribers(t *testing.T) {
 		t.Fatal("expected no subscribers after unsubscribe")
 	}
 }
+
+func TestSSEPayload_KeepsFileChanges(t *testing.T) {
+	// The Changes column renders the attribution straight from the payload —
+	// there is no on-demand endpoint for it, so it must survive like HealDrift.
+	evt := DeployEvent{
+		ID:     4,
+		Stack:  "mealie",
+		Status: StatusSuccess,
+		Diffs:  map[string]string{"mealie/docker-compose.yml": "+CHECK_CRON=0 12 9 * *"},
+		FileChanges: []FileChange{
+			{File: "mealie/docker-compose.yml", Kind: ChangeKindCompose, Services: []string{"mealie-restic"}},
+		},
+	}
+
+	payload := evt.SSEPayload()
+
+	if len(payload.FileChanges) != 1 || payload.FileChanges[0].Services[0] != "mealie-restic" {
+		t.Fatalf("expected FileChanges preserved in SSE payload, got %+v", payload.FileChanges)
+	}
+}
