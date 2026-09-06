@@ -120,7 +120,7 @@ const defaultIdentity: CommitIdentity = {
   email: "e2e@example.com",
 };
 
-function gitAs(id: CommitIdentity, dir: string, ...args: string[]): void {
+function gitAs(id: CommitIdentity, dir: string, ...args: string[]): string {
   const full = [
     "-c",
     `user.name=${id.name}`,
@@ -128,7 +128,10 @@ function gitAs(id: CommitIdentity, dir: string, ...args: string[]): void {
     `user.email=${id.email}`,
     ...args,
   ];
-  execFileSync("git", dir ? ["-C", dir, ...full] : full, { stdio: "pipe" });
+  return execFileSync("git", dir ? ["-C", dir, ...full] : full, {
+    stdio: "pipe",
+    encoding: "utf8",
+  });
 }
 
 /** repoOverridesToHostStacks converts the former in-repo override shape
@@ -227,6 +230,12 @@ export interface StartOptions {
       ExitCode?: number;
     }>
   >;
+  /** Give the instance a second working copy of the origin as
+   *  `project_directory_base` and switch `project_directory_sync` on
+   *  (ADR-0060), so each run fast-forwards it before deploying. The path is
+   *  `skipper.projectDirBase`; `dirtyProjectDir()` makes it refuse. Maske AY
+   *  opts in. */
+  projectDirSync?: boolean;
   /** Stack discovery (ADR-0034): boot with `stack_discovery: true` — the origin's
    *  stack dirs are the stack set. `repoConfig` (when set) is the former in-repo
    *  override shape (`stacks:` map); ADR-0043 folds it into the host config's
@@ -359,6 +368,9 @@ interface Workspace {
   readonly base: string;
   readonly origin: string;
   readonly repoDir: string;
+  /** A second checkout of the origin, used as project_directory_base when
+   *  projectDirSync is on; "" otherwise. */
+  readonly projectDirBase: string;
   readonly stateDir: string;
   readonly dockerLog: string;
   readonly holdFile: string;
@@ -463,6 +475,15 @@ async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
   gitAs(author, origin, "add", ".");
   gitAs(author, origin, "commit", "-m", "initial");
 
+  // A second working copy of the origin — the tree a stack's relative bind
+  // mounts would resolve against. Cloned (not a copy) so it has an upstream to
+  // fast-forward onto, and one directory per stack so --project-directory names
+  // a path that exists.
+  const projectDirBase = opts.projectDirSync ? join(base, "projectdir") : "";
+  if (projectDirBase) {
+    gitAs(author, "", "clone", "--branch", "main", origin, projectDirBase);
+  }
+
   // Stub docker on its own dir, prepended to PATH.
   const stubDir = join(base, "stub-bin");
   mkdirSync(stubDir, { recursive: true });
@@ -529,6 +550,7 @@ async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
     base,
     origin,
     repoDir,
+    projectDirBase,
     stateDir,
     dockerLog,
     holdFile,
@@ -625,7 +647,7 @@ function buildConfig(
   ports: { port: number; metricsPort: number },
   peersCfg: string,
 ): string {
-  const { base, origin, repoDir, stacks } = ws;
+  const { base, origin, repoDir, projectDirBase, stacks } = ws;
   const { port, metricsPort } = ports;
   const cfg =
     `repo_url: ${JSON.stringify(origin)}\n` +
@@ -663,6 +685,10 @@ function buildConfig(
       ? `self_heal_cooldown_seconds: ${opts.selfHealCooldownSeconds}\n`
       : "") +
     `command_timeout_seconds: 30\n` +
+    (projectDirBase
+      ? `project_directory_base: ${JSON.stringify(projectDirBase)}\n` +
+        `project_directory_sync: true\n`
+      : "") +
     (opts.nixosRebuild ? `nixos_rebuild:\n  flake: ".#test"\n` : "") +
     // source_url points at a closed local port so auto-match icon fetches fail
     // fast and deterministically (connection refused → 404 → monogram), keeping
@@ -712,6 +738,9 @@ export class Skipper {
    *  deploys with working_dir `<stacksBaseDir>/foo`. Orphan tests build a
    *  container's working_dir under it to classify as orphaned. */
   readonly stacksBaseDir: string;
+  /** projectDirBase is the second checkout `project_directory_sync` keeps
+   *  fast-forwarded (ADR-0060); "" unless the mask opted in. */
+  readonly projectDirBase: string;
   private readonly origin: string;
   private readonly stateDir: string;
   private readonly dockerLog: string;
@@ -732,6 +761,7 @@ export class Skipper {
     baseURL: string;
     metricsURL: string;
     stacksBaseDir: string;
+    projectDirBase: string;
     origin: string;
     stateDir: string;
     dockerLog: string;
@@ -750,6 +780,7 @@ export class Skipper {
     this.baseURL = init.baseURL;
     this.metricsURL = init.metricsURL;
     this.stacksBaseDir = init.stacksBaseDir;
+    this.projectDirBase = init.projectDirBase;
     this.origin = init.origin;
     this.stateDir = init.stateDir;
     this.dockerLog = init.dockerLog;
@@ -855,6 +886,7 @@ export class Skipper {
       baseURL,
       metricsURL,
       stacksBaseDir: repoDir,
+      projectDirBase: ws.projectDirBase,
       origin,
       stateDir,
       dockerLog,
@@ -1028,6 +1060,27 @@ export class Skipper {
     writeFileSync(join(this.origin, "skipper.yaml"), content);
     gitAs(this.author, this.origin, "add", "skipper.yaml");
     gitAs(this.author, this.origin, "commit", "-m", "update skipper.yaml");
+  }
+
+  /** dirtyProjectDir edits a tracked file in the project_directory checkout,
+   *  the operator-mid-edit state the fast-forward refuses to move (ADR-0060).
+   *  Requires `projectDirSync`. */
+  dirtyProjectDir(): void {
+    writeFileSync(
+      join(this.projectDirBase, this.stacks[0], "docker-compose.yml"),
+      "# half-finished edit\n",
+    );
+  }
+
+  /** cleanProjectDir discards that edit, so the next run fast-forwards again. */
+  cleanProjectDir(): void {
+    gitAs(this.author, this.projectDirBase, "checkout", "--", ".");
+  }
+
+  /** projectDirHead is the commit the project_directory checkout sits on — the
+   *  positive signal a "it did not move" assertion is checked against. */
+  projectDirHead(): string {
+    return gitAs(this.author, this.projectDirBase, "rev-parse", "HEAD").trim();
   }
 
   /** sendWebhook posts a correctly signed push payload for ref, returning the status. */

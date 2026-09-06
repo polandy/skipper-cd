@@ -62,12 +62,6 @@ App.deploys = (function () {
   const queuedRows = {};
   let hasRows = false;
 
-  // The reserved stack key for nixos-rebuild deploys (invariant 4). It is a
-  // pseudo-stack, not a Docker Compose project and not in the Stacks roster, so
-  // it carries no container-logs button and no jump-to-Stacks button — only the
-  // affordances that apply to it (its git diff + deploy history).
-  const NIXOS_STACK = '_nixos';
-
   // ── Orphan compose projects (ADR-0036) ──
 
   // orphansOpen remembers expanded rows so the per-poll re-render does not
@@ -364,7 +358,7 @@ App.deploys = (function () {
     const delta = S.imageDeltaOn ? stashedChangeCellHTML(row) : '';
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(S.absoluteTime ? relTs : absTs)}">${S.absoluteTime ? absTs : relTs}</span>` +
-      `<span class="cell-stack">${hostChip(S.selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
+      `<span class="cell-stack">${hostChip(S.selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${isPseudoStack(evt.stack) ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
       `<span class="col-version">${delta}</span>` +
       `<span class="status-cell">${badgeHTML(evt.status)}${retryNoteHTML(evt)}${repeatNoteHTML(evt)}</span>` +
       `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
@@ -454,12 +448,12 @@ App.deploys = (function () {
           pop.appendChild(moreMenuItem(hist, 'Deploy history'));
         }
 
-        // Container logs — per stack (ADR-0037). Not for _nixos: it is not a
-        // compose project, so it has no container App.logs.
+        // Container logs — per stack (ADR-0037). Not for a pseudo-stack: it is
+        // a run phase, not a compose project, so it has no container App.logs.
         const clogBtn = pop.querySelector('.clog-btn:not(.hook-log-btn)');
-        if (!clogBtn && stack !== NIXOS_STACK) {
+        if (!clogBtn && !isPseudoStack(stack)) {
           pop.appendChild(moreMenuItem(clogButton(stack, ''), 'Container logs'));
-        } else if (stack === NIXOS_STACK && clogBtn) {
+        } else if (isPseudoStack(stack) && clogBtn) {
           clogBtn.remove();
         }
 

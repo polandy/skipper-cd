@@ -931,6 +931,23 @@ function fakeTimer() {
   };
 }
 
+// --- isPseudoStack ---------------------------------------------------------
+
+test('isPseudoStack covers every run-phase key skipper reports under', () => {
+  // The list is the contract: a row for one of these carries no container-logs
+  // button and no jump to the Stacks roster, where it has no entry.
+  assert.deepEqual(h.PSEUDO_STACKS, ['_nixos', '_config', '_project_dir']);
+  for (const name of h.PSEUDO_STACKS) {
+    assert.equal(h.isPseudoStack(name), true, name);
+  }
+});
+
+test('isPseudoStack leaves real stacks alone', () => {
+  for (const name of ['web', 'nixos', 'config', '_web', '', undefined]) {
+    assert.equal(h.isPseudoStack(name), false, String(name));
+  }
+});
+
 // --- makeSurfaceRegistry ---------------------------------------------------
 
 // fakeSurface stands in for one pop-out: `open` is the state closeOthers reads,

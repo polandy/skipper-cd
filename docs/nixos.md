@@ -163,6 +163,8 @@ docker compose \
   up -d
 ```
 
+When that modules directory is a checkout of its own — a second clone, or the host's live `/etc/nixos` — nothing keeps the files a stack bind-mounts from it current. Set [`project_directory_sync: true`](configuration.md#keeping-the-project-directory-current) to have skipper-cd fast-forward it once per run, before the stack deploys read it.
+
 This ensures:
 - **Change detection** uses the repo clone (merged PRs are detected immediately)
 - **Compose file** is always read from the repo clone (latest version)

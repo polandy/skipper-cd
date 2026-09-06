@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/polandy/skipper-cd/internal/git"
@@ -71,6 +72,16 @@ type Config struct {
 	// common prefix (e.g. a NixOS modules directory) across every stack. Must
 	// be an absolute path when set.
 	ProjectDirectoryBase string `yaml:"project_directory_base"`
+
+	// ProjectDirectorySync fast-forwards the project_directory_base checkout
+	// once per run, before any stack deploys (ADR-0060). Compose resolves a
+	// stack's relative bind mounts against --project-directory, so on a host
+	// where that base is a separate working copy those mounts are served from a
+	// checkout nothing else keeps current. Off by default; requires
+	// project_directory_base. Host policy, not a deploy input: like self_heal
+	// and rollback it is a top-level runtime setting and never feeds a stack's
+	// ConfigHash, so toggling it redeploys nothing.
+	ProjectDirectorySync bool `yaml:"project_directory_sync"`
 
 	// WebhookSecret is the shared HMAC-SHA256 secret push webhooks are signed
 	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Optional: the
@@ -498,6 +509,26 @@ const ReservedStackName = "_nixos"
 // stack-discovery mode (ADR-0034, mirrored as deploy.ConfigStateKey) and must
 // not collide with a configured stack.
 const ReservedConfigStackName = "_config"
+
+// ReservedProjectDirStackName is the event key for the project_directory
+// checkout's fast-forward phase (ADR-0060, mirrored as
+// deploy.ProjectDirStateKey) and must not collide with a configured stack.
+const ReservedProjectDirStackName = "_project_dir"
+
+// reservedStackNames are the pseudo-stack keys skipper emits run-level phases
+// under. They name a phase, not a Compose project, so a configured stack must
+// never take one.
+var reservedStackNames = []string{ReservedStackName, ReservedConfigStackName, ReservedProjectDirStackName}
+
+// IsReservedStackName reports whether name is one of skipper's pseudo-stack
+// keys rather than a real stack.
+func IsReservedStackName(name string) bool {
+	return slices.Contains(reservedStackNames, name)
+}
+
+// ReservedStackNames returns the pseudo-stack keys, for error messages that
+// need to list them.
+func ReservedStackNames() []string { return slices.Clone(reservedStackNames) }
 
 // defaultRuntimeHealthPollIntervalSeconds is the UI stack-health poll cadence applied
 // when runtime_health_poll_interval_seconds is omitted (ADR-0027). An explicit 0

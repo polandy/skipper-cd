@@ -4,6 +4,10 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/polandy/skipper-cd/internal/git"
 
 	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
@@ -31,6 +35,33 @@ func (r *deployerRef) get() *deploy.Deployer {
 		panic("deployer used before wiring completed")
 	}
 	return r.d
+}
+
+// buildProjectDirSyncer wires the project_directory fast-forward phase
+// (ADR-0060), or nil when it has nothing to do: the key is off, or the base is
+// inside the deploy clone — which skipper already resets on every sync, so a
+// second pull there would only cost a network round trip per reconcile tick.
+func buildProjectDirSyncer(cfg *config.Config, repoDir string, timeout time.Duration, sink command.LineSink) deploy.ProjectDirSyncer {
+	if !cfg.ProjectDirectorySync {
+		return nil
+	}
+	// Load rejects the key without a base, so the base is set and absolute here.
+	if _, inside := relToDir(repoDir, cfg.ProjectDirectoryBase); inside {
+		slog.Info("project_directory_sync has nothing to do: project_directory_base is inside the repo clone, which every sync already resets",
+			"project_directory_base", cfg.ProjectDirectoryBase, "repo_dir", repoDir)
+		return nil
+	}
+	slog.Info("project_directory checkout is fast-forwarded before each run", "dir", cfg.ProjectDirectoryBase)
+	return git.NewCheckout(cfg.ProjectDirectoryBase, timeout, sink)
+}
+
+// relToDir reports whether path lies inside base, and its relative form.
+func relToDir(base, path string) (string, bool) {
+	rel, err := filepath.Rel(base, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
 }
 
 // stackViews derives the per-consumer views of the effective stack set: the

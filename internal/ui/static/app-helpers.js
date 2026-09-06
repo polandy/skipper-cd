@@ -1545,6 +1545,19 @@ function deployStatusLabel(active, up) {
 // functions above are already globals and `module` is undefined — the export is
 // skipped. Under `node --test` `module` exists, so the helpers are exported for
 // import. No bundler, no build step.
+// PSEUDO_STACKS are the reserved keys skipper reports its run-level phases
+// under: the NixOS rebuild (invariant 4), a file-level stack-config failure
+// (ADR-0034) and the project_directory fast-forward (ADR-0060). Each names a
+// phase, not a Compose project — so a row for one carries no container-logs
+// button and no jump to the Stacks roster, where it has no entry to land on.
+const PSEUDO_STACKS = ['_nixos', '_config', '_project_dir'];
+
+// isPseudoStack reports whether a stack key is one of skipper's run phases
+// rather than a real Compose project.
+function isPseudoStack(name) {
+  return PSEUDO_STACKS.indexOf(name) !== -1;
+}
+
 // makeSurfaceRegistry owns the set of pop-out surfaces (drawers and popovers)
 // that may not be open at the same time. add() takes one record — the element
 // that shows and hides, plus the isOpen/close pair that reads and dismisses it
@@ -1579,6 +1592,8 @@ if (typeof module !== 'undefined' && module.exports) {
     formatDuration,
     makeReconnector,
     makeSurfaceRegistry,
+    PSEUDO_STACKS,
+    isPseudoStack,
     RECONNECT_BASE_DELAY_MS,
     RECONNECT_MAX_DELAY_MS,
     OFFLINE_AFTER_FAILURES,
