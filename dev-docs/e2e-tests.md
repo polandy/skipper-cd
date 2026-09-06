@@ -1789,6 +1789,40 @@ relied on that dismissal alone therefore stayed open behind the beacon popover.
   closed, and its button reports it. Neither drawer named the other before the
   registry, so this is the pair the refactor must keep working.
 
+### 4.51 UI — Maske AX: which containers a change reached (ADR-0059)
+
+A deploy that moves no image still redeploys the whole stack, and the row could
+say only how many files changed. The event now carries `file_changes` — per
+changed file its kind and the services it reached — and the Changes column
+renders a chip per kind. Behaviour-only (no snapshot; the column's own baseline
+belongs to UA1).
+
+Every case pushes for real: the harness commits the change and posts a webhook,
+so the attribution comes out of the backend's comparison of the deployed
+revision against the pushed one, not a fixture. The fixture stacks are a `web`
+with an `app` service and a `web-restic` sidecar, plus a shared `shared.env`
+both stacks list under `env_files`.
+
+- **UAX1 — The row names the container the change reached.** The sidecar gains
+  two environment variables and nothing else: the row shows one `compose
+  web-restic` chip, in the Changes column aligned with its header, and does not
+  name `app`. The files pill still counts its file — the chip answers *who*, not
+  *how much*.
+- **UAX2 — A project-wide input reads stack-wide.** A change to the shared env
+  file compose passes for the whole project renders `env stack-wide` with no
+  service name and the matching screen-reader phrasing: naming two of the
+  services would be a guess.
+- **UAX3 — An image bump grows no second chip.** The compose file changed, but
+  the version chip already names that service, so the row must look exactly as
+  it did before this feature: the `app 1.25 → 1.26` chip is the cell's only one
+  and no kind chip sits beside it. The version chip is the positive signal —
+  without asserting it, "no kind chip" would also pass on an empty column.
+  Verified to fail against the unfixed build (suppression removed).
+- **UAX4 — The panel attributes each file.** Opening the row's diff panel, the
+  `docker-compose.yml` file header carries the same `web-restic` note plus the
+  title spelling out the kind, so a reader in the diff does not have to carry
+  the row's chip in their head.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -2019,6 +2053,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: folded timeline — routine start absorbed, strip, raw-list toggle | **UH7** |
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
 | One open header pop-out at a time (drawers ↔ beacon/view-options popovers) | **UAW1**–**UAW3** |
+| Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |
