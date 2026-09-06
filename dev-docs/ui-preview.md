@@ -46,6 +46,14 @@ eyeballed here, not only asserted in the e2e suite.
 so those two appear in the deploy log but their roster rows keep their previous
 outcome. That is the product behaviour, not a seeding gap.
 
+The stub containers **change version with the push that bumps them**: each stack
+starts on the image its committed compose file names and moves when its deploy
+lands. That is not cosmetic — a deploy's version delta is built from what the
+containers report, not from the compose file, so a stub frozen at one version
+makes every bump after the first render an empty Changes cell. The seeding also
+waits for the startup run to record each stack's baseline before it pushes,
+because a push that lands mid-run moves the images under the run recording them.
+
 **Other surfaces:** health pills and the containers panel (healthy / unhealthy /
 stopped, each with its running image, so version cells populate), the attention
 band + health beacon, the status timeline, orphan detection (a removed stack
@@ -70,8 +78,9 @@ and noisy for two badges; the e2e masks cover them.
 
 `make ui-preview-smoke` (`--smoke`) seeds exactly as above, then asserts and
 exits instead of serving: the roster has every declared stack, the audit-recorded
-outcomes include `success`, `rolled_back`, `failed` and `healed`, and the pending
-registry holds one blocked and one per-stack-paused entry. Non-zero on any miss.
+outcomes include `success`, `rolled_back`, `failed` and `healed`, the pending
+registry holds one blocked and one per-stack-paused entry, and nextcloud's bump
+reports its app version delta. Non-zero on any miss.
 
 CI runs it on **every** push, with no path filter. It is skipper's startup smoke
 test first — nothing else asserts that the binary boots and serves with a
