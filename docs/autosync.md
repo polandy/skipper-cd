@@ -30,6 +30,7 @@ The web UI has toggles for the global switch and each stack. These are **runtime
 - Re-enabling sync (UI toggle, or config + restart) deploys everything pending, in the normal deploy order.
 - Multiple pushes to a paused stack collapse into **one** pending deploy of the latest state.
 - The NixOS rebuild (`_nixos`) participates like a stack: independently pausable; while paused, nix changes queue and the Docker stacks still deploy.
+- A **global** pause also stops the [`project_directory` fast-forward](configuration.md#keeping-the-project-directory-current) when it is enabled: running containers mount that tree, so a pause means it stops changing too. A per-stack pause does not — the checkout is shared, not per stack. Nothing queues; the next unpaused run fast-forwards it.
 
 ## API
 

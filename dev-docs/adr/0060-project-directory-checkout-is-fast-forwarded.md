@@ -85,6 +85,13 @@ would otherwise re-announce the same condition on every save. A *successful*
 fast-forward emits nothing: it is plumbing, exactly like the clone sync at the
 top of every run, and the log line records the commits it moved between.
 
+**A global autosync pause stops it.** Skipper's own clone keeps syncing while
+paused — nothing mounts it. This tree is mounted by running containers, and a
+service that reloads its config on a file change would pick up the advanced file
+mid-pause, so "paused" has to mean this checkout too. Only the global switch: a
+per-stack pause cannot govern a tree the stacks share. Nothing queues — there is
+no pending change to track, and the next unpaused run fast-forwards.
+
 **It is host policy, not a deploy input.** Like `self_heal` and `rollback`,
 `project_directory_sync` is a top-level runtime setting and never reaches a
 stack's `ConfigHash` (Invariant 2) — toggling it redeploys nothing.
@@ -107,6 +114,10 @@ resolves to no phase at all — every sync already resets that tree.
   rather than assumed.
 - **One `git status` and, when the tree is clean, one `git fetch` per run** on
   the reconcile cadence.
+- **A refused fast-forward is not counted as a failed deploy** in the run
+  summary: unlike a failed `nixos_rebuild` it does not abort the run, so the
+  stacks' own counts are already complete and adding it would say a stack failed
+  when none did.
 - **A third pseudo-stack.** `_project_dir` joins `_nixos` and `_config`; the
   reserved set is now one predicate (`config.IsReservedStackName`,
   `isPseudoStack` in the UI) rather than three open-coded comparisons, which

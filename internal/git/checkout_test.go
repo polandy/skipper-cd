@@ -190,6 +190,26 @@ func TestFastForward_SurfacesAFailedFetch(t *testing.T) {
 	assertNothingWritten(t, s)
 }
 
+// Every step's failure names the checkout, so a log line says which tree the
+// run could not advance rather than only that git exited non-zero.
+func TestFastForward_EveryFailedStepNamesTheCheckout(t *testing.T) {
+	for _, step := range []string{"rev-parse", "status", "merge-base", "merge"} {
+		t.Run(step, func(t *testing.T) {
+			s := newOutputScript()
+			seen := 0
+			runner := &sequencedScript{script: s, revParse: []string{oldSHA, newSHA}, seen: &seen}
+			s.replies["merge-base"] = oldSHA
+			s.fails[step] = errors.New("exit status 128")
+			c := newCheckoutWithRunner(runner, "/srv/modules")
+
+			_, _, err := c.FastForward(context.Background())
+			if err == nil || !strings.Contains(err.Error(), "/srv/modules") {
+				t.Fatalf("expected the %s failure to name the checkout, got %v", step, err)
+			}
+		})
+	}
+}
+
 func TestNewCheckout_KeepsTheGivenDirectory(t *testing.T) {
 	if dir := NewCheckout("/srv/modules", 0, nil).Dir(); dir != "/srv/modules" {
 		t.Fatalf("expected /srv/modules, got %s", dir)
@@ -207,6 +227,9 @@ type sequencedScript struct {
 func (s *sequencedScript) Output(ctx context.Context, dir string, name string, args ...string) ([]byte, error) {
 	if len(args) > 2 && args[2] == "rev-parse" {
 		s.script.calls = append(s.script.calls, append([]string{name}, args...))
+		if err, ok := s.script.fails["rev-parse"]; ok {
+			return nil, err
+		}
 		i := *s.seen
 		*s.seen++
 		return []byte(s.revParse[i]), nil

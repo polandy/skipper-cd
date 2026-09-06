@@ -42,6 +42,10 @@ type ProjectDirSyncer interface {
 // scraper config) has already been read from the stale file by the container
 // the deploy just recreated.
 //
+// It is skipped entirely while autosync is paused globally: that pause means
+// the host stops changing, and unlike skipper's own clone this tree is mounted
+// by running containers.
+//
 // A refusal never aborts the run: a stale mount is degraded, not wrong, and an
 // operator mid-edit must not have their host's deploys blocked. It is reported
 // as a standing condition instead — announced once and again only when its
@@ -52,6 +56,13 @@ func (d *Deployer) syncProjectDirectory(ctx context.Context) {
 		return
 	}
 	dir := d.projectDirSyncer.Dir()
+	// Global only: the checkout is shared, so no per-stack switch governs it.
+	if d.autosync != nil && !d.autosync.GlobalEffective() {
+		// Debug: nothing queues and every reconcile tick reaches here, so at info
+		// this would narrate the pause the UI already shows.
+		slog.Debug("project_directory checkout left alone: autosync is paused globally", "dir", dir)
+		return
+	}
 	from, to, err := d.projectDirSyncer.FastForward(ctx)
 	if err != nil {
 		metrics.ProjectDirSyncError.Set(1)

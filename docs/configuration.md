@@ -189,7 +189,8 @@ project_directory_sync: true
 - **Fast-forward only.** No merge, no rebase, no reset. The checkout is a working copy someone edits.
 - **A clean tree is required.** Modified *tracked* files stop it; untracked files are ignored (a fast-forward never touches them).
 - **A diverged branch, or one with no upstream, stops it** too — those need a human.
-- **A refusal never blocks the deploys.** The stacks converge against the content the checkout has, and the reason is reported once as a `_project_dir` row, with the `skipper_project_dir_sync_error` [metric](metrics.md) raised for as long as it lasts. A fast-forward that works is silent.
+- **A refusal never blocks the deploys.** The stacks converge against the content the checkout has, and the reason is reported once — row, log line, notification — as a `_project_dir` row, with the `skipper_project_dir_sync_error` [metric](metrics.md) raised for as long as it lasts. A fast-forward that works is silent.
+- **A global [autosync](autosync.md) pause stops it too.** Running containers mount that tree, so a paused host stops changing there as well; a per-stack pause does not apply (the checkout is shared).
 - **Off by default**, requires `project_directory_base`, and does nothing when that base is inside the repo clone — every sync already resets that.
 
 ## First run and state loss

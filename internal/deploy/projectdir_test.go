@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 )
@@ -193,6 +194,37 @@ func TestSyncProjectDirectory_AnnouncesTheNextRefusalAfterARecovery(t *testing.T
 
 	if evs := env.eventsFor(ProjectDirStateKey); len(evs) != 2 {
 		t.Fatalf("expected the refusal announced again after it had cleared, got %d: %+v", len(evs), evs)
+	}
+}
+
+func TestSyncProjectDirectory_LeavesTheCheckoutAloneWhileAutosyncIsPausedGlobally(t *testing.T) {
+	syncer := &fakeProjectDirSyncer{dir: "/srv/modules", from: "aaa", to: "bbb"}
+	env := newProjectDirEnv(t, syncer)
+	env.d.autosync = autosync.NewController(boolPtr(false), nil)
+
+	env.run(t)
+
+	// The run itself still happened — the stacks queue rather than deploy — so
+	// "the fast-forward did not run" is measured against a pass that reached the
+	// phase, not against a run that never started.
+	if syncer.calls != 0 {
+		t.Fatalf("expected the checkout untouched while paused, got %d fast-forwards", syncer.calls)
+	}
+	if evs := env.eventsFor("web"); len(evs) == 0 {
+		t.Fatal("expected the run to have reported the paused stack; with no events the assertion above proves nothing")
+	}
+}
+
+func TestSyncProjectDirectory_RunsWhileOnlyOneStackIsPaused(t *testing.T) {
+	syncer := &fakeProjectDirSyncer{dir: "/srv/modules", from: "aaa", to: "bbb"}
+	env := newProjectDirEnv(t, syncer)
+	// The checkout is shared, not per stack: only the global switch stops it.
+	env.d.autosync = autosync.NewController(nil, map[string]*bool{"web": boolPtr(false)})
+
+	env.run(t)
+
+	if syncer.calls != 1 {
+		t.Fatalf("expected the fast-forward to run, got %d", syncer.calls)
 	}
 }
 
