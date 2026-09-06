@@ -7,6 +7,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -198,5 +199,134 @@ func TestIntegration_CommitsSinceCommitRestrictedToFiles(t *testing.T) {
 	}
 	if commits[0].Date.IsZero() {
 		t.Error("expected a parsed commit date")
+	}
+}
+
+// makeTrackingClone clones origin into a fresh directory with an upstream
+// branch configured, as an operator's working copy has.
+func makeTrackingClone(t *testing.T, origin string) string {
+	t.Helper()
+	clone := filepath.Join(t.TempDir(), "work")
+	out, err := exec.Command("git", "clone", "--branch", "main", origin, clone).CombinedOutput()
+	if err != nil {
+		t.Fatalf("clone: %v\n%s", err, out)
+	}
+	return clone
+}
+
+func TestIntegration_FastForwardAdvancesTheCheckout(t *testing.T) {
+	requireGit(t)
+	origin := makeOriginRepo(t)
+	clone := makeTrackingClone(t, origin)
+
+	writeFile(t, filepath.Join(origin, "dashboards.json"), "{\"v\":2}\n")
+	runGit(t, origin, "add", ".")
+	runGit(t, origin, "commit", "-m", "new dashboard")
+	want := runGit(t, origin, "rev-parse", "HEAD")
+
+	from, to, err := NewCheckout(clone, time.Minute, nil).FastForward(context.Background())
+	if err != nil {
+		t.Fatalf("FastForward: %v", err)
+	}
+	if to != want {
+		t.Fatalf("expected the checkout at %s, got %s", want, to)
+	}
+	if from == to {
+		t.Fatal("expected the checkout to have moved")
+	}
+	if head := runGit(t, clone, "rev-parse", "HEAD"); head != want {
+		t.Fatalf("the working copy is at %s, not the reported %s", head, want)
+	}
+	// The point of the phase: the mounted file is the new one.
+	content, err := os.ReadFile(filepath.Join(clone, "dashboards.json"))
+	if err != nil || strings.TrimSpace(string(content)) != "{\"v\":2}" {
+		t.Fatalf("expected the fast-forwarded content on disk, got %q (%v)", content, err)
+	}
+}
+
+func TestIntegration_FastForwardIsANoOpWhenAlreadyCurrent(t *testing.T) {
+	requireGit(t)
+	clone := makeTrackingClone(t, makeOriginRepo(t))
+
+	from, to, err := NewCheckout(clone, time.Minute, nil).FastForward(context.Background())
+	if err != nil {
+		t.Fatalf("FastForward: %v", err)
+	}
+	if from != to {
+		t.Fatalf("expected no move on an already-current checkout, got %s -> %s", from, to)
+	}
+}
+
+func TestIntegration_FastForwardKeepsUncommittedWork(t *testing.T) {
+	requireGit(t)
+	origin := makeOriginRepo(t)
+	clone := makeTrackingClone(t, origin)
+	head := runGit(t, clone, "rev-parse", "HEAD")
+
+	// The operator is mid-edit on a tracked file, and the upstream has moved on.
+	writeFile(t, filepath.Join(clone, "docker-compose.yml"), "services:\n  app:\n    image: nginx:9.9-edit\n")
+	writeFile(t, filepath.Join(origin, "dashboards.json"), "{\"v\":2}\n")
+	runGit(t, origin, "add", ".")
+	runGit(t, origin, "commit", "-m", "new dashboard")
+
+	if _, _, err := NewCheckout(clone, time.Minute, nil).FastForward(context.Background()); !errors.Is(err, ErrDirtyWorktree) {
+		t.Fatalf("expected ErrDirtyWorktree, got %v", err)
+	}
+	if now := runGit(t, clone, "rev-parse", "HEAD"); now != head {
+		t.Fatalf("the refusal moved the checkout from %s to %s", head, now)
+	}
+	edit, err := os.ReadFile(filepath.Join(clone, "docker-compose.yml"))
+	if err != nil || !strings.Contains(string(edit), "9.9-edit") {
+		t.Fatalf("the refusal lost the operator's edit: %q (%v)", edit, err)
+	}
+}
+
+func TestIntegration_FastForwardIgnoresUntrackedFiles(t *testing.T) {
+	requireGit(t)
+	origin := makeOriginRepo(t)
+	clone := makeTrackingClone(t, origin)
+	writeFile(t, filepath.Join(clone, "scratch.txt"), "notes\n")
+	writeFile(t, filepath.Join(origin, "dashboards.json"), "{\"v\":2}\n")
+	runGit(t, origin, "add", ".")
+	runGit(t, origin, "commit", "-m", "new dashboard")
+	want := runGit(t, origin, "rev-parse", "HEAD")
+
+	if _, _, err := NewCheckout(clone, time.Minute, nil).FastForward(context.Background()); err != nil {
+		t.Fatalf("an untracked file must not stop the fast-forward, got %v", err)
+	}
+	if head := runGit(t, clone, "rev-parse", "HEAD"); head != want {
+		t.Fatalf("expected the checkout at %s, got %s", want, head)
+	}
+}
+
+func TestIntegration_FastForwardRefusesADivergedCheckout(t *testing.T) {
+	requireGit(t)
+	origin := makeOriginRepo(t)
+	clone := makeTrackingClone(t, origin)
+
+	// Both sides commit: the checkout now carries a commit the upstream does not.
+	writeFile(t, filepath.Join(clone, "local.txt"), "local\n")
+	runGit(t, clone, "add", ".")
+	runGit(t, clone, "commit", "-m", "local work")
+	local := runGit(t, clone, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(origin, "dashboards.json"), "{\"v\":2}\n")
+	runGit(t, origin, "add", ".")
+	runGit(t, origin, "commit", "-m", "new dashboard")
+
+	if _, _, err := NewCheckout(clone, time.Minute, nil).FastForward(context.Background()); !errors.Is(err, ErrNotFastForward) {
+		t.Fatalf("expected ErrNotFastForward, got %v", err)
+	}
+	if head := runGit(t, clone, "rev-parse", "HEAD"); head != local {
+		t.Fatalf("the refusal rewrote the checkout: %s -> %s", local, head)
+	}
+}
+
+func TestIntegration_FastForwardRefusesABranchWithNoUpstream(t *testing.T) {
+	requireGit(t)
+	clone := makeTrackingClone(t, makeOriginRepo(t))
+	runGit(t, clone, "checkout", "-b", "detour")
+
+	if _, _, err := NewCheckout(clone, time.Minute, nil).FastForward(context.Background()); !errors.Is(err, ErrNoUpstream) {
+		t.Fatalf("expected ErrNoUpstream, got %v", err)
 	}
 }

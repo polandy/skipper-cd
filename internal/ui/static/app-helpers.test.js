@@ -931,6 +931,88 @@ function fakeTimer() {
   };
 }
 
+// --- isPseudoStack ---------------------------------------------------------
+
+test('isPseudoStack covers every run-phase key skipper reports under', () => {
+  // The list is the contract: a row for one of these carries no container-logs
+  // button and no jump to the Stacks roster, where it has no entry.
+  assert.deepEqual(h.PSEUDO_STACKS, ['_nixos', '_config', '_project_dir']);
+  for (const name of h.PSEUDO_STACKS) {
+    assert.equal(h.isPseudoStack(name), true, name);
+  }
+});
+
+test('isPseudoStack leaves real stacks alone', () => {
+  for (const name of ['web', 'nixos', 'config', '_web', '', undefined]) {
+    assert.equal(h.isPseudoStack(name), false, String(name));
+  }
+});
+
+// --- makeSurfaceRegistry ---------------------------------------------------
+
+// fakeSurface stands in for one pop-out: `open` is the state closeOthers reads,
+// and `closed` is the positive signal that its close actually ran — asserting
+// "the others were left alone" against a recorded count rather than against the
+// absence of an effect.
+function fakeSurface(name, open) {
+  const s = { surface: name, open: open, closed: 0 };
+  s.isOpen = () => s.open;
+  s.close = () => {
+    s.closed++;
+    s.open = false;
+  };
+  return s;
+}
+
+test('makeSurfaceRegistry closes every open surface but the one opening', () => {
+  const r = h.makeSurfaceRegistry();
+  const drawer = fakeSurface('drawer', true);
+  const popover = fakeSurface('popover', true);
+  const opening = fakeSurface('opening', false);
+  [drawer, popover, opening].forEach((s) => r.add(s));
+
+  r.closeOthers(opening.surface);
+
+  assert.equal(drawer.closed, 1);
+  assert.equal(popover.closed, 1);
+  assert.equal(opening.closed, 0); // the surface opening is never dismissed
+});
+
+test('makeSurfaceRegistry leaves a surface that is already closed alone', () => {
+  const r = h.makeSurfaceRegistry();
+  // A closed surface must not be closed again: close() is what restores focus to
+  // the opener, so calling it on an idle surface would yank focus off the page.
+  const idle = fakeSurface('idle', false);
+  r.add(idle);
+
+  r.closeOthers('other');
+
+  assert.equal(idle.closed, 0);
+});
+
+test('makeSurfaceRegistry never closes the opener, even when it reads as open', () => {
+  const r = h.makeSurfaceRegistry();
+  // Identity, not open-state, is what exempts the opener. A surface asked to
+  // open while it already reads as open would otherwise dismiss itself here and
+  // re-open a line later, cycling its focus handling for nothing.
+  const other = fakeSurface('other', true);
+  const opener = fakeSurface('opener', true);
+  r.add(other);
+  r.add(opener);
+
+  r.closeOthers(opener.surface);
+
+  assert.equal(other.closed, 1);
+  assert.equal(other.open, false);
+  assert.equal(opener.closed, 0);
+  assert.equal(opener.open, true);
+});
+
+test('makeSurfaceRegistry with nothing registered closes nothing', () => {
+  const r = h.makeSurfaceRegistry();
+  assert.doesNotThrow(() => r.closeOthers('anything'));
+});
+
 test('makeReconnector doubles the delay up to the cap', () => {
   const t = fakeTimer();
   const r = h.makeReconnector(() => {}, t.setTimer, t.clearTimer);

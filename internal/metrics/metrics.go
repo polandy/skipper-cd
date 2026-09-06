@@ -48,6 +48,17 @@ var (
 		Help: "Stacks currently excluded by a configuration error (1 = broken).",
 	}, []string{"stack"})
 
+	// ProjectDirSyncError marks the project_directory checkout as not
+	// fast-forwarded this run — a dirty tree, a diverged history, an
+	// unreachable remote (ADR-0060). Set to 1 while the condition stands and
+	// back to 0 once it clears: the matching failed event is emitted only when
+	// the condition appears or its message changes (ADR-0055), so this gauge is
+	// what an alert on "the mounted content has been stale for a while" reads.
+	ProjectDirSyncError = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "skipper_project_dir_sync_error",
+		Help: "The project_directory checkout could not be fast-forwarded (1 = its content may be stale).",
+	})
+
 	// DeployErrors counts failed deployments per stack.
 	DeployErrors = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "skipper_deploy_errors_total",

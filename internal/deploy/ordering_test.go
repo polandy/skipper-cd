@@ -384,3 +384,60 @@ func TestDeployAllStacks_BlockedStackDeploysWhenDependencyRecovers(t *testing.T)
 		t.Error("LastDeployedCommit should advance once nothing is pending")
 	}
 }
+
+// TestPendingChanges_HashesTheSameInputsAsTheDeployPath pins Invariant 2's
+// input list to a single definition: the run-plan look-ahead must hash exactly
+// what the deploy path hashes. If the two lists drift apart, a stack deploys
+// that the look-ahead never predicted — or the plan announces one that never
+// deploys — because changedFiles only ever sees the inputs its own caller
+// hashed.
+func TestPendingChanges_HashesTheSameInputsAsTheDeployPath(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "app")
+	watchDir := filepath.Join(stackDir, "conf")
+	if err := os.MkdirAll(watchDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A stack exercising every hashed input kind at once: compose file, a
+	// build: service's Dockerfile, env_files, vars_file, watch_dirs and the
+	// stack's deploy-shaping config hash.
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), "services:\n  app:\n    build: \".\"\n")
+	writeFile(t, filepath.Join(stackDir, "Dockerfile"), "FROM alpine\n")
+	writeFile(t, filepath.Join(watchDir, "app.conf"), "key = value\n")
+	envFile := filepath.Join(stackDir, "stack.env")
+	writeFile(t, envFile, "A=1\n")
+	varsFile := filepath.Join(baseDir, "vars.env")
+	writeFile(t, varsFile, "B=2\n")
+
+	stack := config.Stack{
+		Name:       "app",
+		EnvFiles:   []string{envFile},
+		WatchDirs:  []string{watchDir},
+		ConfigHash: "cfg-hash",
+	}
+
+	d := newDeployerWithRunner(&recordingRunner{})
+	prep, err := d.prepareStackRun(stack, baseDir, varsFile, nil)
+	if err != nil {
+		t.Fatalf("prepareStackRun: %v", err)
+	}
+
+	// Against an empty state every tracked input reads as changed, so the paths
+	// the look-ahead reports are exactly the set it hashes.
+	changed, _, pending := d.pendingChanges(stack, baseDir, varsFile, newEmptyState())
+	if !pending {
+		t.Fatal("pendingChanges reported no pending change against an empty state")
+	}
+
+	want := make([]string, 0, len(prep.currentHashes))
+	for path := range prep.currentHashes {
+		want = append(want, path)
+	}
+	slices.Sort(want)
+	got := slices.Clone(changed)
+	slices.Sort(got)
+
+	if !slices.Equal(got, want) {
+		t.Errorf("look-ahead hashes %v, deploy path hashes %v", got, want)
+	}
+}

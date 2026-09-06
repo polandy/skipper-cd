@@ -346,3 +346,30 @@ func TestAutosyncPublisher_PublishStacksHeadlessIsNoOp(t *testing.T) {
 	p := newAutosyncPublisher(t, uiConfig(false), nil, &deployerRef{})
 	p.publishStacks() // must not panic resolving the deployer
 }
+
+func TestBuildProjectDirSyncer_NilUnlessTheKeyOptsIn(t *testing.T) {
+	cfg := &config.Config{ProjectDirectoryBase: "/etc/nixos/modules"}
+	if s := buildProjectDirSyncer(cfg, "/var/lib/skipper/repo", 0, nil); s != nil {
+		t.Fatalf("expected no syncer with project_directory_sync off, got %#v", s)
+	}
+}
+
+func TestBuildProjectDirSyncer_WiresTheConfiguredCheckout(t *testing.T) {
+	cfg := &config.Config{ProjectDirectoryBase: "/etc/nixos/modules", ProjectDirectorySync: true}
+	s := buildProjectDirSyncer(cfg, "/var/lib/skipper/repo", 0, nil)
+	if s == nil {
+		t.Fatal("expected a syncer for a base outside the clone")
+	}
+	if s.Dir() != "/etc/nixos/modules" {
+		t.Fatalf("expected the syncer on the configured base, got %s", s.Dir())
+	}
+}
+
+func TestBuildProjectDirSyncer_NilWhenTheBaseIsInsideTheClone(t *testing.T) {
+	// The clone is reset to origin on every sync, so its content is already
+	// current — a second pull would only cost a round trip per reconcile tick.
+	cfg := &config.Config{ProjectDirectoryBase: "/var/lib/skipper/repo/modules", ProjectDirectorySync: true}
+	if s := buildProjectDirSyncer(cfg, "/var/lib/skipper/repo", 0, nil); s != nil {
+		t.Fatalf("expected no syncer for a base inside the clone, got %s", s.Dir())
+	}
+}

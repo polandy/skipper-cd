@@ -42,11 +42,18 @@ func (l *Loop) Run(ctx context.Context) {
 	}
 	t := time.NewTicker(l.interval)
 	defer t.Stop()
+	l.run(ctx, t.C)
+}
+
+// run drives one pass per tick until ctx is cancelled. It is split from Run so
+// tests can supply the ticks and assert the result of an exact number of them,
+// instead of racing a real clock.
+func (l *Loop) run(ctx context.Context, ticks <-chan time.Time) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-ticks:
 			if !l.reconciler.Reconcile(ctx) {
 				slog.Debug("reconcile tick skipped: deploy already in progress")
 			}

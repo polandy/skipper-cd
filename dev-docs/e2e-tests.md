@@ -1762,6 +1762,97 @@ Behaviour-only (no snapshot).
   header of every fully-up-to-date instance, which is how it was caught (200 px
   of the `theme-dark` baseline). Verified to fail against the unfixed CSS.
 
+### 4.50 UI — Maske AW: one open header pop-out at a time
+
+The header carries five pop-out surfaces — the autosync, hosts and run drawers,
+the view-options popover and the health-beacon popover — and they all park under
+the header at the same anchor, so two open at once is never a layout the UI
+means to show. Maske L pins the same rule one level down, on a deploy row's two
+panels. Behaviour-only (no snapshot).
+
+Every surface registers with the chrome, which both dismisses it on an outside
+click and closes it when another one opens. Those are two different paths, and
+the beacon is what separates them: its own click handler stops propagation, so
+a click on it never reaches the shared outside-click dismissal. A surface that
+relied on that dismissal alone therefore stayed open behind the beacon popover.
+
+- **UAW1 — Opening the beacon popover closes an open drawer.** With the autosync
+  drawer open, a click on the beacon leaves the popover showing and the drawer
+  both closed and no longer reporting `aria-expanded="true"` — the drawer's
+  button is the positive signal that the close actually ran, rather than the
+  drawer merely being painted over. Verified to fail against the unfixed build.
+- **UAW2 — And the other direction.** Beacon popover first, then the autosync
+  button: the drawer opens and the popover is hidden with the beacon back to
+  `aria-expanded="false"`.
+- **UAW3 — The two header drawers replace each other, both orders.** Hosts then
+  autosync, then hosts again: the one opening second is open, the first is
+  closed, and its button reports it. Neither drawer named the other before the
+  registry, so this is the pair the refactor must keep working.
+
+### 4.51 UI — Maske AX: which containers a change reached (ADR-0059)
+
+A deploy that moves no image still redeploys the whole stack, and the row could
+say only how many files changed. The event now carries `file_changes` — per
+changed file its kind and the services it reached — and the Changes column
+renders a chip per kind. Behaviour-only (no snapshot; the column's own baseline
+belongs to UA1).
+
+Every case pushes for real: the harness commits the change and posts a webhook,
+so the attribution comes out of the backend's comparison of the deployed
+revision against the pushed one, not a fixture. The fixture stacks are a `web`
+with an `app` service and a `web-restic` sidecar, plus a shared `shared.env`
+both stacks list under `env_files`.
+
+- **UAX1 — The row names the container the change reached.** The sidecar gains
+  two environment variables and nothing else: the row shows one `compose
+  web-restic` chip, in the Changes column aligned with its header, and does not
+  name `app`. The files pill still counts its file — the chip answers *who*, not
+  *how much*.
+- **UAX2 — A project-wide input reads stack-wide.** A change to the shared env
+  file compose passes for the whole project renders `env stack-wide` with no
+  service name and the matching screen-reader phrasing: naming two of the
+  services would be a guess.
+- **UAX3 — An image bump grows no second chip.** The compose file changed, but
+  the version chip already names that service, so the row must look exactly as
+  it did before this feature: the `app 1.25 → 1.26` chip is the cell's only one
+  and no kind chip sits beside it. The version chip is the positive signal —
+  without asserting it, "no kind chip" would also pass on an empty column.
+  Verified to fail against the unfixed build (suppression removed).
+- **UAX4 — The panel attributes each file.** Opening the row's diff panel, the
+  `docker-compose.yml` file header carries the same `web-restic` note plus the
+  title spelling out the kind, so a reader in the diff does not have to carry
+  the row's chip in their head.
+
+### 4.52 UI — Maske AY: the project_directory checkout is kept current (ADR-0060)
+
+Compose serves a stack's relative bind mounts out of `--project-directory`, not
+out of the clone the compose file was read from, so a project-directory checkout
+nobody advances mounts stale content behind a green deploy.
+`project_directory_sync` makes skipper fast-forward that checkout once per run,
+before the stack phase — and refuse when the tree is dirty, which is the state
+the operator who edits that tree leaves it in. Behaviour-only (no snapshot).
+
+The fixture (`projectDirSync: true`) gives the instance a second clone of the
+origin as `project_directory_base`; `dirtyProjectDir()` edits a tracked file in
+it and `projectDirHead()` reads the commit it sits on.
+
+- **UAY1 — A working fast-forward reports nothing.** A pushed compose change
+  deploys and leaves no `_project_dir` row: the phase is plumbing, like the
+  clone sync at the top of every run. The stack's own second row is the
+  positive signal that the run really ran.
+- **UAY2 — A dirty checkout is reported without blocking the deploys.** The
+  refusal renders as a `failed` `_project_dir` row whose error panel names the
+  uncommitted changes, the stack still deploys in the same run, and
+  `projectDirHead()` proves the checkout did not move.
+- **UAY3 — A standing refusal is reported once.** Two more pushes over a
+  still-dirty tree add two stack rows and no second phase row (ADR-0055). The
+  climbing stack-row count is the positive signal that the extra runs happened.
+- **UAY4 — The phase row carries no container-logs or jump affordance.**
+  `_project_dir` names a run phase, not a Compose project, so its `⋯` menu holds
+  only the deploy history — the same treatment `_nixos` and `_config` get
+  (`isPseudoStack`). The menu's history entry and the stack row's own jump
+  button are the positive signals that the omissions are omissions.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -1991,6 +2082,9 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: exited on-demand container reads stopped + on-demand label | **UH5** |
 | Stack health: folded timeline — routine start absorbed, strip, raw-list toggle | **UH7** |
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
+| One open header pop-out at a time (drawers ↔ beacon/view-options popovers) | **UAW1**–**UAW3** |
+| Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
+| project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |

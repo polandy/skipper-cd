@@ -148,15 +148,7 @@ func TestHealthAlerter_RunDeliversFiredAlerts(t *testing.T) {
 	go func() { a.Run(ctx); close(done) }()
 
 	a.Fire(unhealthyAlert())
-	deadline := time.After(2 * time.Second)
-	for doer.count() == 0 {
-		select {
-		case <-deadline:
-			t.Fatal("alert was not delivered")
-		default:
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
+	doer.awaitDeliveries(t, 1)
 	cancel()
 	<-done
 }
@@ -170,15 +162,7 @@ func TestHealthAlerter_RunThreadsRunCtxIntoLiveDelivery(t *testing.T) {
 	go func() { a.Run(ctx); close(done) }()
 
 	a.Fire(unhealthyAlert())
-	deadline := time.After(2 * time.Second)
-	for doer.count() == 0 {
-		select {
-		case <-deadline:
-			t.Fatal("alert was not delivered")
-		default:
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
+	doer.awaitDeliveries(t, 1)
 	cancel()
 	<-done
 

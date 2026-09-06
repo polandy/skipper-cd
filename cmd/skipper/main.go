@@ -253,13 +253,17 @@ func main() {
 		Outputter:    command.NewShellRunner(timeout),
 		CommitReader: repoReader,
 		Syncer:       repoSync,
-		RepoDir:      repoSync.RepoDir(),
-		StateDir:     stateDir,
-		ShutdownCtx:  signalCtx,
-		EventSink:    eventSink,
-		StartEventID: uiw.startEventID,
-		Autosync:     autosyncCtrl,
-		Queue:        autosyncQueue,
+		// Fast-forwards the project_directory checkout before each run's stack
+		// phase, so a stack's relative bind mounts serve current content
+		// (ADR-0060); nil unless project_directory_sync opts in.
+		ProjectDirSyncer: buildProjectDirSyncer(cfg, repoSync.RepoDir(), timeout, sink),
+		RepoDir:          repoSync.RepoDir(),
+		StateDir:         stateDir,
+		ShutdownCtx:      signalCtx,
+		EventSink:        eventSink,
+		StartEventID:     uiw.startEventID,
+		Autosync:         autosyncCtrl,
+		Queue:            autosyncQueue,
 		// A success event marks itself as the retry of a rollback from the
 		// stack's newest audit record — read before the fanout records the
 		// success itself, so it names the outcome the retry supersedes.

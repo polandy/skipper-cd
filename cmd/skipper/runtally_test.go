@@ -62,6 +62,20 @@ func TestRunTally_IgnoresConfigStateFailure(t *testing.T) {
 	}
 }
 
+func TestRunTally_IgnoresAProjectDirRefusal(t *testing.T) {
+	tally := newRunTally()
+	tally.observe(events.DeployEvent{Stack: deploy.ProjectDirStateKey, Status: events.StatusFailed})
+	tally.observe(events.DeployEvent{Stack: "web", Status: events.StatusSuccess})
+
+	got := tally.flush()
+	if got[events.StatusFailed] != 0 {
+		t.Errorf("expected a refused project_directory fast-forward uncounted (no stack failed), got %d", got[events.StatusFailed])
+	}
+	if got[events.StatusSuccess] != 1 {
+		t.Errorf("expected the run's real stack outcome still counted, got %d", got[events.StatusSuccess])
+	}
+}
+
 func TestRunTally_IgnoresNixosFailureButCountsOtherNixosOutcomes(t *testing.T) {
 	tally := newRunTally()
 	tally.observe(events.DeployEvent{Stack: deploy.NixosStateKey, Status: events.StatusFailed})

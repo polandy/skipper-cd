@@ -64,6 +64,10 @@ type Config struct {
 	// using DeployAllStacks directly.
 	Syncer RepoSyncer
 
+	// ProjectDirSyncer fast-forwards the project_directory checkout once per
+	// run, before any stack deploys (ADR-0060); nil disables the phase.
+	ProjectDirSyncer ProjectDirSyncer
+
 	// RepoDir is the repo clone directory, used to skip diffs for files
 	// outside the repo and to shorten event paths to repo-relative.
 	RepoDir string
@@ -156,22 +160,23 @@ type Config struct {
 // with New; the Config doc comments describe each collaborator.
 type Deployer struct {
 	// Collaborators fixed at construction, read-only afterwards (see Config).
-	runner       Runner
-	outputter    Outputter
-	commitReader CommitReader
-	syncer       RepoSyncer
-	repoDir      string
-	stateDir     string
-	shutdownCtx  context.Context
-	eventSink    func(events.DeployEvent)
-	autosync     *autosync.Controller
-	queue        *autosync.Queue
-	postRunHook  func()
-	stackSetSink func()
-	runPlanSink  func(RunPlan)
-	hookRunSink  func(HookRun)
-	lastOutcome  func(stack string) (events.Status, int64, bool)
-	prober       *httpHealthProber
+	runner           Runner
+	outputter        Outputter
+	commitReader     CommitReader
+	syncer           RepoSyncer
+	projectDirSyncer ProjectDirSyncer
+	repoDir          string
+	stateDir         string
+	shutdownCtx      context.Context
+	eventSink        func(events.DeployEvent)
+	autosync         *autosync.Controller
+	queue            *autosync.Queue
+	postRunHook      func()
+	stackSetSink     func()
+	runPlanSink      func(RunPlan)
+	hookRunSink      func(HookRun)
+	lastOutcome      func(stack string) (events.Status, int64, bool)
+	prober           *httpHealthProber
 
 	// Timing overrides from Config; 0 = derive from stack config / defaults.
 	rolloutPollInterval    time.Duration
@@ -185,6 +190,11 @@ type Deployer struct {
 	plan         []string        // stacks planned to deploy this run, in order
 	bootstrapRun bool            // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
 	configErrors *configErrorLog // entry-level config errors already reported, so an unchanged one stays quiet (ADR-0055)
+	// projectDirErrors remembers the project_directory fast-forward's standing
+	// condition under the same report-once rule. Deliberately its own log:
+	// configErrors is cleared against each run's stack-error set, and this
+	// phase runs before that set exists.
+	projectDirErrors *configErrorLog
 
 	// Read/written from any goroutine without holding mu.
 	nextEventID      atomic.Int64
@@ -215,6 +225,7 @@ func New(cfg Config) *Deployer {
 		outputter:              cfg.Outputter,
 		commitReader:           cfg.CommitReader,
 		syncer:                 cfg.Syncer,
+		projectDirSyncer:       cfg.ProjectDirSyncer,
 		repoDir:                cfg.RepoDir,
 		stateDir:               stateDir,
 		shutdownCtx:            cfg.ShutdownCtx,
@@ -232,6 +243,7 @@ func New(cfg Config) *Deployer {
 		rolloutDrainOverride:   cfg.RolloutDrainOverride,
 		syncRetryDelay:         cfg.SyncRetryDelay,
 		configErrors:           newConfigErrorLog(),
+		projectDirErrors:       newConfigErrorLog(),
 	}
 	d.nextEventID.Store(cfg.StartEventID)
 
@@ -549,6 +561,11 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	if cfg.NixOSRebuild.IsEnabled() && !d.rebuildNixOSIfChanged(ctx, cfg, state) {
 		return
 	}
+
+	// Before the stack phase reads it: compose serves a stack's relative bind
+	// mounts out of the project_directory checkout, which is not the clone the
+	// sync above advanced (ADR-0060). A refusal is reported, not fatal.
+	d.syncProjectDirectory(ctx)
 
 	cfg, stackErrs, err := d.resolveStackSet(cfg)
 	if err != nil {

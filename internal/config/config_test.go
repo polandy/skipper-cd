@@ -686,6 +686,53 @@ stacks:
 	}
 }
 
+func TestLoad_ProjectDirectorySyncDefaultsOff(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+project_directory_base: /etc/nixos/modules
+`
+	if cfg := loadFromString(t, content); cfg.ProjectDirectorySync {
+		t.Error("project_directory_sync must stay off unless it is asked for: it writes to a checkout skipper does not own")
+	}
+}
+
+func TestLoad_AcceptsProjectDirectorySyncWithABase(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+project_directory_base: /etc/nixos/modules
+project_directory_sync: true
+`
+	if cfg := loadFromString(t, content); !cfg.ProjectDirectorySync {
+		t.Error("expected project_directory_sync to be enabled")
+	}
+}
+
+func TestLoad_RejectsProjectDirectorySyncWithoutABase(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+project_directory_sync: true
+`
+	_, err := loadStringToConfig(t, content)
+	if err == nil || !strings.Contains(err.Error(), "project_directory_sync") || !strings.Contains(err.Error(), "project_directory_base") {
+		t.Fatalf("expected the error to name both keys, got %v", err)
+	}
+}
+
+func TestLoad_RejectsAStackNamedLikeAReservedKey(t *testing.T) {
+	for _, name := range config.ReservedStackNames() {
+		content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stack_discovery: false
+stacks:
+  - name: ` + name + `
+`
+		_, err := loadStringToConfig(t, content)
+		if err == nil || !strings.Contains(err.Error(), "reserved") {
+			t.Fatalf("stack %q: expected a reserved-name error, got %v", name, err)
+		}
+	}
+}
+
 func TestLoad_RejectsRelativeProjectDirectoryBase(t *testing.T) {
 	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git

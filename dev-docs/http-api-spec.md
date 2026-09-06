@@ -137,7 +137,10 @@ Deploy-event history as paginated JSON. Query params:
 | `before` | return events with `id <` this (page backwards) | newest |
 
 Body is a `DeployEvent` array, newest first. `diffs` and `commits` are stripped
-here (as in the SSE payload); fetch them per-event.
+here (as in the SSE payload); fetch them per-event. `file_changes` attributes
+each changed file to the services it reached (`services` absent with
+`"wide": true` means it reaches every service; absent without it means no
+service definition changed).
 
 ```json
 [
@@ -148,6 +151,9 @@ here (as in the SSE payload); fetch them per-event.
     "status": "deployed",
     "duration_ms": 4213,
     "changed_files": ["traefik/docker-compose.yml"],
+    "file_changes": [
+      { "file": "traefik/docker-compose.yml", "kind": "compose", "services": ["traefik-restic"] }
+    ],
     "has_diffs": true
   }
 ]

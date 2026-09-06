@@ -522,15 +522,32 @@ try {
 // from): immich has two services mentioning the stack name (the shorter,
 // immich-server, leads), nextcloud's and gitea's leads are found via their image
 // repository, and paperless is digest-pinned on top of its tag.
-const setHealth = (n, svcs) => writeFileSync(join(healthDir, `${n}.json`), JSON.stringify(svcs));
+// Kept per stack so the images can *move*: a deploy's version delta is built
+// from what the containers report (ADR-0053), so a stub frozen at one version
+// makes every bump after the first report no change at all. Each stack starts on
+// the version its committed compose file names; `moveRunning` carries it to the
+// new one as part of the push that bumps it.
+const running = {};
+const setHealth = (n, svcs) => {
+  running[n] = svcs;
+  writeFileSync(join(healthDir, `${n}.json`), JSON.stringify(svcs));
+};
+// moveRunning re-images the named services, i.e. what their containers report
+// once the deploy about to be pushed has run.
+const moveRunning = (n, images) => {
+  for (const svc of running[n]) {
+    if (images[svc.Service]) svc.Image = images[svc.Service];
+  }
+  writeFileSync(join(healthDir, `${n}.json`), JSON.stringify(running[n]));
+};
 setHealth('immich', [
-  { Service: 'immich-server', Name: 'immich-server-1', Image: 'ghcr.io/immich-app/immich-server:v1.119.0', State: 'running', Health: 'healthy' },
-  { Service: 'machine-learning', Name: 'immich-machine-learning-1', Image: 'ghcr.io/immich-app/immich-machine-learning:v1.119.0', State: 'running', Health: 'healthy' },
-  { Service: 'redis', Name: 'immich-redis-1', Image: 'redis:7.4', State: 'running', Health: 'healthy' },
-  { Service: 'database', Name: 'immich-database-1', Image: 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.4.0', State: 'running', Health: 'healthy' },
+  { Service: 'immich-server', Name: 'immich-server-1', Image: 'ghcr.io/immich-app/immich-server:v1.118.0', State: 'running', Health: 'healthy' },
+  { Service: 'machine-learning', Name: 'immich-machine-learning-1', Image: 'ghcr.io/immich-app/immich-machine-learning:v1.118.0', State: 'running', Health: 'healthy' },
+  { Service: 'redis', Name: 'immich-redis-1', Image: 'redis:7.2', State: 'running', Health: 'healthy' },
+  { Service: 'database', Name: 'immich-database-1', Image: 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.3.0', State: 'running', Health: 'healthy' },
 ]);
 setHealth('nextcloud', [
-  { Service: 'app', Name: 'nextcloud-app-1', Image: `${regHost}/nextcloud:30.0.2`, State: 'running', Health: 'healthy' },
+  { Service: 'app', Name: 'nextcloud-app-1', Image: `${regHost}/nextcloud:30.0.1`, State: 'running', Health: 'healthy' },
   { Service: 'db', Name: 'nextcloud-db-1', Image: 'postgres:16', State: 'restarting', Health: 'unhealthy' },
   { Service: 'redis', Name: 'nextcloud-redis-1', Image: 'redis:7.2', State: 'running', Health: 'healthy' },
 ]);
@@ -538,22 +555,22 @@ setHealth('paperless', [
   {
     Service: 'webserver',
     Name: 'paperless-webserver-1',
-    Image: 'ghcr.io/paperless-ngx/paperless-ngx:2.13.0@sha256:2222222222222222222222222222222222222222222222222222222222222222',
+    Image: `ghcr.io/paperless-ngx/paperless-ngx:2.13.0@${PAPERLESS_DIGEST_OLD}`,
     State: 'exited',
     ExitCode: 0,
   },
 ]);
-// The failure-demo stacks report healthy containers with their running image,
-// so their rows carry a version and a pill like any other — only their deploy
-// outcome is unusual. syncthing is the exception: it is seeded degraded, which
+// The failure-demo stacks report healthy containers running the version their
+// committed compose names, so their rows carry a version and a pill like any
+// other — only their deploy outcome is unusual. syncthing is the exception: it is seeded degraded, which
 // is what gives self-heal something to act on.
 for (const n of ['vaultwarden', 'wiki', 'backup', 'monitoring']) {
   setHealth(n, [
-    { Service: 'app', Name: `${n}-app-1`, Image: `${n}:1.1.0`, State: 'running', Health: 'healthy' },
+    { Service: 'app', Name: `${n}-app-1`, Image: `${n}:1.0.0`, State: 'running', Health: 'healthy' },
   ]);
 }
 setHealth('syncthing', [
-  { Service: 'app', Name: 'syncthing-app-1', Image: 'syncthing:1.1.0', State: 'restarting', Health: 'unhealthy' },
+  { Service: 'app', Name: 'syncthing-app-1', Image: 'syncthing:1.0.0', State: 'restarting', Health: 'unhealthy' },
 ]);
 setHealth('gitea', [
   { Service: 'server', Name: 'gitea-server-1', Image: `${regHost}/gitea/gitea:1.22.3`, State: 'restarting', Health: 'unhealthy' },
@@ -645,6 +662,11 @@ if (!(await healthy())) {
   process.exit(1);
 }
 console.error('[ui-preview] healthy — seeding deploys…');
+// healthz answers while the startup run is still converging (immich's pre_deploy
+// hook alone sleeps 4s). That run records each stack's baseline running images,
+// so a push landing mid-run moves them under it and the bump that follows has
+// nothing left to report.
+for (const n of [...stacks, ...failureStacks]) await settled(n, 1);
 
 
 // Pushed changes → deploy rows carrying real git diffs + commit metadata, each
@@ -659,6 +681,7 @@ writeFileSync(
   ]),
 );
 git(origin, 'commit', '-am', 'feat(nextcloud): bump app to 30.0.2');
+moveRunning('nextcloud', { app: `${regHost}/nextcloud:30.0.2` });
 await webhook();
 await settled('nextcloud', 2);
 // immich: several services change across two commits in one deploy — the delta
@@ -684,6 +707,12 @@ writeFileSync(
   ]),
 );
 git(origin, 'commit', '-am', 'chore(immich): bump ml, redis, database');
+moveRunning('immich', {
+  'immich-server': 'ghcr.io/immich-app/immich-server:v1.119.0',
+  'machine-learning': 'ghcr.io/immich-app/immich-machine-learning:v1.119.0',
+  redis: 'redis:7.4',
+  database: 'ghcr.io/tensorchord/pgvecto-rs:pg16-v0.4.0',
+});
 await webhook();
 await settled('immich', 2);
 // paperless: a same-tag rebuild — only the pinned digest of webserver moves, so
@@ -698,8 +727,28 @@ writeFileSync(
   ]),
 );
 git(origin, 'commit', '-am', 'chore(paperless): rebuild webserver (digest bump, same tag)');
+moveRunning('paperless', { webserver: `ghcr.io/paperless-ngx/paperless-ngx:2.13.0@${PAPERLESS_DIGEST_NEW}` });
 await webhook();
 await settled('paperless', 2);
+
+// nextcloud again: a change that carries no new image — the db service gains two
+// environment variables. This is the case the Changes column exists for: the row
+// names the one container the change reached, where the file count alone said
+// only "1 file".
+writeFileSync(
+  join(origin, 'nextcloud', 'docker-compose.yml'),
+  composeYaml([
+    ['app', `${regHost}/nextcloud:30.0.2`],
+    ['db', 'postgres:16'],
+    ['redis', 'redis:7.2'],
+  ]).replace(
+    '  db:\n    image: postgres:16\n',
+    '  db:\n    image: postgres:16\n    environment:\n      - POSTGRES_MAX_CONNECTIONS=200\n      - POSTGRES_SHARED_BUFFERS=512MB\n',
+  ),
+);
+git(origin, 'commit', '-am', 'feat(nextcloud): tune postgres connections and buffers');
+await webhook();
+await settled('nextcloud', 3);
 
 // gitea: a routine history — a run of identical converges, the shape a
 // long-lived stack actually has. It is what the deploy-history panel folds
@@ -805,6 +854,26 @@ if (SMOKE) {
   for (const want of ['success', 'rolled_back', 'failed', 'healed']) {
     if (!outcomes.has(want)) fail(`no stack ended up ${want} (got ${[...outcomes].join(', ')})`);
   }
+  // The version delta a bump must show (ADR-0053) — an empty Changes cell is a
+  // silent failure, so it is asserted rather than eyeballed. Read from the
+  // stream's replayed history, the only place image_changes is served.
+  const replayed = [];
+  const stream = await fetch(`http://127.0.0.1:${PORT}/api/events`, { signal: AbortSignal.timeout(10_000) });
+  let buf = '';
+  for await (const chunk of stream.body) {
+    buf += Buffer.from(chunk).toString();
+    if (buf.includes('event: synced')) break; // end-of-replay marker
+  }
+  await stream.body.cancel();
+  for (const m of buf.matchAll(/^event: deploy\ndata: (.*)$/gm)) replayed.push(JSON.parse(m[1]));
+  const bumped = replayed.find(
+    (e) => e.stack === 'nextcloud' && e.image_changes?.some((c) => c.service === 'app' && c.new?.includes('30.0.2')),
+  );
+  if (!bumped) {
+    const seen = replayed.filter((e) => e.stack === 'nextcloud').map((e) => e.image_changes ?? null);
+    fail(`nextcloud's bump reports no app version change (nextcloud deltas: ${JSON.stringify(seen)})`);
+  }
+
   // queued and blocked are deliberately not audit-recorded, so they are checked
   // where they do live: the pending registry behind the autosync drawer.
   const reasons = ((await get('/api/queue'))?.pending ?? []).map((p) => p.reason);

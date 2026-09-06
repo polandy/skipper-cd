@@ -8,118 +8,287 @@ const globals = require('globals');
 module.exports = [
   js.configs.recommended,
   {
-    // app.js is the main app script, a plain browser <script> loaded after
-    // app-helpers.js and app-render.js. The globals list below is the contract
-    // it calls by bare name — a new use fails no-undef until it is added here.
-    // The reverse has no linter behind it: when the last call moves out of
-    // app.js, drop the entry by hand or the list drifts.
-    files: ['app.js'],
+    // app-stream.js is the SSE stream dispatcher and the bootstrap, a plain
+    // browser <script> loaded last that attaches itself as App.stream and calls
+    // the pure layers by bare name — the globals below are that contract.
+    files: ['app-stream.js'],
     languageOptions: {
       sourceType: 'script',
       globals: {
         ...globals.browser,
-        // app-helpers.js functions
-        assignHostColors: 'readonly',
-        auditCountText: 'readonly',
-        attentionLabel: 'readonly',
-        attentionStacks: 'readonly',
-        buildHostList: 'readonly',
-        clogStreamStatus: 'readonly',
-        containerMatchesQuery: 'readonly',
-        deployAnnouncement: 'readonly',
-        deployStatusLabel: 'readonly',
-        formatDuration: 'readonly',
-        formatTime: 'readonly',
-        fullTime: 'readonly',
-        healthClass: 'readonly',
-        hostFilterActive: 'readonly',
-        imageDelta: 'readonly',
-        incidentBadgeLabel: 'readonly',
-        incidentPresetActive: 'readonly',
-        isLogOutcome: 'readonly',
-        logFacets: 'readonly',
-        logFiltersActive: 'readonly',
-        logLineLevel: 'readonly',
-        logLineVisible: 'readonly',
-        logDiffBlockHTML: 'readonly',
-        logMatchesFilters: 'readonly',
-        mergeLogView: 'readonly',
-        parseLogFilters: 'readonly',
+        App: 'readonly',
         makeReconnector: 'readonly',
-        orphanMatchesQuery: 'readonly',
-        orphanMeta: 'readonly',
-        orphanStateClass: 'readonly',
-        phaseDuration: 'readonly',
-        recentIncidentCount: 'readonly',
-        reconcileHostFilter: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-state.js defines the App namespace and the shared snapshot store; a
+    // plain browser <script> loaded after app-helpers.js, whose resolve*
+    // helpers its per-host resolvers bind by bare name.
+    files: ['app-state.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        // defined here (window.App) and read back by bare name below
+        App: 'writable',
         resolveAppLinksMap: 'readonly',
         resolveHealthMap: 'readonly',
         resolveHealthwatchMap: 'readonly',
         resolveRepoWebURL: 'readonly',
         resolveUpdates: 'readonly',
-        rosterOrdered: 'readonly',
-        rowClass: 'readonly',
-        snapshotIsFresh: 'readonly',
-        stackHasUpdate: 'readonly',
+      },
+    },
+  },
+  {
+    // app-chrome.js is the app chrome: a plain browser <script> loaded right
+    // after app-state.js that attaches itself as App.chrome and calls the pure
+    // layers by bare name — the globals below are that contract.
+    files: ['app-chrome.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        makeSurfaceRegistry: 'readonly',
+        attentionLabel: 'readonly',
+        attentionStacks: 'readonly',
+        formatTime: 'readonly',
+        incidentBadgeLabel: 'readonly',
+        recentIncidentCount: 'readonly',
         updateBadgeLabel: 'readonly',
-        updatePresetActive: 'readonly',
-        // app-render.js constants
-        CLOG_ICON: 'readonly',
-        LINK_ICON: 'readonly',
         WARN_ICON: 'readonly',
-        // app-render.js functions
         attentionBandHTML: 'readonly',
-        autosyncDetailHTML: 'readonly',
-        autosyncPosText: 'readonly',
-        autosyncReasonChipHTML: 'readonly',
-        autosyncRowHTML: 'readonly',
-        autosyncSwitchTitle: 'readonly',
-        auditRowsHTML: 'readonly',
-        badgeHTML: 'readonly',
         beaconPopHTML: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-panels.js holds the shared row panels and affordances: a plain
+    // browser <script> loaded after app-state.js that attaches itself as
+    // App.panels and calls the pure layers by bare name — the globals below
+    // are that contract.
+    files: ['app-panels.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        serviceVersionHTML: 'readonly',
+        phaseDuration: 'readonly',
+        auditCountText: 'readonly',
+        auditRowsHTML: 'readonly',
         clogBtnHTML: 'readonly',
-        clogSvcsHTML: 'readonly',
-        commitLinkHTML: 'readonly',
         diffPanelHTML: 'readonly',
         escapeAttr: 'readonly',
         escapeHtml: 'readonly',
-        filesHTML: 'readonly',
         filesPanelHTML: 'readonly',
         healPanelHTML: 'readonly',
-        healPillHTML: 'readonly',
+        healthClass: 'readonly',
         healthHistoryHTML: 'readonly',
-        healthPillHTML: 'readonly',
-        hookCount: 'readonly',
         hookPhaseHTML: 'readonly',
         hooksBadgeHTML: 'readonly',
+        linkCellHTML: 'readonly',
+        updateCheckMetaHTML: 'readonly',
+        watchedPanelHTML: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-hosts.js is the multi-host view file: a plain browser <script>
+    // loaded after app-panels.js that attaches itself as App.hosts and calls
+    // the pure layers by bare name — the globals below are that contract.
+    files: ['app-hosts.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        assignHostColors: 'readonly',
+        buildHostList: 'readonly',
+        formatDuration: 'readonly',
+        formatTime: 'readonly',
+        fullTime: 'readonly',
+        hostFilterActive: 'readonly',
+        reconcileHostFilter: 'readonly',
+        rowClass: 'readonly',
+        LINK_ICON: 'readonly',
+        badgeHTML: 'readonly',
+        commitLinkHTML: 'readonly',
+        escapeAttr: 'readonly',
+        escapeHtml: 'readonly',
+        healthPillHTML: 'readonly',
         hostChipHTML: 'readonly',
-        imageDeltaHTML: 'readonly',
+        repeatNoteHTML: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-roster.js is the Stacks view file: a plain browser <script> loaded
+    // after app-hosts.js that attaches itself as App.roster and calls the pure
+    // layers by bare name — the globals below are that contract.
+    files: ['app-roster.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        escapeAttr: 'readonly',
+        escapeHtml: 'readonly',
+        formatTime: 'readonly',
+        fullTime: 'readonly',
+        rosterOrdered: 'readonly',
+        stackHasUpdate: 'readonly',
+        updatePresetActive: 'readonly',
+        commitLinkHTML: 'readonly',
+        healthPillHTML: 'readonly',
         jumpBtnHTML: 'readonly',
         rowActionClusterHTML: 'readonly',
-        linkCellHTML: 'readonly',
-        logLineHTML: 'readonly',
-        deployStatusChipsHTML: 'readonly',
         lastIncidentHTML: 'readonly',
-        nextTrailHTML: 'readonly',
         outcomeStripHTML: 'readonly',
-        pendingTagHTML: 'readonly',
-        repeatNoteHTML: 'readonly',
-        retryNoteHTML: 'readonly',
         rosterHealthPillHTML: 'readonly',
         rosterRowActionsHTML: 'readonly',
         rosterStatusHTML: 'readonly',
         rosterUpdateChipHTML: 'readonly',
         rosterVersionCellHTML: 'readonly',
         rosterVersionInnerHTML: 'readonly',
-        runListHTML: 'readonly',
-        runSummaryHTML: 'readonly',
-        serviceVersionHTML: 'readonly',
-        updateCheckMetaHTML: 'readonly',
-        watchedPanelHTML: 'readonly',
       },
     },
     rules: {
-      // catch (_) is this file's established ignore idiom.
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-deploys.js is the Deploys view file: a plain browser <script> loaded
+    // after app-roster.js that attaches itself as App.deploys and calls the pure
+    // layers by bare name — the globals below are that contract.
+    files: ['app-deploys.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        escapeAttr: 'readonly',
+        escapeHtml: 'readonly',
+        containerMatchesQuery: 'readonly',
+        deployAnnouncement: 'readonly',
+        deployStatusLabel: 'readonly',
+        formatDuration: 'readonly',
+        formatTime: 'readonly',
+        fullTime: 'readonly',
+        incidentPresetActive: 'readonly',
+        isPseudoStack: 'readonly',
+        orphanMatchesQuery: 'readonly',
+        orphanMeta: 'readonly',
+        orphanStateClass: 'readonly',
+        rowClass: 'readonly',
+        badgeHTML: 'readonly',
+        filesHTML: 'readonly',
+        healPillHTML: 'readonly',
+        healthPillHTML: 'readonly',
+        hookCount: 'readonly',
+        changeCellHTML: 'readonly',
+        changeChipsHTML: 'readonly',
+        changeAttributionHTML: 'readonly',
+        imageDeltaChipsHTML: 'readonly',
+        jumpBtnHTML: 'readonly',
+        deployStatusChipsHTML: 'readonly',
+        nextTrailHTML: 'readonly',
+        pendingTagHTML: 'readonly',
+        repeatNoteHTML: 'readonly',
+        retryNoteHTML: 'readonly',
+        runListHTML: 'readonly',
+        runSummaryHTML: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-autosync.js is the autosync view file: a plain browser <script>
+    // loaded after app-state.js that attaches itself as App.autosync and calls
+    // the pure layers by bare name — the globals below are that contract.
+    files: ['app-autosync.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        // app-helpers.js functions
+        snapshotIsFresh: 'readonly',
+        // app-render.js functions
+        autosyncDetailHTML: 'readonly',
+        autosyncPosText: 'readonly',
+        autosyncReasonChipHTML: 'readonly',
+        autosyncRowHTML: 'readonly',
+        autosyncSwitchTitle: 'readonly',
+        escapeHtml: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-logs.js is the Logs view file: a plain browser <script> loaded after
+    // app-state.js that attaches itself as App.logs and calls the pure layers
+    // by bare name — the globals below are that contract.
+    files: ['app-logs.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        isLogOutcome: 'readonly',
+        logDiffBlockHTML: 'readonly',
+        logFacets: 'readonly',
+        logFiltersActive: 'readonly',
+        logLineHTML: 'readonly',
+        logLineLevel: 'readonly',
+        logLineVisible: 'readonly',
+        logMatchesFilters: 'readonly',
+        makeReconnector: 'readonly',
+        mergeLogView: 'readonly',
+        parseLogFilters: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // app-clog.js is the container-logs view file: a plain browser <script>
+    // loaded after app-state.js that attaches itself as App.clog and calls the
+    // pure layers by bare name — the globals below are that contract.
+    files: ['app-clog.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        // app-helpers.js functions
+        clogStreamStatus: 'readonly',
+        logLineVisible: 'readonly',
+        // app-render.js constants and functions
+        CLOG_ICON: 'readonly',
+        clogSvcsHTML: 'readonly',
+        escapeHtml: 'readonly',
+      },
+    },
+    rules: {
       'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
     },
   },

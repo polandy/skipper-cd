@@ -21,8 +21,9 @@ func NewStackLocator(cfg *config.Config, stacks func() []config.Stack) StackLoca
 		}
 		// The reserved stack-config pseudo-stack (ADR-0034) likewise has no
 		// directory; its failures are about the repo skipper.yaml, so the git
-		// logo is the recognizable stand-in.
-		if name == config.ReservedConfigStackName {
+		// logo is the recognizable stand-in — as they are for the
+		// project_directory checkout's fast-forward (ADR-0060).
+		if name == config.ReservedConfigStackName || name == config.ReservedProjectDirStackName {
 			return Request{Name: "git"}, true
 		}
 		for _, s := range stacks() {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/polandy/skipper-cd/internal/git"
@@ -71,6 +72,16 @@ type Config struct {
 	// common prefix (e.g. a NixOS modules directory) across every stack. Must
 	// be an absolute path when set.
 	ProjectDirectoryBase string `yaml:"project_directory_base"`
+
+	// ProjectDirectorySync fast-forwards the project_directory_base checkout
+	// once per run, before any stack deploys (ADR-0060). Compose resolves a
+	// stack's relative bind mounts against --project-directory, so on a host
+	// where that base is a separate working copy those mounts are served from a
+	// checkout nothing else keeps current. Off by default; requires
+	// project_directory_base. Host policy, not a deploy input: like self_heal
+	// and rollback it is a top-level runtime setting and never feeds a stack's
+	// ConfigHash, so toggling it redeploys nothing.
+	ProjectDirectorySync bool `yaml:"project_directory_sync"`
 
 	// WebhookSecret is the shared HMAC-SHA256 secret push webhooks are signed
 	// with (Gitea X-Gitea-Signature / GitHub X-Hub-Signature-256). Optional: the
@@ -239,6 +250,22 @@ func (c *Config) StackByName(name string) (Stack, bool) {
 	return Stack{}, false
 }
 
+// stackFlag resolves a per-stack boolean policy: the stack's own override when
+// it sets one, otherwise def. A name that is not in stacks falls back to def
+// too, so a removed or parked stack answers with the global default rather
+// than a stale override.
+func stackFlag(stacks []Stack, name string, override func(Stack) *bool, def bool) bool {
+	for _, s := range stacks {
+		if s.Name == name {
+			if v := override(s); v != nil {
+				return *v
+			}
+			break
+		}
+	}
+	return def
+}
+
 // SelfHealEnabled reports whether self-heal is effective for the named stack:
 // the per-stack override when set, otherwise the global default (off when
 // unset). An unknown name falls back to the global default.
@@ -246,19 +273,11 @@ func (c *Config) SelfHealEnabled(name string) bool {
 	return c.EffectiveSelfHeal(c.Stacks, name)
 }
 
-// EffectiveSelfHeal is SelfHealEnabled over an explicit stack set — the
-// discovered stacks in stack-discovery mode, where c.Stacks is empty
-// (ADR-0034).
+// EffectiveSelfHeal is SelfHealEnabled over an explicit stack set. Callers in
+// stack-discovery mode pass the discovered stacks, which carry the host
+// config's per-stack overrides merged in (ADR-0043).
 func (c *Config) EffectiveSelfHeal(stacks []Stack, name string) bool {
-	for _, s := range stacks {
-		if s.Name == name {
-			if s.SelfHeal != nil {
-				return *s.SelfHeal
-			}
-			break
-		}
-	}
-	return c.SelfHeal != nil && *c.SelfHeal
+	return stackFlag(stacks, name, func(s Stack) *bool { return s.SelfHeal }, c.SelfHeal != nil && *c.SelfHeal)
 }
 
 // RollbackEnabled reports whether automatic rollback is effective for the named
@@ -269,20 +288,11 @@ func (c *Config) RollbackEnabled(name string) bool {
 	return c.EffectiveRollback(c.Stacks, name)
 }
 
-// EffectiveRollback is RollbackEnabled over an explicit stack set — the
-// discovered stacks in stack-discovery mode, where c.Stacks is empty
-// (ADR-0034). The default is on: rollback happens unless a per-stack or the
-// global rollback is explicitly false.
+// EffectiveRollback is RollbackEnabled over an explicit stack set (see
+// EffectiveSelfHeal). The default is on: rollback happens unless a per-stack
+// or the global rollback is explicitly false.
 func (c *Config) EffectiveRollback(stacks []Stack, name string) bool {
-	for _, s := range stacks {
-		if s.Name == name {
-			if s.Rollback != nil {
-				return *s.Rollback
-			}
-			break
-		}
-	}
-	return c.Rollback == nil || *c.Rollback
+	return stackFlag(stacks, name, func(s Stack) *bool { return s.Rollback }, c.Rollback == nil || *c.Rollback)
 }
 
 // SelfHealActive reports whether self-heal is effective for at least one stack.
@@ -499,6 +509,26 @@ const ReservedStackName = "_nixos"
 // stack-discovery mode (ADR-0034, mirrored as deploy.ConfigStateKey) and must
 // not collide with a configured stack.
 const ReservedConfigStackName = "_config"
+
+// ReservedProjectDirStackName is the event key for the project_directory
+// checkout's fast-forward phase (ADR-0060, mirrored as
+// deploy.ProjectDirStateKey) and must not collide with a configured stack.
+const ReservedProjectDirStackName = "_project_dir"
+
+// reservedStackNames are the pseudo-stack keys skipper emits run-level phases
+// under. They name a phase, not a Compose project, so a configured stack must
+// never take one.
+var reservedStackNames = []string{ReservedStackName, ReservedConfigStackName, ReservedProjectDirStackName}
+
+// IsReservedStackName reports whether name is one of skipper's pseudo-stack
+// keys rather than a real stack.
+func IsReservedStackName(name string) bool {
+	return slices.Contains(reservedStackNames, name)
+}
+
+// ReservedStackNames returns the pseudo-stack keys, for error messages that
+// need to list them.
+func ReservedStackNames() []string { return slices.Clone(reservedStackNames) }
 
 // defaultRuntimeHealthPollIntervalSeconds is the UI stack-health poll cadence applied
 // when runtime_health_poll_interval_seconds is omitted (ADR-0027). An explicit 0

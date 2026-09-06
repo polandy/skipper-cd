@@ -5,10 +5,33 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 )
+
+// withHealthGate appends the deploy gate to an `up` argument list: --wait makes
+// the up itself fail unless the services' compose healthchecks turn healthy in
+// time (ADR-0022). An ungated stack gets its args back unchanged.
+func withHealthGate(hc *config.HealthCheck, args ...string) []string {
+	if hc == nil {
+		return args
+	}
+	return append(args, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
+}
+
+// probeHealthURL runs the gate's optional HTTP probe, which verifies the stack
+// from the outside after a successful up (ADR-0022). A stack without a gate or
+// without a probe URL passes. Callers wrap the failure themselves: the same
+// unhealthy result means "roll back" on a deploy and "rolled back but still
+// unhealthy" on a rollback.
+func (d *Deployer) probeHealthURL(ctx context.Context, hc *config.HealthCheck) error {
+	if hc == nil || hc.URL == "" {
+		return nil
+	}
+	return d.prober.waitHealthy(ctx, hc.URL, time.Duration(hc.TimeoutSeconds)*time.Second)
+}
 
 // resolveHealthCheck returns the stack's effective deploy gate. An explicit
 // deploy_health_check wins: a mapping is returned unchanged, and the scalar

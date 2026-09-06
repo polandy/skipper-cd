@@ -9,17 +9,25 @@
 ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps e2e-ui-lint lint govulncheck e2e docs e2e-ui ui-preview-smoke
 
 ## --- test job -------------------------------------------------------------
+# The Go packages of this module. `./...` also descends into the gitignored npm
+# trees (internal/ui/static/node_modules, e2e/ui/node_modules), and some npm
+# packages ship stray .go files (flatted's golang port): after a local `npm ci`
+# they get built and tested as our own code, and their 0 %-covered statements
+# pull the coverage total below what CI reports from its clean checkout. Resolved
+# when a recipe runs, so a fresh clone and one with node_modules agree.
+GO_PKGS = $$(go list ./... | grep -v /node_modules/)
+
 build:
-	go build ./...
+	go build $(GO_PKGS)
 
 vet:
-	go vet ./...
+	go vet $(GO_PKGS)
 
 fmt:
 	test -z "$$(gofmt -l cmd internal)"
 
 test: build vet fmt
-	go test ./... -race -coverprofile=coverage.out
+	go test $(GO_PKGS) -race -coverprofile=coverage.out
 	go tool cover -func=coverage.out | tail -1
 
 # The nix flake builds with vendorHash = null, so vendor/ must stay committed
@@ -38,8 +46,8 @@ vendor-check:
 ui-unit:
 	node --test internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js
 
-# Prettier/ESLint for the embedded UI's plain-script JS (app.js, app-render.js,
-# app-helpers.js, the .test.js files, sw.js). Dev-only npm devDependencies, scoped to
+# Prettier/ESLint for the embedded UI's plain-script JS (app-stream.js, app-state.js, app-chrome.js, app-panels.js, app-hosts.js, app-roster.js, app-deploys.js, app-autosync.js, app-logs.js, app-clog.js,
+# app-render.js, app-helpers.js, the .test.js files, sw.js). Dev-only npm devDependencies, scoped to
 # internal/ui/static — never shipped in the binary (ADR-0035). app.css keeps
 # its hand-tuned compact style and is intentionally not formatted here.
 ui-fmt:
@@ -66,7 +74,7 @@ lint:
 
 ## --- govulncheck job ------------------------------------------------------
 govulncheck:
-	govulncheck ./...
+	govulncheck $(GO_PKGS)
 
 ## --- docs job -------------------------------------------------------------
 docs:

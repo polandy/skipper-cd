@@ -47,6 +47,7 @@ command_timeout_seconds: 300            # optional, default: 300
 log_format: pretty                      # optional, default: pretty (colored console); "text" or "json" for machine-readable logs
 stacks_base_dir: modules                # relative to repo_dir (the clone); omit for the repo root
 project_directory_base: /etc/nixos/modules    # optional; see project_directory_base below
+project_directory_sync: true            # optional, default: false (keep that checkout up to date)
 webhook_secret: "your-secret-here"      # optional — enables the /webhook accelerator; reconcile runs without it
 port: 8080
 metrics_port: 9120
@@ -96,6 +97,7 @@ nixos_rebuild:
 | `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
 | `stacks_base_dir` | string | no | repo root | Base directory holding one subdirectory per stack (`<stacks_base_dir>/<name>/docker-compose.yml`); always the source of the compose file and change detection. Relative to `repo_dir` (the clone) — e.g. `stacks`, not `/var/lib/skipper/repo/stacks`. Omit it for the repo root itself. An absolute value, or one escaping the clone via `../`, is rejected at startup. |
 | `project_directory_base` | string | no | — | Base directory a stack's `project_directory` is derived from as `<project_directory_base>/<name>` when the stack does not set its own `project_directory` (see [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity)). Avoids repeating a common prefix (e.g. a NixOS modules directory) across stacks. Must be absolute — checked at startup. |
+| `project_directory_sync` | bool | no | `false` | Fast-forward the `project_directory_base` checkout once per run, before any stack deploys, so a stack's relative bind mounts serve current content (see [Keeping the project directory current](#keeping-the-project-directory-current)). Requires `project_directory_base` — setting it without one is rejected at startup. |
 | `webhook_secret` | string | no | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Optional: the webhook only accelerates the [reconcile loop](#periodic-reconcile), so leaving it empty is valid and disables the `/webhook` endpoint (it then rejects every request); when set, every request is signature-verified. Rejected only if it's empty **and** `reconcile_interval_seconds` is `0`, since then nothing would deploy after startup. |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. Must be 1–65535 and differ from `port`. |
@@ -172,6 +174,24 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
 | `rollout` | section | no | — | Deploy the named services with a zero-downtime cutover (new container alongside the old, then drain) instead of an in-place recreate. Needs a reverse proxy in front of the service (only Traefik tested). Never hash-tracked. See [Zero-downtime rollout](#zero-downtime-rollout). |
+
+## Keeping the project directory current
+
+`project_directory` sets `--project-directory`, and Docker Compose resolves every relative path in a compose file against it — bind mounts included. When it points at a checkout separate from skipper's clone (the usual case with `project_directory_base`), the mounted content only advances when someone pulls that checkout by hand. The stack deploys, the container runs, and it serves a file older than the compose file that mounts it.
+
+`project_directory_sync: true` makes skipper fast-forward that checkout itself, once per run, **before** any stack deploys — so a container recreated by the run reads the new file, not the one after it.
+
+```yaml
+project_directory_base: /srv/modules
+project_directory_sync: true
+```
+
+- **Fast-forward only.** No merge, no rebase, no reset. The checkout is a working copy someone edits.
+- **A clean tree is required.** Modified *tracked* files stop it; untracked files are ignored (a fast-forward never touches them).
+- **A diverged branch, or one with no upstream, stops it** too — those need a human.
+- **A refusal never blocks the deploys.** The stacks converge against the content the checkout has, and the reason is reported once — row, log line, notification — as a `_project_dir` row, with the `skipper_project_dir_sync_error` [metric](metrics.md) raised for as long as it lasts. A fast-forward that works is silent.
+- **A global [autosync](autosync.md) pause stops it too.** Running containers mount that tree, so a paused host stops changing there as well; a per-stack pause does not apply (the checkout is shared).
+- **Off by default**, requires `project_directory_base`, and does nothing when that base is inside the repo clone — every sync already resets that.
 
 ## First run and state loss
 
@@ -491,7 +511,7 @@ The versions compared are the ones the containers **actually ran** — recorded 
 | Format | Body sent | Use for |
 |---|---|---|
 | `signal` | `{"message": …, "number": …, "recipients": […]}` to `<url>/v2/send` | The `bbernhard/signal-cli-rest-api` service. |
-| `generic` | The full deploy event as JSON (diffs and commit metadata stripped; changed services under `image_changes`), plus any `headers` | ntfy, Gotify, or your own endpoint. |
+| `generic` | The full deploy event as JSON (diffs and commit metadata stripped; changed services under `image_changes`, and which services each changed file reached under `file_changes`), plus any `headers` | ntfy, Gotify, or your own endpoint. |
 
 > **Reachability.** `url` must be reachable from wherever skipper-cd runs. As a **host service** (e.g. the [NixOS module](nixos.md)), a container's host-published port is `http://localhost:8020` — reaching it directly, bypassing any reverse proxy/auth. When skipper-cd itself runs **in a container**, `localhost` is the container, not the host (see [Docker](docker.md)).
 

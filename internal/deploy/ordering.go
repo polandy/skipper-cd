@@ -129,8 +129,8 @@ func (d *Deployer) deployStackGated(ctx context.Context, stack config.Stack, bas
 		// A dependency failed or is queued. Only a stack that actually has a
 		// change needs holding back; an unchanged stack is already at its desired
 		// state, so the constraint is moot and it does not block its dependents.
-		if changed, pending := d.pendingChanges(stack, baseDir, varsFile, state); pending {
-			return d.deferForDependency(ctx, stack, changed, state, gate)
+		if changed, att, pending := d.pendingChanges(stack, baseDir, varsFile, state); pending {
+			return d.deferForDependency(ctx, stack, changed, att, state, gate)
 		}
 	}
 	err := d.deployStackIfChanged(ctx, stack, baseDir, varsFile, baseEnv, state)
@@ -142,8 +142,9 @@ func (d *Deployer) deployStackGated(ctx context.Context, stack config.Stack, bas
 // itself queued). It emits the matching event with the held-back change, marks
 // the pending registry — which also pins the diff/rollback base until the chain
 // clears — and leaves hashes unrecorded so the stack retries on the next sync.
-func (d *Deployer) deferForDependency(ctx context.Context, stack config.Stack, changed []string, state *persistedState, gate gateDecision) depOutcome {
+func (d *Deployer) deferForDependency(ctx context.Context, stack config.Stack, changed []string, att attribution, state *persistedState, gate gateDecision) depOutcome {
 	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
+	cs.fileChanges = d.attributeChanges(ctx, att, changed, state.LastDeployedCommit)
 
 	if gate.outcome == depBlocked {
 		d.markPending(stack.Name, changed, "blocked by "+gate.depName)
@@ -189,20 +190,29 @@ func (d *Deployer) markPending(stack string, changed []string, reason string) {
 // state, and whether any exist — the same detection deployStackIfChanged makes,
 // exposed so the ordering layer can describe a stack it defers without deploying
 // it. A hash error yields no changes; the real deploy would surface it.
-func (d *Deployer) pendingChanges(stack config.Stack, baseDir, varsFile string, state *persistedState) ([]string, bool) {
+func (d *Deployer) pendingChanges(stack config.Stack, baseDir, varsFile string, state *persistedState) ([]string, attribution, bool) {
 	repoDir := filepath.Join(baseDir, stack.Name)
 	composePath := filepath.Join(repoDir, compose.FileName)
 
-	var dockerfilePaths []string
-	if compose, err := parseComposeFile(composePath); err == nil && compose != nil {
-		dockerfilePaths = compose.dockerfilePaths(repoDir)
+	// The parse error is deliberately dropped: it yields a nil file, which
+	// hashStackInputs reads as "no build services", and prepareStackRun reports
+	// it once per deploy — this look-ahead runs over every stack on every tick.
+	cf, _ := parseComposeFile(composePath)
+
+	// The compose parse is carried out so a deferred stack's event attributes
+	// its held-back change to services exactly as a deploying one does.
+	att := attribution{
+		composePath:   composePath,
+		compose:       cf,
+		stack:         stack,
+		varsFile:      varsFile,
+		stacksBaseDir: baseDir,
 	}
 
-	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
+	currentHashes, _, err := d.hashStackInputs(stack, baseDir, repoDir, varsFile, cf)
 	if err != nil {
-		return nil, false
+		return nil, att, false
 	}
-	d.addStackConfigHash(currentHashes, stack, baseDir)
 	changed := changedFiles(currentHashes, state.hashesFor(stack.Name))
-	return changed, len(changed) > 0
+	return changed, att, len(changed) > 0
 }

@@ -246,50 +246,24 @@ func invalidDependency(stack Stack, known map[string]bool) error {
 // (disabled or already errored) count as satisfied — the runtime gate handles
 // those. Kahn's algorithm, mirroring validateStackDependencies.
 func dropDependencyCycles(stacks []Stack) ([]Stack, []StackError) {
-	inSet := make(map[string]bool, len(stacks))
-	for _, s := range stacks {
-		inSet[s.Name] = true
+	stuck := cyclicStacks(stacks)
+	if len(stuck) == 0 {
+		return stacks, nil
 	}
 
-	resolved := make(map[string]bool, len(stacks))
-	for remaining := len(stacks); remaining > 0; {
-		progressed := false
-		for _, s := range stacks {
-			if resolved[s.Name] {
-				continue
-			}
-			allResolved := true
-			for _, dep := range s.DependsOn {
-				if inSet[dep] && !resolved[dep] {
-					allResolved = false
-					break
-				}
-			}
-			if allResolved {
-				resolved[s.Name] = true
-				remaining--
-				progressed = true
-			}
-		}
-		if !progressed {
-			break
-		}
+	cyclic := make(map[string]bool, len(stuck))
+	for _, name := range stuck {
+		cyclic[name] = true
 	}
 
 	var kept []Stack
 	var errs []StackError
-	var stuck []string
 	for _, s := range stacks {
-		if !resolved[s.Name] {
-			stuck = append(stuck, s.Name)
-		}
-	}
-	for _, s := range stacks {
-		if resolved[s.Name] {
+		if !cyclic[s.Name] {
 			kept = append(kept, s)
 			continue
 		}
-		errs = append(errs, StackError{Stack: s.Name, Err: fmt.Errorf("depends_on cycle involving stacks: %s", strings.Join(stuck, ", "))})
+		errs = append(errs, StackError{Stack: s.Name, Err: cycleError(stuck)})
 	}
 	return kept, errs
 }

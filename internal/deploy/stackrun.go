@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
@@ -52,18 +51,15 @@ func (d *Deployer) prepareStackRun(stack config.Stack, baseDir, varsFile string,
 	// false (ADR-0049). See resolveHealthCheck.
 	run.stack.DeployHealthCheck = resolveHealthCheck(stack, compose)
 
-	var dockerfilePaths []string
 	var currentImages serviceImageByName
 	if compose != nil {
-		dockerfilePaths = compose.dockerfilePaths(repoDir)
 		currentImages = compose.images()
 	}
 
-	currentHashes, err := computePerFileHashes(repoDir, stack.EnvFiles, stack.WatchDirs, varsFile, dockerfilePaths)
+	currentHashes, dockerfilePaths, err := d.hashStackInputs(stack, baseDir, repoDir, varsFile, compose)
 	if err != nil {
 		return stackPrep{}, fmt.Errorf("compute per-file hashes: %w", err)
 	}
-	d.addStackConfigHash(currentHashes, stack, baseDir)
 
 	return stackPrep{
 		run:             run,
@@ -96,12 +92,22 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// Autosync gate: when paused, defer instead of deploying. The hashes are
 	// deliberately not recorded, so the stack stays dirty and re-deploys once
 	// sync resumes (docs/autosync.md).
+	att := attribution{
+		composePath:   prep.run.composePath,
+		compose:       prep.compose,
+		stack:         stack,
+		varsFile:      varsFile,
+		stacksBaseDir: baseDir,
+	}
+
 	if d.isPaused(stack.Name) {
 		reason := d.markQueued(stack.Name, changed)
 		metrics.DeploysQueued.WithLabelValues(stack.Name).Inc()
 		// Carry the diff of what is waiting so the paused row can show the
 		// effective change, not just the file paths.
-		d.emit(events.StatusQueued, stack.Name, 0, "", d.collectChange(ctx, changed, state.LastDeployedCommit))
+		queuedChange := d.collectChange(ctx, changed, state.LastDeployedCommit)
+		queuedChange.fileChanges = d.attributeChanges(ctx, att, changed, state.LastDeployedCommit)
+		d.emit(events.StatusQueued, stack.Name, 0, "", queuedChange)
 		slog.Info("deploy deferred: autosync paused", "stack", stack.Name, "reason", reason, "changed_files", changed)
 		return nil
 	}
@@ -115,6 +121,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.publishUpcomingAfter(stack.Name)
 	slog.Info("deploying stack", "stack", stack.Name, "dir", filepath.Dir(prep.run.composePath), "project_dir", prep.run.projectDir, "changed_files", d.repoRelativePaths(changed))
 	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
+	// Name the services each changed file reaches, so the row can say which
+	// container of the stack moved and not just how many files did (ADR-0059).
+	cs.fileChanges = d.attributeChanges(ctx, att, changed, state.LastDeployedCommit)
 	// Name the services whose image reference changed (old → new) so terminal
 	// events — and the notifications built from them — report what updated, not
 	// just the stack. Captured before the deploy runs so the deferred failure
@@ -211,24 +220,16 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 		}
 	} else {
 		// --remove-orphans removes containers for services deleted from docker-compose.yml.
-		upArgs := []string{"up", "-d", "--remove-orphans"}
-		if hc := stack.DeployHealthCheck; hc != nil {
-			// First health gate: --wait makes the up itself fail when the services'
-			// compose healthchecks do not turn healthy in time (ADR-0022).
-			upArgs = append(upArgs, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
-		}
+		// First health gate: withHealthGate adds --wait when the stack is gated.
+		upArgs := withHealthGate(stack.DeployHealthCheck, "up", "-d", "--remove-orphans")
 		if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
 		}
 	}
 
-	// Second health gate: the optional HTTP probe verifies the stack from the
-	// outside after a successful up (ADR-0022).
-	if hc := stack.DeployHealthCheck; hc != nil && hc.URL != "" {
-		timeout := time.Duration(hc.TimeoutSeconds) * time.Second
-		if err := d.prober.waitHealthy(ctx, hc.URL, timeout); err != nil {
-			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
-		}
+	// Second health gate: the optional HTTP probe.
+	if err := d.probeHealthURL(ctx, stack.DeployHealthCheck); err != nil {
+		return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
 	}
 
 	// post_deploy hooks validate the new version from outside compose (a smoke
