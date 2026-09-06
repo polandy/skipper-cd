@@ -92,12 +92,22 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// Autosync gate: when paused, defer instead of deploying. The hashes are
 	// deliberately not recorded, so the stack stays dirty and re-deploys once
 	// sync resumes (docs/autosync.md).
+	att := attribution{
+		composePath:   prep.run.composePath,
+		compose:       prep.compose,
+		stack:         stack,
+		varsFile:      varsFile,
+		stacksBaseDir: baseDir,
+	}
+
 	if d.isPaused(stack.Name) {
 		reason := d.markQueued(stack.Name, changed)
 		metrics.DeploysQueued.WithLabelValues(stack.Name).Inc()
 		// Carry the diff of what is waiting so the paused row can show the
 		// effective change, not just the file paths.
-		d.emit(events.StatusQueued, stack.Name, 0, "", d.collectChange(ctx, changed, state.LastDeployedCommit))
+		queuedChange := d.collectChange(ctx, changed, state.LastDeployedCommit)
+		queuedChange.fileChanges = d.attributeChanges(ctx, att, changed, state.LastDeployedCommit)
+		d.emit(events.StatusQueued, stack.Name, 0, "", queuedChange)
 		slog.Info("deploy deferred: autosync paused", "stack", stack.Name, "reason", reason, "changed_files", changed)
 		return nil
 	}
@@ -111,6 +121,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.publishUpcomingAfter(stack.Name)
 	slog.Info("deploying stack", "stack", stack.Name, "dir", filepath.Dir(prep.run.composePath), "project_dir", prep.run.projectDir, "changed_files", d.repoRelativePaths(changed))
 	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
+	// Name the services each changed file reaches, so the row can say which
+	// container of the stack moved and not just how many files did (ADR-0059).
+	cs.fileChanges = d.attributeChanges(ctx, att, changed, state.LastDeployedCommit)
 	// Name the services whose image reference changed (old → new) so terminal
 	// events — and the notifications built from them — report what updated, not
 	// just the stack. Captured before the deploy runs so the deferred failure

@@ -424,7 +424,7 @@ func TestPendingChanges_HashesTheSameInputsAsTheDeployPath(t *testing.T) {
 
 	// Against an empty state every tracked input reads as changed, so the paths
 	// the look-ahead reports are exactly the set it hashes.
-	changed, pending := d.pendingChanges(stack, baseDir, varsFile, newEmptyState())
+	changed, _, pending := d.pendingChanges(stack, baseDir, varsFile, newEmptyState())
 	if !pending {
 		t.Fatal("pendingChanges reported no pending change against an empty state")
 	}

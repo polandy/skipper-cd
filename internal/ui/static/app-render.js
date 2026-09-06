@@ -71,8 +71,8 @@ function versionChipHTML(service, body, aria, title) {
   return `<span class="tag-delta" role="img" aria-label="${escapeAttr(aria)}" title="${escapeAttr(title)}">${label}<span class="td-val">${body}</span></span>`;
 }
 
-// imageDeltaHTML renders the per-service image change(s) a deploy carried as
-// `service old→new` chips for the row's Version column — one per line, so the
+// imageDeltaChipsHTML renders the per-service image change(s) a deploy carried
+// as `service old→new` chips for the row's Changes column — one per line, so the
 // versions line up down the table and which service updated (and to what) reads
 // at a glance without opening the diff. The data rides the event
 // (image_changes); only services whose image ref actually changed are listed.
@@ -81,9 +81,9 @@ function versionChipHTML(service, body, aria, title) {
 // service removed from the stack. Every changed service is listed — a deploy
 // that touched five services says so, rather than hiding the rest behind a
 // count the reader would have to open the diff to resolve.
-function imageDeltaHTML(changes) {
+function imageDeltaChipsHTML(changes) {
   if (!changes || changes.length === 0) return '';
-  const shown = changes
+  return changes
     .map(function (c) {
       // Each chip carries a role=img + aria-label so a screen reader announces
       // the change as one phrase ("web updated from 1.25 to 1.26"), and a title
@@ -116,7 +116,133 @@ function imageDeltaHTML(changes) {
       return versionChipHTML(c.service, body, aria, title);
     })
     .join('');
-  return `<span class="svc-delta" data-testid="svc-delta">${shown}</span>`;
+}
+
+// The change kinds a file_changes entry carries, in the order their chips are
+// laid out: the stack's own definition first, then what it builds from, then
+// the environment around it. A kind the backend adds later still renders — it
+// lands after these.
+const CHANGE_KIND_ORDER = ['compose', 'build', 'env', 'vars', 'watch', 'config'];
+
+// How many service names a change chip prints before it counts the rest. Two
+// names fit the column at every width; a file every service reads (one env file
+// across five sidecars) must cost a counter, not five lines of row height.
+const CHANGE_SERVICE_NAMES = 2;
+
+// groupChangesByKind folds the event's file_changes into one entry per change
+// kind: the services that kind reached, and whether any of its files was
+// stack-wide. Two kinds of service go unlisted, both because the chip would say
+// nothing the row does not already say:
+//   - a service already named by an image chip, for the `compose` kind — on the
+//     common bump row that chip IS that service's compose change;
+//   - a stack-wide `compose` change (unresolvable, or the file's first deploy) —
+//     that the stack's own definition changed is what the file count already
+//     says; only the service attribution is new information. Every other kind
+//     keeps its stack-wide chip: which project-wide input moved is the answer to
+//     "why did this redeploy again".
+function groupChangesByKind(fileChanges, imageChanges) {
+  const named = {};
+  (imageChanges || []).forEach(function (c) {
+    named[c.service] = true;
+  });
+  const byKind = {};
+  (fileChanges || []).forEach(function (fc) {
+    const g = byKind[fc.kind] || (byKind[fc.kind] = { kind: fc.kind, services: [], wide: false });
+    if (fc.wide) {
+      if (fc.kind !== 'compose') g.wide = true;
+      return;
+    }
+    (fc.services || []).forEach(function (svc) {
+      if (fc.kind === 'compose' && named[svc]) return;
+      if (g.services.indexOf(svc) === -1) g.services.push(svc);
+    });
+  });
+  return Object.keys(byKind)
+    .sort(function (a, b) {
+      const ia = CHANGE_KIND_ORDER.indexOf(a);
+      const ib = CHANGE_KIND_ORDER.indexOf(b);
+      return (
+        (ia === -1 ? CHANGE_KIND_ORDER.length : ia) - (ib === -1 ? CHANGE_KIND_ORDER.length : ib)
+      );
+    })
+    .map(function (k) {
+      return byKind[k];
+    })
+    .filter(function (g) {
+      return g.wide || g.services.length > 0;
+    });
+}
+
+// changeChipsHTML renders the per-kind change chips: which containers of the
+// stack a deploy's changed files reached, for changes that carry no new image
+// (a sidecar gaining an environment variable is the case this exists for). One
+// chip per kind rather than per service, so a file every service reads costs a
+// counter instead of a row-height line. A kind with no attributable service
+// reads `stack-wide` — the honest answer for a project-wide input, never a
+// guess.
+function changeChipsHTML(fileChanges, imageChanges) {
+  return groupChangesByKind(fileChanges, imageChanges)
+    .map(function (g) {
+      const shown = g.services.slice(0, CHANGE_SERVICE_NAMES);
+      const extra = g.services.length - shown.length;
+      let body =
+        `<span class="td-kind">${escapeHtml(g.kind)}</span>` +
+        shown
+          .map(function (svc) {
+            return `<span class="td-svc">${escapeHtml(svc)}</span>`;
+          })
+          .join('');
+      let who = shown.join(', ');
+      if (extra > 0) {
+        body += `<span class="td-count">+${extra} more</span>`;
+        who += ' and ' + extra + ' more service' + (extra === 1 ? '' : 's');
+      }
+      if (g.wide) {
+        body += `<span class="td-wide">stack-wide</span>`;
+        who = who ? who + ', and stack-wide' : 'every service';
+      }
+      const aria = `${g.kind} changed for ${who}`;
+      return (
+        `<span class="tag-delta tag-change" role="img" aria-label="${escapeAttr(aria)}"` +
+        ` title="${escapeAttr(aria)}"><span class="td-val">${body}</span></span>`
+      );
+    })
+    .join('');
+}
+
+// changeCellHTML renders the Changes column of a deploy row: the image delta
+// chips first (which service moved, and to what), then the change chips for
+// what moved without a new image. Empty when the deploy carried neither, so the
+// cell collapses instead of holding a frame around nothing.
+function changeCellHTML(imageChanges, fileChanges) {
+  const chips = imageDeltaChipsHTML(imageChanges) + changeChipsHTML(fileChanges, imageChanges);
+  if (!chips) return '';
+  return `<span class="svc-delta" data-testid="svc-delta">${chips}</span>`;
+}
+
+// changeAttributionHTML renders one file's attribution for a panel line: the
+// services that file reaches, `stack-wide` when it reaches all of them, or `no
+// service changed` for an edit that touched no service definition. Empty when
+// the event carries no attribution for the file (an older event, a peer's diff).
+function changeAttributionHTML(fileChanges, path) {
+  const fc = (fileChanges || []).find(function (c) {
+    return c.file === path;
+  });
+  if (!fc) return '';
+  const services = fc.services || [];
+  let label = 'no service changed';
+  let title = `${fc.kind} change, touching no service definition`;
+  if (services.length) {
+    label = services.join(' · ');
+    title = `${fc.kind} change, reaching ${services.join(', ')}`;
+  } else if (fc.wide) {
+    label = 'stack-wide';
+    title = `${fc.kind} change, reaching every service`;
+  }
+  return (
+    `<span class="fc-svc${services.length ? '' : ' fc-wide'}" data-testid="file-services"` +
+    ` title="${escapeAttr(title)}">${escapeHtml(label)}</span>`
+  );
 }
 
 const personGlyph =
@@ -1026,11 +1152,14 @@ function healPanelHTML(drift) {
   return html;
 }
 
-// filesPanelHTML renders the changed-file list of a deploy, one path per line.
-function filesPanelHTML(files) {
+// filesPanelHTML renders the changed-file list of a deploy, one path per line,
+// each with the services that file reaches when the event attributed it.
+function filesPanelHTML(files, fileChanges) {
   return files
     .map(function (f) {
-      return `<span class="file-path">${escapeHtml(f)}</span>`;
+      return (
+        `<span class="file-path">${escapeHtml(f)}</span>` + changeAttributionHTML(fileChanges, f)
+      );
     })
     .join('<br>');
 }
@@ -1053,6 +1182,7 @@ function diffContentHTML(diff) {
 function diffPanelHTML(diffs, commits, meta, repoBase) {
   const files = Object.keys(diffs);
   const singleFile = files.length === 1;
+  const fileChanges = meta && meta.fileChanges;
   return (
     renderCommitHead(commits, meta, repoBase) +
     files
@@ -1062,7 +1192,7 @@ function diffPanelHTML(diffs, commits, meta, repoBase) {
           `<div class="diff-file-section">` +
           `<div class="diff-file-header${singleFile ? ' expanded' : ''}">` +
           `<svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>` +
-          `<span>${escapeHtml(name)}</span></div>` +
+          `<span>${escapeHtml(name)}</span>${changeAttributionHTML(fileChanges, f)}</div>` +
           `<div class="diff-content">${diffContentHTML(diffs[f])}</div>` +
           `</div>`
         );
@@ -1335,7 +1465,10 @@ if (typeof module !== 'undefined' && module.exports) {
     escapeAttr,
     commitLinkHTML,
     versionChipHTML,
-    imageDeltaHTML,
+    imageDeltaChipsHTML,
+    changeChipsHTML,
+    changeCellHTML,
+    changeAttributionHTML,
     renderCommitHead,
     badgeHTML,
     serviceVersionHTML,

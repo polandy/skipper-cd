@@ -701,6 +701,25 @@ git(origin, 'commit', '-am', 'chore(paperless): rebuild webserver (digest bump, 
 await webhook();
 await settled('paperless', 2);
 
+// nextcloud again: a change that carries no new image — the db service gains two
+// environment variables. This is the case the Changes column exists for: the row
+// names the one container the change reached, where the file count alone said
+// only "1 file".
+writeFileSync(
+  join(origin, 'nextcloud', 'docker-compose.yml'),
+  composeYaml([
+    ['app', `${regHost}/nextcloud:30.0.2`],
+    ['db', 'postgres:16'],
+    ['redis', 'redis:7.2'],
+  ]).replace(
+    '  db:\n    image: postgres:16\n',
+    '  db:\n    image: postgres:16\n    environment:\n      - POSTGRES_MAX_CONNECTIONS=200\n      - POSTGRES_SHARED_BUFFERS=512MB\n',
+  ),
+);
+git(origin, 'commit', '-am', 'feat(nextcloud): tune postgres connections and buffers');
+await webhook();
+await settled('nextcloud', 3);
+
 // gitea: a routine history — a run of identical converges, the shape a
 // long-lived stack actually has. It is what the deploy-history panel folds
 // (auditRowsHTML), so without it the fold is unreviewable here. Config-only

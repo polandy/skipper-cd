@@ -1788,6 +1788,32 @@
     background: var(--queued-dim);
     border-color: color-mix(in srgb, var(--queued) 30%, transparent);
   }
+  /* Change chips (ADR-0059): the same .tag-delta frame as a version chip, for a
+     change that carries no new image — `env  mealie-restic`. The kind is the
+     muted lead token and the service names take the same weight they have in a
+     version chip, so one column reads as one system: what moved, then who.
+     Deliberately no per-kind hue — the word is the distinction, and a second
+     colour channel here would compete with the status column. */
+  .tag-delta .td-kind {
+    color: var(--text-secondary);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  /* A file every service reads (a project-wide --env-file, the global vars_file)
+     names no container, and says so rather than guessing. */
+  .tag-delta .td-wide, .tag-delta .td-count { color: var(--text-muted); }
+
+  /* The same attribution on a panel line — beside a diff file header or a
+     changed-file path. A quiet trailing note: the file name stays the line's
+     subject. */
+  .fc-svc {
+    margin-left: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+  .fc-svc.fc-wide { color: var(--text-muted); font-style: italic; }
+
   /* "+3" beside a Stacks row's lead version, and the bare service count when no
      lead could be named: a pointer to the containers panel, not a value. */
   .ver-count {

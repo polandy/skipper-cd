@@ -62,3 +62,5 @@ One file per decision, numbered sequentially (see
 | [0055](0055-standing-config-errors-are-reported-once.md) | A standing configuration error is reported once (and again when it changes), with `skipper_stack_config_error` as the live signal |
 | [0056](0056-repeated-outcomes-collapse-in-the-history.md) | A repeated terminal outcome collapses into the record it repeats, carrying `repeat_count` — so a failure loop cannot evict a stack's real history |
 | [0057](0057-build-context-pinned-to-the-repo-clone.md) | A relative `build:` context is pinned to the repo clone via a generated compose override, so the build reads the Dockerfile skipper hashed |
+| [0058](0058-git-sync-is-retried-before-a-run-gives-up.md) | A failed git sync is retried before the run gives up, so a transient forge hiccup does not skip a whole reconcile |
+| [0059](0059-per-service-change-attribution.md) | A deploy names which containers its changed files reached — compose blocks compared against the deployed revision; project-wide inputs stay stack-wide |

@@ -306,6 +306,31 @@ App.deploys = (function () {
     return item && item.reason;
   }
 
+  // stashChanges keeps the row's own copy of what the event said changed, so the
+  // Changes column can be rebuilt (view-option toggle, a terminal event settling
+  // over a deploying row) without the event. Written from every event that
+  // reaches it, deletes included, so a re-emitted one stays idempotent and the
+  // toggle can never restore a chip the cell no longer shows.
+  function stashChanges(row, evt) {
+    if (evt.image_changes && evt.image_changes.length) {
+      row.dataset.imageChanges = JSON.stringify(evt.image_changes);
+    } else {
+      delete row.dataset.imageChanges;
+    }
+    if (evt.file_changes && evt.file_changes.length) {
+      row.dataset.fileChanges = JSON.stringify(evt.file_changes);
+    } else {
+      delete row.dataset.fileChanges;
+    }
+  }
+
+  // stashedChangeCellHTML rebuilds a row's Changes column from what it stashed.
+  function stashedChangeCellHTML(row) {
+    const images = row.dataset.imageChanges ? JSON.parse(row.dataset.imageChanges) : null;
+    const files = row.dataset.fileChanges ? JSON.parse(row.dataset.fileChanges) : null;
+    return changeCellHTML(images, files);
+  }
+
   function createRow(evt, isHistory) {
     const row = document.createElement('div');
     row.className = rowClass(evt.status, isHistory);
@@ -326,15 +351,18 @@ App.deploys = (function () {
     // self-heal badge, which expands the corrective-redeploy detail (ADR-0029).
     const filesCell =
       evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
-    // A healed row applied no image change (self-heal re-applies the same
-    // version); every other row names which service(s) moved, and to what, in the
-    // Version column. Stash the changes on the row so the view-options toggle can
-    // fill/empty the column live without a reload.
-    if (evt.status !== 'healed' && evt.image_changes && evt.image_changes.length) {
-      row.dataset.imageChanges = JSON.stringify(evt.image_changes);
+    // A healed row applied no change at all (self-heal re-applies the same
+    // version); every other row names which service(s) moved — to a new image,
+    // or through a file that carries none — in the Changes column. Stash both
+    // lists on the row so the view-options toggle can fill/empty the column live
+    // without a reload.
+    if (evt.status !== 'healed') {
+      stashChanges(row, evt);
     }
     const delta =
-      S.imageDeltaOn && evt.status !== 'healed' ? imageDeltaHTML(evt.image_changes) : '';
+      S.imageDeltaOn && evt.status !== 'healed'
+        ? changeCellHTML(evt.image_changes, evt.file_changes)
+        : '';
     row.innerHTML =
       `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(S.absoluteTime ? relTs : absTs)}">${S.absoluteTime ? absTs : relTs}</span>` +
       `<span class="cell-stack">${hostChip(S.selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${evt.stack === NIXOS_STACK ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
@@ -599,18 +627,12 @@ App.deploys = (function () {
         existing.querySelector('.col-files').innerHTML = filesHTML(evt.changed_files);
       }
       // The terminal event carries image_changes (the preceding deploying event
-      // does not), so fill the Version column as the row settles — otherwise a
-      // live deploy would show it only after a reload. Stash and cell are both
-      // written from this event, so a re-emitted one stays idempotent and the
-      // toggle can never restore a delta the cell no longer shows.
-      if (evt.image_changes && evt.image_changes.length) {
-        existing.dataset.imageChanges = JSON.stringify(evt.image_changes);
-      } else {
-        delete existing.dataset.imageChanges;
-      }
+      // does not), so fill the Changes column as the row settles — otherwise a
+      // live deploy would show it only after a reload.
+      stashChanges(existing, evt);
       const versionCell = existing.querySelector('.col-version');
       if (versionCell)
-        versionCell.innerHTML = S.imageDeltaOn ? imageDeltaHTML(evt.image_changes) : '';
+        versionCell.innerHTML = S.imageDeltaOn ? stashedChangeCellHTML(existing) : '';
       if (evt.error) {
         existing.after(createErrorDetail(evt));
       }
@@ -665,8 +687,8 @@ App.deploys = (function () {
     });
   }
 
-  // Per-service image delta toggle (Deploys popover). Reflects the toggle state,
-  // collapses the whole Version column when off (.no-version — an empty column
+  // Changes-column toggle (Deploys popover). Reflects the toggle state,
+  // collapses the whole column when off (.no-version — an empty column
   // would keep taking width, and its header would lie), and fills/empties every
   // already-rendered row's cell from its stashed image_changes, so flipping it
   // takes effect live without a reload. New rows honour S.imageDeltaOn in
@@ -677,16 +699,13 @@ App.deploys = (function () {
   function applyImageDelta() {
     if (imageDeltaBtn) {
       imageDeltaBtn.classList.toggle('active', S.imageDeltaOn);
-      imageDeltaBtn.title = S.imageDeltaOn ? 'Hide the Version column' : 'Show the Version column';
+      imageDeltaBtn.title = S.imageDeltaOn ? 'Hide the Changes column' : 'Show the Changes column';
     }
     if (deployTable) deployTable.classList.toggle('no-version', !S.imageDeltaOn);
     tbody.querySelectorAll('.event-row[data-stack]').forEach(function (row) {
       const cell = row.querySelector('.col-version');
       if (!cell) return;
-      cell.innerHTML =
-        S.imageDeltaOn && row.dataset.imageChanges
-          ? imageDeltaHTML(JSON.parse(row.dataset.imageChanges))
-          : '';
+      cell.innerHTML = S.imageDeltaOn ? stashedChangeCellHTML(row) : '';
     });
   }
 
@@ -1197,7 +1216,12 @@ App.deploys = (function () {
       const hasDiffs = row.dataset.hasDiffs === '1';
       // Bind the panel to its row (variant A): the shared status bar/tint keys off
       // the row's status, so pass it to the panel and mark the row open.
-      const meta = { stack: row.dataset.stack, status: row.dataset.status };
+      const meta = {
+        stack: row.dataset.stack,
+        status: row.dataset.status,
+        // Lets both panels name the services each changed file reached.
+        fileChanges: row.dataset.fileChanges ? JSON.parse(row.dataset.fileChanges) : null,
+      };
 
       // Mark the row open for any panel (diff or plain file list) so it keeps the
       // shared status bar; the trailing panel binds to it via --dc.
