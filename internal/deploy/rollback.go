@@ -55,17 +55,19 @@ func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, state
 }
 
 // rollbackStack restores containers to the previous compose file version after
-// a failed docker compose up. It retrieves the old compose file from git and
+// a failed docker compose up. It retrieves the old compose file from the
+// stack's own base commit (ADR-0061) and
 // runs docker compose up with it. With a deploy_health_check configured the rollback
 // reruns the same gate (--wait plus the optional HTTP probe) so a restored
 // version that stays unhealthy is reported, not assumed good; those failures
 // wrap ErrRollbackUnhealthy.
 func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persistedState) error {
-	if d.commitReader == nil || state.LastDeployedCommit == "" {
+	base := state.baseCommitFor(run.stack.Name)
+	if d.commitReader == nil || base == "" {
 		return fmt.Errorf("no previous commit available for rollback")
 	}
 
-	oldContent, err := d.commitReader.FileAtCommit(ctx, state.LastDeployedCommit, run.composePath)
+	oldContent, err := d.commitReader.FileAtCommit(ctx, base, run.composePath)
 	if err != nil {
 		return fmt.Errorf("retrieve old compose file: %w", err)
 	}
@@ -97,7 +99,7 @@ func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persi
 	// the very version that just failed (ADR-0057).
 	rbRun.extraComposeFiles = nil
 
-	slog.Info("rolling back with previous compose file", "stack", run.stack.Name, "commit", state.LastDeployedCommit)
+	slog.Info("rolling back with previous compose file", "stack", run.stack.Name, "commit", base)
 	upArgs := withHealthGate(run.stack.DeployHealthCheck, "up", "-d")
 	if err := d.runDockerCompose(ctx, rbRun, upArgs...); err != nil {
 		if run.stack.DeployHealthCheck != nil {

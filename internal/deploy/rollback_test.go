@@ -475,3 +475,72 @@ func (r *countingErrRunner) Run(_ context.Context, dir string, _ []string, name 
 	}
 	return nil
 }
+
+// failNewUpRunner fails the deploy's own `up` (the only one carrying
+// --remove-orphans) and lets the rollback's `up` succeed.
+type failNewUpRunner struct{}
+
+func (failNewUpRunner) Run(_ context.Context, _ string, _ []string, _ string, args ...string) error {
+	for _, a := range args {
+		if a == "--remove-orphans" {
+			return errors.New("new version failed to start")
+		}
+	}
+	return nil
+}
+
+// A retry of a change that rolled back must restore the stack's own last good
+// version. The run that failed still advances last_deployed_commit to HEAD, so
+// restoring from it would re-apply the broken compose file and report
+// "restored version did not come up healthy" on every later retry — the
+// signal-api loop seen in prod.
+func TestDeployAllStacks_RetryRollsBackToStacksLastGoodCommit(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "signal")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	writeFile(t, composePath, composeWithImage("signal:0.101"))
+
+	stateDir := t.TempDir()
+	seed := newEmptyState()
+	seed.LastDeployedCommit = "old-sha"
+	seed.Stacks["signal"] = stackFileHashes{composePath: "hash-of-0.100"}
+	if err := saveDeployState(stateDir, seed); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only the last good commit holds a restorable compose file: a rollback
+	// from HEAD (abc123) fails outright and surfaces as `failed`.
+	cr := &fakeCommitReader{files: map[string][]byte{
+		"old-sha:" + composePath: []byte(composeWithImage("signal:0.100")),
+	}}
+	var emitted []events.DeployEvent
+	d := New(Config{
+		Runner:       failNewUpRunner{},
+		CommitReader: cr,
+		RepoDir:      baseDir,
+		StateDir:     stateDir,
+		EventSink:    func(e events.DeployEvent) { emitted = append(emitted, e) },
+	})
+	cfg := &config.Config{StacksBaseDir: baseDir, Stacks: []config.Stack{{Name: "signal"}}}
+
+	for run := 1; run <= 2; run++ {
+		emitted = nil
+		d.DeployAllStacks(context.Background(), cfg)
+
+		var terminal *events.DeployEvent
+		for i := range emitted {
+			if emitted[i].Stack == "signal" && emitted[i].Status != events.StatusDeploying {
+				terminal = &emitted[i]
+			}
+		}
+		if terminal == nil {
+			t.Fatalf("run %d: no terminal event for signal, got %+v", run, emitted)
+		}
+		if terminal.Status != events.StatusRolledBack {
+			t.Errorf("run %d: status = %s (%s), want rolled_back to the last good commit", run, terminal.Status, terminal.Error)
+		}
+	}
+}

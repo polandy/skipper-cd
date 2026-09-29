@@ -283,3 +283,22 @@ func TestDeployAllStacks_AdvancesCommitBaseWhenDeployed(t *testing.T) {
 		t.Errorf("last_deployed_commit = %q, want it advanced to HEAD abc123 after a clean deploy", after.LastDeployedCommit)
 	}
 }
+
+// A stack's own base advances even while another change is queued: it did
+// deploy at HEAD, only the global base has to wait (ADR-0061).
+func TestDeployAllStacks_AdvancesStackBaseWhenDeployed(t *testing.T) {
+	d, cfg, stateDir := deployAllStacksCommitBaseDeployer(t, false)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	after, err := loadPersistedDeployState(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := after.baseCommitFor("gitea"); got != "abc123" {
+		t.Errorf("stack base = %q, want HEAD abc123 after the stack deployed", got)
+	}
+	if got := after.StackCommits["gitea"]; got != "abc123" {
+		t.Errorf("stack_commits[gitea] = %q, want an own entry at HEAD", got)
+	}
+}

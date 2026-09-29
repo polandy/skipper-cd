@@ -663,11 +663,17 @@ func (d *Deployer) finishRun(ctx context.Context, state *persistedState) {
 	// (or a self-restart reconcile) diff HEAD..HEAD and show no diff at all. The
 	// base is also what rollback restores, so keeping it at the last fully-deployed
 	// commit is the correct behaviour, not just a display fix.
-	if d.commitReader != nil && (d.queue == nil || d.queue.Count() == 0) {
+	//
+	// A stack's own base (ADR-0061) advances regardless of the queue: it only
+	// moves for the stacks this run left at their desired state.
+	if d.commitReader != nil {
 		if sha, err := d.commitReader.HeadCommitSHA(ctx); err != nil {
 			slog.Warn("could not read HEAD commit SHA", "err", err)
 		} else {
-			state.LastDeployedCommit = sha
+			state.advanceCommitBases(sha)
+			if d.queue == nil || d.queue.Count() == 0 {
+				state.LastDeployedCommit = sha
+			}
 		}
 	}
 

@@ -65,3 +65,4 @@ One file per decision, numbered sequentially (see
 | [0058](0058-git-sync-is-retried-before-a-run-gives-up.md) | A failed git sync is retried before the run gives up, so a transient forge hiccup does not skip a whole reconcile |
 | [0059](0059-per-service-change-attribution.md) | A deploy names which containers its changed files reached — compose blocks compared against the deployed revision; project-wide inputs stay stack-wide |
 | [0060](0060-project-directory-checkout-is-fast-forwarded.md) | The `project_directory` checkout is fast-forwarded before the stack phase, so relative bind mounts serve current content; it refuses on a dirty or diverged tree rather than repairing it |
+| [0061](0061-per-stack-rollback-base.md) | Each stack rolls back to, and diffs against, the commit it last ran (`stack_commits`), so a retried broken change never restores the broken version itself |
