@@ -253,6 +253,8 @@ const STATUS_ICON_PATHS = {
   blocked: '<circle cx="12" cy="12" r="8"/><path d="M6.3 6.3l11.4 11.4"/>',
   // A stack taken out of the set — a minus, not a bin: nothing was deleted.
   removed: '<circle cx="12" cy="12" r="8"/><path d="M8 12h8"/>',
+  // A change parked until a new commit or a retry: pause bars.
+  held: '<circle cx="12" cy="12" r="8"/><path d="M10 9v6M14 9v6"/>',
 };
 
 // statusIcon returns the leading badge glyph for a deploy status as an inline
@@ -642,6 +644,7 @@ const RUN_OUTCOMES = [
   ['rolled_back_unhealthy', 'rolled back · unhealthy', 'bad'],
   ['queued', 'queued', 'warn'],
   ['blocked', 'blocked', 'warn'],
+  ['held', 'held', 'warn'],
   ['skipped', 'skipped', ''],
   ['failed', 'failed', 'bad'],
 ];

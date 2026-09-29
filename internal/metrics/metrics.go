@@ -48,6 +48,15 @@ var (
 		Help: "Stacks currently excluded by a configuration error (1 = broken).",
 	}, []string{"stack"})
 
+	// StackHeld marks each stack whose change is held because its new version
+	// failed after it started (ADR-0062). Set to 1 while held and deleted once
+	// a new commit or a retry releases it. The failure event fires once; this
+	// gauge is the standing condition an alert reads.
+	StackHeld = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "skipper_stack_held",
+		Help: "Stacks whose change is held after its new version failed (1 = held).",
+	}, []string{"stack"})
+
 	// ProjectDirSyncError marks the project_directory checkout as not
 	// fast-forwarded this run — a dirty tree, a diverged history, an
 	// unreachable remote (ADR-0060). Set to 1 while the condition stands and

@@ -331,6 +331,7 @@ func bodyRunComplete(attrs []attr, color bool) string {
 		{intAttr(attrs, "rolled_back_unhealthy"), "rolled back · unhealthy", ansiDanger},
 		{intAttr(attrs, "queued"), "queued", ansiWarn},
 		{intAttr(attrs, "blocked"), "blocked", ansiWarn},
+		{intAttr(attrs, "held"), "held", ansiWarn},
 		{intAttr(attrs, "removed"), "removed", ansiDim},
 		{intAttr(attrs, "skipped"), "skipped", ansiDim},
 		{intAttr(attrs, "failed"), "failed", ansiDanger},

@@ -72,6 +72,23 @@ func buildState(stacks []config.Stack, disabled []string, auditLog *audit.Log, t
 	}
 }
 
+// WithHeld returns the state with each roster entry named in held marked as
+// held (ADR-0062). Stacks absent from the roster are ignored.
+func (s State) WithHeld(held map[string]Held) State {
+	if len(held) == 0 {
+		return s
+	}
+	roster := make([]Entry, len(s.Roster))
+	copy(roster, s.Roster)
+	for i := range roster {
+		if h, ok := held[roster[i].Name]; ok {
+			roster[i].Held = &h
+		}
+	}
+	s.Roster = roster
+	return s
+}
+
 // recentIncidents collects the bad terminal records of the incident window
 // across all stacks, newest first, capped at incidentsCap.
 func recentIncidents(auditLog *audit.Log, now time.Time) []OutcomeRef {

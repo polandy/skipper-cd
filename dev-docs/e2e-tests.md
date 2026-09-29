@@ -21,7 +21,7 @@ the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
 > Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
-> pipeline harness and P1–P10 (§4.1) exist under `e2e/` behind the `e2e` build tag,
+> pipeline harness and P1–P13 (§4.1) exist under `e2e/` behind the `e2e` build tag,
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
@@ -269,6 +269,11 @@ UI suite reuses.
   `up -d` against the previous compose; SSE event `rolled_back`.
 - **P9 — Autosync-paused → queued**: SSE `queued`, no `up -d`, `state.yaml`
   unchanged for the stack, `/api/queue` lists it.
+- **P13 — Held change waits for a retry** (ADR-0062, `STUB_DOCKER_FAIL_NTH_UP=2`):
+  after a `rolled_back`, a webhook for the same commit reports SSE `held` with
+  no new `up -d` and `skipper_stack_held{stack}` = 1; `POST
+  /api/stacks/<name>/retry` → `202`, the change deploys (`success`), the gauge
+  is deleted, and a further retry answers `409`.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_PS_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's `compose ps` output to `unhealthy` POSTs a
@@ -1702,8 +1707,10 @@ The shape this covers was measured on a live host: one stale override made every
 five-minute reconcile fail identically for 16½ hours, which filled that stack's
 whole 200-record audit window (one real deploy survived) and took 91 of the 100
 slots in the global event ring. The instance boots one stack with
-`STUB_DOCKER_FAIL_ON: 'up'` and `readiness: 'listening'`, so every sync produces
-the same `failed` outcome with no prior commit to roll back to. Behaviour-only
+`STUB_DOCKER_FAIL_ON: 'up'` and `readiness: 'listening'`, so every deploy
+produces the same `failed` outcome. Each webhook carries a new image tag: a
+change that failed after it started is held rather than retried (ADR-0062), so
+what repeats here is a new change failing the same way. Behaviour-only
 (no snapshot).
 
 - **UAU1 — The repeats become a count, not more rows.** The startup failure
@@ -1856,6 +1863,26 @@ it and `projectDirHead()` reads the commit it sits on.
   only the deploy history — the same treatment `_nixos` and `_config` get
   (`isPseudoStack`). The menu's history entry and the stack row's own jump
   button are the positive signals that the omissions are omissions.
+
+### 4.53 UI — Maske AZ: a held change and its retry (ADR-0062)
+
+A change whose new version failed after it started is held: it waits for a new
+commit or an operator retry instead of failing again every reconcile tick. The
+instance boots `web` with `STUB_DOCKER_FAIL_NTH_UP: '2'`, so the first pushed
+change rolls back (up#2 fails, up#3 restores) and the retry's up#4 succeeds.
+Behaviour-only (no snapshot).
+
+- **UAZ1 — The chip explains the hold, retry releases it.** After the rollback
+  the Stacks row carries `held-chip`. Its `title` names the failure and says a
+  new commit or a retry releases it. The row also carries an enabled
+  `retry-btn`. A click deploys the change once more. The next roster snapshot
+  drops both, the badge reads `success`, and the Deploys view gains a second
+  success row.
+- **UAZ2 — A refused retry hands the button back.** With the POST intercepted
+  as `409`, the click is announced (`retry: refused for web … 409`). That
+  console line is the positive signal the assertions rest on: the button is
+  enabled again and reads `retry`, and the chip stays. The intent note
+  `retry: requesting web` proves the click reached the handler.
 
 ## 5. Visual snapshot strategy
 
@@ -2089,6 +2116,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | One open header pop-out at a time (drawers ↔ beacon/view-options popovers) | **UAW1**–**UAW3** |
 | Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
 | project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |
+| Held change: the Stacks chip explains the hold, retry deploys it once more, a refused retry hands the button back | **UAZ1**, **UAZ2** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |

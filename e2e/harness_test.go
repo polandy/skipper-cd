@@ -347,6 +347,18 @@ func (s *skipper) postAutosync(stack string, enabled bool) int {
 	return resp.StatusCode
 }
 
+// postRetry asks for one more attempt at a held stack's change and returns the
+// status code (ADR-0062).
+func (s *skipper) postRetry(stack string) int {
+	s.t.Helper()
+	resp, err := http.Post(s.baseURL+"/api/stacks/"+stack+"/retry", "application/json", nil)
+	if err != nil {
+		s.t.Fatalf("post retry: %v", err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
 // queueBody returns the raw GET /api/queue JSON.
 func (s *skipper) queueBody() string {
 	s.t.Helper()

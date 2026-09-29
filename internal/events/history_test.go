@@ -477,6 +477,7 @@ func TestStatusClassification(t *testing.T) {
 		{StatusDeploying, false, false},
 		{StatusQueued, false, false},
 		{StatusBlocked, false, false},
+		{StatusHeld, false, false},
 		{StatusSkipped, false, false},
 		{StatusSuccess, true, false},
 		{StatusHealed, true, false},

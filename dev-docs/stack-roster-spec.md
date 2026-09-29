@@ -28,6 +28,12 @@ Two facts per stack, merged:
 
 No new persistence and no new poll: both sources already exist.
 
+A third, optional fact rides along: whether the stack's change is **held**
+(ADR-0062), from `Deployer.HeldStacks()`, which the deployer publishes after
+every run and seeds from `state.yaml` at startup. `State.WithHeld` marks those
+entries (`held: {since, status, commit}`), and the Stacks view renders them as a
+chip with a retry button.
+
 ## Backend
 
 `internal/roster` (small, one job): merges the three inputs into a stable,

@@ -100,16 +100,27 @@ func (d *Deployer) followsRollback(stack string) (bool, int64) {
 // paths left over from the deploying row.
 func (d *Deployer) emitDeployFailure(stack string, duration time.Duration, err error, cs changeSet) {
 	metrics.DeployErrors.WithLabelValues(stack).Inc()
-	switch {
-	case errors.Is(err, ErrRollbackUnhealthy):
+	status := failureStatus(err)
+	switch status {
+	case events.StatusRolledBackUnhealthy:
 		slog.Error("deploy failed, rollback ran but stack is still unhealthy", "stack", stack, "err", err)
-		d.emit(events.StatusRolledBackUnhealthy, stack, duration, err.Error(), cs)
-	case errors.Is(err, ErrRolledBack):
+	case events.StatusRolledBack:
 		slog.Warn("deploy failed but rolled back", "stack", stack, "err", err)
-		d.emit(events.StatusRolledBack, stack, duration, err.Error(), cs)
 	default:
 		slog.Error("deploy failed", "stack", stack, "err", err)
-		d.emit(events.StatusFailed, stack, duration, err.Error(), cs)
+	}
+	d.emit(status, stack, duration, err.Error(), cs)
+}
+
+// failureStatus maps a deploy error to its terminal event status.
+func failureStatus(err error) events.Status {
+	switch {
+	case errors.Is(err, ErrRollbackUnhealthy):
+		return events.StatusRolledBackUnhealthy
+	case errors.Is(err, ErrRolledBack):
+		return events.StatusRolledBack
+	default:
+		return events.StatusFailed
 	}
 }
 

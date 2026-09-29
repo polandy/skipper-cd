@@ -50,7 +50,9 @@ bypasses git. The push webhook remains the sole deploy trigger.
 | GET | `/api/v1/version` | Build info |
 
 Unchanged and *not* part of the v1 contract (own consumers, own stability):
-`GET /api/events` (SSE), `GET /healthz`, `GET /metrics`, `GET /api/icons/{stack}`.
+`GET /api/events` (SSE), `GET /healthz`, `GET /metrics`, `GET /api/icons/{stack}`,
+and `POST /api/stacks/{stack}/retry` (retry a held change, ADR-0062; same-origin
+guarded like the other writes).
 
 ## Endpoints
 

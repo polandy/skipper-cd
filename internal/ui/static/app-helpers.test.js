@@ -271,6 +271,7 @@ test('statusIcon maps each terminal status to a distinct leading glyph', () => {
     'queued',
     'blocked',
     'removed',
+    'held',
   ];
   for (const s of iconStatuses) {
     const svg = h.statusIcon(s);
@@ -290,6 +291,8 @@ test('statusIcon maps each terminal status to a distinct leading glyph', () => {
   assert.notEqual(h.statusIcon('success'), h.statusIcon('failed'));
   assert.notEqual(h.statusIcon('queued'), h.statusIcon('blocked'));
   assert.notEqual(h.statusIcon('removed'), h.statusIcon('blocked'));
+  assert.notEqual(h.statusIcon('held'), h.statusIcon('queued'));
+  assert.notEqual(h.statusIcon('held'), h.statusIcon('blocked'));
   assert.notEqual(h.statusIcon('healed'), h.statusIcon('rolled_back'));
   assert.equal(h.statusIcon('rolled_back_unhealthy'), h.statusIcon('heal_exhausted'));
 });

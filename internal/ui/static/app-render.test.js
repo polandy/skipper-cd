@@ -732,6 +732,46 @@ test('rosterStatusHTML falls through deploy → disabled → never deployed → 
   assert.match(r.rosterStatusHTML({ last_status: 'success' }, false), /badge badge-success/);
 });
 
+test('rosterStatusHTML appends the held chip after the last badge, retry only when allowed', () => {
+  const held = { since: '2026-09-29T00:05:00Z', status: 'rolled_back', commit: 'd430ece9aa' };
+  const own = r.rosterStatusHTML({ name: 'signal', last_status: 'rolled_back', held }, false, true);
+  assert.match(own, /badge badge-rolled_back[\s\S]*data-testid="held-chip"/);
+  assert.match(own, /data-testid="retry-btn" data-retry-stack="signal"/);
+
+  const peer = r.rosterStatusHTML(
+    { name: 'signal', last_status: 'rolled_back', held },
+    false,
+    false,
+  );
+  assert.match(peer, /data-testid="held-chip"/);
+  assert.doesNotMatch(peer, /retry-btn/, 'a peer row is read-only');
+
+  const deploying = r.rosterStatusHTML(
+    { name: 'signal', last_status: 'rolled_back', held },
+    true,
+    true,
+  );
+  assert.doesNotMatch(deploying, /held-chip/, 'a live deploy replaces the standing hold');
+
+  assert.doesNotMatch(
+    r.rosterStatusHTML({ name: 'web', last_status: 'success' }, false, true),
+    /held/,
+  );
+});
+
+test('heldChipHTML says how and at which commit the change failed, and escapes the stack', () => {
+  const html = r.heldChipHTML(
+    'a"b',
+    { since: '2026-09-29T00:05:00Z', status: 'rolled_back_unhealthy', commit: 'd430ece9aa' },
+    true,
+  );
+  assert.match(html, /title="The change at d430ece rolled back · unhealthy /);
+  assert.match(html, /not retried until a new commit changes a&quot;b\./);
+  assert.match(html, /Retry deploys it once more\./);
+  assert.match(html, /data-retry-stack="a&quot;b"/);
+  assert.equal(r.heldChipHTML('web', undefined, true), '');
+});
+
 test('rosterHealthPillHTML renders the pill only when the host reports a status', () => {
   assert.equal(r.rosterHealthPillHTML('web', undefined), '');
   assert.equal(r.rosterHealthPillHTML('web', {}), '');

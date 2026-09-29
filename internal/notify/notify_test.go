@@ -166,6 +166,9 @@ func TestNotifier_NotifyEnqueuesTerminalOnly(t *testing.T) {
 	// blocked is deliberately not a notification: the failed dependency already
 	// pages, and a blocked event recurs on every reconcile tick (ADR-0032).
 	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusBlocked})
+	// held recurs every tick too; the failure that caused it already paged
+	// (ADR-0062).
+	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusHeld})
 	// A removed stack is a UI/history record, not an alert: nothing broke and
 	// nothing is running that was not running before (ADR-0036 amendment).
 	n.Notify(events.DeployEvent{Stack: "web", Status: events.StatusRemoved})

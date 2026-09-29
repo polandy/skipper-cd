@@ -31,6 +31,11 @@ type persistedState struct {
 	// version that last worked rather than the one that just broke.
 	StackCommits map[string]string `yaml:"stack_commits,omitempty"`
 
+	// Held maps each stack whose change failed after its new version started
+	// to that hold; the change is not retried until its inputs change or an
+	// operator asks for a retry (ADR-0062).
+	Held map[string]heldChange `yaml:"held,omitempty"`
+
 	// settled lists the stacks this run left at their desired state (deployed
 	// or unchanged); finishRun moves their StackCommits entry to HEAD. Run-local,
 	// never persisted.
@@ -155,6 +160,7 @@ func (s *persistedState) forgetStack(stack string) {
 	delete(s.Images, stack)
 	delete(s.RunningImages, stack)
 	delete(s.StackCommits, stack)
+	delete(s.Held, stack)
 }
 
 // markNixOSRebuildInFlight records that a nixos-rebuild is about to run for the

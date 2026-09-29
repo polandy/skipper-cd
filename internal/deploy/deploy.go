@@ -205,6 +205,10 @@ type Deployer struct {
 	projectDirs      atomic.Pointer[map[string]string]            // recorded stack→project-dir, for orphan detection
 	trackedFiles     atomic.Pointer[map[string][]string]          // recorded stack→hashed input paths, for the roster
 	runningImagesNow atomic.Pointer[map[string]map[string]string] // recorded stack→service→running image, for the update check
+	heldNow          atomic.Pointer[map[string]HeldStack]         // stacks whose change is held (ADR-0062), for the roster and the retry endpoint
+
+	retryMu       sync.Mutex
+	retryRequests map[string]bool // held stacks an operator asked to retry, consumed by the next run
 }
 
 // syncOutcome records the result of the most recent repository sync.
@@ -259,6 +263,7 @@ func New(cfg Config) *Deployer {
 		d.trackedFiles.Store(&tracked)
 		running := state.runningImagesView()
 		d.runningImagesNow.Store(&running)
+		d.publishHeld(state)
 	}
 	return d
 }
@@ -693,6 +698,8 @@ func (d *Deployer) finishRun(ctx context.Context, state *persistedState) {
 	// Publish the recorded running images for the out-of-run update check.
 	running := state.runningImagesView()
 	d.runningImagesNow.Store(&running)
+
+	d.publishHeld(state)
 
 	// After the run, let the wiring publish autosync/queue snapshots and refresh
 	// gauges (queue depth may have changed via defer/clear this run).

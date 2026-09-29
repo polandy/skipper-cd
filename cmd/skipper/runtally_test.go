@@ -13,6 +13,7 @@ func TestRunTally_CountsTerminalStatusesByStack(t *testing.T) {
 	tally.observe(events.DeployEvent{Stack: "arr-stack", Status: events.StatusRolledBack})
 	tally.observe(events.DeployEvent{Stack: "monitoring", Status: events.StatusSkipped})
 	tally.observe(events.DeployEvent{Stack: "old-blog", Status: events.StatusRemoved})
+	tally.observe(events.DeployEvent{Stack: "signal-api", Status: events.StatusHeld})
 	tally.observe(events.DeployEvent{Stack: "immich", Status: events.StatusDeploying}) // transient, not counted
 
 	got := tally.flush()
@@ -21,6 +22,7 @@ func TestRunTally_CountsTerminalStatusesByStack(t *testing.T) {
 		events.StatusRolledBack: 1,
 		events.StatusSkipped:    1,
 		events.StatusRemoved:    1,
+		events.StatusHeld:       1,
 	}
 	for status, n := range want {
 		if got[status] != n {

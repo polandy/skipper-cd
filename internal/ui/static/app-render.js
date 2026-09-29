@@ -749,12 +749,39 @@ function rosterVersionCellHTML(stack, health, disabled, updates) {
 // rosterStatusHTML picks the row's status: a live in-flight deploy wins
 // (deploying — a peer row always passes false, since the in-flight set is the
 // primary's own), then the parked/never-deployed synthetic flags, else the
-// last terminal badge.
-function rosterStatusHTML(entry, deploying) {
+// last terminal badge, followed by the held chip when the stack's change is
+// held. canRetry adds the chip's retry button (the primary's own rows only).
+function rosterStatusHTML(entry, deploying, canRetry) {
   if (deploying) return badgeHTML('deploying');
   if (entry.disabled) return `<span class="roster-flag">disabled</span>`;
   if (!entry.last_status) return `<span class="roster-flag">never deployed</span>`;
-  return badgeHTML(entry.last_status);
+  return badgeHTML(entry.last_status) + heldChipHTML(entry.name, entry.held, !!canRetry);
+}
+
+// heldChipHTML marks a stack whose change is held (ADR-0062): its new version
+// failed after it started, so skipper waits for a new commit instead of
+// re-failing it every reconcile tick. The tooltip says when and how it failed.
+// canRetry adds the button that deploys it once more; a peer's roster is
+// read-only, so its rows never get one. Empty when nothing is held.
+function heldChipHTML(stack, held, canRetry) {
+  if (!held) return '';
+  const when = held.since ? ' ' + formatTime(held.since) + ' (' + fullTime(held.since) + ')' : '';
+  const commit = held.commit ? ' at ' + held.commit.slice(0, 7) : '';
+  const title =
+    'The change' +
+    commit +
+    ' ' +
+    outcomeLabel(held.status) +
+    when +
+    '. It is not retried until a new commit changes ' +
+    stack +
+    '.' +
+    (canRetry ? ' Retry deploys it once more.' : '');
+  let html = `<span class="held-chip" data-testid="held-chip" title="${escapeAttr(title)}">${statusIcon('held')}held</span>`;
+  if (canRetry) {
+    html += `<button type="button" class="retry-btn" data-testid="retry-btn" data-retry-stack="${escapeAttr(stack)}" aria-label="${escapeAttr('Retry the held change of ' + stack)}">retry</button>`;
+  }
+  return `<span class="held-line">${html}</span>`;
 }
 
 // rosterHealthPillHTML is the live-health pill shown inline in a roster row's
@@ -1491,6 +1518,7 @@ if (typeof module !== 'undefined' && module.exports) {
     rosterVersionCellHTML,
     rosterUpdateChipHTML,
     rosterStatusHTML,
+    heldChipHTML,
     rosterHealthPillHTML,
     outcomeLabel,
     outcomeStripHTML,
