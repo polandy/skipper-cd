@@ -406,9 +406,11 @@ func (d *Deployer) TrySyncAndDeployAll(ctx context.Context, cfg *config.Config) 
 // 7). If a deploy is already in progress it returns ran=false without waiting:
 // that deploy converges the stack anyway, and the next health poll
 // re-evaluates, so piling a heal behind it carries no unique information
-// (mirrors the reconcile loop's skip-if-busy, ADR-0010/ADR-0028). A successful
-// up emits a healed event; an up error is returned for the caller to count as a
-// failed attempt without emitting a misleading failed-deploy event.
+// (mirrors the reconcile loop's skip-if-busy, ADR-0010/ADR-0028). It emits no
+// event: the healed event waits until the stack is seen healthy again
+// (EmitHealed, driven by the self-heal engine). An up error is returned for the
+// caller to count as a failed attempt without emitting a misleading
+// failed-deploy event.
 func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName string, drift []events.DriftedService) (ran bool, err error) {
 	if !d.mu.TryLock() {
 		return false, nil
@@ -426,15 +428,14 @@ func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName 
 	}
 	run := newStackRun(stack, cfg.StacksBaseDir, baseEnv)
 
-	start := time.Now()
-	slog.Info("self-heal: restoring stack to its deployed running state", "stack", stack.Name)
+	slog.Info("self-heal: restoring stack to its deployed running state", "stack", stack.Name, "drift", len(drift))
 	// A plain up — no --wait/health gate, no rollback (see the doc comment).
 	if err := d.runDockerCompose(ctx, run, "up", "-d", "--remove-orphans"); err != nil {
 		return true, fmt.Errorf("self-heal up %q: %w", stack.Name, err)
 	}
 	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
-	d.emitHealed(stack.Name, time.Since(start), drift)
-	slog.Info("self-heal: stack restored", "stack", stack.Name)
+	// No healed event here: an up that exits 0 does not mean the stack came
+	// back. The engine reports it once a poll sees it healthy (EmitHealed).
 	return true, nil
 }
 

@@ -6,8 +6,8 @@ import type { Locator, Page } from '@playwright/test';
 // (T3.14 — inverted hierarchy). See dev-docs/e2e-tests.md §4.33.
 //
 // Drives the real self-heal loop (like Maske K) so three badges surface in one
-// run — the startup `success`, a corrective `healed`, and the `heal_exhausted`
-// give-up — then asserts each carries a `.badge-ico` glyph and that the worst
+// run — the startup `success`, a corrective `healed` (a first outage the
+// redeploy fixes), and the `heal_exhausted` give-up (a second one it cannot) — then asserts each carries a `.badge-ico` glyph and that the worst
 // state is an opaque (solid) fill, distinct from a dim badge. The colour read is
 // off the settled computed style, not a timed effect. Behaviour-only.
 
@@ -58,13 +58,22 @@ test.describe('UAF: status badges carry icons; worst states are solid', () => {
     await expect(successBadge.locator('svg.badge-ico')).toHaveCount(1);
     await expect(successBadge).toHaveText('success');
 
-    // The stack turns unhealthy → one corrective heal, then the breaker trips.
+    // The stack turns unhealthy → one corrective redeploy → it recovers, which
+    // is what makes that redeploy a heal (ADR-0029 amendment).
+    let ups = skipper.dockerUps('web');
     skipper.setStackHealth('web', unhealthyApp);
+    await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(ups)).toPass();
+    skipper.setStackHealth('web', healthyApp);
 
     // UAF2 — the `healed` badge also leads with an icon.
     const healed = webRow(page, 'healed').first();
     await expect(healed).toBeVisible();
     await expect(healed.locator('[data-testid="status-badge"] svg.badge-ico')).toHaveCount(1);
+
+    // A second outage the one permitted redeploy cannot fix trips the breaker.
+    ups = skipper.dockerUps('web');
+    skipper.setStackHealth('web', unhealthyApp);
+    await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(ups)).toPass();
 
     // UAF3 — the worst terminal state: a warning icon, both stacked label lines,
     // and a SOLID fill — the loudest chip, reversing the old 9px shrink (T3.14).

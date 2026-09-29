@@ -186,12 +186,14 @@ func (d *Deployer) repoRelativeDiffs(diffs map[string]string) map[string]string 
 	return out
 }
 
-// emitHealed emits the self-heal corrective-redeploy event. A heal has no
+// EmitHealed records that self-heal restored a stack: its corrective redeploys
+// ran and a later health poll found it healthy again (ADR-0029 amendment).
+// duration is the time from the first redeploy to that recovery. A heal has no
 // changed files, diffs, or commits (the desired version is unchanged), so it
 // carries only the drift that triggered it — the services the UI shows the heal
 // reacted to. Its own path rather than emit's, whose diff/commit params never
 // apply here.
-func (d *Deployer) emitHealed(stack string, duration time.Duration, drift []events.DriftedService) {
+func (d *Deployer) EmitHealed(stack string, duration time.Duration, drift []events.DriftedService) {
 	if d.eventSink == nil {
 		return
 	}

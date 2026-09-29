@@ -265,3 +265,29 @@ service in the same stack still heals, and an on-demand container in any other b
 state (e.g. `restarting`) still classifies as usual — the exclusion is exactly the
 intended-idle case, no wider. A fully-down stack with no per-service detail falls
 back to the rolled-up status unchanged, so nothing else about the policy moves.
+
+## Amendment (2026-09-29): `healed` means the stack came back
+
+`healed` was emitted as soon as the corrective `docker compose up -d` exited 0.
+That only proves compose accepted the request, not that the stack recovered: a
+container in a crash loop is "up" again within about 70 ms. In production,
+`signal-api` logged three `healed` rows per outage and then `heal_exhausted`,
+for five hours. That is 120 claims of recovery for a stack that never
+recovered. The rows also made the history cycle through five different
+statuses, which ADR-0056 cannot collapse.
+
+`HealStack` now emits nothing. The engine reports a heal when a later poll
+classifies the stack healthy after at least one corrective redeploy and before
+self-heal gave up. The report comes through `OnHealed`, which the wiring routes
+to `Deployer.EmitHealed`. There is one `healed` event per outage. Its duration
+is the time from the first redeploy to the observed recovery, and its drift is
+what that first redeploy reacted to. Other cases produce no `healed` event:
+
+- A redeploy that leaves the stack degraded is only an attempt. It is counted
+  toward `max_attempts` and logged.
+- A recovery after `heal_exhausted` is attributed to whoever fixed the stack,
+  not to self-heal.
+- A stack that recovers without any redeploy, such as a blip under the
+  debounce, was never self-heal's to report.
+
+An outage that self-heal cannot fix now reads as a single `heal_exhausted`.

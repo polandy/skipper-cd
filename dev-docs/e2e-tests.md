@@ -678,10 +678,13 @@ snapshots badge colouring, and the two new badges are covered there in spirit).
 
 - **UK1 — Restore.** A stack seeded healthy turns unhealthy; within a poll
   self-heal runs a corrective `up` (a real extra `docker … up`, asserted via
-  `dockerUps`) and a `healed` row appears. `max_attempts: 5` so it never exhausts.
+  `dockerUps`); once the stack reports healthy again, exactly one `healed` row
+  appears (a heal is reported on recovery, ADR-0029 amendment). `max_attempts:
+  5` so it never exhausts.
 - **UK2 — Give up.** A stack that stays unhealthy after its one allowed heal
   (`max_attempts: 1`) trips the circuit breaker: a single `heal_exhausted` row
-  with the give-up error in its `error-panel`, emitted once (not per poll).
+  with the give-up error in its `error-panel`, emitted once (not per poll), and
+  no `healed` row — the redeploy that did not restore it is no heal.
 
 ### 4.13 UI — Maske L: one open panel per deploy row
 
@@ -752,7 +755,9 @@ drifted when it ran (from the `heal_drift` carried on the event). Builds on the
 real self-heal loop of Maske K: `initialHealth` seeds two services healthy before
 boot, then one service (`app`) is turned unhealthy while the other (`db`) stays
 healthy — the rollup goes unhealthy so self-heal fires, but only the degraded
-service is listed. Behaviour-only (no snapshot).
+service is listed. Once the corrective `up` is seen in `dockerUps`, the stack is
+turned healthy again — the healed row appears only on that recovery (ADR-0029
+amendment of 2026-09-29). Behaviour-only (no snapshot).
 
 - **UN1 — Badge + drift panel.** The healed row carries a `heal-pill` (not a
   `files-pill`); clicking it opens the bound `heal-panel` (`data-status="healed"`)
@@ -1264,8 +1269,10 @@ also captured by the regenerated §5 snapshots.
 - **UAF1 — Success carries an icon.** The startup `success` badge contains one
   `svg.badge-ico`; its text stays exactly `success` (the icon adds no text node,
   so the existing text assertions across masks are unaffected).
-- **UAF2 — Healed carries an icon.** After the stack turns unhealthy the
-  corrective `healed` badge also leads with a `badge-ico`.
+- **UAF2 — Healed carries an icon.** After the stack turns unhealthy, is
+  redeployed and recovers, the `healed` badge also leads with a `badge-ico`. A
+  second outage the one allowed redeploy cannot fix then yields the
+  `heal_exhausted` badge below.
 - **UAF3 — Worst state is a solid two-line chip.** The `heal_exhausted` badge
   carries the warning `badge-ico`, still shows both stacked label lines
   (`self-heal` / `failed` inside `.badge-lbl`), and reads its wording.
