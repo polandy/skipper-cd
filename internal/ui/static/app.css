@@ -3308,6 +3308,26 @@
     padding: 2px 9px; border: 1px dashed var(--border); border-radius: 999px;
     white-space: nowrap;
   }
+  /* A held change (ADR-0062): the paused-tag's queued tint, since it is a
+     standing wait, plus the one control that lifts it. */
+  .held-line { display: inline-flex; align-items: center; gap: 6px; }
+  .held-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--font-display); font-size: 11.5px; font-weight: 500;
+    color: var(--queued-text); background: var(--queued-dim);
+    padding: 2px 7px; border-radius: var(--r-chip);
+    white-space: nowrap;
+  }
+  .held-chip svg { width: 12px; height: 12px; }
+  .retry-btn {
+    font: inherit; font-size: 11.5px; font-weight: 500;
+    color: var(--queued-text); background: none;
+    border: 1px solid var(--queued-dim); border-radius: var(--r-chip);
+    padding: 1px 8px; cursor: pointer; white-space: nowrap;
+  }
+  .retry-btn:hover:not(:disabled) { background: var(--queued-dim); }
+  .retry-btn:focus-visible { outline: 2px solid var(--queued-text); outline-offset: 1px; }
+  .retry-btn:disabled { cursor: default; opacity: .6; }
   .roster-empty { display: none; color: var(--text-muted); text-align: center; padding: 28px 12px; }
   .roster-list:empty ~ .roster-empty { display: block; }
   /* Containers panel stacks above history: force its frame to the accent (not
@@ -3823,6 +3843,7 @@
   .status-cell:has(.health-pill),
   .status-cell:has(.retry-note),
   .status-cell:has(.repeat-note),
+  .roster-status:has(.held-line),
   .roster-status:has(.hook-phase),
   .roster-status:has(.health-pill),
   .roster-status:has(.outcome-strip),

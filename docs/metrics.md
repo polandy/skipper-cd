@@ -10,6 +10,7 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 | `skipper_deploys_skipped_total` | counter | Total number of stack deploys skipped (no changes), labelled by `stack`. |
 | `skipper_deploy_errors_total` | counter | Total number of failed deploys, labelled by `stack`. |
 | `skipper_stack_config_error` | gauge | Stacks currently excluded by a configuration error (`1` = broken), labelled by `stack` (incl. `_config` when stack discovery itself failed). |
+| `skipper_stack_held` | gauge | Stacks whose change is held because its new version failed after it started (`1` = held), labelled by `stack`; deleted once a new push or a retry releases it (see [Held changes](configuration.md#held-changes)). |
 | `skipper_project_dir_sync_error` | gauge | The `project_directory` checkout could not be fast-forwarded (`1` = its content may be stale); `0` once it succeeds again. Only ever non-zero with `project_directory_sync` enabled. |
 | `skipper_deploy_rollbacks_total` | counter | Total number of successful rollbacks after failed deploys, labelled by `stack`. |
 | `skipper_last_deploy_timestamp_seconds` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |

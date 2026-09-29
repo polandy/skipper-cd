@@ -122,7 +122,7 @@ App.roster = (function () {
           entry.disabled,
           stackUpdatesFor(entry.name, ''),
         ) +
-        `<span class="roster-status">${rosterStatusHTML(entry, App.deploys.isDeploying(entry.name))}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, rowHealth)}${entry.disabled ? '' : outcomeStripHTML(entry.recent, Date.now()) + lastIncidentHTML(entry.last_incident, Date.now())}</span>` +
+        `<span class="roster-status">${rosterStatusHTML(entry, App.deploys.isDeploying(entry.name), true)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, rowHealth)}${entry.disabled ? '' : outcomeStripHTML(entry.recent, Date.now()) + lastIncidentHTML(entry.last_incident, Date.now())}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         commitLinkHTML(commit, { cls: 'roster-sha', base: S.repoWebURL, title: commit });
       populateIcon(row.querySelector('.stack-icon'), entry.name);
@@ -431,6 +431,30 @@ App.roster = (function () {
     applyRosterFilter();
   }
 
+  // retryHeld asks the server to deploy a held stack's change once more. The
+  // button disables itself until the next roster snapshot replaces it: the run
+  // it starts either clears the hold or records it again. A refusal is
+  // announced as a UI note and the button re-enabled, so a dead click is never
+  // mistaken for a pending one.
+  function retryHeld(btn) {
+    const stack = btn.dataset.retryStack;
+    App.chrome.uiNote('debug', 'retry: requesting', stack);
+    btn.disabled = true;
+    btn.textContent = 'retrying…';
+    fetch('/api/stacks/' + encodeURIComponent(stack) + '/retry', { method: 'POST' })
+      .then(function (r) {
+        if (r.ok) return;
+        App.chrome.uiNote('warn', 'retry: refused for', stack, '— HTTP', r.status);
+        btn.disabled = false;
+        btn.textContent = 'retry';
+      })
+      .catch(function (err) {
+        App.chrome.uiNote('warn', 'retry: request for', stack, 'did not reach the server —', err);
+        btn.disabled = false;
+        btn.textContent = 'retry';
+      });
+  }
+
   // Live update of a single roster row's status (in-flight → settled) without a
   // full re-render, so an open history panel survives a deploy event.
   function refreshRosterRow(name) {
@@ -442,7 +466,8 @@ App.roster = (function () {
       return x.name === name;
     });
     const cell = row.querySelector('.roster-status');
-    if (entry && cell) cell.innerHTML = rosterStatusHTML(entry, App.deploys.isDeploying(name));
+    if (entry && cell)
+      cell.innerHTML = rosterStatusHTML(entry, App.deploys.isDeploying(name), true);
     App.stream.applyHookRun(); // rosterStatusHTML replaces the cell — re-paint a running hook's phase
   }
 
@@ -513,6 +538,13 @@ App.roster = (function () {
             openRosterHooksPanel(hrow);
           }
         }
+        return;
+      }
+      // Retry a held change (ADR-0062): a write, so it never also toggles the
+      // row's history panel.
+      const retryB = e.target.closest('.retry-btn');
+      if (retryB) {
+        retryHeld(retryB);
         return;
       }
       // Container-logs button (ADR-0037) — per stack on the row, per container on a

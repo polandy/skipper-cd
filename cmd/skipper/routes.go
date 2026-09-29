@@ -137,6 +137,7 @@ func webhookMux(d webhookDeps) *http.ServeMux {
 		registerEventRoutes(mux, d.broadcaster, d.history, d.auditLog, d.logRing, snap)
 		registerIconRoutes(mux, d.cfg, d.stacks)
 		registerAutosyncRoutes(mux, d.autosync)
+		registerRetryRoute(mux, d.deployer, d.autosync.trigger)
 		registerContainerLogRoutes(mux, d.cfg, d.deployer, d.healthPoller)
 	}
 	return mux
@@ -224,6 +225,11 @@ func registerAutosyncRoutes(mux *http.ServeMux, as *autosyncDeps) {
 	mux.Handle("GET /api/queue", ui.QueueHandler(as.queue, as.order))
 }
 
+// registerRetryRoute wires the operator retry of a held change (ADR-0062).
+func registerRetryRoute(mux *http.ServeMux, deployer *deploy.Deployer, trigger func()) {
+	mux.Handle("POST /api/stacks/{stack}/retry", ui.RequireSameOrigin(ui.RetryHandler(deployer.RequestRetry, trigger)))
+}
+
 // registerContainerLogRoutes wires the live container-log stream for a stack,
 // narrowable to a subset of its services via a comma-separated ?services= list
 // (ADR-0037). UI-only; skipped without a health poller, whose snapshot the
@@ -275,7 +281,7 @@ func (s stateSnapshot) collect() []events.StateEvent {
 		{Name: events.StateQueue, Data: as.queue.View(as.order())},
 		{Name: events.StateUpcoming, Data: s.deployer.CurrentRunPlan()},
 		{Name: events.StateHookRun, Data: s.deployer.CurrentHookRun()},
-		{Name: events.StateStacks, Data: roster.BuildState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo, s.currentUpdates())},
+		{Name: events.StateStacks, Data: roster.BuildState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo, s.currentUpdates()).WithHeld(rosterHeld(s.deployer.HeldStacks()))},
 	}
 	if s.healthPoller != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealth, Data: s.healthPoller.Current()})

@@ -81,14 +81,15 @@ func buildUILayer(cfg *config.Config, stateDir string) uiLayer {
 func (l uiLayer) enabled() bool { return l.broadcaster != nil }
 
 // deploySink returns the UI's deploy-event consumer: record into the history
-// (skipped events excluded — they carry no outcome worth persisting) and
+// (skipped and held events excluded — they carry no outcome worth persisting,
+// and a held one recurs every tick, ADR-0062) and
 // broadcast to connected SSE clients. Nil when the UI is disabled.
 func (l uiLayer) deploySink() func(events.DeployEvent) {
 	if !l.enabled() {
 		return nil
 	}
 	return func(e events.DeployEvent) {
-		if e.Status != events.StatusSkipped {
+		if e.Status != events.StatusSkipped && e.Status != events.StatusHeld {
 			// Broadcast what the history stored: a repeat collapses into the
 			// event it absorbed, and clients need that form to replace their row
 			// rather than append a duplicate (ADR-0056).
@@ -394,5 +395,14 @@ func (p autosyncPublisher) publishStacks() {
 	if p.updates != nil {
 		updates = p.updates()
 	}
-	p.stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: roster.BuildState(p.views.effective(), d.CurrentDisabledStacks(), p.auditLog, d.CurrentTrackedFiles(), p.repo, updates)})
+	p.stateB.Publish(events.StateEvent{Name: events.StateStacks, Data: roster.BuildState(p.views.effective(), d.CurrentDisabledStacks(), p.auditLog, d.CurrentTrackedFiles(), p.repo, updates).WithHeld(rosterHeld(d.HeldStacks()))})
+}
+
+// rosterHeld converts the deployer's held stacks to their roster form.
+func rosterHeld(held map[string]deploy.HeldStack) map[string]roster.Held {
+	out := make(map[string]roster.Held, len(held))
+	for stack, h := range held {
+		out[stack] = roster.Held{Since: h.Since, Status: h.Status, Commit: h.Commit}
+	}
+	return out
 }

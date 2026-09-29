@@ -43,6 +43,13 @@ const (
 	// sync; it is deliberately not a notification status (the dependency's own
 	// failure already pages, and this recurs on every reconcile tick).
 	StatusBlocked Status = "blocked"
+	// StatusHeld marks a changed stack that did not deploy because the same
+	// change already failed after its new version started (a rollback, or a
+	// failed health gate with rollback disabled). It waits for a new commit or
+	// an operator retry instead of re-failing every reconcile tick (ADR-0062).
+	// Like skipped it is live-only: never in the history, the audit log or a
+	// notification — the failure that caused it already is.
+	StatusHeld Status = "held"
 	// StatusRemoved marks a stack that left the deploy set — its directory is
 	// gone from the repo (or its entry from the host config). Nothing is torn
 	// down: it records in the history *when* the stack stopped being managed,
@@ -188,6 +195,7 @@ var inFlightStatuses = map[Status]bool{
 	StatusSkipped:   true,
 	StatusQueued:    true,
 	StatusBlocked:   true,
+	StatusHeld:      true,
 }
 
 // Terminal reports whether a status is a deploy *outcome* rather than a phase

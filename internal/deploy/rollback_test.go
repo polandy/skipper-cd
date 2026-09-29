@@ -527,6 +527,10 @@ func TestDeployAllStacks_RetryRollsBackToStacksLastGoodCommit(t *testing.T) {
 	cfg := &config.Config{StacksBaseDir: baseDir, Stacks: []config.Stack{{Name: "signal"}}}
 
 	for run := 1; run <= 2; run++ {
+		if run == 2 && !d.RequestRetry("signal") {
+			// A rolled-back change is held until retried (ADR-0062).
+			t.Fatal("run 2: signal should be held after its rollback")
+		}
 		emitted = nil
 		d.DeployAllStacks(context.Background(), cfg)
 

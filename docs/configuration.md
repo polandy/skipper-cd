@@ -303,7 +303,7 @@ stacks:
 
 Only when `url` is set: after a successful `up`, skipper-cd GETs the URL every 2 seconds until it answers with a 2xx status; anything else for `timeout_seconds` fails the deploy. The probe runs **from the skipper-cd host**, so the URL must be reachable from there (a published port on `localhost`, or a routable address via a reverse proxy). Use it when the stack has no internal `healthcheck:` but does expose a reachable endpoint, or as an extra end-to-end check on top of stage 1.
 
-A failure in either stage triggers the regular rollback: the previous compose file is restored from the last deployed Git commit, the deploy is marked `rolled_back` (events, metrics and [notifications](#notifications) all see that status), and the change stays pending so the next push retries.
+A failure in either stage triggers the regular rollback: the previous compose file is restored from the commit the stack last ran, the deploy is marked `rolled_back` (events, metrics and [notifications](#notifications) all see that status), and the change is [held](#held-changes) until a new push or a retry.
 
 The rollback itself is verified through the same gate: its `up` also runs with `--wait`, and the HTTP probe (if configured) must pass again. So `rolled_back` guarantees the old version is actually healthy again. If the restored version *also* fails the gate — typically an environment problem such as a dead database or a broken secret — the deploy is marked **`rolled_back_unhealthy`** instead: the stack sits on the old compose file but needs attention *now*, because no version of it is verified healthy.
 
@@ -333,9 +333,23 @@ When rollback is off and a deploy fails (`up`, health gate, or a `post_deploy` h
 
 - The deploy is marked **`failed`** — events, metrics and [notifications](#notifications) all see that status.
 - The **failed containers are left running** for inspection (skipper does not stop them); read their logs or `exec` in to diagnose.
-- The change stays **pending**, so the next push or [reconcile](#periodic-reconcile) retries once the fix lands.
+- The change is [held](#held-changes): it waits for the next push or a retry, instead of being redeployed on every [reconcile](#periodic-reconcile).
 
 This only disables the compose-file restore. Keep `deploy_health_check` alongside it if you still want failures **detected** and reported (just not reverted).
+
+## Held changes
+
+A change whose new version **failed after it started** — `up` failed, a [health gate](#health-check-gated-rollback) or a `post_deploy` hook failed, or a [zero-downtime rollout](#zero-downtime-rollout) cutover failed — is **held**. The same inputs fail the same way, so skipper does not redeploy them on every [reconcile](#periodic-reconcile) tick. The stack stays on the version the rollback restored (or, with [rollback disabled](#disabling-rollback), on the failed one), and the failure is reported once.
+
+A hold is released by:
+
+- **A new push that changes the stack** — any tracked input (compose file, env files, vars file, watched dirs, Dockerfiles, the stack's deploy config). The new version deploys as usual.
+- **A retry** — the **retry** button next to the stack's `held` chip in the Stacks view, or `POST /api/stacks/<name>/retry`. That deploys the held change once more; if it fails again, it is held again. Use it when the cause was outside the change, for example a database that was down.
+- A revert that restores the stack's last deployed inputs, and removing the stack.
+
+A failure **before** any container was touched — a `pre_deploy` hook, `pull`, `build` — is not held: it is usually transient (a registry hiccup), so the next tick retries it.
+
+While a stack is held, its changed [dependents](#deploy-ordering) stay `blocked`. Holds are kept in `state.yaml` (`held`), so they survive a restart, and the `skipper_stack_held` gauge carries the standing condition for alerting. The run summary counts held stacks; the Deploys view shows no row per tick, since the failure row already says what happened.
 
 ## Deploy hooks
 

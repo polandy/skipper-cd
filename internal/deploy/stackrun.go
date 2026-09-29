@@ -6,6 +6,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -85,6 +86,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		d.clearQueued(stack.Name) // nothing pending anymore
 		state.markSettled(stack.Name)
+		// Back at the recorded inputs (a revert): nothing is held any more.
+		state.release(stack.Name)
+		d.takeRetryRequest(stack.Name)
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
 		d.emit(events.StatusSkipped, stack.Name, 0, "", changeSet{})
 		return nil
@@ -117,6 +121,15 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// autosync deferral — drop it from the pending queue regardless of outcome.
 	d.clearQueued(stack.Name)
 
+	fingerprint := prep.currentHashes.fingerprint()
+	if d.isHeld(stack.Name, fingerprint, state) {
+		// Live-only, like skipped: the failure that caused the hold is already
+		// in the history, and this recurs every reconcile tick.
+		slog.Debug("deploy held: this change failed after it started, waiting for a new commit or a retry", "stack", stack.Name)
+		d.emit(events.StatusHeld, stack.Name, 0, "", changeSet{files: changed})
+		return ErrHeld
+	}
+
 	deployStart := time.Now()
 	d.emit(events.StatusDeploying, stack.Name, 0, "", changeSet{files: changed})
 	// This stack is now the active deploy: surface the ones still to come.
@@ -147,6 +160,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	defer func() {
 		if err != nil {
 			d.emitDeployFailure(stack.Name, time.Since(deployStart), err, cs)
+			if errors.Is(err, ErrNewVersionFailed) {
+				state.hold(stack.Name, heldChange{Fingerprint: fingerprint, Since: time.Now(), Status: failureStatus(err), Commit: newestCommit(cs)})
+			}
 		}
 	}()
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()

@@ -23,6 +23,25 @@ var ErrRolledBack = errors.New("rolled back to previous version")
 // it with errors.Is to emit a rolled_back_unhealthy event.
 var ErrRollbackUnhealthy = errors.New("rolled back but still unhealthy")
 
+// ErrNewVersionFailed marks a deploy whose new version was applied and then
+// failed — its start, a health gate, a rollout cutover or a post_deploy hook —
+// as opposed to a failure before any container was touched. It rides alongside
+// the rollback outcome, so it holds with rollback disabled too. Such a change
+// is held rather than retried every tick (ADR-0062): the same inputs fail the
+// same way.
+var ErrNewVersionFailed = errors.New("new version failed after it started")
+
+// errNewVersionMark tags an error as ErrNewVersionFailed without adding to its
+// text: the stage and rollback outcome already say what happened, and that
+// text is what the event, the UI and the notification show.
+var errNewVersionMark error = silentMark{ErrNewVersionFailed}
+
+// silentMark is an error with no text of its own that unwraps to target.
+type silentMark struct{ target error }
+
+func (m silentMark) Error() string { return "" }
+func (m silentMark) Unwrap() error { return m.target }
+
 // rollBackFailedDeploy handles a deploy that failed at the given stage ("docker
 // compose up" or "health check"): it attempts a rollback and wraps the outcome
 // so DeployAllStacks emits rolled_back on success, rolled_back_unhealthy when
@@ -36,7 +55,7 @@ func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, state
 	// forward migrations make restoring the old image over migrated data unsafe.
 	if run.stack.Rollback != nil && !*run.stack.Rollback {
 		slog.Error(stage+" failed; automatic rollback is disabled for this stack, leaving the failed version running for inspection", "stack", run.stack.Name, "err", cause)
-		return fmt.Errorf("%s: %w", stage, cause)
+		return fmt.Errorf("%s: %w%w", stage, cause, errNewVersionMark)
 	}
 
 	slog.Error(stage+" failed, attempting rollback", "stack", run.stack.Name, "err", cause)
@@ -44,14 +63,14 @@ func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, state
 	if rbErr := d.rollbackStack(ctx, run, state); rbErr != nil {
 		if errors.Is(rbErr, ErrRollbackUnhealthy) {
 			slog.Error("rollback ran but the restored version is still unhealthy", "stack", run.stack.Name, "err", rbErr)
-			return fmt.Errorf("%s: %w (%w)", stage, cause, rbErr)
+			return fmt.Errorf("%s: %w (%w)%w", stage, cause, rbErr, errNewVersionMark)
 		}
 		slog.Error("rollback failed", "stack", run.stack.Name, "err", rbErr)
-		return fmt.Errorf("%s: %w (rollback also failed: %w)", stage, cause, rbErr)
+		return fmt.Errorf("%s: %w (rollback also failed: %w)%w", stage, cause, rbErr, errNewVersionMark)
 	}
 	slog.Info("rollback successful, old containers restored", "stack", run.stack.Name)
 	metrics.DeployRollbacks.WithLabelValues(run.stack.Name).Inc()
-	return fmt.Errorf("%s: %w (%w)", stage, cause, ErrRolledBack)
+	return fmt.Errorf("%s: %w (%w)%w", stage, cause, ErrRolledBack, errNewVersionMark)
 }
 
 // rollbackStack restores containers to the previous compose file version after

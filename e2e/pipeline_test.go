@@ -156,6 +156,54 @@ func TestE2E_RollbackOnFailedUp(t *testing.T) {
 	}
 }
 
+// TestE2E_HeldChangeWaitsForRetry (P13): a change whose new version failed
+// after it started is held (ADR-0062). The stub fails the 2nd `up` (this
+// deploy); the startup up (#1), the rollback up (#3) and the retry's up (#4)
+// succeed. A second webhook for the same commit reports `held` without touching
+// the containers; a retry deploys it once more and releases the hold.
+func TestE2E_HeldChangeWaitsForRetry(t *testing.T) {
+	s := startSkipperEnv(t, map[string]string{"STUB_DOCKER_FAIL_NTH_UP": "2"}, "web")
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	s.setStackImage("web", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "rolled_back")
+	upsAfterRollback := s.dockerUps("web")
+
+	// Same commit again: runs serialize, so by the time this run reports the
+	// hold, the rollback's run has published it.
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("second webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "held")
+	if got := s.dockerUps("web"); got != upsAfterRollback {
+		t.Fatalf("a held change must not deploy; web ups = %d, want %d", got, upsAfterRollback)
+	}
+	if v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`); !ok || v != 1 {
+		t.Errorf("skipper_stack_held{web} = %v (ok=%v), want 1", v, ok)
+	}
+
+	successes := es.count("web", "success") // the startup deploy's
+	if code := s.postRetry("web"); code != http.StatusAccepted {
+		t.Fatalf("retry status = %d, want 202", code)
+	}
+	es.waitEventCount("web", "success", successes+1)
+	if got := s.dockerUps("web"); got <= upsAfterRollback {
+		t.Fatalf("the retry must deploy; web ups = %d, want > %d", got, upsAfterRollback)
+	}
+	s.waitFor("the hold to be released", func() bool {
+		_, held := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return !held
+	})
+	if code := s.postRetry("web"); code != http.StatusConflict {
+		t.Errorf("retry of a released stack = %d, want 409", code)
+	}
+}
+
 // TestE2E_DependencyOrdering (P12): with `app` depends_on `db`, a run that
 // changes both deploys db first, and when db's `up` fails, app is blocked — no
 // app `up`, a `blocked` event, and the pending queue lists app for retry

@@ -59,7 +59,7 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 			if errors.Is(err, errCanaryUnhealthy) {
 				// Old version never stopped serving → rolled_back, no git-restore.
 				metrics.DeployRollbacks.WithLabelValues(run.stack.Name).Inc()
-				return fmt.Errorf("rollout %q: %w (%w)", service, err, ErrRolledBack)
+				return fmt.Errorf("rollout %q: %w (%w)%w", service, err, ErrRolledBack, errNewVersionMark)
 			}
 			// Unknown state mid-cutover → git-restore rollback for a defined one.
 			return d.rollBackFailedDeploy(ctx, run, state, "rollout "+service, err)

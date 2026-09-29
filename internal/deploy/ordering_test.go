@@ -359,6 +359,11 @@ func TestDeployAllStacks_BlockedStackDeploysWhenDependencyRecovers(t *testing.T)
 	}
 
 	// The dependency recovers; both stacks are still dirty and deploy in order.
+	// db's change failed after it started, so it is held until retried
+	// (ADR-0062).
+	if !env.d.RequestRetry("db") {
+		t.Fatal("precondition: db should be held after its failed start")
+	}
 	env.runner.failFn = nil
 	*env.emitted = nil
 	env.runner.calls = nil

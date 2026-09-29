@@ -370,7 +370,7 @@ func TestAuditableStatusesMatchTerminalStatuses(t *testing.T) {
 		events.StatusDeploying, events.StatusSuccess, events.StatusFailed,
 		events.StatusSkipped, events.StatusRolledBack, events.StatusRolledBackUnhealthy,
 		events.StatusQueued, events.StatusHealed, events.StatusHealExhausted,
-		events.StatusBlocked, events.StatusRemoved,
+		events.StatusBlocked, events.StatusHeld, events.StatusRemoved,
 	}
 	for _, s := range all {
 		if auditableStatuses[s] != events.Terminal(s) {

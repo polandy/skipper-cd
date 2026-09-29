@@ -166,11 +166,11 @@ func TestHandler_RunCompleteSummary(t *testing.T) {
 	var buf bytes.Buffer
 	newTestLogger(&buf, false).Info(MsgRunComplete,
 		"deployed", 1, "rolled_back", 1, "rolled_back_unhealthy", 0,
-		"queued", 0, "blocked", 0, "removed", 1, "skipped", 2, "failed", 0,
+		"queued", 0, "blocked", 0, "held", 1, "removed", 1, "skipped", 2, "failed", 0,
 	)
 
 	out := buf.String()
-	if !strings.Contains(out, "run complete  1 deployed · 1 rolled back · 1 removed · 2 skipped") {
+	if !strings.Contains(out, "run complete  1 deployed · 1 rolled back · 1 held · 1 removed · 2 skipped") {
 		t.Errorf("expected run-complete summary omitting zero counts, got %q", out)
 	}
 }

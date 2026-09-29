@@ -14,6 +14,11 @@ import { openRowMenu } from "../fixtures/menu";
 // commit to restore, so it fails with its own message ("no previous commit
 // available for rollback") and is deliberately a separate incident. The run
 // therefore opens with the first webhook, and ×2 arrives with the second.
+//
+// Each webhook carries a new image tag: a change that failed after it started
+// is held until its inputs change (ADR-0062), so re-sending the same commit
+// would report `held` rather than fail again. A new change failing the same
+// way is exactly what the collapse is for.
 // Behaviour-only (no snapshot).
 
 test.use({
@@ -46,6 +51,7 @@ test("UAU1: a repeated failure collapses into one row that counts it", async ({
 
   // A different cause is a different incident, so the differently-worded
   // startup failure keeps its own row and this one opens the run.
+  skipper.setStackImage("web", "1.26");
   expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
   await expect(failedRow(page)).toHaveCount(2);
   await expect(repeatNote(page)).toHaveCount(0);
@@ -53,10 +59,12 @@ test("UAU1: a repeated failure collapses into one row that counts it", async ({
   // Each webhook is settled through the count before the next is sent: deploys
   // serialize on one mutex, so firing them in a burst would not produce one run
   // each (Invariant 7). The row count staying at 2 is what the collapse buys.
+  skipper.setStackImage("web", "1.27");
   expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
   await expect(repeatNote(page)).toHaveText(/×2/);
   await expect(failedRow(page)).toHaveCount(2);
 
+  skipper.setStackImage("web", "1.28");
   expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
   await expect(repeatNote(page)).toHaveText(/×3/);
   await expect(failedRow(page)).toHaveCount(2);
@@ -77,8 +85,10 @@ test("UAU2: the collapsed count survives a reload", async ({
   await page.goto(`${skipper.baseURL}/`);
   await expect(failedRow(page)).toHaveCount(1);
 
+  skipper.setStackImage("web", "1.29");
   expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
   await expect(failedRow(page)).toHaveCount(2);
+  skipper.setStackImage("web", "1.30");
   expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
   await expect(repeatNote(page)).toHaveText(/×2/);
 
@@ -96,8 +106,10 @@ test("UAU3: the deploy-history panel marks the repeat too", async ({
 }) => {
   await page.goto(`${skipper.baseURL}/`);
   await expect(failedRow(page)).toHaveCount(1);
+  skipper.setStackImage("web", "1.31");
   expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
   await expect(failedRow(page)).toHaveCount(2);
+  skipper.setStackImage("web", "1.32");
   expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
   await expect(repeatNote(page)).toHaveText(/×2/);
 

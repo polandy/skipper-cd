@@ -253,3 +253,30 @@ func TestBuildState_CarriesUpdateCheckSnapshot(t *testing.T) {
 		t.Errorf("nil updates must be omitted from the JSON: %s", body)
 	}
 }
+
+// WithHeld marks exactly the held entries and leaves the input roster alone.
+func TestState_WithHeldMarksHeldEntries(t *testing.T) {
+	since := time.Date(2026, 9, 29, 2, 5, 0, 0, time.UTC)
+	base := BuildState([]config.Stack{{Name: "signal"}, {Name: "web"}}, nil, audit.NewLog(t.TempDir()), nil, RepoRef{}, nil)
+
+	got := base.WithHeld(map[string]Held{
+		"signal": {Since: since, Status: events.StatusRolledBack, Commit: "d430ece"},
+		"gone":   {Since: since, Status: events.StatusRolledBack},
+	})
+
+	byName := map[string]Entry{}
+	for _, e := range got.Roster {
+		byName[e.Name] = e
+	}
+	if h := byName["signal"].Held; h == nil || h.Commit != "d430ece" || !h.Since.Equal(since) {
+		t.Errorf("signal held = %+v, want the recorded hold", h)
+	}
+	if byName["web"].Held != nil {
+		t.Errorf("web must not be marked held, got %+v", byName["web"].Held)
+	}
+	for _, e := range base.Roster {
+		if e.Held != nil {
+			t.Errorf("WithHeld must not mutate the input roster, %s got %+v", e.Name, e.Held)
+		}
+	}
+}

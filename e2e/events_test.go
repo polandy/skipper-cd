@@ -85,28 +85,42 @@ func (es *eventStream) read(resp *http.Response) {
 
 // has reports whether an event for stack with status has been seen.
 func (es *eventStream) has(stack, status string) bool {
+	return es.count(stack, status) > 0
+}
+
+// count reports how many events for stack with status have been seen.
+func (es *eventStream) count(stack, status string) int {
 	es.mu.Lock()
 	defer es.mu.Unlock()
+	n := 0
 	for _, e := range es.deploys {
 		if e.Stack == stack && e.Status == status {
-			return true
+			n++
 		}
 	}
-	return false
+	return n
 }
 
 // waitEvent blocks until an event for stack with status arrives, failing the
 // test on timeout.
 func (es *eventStream) waitEvent(stack, status string) {
 	es.t.Helper()
+	es.waitEventCount(stack, status, 1)
+}
+
+// waitEventCount blocks until at least n events for stack with status have
+// arrived — for a status the stack already reported once, e.g. a second
+// success after the startup one.
+func (es *eventStream) waitEventCount(stack, status string, n int) {
+	es.t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if es.has(stack, status) {
+		if es.count(stack, status) >= n {
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	es.t.Fatalf("timed out waiting for %s/%s event", stack, status)
+	es.t.Fatalf("timed out waiting for %d %s/%s events", n, stack, status)
 }
 
 // awaitStreamReady waits until the replayed startup `success` event for stack

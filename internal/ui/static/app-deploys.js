@@ -562,7 +562,9 @@ App.deploys = (function () {
   function handleEvent(evt, isHistory) {
     // A skipped deploy means an unchanged stack — no signal worth showing, so
     // it is never rendered (skipped events are live-only, never in history).
-    if (evt.status === 'skipped') return;
+    // A held one repeats the failure row already shown every tick; the roster
+    // carries the standing hold (ADR-0062).
+    if (evt.status === 'skipped' || evt.status === 'held') return;
 
     showTable();
 

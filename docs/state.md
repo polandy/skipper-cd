@@ -4,6 +4,8 @@ Deployment state is persisted at `/var/lib/skipper/state.yaml`. It stores the pe
 
 Each stack also keeps its own base in `stack_commits`: the `HEAD` of the last run that deployed it or found it unchanged. A stack's rollback restores its compose file from that commit, and its diffs are computed against it. A stack whose deploy failed keeps its old base, so retrying a broken change rolls back to the version that last worked, never to the broken one. A stack without an entry falls back to `last_deployed_commit`.
 
+A `held` map records each stack whose change is [held](configuration.md#held-changes) after its new version failed: a fingerprint of the exact inputs that failed, when, the failure's status and its newest commit. A run skips a held stack while its inputs still match that fingerprint; a new push, a retry or a revert releases it.
+
 ```yaml
 last_deployed_commit: abc123def456...
 stack_commits:
