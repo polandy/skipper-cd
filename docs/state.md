@@ -2,8 +2,13 @@
 
 Deployment state is persisted at `/var/lib/skipper/state.yaml`. It stores the per-file hashes from the last successful deployment of each stack, as well as the Git commit SHA that future deploys diff against (`last_deployed_commit`). That commit advances to `HEAD` at the end of a run — but not while a change is still queued by [paused autosync](autosync.md), so a deferred change keeps its diff base until it actually deploys.
 
+Each stack also keeps its own base in `stack_commits`: the `HEAD` of the last run that deployed it or found it unchanged. A stack's rollback restores its compose file from that commit, and its diffs are computed against it. A stack whose deploy failed keeps its old base, so retrying a broken change rolls back to the version that last worked, never to the broken one. A stack without an entry falls back to `last_deployed_commit`.
+
 ```yaml
 last_deployed_commit: abc123def456...
+stack_commits:
+  traefik: abc123def456...
+  gitea: 0f1e2d3c4b5a...
 stacks:
   traefik:
     /var/lib/skipper/repo/modules/traefik/docker-compose.yml: 9f86d081...

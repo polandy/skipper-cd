@@ -8,6 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/fsatomic"
 )
 
@@ -19,8 +20,21 @@ type stackFileHashes map[string]string
 // persistedState holds the full deploy state written to disk.
 type persistedState struct {
 	// LastDeployedCommit is the git commit SHA of the last successful deploy run.
-	// It is used to compute diffs between the last deploy and the current HEAD.
+	// It is the diff base of the run phases that are not a stack (_nixos) and
+	// the fallback for a stack with no StackCommits entry yet.
 	LastDeployedCommit string `yaml:"last_deployed_commit,omitempty"`
+
+	// StackCommits maps each stack to the commit it was last known to run: the
+	// HEAD of the last run that deployed it or found it unchanged. It is the
+	// stack's own rollback and diff base (ADR-0061). Unlike LastDeployedCommit it
+	// does not move past a stack whose deploy failed, so a retry restores the
+	// version that last worked rather than the one that just broke.
+	StackCommits map[string]string `yaml:"stack_commits,omitempty"`
+
+	// settled lists the stacks this run left at their desired state (deployed
+	// or unchanged); finishRun moves their StackCommits entry to HEAD. Run-local,
+	// never persisted.
+	settled []string
 
 	// Stacks maps stack names to their per-file hashes from the last deployment.
 	Stacks map[string]stackFileHashes `yaml:"stacks"`
@@ -75,6 +89,47 @@ func (s *persistedState) hashesFor(stack string) stackFileHashes {
 	return s.Stacks[stack]
 }
 
+// baseCommitFor returns the commit a stack's rollback restores from and its
+// diffs are computed against: its own StackCommits entry, else the global
+// LastDeployedCommit (a stack recorded before per-stack bases existed).
+func (s *persistedState) baseCommitFor(stack string) string {
+	if sha, ok := s.StackCommits[stack]; ok {
+		return sha
+	}
+	return s.LastDeployedCommit
+}
+
+// markSettled records that this run left a stack at its desired state, so
+// advanceCommitBases moves the stack's base to the run's HEAD.
+func (s *persistedState) markSettled(stack string) {
+	s.settled = append(s.settled, stack)
+}
+
+// advanceCommitBases moves every settled stack's base to head. A stack with
+// recorded hashes but no base yet is first pinned to the current global base,
+// before the caller advances that past it: otherwise a stack failing in its
+// first run after an upgrade would fall back to a global base at the broken
+// commit on the next retry. Must run before LastDeployedCommit is advanced.
+func (s *persistedState) advanceCommitBases(head string) {
+	if s.StackCommits == nil {
+		s.StackCommits = map[string]string{}
+	}
+	if s.LastDeployedCommit != "" {
+		for name := range s.Stacks {
+			if config.IsReservedStackName(name) {
+				continue
+			}
+			if _, ok := s.StackCommits[name]; !ok {
+				s.StackCommits[name] = s.LastDeployedCommit
+			}
+		}
+	}
+	for _, name := range s.settled {
+		s.StackCommits[name] = head
+	}
+	s.settled = nil
+}
+
 // recordStack stores the per-file hashes of a successfully deployed stack.
 func (s *persistedState) recordStack(stack string, hashes stackFileHashes) {
 	s.Stacks[stack] = hashes
@@ -99,6 +154,7 @@ func (s *persistedState) forgetStack(stack string) {
 	delete(s.Stacks, stack)
 	delete(s.Images, stack)
 	delete(s.RunningImages, stack)
+	delete(s.StackCommits, stack)
 }
 
 // markNixOSRebuildInFlight records that a nixos-rebuild is about to run for the

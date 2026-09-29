@@ -143,8 +143,9 @@ func (d *Deployer) deployStackGated(ctx context.Context, stack config.Stack, bas
 // the pending registry — which also pins the diff/rollback base until the chain
 // clears — and leaves hashes unrecorded so the stack retries on the next sync.
 func (d *Deployer) deferForDependency(ctx context.Context, stack config.Stack, changed []string, att attribution, state *persistedState, gate gateDecision) depOutcome {
-	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
-	cs.fileChanges = d.attributeChanges(ctx, att, changed, state.LastDeployedCommit)
+	base := state.baseCommitFor(stack.Name)
+	cs := d.collectChange(ctx, changed, base)
+	cs.fileChanges = d.attributeChanges(ctx, att, changed, base)
 
 	if gate.outcome == depBlocked {
 		d.markPending(stack.Name, changed, "blocked by "+gate.depName)

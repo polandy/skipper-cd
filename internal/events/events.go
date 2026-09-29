@@ -54,7 +54,7 @@ const (
 
 // CommitInfo describes one git commit deployed by an event: the metadata
 // shown above the file diffs (message, author, time, SHA). Populated for the
-// range state.LastDeployedCommit..HEAD, restricted to the event's changed
+// range <stack's base commit>..HEAD (ADR-0061), restricted to the event's changed
 // files, and — like Diffs — carried on the event but fetched on demand rather
 // than streamed over SSE.
 type CommitInfo struct {

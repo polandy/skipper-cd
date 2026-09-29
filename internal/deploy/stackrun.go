@@ -84,6 +84,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		// summary's count (ADR-0042 amendment).
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		d.clearQueued(stack.Name) // nothing pending anymore
+		state.markSettled(stack.Name)
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
 		d.emit(events.StatusSkipped, stack.Name, 0, "", changeSet{})
 		return nil
@@ -105,8 +106,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		metrics.DeploysQueued.WithLabelValues(stack.Name).Inc()
 		// Carry the diff of what is waiting so the paused row can show the
 		// effective change, not just the file paths.
-		queuedChange := d.collectChange(ctx, changed, state.LastDeployedCommit)
-		queuedChange.fileChanges = d.attributeChanges(ctx, att, changed, state.LastDeployedCommit)
+		base := state.baseCommitFor(stack.Name)
+		queuedChange := d.collectChange(ctx, changed, base)
+		queuedChange.fileChanges = d.attributeChanges(ctx, att, changed, base)
 		d.emit(events.StatusQueued, stack.Name, 0, "", queuedChange)
 		slog.Info("deploy deferred: autosync paused", "stack", stack.Name, "reason", reason, "changed_files", changed)
 		return nil
@@ -120,10 +122,11 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// This stack is now the active deploy: surface the ones still to come.
 	d.publishUpcomingAfter(stack.Name)
 	slog.Info("deploying stack", "stack", stack.Name, "dir", filepath.Dir(prep.run.composePath), "project_dir", prep.run.projectDir, "changed_files", d.repoRelativePaths(changed))
-	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
+	base := state.baseCommitFor(stack.Name)
+	cs := d.collectChange(ctx, changed, base)
 	// Name the services each changed file reaches, so the row can say which
 	// container of the stack moved and not just how many files did (ADR-0059).
-	cs.fileChanges = d.attributeChanges(ctx, att, changed, state.LastDeployedCommit)
+	cs.fileChanges = d.attributeChanges(ctx, att, changed, base)
 	// Name the services whose image reference changed (old → new) so terminal
 	// events — and the notifications built from them — report what updated, not
 	// just the stack. Captured before the deploy runs so the deferred failure
@@ -265,6 +268,7 @@ func (d *Deployer) recordStackSuccess(prep stackPrep, state *persistedState, dep
 	}
 	state.recordRunningImages(name, running)
 	state.recordProjectDir(name, prep.run.effectiveProjectDir())
+	state.markSettled(name)
 	metrics.LastDeployTimestamp.WithLabelValues(name).Set(float64(time.Now().Unix()))
 	eventID := d.emit(events.StatusSuccess, name, time.Since(deployStart), "", cs)
 	if eventID != 0 {
