@@ -717,7 +717,7 @@ Guardrails keep it from fighting a genuinely broken stack:
 - **Cooldown** — at least `self_heal_cooldown_seconds` (default 60, explicit `0` disables) between redeploys of the same stack.
 - **Circuit breaker** — after `self_heal_max_attempts` (default 3) redeploys that don't restore the stack, skipper gives up, leaves it reported `unhealthy`, and emits a single `heal_exhausted` event (a `heal_exhausted` [notification](#notifications) fires by default — the "a stack is down and I couldn't fix it" alarm). The counter resets when the stack recovers or a real git deploy of it runs.
 
-Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `runtime_health_poll_interval_seconds` > 0 even with the UI off. A successful redeploy shows as a `healed` event in the deploy log.
+Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `runtime_health_poll_interval_seconds` > 0 even with the UI off. Once a redeployed stack is seen healthy again, a `healed` event appears in the deploy log — one per outage, with the time it took to recover. A redeploy that leaves the stack degraded is only counted as an attempt; if the attempts run out, a single `heal_exhausted` event says so.
 
 ## Update check
 

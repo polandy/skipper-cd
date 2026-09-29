@@ -144,6 +144,9 @@ func buildSelfHeal(cfg *config.Config, views stackViews, ref *deployerRef) *self
 		MaxAttempts:       cfg.SelfHealMaxAttempts,
 		Cooldown:          time.Duration(*cfg.SelfHealCooldownSeconds) * time.Second,
 		OnExhausted:       func(stack string) { ref.get().EmitHealExhausted(stack) },
+		OnHealed: func(stack string, after time.Duration, drift []events.DriftedService) {
+			ref.get().EmitHealed(stack, after, drift)
+		},
 	})
 	slog.Info("self-heal enabled", "min_unhealthy_polls", cfg.SelfHealMinUnhealthyPolls, "max_attempts", cfg.SelfHealMaxAttempts, "cooldown_seconds", *cfg.SelfHealCooldownSeconds)
 	return engine

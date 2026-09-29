@@ -21,7 +21,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer } from 'node:http';
 import { createHmac } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,6 +57,9 @@ case " $* " in
   *" compose "*)
     case " $* " in
       *" up "*)
+        # Every up is logged by stack, so the seeding can tell when self-heal's
+        # corrective redeploy has run.
+        basename "$(pwd)" >> "$STUB_FAIL_DIR/../ups.log"
         # Failure switch: a file named after the stack in $STUB_FAIL_DIR makes
         # its \`up\` fail, so the preview can show a real failed/rolled-back
         # deploy instead of only the happy path. A file whose content is "once"
@@ -835,6 +838,22 @@ git(origin, 'commit', '-am', 'chore: bump the vaultwarden, wiki, backup and moni
 await webhook();
 await settled('vaultwarden', 2);
 await repeated('wiki', 4);
+
+// Self-heal reports a heal only once the stack is seen healthy again (ADR-0029
+// amendment), so syncthing recovers after its corrective redeploy — its startup
+// up plus the heal's — and the healed row then says what it restored.
+for (let i = 0; i < 300; i++) {
+  let ups = 0;
+  try {
+    ups = readFileSync(join(failDir, '..', 'ups.log'), 'utf8').split('\n').filter((l) => l === 'syncthing').length;
+  } catch {}
+  if (ups >= 2) break;
+  await sleep(200);
+}
+setHealth('syncthing', [
+  { Service: 'app', Name: 'syncthing-app-1', Image: 'syncthing:1.0.0', State: 'running', Health: 'healthy' },
+]);
+await settled('syncthing', 2);
 
 if (SMOKE) {
   const fail = (msg) => {

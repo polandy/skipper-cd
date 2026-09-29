@@ -277,3 +277,120 @@ func TestEngine_SkippedHealDoesNotConsumeBudget(t *testing.T) {
 		t.Fatalf("a skipped heal must not consume the budget or set cooldown, got %d", len(h.calls))
 	}
 }
+
+// healedRecorder records OnHealed calls.
+type healedRecorder struct {
+	stacks []string
+	after  []time.Duration
+	drift  [][]events.DriftedService
+}
+
+func (r *healedRecorder) record(stack string, after time.Duration, drift []events.DriftedService) {
+	r.stacks = append(r.stacks, stack)
+	r.after = append(r.after, after)
+	r.drift = append(r.drift, drift)
+}
+
+func newEngineWithHealed(h selfheal.Healer, clk *clock, maxAttempts int, cooldown time.Duration, rec *healedRecorder, onExhausted func(string)) *selfheal.Engine {
+	return selfheal.New(selfheal.Config{
+		Healer:            h,
+		Enabled:           func(string) bool { return true },
+		MinUnhealthyPolls: 1,
+		MaxAttempts:       maxAttempts,
+		Cooldown:          cooldown,
+		OnExhausted:       onExhausted,
+		OnHealed:          rec.record,
+		Now:               clk.now,
+	})
+}
+
+func unhealthyAPI(stack string) health.Snapshot {
+	return health.Snapshot{Stacks: map[string]health.StackHealth{stack: {
+		Status:   health.Unhealthy,
+		Services: []health.ServiceHealth{{Name: "api", Status: health.Unhealthy}},
+	}}}
+}
+
+// A redeploy is reported healed only once a poll sees the stack healthy —
+// once, measured from the first redeploy, carrying what that one reacted to.
+// The two recorded redeploys are the positive signal that the silent attempts
+// in between were attempts, not skipped polls.
+func TestEngine_ReportsHealedOnlyOnObservedRecovery(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	rec := &healedRecorder{}
+	eng := newEngineWithHealed(h, clk, 3, time.Minute, rec, nil)
+	ctx := context.Background()
+
+	eng.Observe(ctx, unhealthyAPI("web")) // redeploy #1
+	clk.advance(time.Minute)
+	eng.Observe(ctx, unhealthyAPI("web")) // still down → redeploy #2
+	if len(h.calls) != 2 {
+		t.Fatalf("expected two redeploys, got %d", len(h.calls))
+	}
+	if len(rec.stacks) != 0 {
+		t.Fatalf("no healed report while the stack stays degraded, got %v", rec.stacks)
+	}
+
+	clk.advance(30 * time.Second)
+	eng.Observe(ctx, snap("web", health.Healthy))
+	eng.Observe(ctx, snap("web", health.Healthy)) // a second healthy poll reports nothing more
+
+	if len(rec.stacks) != 1 || rec.stacks[0] != "web" {
+		t.Fatalf("expected exactly one healed report for web, got %v", rec.stacks)
+	}
+	if rec.after[0] != 90*time.Second {
+		t.Errorf("after = %v, want the time from the first redeploy (90s)", rec.after[0])
+	}
+	if len(rec.drift[0]) != 1 || rec.drift[0][0].Name != "api" {
+		t.Errorf("drift = %+v, want the first redeploy's drift", rec.drift[0])
+	}
+}
+
+// Once self-heal gave up, a later recovery is someone else's doing and is not
+// reported as healed. The exhausted callback is the positive signal that the
+// engine reached the give-up state before the recovery.
+func TestEngine_DoesNotReportHealedAfterGivingUp(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	rec := &healedRecorder{}
+	var exhausted []string
+	eng := newEngineWithHealed(h, clk, 1, time.Minute, rec, func(s string) { exhausted = append(exhausted, s) })
+	ctx := context.Background()
+
+	eng.Observe(ctx, unhealthyAPI("web")) // redeploy #1, the only one allowed
+	clk.advance(time.Minute)
+	eng.Observe(ctx, unhealthyAPI("web")) // exhausted
+	if len(exhausted) != 1 {
+		t.Fatalf("expected self-heal to give up, got %v", exhausted)
+	}
+
+	eng.Observe(ctx, snap("web", health.Healthy))
+	if len(rec.stacks) != 0 {
+		t.Errorf("a recovery after giving up must not be reported healed, got %v", rec.stacks)
+	}
+}
+
+// A stack that recovers before self-heal ever acted (a blip under the
+// debounce) is not a heal. The debounced engine's zero redeploys are the
+// positive signal.
+func TestEngine_DoesNotReportHealedWithoutARedeploy(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	rec := &healedRecorder{}
+	eng := selfheal.New(selfheal.Config{
+		Healer: h, Enabled: func(string) bool { return true },
+		MinUnhealthyPolls: 2, MaxAttempts: 3, Cooldown: time.Minute,
+		OnHealed: rec.record, Now: clk.now,
+	})
+	ctx := context.Background()
+
+	eng.Observe(ctx, unhealthyAPI("web"))
+	eng.Observe(ctx, snap("web", health.Healthy))
+	if len(h.calls) != 0 {
+		t.Fatalf("precondition: no redeploy under the debounce, got %d", len(h.calls))
+	}
+	if len(rec.stacks) != 0 {
+		t.Errorf("a blip without a redeploy is not a heal, got %v", rec.stacks)
+	}
+}

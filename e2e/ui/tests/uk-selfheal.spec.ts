@@ -17,7 +17,9 @@ const webRow = (page: import('@playwright/test').Page, status: string) =>
   page.locator(`[data-testid="deploy-row"][data-stack="web"][data-status="${status}"]`);
 
 // UK1 — a stack the poller finds unhealthy is restored by a corrective redeploy,
-// surfacing as a `healed` row. Max attempts left high so it never exhausts here.
+// surfacing as a `healed` row once a poll sees it healthy again — the redeploy
+// alone proves nothing (ADR-0029 amendment). Max attempts left high so it never
+// exhausts here.
 test.describe('UK1: self-heal restores a degraded stack', () => {
   test.use({
     startOptions: {
@@ -41,15 +43,15 @@ test.describe('UK1: self-heal restores a degraded stack', () => {
 
     // The stack turns unhealthy → the poller reports it → self-heal redeploys.
     skipper.setStackHealth('web', unhealthyApp);
+    // The corrective `up` actually ran (beyond the startup one) …
+    await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(upsBefore)).toPass();
 
+    // … and only the recovery after it makes it a heal.
+    skipper.setStackHealth('web', healthyApp);
     const healed = webRow(page, 'healed').first();
     await expect(healed).toBeVisible();
     await expect(healed.locator('[data-testid="status-badge"]')).toHaveText('healed');
-    // The corrective `up` actually ran (beyond the startup one).
-    await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(upsBefore)).toPass();
-
-    // Recovery quiesces the loop (no exhaustion).
-    skipper.setStackHealth('web', healthyApp);
+    await expect(webRow(page, 'healed')).toHaveCount(1);
   });
 });
 
@@ -75,10 +77,8 @@ test.describe('UK2: self-heal gives up after repeated failures', () => {
     // Stays unhealthy across every poll: the one allowed heal does not fix it.
     skipper.setStackHealth('web', unhealthyApp);
 
-    // The one permitted corrective redeploy still shows as a healed row…
-    await expect(webRow(page, 'healed').first()).toBeVisible();
-
-    // …then the breaker trips: a single heal_exhausted row with the alarm error.
+    // The one permitted corrective redeploy does not restore it, so the breaker
+    // trips: a single heal_exhausted row with the alarm error.
     const exhausted = webRow(page, 'heal_exhausted').first();
     await expect(exhausted).toBeVisible();
     await expect(exhausted.locator('[data-testid="status-badge"]')).toContainText('self-heal');
@@ -87,5 +87,8 @@ test.describe('UK2: self-heal gives up after repeated failures', () => {
 
     // Exactly one heal_exhausted — the give-up is emitted once, not per poll.
     await expect(webRow(page, 'heal_exhausted')).toHaveCount(1);
+    // A redeploy that left the stack unhealthy is no heal: with the exhausted
+    // row as the positive signal, no healed row was ever drawn.
+    await expect(webRow(page, 'healed')).toHaveCount(0);
   });
 });

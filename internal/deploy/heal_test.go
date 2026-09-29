@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
@@ -24,7 +25,7 @@ func healConfig(t *testing.T, stack string) *config.Config {
 	return &config.Config{StacksBaseDir: base, Stacks: []config.Stack{{Name: stack}}}
 }
 
-func TestHealStack_RunsCorrectiveUpAndEmitsHealed(t *testing.T) {
+func TestHealStack_RunsCorrectiveUpWithoutClaimingRecovery(t *testing.T) {
 	r := &recordingRunner{}
 	var got []events.DeployEvent
 	d := New(Config{Runner: r, EventSink: func(e events.DeployEvent) { got = append(got, e) }})
@@ -49,12 +50,29 @@ func TestHealStack_RunsCorrectiveUpAndEmitsHealed(t *testing.T) {
 	}
 	assertCommandNotCalled(t, r.calls, "--wait")
 
+	// An up that exits 0 says nothing about recovery: the healed event waits
+	// for the engine to see the stack healthy (EmitHealed). The recorded up
+	// above is the positive signal that the heal did run.
+	if len(got) != 0 {
+		t.Fatalf("HealStack must not emit an event of its own, got %+v", got)
+	}
+}
+
+func TestEmitHealed_CarriesDriftAndDuration(t *testing.T) {
+	var got []events.DeployEvent
+	d := New(Config{Runner: &recordingRunner{}, EventSink: func(e events.DeployEvent) { got = append(got, e) }})
+
+	drift := []events.DriftedService{{Name: "web", Status: "unhealthy"}}
+	d.EmitHealed("web", 90*time.Second, drift)
+
 	if len(got) != 1 || got[0].Status != events.StatusHealed || got[0].Stack != "web" {
 		t.Fatalf("expected one healed event for web, got %+v", got)
 	}
-	// The drift that triggered the heal rides the event (no changed files/diffs).
 	if !slices.Equal(got[0].HealDrift, drift) {
 		t.Fatalf("expected healed event to carry drift %+v, got %+v", drift, got[0].HealDrift)
+	}
+	if got[0].DurationMs != 90000 {
+		t.Errorf("duration = %dms, want the time to recovery (90000)", got[0].DurationMs)
 	}
 	if got[0].ChangedFiles != nil || got[0].Diffs != nil {
 		t.Fatalf("a heal carries no changed files or diffs, got files=%v diffs=%v", got[0].ChangedFiles, got[0].Diffs)

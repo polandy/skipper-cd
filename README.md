@@ -49,7 +49,7 @@ New here? The **[Getting Started walkthrough](https://polandy.github.io/skipper-
 - **Docker Compose, not Kubernetes** — built for individual hosts and homelabs, not a cluster. A `.nix` change triggers `nixos-rebuild switch`, so one push updates the host and its containers together.
 - **One host or many** — run an instance per host, each fully autonomous (its own repo clone, state, deploys, and webhook); a primary can fan the others in for a single merged, read-only view.
 - **Near-zero config** — one YAML file, and stack discovery means most stacks need no per-stack entry at all.
-- **Git-only, no drift** — no imperative "redeploy" button and no in-UI editing; the repo is the only way to change what runs. SHA-256 hashing redeploys just the stacks that changed, a failed deploy rolls back, and drift is self-healed on a reconcile loop.
+- **Git-only, no drift** — no in-UI editing and no deploying anything the repo does not say; the repo is the only way to change what runs. SHA-256 hashing redeploys just the stacks that changed, a failed deploy rolls back and waits for the next push (or one retry of the same commit), and drift is self-healed on a reconcile loop.
 
 skipper-cd reconciles each host to Git on a timer, with a webhook to make a push land in seconds rather than minutes.
 

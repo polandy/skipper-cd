@@ -51,6 +51,12 @@ type Config struct {
 	// OnExhausted is called once when a stack's attempts are exhausted, so the
 	// wiring can emit the heal_exhausted event. Optional.
 	OnExhausted func(stack string)
+	// OnHealed is called once when a stack self-heal acted on is observed
+	// healthy again, so the wiring can emit the healed event: after is the time
+	// from the first corrective redeploy to the recovery, drift what that first
+	// redeploy reacted to. A redeploy that leaves the stack degraded reports
+	// nothing of its own. Optional.
+	OnHealed func(stack string, after time.Duration, drift []events.DriftedService)
 	// Now overrides the clock in tests; nil uses time.Now.
 	Now func() time.Time
 }
@@ -63,6 +69,7 @@ type Engine struct {
 	maxAttempts int
 	cooldown    time.Duration
 	onExhausted func(stack string)
+	onHealed    func(stack string, after time.Duration, drift []events.DriftedService)
 	now         func() time.Time
 
 	mu     sync.Mutex
@@ -71,10 +78,12 @@ type Engine struct {
 
 // stackState is one stack's self-heal bookkeeping across polls.
 type stackState struct {
-	degraded  int       // consecutive degraded polls
-	attempts  int       // corrective redeploys performed this outage
-	lastTry   time.Time // when the last redeploy ran, for the cooldown
-	exhausted bool      // gave up; heal_exhausted already emitted
+	degraded  int                     // consecutive degraded polls
+	attempts  int                     // corrective redeploys performed this outage
+	lastTry   time.Time               // when the last redeploy ran, for the cooldown
+	exhausted bool                    // gave up; heal_exhausted already emitted
+	firstTry  time.Time               // when this outage's first redeploy ran
+	drift     []events.DriftedService // what that first redeploy reacted to
 }
 
 // New builds an Engine from cfg.
@@ -90,6 +99,7 @@ func New(cfg Config) *Engine {
 		maxAttempts: cfg.MaxAttempts,
 		cooldown:    cfg.Cooldown,
 		onExhausted: cfg.OnExhausted,
+		onHealed:    cfg.OnHealed,
 		now:         now,
 		states:      map[string]*stackState{},
 	}
@@ -195,9 +205,16 @@ func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHeal
 
 	switch classify(selfHealStatus(sh)) {
 	case recovered:
-		// Healthy again: clear the outage so a future one starts fresh.
+		// Healthy again: clear the outage so a future one starts fresh. Only now
+		// is a heal a heal — a redeploy that exits 0 says nothing about whether
+		// the stack came back. A recovery after giving up is not self-heal's.
+		healed := s.attempts > 0 && !s.exhausted
+		after, drift := e.now().Sub(s.firstTry), s.drift
 		delete(e.states, stack)
 		e.mu.Unlock()
+		if healed && e.onHealed != nil {
+			e.onHealed(stack, after, drift)
+		}
 		return
 	case ignore:
 		// starting/unknown: neither degraded nor recovered — wait, keep state.
@@ -234,7 +251,8 @@ func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHeal
 	// mutex and can block). A skipped run (deploy already in progress) does not
 	// count against the attempt budget — the next poll retries.
 	slog.Info("self-heal triggering corrective redeploy", "stack", stack)
-	ran, err := e.healer.Heal(ctx, stack, driftedServices(sh))
+	drift := driftedServices(sh)
+	ran, err := e.healer.Heal(ctx, stack, drift)
 	if !ran {
 		slog.Debug("self-heal skipped: deploy already in progress", "stack", stack)
 		return
@@ -245,6 +263,9 @@ func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHeal
 
 	e.mu.Lock()
 	if s = e.states[stack]; s != nil {
+		if s.attempts == 0 {
+			s.firstTry, s.drift = e.now(), drift
+		}
 		s.attempts++
 		s.lastTry = e.now()
 	}

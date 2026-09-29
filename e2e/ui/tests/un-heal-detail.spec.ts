@@ -4,7 +4,8 @@ import { test, expect } from '../fixtures/test';
 // amendment). See dev-docs/e2e-tests.md §4.15.
 //
 // Builds on Maske K: drives the *real* self-heal loop (health poller reports the
-// stack degraded → self-heal restores it → a `healed` row appears), then asserts
+// stack degraded → self-heal redeploys → the stack recovers → a `healed` row
+// appears), then asserts
 // the row's UI affordance. A heal is not a git deploy, so the healed row has no
 // files pill; its files cell instead carries a teal self-heal badge that expands
 // a detail panel explaining the corrective redeploy and listing the services
@@ -45,12 +46,14 @@ test.describe('UN1: healed row shows a self-heal badge that expands the drift de
       page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]'),
     ).toHaveCount(1);
 
-    // Degrade the stack → self-heal runs a corrective redeploy → a healed row.
+    // Degrade the stack → self-heal runs a corrective redeploy → the stack
+    // recovers → a healed row (a heal is reported only once it took).
+    const upsBefore = skipper.dockerUps('web');
     skipper.setStackHealth('web', appDegraded);
+    await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(upsBefore)).toPass();
+    skipper.setStackHealth('web', healthyBoth);
     const row = healedRow(page);
     await expect(row).toBeVisible();
-    // Recovery quiesces the loop so no further heals pile up while we interact.
-    skipper.setStackHealth('web', healthyBoth);
 
     // A heal has no changed files: the row carries the self-heal badge, not a
     // files pill.
@@ -96,10 +99,12 @@ test.describe('UN2: the heal panel obeys the one-open-panel-per-row rule', () =>
   test('opening the heal panel closes an open health panel on the same row', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
+    const upsBefore = skipper.dockerUps('web');
     skipper.setStackHealth('web', appDegraded);
+    await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(upsBefore)).toPass();
+    skipper.setStackHealth('web', healthyBoth);
     const row = healedRow(page);
     await expect(row).toBeVisible();
-    skipper.setStackHealth('web', healthyBoth);
 
     // Open the stack-health panel via the health pill on the (newest) healed row.
     await row.locator('[data-testid="health-pill"]').click();
