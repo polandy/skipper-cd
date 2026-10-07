@@ -127,6 +127,26 @@ case " $* " in
     ;;
 esac
 
+# STUB_DOCKER_FAIL_BUILDS=N fails the first N `build` calls the way BuildKit
+# reports a failed RUN step, with an elapsed stamp that differs per call (P14).
+if [ -n "$STUB_DOCKER_FAIL_BUILDS" ]; then
+  case " $* " in
+    *" build "*)
+      c=$(cat "$DOCKER_LOG.buildcount" 2>/dev/null || echo 0)
+      c=$((c + 1))
+      echo "$c" > "$DOCKER_LOG.buildcount"
+      if [ "$c" -le "$STUB_DOCKER_FAIL_BUILDS" ]; then
+        run='/bin/sh -c apt-get install -y ghostscript=0.0-missing'
+        printf '#6 [2/2] RUN %s\n' "$run" >&2
+        printf '#6 %d.%03d E: Unable to correct problems, you have held broken packages.\n' "$c" "$c" >&2
+        printf '#6 ERROR: process "%s" did not complete successfully: exit code: 100\n' "$run" >&2
+        printf 'failed to solve: process "%s" did not complete successfully: exit code: 100\n' "$run" >&2
+        exit 1
+      fi
+      ;;
+  esac
+fi
+
 if [ -n "$STUB_DOCKER_FAIL_ON" ]; then
   case " $* " in
     *" $STUB_DOCKER_FAIL_ON "*) exit 1 ;;

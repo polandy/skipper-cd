@@ -162,6 +162,17 @@ func (s *skipper) setStackImage(stack, tag string) {
 	git(s.t, s.origin, "commit", "-am", "bump "+stack+" to "+tag)
 }
 
+// setStackBuild rewrites a stack to build its image from the given Dockerfile
+// and commits both to the origin, simulating a pushed change.
+func (s *skipper) setStackBuild(stack, dockerfile string) {
+	s.t.Helper()
+	compose := "services:\n  app:\n    build: .\n    image: " + stack + ":local\n"
+	writeFile(s.t, filepath.Join(s.origin, stack, "docker-compose.yml"), compose)
+	writeFile(s.t, filepath.Join(s.origin, stack, "Dockerfile"), dockerfile)
+	git(s.t, s.origin, "add", ".")
+	git(s.t, s.origin, "commit", "-m", "build "+stack+" from a Dockerfile")
+}
+
 // writeStubDocker writes the stub docker script into its own dir and returns
 // that dir (to be prepended to PATH).
 func (s *skipper) writeStubDocker() string {

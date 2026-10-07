@@ -21,7 +21,7 @@ the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
 > Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
-> pipeline harness and P1–P13 (§4.1) exist under `e2e/` behind the `e2e` build tag,
+> pipeline harness and P1–P14 (§4.1) exist under `e2e/` behind the `e2e` build tag,
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
@@ -274,6 +274,11 @@ UI suite reuses.
   no new `up -d` and `skipper_stack_held{stack}` = 1; `POST
   /api/stacks/<name>/retry` → `202`, the change deploys (`success`), the gauge
   is deleted, and a further retry answers `409`.
+- **P14 — A failed build names its cause** (ADR-0063, `STUB_DOCKER_FAIL_BUILDS=2`):
+  a pushed Dockerfile whose `RUN` step fails emits a `failed` event whose error
+  carries the apt error line and BuildKit's verdict, not only `exit status 1`;
+  a second attempt, whose stub output differs only in the elapsed stamp, emits
+  the identical text.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_PS_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's `compose ps` output to `unhealthy` POSTs a

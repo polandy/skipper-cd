@@ -204,6 +204,35 @@ func TestE2E_HeldChangeWaitsForRetry(t *testing.T) {
 	}
 }
 
+// TestE2E_FailedBuildNamesItsCause (P14): a failed build's event carries the
+// cause from BuildKit's stderr, not only the exit status (ADR-0063). The stub
+// fails the first two builds with an elapsed stamp that differs per call; both
+// failures must still read the same, or the history could not collapse them
+// (ADR-0056).
+func TestE2E_FailedBuildNamesItsCause(t *testing.T) {
+	s := startSkipperEnv(t, map[string]string{"STUB_DOCKER_FAIL_BUILDS": "2"}, "web")
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	s.setStackBuild("web", "FROM nginx:1.27\nRUN apt-get install -y ghostscript=0.0-missing\n")
+	for n := 1; n <= 2; n++ {
+		if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+			t.Fatalf("webhook %d status = %d, want 202", n, code)
+		}
+		es.waitEventCount("web", "failed", n)
+	}
+
+	const want = "docker compose build: exit status 1: " +
+		"E: Unable to correct problems, you have held broken packages. — " +
+		`process "/bin/sh -c apt-get install -y ghostscript=0.0-missing" did not complete successfully: exit code: 100`
+	for i, got := range es.errors("web", "failed") {
+		if got != want {
+			t.Errorf("failed event %d error =\n  %q\nwant\n  %q", i+1, got, want)
+		}
+	}
+}
+
 // TestE2E_DependencyOrdering (P12): with `app` depends_on `db`, a run that
 // changes both deploys db first, and when db's `up` fails, app is blocked — no
 // app `up`, a `blocked` event, and the pending queue lists app for retry

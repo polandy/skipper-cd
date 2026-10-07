@@ -81,7 +81,8 @@ func NewShellRunnerWithOutputEnv(timeout time.Duration, env []string) ShellRunne
 
 // Run executes name with args in dir, with env layered onto the process
 // environment, bounded by the runner's timeout. Child output is tee'd into the
-// runner's sink when it has one.
+// runner's sink when it has one. A failed command's error is an *ExitError
+// carrying the last lines it wrote to stderr.
 func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
 	ctx, cancel := r.commandContext(ctx)
 	defer cancel()
@@ -90,8 +91,10 @@ func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name str
 	cmd.WaitDelay = r.waitDelay
 	cmd.Dir = dir
 	cmd.Env = env
+	tail := newTailSink(stderrTailLines)
+	tw := &lineWriter{sink: tail, cmd: name, stream: "stderr"}
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = io.MultiWriter(os.Stderr, tw)
 	if r.sink != nil {
 		stack := stackFromContext(ctx)
 		ow := &lineWriter{sink: r.sink, cmd: name, stream: "stdout", stack: stack}
@@ -101,9 +104,14 @@ func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name str
 			_ = ew.Close()
 		}()
 		cmd.Stdout = io.MultiWriter(os.Stdout, ow)
-		cmd.Stderr = io.MultiWriter(os.Stderr, ew)
+		cmd.Stderr = io.MultiWriter(os.Stderr, ew, tw)
 	}
-	return cmd.Run()
+	err := cmd.Run()
+	if err == nil {
+		return nil
+	}
+	_ = tw.Close() // flushes an unterminated last line into tail; never fails
+	return &ExitError{Err: err, Tail: tail.snapshot()}
 }
 
 // Output executes a command in the runner's configured environment (the
