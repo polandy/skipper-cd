@@ -2,7 +2,9 @@ package command
 
 import (
 	"context"
+	"errors"
 	"os/exec"
+	"slices"
 	"testing"
 	"time"
 )
@@ -240,5 +242,60 @@ func TestShellRunner_RespectsCallerContext(t *testing.T) {
 
 	if err := NewShellRunner(time.Minute).Run(ctx, "", nil, "sleep", "5"); err == nil {
 		t.Fatal("expected error when caller context is cancelled")
+	}
+}
+
+// A failed command's error carries its last stderr lines, so a caller can name
+// the cause; the message stays the plain exit status and the *exec.ExitError
+// stays reachable.
+func TestShellRunner_RunErrorCarriesStderrTail(t *testing.T) {
+	requireCommands(t, "sh")
+
+	err := NewShellRunner(0).Run(context.Background(), "", nil, "sh", "-c", "echo noise; echo first >&2; printf 'last' >&2; exit 3")
+	if err == nil {
+		t.Fatal("expected an error from a failing command")
+	}
+	if got := StderrTail(err); !slices.Equal(got, []string{"first", "last"}) {
+		t.Errorf("StderrTail = %q, want the stderr lines only, the unterminated last one included", got)
+	}
+	if err.Error() != "exit status 3" {
+		t.Errorf("Error() = %q, want the unchanged exit status", err.Error())
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 3 {
+		t.Errorf("the *exec.ExitError must stay reachable, got %v", err)
+	}
+}
+
+// The tail is bounded: a chatty failing command keeps only its last lines.
+func TestShellRunner_RunErrorTailIsBounded(t *testing.T) {
+	requireCommands(t, "sh")
+
+	script := "i=0; while [ $i -lt 200 ]; do echo line$i >&2; i=$((i+1)); done; exit 1"
+	tail := StderrTail(NewShellRunnerWithSink(0, &recordingSink{}).Run(context.Background(), "", nil, "sh", "-c", script))
+	if len(tail) != stderrTailLines {
+		t.Fatalf("tail holds %d lines, want %d", len(tail), stderrTailLines)
+	}
+	if tail[0] != "line136" || tail[len(tail)-1] != "line199" {
+		t.Errorf("tail = %q … %q, want the newest lines line136 … line199", tail[0], tail[len(tail)-1])
+	}
+}
+
+// A successful command returns nil, not an empty ExitError.
+func TestShellRunner_RunSuccessReturnsNil(t *testing.T) {
+	requireCommands(t, "sh")
+
+	if err := NewShellRunner(0).Run(context.Background(), "", nil, "sh", "-c", "echo warn >&2"); err != nil {
+		t.Errorf("Run = %v, want nil", err)
+	}
+}
+
+// An error that did not come from Run carries no tail.
+func TestStderrTail_NilForOtherErrors(t *testing.T) {
+	if got := StderrTail(errors.New("boom")); got != nil {
+		t.Errorf("StderrTail = %q, want nil", got)
+	}
+	if got := StderrTail(nil); got != nil {
+		t.Errorf("StderrTail(nil) = %q, want nil", got)
 	}
 }

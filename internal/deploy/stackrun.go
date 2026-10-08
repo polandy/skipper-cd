@@ -341,5 +341,5 @@ func (d *Deployer) runDockerCompose(ctx context.Context, run stackRun, args ...s
 	runDir, composeArgs := run.composeInvocation()
 	composeArgs = append(composeArgs, args...)
 
-	return d.runner.Run(ctx, runDir, env, "docker", composeArgs...)
+	return withFailureCause(d.runner.Run(ctx, runDir, env, "docker", composeArgs...))
 }

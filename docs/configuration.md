@@ -470,6 +470,8 @@ skipper-cd can POST a message to one or more targets whenever a deploy reaches a
 
 Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back`, `rolled_back_unhealthy`, `heal_exhausted` (the transient `deploying`, `skipped` and `queued` are never sent, and neither is the routine `healed` or a `removed` stack — nothing broke, and nothing changed about what is running). Each target chooses which of the five it wants via `on:`; when omitted, all five are delivered.
 
+The message of a failed deploy names the cause, not only the exit status: when `build`, `pull`, `up` or a deploy hook fails, the error ends with the line the failing command printed to stderr that explains it — for a failed `RUN` step, the step's first error line plus BuildKit's verdict, e.g. `docker compose build: exit status 1: E: Unable to correct problems, you have held broken packages. — process "/bin/sh -c apt-get …" did not complete successfully: exit code: 100`. Colours, progress output and per-run timestamps are removed and the text is capped, so the same failure always reads the same. The same text appears in the Deploys view and the audit log.
+
 Delivery is **fire-and-forget**: sending runs in the background with its own 10-second per-request timeout, never blocking or delaying a deploy. A failed or slow target is logged and dropped — there is no retry queue, so a notification can be lost if the target is down. For guaranteed history, read the persisted events or scrape metrics instead.
 
 ```yaml

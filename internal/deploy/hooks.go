@@ -49,5 +49,5 @@ func (d *Deployer) runHook(ctx context.Context, dir string, env []string, timeou
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	return d.runner.Run(ctx, dir, env, "sh", "-c", cmd)
+	return withFailureCause(d.runner.Run(ctx, dir, env, "sh", "-c", cmd))
 }

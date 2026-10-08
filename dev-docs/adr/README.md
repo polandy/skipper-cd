@@ -67,3 +67,4 @@ One file per decision, numbered sequentially (see
 | [0060](0060-project-directory-checkout-is-fast-forwarded.md) | The `project_directory` checkout is fast-forwarded before the stack phase, so relative bind mounts serve current content; it refuses on a dirty or diverged tree rather than repairing it |
 | [0061](0061-per-stack-rollback-base.md) | Each stack rolls back to, and diffs against, the commit it last ran (`stack_commits`), so a retried broken change never restores the broken version itself |
 | [0062](0062-held-changes.md) | A change whose new version failed after it started is held until a new push or an operator retry, instead of failing again every reconcile tick; pre-start failures still retry |
+| [0063](0063-failure-event-names-the-cause.md) | A failed command's event names the cause condensed from its stderr tail, with per-run timestamps removed so repeats still collapse |

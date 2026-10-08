@@ -101,6 +101,20 @@ func (es *eventStream) count(stack, status string) int {
 	return n
 }
 
+// errors returns the error texts of every event for stack with status, in
+// arrival order.
+func (es *eventStream) errors(stack, status string) []string {
+	es.mu.Lock()
+	defer es.mu.Unlock()
+	var out []string
+	for _, e := range es.deploys {
+		if e.Stack == stack && e.Status == status {
+			out = append(out, e.Error)
+		}
+	}
+	return out
+}
+
 // waitEvent blocks until an event for stack with status arrives, failing the
 // test on timeout.
 func (es *eventStream) waitEvent(stack, status string) {
