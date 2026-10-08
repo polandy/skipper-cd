@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.27.0](https://github.com/polandy/skipper-cd/compare/v0.26.0...v0.27.0) (2026-10-08)
+
+
+### Features
+
+* **deploy:** back off, then hold, a change that fails before it starts ([#354](https://github.com/polandy/skipper-cd/issues/354)) ([d7766bd](https://github.com/polandy/skipper-cd/commit/d7766bdb0b51f09fb9d45c2886c9144a0308990f))
+* **deploy:** hold a change whose new version failed until a push or retry ([#350](https://github.com/polandy/skipper-cd/issues/350)) ([ae6a18f](https://github.com/polandy/skipper-cd/commit/ae6a18fc00c1c5e69c3e24205f6e8570579f79d7))
+* **deploy:** name the cause of a failed command in its event ([#353](https://github.com/polandy/skipper-cd/issues/353)) ([6fc79db](https://github.com/polandy/skipper-cd/commit/6fc79db6e26b921c9d185ca6d81d0b1ce42aa5c9))
+
+
+### Bug Fixes
+
+* **deploy:** roll each stack back to the commit it last ran ([#349](https://github.com/polandy/skipper-cd/issues/349)) ([31127c2](https://github.com/polandy/skipper-cd/commit/31127c25204f26c3ec90788b6bf9f4099b00d05e))
+* **selfheal:** report healed only once the stack is healthy again ([#352](https://github.com/polandy/skipper-cd/issues/352)) ([6238c64](https://github.com/polandy/skipper-cd/commit/6238c64e7288729e4bcf3979ea3796b34042490a))
+
 ## [0.26.0](https://github.com/polandy/skipper-cd/compare/v0.25.2...v0.26.0) (2026-09-06)
 
 
