@@ -216,12 +216,15 @@ func TestE2E_FailedBuildNamesItsCause(t *testing.T) {
 	es.awaitStreamReady("web")
 
 	s.setStackBuild("web", "FROM nginx:1.27\nRUN apt-get install -y ghostscript=0.0-missing\n")
-	for n := 1; n <= 2; n++ {
-		if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
-			t.Fatalf("webhook %d status = %d, want 202", n, code)
-		}
-		es.waitEventCount("web", "failed", n)
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
 	}
+	es.waitEventCount("web", "failed", 1)
+	// The failed change now backs off (ADR-0064); a retry attempts it again.
+	if code := s.postRetry("web"); code != http.StatusAccepted {
+		t.Fatalf("retry status = %d, want 202", code)
+	}
+	es.waitEventCount("web", "failed", 2)
 
 	const want = "docker compose build: exit status 1: " +
 		"E: Unable to correct problems, you have held broken packages. — " +
@@ -231,6 +234,66 @@ func TestE2E_FailedBuildNamesItsCause(t *testing.T) {
 			t.Errorf("failed event %d error =\n  %q\nwant\n  %q", i+1, got, want)
 		}
 	}
+}
+
+// TestE2E_FailedBuildBacksOffThenHolds (P15): a change that fails before it
+// starts is retried after a backoff, not on every run, and held after its
+// third failure (ADR-0064). The stub fails the first three builds. Each retry
+// stands in for the backoff running out, so nothing waits on the clock.
+func TestE2E_FailedBuildBacksOffThenHolds(t *testing.T) {
+	s := startSkipperEnv(t, map[string]string{"STUB_DOCKER_FAIL_BUILDS": "3"}, "web")
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	s.setStackBuild("web", "FROM nginx:1.27\nRUN apt-get install -y ghostscript=0.0-missing\n")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEventCount("web", "failed", 1)
+
+	// Same commit inside the backoff: reported held, not built again.
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("second webhook status = %d, want 202", code)
+	}
+	es.waitEventCount("web", "held", 1)
+	if got := s.dockerBuilds("web"); got != 1 {
+		t.Fatalf("a backing-off change must not build again; web builds = %d, want 1", got)
+	}
+	if _, raised := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`); raised {
+		t.Error("skipper_stack_held must not be raised during a backoff")
+	}
+
+	// The retry button attempts it now; the third failure holds it.
+	for attempt := 2; attempt <= 3; attempt++ {
+		if code := s.postRetry("web"); code != http.StatusAccepted {
+			t.Fatalf("retry %d status = %d, want 202", attempt, code)
+		}
+		es.waitEventCount("web", "failed", attempt)
+	}
+	s.waitFor("the change to be held", func() bool {
+		v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return ok && v == 1
+	})
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEventCount("web", "held", 2)
+	if got := s.dockerBuilds("web"); got != 3 {
+		t.Fatalf("a held change must not build again; web builds = %d, want 3", got)
+	}
+
+	// A push that fixes the Dockerfile releases the hold.
+	s.setStackBuild("web", "FROM nginx:1.27\n")
+	successes := es.count("web", "success")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEventCount("web", "success", successes+1)
+	s.waitFor("the hold to be released", func() bool {
+		_, held := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return !held
+	})
 }
 
 // TestE2E_DependencyOrdering (P12): with `app` depends_on `db`, a run that

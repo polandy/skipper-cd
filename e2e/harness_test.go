@@ -394,13 +394,24 @@ func (s *skipper) breakOrigin() {
 // dockerUps returns how many `compose … up` invocations the stub recorded for
 // the given stack (attributed by the invocation's working directory).
 func (s *skipper) dockerUps(stack string) int {
+	return s.dockerCalls(stack, "up")
+}
+
+// dockerBuilds counts the stub's recorded `build` invocations for a stack.
+func (s *skipper) dockerBuilds(stack string) int {
+	return s.dockerCalls(stack, "build")
+}
+
+// dockerCalls counts the stub's recorded invocations for a stack whose args
+// contain the given subcommand word.
+func (s *skipper) dockerCalls(stack, subcommand string) int {
 	n := 0
 	for _, line := range s.dockerLogLines() {
 		cwd, args, ok := strings.Cut(line, "\t")
 		if !ok {
 			continue
 		}
-		if filepath.Base(cwd) == stack && strings.Contains(" "+args+" ", " up ") {
+		if filepath.Base(cwd) == stack && strings.Contains(" "+args+" ", " "+subcommand+" ") {
 			n++
 		}
 	}

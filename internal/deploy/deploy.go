@@ -154,6 +154,10 @@ type Config struct {
 	// SyncRetryDelay is the base backoff between two git sync attempts
 	// (ADR-0058); 0 uses defaultSyncRetryDelay.
 	SyncRetryDelay time.Duration
+
+	// Now is the clock the backoff of a change that failed before it started
+	// is measured on (ADR-0064); nil uses time.Now.
+	Now func() time.Time
 }
 
 // Deployer orchestrates deployments for all configured stacks. Construct it
@@ -183,6 +187,7 @@ type Deployer struct {
 	rolloutTimeoutOverride time.Duration
 	rolloutDrainOverride   time.Duration
 	syncRetryDelay         time.Duration
+	now                    func() time.Time
 
 	// mu serializes deploy runs (Invariant 7); the fields below it are only
 	// touched while it is held.
@@ -224,7 +229,12 @@ func New(cfg Config) *Deployer {
 	if stateDir == "" {
 		stateDir = defaultStateDir
 	}
+	now := cfg.Now
+	if now == nil {
+		now = time.Now
+	}
 	d := &Deployer{
+		now:                    now,
 		runner:                 cfg.Runner,
 		outputter:              cfg.Outputter,
 		commitReader:           cfg.CommitReader,

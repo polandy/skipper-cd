@@ -772,6 +772,43 @@ test('heldChipHTML says how and at which commit the change failed, and escapes t
   assert.equal(r.heldChipHTML('web', undefined, true), '');
 });
 
+test('heldChipHTML reads backoff while a change that failed before it started retries on its own', () => {
+  const html = r.heldChipHTML(
+    'nextcloud',
+    {
+      since: '2026-10-07T02:06:16Z',
+      status: 'failed',
+      commit: 'abeb8e2b11',
+      attempts: 2,
+      retry_at: '2026-10-07T02:21:00Z',
+    },
+    true,
+  );
+  assert.match(html, /<\/svg>backoff<\/span>/);
+  assert.match(
+    html,
+    /title="The change at abeb8e2 failed before it started \(2 attempts so far\), /,
+  );
+  assert.ok(
+    html.includes('Next attempt ' + new Date('2026-10-07T02:21:00Z').toLocaleString() + ';'),
+    'the tooltip names when the next attempt is due',
+  );
+  assert.match(html, /Retry attempts it now\./);
+  assert.match(html, /data-testid="retry-btn"/);
+});
+
+test('heldChipHTML counts the attempts of a change held after failing before it started', () => {
+  const html = r.heldChipHTML(
+    'nextcloud',
+    { since: '2026-10-07T02:21:00Z', status: 'failed', commit: 'abeb8e2b11', attempts: 3 },
+    false,
+  );
+  assert.match(html, /<\/svg>held<\/span>/);
+  assert.match(html, /title="The change at abeb8e2 failed 3 times before it started, last /);
+  assert.match(html, /not retried until a new commit changes nextcloud\./);
+  assert.doesNotMatch(html, /retry-btn/);
+});
+
 test('rosterHealthPillHTML renders the pill only when the host reports a status', () => {
   assert.equal(r.rosterHealthPillHTML('web', undefined), '');
   assert.equal(r.rosterHealthPillHTML('web', {}), '');

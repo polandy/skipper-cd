@@ -21,7 +21,7 @@ the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
 > Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
-> pipeline harness and P1–P14 (§4.1) exist under `e2e/` behind the `e2e` build tag,
+> pipeline harness and P1–P15 (§4.1) exist under `e2e/` behind the `e2e` build tag,
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
@@ -277,8 +277,14 @@ UI suite reuses.
 - **P14 — A failed build names its cause** (ADR-0063, `STUB_DOCKER_FAIL_BUILDS=2`):
   a pushed Dockerfile whose `RUN` step fails emits a `failed` event whose error
   carries the apt error line and BuildKit's verdict, not only `exit status 1`;
-  a second attempt, whose stub output differs only in the elapsed stamp, emits
-  the identical text.
+  a second attempt (a retry, since the failure backs off — ADR-0064), whose stub
+  output differs only in the elapsed stamp, emits the identical text.
+- **P15 — A failure before start backs off, then holds** (ADR-0064,
+  `STUB_DOCKER_FAIL_BUILDS=3`): after the first failed build a webhook for the
+  same commit reports SSE `held` with no new `build` and no
+  `skipper_stack_held`; two retries are the second and third failures, after
+  which the gauge is `1` and a webhook again builds nothing; a push that fixes
+  the Dockerfile deploys (`success`) and the gauge is deleted.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_PS_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's `compose ps` output to `unhealthy` POSTs a
@@ -1896,6 +1902,22 @@ Behaviour-only (no snapshot).
   enabled again and reads `retry`, and the chip stays. The intent note
   `retry: requesting web` proves the click reached the handler.
 
+### 4.54 UI — Maske BA: a change that failed before it started backs off, then is held (ADR-0064)
+
+A change that fails before any container is touched (`pre_deploy`, `pull`,
+`build`) is retried after a growing wait and held after its third failure.
+The instance boots `web` with `STUB_DOCKER_FAIL_BUILDS: '3'`; the test pushes a
+Dockerfile, so the first three builds fail the way BuildKit reports a failed
+`RUN` step. Each retry click is one attempt, which keeps the test off the
+clock. Behaviour-only (no snapshot).
+
+- **UBA1 — The chip reads `backoff`, then `held`.** After the first failure the
+  Stacks row's `held-chip` reads `backoff`; its `title` says the change failed
+  before it started (`1 attempt so far`), when the next attempt is due, and that
+  retry attempts it now. A retry click is the second failure (`2 attempts so
+  far`, still `backoff`); a second click is the third, and the chip reads
+  `held` with a `title` counting the 3 failures and the usual release text.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -2129,6 +2151,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
 | project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |
 | Held change: the Stacks chip explains the hold, retry deploys it once more, a refused retry hands the button back | **UAZ1**, **UAZ2** |
+| A change that failed before it started: the Stacks chip reads `backoff` with its attempts and next try, and `held` after the third failure | **UBA1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |
