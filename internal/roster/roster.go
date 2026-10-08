@@ -78,17 +78,23 @@ type Entry struct {
 	// file that does not exist.
 	WatchedConfig bool `json:"watched_config,omitempty"`
 	// Held is set while the stack's pending change is held because its new
-	// version failed after it started (ADR-0062): it waits for a new commit or
-	// an operator retry. nil when nothing is held.
+	// version failed after it started (ADR-0062), or failed before it started
+	// and waits out a backoff or its attempts are used up (ADR-0064): it waits
+	// for a new commit, an operator retry, or the backoff. nil when nothing is
+	// held.
 	Held *Held `json:"held,omitempty"`
 }
 
 // Held describes a held change: when it failed, how (the failure's status),
-// and the newest commit it carried when known.
+// and the newest commit it carried when known. For a change that failed before
+// it started, Attempts counts its failures and a non-zero RetryAt is when it
+// is attempted again on its own (a backoff, ADR-0064).
 type Held struct {
-	Since  time.Time     `json:"since"`
-	Status events.Status `json:"status"`
-	Commit string        `json:"commit,omitempty"`
+	Since    time.Time     `json:"since"`
+	Status   events.Status `json:"status"`
+	Commit   string        `json:"commit,omitempty"`
+	Attempts int           `json:"attempts,omitempty"`
+	RetryAt  time.Time     `json:"retry_at,omitzero"`
 }
 
 // Hooks is the roster view of a stack's deploy hooks: just the command lines,

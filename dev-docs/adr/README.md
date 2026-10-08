@@ -68,3 +68,4 @@ One file per decision, numbered sequentially (see
 | [0061](0061-per-stack-rollback-base.md) | Each stack rolls back to, and diffs against, the commit it last ran (`stack_commits`), so a retried broken change never restores the broken version itself |
 | [0062](0062-held-changes.md) | A change whose new version failed after it started is held until a new push or an operator retry, instead of failing again every reconcile tick; pre-start failures still retry |
 | [0063](0063-failure-event-names-the-cause.md) | A failed command's event names the cause condensed from its stderr tail, with per-run timestamps removed so repeats still collapse |
+| [0064](0064-failures-before-start-back-off-then-hold.md) | A change that failed before any container was touched is retried after 5, then 10 minutes and held after its third failure, using ADR-0062's hold record instead of retrying every tick |

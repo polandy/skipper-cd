@@ -4,7 +4,8 @@ Date: 2026-09-29
 
 ## Status
 
-Accepted
+Accepted. Amended by [ADR-0064](0064-failures-before-start-back-off-then-hold.md):
+a failure before start is no longer retried every tick.
 
 ## Context
 

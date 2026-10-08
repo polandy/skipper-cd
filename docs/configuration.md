@@ -347,9 +347,14 @@ A hold is released by:
 - **A retry** — the **retry** button next to the stack's `held` chip in the Stacks view, or `POST /api/stacks/<name>/retry`. That deploys the held change once more; if it fails again, it is held again. Use it when the cause was outside the change, for example a database that was down.
 - A revert that restores the stack's last deployed inputs, and removing the stack.
 
-A failure **before** any container was touched — a `pre_deploy` hook, `pull`, `build` — is not held: it is usually transient (a registry hiccup), so the next tick retries it.
+A failure **before** any container was touched — a `pre_deploy` hook, `pull`, `build` — may be transient (a registry hiccup), so it is retried, but not on every tick:
 
-While a stack is held, its changed [dependents](#deploy-ordering) stay `blocked`. Holds are kept in `state.yaml` (`held`), so they survive a restart, and the `skipper_stack_held` gauge carries the standing condition for alerting. The run summary counts held stacks; the Deploys view shows no row per tick, since the failure row already says what happened.
+- After the first failure the change waits 5 minutes, after the second 10 minutes. Other stacks deploy as usual meanwhile.
+- The third consecutive failure of the same inputs holds the change like any other hold. A deterministic failure — a broken `RUN` step, an apt pin the mirror no longer ships — therefore costs three attempts, not one per tick.
+- While it waits, the Stacks view's chip reads `backoff` and says when the next attempt is due; its **retry** button attempts the change at once. A new push, a revert or removing the stack ends the wait like it releases a hold, and a successful attempt clears it.
+- Each attempt is reported like any failed deploy. A deploy interrupted by skipper shutting down is not counted.
+
+While a stack is held or waiting, its changed [dependents](#deploy-ordering) stay `blocked`. Holds and waits are kept in `state.yaml` (`held`), so they survive a restart, and the `skipper_stack_held` gauge carries the standing condition for alerting — only for a hold, since a wait ends on its own. The run summary counts held stacks; the Deploys view shows no row per tick, since the failure row already says what happened.
 
 ## Deploy hooks
 

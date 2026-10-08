@@ -405,7 +405,7 @@ func (p autosyncPublisher) publishStacks() {
 func rosterHeld(held map[string]deploy.HeldStack) map[string]roster.Held {
 	out := make(map[string]roster.Held, len(held))
 	for stack, h := range held {
-		out[stack] = roster.Held{Since: h.Since, Status: h.Status, Commit: h.Commit}
+		out[stack] = roster.Held{Since: h.Since, Status: h.Status, Commit: h.Commit, Attempts: h.Attempts, RetryAt: h.RetryAt}
 	}
 	return out
 }

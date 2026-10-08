@@ -760,24 +760,48 @@ function rosterStatusHTML(entry, deploying, canRetry) {
 
 // heldChipHTML marks a stack whose change is held (ADR-0062): its new version
 // failed after it started, so skipper waits for a new commit instead of
-// re-failing it every reconcile tick. The tooltip says when and how it failed.
-// canRetry adds the button that deploys it once more; a peer's roster is
-// read-only, so its rows never get one. Empty when nothing is held.
+// re-failing it every reconcile tick. A change that failed before it started
+// and is still retried on its own carries retry_at and reads "backoff"
+// (ADR-0064). The tooltip says when and how it failed, and for a backoff when
+// the next attempt is due. canRetry adds the button that attempts it once
+// more; a peer's roster is read-only, so its rows never get one. Empty when
+// nothing is held.
 function heldChipHTML(stack, held, canRetry) {
   if (!held) return '';
+  const backoff = !!held.retry_at;
   const when = held.since ? ' ' + formatTime(held.since) + ' (' + fullTime(held.since) + ')' : '';
   const commit = held.commit ? ' at ' + held.commit.slice(0, 7) : '';
-  const title =
-    'The change' +
-    commit +
-    ' ' +
-    outcomeLabel(held.status) +
-    when +
-    '. It is not retried until a new commit changes ' +
-    stack +
-    '.' +
-    (canRetry ? ' Retry deploys it once more.' : '');
-  let html = `<span class="held-chip" data-testid="held-chip" title="${escapeAttr(title)}">${statusIcon('held')}held</span>`;
+  let title;
+  if (backoff) {
+    const tries = held.attempts === 1 ? '1 attempt' : held.attempts + ' attempts';
+    title =
+      'The change' +
+      commit +
+      ' failed before it started (' +
+      tries +
+      ' so far),' +
+      when +
+      '. Next attempt ' +
+      fullTime(held.retry_at) +
+      '; if it keeps failing, it is held.' +
+      (canRetry ? ' Retry attempts it now.' : '');
+  } else {
+    const how = held.attempts
+      ? 'failed ' + held.attempts + ' times before it started, last'
+      : outcomeLabel(held.status);
+    title =
+      'The change' +
+      commit +
+      ' ' +
+      how +
+      when +
+      '. It is not retried until a new commit changes ' +
+      stack +
+      '.' +
+      (canRetry ? ' Retry deploys it once more.' : '');
+  }
+  const label = backoff ? 'backoff' : 'held';
+  let html = `<span class="held-chip" data-testid="held-chip" title="${escapeAttr(title)}">${statusIcon('held')}${label}</span>`;
   if (canRetry) {
     html += `<button type="button" class="retry-btn" data-testid="retry-btn" data-retry-stack="${escapeAttr(stack)}" aria-label="${escapeAttr('Retry the held change of ' + stack)}">retry</button>`;
   }

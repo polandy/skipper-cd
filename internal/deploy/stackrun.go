@@ -122,15 +122,15 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.clearQueued(stack.Name)
 
 	fingerprint := prep.currentHashes.fingerprint()
-	if d.isHeld(stack.Name, fingerprint, state) {
+	if d.isHeld(stack.Name, fingerprint, state, d.now()) {
 		// Live-only, like skipped: the failure that caused the hold is already
 		// in the history, and this recurs every reconcile tick.
-		slog.Debug("deploy held: this change failed after it started, waiting for a new commit or a retry", "stack", stack.Name)
+		logHeld(stack.Name, state)
 		d.emit(events.StatusHeld, stack.Name, 0, "", changeSet{files: changed})
 		return ErrHeld
 	}
 
-	deployStart := time.Now()
+	deployStart := d.now()
 	d.emit(events.StatusDeploying, stack.Name, 0, "", changeSet{files: changed})
 	// This stack is now the active deploy: surface the ones still to come.
 	d.publishUpcomingAfter(stack.Name)
@@ -158,11 +158,18 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	// the matching terminal event with the change context gathered above. The
 	// success path emits StatusSuccess and returns nil, so this never double-fires.
 	defer func() {
-		if err != nil {
-			d.emitDeployFailure(stack.Name, time.Since(deployStart), err, cs)
-			if errors.Is(err, ErrNewVersionFailed) {
-				state.hold(stack.Name, heldChange{Fingerprint: fingerprint, Since: time.Now(), Status: failureStatus(err), Commit: newestCommit(cs)})
-			}
+		if err == nil {
+			return
+		}
+		d.emitDeployFailure(stack.Name, time.Since(deployStart), err, cs)
+		switch {
+		case errors.Is(err, ErrNewVersionFailed):
+			state.hold(stack.Name, heldChange{Fingerprint: fingerprint, Since: d.now(), Status: failureStatus(err), Commit: newestCommit(cs)})
+		case ctx.Err() != nil:
+			// Cut short by shutdown: says nothing about the change.
+		default:
+			h := state.recordPreStartFailure(stack.Name, fingerprint, deployStart, d.now(), newestCommit(cs))
+			logPreStartFailure(stack.Name, h)
 		}
 	}()
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
@@ -279,6 +286,7 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 func (d *Deployer) recordStackSuccess(prep stackPrep, state *persistedState, deployStart time.Time, cs changeSet, running serviceImageByName) {
 	name := prep.run.stack.Name
 	state.recordStack(name, prep.currentHashes)
+	state.release(name) // a retried or backed-off change that now deployed
 	if prep.currentImages != nil {
 		state.recordImages(name, prep.currentImages)
 	}
