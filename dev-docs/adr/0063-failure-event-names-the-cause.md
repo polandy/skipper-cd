@@ -64,6 +64,12 @@ docker compose build: exit status 1: E: Unable to correct problems, you have hel
   than failing.
 - Only stderr is kept. A hook that reports its failure on stdout gets the exit
   status alone, as before.
+- The cause line is a command's own output, and it now travels further than
+  the journal and the log view, which already showed it: into the persisted
+  history and to notification targets. A command that prints a secret in its
+  error line would expose it there; the line is capped and only an
+  error-looking line or the last line is taken, which narrows but does not
+  remove that.
 - Error texts get longer. An alert or a log query that matched the exact old
   text (`…: exit status 1`) needs a prefix match.
 
