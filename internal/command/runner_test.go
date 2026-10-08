@@ -289,3 +289,13 @@ func TestShellRunner_RunSuccessReturnsNil(t *testing.T) {
 		t.Errorf("Run = %v, want nil", err)
 	}
 }
+
+// An error that did not come from Run carries no tail.
+func TestStderrTail_NilForOtherErrors(t *testing.T) {
+	if got := StderrTail(errors.New("boom")); got != nil {
+		t.Errorf("StderrTail = %q, want nil", got)
+	}
+	if got := StderrTail(nil); got != nil {
+		t.Errorf("StderrTail(nil) = %q, want nil", got)
+	}
+}
