@@ -27,20 +27,21 @@ import (
 // removes one stack and changes another reads in that order.
 func (d *Deployer) announceRemovedStacks(ctx context.Context, cfg *config.Config, state *persistedState) {
 	known := d.knownStackNames(cfg)
-	if len(known) == 0 {
-		// Every stack gone at once is a broken clone far more often than an
-		// operator deleting their whole fleet — and announcing it would drop the
-		// hashes of stacks that are about to come back and redeploy them all.
-		if len(state.Stacks) > 0 {
-			slog.Warn("no stacks discovered: not reporting the recorded stacks as removed", "recorded", len(state.Stacks))
+	tracked := d.trackedStackNames(state)
+	if cfg.StackDiscovery && len(known) == 0 {
+		// Every discovered stack gone at once is a broken clone far more often
+		// than an operator deleting their whole fleet — and announcing it would
+		// drop the hashes of stacks that are about to come back and redeploy
+		// them all. An empty host config list is the operator's call, not a
+		// clone's (ADR-0036 amendment 2026-10-20).
+		if len(tracked) > 0 {
+			slog.Warn("no stacks discovered: not reporting the recorded stacks as removed", "recorded", len(tracked))
 		}
 		return
 	}
 
-	for _, name := range d.trackedStackNames(state) {
-		// A pseudo-stack key names a run phase, is never discovered, and must
-		// never read as removed.
-		if known[name] || config.IsReservedStackName(name) {
+	for _, name := range tracked {
+		if known[name] {
 			continue
 		}
 		files := d.vanishedRepoFiles(d.trackedInputs(state, name), cfg.StacksBaseDir)
@@ -85,10 +86,15 @@ func (d *Deployer) knownStackNames(cfg *config.Config) map[string]bool {
 // alphabetically so a run that removes several announces them in a stable
 // order: the ones recorded in state, plus the ones pending behind paused
 // autosync — a change that was deferred and then removed was never recorded,
-// yet its pending entry would outlive the stack forever.
+// yet its pending entry would outlive the stack forever. Pseudo-stack keys
+// (_nixos, _config) are left out: they name a run phase, are never in the set,
+// and must never read as removed.
 func (d *Deployer) trackedStackNames(state *persistedState) []string {
 	tracked := make(map[string]bool, len(state.Stacks))
 	for name := range state.Stacks {
+		if config.IsReservedStackName(name) {
+			continue
+		}
 		tracked[name] = true
 	}
 	if d.queue != nil {

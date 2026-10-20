@@ -280,6 +280,140 @@ func TestDeployAllStacks_ReservedStateKeysNeverReadAsRemoved(t *testing.T) {
 	}
 }
 
+// recordReservedKeys adds the _nixos and _config pseudo-stacks to the state in
+// stateDir, the way a host that rebuilds NixOS or hit a config error has them.
+func recordReservedKeys(t *testing.T, stateDir string) {
+	t.Helper()
+	state, err := loadPersistedDeployState(stateDir)
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	state.recordStack(config.ReservedStackName, stackFileHashes{"/etc/nixos/configuration.nix": "abc"})
+	state.recordStack(config.ReservedConfigStackName, stackFileHashes{"/repo/stacks/skipper.yaml": "def"})
+	if err := saveDeployState(stateDir, state); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+}
+
+const (
+	// emptySetWarning is the guard's log line; runStartedLog is logged right
+	// after the removal check, the positive signal that a run got past it.
+	emptySetWarning = "not reporting the recorded stacks as removed"
+	runStartedLog   = "starting deploy run"
+)
+
+func TestDeployAllStacks_OnlyReservedKeysRecordedEmitsNoEmptySetWarning(t *testing.T) {
+	// A host that only rebuilds NixOS records nothing but _nixos: an empty
+	// stack set there has nothing that could be reported removed, so the
+	// guard has nothing to warn about — in either mode.
+	for _, discovery := range []bool{true, false} {
+		t.Run(map[bool]string{true: "discovery", false: "list"}[discovery], func(t *testing.T) {
+			repoDir, cfg := discoveryRepo(t, nil, nil)
+			cfg.StackDiscovery = discovery
+			// An empty but readable stacks dir: a failed read never reaches the check.
+			if err := os.MkdirAll(cfg.StacksBaseDir, 0o755); err != nil {
+				t.Fatalf("mkdir %s: %v", cfg.StacksBaseDir, err)
+			}
+			stateDir := t.TempDir()
+			recordReservedKeys(t, stateDir)
+
+			var recorded []events.DeployEvent
+			logged := captureLogAt(t, slog.LevelDebug, func(t *testing.T) {
+				d := New(Config{Runner: &recordingRunner{}, RepoDir: repoDir, StateDir: stateDir,
+					EventSink: func(e events.DeployEvent) { recorded = append(recorded, e) }})
+				d.DeployAllStacks(context.Background(), cfg)
+			})
+
+			if !strings.Contains(logged, runStartedLog) {
+				t.Fatalf("setup: the run must reach the stack phase, log:\n%s", logged)
+			}
+			if strings.Contains(logged, emptySetWarning) {
+				t.Errorf("only reserved keys are recorded, so nothing may be warned about, log:\n%s", logged)
+			}
+			if got := eventsWithStatus(recorded, events.StatusRemoved); len(got) != 0 {
+				t.Errorf("reserved state keys must never read as removed, got %v", got)
+			}
+			state, err := loadPersistedDeployState(stateDir)
+			if err != nil {
+				t.Fatalf("load state: %v", err)
+			}
+			if _, ok := state.Stacks[config.ReservedStackName]; !ok {
+				t.Error("the _nixos entry must survive the run")
+			}
+		})
+	}
+}
+
+func TestDeployAllStacks_EmptyDiscoveredSetWarningCountsOnlyRealStacks(t *testing.T) {
+	// The broken-clone guard still holds back real recorded stacks, and its
+	// count names only those — not the pseudo-stack keys beside them.
+	logged := captureLogAt(t, slog.LevelWarn, func(t *testing.T) {
+		repoDir, cfg := discoveryRepo(t, []string{"alpha", "beta"}, nil)
+		stateDir := t.TempDir()
+		first := New(Config{Runner: &recordingRunner{}, RepoDir: repoDir, StateDir: stateDir})
+		first.DeployAllStacks(context.Background(), cfg)
+		recordReservedKeys(t, stateDir)
+		removeStackDir(t, cfg, "alpha")
+		removeStackDir(t, cfg, "beta")
+
+		var recorded []events.DeployEvent
+		second := New(Config{Runner: &recordingRunner{}, RepoDir: repoDir, StateDir: stateDir,
+			EventSink: func(e events.DeployEvent) { recorded = append(recorded, e) }})
+		second.DeployAllStacks(context.Background(), cfg)
+
+		if got := eventsWithStatus(recorded, events.StatusRemoved); len(got) != 0 {
+			t.Errorf("an empty discovered set must announce no removals, got %v", got)
+		}
+		state, err := loadPersistedDeployState(stateDir)
+		if err != nil {
+			t.Fatalf("load state: %v", err)
+		}
+		if _, ok := state.Stacks["alpha"]; !ok {
+			t.Error("hashes must survive a run that discovered nothing")
+		}
+	})
+	if !strings.Contains(logged, emptySetWarning) || !strings.Contains(logged, "recorded=2") {
+		t.Errorf("the guard must warn with the two real stacks counted, got %q", logged)
+	}
+}
+
+func TestDeployAllStacks_EmptyHostConfigListRemovesRecordedStacks(t *testing.T) {
+	// Without discovery the set is the operator's own stacks: list, which a
+	// broken clone cannot empty — an empty list is a decision, so the stacks it
+	// no longer names are removed like any single dropped entry.
+	repoDir, cfg := discoveryRepo(t, []string{"alpha", "beta"}, nil)
+	stateDir := t.TempDir()
+	full := &config.Config{
+		StacksBaseDir: cfg.StacksBaseDir,
+		Stacks:        []config.Stack{{Name: "alpha"}, {Name: "beta"}},
+	}
+	first := New(Config{Runner: &recordingRunner{}, RepoDir: repoDir, StateDir: stateDir})
+	first.DeployAllStacks(context.Background(), full)
+	recordReservedKeys(t, stateDir)
+
+	empty := &config.Config{StacksBaseDir: cfg.StacksBaseDir}
+	var recorded []events.DeployEvent
+	logged := captureLogAt(t, slog.LevelWarn, func(t *testing.T) {
+		second := New(Config{Runner: &recordingRunner{}, RepoDir: repoDir, StateDir: stateDir,
+			EventSink: func(e events.DeployEvent) { recorded = append(recorded, e) }})
+		second.DeployAllStacks(context.Background(), empty)
+	})
+
+	if got := eventsWithStatus(recorded, events.StatusRemoved); len(got) != 2 || got[0] != "alpha" || got[1] != "beta" {
+		t.Errorf("removed events = %v, want [alpha beta]", got)
+	}
+	if strings.Contains(logged, emptySetWarning) {
+		t.Errorf("an empty host config list is not a broken clone, got %q", logged)
+	}
+	state, err := loadPersistedDeployState(stateDir)
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if _, ok := state.Stacks[config.ReservedStackName]; !ok {
+		t.Error("the _nixos entry must survive the removals")
+	}
+}
+
 func TestDeployAllStacks_RemovedStackLeavesNothingPending(t *testing.T) {
 	// A stack removed while its change waits behind paused autosync must drop
 	// out of the pending registry too: nothing will ever deploy it, and a stuck
