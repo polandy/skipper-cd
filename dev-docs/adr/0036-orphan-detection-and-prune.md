@@ -157,3 +157,21 @@ projects with, so the history row and the orphan read as one fact — and the
 Orphans section now opens itself when a formerly-managed project it has not
 shown before appears, so the containers left behind are not hidden behind a
 collapsed header.
+
+## Amendment (2026-10-20): the empty-set guard is a discovery-mode guard
+
+The 2026-08-15 guard ("an empty stack set announces nothing") reasoned about a
+*discovered* set: only a broken or empty clone empties it unattended. With
+`stack_discovery: false` the set is the host config's `stacks:` list, which no
+clone state can touch — an empty list is written by the operator (or rendered
+from their NixOS options), the same gesture as dropping one entry, which
+already reads as removed. So the guard now applies to discovery mode only; in
+list mode every recorded stack an empty list no longer names is announced
+`removed` and forgotten like any other removal. The alternative — keeping the
+guard in list mode and only rewording its warning — was rejected: it would
+leave stacks the operator deliberately dropped warned about on every run,
+forever, with no gesture that ends it short of editing `state.yaml` by hand.
+
+The guard also counts only what it holds back: the pseudo-stack keys (`_nixos`,
+`_config`) are never in any set and never removable, so they no longer make a
+NixOS-only host warn about an empty set on every run.
