@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/polandy/skipper-cd/compare/v0.27.0...v0.28.0) (2026-10-25)
+
+
+### Features
+
+* **nixos:** make the Docker dependency optional ([#358](https://github.com/polandy/skipper-cd/issues/358)) ([e7b327a](https://github.com/polandy/skipper-cd/commit/e7b327adf6c7434a8ec33e7364f566f907545aea))
+
 ## [0.27.0](https://github.com/polandy/skipper-cd/compare/v0.26.0...v0.27.0) (2026-10-20)
 
 
