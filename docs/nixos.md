@@ -68,7 +68,7 @@ nixosConfigurations.myhost = lib.nixosSystem {
 }
 ```
 
-The module creates the state directory at `/var/lib/skipper`, adds `git`, `docker`, and `docker-compose` to the service `PATH`, and runs skipper-cd as a hardened systemd service under the `root` user (Docker socket access via `SupplementaryGroups = [ "docker" ]`).
+The module creates the state directory at `/var/lib/skipper`, adds `git`, `docker`, and `docker-compose` to the service `PATH`, and runs skipper-cd as a hardened systemd service under the `root` user (Docker socket access via `SupplementaryGroups = [ "docker" ]`). The Docker parts are dropped with `docker.enable = false`.
 
 ### Service Options
 
@@ -78,10 +78,26 @@ The module creates the state directory at `/var/lib/skipper`, adds `git`, `docke
 | `package` | package | — | The skipper-cd derivation to use. |
 | `configFile` | path | — | Absolute path to `skipper.yml`. |
 | `stateDir` | string | `/var/lib/skipper` | Directory for deploy state and the repository clone. |
+| `docker.enable` | bool | `true` | Whether the host runs Docker Compose stacks. Set `false` on a host that only uses skipper-cd for `nixos_rebuild`: the service then neither requires `docker.service` nor joins the `docker` group, and the Docker CLI is left off its `PATH`. See [Host Without Docker](#host-without-docker). |
 | `nixosRebuild` | bool | `false` | Set when `nixos_rebuild` is configured in `skipper.yml`. Relaxes the systemd sandboxing so `nixos-rebuild` can run. |
 | `stopTimeout` | string | `15min` | systemd `TimeoutStopSec`. On shutdown skipper-cd waits for an in-flight deploy to finish; keep this longer than a typical deploy run or systemd will kill the service mid-deploy. |
 | `autoRecover` | bool | `true` | Install a timer that restarts the service whenever it is in a `failed` state, self-healing a self-update whose stop was force-killed. An intentional `systemctl stop` (unit goes `inactive`, not `failed`) is left alone. |
 | `recoverInterval` | string | `2min` | How often the `autoRecover` timer checks for a failed service. Ignored when `autoRecover` is `false`. |
+
+### Host Without Docker
+
+A host that has no Docker Compose stacks and only rebuilds itself through `nixos_rebuild` sets:
+
+```nix
+services.skipper-cd = {
+  enable       = true;
+  nixosRebuild = true;
+  docker.enable = false;
+  # package, configFile …
+};
+```
+
+With the default `docker.enable = true`, such a host never starts the service: the unit requires `docker.service`, which does not exist, and systemd skips the start without a journal entry. The `skipper.yml` of such a host lists no stacks and sets `stack_discovery: false`. With the web UI open, the orphan and app-link detection still try `docker` and log a warning per poll; nothing else calls it.
 
 ### Recommended Pattern: Self-Registering Stacks
 

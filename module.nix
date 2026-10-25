@@ -3,6 +3,7 @@
 let
   cfg = config.services.skipper-cd;
   systemctl = "${config.systemd.package}/bin/systemctl";
+  dockerUnits = lib.optionals cfg.docker.enable [ "docker.service" ];
 
   # Restart the service only when it has entered a *failed* state — e.g. after a
   # self-update whose stop was force-killed at TimeoutStopSec (see ADR-0014,
@@ -36,6 +37,17 @@ in
       type = lib.types.str;
       default = "/var/lib/skipper";
       description = "Directory for storing deploy state.";
+    };
+
+    docker.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Whether this host runs Docker Compose stacks. Set to false on a host
+        that only uses skipper-cd for nixos_rebuild: the service then neither
+        requires docker.service nor joins the docker group, which does not
+        exist without Docker and would fail the unit (status=216/GROUP).
+      '';
     };
 
     nixosRebuild = lib.mkOption {
@@ -84,11 +96,12 @@ in
       wantedBy = [ "multi-user.target" ];
       # After= alone does not pull network-online.target into the boot
       # transaction; Wants= is required for the ordering to take effect.
-      after = [ "docker.service" "network-online.target" ];
+      after = dockerUnits ++ [ "network-online.target" ];
       wants = [ "network-online.target" ];
-      requires = [ "docker.service" ];
+      requires = dockerUnits;
 
-      path = [ pkgs.git pkgs.docker pkgs.docker-compose pkgs.docker-buildx ]
+      path = [ pkgs.git ]
+        ++ lib.optionals cfg.docker.enable [ pkgs.docker pkgs.docker-compose pkgs.docker-buildx ]
         ++ lib.optionals cfg.nixosRebuild [
           pkgs.nixos-rebuild
           pkgs.nix
@@ -110,7 +123,7 @@ in
         Environment = "HOME=${cfg.stateDir}";
 
         # Allow Docker socket access
-        SupplementaryGroups = [ "docker" ];
+        SupplementaryGroups = lib.optionals cfg.docker.enable [ "docker" ];
 
         # Hardening
         NoNewPrivileges = !cfg.nixosRebuild;

@@ -178,6 +178,15 @@ jobs:
         with:
           version: v2.12
 
+  # Builds the flake checks — currently the eval-only module.nix check
+  # (nix/module-check.nix). The Go jobs above never evaluate the NixOS module.
+  nix-flake-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - run: nix flake check -L
+
   # Reports known vulnerabilities in dependencies, filtered to those actually
   # reachable from called code — low-noise, meaningful for a tool that runs
   # deployments.
