@@ -37,6 +37,14 @@
 
       nixosModules.default = import ./module.nix;
 
+      checks = forAllSystems (system: {
+        module = import ./nix/module-check.nix {
+          inherit nixpkgs system;
+          module = self.nixosModules.default;
+          package = self.packages.${system}.default;
+        };
+      });
+
       # Dev shell carrying the full CI toolchain so the whole pipeline
       # (.github/workflows/ci.yml + docs.yml) can be run locally — handy on
       # NixOS where the tools aren't otherwise on PATH. Versions are checked
