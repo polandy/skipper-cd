@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.29.0](https://github.com/polandy/skipper-cd/compare/v0.28.0...v0.29.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **nixos:** hosts with nixos_rebuild evaluate their system derivation once per new commit (about 10 s on x86, 24 s and 0.8 GB on a Raspberry Pi 4 class host) and rebuild once after the upgrade. Set
+
+### Features
+
+* **nixos:** rebuild only when the host's system derivation changed ([#360](https://github.com/polandy/skipper-cd/issues/360)) ([80dbb4f](https://github.com/polandy/skipper-cd/commit/80dbb4fdaacadca9aecb3fcfecf680446f18cbda))
+
 ## [0.28.0](https://github.com/polandy/skipper-cd/compare/v0.27.0...v0.28.0) (2026-10-25)
 
 
