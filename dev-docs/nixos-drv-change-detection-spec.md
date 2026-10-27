@@ -121,8 +121,8 @@ evaluation.
 ## Metrics
 
 - `skipper_nixos_evaluation_seconds` (gauge): duration of the last
-  successful evaluation. Answers the open ARM question below from data
-  instead of a one-off measurement.
+  successful evaluation, so a slow host shows up in the metrics rather than
+  only in a one-off measurement.
 
 No new counter: evaluation failures count in the existing
 `skipper_deploy_errors_total{stack="_nixos"}`.
@@ -163,7 +163,9 @@ Evaluation only, nothing is built.
 ## Docs
 
 - `docs/nixos.md`: `change_detection` row in the `nixos_rebuild` table, a
-  short paragraph on what `derivation` compares, the evaluation cost, and the
+  short paragraph on what `derivation` compares, the evaluation cost
+  (measured: ~10 s on x86; 24 s and 0.8 GB peak memory on a Raspberry Pi 4
+  class host), and the
   caveat that revision values other than `configurationRevision` make every
   commit a change.
 - `docs/configuration.md`: the `nixos_rebuild` example gains the field.
@@ -175,10 +177,6 @@ Evaluation only, nothing is built.
 
 ## Open questions
 
-- Evaluation time and memory on a small ARM host (Raspberry Pi class). If an
-  evaluation there needs more memory than the host can spare, `derivation`
-  mode is not usable on it and the docs say so. Measure before the
-  implementation PR is merged.
 - Whether the success event should carry a short note when the changed-file
   list is empty. Success events show no message in the UI today, so this
   would be a UI change; left out until it proves confusing.

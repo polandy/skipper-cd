@@ -39,7 +39,11 @@ commits, each host's derivation evaluated per commit):
 | Rebuilds that changed nothing | 17 | 0 |
 | Missed system changes | 2 (sops secret files only) | 0 |
 
-One evaluation took about 10 s on the x86 host and built nothing.
+One evaluation built nothing and took about 10 s on the x86 host and 24 s
+with 0.8 GB peak memory on a Raspberry Pi 4 class host (4 cores, 8 GB),
+run as root without the evaluation cache. Both hosts produced the identical
+derivation path for the ARM system, so the result does not depend on where
+it is evaluated.
 
 ## Decision
 
@@ -105,8 +109,9 @@ where `<ref>#<name>` is the configured `flake`.
 
 - A host rebuilds when its own system changes, including changes that come
   only from secret files or embedded non-nix files.
-- Each new commit costs one evaluation per host. About 10 s on the reference
-  x86 host. Time and memory on a small ARM host are not measured yet.
+- Each new commit costs one evaluation per host: about 10 s on x86, 24 s and
+  0.8 GB on a Raspberry Pi 4 class host. A host with less than about 1 GB of
+  free memory is not a good fit for this mode.
 - Only `system.configurationRevision` is neutralized. A configuration that
   puts the revision somewhere else (`self.rev`, `self.lastModified`, the
   flake source copied into the store) changes on every commit. The mode then
