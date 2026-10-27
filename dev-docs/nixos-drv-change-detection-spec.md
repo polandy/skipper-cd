@@ -18,24 +18,25 @@ changing how the rebuild itself runs (ADR-0014), any UI change.
 ```yaml
 nixos_rebuild:
   flake: ".#myhost"
-  change_detection: derivation   # files (default) | derivation
+  change_detection: files   # derivation (default) | files
 ```
 
+- `derivation` (default): rebuild when the derivation of `myhost`'s system
+  changed. `system.configurationRevision` is ignored for the comparison.
 - `files`: rebuild when any `*.nix` file or `flake.lock` in the repository
-  changed. Today's behavior, the default.
-- `derivation`: rebuild when the derivation of `myhost`'s system changed.
-  `system.configurationRevision` is ignored for the comparison.
+  changed. The previous behavior.
 
 ## Configuration
 
 - `NixOSRebuild` gains `ChangeDetection string` (`yaml:"change_detection"`).
-  The two values are named constants; empty means `files`.
+  The two values are named constants; empty means `derivation`.
 - Validation in `Load`:
   - An unknown value is rejected with an error naming the allowed values.
-  - In `derivation` mode the `flake` must name an attribute (`<ref>#<name>`,
-    both parts non-empty). `nixos-rebuild` falls back to the hostname when the
-    attribute is missing; the evaluation does not guess, so a missing
-    attribute is a load error.
+  - In `derivation` mode the `flake` must have a non-empty reference. It is
+    split at its last `#`, as `nixos-rebuild` does; without a configuration
+    name (`.` or `.#`) the evaluation uses the host name
+    (`/proc/sys/kernel/hostname`, `os.Hostname`), the same fallback
+    `nixos-rebuild` applies, so both name the same configuration.
 
 ## Evaluation
 
@@ -157,10 +158,14 @@ present, `systemd-run` is absent) plus the emitted `skipped` event.
 - `TestNixOSPhase_Derivation_KeepsDrvAndMarkerOnShutdown` (ADR-0005, ADR-0025)
 - `TestNixOSPhase_Derivation_MissingDrvKeyRebuilds` — state written in
   `files` mode.
-- `TestNixOSPhase_Files_NeverEvaluates` — default mode: no eval call.
+- `TestNixOSPhase_DefaultEvaluates` — an unset `change_detection` evaluates.
+- `TestNixOSPhase_Files_NeverEvaluates` — `files` mode: no eval call.
 - `TestDiffHashes_IgnoresReservedDrvKey`
-- Config: `change_detection` unknown value rejected; `derivation` without
-  `#name` rejected; empty defaults to `files`.
+- Config: `change_detection` unknown value rejected; empty defaults to
+  `derivation`; `.` and `.#` accepted, `#name` rejected.
+- `SystemDerivation` falls back to the host name for `.` and `.#`, never reads
+  it when the flake names a configuration, and fails without evaluating when
+  the host name is unreadable or empty.
 
 The `--apply` expression is the one part a fake runner cannot check. A flake
 check in `nix/` evaluates a minimal `nixosSystem` fixture twice, with two

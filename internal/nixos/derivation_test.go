@@ -25,7 +25,7 @@ func (f *fakeOutputter) Output(_ context.Context, dir string, name string, args 
 func TestSystemDerivation_EvaluatesWithRevisionNeutralized(t *testing.T) {
 	out := &fakeOutputter{out: "/nix/store/aaaa-nixos-system-host-a.drv\n"}
 
-	drv, err := SystemDerivation(context.Background(), out, "/repo", ".#host-a")
+	drv, err := SystemDerivation(context.Background(), out, "/repo", ".#host-a", noHostname(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestSystemDerivation_EvaluatesWithRevisionNeutralized(t *testing.T) {
 
 func TestSystemDerivation_KeepsTheFlakeRef(t *testing.T) {
 	out := &fakeOutputter{out: "/nix/store/aaaa.drv"}
-	if _, err := SystemDerivation(context.Background(), out, "/repo", "/srv/repo#nuc"); err != nil {
+	if _, err := SystemDerivation(context.Background(), out, "/repo", "/srv/repo#nuc", noHostname(t)); err != nil {
 		t.Fatal(err)
 	}
 	if got := out.calls[0].args[4]; got != `/srv/repo#nixosConfigurations."nuc"` {
@@ -64,8 +64,6 @@ func TestSystemDerivation_Failures(t *testing.T) {
 		"not a drv":        {flake: ".#host-a", out: "/nix/store/aaaa-nixos-system"},
 		"relative path":    {flake: ".#host-a", out: "aaaa.drv"},
 		"several lines":    {flake: ".#host-a", out: "/nix/store/a.drv\n/nix/store/b.drv"},
-		"flake without #":  {flake: "."},
-		"empty attribute":  {flake: ".#"},
 		"empty flake ref":  {flake: "#host-a"},
 		"nothing at all":   {flake: ""},
 		"embedded spaces":  {flake: ".#host-a", out: "/nix/store/a b.drv"},
@@ -73,7 +71,7 @@ func TestSystemDerivation_Failures(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			out := &fakeOutputter{out: tc.out, err: tc.err}
-			drv, err := SystemDerivation(context.Background(), out, "/repo", tc.flake)
+			drv, err := SystemDerivation(context.Background(), out, "/repo", tc.flake, noHostname(t))
 			if err == nil {
 				t.Fatalf("expected an error, got drv %q", drv)
 			}
@@ -84,20 +82,64 @@ func TestSystemDerivation_Failures(t *testing.T) {
 	}
 }
 
-func TestSplitFlakeAttr(t *testing.T) {
+// noHostname fails the test if the evaluation asks for the host name: the
+// flake names its configuration.
+func noHostname(t *testing.T) func() (string, error) {
+	return func() (string, error) {
+		t.Error("the host name must only be read when the flake names no configuration")
+		return "", errors.New("unexpected")
+	}
+}
+
+func TestSystemDerivation_FallsBackToHostName(t *testing.T) {
+	for _, flake := range []string{".", ".#"} {
+		out := &fakeOutputter{out: "/nix/store/aaaa.drv"}
+		hostname := func() (string, error) { return "nuc", nil }
+
+		if _, err := SystemDerivation(context.Background(), out, "/repo", flake, hostname); err != nil {
+			t.Fatalf("flake %q: %v", flake, err)
+		}
+		if len(out.calls) != 1 || out.calls[0].args[4] != `.#nixosConfigurations."nuc"` {
+			t.Errorf("flake %q: calls = %+v, want the installable .#nixosConfigurations.\"nuc\"", flake, out.calls)
+		}
+	}
+}
+
+func TestSystemDerivation_HostNameFailure(t *testing.T) {
+	for name, hostname := range map[string]func() (string, error){
+		"read error": func() (string, error) { return "", errors.New("no uts namespace") },
+		"empty":      func() (string, error) { return "", nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := &fakeOutputter{out: "/nix/store/aaaa.drv"}
+			drv, err := SystemDerivation(context.Background(), out, "/repo", ".", hostname)
+			if err == nil {
+				t.Fatalf("expected an error, got drv %q", drv)
+			}
+			if len(out.calls) != 0 {
+				t.Errorf("nothing to evaluate without a configuration name, got calls %+v", out.calls)
+			}
+		})
+	}
+}
+
+func TestParseFlake(t *testing.T) {
 	for flake, want := range map[string][2]string{
 		".#host-a":          {".", "host-a"},
 		"/srv/repo#nuc":     {"/srv/repo", "nuc"},
 		"github:o/r#my.box": {"github:o/r", "my.box"},
+		".":                 {".", ""},
+		".#":                {".", ""},
+		"path:/a#b#host":    {"path:/a#b", "host"}, // split at the last "#", as nixos-rebuild does
 	} {
-		ref, name, ok := SplitFlakeAttr(flake)
+		ref, name, ok := ParseFlake(flake)
 		if !ok || ref != want[0] || name != want[1] {
-			t.Errorf("SplitFlakeAttr(%q) = %q, %q, %v; want %q, %q, true", flake, ref, name, ok, want[0], want[1])
+			t.Errorf("ParseFlake(%q) = %q, %q, %v; want %q, %q, true", flake, ref, name, ok, want[0], want[1])
 		}
 	}
-	for _, flake := range []string{"", ".", ".#", "#host"} {
-		if _, _, ok := SplitFlakeAttr(flake); ok {
-			t.Errorf("SplitFlakeAttr(%q) must not be ok", flake)
+	for _, flake := range []string{"", "#", "#host"} {
+		if _, _, ok := ParseFlake(flake); ok {
+			t.Errorf("ParseFlake(%q) must not be ok", flake)
 		}
 	}
 }

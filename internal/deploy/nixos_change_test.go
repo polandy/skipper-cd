@@ -458,10 +458,23 @@ func TestNixOSPhase_Derivation_MissingDrvKeyRebuilds(t *testing.T) {
 	}
 }
 
+func TestNixOSPhase_DefaultEvaluates(t *testing.T) {
+	p := newDerivationPhase(t)
+	p.evalOut = testDrvA
+	cfg := derivationCfg()
+	cfg.NixOSRebuild.ChangeDetection = ""
+
+	p.d.rebuildNixOSIfChanged(context.Background(), cfg, newEmptyState())
+
+	if n := len(p.evalCalls()); n != 1 {
+		t.Errorf("an unset change_detection must evaluate the derivation, got %d evaluations", n)
+	}
+}
+
 func TestNixOSPhase_Files_NeverEvaluates(t *testing.T) {
 	p := newDerivationPhase(t)
 	cfg := derivationCfg()
-	cfg.NixOSRebuild.ChangeDetection = ""
+	cfg.NixOSRebuild.ChangeDetection = config.NixOSChangeDetectionFiles
 
 	p.d.rebuildNixOSIfChanged(context.Background(), cfg, newEmptyState())
 

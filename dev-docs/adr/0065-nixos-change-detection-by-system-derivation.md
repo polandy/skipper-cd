@@ -49,9 +49,10 @@ it is evaluated.
 
 A new setting `nixos_rebuild.change_detection` selects the method:
 
-- `files` (default): today's behavior, unchanged.
-- `derivation`: rebuild if and only if the derivation path of the host's
-  system differs from the one recorded at the last applied rebuild.
+- `derivation` (default): rebuild if and only if the derivation path of the
+  host's system differs from the one recorded at the last applied rebuild.
+- `files`: the previous behavior, kept for hosts that cannot afford an
+  evaluation per commit.
 
 In `derivation` mode the phase evaluates
 
@@ -60,7 +61,10 @@ nix eval --raw <ref>#nixosConfigurations.<name> --apply \
   'c: (c.extendModules { modules = [ { system.configurationRevision = c.pkgs.lib.mkForce null; } ]; }).config.system.build.toplevel.drvPath'
 ```
 
-where `<ref>#<name>` is the configured `flake`.
+where `<ref>#<name>` is the configured `flake`. A flake that names no
+configuration (`.` or `.#`) evaluates the one named after the host, exactly as
+`nixos-rebuild` resolves it, so the evaluated system is always the one the
+rebuild switches to and existing `flake` values stay valid.
 
 - **The revision is neutralized for the comparison only.** Without that, the
   derivation changes on every commit and nothing is gained. The rebuild
@@ -101,11 +105,21 @@ where `<ref>#<name>` is the configured `flake`.
 - **Evaluate on every reconcile tick.** Costs an evaluation per tick for an
   answer that only changes with HEAD. Rejected in favor of the per-commit
   cache.
-- **Make `derivation` the default.** It needs a flake with a
-  `nixosConfigurations` attribute and costs an evaluation per commit. Existing
-  setups keep their behavior until they opt in.
+- **Keep `files` the default, `derivation` opt-in.** Existing setups would keep
+  both errors — rebuilds that change nothing and, worse, silently missed ones —
+  until each operator found the setting. The cost of the evaluation does not
+  outweigh a missed rebuild; a host that cannot afford it opts out with
+  `files`. Rejected.
+- **Reject a flake without `#<name>` in `derivation` mode.** With
+  `derivation` the default, that would turn a working `flake: "."` into a
+  load error on upgrade. Resolving the name like `nixos-rebuild` evaluates the
+  same configuration the rebuild builds. Rejected.
 
 ## Consequences
+
+- Upgrading changes the default: every host evaluates once per new commit,
+  and its first run after the upgrade has no recorded derivation and
+  rebuilds once.
 
 - A host rebuilds when its own system changes, including changes that come
   only from secret files or embedded non-nix files.

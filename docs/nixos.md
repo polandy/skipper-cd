@@ -11,7 +11,7 @@ skipper-cd is built for NixOS: it can trigger `nixos-rebuild switch` as part of 
 
 ## NixOS Rebuild
 
-The optional `nixos_rebuild` section triggers `nixos-rebuild switch` when the host's configuration changes — by default when any `*.nix` file or `flake.lock` in the repository changes (see [Change detection](#change-detection)). This closes the GitOps loop for NixOS configurations: a merged PR or Renovate automerge triggers a webhook, skipper-cd pulls the change and runs the rebuild automatically.
+The optional `nixos_rebuild` section triggers `nixos-rebuild switch` when the host's configuration changes — by default when the host's system derivation changes (see [Change detection](#change-detection)). This closes the GitOps loop for NixOS configurations: a merged PR or Renovate automerge triggers a webhook, skipper-cd pulls the change and runs the rebuild automatically.
 
 ```yaml
 nixos_rebuild:
@@ -21,8 +21,8 @@ nixos_rebuild:
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `enabled` | bool | no | `true` | Set to `false` to temporarily disable without removing the section. When the section is present and `enabled` is omitted, it defaults to `true`. Omitting the entire `nixos_rebuild` section disables the feature. |
-| `flake` | string | yes | — | Flake reference passed to `nixos-rebuild switch --flake <flake>` (e.g. `.#myhost`). With `change_detection: derivation` it must name the configuration as `<ref>#<name>` — checked at startup. |
-| `change_detection` | string | no | `files` | What decides that a rebuild is due: `files` (any `*.nix` file or `flake.lock` changed) or `derivation` (the host's system derivation changed). See [Change detection](#change-detection). |
+| `flake` | string | yes | — | Flake reference passed to `nixos-rebuild switch --flake <flake>` (e.g. `.#myhost`). Without a configuration name (`.` or `.#`) the host name is used, as `nixos-rebuild` does. |
+| `change_detection` | string | no | `derivation` | What decides that a rebuild is due: `derivation` (the host's system derivation changed) or `files` (any `*.nix` file or `flake.lock` changed). See [Change detection](#change-detection). |
 
 **Important:** The skipper-cd systemd service must run as root for `nixos-rebuild` to work. The NixOS rebuild runs **before** any Docker stack deployments. If the rebuild fails, all Docker stack deploys are aborted to prevent deploying against a potentially broken system.
 
@@ -30,9 +30,7 @@ The rebuild runs in a transient systemd unit (`skipper-nixos-rebuild`) outside s
 
 ### Change detection
 
-With `change_detection: files` (the default), any change to a `*.nix` file or `flake.lock` anywhere in the repository rebuilds the host. In a repository that configures several hosts, a change to another host's module rebuilds this one too, and a change that reaches the system only through a non-nix file (a secret, an embedded config file) does not rebuild it at all.
-
-With `change_detection: derivation`, skipper-cd evaluates the derivation of the configured system for every new commit and rebuilds only when it differs from the one recorded at the last rebuild. It builds nothing for that:
+With `change_detection: derivation` (the default), skipper-cd evaluates the derivation of the configured system for every new commit and rebuilds only when it differs from the one recorded at the last rebuild. It builds nothing for that:
 
 ```
 nix eval --raw <ref>#nixosConfigurations."<name>" --apply \
@@ -43,8 +41,11 @@ nix eval --raw <ref>#nixosConfigurations."<name>" --apply \
 - **The revision.** `system.configurationRevision` is forced to `null` for the comparison only, so a new commit alone is not a change. The rebuild itself uses the real configuration, so a rebuilt host still records the commit it was built from. A configuration that puts the revision anywhere else — `self.rev`, `self.lastModified`, the flake source copied into the store — changes with every commit, and this mode then rebuilds on every commit. It never misses a rebuild because of it.
 - **Cost.** One evaluation per new commit (the result is cached per commit, so reconcile ticks without a new commit do not evaluate again): about 10 s on x86, 24 s and 0.8 GB peak memory on a Raspberry Pi 4 class host. A host with less than about 1 GB of free memory is not a good fit for this mode. The duration of the last successful evaluation is exported as [`skipper_nixos_evaluation_seconds`](metrics.md). The evaluation runs under `command_timeout_seconds` like any other command.
 - **Failure.** An evaluation that fails, or prints anything but a store derivation path, fails the NixOS phase like a failed rebuild: all stack deploys abort and nothing is recorded, so the next sync evaluates again.
-- **Switching modes.** The first run in `derivation` mode has no recorded derivation and rebuilds once.
+- **Configuration name.** A `flake` without `#<name>` (`.` or `.#`) evaluates the configuration named after the host, the same one `nixos-rebuild` switches to.
+- **Upgrading or switching modes.** The first run in `derivation` mode — including the first run after upgrading from a version without it — has no recorded derivation and rebuilds once.
 - **Changed files.** The deploy event still lists the changed nix files. A rebuild caused only by a non-nix input lists none; the log line says so.
+
+With `change_detection: files`, no evaluation runs: any change to a `*.nix` file or `flake.lock` anywhere in the repository rebuilds the host. In a repository that configures several hosts, a change to another host's module rebuilds this one too, and a change that reaches the system only through a non-nix file (a secret, an embedded config file) does not rebuild it at all. Use it on a host that cannot afford the evaluation.
 
 NixOS rebuild state is tracked under the reserved key `_nixos` in the [state file](state.md) and appears in [Prometheus metrics](metrics.md) with the label `stack="_nixos"`. It also participates in [autosync](autosync.md) like a stack (independently pausable, queued rather than rebuilt while paused).
 

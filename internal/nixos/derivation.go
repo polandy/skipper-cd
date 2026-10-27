@@ -29,11 +29,15 @@ type Outputter interface {
 	Output(ctx context.Context, dir string, name string, args ...string) ([]byte, error)
 }
 
-// SplitFlakeAttr splits `<ref>#<name>` into its flake reference and attribute
-// name; ok is false unless both parts are non-empty.
-func SplitFlakeAttr(flake string) (ref, name string, ok bool) {
-	ref, name, found := strings.Cut(flake, flakeAttrSeparator)
-	if !found || ref == "" || name == "" {
+// ParseFlake splits a flake at its last "#" into the flake reference and the
+// configuration name, as nixos-rebuild does. name is "" when the flake names
+// no configuration (`.` or `.#`); ok is false when the reference is empty.
+func ParseFlake(flake string) (ref, name string, ok bool) {
+	ref = flake
+	if i := strings.LastIndex(flake, flakeAttrSeparator); i >= 0 {
+		ref, name = flake[:i], flake[i+len(flakeAttrSeparator):]
+	}
+	if ref == "" {
 		return "", "", false
 	}
 	return ref, name, true
@@ -41,12 +45,24 @@ func SplitFlakeAttr(flake string) (ref, name string, ok bool) {
 
 // SystemDerivation evaluates the drvPath of the flake's NixOS system with
 // system.configurationRevision forced to null (ADR-0065). It builds nothing.
+// A flake that names no configuration evaluates the one named after the host,
+// the one nixos-rebuild switches to; hostname is read only then.
 // Output that is not a single absolute .drv path is an error, so an empty or
 // garbled result never reads as a valid derivation.
-func SystemDerivation(ctx context.Context, out Outputter, repoDir, flake string) (string, error) {
-	ref, name, ok := SplitFlakeAttr(flake)
+func SystemDerivation(ctx context.Context, out Outputter, repoDir, flake string, hostname func() (string, error)) (string, error) {
+	ref, name, ok := ParseFlake(flake)
 	if !ok {
-		return "", fmt.Errorf("flake %q names no attribute; derivation change detection needs <ref>#<name>", flake)
+		return "", fmt.Errorf("flake %q names no flake reference", flake)
+	}
+	if name == "" {
+		host, err := hostname()
+		if err != nil {
+			return "", fmt.Errorf("flake %q names no configuration and the host name cannot be read: %w", flake, err)
+		}
+		if host == "" {
+			return "", fmt.Errorf("flake %q names no configuration and the host name is empty", flake)
+		}
+		name = host
 	}
 	// Quoted like nixos-rebuild does, so a host name containing a dot stays one attribute.
 	installable := fmt.Sprintf(`%s%snixosConfigurations.%q`, ref, flakeAttrSeparator, name)

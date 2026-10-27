@@ -9,10 +9,10 @@ import (
 // NixOS change detection modes (nixos_rebuild.change_detection).
 const (
 	// NixOSChangeDetectionFiles rebuilds when any *.nix file or flake.lock in
-	// the repository changed. The default.
+	// the repository changed.
 	NixOSChangeDetectionFiles = "files"
 	// NixOSChangeDetectionDerivation rebuilds when the derivation of the
-	// host's system changed (ADR-0065).
+	// host's system changed (ADR-0065). The default.
 	NixOSChangeDetectionDerivation = "derivation"
 )
 
@@ -21,8 +21,8 @@ const (
 type NixOSRebuild struct {
 	Enabled *bool  `yaml:"enabled"` // nil = true when section present
 	Flake   string `yaml:"flake"`   // e.g. ".#host-a", required when enabled
-	// ChangeDetection is NixOSChangeDetectionFiles (also when empty) or
-	// NixOSChangeDetectionDerivation.
+	// ChangeDetection is NixOSChangeDetectionDerivation (also when empty) or
+	// NixOSChangeDetectionFiles.
 	ChangeDetection string `yaml:"change_detection"`
 }
 
@@ -42,7 +42,7 @@ func (n *NixOSRebuild) IsEnabled() bool {
 // ComparesDerivation reports whether the rebuild decision compares the
 // system derivation rather than the nix file hashes.
 func (n *NixOSRebuild) ComparesDerivation() bool {
-	return n != nil && n.ChangeDetection == NixOSChangeDetectionDerivation
+	return n != nil && n.ChangeDetection != NixOSChangeDetectionFiles
 }
 
 // validateNixOSRebuild checks an enabled nixos_rebuild section.
@@ -60,8 +60,8 @@ func validateNixOSRebuild(n *NixOSRebuild) error {
 			NixOSChangeDetectionFiles, NixOSChangeDetectionDerivation, n.ChangeDetection)
 	}
 	if n.ComparesDerivation() {
-		if _, _, ok := nixos.SplitFlakeAttr(n.Flake); !ok {
-			return fmt.Errorf("nixos_rebuild.flake: %q names no attribute; change_detection: %s needs <ref>#<name>, e.g. \".#myhost\"",
+		if _, _, ok := nixos.ParseFlake(n.Flake); !ok {
+			return fmt.Errorf("nixos_rebuild.flake: %q names no flake reference; change_detection: %s needs <ref>[#<name>], e.g. \".#myhost\"",
 				n.Flake, NixOSChangeDetectionDerivation)
 		}
 	}

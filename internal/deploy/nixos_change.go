@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
 	"slices"
 	"time"
 
@@ -35,7 +36,7 @@ func (d *Deployer) systemDerivation(ctx context.Context, flake string) (string, 
 		return d.systemDrv.drv, nil
 	}
 	start := time.Now()
-	drv, err := nixos.SystemDerivation(ctx, d.outputter, d.repoDir, flake)
+	drv, err := nixos.SystemDerivation(ctx, d.outputter, d.repoDir, flake, os.Hostname)
 	if err != nil {
 		return "", withFailureCause(err)
 	}
