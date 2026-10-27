@@ -119,7 +119,8 @@ func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name str
 // and returns its captured stdout. Stderr passes
 // through to the process stderr so failures remain visible in logs; with a
 // sink it is additionally captured line by line (stdout is not — it is
-// data for the caller, not log output).
+// data for the caller, not log output). Like Run, a failed command's error is
+// an *ExitError carrying the last lines it wrote to stderr.
 func (r ShellRunner) Output(ctx context.Context, dir string, name string, args ...string) ([]byte, error) {
 	ctx, cancel := r.commandContext(ctx)
 	defer cancel()
@@ -128,13 +129,20 @@ func (r ShellRunner) Output(ctx context.Context, dir string, name string, args .
 	cmd.WaitDelay = r.waitDelay
 	cmd.Dir = dir
 	cmd.Env = r.outputEnv // nil inherits the process environment
-	cmd.Stderr = os.Stderr
+	tail := newTailSink(stderrTailLines)
+	tw := &lineWriter{sink: tail, cmd: name, stream: "stderr"}
+	cmd.Stderr = io.MultiWriter(os.Stderr, tw)
 	if r.sink != nil {
 		ew := &lineWriter{sink: r.sink, cmd: name, stream: "stderr"}
 		defer func() { _ = ew.Close() }()
-		cmd.Stderr = io.MultiWriter(os.Stderr, ew)
+		cmd.Stderr = io.MultiWriter(os.Stderr, ew, tw)
 	}
-	return cmd.Output()
+	out, err := cmd.Output()
+	if err == nil {
+		return out, nil
+	}
+	_ = tw.Close() // flushes an unterminated last line into tail; never fails
+	return out, &ExitError{Err: err, Tail: tail.snapshot()}
 }
 
 func (r ShellRunner) commandContext(ctx context.Context) (context.Context, context.CancelFunc) {
