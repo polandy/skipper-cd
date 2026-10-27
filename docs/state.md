@@ -32,9 +32,9 @@ When a stack leaves the deploy set — its directory is gone from the repo, or i
 
 If the state file is absent or cannot be parsed (e.g. after a fresh install or corruption), all stacks are redeployed on the next run — but that run deliberately does **not** refresh images already on the host, so no floating tag moves unattended (see [First run and state loss](configuration.md#first-run-and-state-loss)). **Back this directory up** with the rest of your host state.
 
-NixOS rebuild state (when [configured](nixos.md#nixos-rebuild)) is tracked under the reserved stack key `_nixos`. State is written atomically (temp file + rename).
+NixOS rebuild state (when [configured](nixos.md#nixos-rebuild)) is tracked under the reserved stack key `_nixos`: the hashes of the nix files, and — in the default [`change_detection: derivation`](nixos.md#change-detection) — the system derivation under the reserved key `@system-drv`, which cannot collide with a file path. In `files` mode the key is ignored and dropped on the next rebuild. State is written atomically (temp file + rename).
 
-A transient top-level key `nixos_rebuild_in_flight` may appear while a rebuild is running: it lists the changed nix files and is written just before a rebuild whose `switch-to-configuration` may restart skipper-cd. If the switch restarts skipper mid-rebuild, the marker survives and the next startup reconciles it into a `_nixos` success (the rebuild finished in its transient unit). It is cleared as soon as the rebuild's outcome is recorded, so it is normally absent.
+A transient top-level key `nixos_rebuild_in_flight` may appear while a rebuild is running: it lists the changed nix files (or only `@system-drv` when the system changed without a nix-file change) and is written just before a rebuild whose `switch-to-configuration` may restart skipper-cd. If the switch restarts skipper mid-rebuild, the marker survives and the next startup reconciles it into a `_nixos` success (the rebuild finished in its transient unit). It is cleared as soon as the rebuild's outcome is recorded, so it is normally absent.
 
 ## Health-watch state
 

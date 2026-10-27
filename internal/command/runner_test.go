@@ -267,6 +267,27 @@ func TestShellRunner_RunErrorCarriesStderrTail(t *testing.T) {
 	}
 }
 
+// Output's error carries the stderr tail too, so a caller that needs stdout
+// (the NixOS evaluation) can still name the cause; stdout stays the data.
+func TestShellRunner_OutputErrorCarriesStderrTail(t *testing.T) {
+	requireCommands(t, "sh")
+
+	out, err := NewShellRunner(0).Output(context.Background(), "", "sh", "-c", "echo data; echo 'error: attribute missing' >&2; exit 1")
+	if err == nil {
+		t.Fatal("expected an error from a failing command")
+	}
+	if got := StderrTail(err); !slices.Equal(got, []string{"error: attribute missing"}) {
+		t.Errorf("StderrTail = %q, want the stderr line", got)
+	}
+	if string(out) != "data\n" {
+		t.Errorf("stdout = %q, want it still returned", out)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Errorf("the *exec.ExitError must stay reachable, got %v", err)
+	}
+}
+
 // The tail is bounded: a chatty failing command keeps only its last lines.
 func TestShellRunner_RunErrorTailIsBounded(t *testing.T) {
 	requireCommands(t, "sh")

@@ -145,11 +145,12 @@ func (r *Rebuilder) unitFailed(unit string) bool {
 	return r.runner.Run(context.Background(), "", nil, "systemctl", "is-failed", "--quiet", unit) == nil
 }
 
-// DiffHashes returns file paths that are new or changed compared to prev.
+// DiffHashes returns file paths that are new or changed compared to prev. The
+// reserved SystemDrvKey is not a file and is never reported.
 func DiffHashes(current, prev map[string]string) []string {
 	var changed []string
 	for path, hash := range current {
-		if prev[path] != hash {
+		if path != SystemDrvKey && prev[path] != hash {
 			changed = append(changed, path)
 		}
 	}

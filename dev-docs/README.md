@@ -39,6 +39,8 @@ These files deliberately live outside `docs/` so they are **not** published to t
   for reference only.
 - [`sops-secrets-spec.md`](sops-secrets-spec.md) — undecided proposal for
   SOPS-encrypted env files.
+- [`nixos-drv-change-detection-spec.md`](nixos-drv-change-detection-spec.md) —
+  implemented: rebuild a NixOS host only when its system derivation changed.
 
 `../tools/design-cards/` generates the preview cards for the companion
 "skipper-cd Design System" project on claude.ai — see its own README.

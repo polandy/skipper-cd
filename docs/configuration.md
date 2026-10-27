@@ -79,9 +79,10 @@ stacks:
     env_files:
       - /run/secrets/rendered/skipper/compose.env
 
-# Optional: trigger nixos-rebuild when .nix files or flake.lock change.
+# Optional: trigger nixos-rebuild when the host's configuration changes.
 nixos_rebuild:
   flake: ".#myhost"
+  change_detection: derivation   # optional, default: derivation (only when this host's system changed); "files" for any .nix file or flake.lock
 ```
 
 ## Top-level Fields

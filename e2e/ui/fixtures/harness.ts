@@ -689,7 +689,8 @@ function buildConfig(
       ? `project_directory_base: ${JSON.stringify(projectDirBase)}\n` +
         `project_directory_sync: true\n`
       : "") +
-    (opts.nixosRebuild ? `nixos_rebuild:\n  flake: ".#test"\n` : "") +
+    // files mode: the stubbed rebuild has no nix to evaluate a derivation with.
+    (opts.nixosRebuild ? `nixos_rebuild:\n  flake: ".#test"\n  change_detection: files\n` : "") +
     // source_url points at a closed local port so auto-match icon fetches fail
     // fast and deterministically (connection refused → 404 → monogram), keeping
     // the whole UI suite offline. Repo icon.svg overrides still resolve.

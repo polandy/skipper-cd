@@ -17,11 +17,12 @@ import (
 // config.ReservedStackName, the single source of truth for the reserved value.
 const NixosStateKey = config.ReservedStackName
 
-// rebuildNixOSIfChanged hashes the repo's nix files and runs nixos-rebuild
-// when any of them changed. The new hashes are persisted to state *before*
-// the rebuild, because the rebuild may restart the skipper-cd service
-// (killing this process); pre-saving avoids a redundant rebuild on restart.
-// Returns false when the rebuild failed and all stack deploys must abort.
+// rebuildNixOSIfChanged runs nixos-rebuild when the host's configuration
+// changed: any nix file in files mode, the system derivation in derivation
+// mode (ADR-0065). The new entry is persisted to state *before* the rebuild,
+// because the rebuild may restart the skipper-cd service (killing this
+// process); pre-saving avoids a redundant rebuild on restart.
+// Returns false when the phase failed and all stack deploys must abort.
 func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config, state *persistedState) bool {
 	startTime := time.Now()
 
@@ -33,12 +34,21 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		// never-applied rebuild ADR-0015 exists to prevent. Report it and abort
 		// like a failed rebuild does; nothing has been persisted yet, so there is
 		// no pre-saved state to revert.
-		slog.Error("could not hash the repo's nix files, aborting all stack deploys", "err", err)
-		metrics.DeployErrors.WithLabelValues(NixosStateKey).Inc()
-		d.emit(events.StatusFailed, NixosStateKey, time.Since(startTime), err.Error(), changeSet{})
-		return false
+		return d.abortNixOSPhase(startTime, "could not hash the repo's nix files, aborting all stack deploys", err)
 	}
-	changed := nixos.DiffHashes(currentNixHashes, state.hashesFor(NixosStateKey))
+	recorded := state.hashesFor(NixosStateKey)
+	changed := nixos.DiffHashes(currentNixHashes, recorded)
+	current := stackFileHashes(currentNixHashes)
+	systemChanged := len(changed) > 0
+	if cfg.NixOSRebuild.ComparesDerivation() {
+		drv, err := d.systemDerivation(ctx, cfg.NixOSRebuild.Flake)
+		if err != nil {
+			// "Could not evaluate" must never read as "unchanged" (ADR-0065).
+			return d.abortNixOSPhase(startTime, "could not evaluate the system derivation, aborting all stack deploys", err)
+		}
+		current[nixos.SystemDrvKey] = drv
+		systemChanged = recorded[nixos.SystemDrvKey] != drv // a missing key counts as changed
+	}
 
 	// Reconcile a rebuild that a self-restart (the switch restarting skipper-cd)
 	// interrupted before its outcome was recorded: the in-flight marker survived
@@ -47,7 +57,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	// run could not — the persisted success supersedes the missing outcome so the
 	// UI stops showing a stale failure — then clear the marker (ADR-0025).
 	if len(state.NixOSRebuildInFlight) > 0 {
-		reconciled := state.NixOSRebuildInFlight
+		reconciled := markedFiles(state.NixOSRebuildInFlight)
 		state.clearNixOSRebuildInFlight()
 		if err := saveDeployState(d.stateDir, state); err != nil {
 			slog.Error("could not save deploy state", "err", err)
@@ -59,18 +69,20 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		// shows what changed, exactly like a normal rebuild success (ADR-0025).
 		d.emit(events.StatusSuccess, NixosStateKey, 0, "", d.collectChange(ctx, reconciled, state.LastDeployedCommit))
 		slog.Info("reconciled nixos-rebuild interrupted by a self-restart", "changed_files", reconciled)
-		// Nothing changed since the interrupted rebuild → done. A nix change that
+		// Nothing changed since the interrupted rebuild → done. A change that
 		// arrived afterwards still falls through to a fresh rebuild below.
-		if len(changed) == 0 {
+		if !systemChanged {
 			d.clearQueued(NixosStateKey)
+			d.recordUnchangedSystem(cfg, state, current)
 			return true
 		}
 	}
 
-	if len(changed) == 0 {
+	if !systemChanged {
 		d.clearQueued(NixosStateKey) // nothing pending anymore
 		metrics.DeploysSkipped.WithLabelValues(NixosStateKey).Inc()
 		d.emit(events.StatusSkipped, NixosStateKey, 0, "", changeSet{})
+		d.recordUnchangedSystem(cfg, state, current)
 		return true
 	}
 
@@ -95,12 +107,12 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	// Persist the new hashes before the rebuild: the switch may restart this
 	// very service, and pre-saving avoids a redundant rebuild on restart
 	// (ADR-0005). Keep the previous snapshot so a surviving failure can undo it.
-	previousNixHashes := state.hashesFor(NixosStateKey)
-	state.recordStack(NixosStateKey, currentNixHashes)
+	previousNixHashes := recorded
+	state.recordStack(NixosStateKey, current)
 	// Mark the rebuild in flight (persisted with the hashes): if the switch
 	// restarts skipper before the outcome is recorded, the next startup reconciles
 	// this into a success rather than leaving a stale failure (ADR-0025).
-	state.markNixOSRebuildInFlight(changed)
+	state.markNixOSRebuildInFlight(inFlightMarker(changed))
 	if err := saveDeployState(d.stateDir, state); err != nil {
 		slog.Error("could not save deploy state", "err", err)
 	}
@@ -137,8 +149,31 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	metrics.DeploysTriggered.WithLabelValues(NixosStateKey).Inc()
 	metrics.LastDeployTimestamp.WithLabelValues(NixosStateKey).Set(float64(time.Now().Unix()))
 	d.emit(events.StatusSuccess, NixosStateKey, time.Since(startTime), "", cs)
-	slog.Info("nixos-rebuild complete", "changed_files", changed)
+	if len(changed) == 0 {
+		slog.Info("nixos-rebuild complete: the system derivation changed without a nix-file change", "drv", current[nixos.SystemDrvKey])
+	} else {
+		slog.Info("nixos-rebuild complete", "changed_files", changed)
+	}
 	return true
+}
+
+// abortNixOSPhase reports a phase failure that happened before anything was
+// persisted (hashing, evaluation): the stack deploys abort, nothing to revert.
+func (d *Deployer) abortNixOSPhase(startTime time.Time, msg string, err error) bool {
+	slog.Error(msg, "err", err)
+	metrics.DeployErrors.WithLabelValues(NixosStateKey).Inc()
+	d.emit(events.StatusFailed, NixosStateKey, time.Since(startTime), err.Error(), changeSet{})
+	return false
+}
+
+// recordUnchangedSystem records the current nix file hashes when the
+// derivation did not change: those file changes did not affect this host, so a
+// later rebuild must not list them (ADR-0065). Files mode records nothing — an
+// unchanged system means unchanged hashes there.
+func (d *Deployer) recordUnchangedSystem(cfg *config.Config, state *persistedState, current stackFileHashes) {
+	if cfg.NixOSRebuild.ComparesDerivation() {
+		state.recordStack(NixosStateKey, current)
+	}
 }
 
 // runNixOSRebuild waits for the rebuild with a context that additionally

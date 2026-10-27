@@ -213,8 +213,8 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	if cfg.NixOSRebuild.IsEnabled() && cfg.NixOSRebuild.Flake == "" {
-		return fmt.Errorf("nixos_rebuild.flake is required when nixos_rebuild is enabled")
+	if err := validateNixOSRebuild(cfg.NixOSRebuild); err != nil {
+		return err
 	}
 
 	if !uitheme.IsValidTheme(cfg.UITheme) {

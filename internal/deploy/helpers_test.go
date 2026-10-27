@@ -97,6 +97,7 @@ func (f *fakeRepoSyncer) Sync(_ context.Context) error {
 }
 
 type fakeCommitReader struct {
+	head      string // HEAD SHA; "" reads as "abc123"
 	diffs     map[string]string
 	commits   map[string][]events.CommitInfo // filePath -> commits touching it
 	commitErr error                          // error to return from CommitsSinceCommit
@@ -105,6 +106,9 @@ type fakeCommitReader struct {
 }
 
 func (f *fakeCommitReader) HeadCommitSHA(_ context.Context) (string, error) {
+	if f.head != "" {
+		return f.head, nil
+	}
 	return "abc123", nil
 }
 
