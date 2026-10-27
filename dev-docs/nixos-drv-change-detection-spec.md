@@ -1,6 +1,6 @@
 # Feature Spec: NixOS Change Detection by System Derivation
 
-Status: proposed (see [ADR-0065](adr/0065-nixos-change-detection-by-system-derivation.md)).
+Status: implemented (see [ADR-0065](adr/0065-nixos-change-detection-by-system-derivation.md)).
 Date: 2026-10-27
 
 ## Goal
@@ -44,15 +44,19 @@ nixos_rebuild:
 ```go
 // SystemDerivation evaluates the drvPath of the flake's NixOS system with
 // system.configurationRevision forced to null (ADR-0065).
-func (r *Rebuilder) SystemDerivation(ctx context.Context, repoDir, flake string) (string, error)
+func SystemDerivation(ctx context.Context, out Outputter, repoDir, flake string) (string, error)
 ```
 
-It runs through the `command.Runner`, with `repoDir` as working directory and
-the normal per-command timeout (ADR-0008):
+It is a package-level function over an `Outputter` (the Deployer's
+output-capturing runner), not a `Rebuilder` method over the `command.Runner`:
+the evaluation needs stdout, which `Runner.Run` does not return. It runs with
+`repoDir` as working directory and the normal per-command timeout (ADR-0008);
+a failure carries the stderr tail, so the failed event names the cause
+(ADR-0063):
 
 ```
 nix --extra-experimental-features "nix-command flakes" eval --raw \
-  <ref>#nixosConfigurations.<name> \
+  <ref>#nixosConfigurations."<name>" \
   --apply 'c: (c.extendModules { modules = [ { system.configurationRevision = c.pkgs.lib.mkForce null; } ]; }).config.system.build.toplevel.drvPath'
 ```
 
@@ -62,7 +66,11 @@ nix --extra-experimental-features "nix-command flakes" eval --raw \
 - The output is trimmed and must be an absolute store path ending in `.drv`.
   Anything else is an error, so an empty or garbled output never reads as a
   valid derivation.
-- The `--apply` expression is a named constant.
+- The `--apply` expression is a named constant. The flake check
+  `nix/system-drv-check.nix` evaluates the same expression against a minimal
+  `nixosSystem`: two revisions give one derivation, a changed option another.
+- The attribute name is quoted, as `nixos-rebuild` does, so a host name with a
+  dot stays one attribute.
 
 ## State
 

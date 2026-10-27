@@ -13,6 +13,7 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 | `skipper_stack_held` | gauge | Stacks whose change is held — its new version failed after it started, or it failed before it started three times in a row (`1` = held), labelled by `stack`; deleted once a new push or a retry releases it. A change still waiting out its retry backoff is not counted (see [Held changes](configuration.md#held-changes)). |
 | `skipper_project_dir_sync_error` | gauge | The `project_directory` checkout could not be fast-forwarded (`1` = its content may be stale); `0` once it succeeds again. Only ever non-zero with `project_directory_sync` enabled. |
 | `skipper_deploy_rollbacks_total` | counter | Total number of successful rollbacks after failed deploys, labelled by `stack`. |
+| `skipper_nixos_evaluation_seconds` | gauge | Duration in seconds of the last successful system derivation evaluation (only with [`change_detection: derivation`](nixos.md#change-detection)). |
 | `skipper_last_deploy_timestamp_seconds` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |
 | `skipper_deploy_lock_waits_total` | counter | Deploy runs that had to wait for a running deploy to finish (queueing indicator). |
 | `skipper_deploys_queued_total` | counter | Deploys deferred because autosync was paused, labelled by `stack` (see [Autosync](autosync.md)). |

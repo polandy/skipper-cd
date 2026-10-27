@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed. Refines [ADR-0005](0005-nixos-hashes-saved-before-rebuild.md);
+Accepted. Refines [ADR-0005](0005-nixos-hashes-saved-before-rebuild.md);
 [ADR-0015](0015-revert-nix-hashes-on-surviving-rebuild-failure.md) and
 [ADR-0025](0025-reconcile-self-restart-interrupted-nixos-rebuild.md) apply
 unchanged. Spec: [nixos-drv-change-detection-spec.md](../nixos-drv-change-detection-spec.md).

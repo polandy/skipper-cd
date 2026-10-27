@@ -76,6 +76,7 @@ stacks:
 nixos_rebuild:
   flake: ".#host-a"    # required; passed as: nixos-rebuild switch --flake <flake>
   # enabled: false  # set to false to temporarily disable without removing the section
+  # change_detection: derivation  # rebuild only when this host's system derivation changed (default: files — any .nix file or flake.lock)
 
 # Web-UI service icons (only used when ui_enabled). Omit to use the defaults below.
 # icons:
