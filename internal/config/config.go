@@ -324,26 +324,6 @@ type IconsConfig struct {
 	SourceURL string `yaml:"source_url"`
 }
 
-// NixOSRebuild configures automatic NixOS rebuilds when .nix files or
-// flake.lock change in the repository.
-type NixOSRebuild struct {
-	Enabled *bool  `yaml:"enabled"` // nil = true when section present
-	Flake   string `yaml:"flake"`   // e.g. ".#host-a", required when enabled
-}
-
-// IsEnabled returns whether NixOS rebuild is enabled.
-// Section omitted → disabled. Section present without enabled key → enabled.
-// Explicit enabled value → that value.
-func (n *NixOSRebuild) IsEnabled() bool {
-	if n == nil {
-		return false
-	}
-	if n.Enabled == nil {
-		return true
-	}
-	return *n.Enabled
-}
-
 // Load reads and validates the configuration file at the given path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)

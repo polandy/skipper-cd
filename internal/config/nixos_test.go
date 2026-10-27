@@ -1,0 +1,80 @@
+package config_test
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/polandy/skipper-cd/internal/config"
+)
+
+func nixosRebuildConfig(section string) string {
+	return `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: modules
+stacks: []
+nixos_rebuild:
+` + section
+}
+
+func TestLoad_NixOSRebuild_ChangeDetectionDefaultsToFiles(t *testing.T) {
+	cfg := loadFromString(t, nixosRebuildConfig(`  flake: ".#host-a"`))
+
+	if cfg.NixOSRebuild.ComparesDerivation() {
+		t.Error("an unset change_detection must keep the files mode")
+	}
+}
+
+func TestLoad_NixOSRebuild_ChangeDetectionDerivation(t *testing.T) {
+	cfg := loadFromString(t, nixosRebuildConfig(`  flake: ".#host-a"
+  change_detection: derivation`))
+
+	if !cfg.NixOSRebuild.ComparesDerivation() {
+		t.Error("change_detection: derivation must select the derivation mode")
+	}
+	if cfg.NixOSRebuild.ChangeDetection != config.NixOSChangeDetectionDerivation {
+		t.Errorf("ChangeDetection = %q", cfg.NixOSRebuild.ChangeDetection)
+	}
+}
+
+func TestLoad_NixOSRebuild_ChangeDetectionFilesExplicit(t *testing.T) {
+	cfg := loadFromString(t, nixosRebuildConfig(`  flake: ".#host-a"
+  change_detection: files`))
+
+	if cfg.NixOSRebuild.ComparesDerivation() {
+		t.Error("change_detection: files must keep the files mode")
+	}
+}
+
+func TestLoad_NixOSRebuild_RejectsUnknownChangeDetection(t *testing.T) {
+	_, err := loadStringToConfig(t, nixosRebuildConfig(`  flake: ".#host-a"
+  change_detection: drv`))
+	if err == nil {
+		t.Fatal("expected an unknown change_detection to be rejected")
+	}
+	for _, want := range []string{"change_detection", `"drv"`, "files", "derivation"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should name %s", err, want)
+		}
+	}
+}
+
+func TestLoad_NixOSRebuild_DerivationNeedsFlakeAttribute(t *testing.T) {
+	for _, flake := range []string{".", ".#", "#host-a"} {
+		_, err := loadStringToConfig(t, nixosRebuildConfig(`  flake: "`+flake+`"
+  change_detection: derivation`))
+		if err == nil {
+			t.Errorf("flake %q: expected derivation mode without <ref>#<name> to be rejected", flake)
+			continue
+		}
+		if !strings.Contains(err.Error(), "nixos_rebuild.flake") {
+			t.Errorf("flake %q: error %q should name nixos_rebuild.flake", flake, err)
+		}
+	}
+}
+
+func TestLoad_NixOSRebuild_FilesModeAcceptsFlakeWithoutAttribute(t *testing.T) {
+	cfg := loadFromString(t, nixosRebuildConfig(`  flake: "."`))
+	if cfg.NixOSRebuild.Flake != "." {
+		t.Errorf("flake = %q", cfg.NixOSRebuild.Flake)
+	}
+}
