@@ -194,6 +194,7 @@ type Deployer struct {
 	mu           sync.Mutex
 	plan         []string        // stacks planned to deploy this run, in order
 	bootstrapRun bool            // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
+	systemDrv    systemDrvCache  // last evaluated system derivation and its commit (ADR-0065)
 	configErrors *configErrorLog // entry-level config errors already reported, so an unchanged one stays quiet (ADR-0055)
 	// projectDirErrors remembers the project_directory fast-forward's standing
 	// condition under the same report-once rule. Deliberately its own log:

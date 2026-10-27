@@ -68,6 +68,15 @@ var (
 		Help: "The project_directory checkout could not be fast-forwarded (1 = its content may be stale).",
 	})
 
+	// NixOSEvaluationSeconds is the duration of the last successful evaluation
+	// of the host's system derivation (nixos_rebuild.change_detection:
+	// derivation), so a slow host shows up here rather than only in a one-off
+	// measurement. Evaluation failures count in DeployErrors{stack="_nixos"}.
+	NixOSEvaluationSeconds = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "skipper_nixos_evaluation_seconds",
+		Help: "Duration of the last successful evaluation of the host's system derivation, in seconds.",
+	})
+
 	// DeployErrors counts failed deployments per stack.
 	DeployErrors = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "skipper_deploy_errors_total",
