@@ -43,6 +43,7 @@
           module = self.nixosModules.default;
           package = self.packages.${system}.default;
         };
+        system-drv = import ./nix/system-drv-check.nix { inherit nixpkgs system; };
       });
 
       # Dev shell carrying the full CI toolchain so the whole pipeline

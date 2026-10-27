@@ -262,3 +262,11 @@ func TestDiffHashes_DetectsChangedAndNewFiles(t *testing.T) {
 		t.Fatalf("expected 2 changed files (modified + new), got %d: %v", len(changed), changed)
 	}
 }
+
+func TestDiffHashes_IgnoresReservedDrvKey(t *testing.T) {
+	current := map[string]string{"/repo/flake.nix": "abc", SystemDrvKey: "/nix/store/new.drv"}
+	prev := map[string]string{"/repo/flake.nix": "abc", SystemDrvKey: "/nix/store/old.drv"}
+	if changed := DiffHashes(current, prev); changed != nil {
+		t.Errorf("the reserved derivation key must never read as a changed file, got %v", changed)
+	}
+}
