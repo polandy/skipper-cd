@@ -5,7 +5,7 @@
 
 ### ⚠ BREAKING CHANGES
 
-* **nixos:** hosts with nixos_rebuild evaluate their system derivation once per new commit (about 10 s on x86, 24 s and 0.8 GB on a Raspberry Pi 4 class host) and rebuild once after the upgrade. Set
+* **nixos:** hosts with nixos_rebuild evaluate their system derivation once per new commit (about 10 s on x86, 24 s and 0.8 GB on a Raspberry Pi 4 class host) and rebuild once after the upgrade. Set `nixos_rebuild.change_detection: files` to keep the previous behavior.
 
 ### Features
 
