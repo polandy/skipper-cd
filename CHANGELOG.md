@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.1](https://github.com/polandy/skipper-cd/compare/v0.29.0...v0.29.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* **deploy:** remove orphaned services when a revert releases a hold ([#363](https://github.com/polandy/skipper-cd/issues/363)) ([e8f681a](https://github.com/polandy/skipper-cd/commit/e8f681a0f23ba6016a95f0d030f5cdbdaf15cbc9))
+
 ## [0.29.0](https://github.com/polandy/skipper-cd/compare/v0.28.0...v0.29.0) (2026-10-27)
 
 
