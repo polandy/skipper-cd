@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.2](https://github.com/polandy/skipper-cd/compare/v0.29.1...v0.29.2) (2026-11-06)
+
+
+### Bug Fixes
+
+* **selfheal:** heal the recorded version, never a pending change ([#365](https://github.com/polandy/skipper-cd/issues/365)) ([f5efe4c](https://github.com/polandy/skipper-cd/commit/f5efe4cc6e2716478f0733d6469b874a80dd280a))
+
 ## [0.29.1](https://github.com/polandy/skipper-cd/compare/v0.29.0...v0.29.1) (2026-11-06)
 
 
