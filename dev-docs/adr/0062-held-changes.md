@@ -5,7 +5,9 @@ Date: 2026-09-29
 ## Status
 
 Accepted. Amended by [ADR-0064](0064-failures-before-start-back-off-then-hold.md):
-a failure before start is no longer retried every tick.
+a failure before start is no longer retried every tick. Amended by
+[ADR-0066](0066-revert-of-held-change-removes-orphaned-services.md): a revert
+removes orphaned services before it releases the hold.
 
 ## Context
 
