@@ -80,6 +80,7 @@ func newHeldEnv(t *testing.T, stacks ...config.Stack) *heldEnv {
 func (env *heldEnv) newDeployer(files map[string][]byte, repoDir string) *Deployer {
 	return New(Config{
 		Runner:       env.runner,
+		Outputter:    env.runner,
 		CommitReader: &fakeCommitReader{files: files},
 		RepoDir:      repoDir,
 		StateDir:     env.stateDir,

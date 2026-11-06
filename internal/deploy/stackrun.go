@@ -86,9 +86,14 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		slog.Debug("skipping stack, no changes detected", "stack", stack.Name)
 		d.clearQueued(stack.Name) // nothing pending anymore
 		state.markSettled(stack.Name)
-		// Back at the recorded inputs (a revert): nothing is held any more.
-		state.release(stack.Name)
 		d.takeRetryRequest(stack.Name)
+		// Back at the recorded inputs (a revert): nothing is held any more,
+		// once the held version's leftover services are gone (ADR-0066).
+		if _, held := state.heldFor(stack.Name); held {
+			if emitted, err := d.settleReleasedHold(ctx, prep, state); emitted {
+				return err
+			}
+		}
 		metrics.DeploysSkipped.WithLabelValues(stack.Name).Inc()
 		d.emit(events.StatusSkipped, stack.Name, 0, "", changeSet{})
 		return nil
