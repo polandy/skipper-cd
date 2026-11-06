@@ -1,7 +1,11 @@
 package selfheal_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -392,5 +396,113 @@ func TestEngine_DoesNotReportHealedWithoutARedeploy(t *testing.T) {
 	}
 	if len(rec.stacks) != 0 {
 		t.Errorf("a blip without a redeploy is not a heal, got %v", rec.stacks)
+	}
+}
+
+// One healthy poll between degraded ones does not end the outage: a flapping
+// stack keeps its budget and the breaker still trips (C11). Each heal call is
+// the positive signal that the cycle reached the trigger.
+func TestEngine_FlappingStackKeepsItsAttemptBudget(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	exhausted := 0
+	eng := newEngine(h, clk, 2, 2, 0, func(string) { exhausted++ })
+
+	for range 3 {
+		eng.Observe(context.Background(), snap("web", health.Unhealthy))
+		eng.Observe(context.Background(), snap("web", health.Unhealthy))
+		eng.Observe(context.Background(), snap("web", health.Healthy))
+	}
+	if len(h.calls) != 2 {
+		t.Fatalf("a flapping stack must share one budget of 2 heals, got %d", len(h.calls))
+	}
+	if exhausted != 1 {
+		t.Fatalf("expected the breaker to trip once, got %d", exhausted)
+	}
+}
+
+// An outage ends after MinUnhealthyPolls healthy polls in a row; healed is
+// reported then, measured to the first of those polls.
+func TestEngine_OutageEndsAfterAsManyHealthyPollsAsTheDebounce(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	rec := &healedRecorder{}
+	eng := selfheal.New(selfheal.Config{
+		Healer: h, Enabled: func(string) bool { return true },
+		MinUnhealthyPolls: 2, MaxAttempts: 3, OnHealed: rec.record, Now: clk.now,
+	})
+
+	eng.Observe(context.Background(), snap("web", health.Unhealthy))
+	eng.Observe(context.Background(), snap("web", health.Unhealthy)) // heal
+	clk.advance(30 * time.Second)
+	eng.Observe(context.Background(), snap("web", health.Healthy))
+	if len(h.calls) != 1 || len(rec.stacks) != 0 {
+		t.Fatalf("after one healthy poll: want 1 heal and no healed yet, got %d heals, healed %v", len(h.calls), rec.stacks)
+	}
+	clk.advance(30 * time.Second)
+	eng.Observe(context.Background(), snap("web", health.Healthy))
+	if len(rec.stacks) != 1 || rec.after[0] != 30*time.Second {
+		t.Fatalf("want one healed after 30s, got %v %v", rec.stacks, rec.after)
+	}
+}
+
+// State of a stack the poller stops naming, or that is opted out, is dropped:
+// it returns with a fresh budget (C11). The second heal is the positive signal.
+func TestEngine_PrunesStateOfStacksNoLongerObserved(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		gone func(eng *selfheal.Engine, enabled *bool)
+	}{
+		{"removed from the snapshot", func(eng *selfheal.Engine, _ *bool) {
+			eng.Observe(context.Background(), health.Snapshot{Stacks: map[string]health.StackHealth{}})
+		}},
+		{"opted out", func(eng *selfheal.Engine, enabled *bool) {
+			*enabled = false
+			eng.Observe(context.Background(), snap("web", health.Unhealthy))
+			*enabled = true
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &fakeHealer{ran: true}
+			enabled := true
+			eng := selfheal.New(selfheal.Config{
+				Healer: h, Enabled: func(string) bool { return enabled },
+				MinUnhealthyPolls: 1, MaxAttempts: 1, Now: (&clock{t: time.Unix(1000, 0)}).now,
+			})
+			eng.Observe(context.Background(), snap("web", health.Unhealthy)) // heal, budget spent
+			eng.Observe(context.Background(), snap("web", health.Unhealthy)) // exhausted
+			tc.gone(eng, &enabled)
+			eng.Observe(context.Background(), snap("web", health.Unhealthy))
+			if len(h.calls) != 2 {
+				t.Fatalf("expected a fresh budget after the state was dropped, got %d heals", len(h.calls))
+			}
+		})
+	}
+}
+
+// A heal the healer declines (ran=false with a reason) spends no budget and is
+// logged once per outage, not once per poll.
+func TestEngine_DeclinedHealSpendsNoBudgetAndLogsOnce(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	h := &fakeHealer{ran: false, err: errors.New("pending change")}
+	eng := newEngine(h, &clock{t: time.Unix(1000, 0)}, 1, 1, 0, nil)
+	for range 3 {
+		eng.Observe(context.Background(), snap("web", health.Unhealthy))
+	}
+	if len(h.calls) != 3 {
+		t.Fatalf("expected a heal attempt per poll, got %d", len(h.calls))
+	}
+	if n := strings.Count(buf.String(), "self-heal not run"); n != 1 {
+		t.Fatalf("expected the deferral logged once, got %d:\n%s", n, buf.String())
+	}
+
+	h.ran, h.err = true, nil
+	eng.Observe(context.Background(), snap("web", health.Unhealthy))
+	if len(h.calls) != 4 {
+		t.Fatalf("declined heals must leave the budget intact, got %d calls", len(h.calls))
 	}
 }

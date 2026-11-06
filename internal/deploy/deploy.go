@@ -405,51 +405,6 @@ func (d *Deployer) TrySyncAndDeployAll(ctx context.Context, cfg *config.Config) 
 	return true
 }
 
-// HealStack runs a corrective `docker compose up -d` for a single stack to
-// restore it to its currently deployed running state after runtime drift (a
-// stopped/removed container, an unhealthy service). It is self-heal's action
-// (ADR-0029) and is deliberately *not* a git deploy: no change detection, no
-// hash update, and no rollback, because the desired version is unchanged — it
-// only restarts what should already be running, so a "rollback" to an older
-// commit would be wrong.
-//
-// It serializes on the deploy mutex like every other deploy source (Invariant
-// 7). If a deploy is already in progress it returns ran=false without waiting:
-// that deploy converges the stack anyway, and the next health poll
-// re-evaluates, so piling a heal behind it carries no unique information
-// (mirrors the reconcile loop's skip-if-busy, ADR-0010/ADR-0028). It emits no
-// event: the healed event waits until the stack is seen healthy again
-// (EmitHealed, driven by the self-heal engine). An up error is returned for the
-// caller to count as a failed attempt without emitting a misleading
-// failed-deploy event.
-func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName string, drift []events.DriftedService) (ran bool, err error) {
-	if !d.mu.TryLock() {
-		return false, nil
-	}
-	defer d.mu.Unlock()
-
-	stack, ok := d.effectiveStack(cfg, stackName)
-	if !ok {
-		return true, fmt.Errorf("self-heal: unknown stack %q", stackName)
-	}
-
-	baseEnv, err := BaseEnv(cfg.VarsFile)
-	if err != nil {
-		return true, fmt.Errorf("self-heal: %w", err)
-	}
-	run := newStackRun(stack, cfg.StacksBaseDir, baseEnv)
-
-	slog.Info("self-heal: restoring stack to its deployed running state", "stack", stack.Name, "drift", len(drift))
-	// A plain up — no --wait/health gate, no rollback (see the doc comment).
-	if err := d.runDockerCompose(ctx, run, "up", "-d", "--remove-orphans"); err != nil {
-		return true, fmt.Errorf("self-heal up %q: %w", stack.Name, err)
-	}
-	metrics.LastDeployTimestamp.WithLabelValues(stack.Name).Set(float64(time.Now().Unix()))
-	// No healed event here: an up that exits 0 does not mean the stack came
-	// back. The engine reports it once a poll sees it healthy (EmitHealed).
-	return true, nil
-}
-
 // BaseEnv returns the process environment extended with the entries of the
 // optional global vars_file (Invariant 6: env_files > vars_file > environ,
 // with env_files appended later per compose call). Read-only compose callers

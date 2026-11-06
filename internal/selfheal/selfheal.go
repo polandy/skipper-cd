@@ -27,8 +27,8 @@ import (
 // change, no rollback). drift lists the services that were degraded when the
 // heal was triggered, so the healed event can show what it reacted to. It
 // reports whether the redeploy actually ran: false means a deploy was already in
-// progress, so this tick was skipped and must not count against the stack's
-// attempt budget. Backed by the deployer's HealStack in production; tests supply
+// progress, or the healer declined to act — then err says why — so this tick
+// was skipped and must not count against the stack's attempt budget. Backed by the deployer's HealStack in production; tests supply
 // a fake.
 type Healer interface {
 	Heal(ctx context.Context, stack string, drift []events.DriftedService) (ran bool, err error)
@@ -42,7 +42,9 @@ type Config struct {
 	// opt-in resolved against the global default).
 	Enabled func(stack string) bool
 	// MinUnhealthyPolls is how many consecutive degraded polls a stack must show
-	// before the first heal — the debounce against transient blips.
+	// before the first heal — the debounce against transient blips. The same
+	// count of consecutive healthy polls ends an outage, so a stack that flaps
+	// keeps one attempt budget instead of a fresh one per healthy blip.
 	MinUnhealthyPolls int
 	// MaxAttempts caps corrective redeploys per outage before giving up.
 	MaxAttempts int
@@ -78,12 +80,15 @@ type Engine struct {
 
 // stackState is one stack's self-heal bookkeeping across polls.
 type stackState struct {
-	degraded  int                     // consecutive degraded polls
-	attempts  int                     // corrective redeploys performed this outage
-	lastTry   time.Time               // when the last redeploy ran, for the cooldown
-	exhausted bool                    // gave up; heal_exhausted already emitted
-	firstTry  time.Time               // when this outage's first redeploy ran
-	drift     []events.DriftedService // what that first redeploy reacted to
+	degraded    int                     // consecutive degraded polls
+	healthy     int                     // consecutive healthy polls since the last degraded one
+	declined    bool                    // the healer declined this outage; logged once
+	attempts    int                     // corrective redeploys performed this outage
+	lastTry     time.Time               // when the last redeploy ran, for the cooldown
+	exhausted   bool                    // gave up; heal_exhausted already emitted
+	firstTry    time.Time               // when this outage's first redeploy ran
+	recoveredAt time.Time               // the first of the current healthy polls
+	drift       []events.DriftedService // what that first redeploy reacted to
 }
 
 // New builds an Engine from cfg.
@@ -107,13 +112,32 @@ func New(cfg Config) *Engine {
 
 // Observe evaluates a health snapshot and heals any opted-in stack that has
 // stayed degraded past the debounce, subject to the cooldown and attempt cap.
-// It is called once per poll from the poller's goroutine.
+// It is called once per poll from the poller's goroutine. A snapshot names
+// every stack the poller probes, so the state of a stack it no longer names —
+// or one no longer opted in — is dropped here.
 func (e *Engine) Observe(ctx context.Context, snap health.Snapshot) {
+	e.prune(snap)
 	for name, sh := range snap.Stacks {
-		if e.enabled != nil && !e.enabled(name) {
+		if !e.isEnabled(name) {
 			continue
 		}
 		e.evaluate(ctx, name, sh)
+	}
+}
+
+func (e *Engine) isEnabled(stack string) bool {
+	return e.enabled == nil || e.enabled(stack)
+}
+
+// prune forgets the state of every stack snap does not name or that is no
+// longer opted in.
+func (e *Engine) prune(snap health.Snapshot) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for stack := range e.states {
+		if _, probed := snap.Stacks[stack]; !probed || !e.isEnabled(stack) {
+			delete(e.states, stack)
+		}
 	}
 }
 
@@ -196,20 +220,36 @@ func (e *Engine) Reset(stack string) {
 }
 
 func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHealth) {
+	cat := classify(selfHealStatus(sh))
 	e.mu.Lock()
 	s := e.states[stack]
 	if s == nil {
+		if cat != degradedCat {
+			e.mu.Unlock() // no outage to track
+			return
+		}
 		s = &stackState{}
 		e.states[stack] = s
 	}
 
-	switch classify(selfHealStatus(sh)) {
+	switch cat {
 	case recovered:
-		// Healthy again: clear the outage so a future one starts fresh. Only now
-		// is a heal a heal — a redeploy that exits 0 says nothing about whether
-		// the stack came back. A recovery after giving up is not self-heal's.
+		// Healthy again. The outage ends — and a future one starts fresh — only
+		// after minPolls healthy polls in a row; until then a relapse continues
+		// this outage and its budget. Only an ended outage is a heal: a redeploy
+		// that exits 0 says nothing about whether the stack came back. A recovery
+		// after giving up is not self-heal's.
+		s.degraded = 0
+		s.healthy++
+		if s.healthy == 1 {
+			s.recoveredAt = e.now()
+		}
+		if s.healthy < e.minPolls {
+			e.mu.Unlock()
+			return
+		}
 		healed := s.attempts > 0 && !s.exhausted
-		after, drift := e.now().Sub(s.firstTry), s.drift
+		after, drift := s.recoveredAt.Sub(s.firstTry), s.drift
 		delete(e.states, stack)
 		e.mu.Unlock()
 		if healed && e.onHealed != nil {
@@ -223,6 +263,7 @@ func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHeal
 	}
 
 	// Degraded from here on.
+	s.healthy = 0
 	if s.exhausted {
 		e.mu.Unlock()
 		return
@@ -254,7 +295,7 @@ func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHeal
 	drift := driftedServices(sh)
 	ran, err := e.healer.Heal(ctx, stack, drift)
 	if !ran {
-		slog.Debug("self-heal skipped: deploy already in progress", "stack", stack)
+		e.logSkipped(stack, err)
 		return
 	}
 	if err != nil {
@@ -270,6 +311,25 @@ func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHeal
 		s.lastTry = e.now()
 	}
 	e.mu.Unlock()
+}
+
+// logSkipped says why a heal did not run. A declined heal (err set) is logged
+// once per outage: its cause usually persists across every poll.
+func (e *Engine) logSkipped(stack string, err error) {
+	if err == nil {
+		slog.Debug("self-heal skipped: deploy already in progress", "stack", stack)
+		return
+	}
+	e.mu.Lock()
+	s := e.states[stack]
+	first := s != nil && !s.declined
+	if first {
+		s.declined = true
+	}
+	e.mu.Unlock()
+	if first {
+		slog.Info("self-heal not run for this stack while it stays degraded", "stack", stack, "reason", err)
+	}
 }
 
 // category is how self-heal classifies a stack's health status.
