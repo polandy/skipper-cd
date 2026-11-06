@@ -41,13 +41,15 @@ file:
   notifications already render that as "removed". No `deploying` event comes
   first, so self-heal's attempt budget is not reset (ADR-0029). If nothing was
   removed, the run emits the usual `skipped`.
-- If the read or the removal fails, the run emits a `failed` event and keeps
-  the hold, so the next tick tries again. Releasing the hold would leave the
-  orphan running for good. A repeated failure collapses into one row
-  (ADR-0056).
-- Without an `Outputter`, or without a parseable compose file, the run cannot
-  tell which services are orphaned. It then releases the hold as before; a
-  compose file that does not parse also logs a warning.
+- If the removal fails, the run emits a `failed` event and keeps the hold, so
+  the next tick tries again. Releasing the hold would leave a known orphan
+  running for good. A repeated failure collapses into one row (ADR-0056).
+- If the run cannot tell which services are orphaned, it logs a warning and
+  releases the hold as before. That covers a failed read, a compose file that
+  does not parse, and a deployer with no `Outputter`. Like the running-image
+  read (ADR-0053), this read does not carry `env_files`, so a compose file that
+  requires one of their variables (`${VAR:?}`) fails it. Keeping the hold then
+  would leave the reverted stack held indefinitely.
 
 An unchanged stack that is not held is skipped exactly as before, with no
 container read.

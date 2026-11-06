@@ -70,4 +70,4 @@ One file per decision, numbered sequentially (see
 | [0063](0063-failure-event-names-the-cause.md) | A failed command's event names the cause condensed from its stderr tail, with per-run timestamps removed so repeats still collapse |
 | [0064](0064-failures-before-start-back-off-then-hold.md) | A change that failed before any container was touched is retried after 5, then 10 minutes and held after its third failure, using ADR-0062's hold record instead of retrying every tick |
 | [0065](0065-nixos-change-detection-by-system-derivation.md) | NixOS change detection rebuilds only when the host's system derivation changed (revision neutralized), by default; `files` keeps the old any-`*.nix` behavior |
-| [0066](0066-revert-of-held-change-removes-orphaned-services.md) | Releasing a hold by revert first removes containers of services the compose file no longer declares (a hand-applied held version), keeping the hold if that fails |
+| [0066](0066-revert-of-held-change-removes-orphaned-services.md) | Releasing a hold by revert first removes containers of services the compose file no longer declares (a hand-applied held version), keeping the hold if the removal fails |

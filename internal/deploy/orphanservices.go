@@ -10,8 +10,8 @@ import (
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
-// errOrphanCleanup wraps a failed read or removal of a released hold's
-// orphaned services (ADR-0066).
+// errOrphanCleanup wraps a failed removal of a released hold's orphaned
+// services (ADR-0066).
 var errOrphanCleanup = errors.New("remove orphaned services")
 
 // orphanedContainer is a container of the stack's compose project whose
@@ -21,19 +21,21 @@ type orphanedContainer struct {
 }
 
 // orphanedServices lists the project's containers whose service is missing
-// from the compose file. It answers nothing — no error — when it cannot tell:
-// no Outputter wired or no compose parse to compare against.
-func (d *Deployer) orphanedServices(ctx context.Context, prep stackPrep) ([]orphanedContainer, error) {
+// from the compose file. It answers nothing when it cannot tell — no
+// Outputter, no compose parse, or a failed read — so the release is never
+// worse than a plain skip. Like runningImages the read carries no env_files.
+func (d *Deployer) orphanedServices(ctx context.Context, prep stackPrep) []orphanedContainer {
 	if d.outputter == nil {
-		return nil, nil
+		return nil
 	}
 	if prep.compose == nil {
 		slog.Warn("cannot check for orphaned services: compose file did not parse", "stack", prep.run.stack.Name)
-		return nil, nil
+		return nil
 	}
 	lines, err := composeJSONRead[containerLine](ctx, d, prep.run, "ps", "--format", "json", "--all")
 	if err != nil {
-		return nil, fmt.Errorf("%w: read containers: %w", errOrphanCleanup, err)
+		slog.Warn("cannot check for orphaned services: container read failed", "stack", prep.run.stack.Name, "err", err)
+		return nil
 	}
 	var orphans []orphanedContainer
 	for _, l := range lines {
@@ -42,7 +44,7 @@ func (d *Deployer) orphanedServices(ctx context.Context, prep stackPrep) ([]orph
 		}
 		orphans = append(orphans, orphanedContainer{id: l.ID, service: l.Service, image: l.Image})
 	}
-	return orphans, nil
+	return orphans
 }
 
 // removeOrphanedServices removes the containers of services the compose file
@@ -50,9 +52,9 @@ func (d *Deployer) orphanedServices(ctx context.Context, prep stackPrep) ([]orph
 // those containers are touched: no up, so nothing else is recreated or started
 // (ADR-0066).
 func (d *Deployer) removeOrphanedServices(ctx context.Context, prep stackPrep) ([]events.ServiceImageChange, error) {
-	orphans, err := d.orphanedServices(ctx, prep)
-	if err != nil || len(orphans) == 0 {
-		return nil, err
+	orphans := d.orphanedServices(ctx, prep)
+	if len(orphans) == 0 {
+		return nil, nil
 	}
 	args := []string{"rm", "-f"}
 	var removed []events.ServiceImageChange
@@ -72,9 +74,9 @@ func (d *Deployer) removeOrphanedServices(ctx context.Context, prep stackPrep) (
 // settleReleasedHold finishes an unchanged run of a stack that is still held:
 // its inputs are back at the recorded ones (a revert), but a hand-applied held
 // version may have left services running that the compose file no longer
-// declares. It removes them before releasing the hold; a failure keeps the
-// hold, so the next tick retries. It reports whether it emitted the stack's
-// terminal event.
+// declares. It removes them before releasing the hold; a failed removal keeps
+// the hold, so the next tick retries. It reports whether it emitted the
+// stack's terminal event.
 func (d *Deployer) settleReleasedHold(ctx context.Context, prep stackPrep, state *persistedState) (emitted bool, err error) {
 	name := prep.run.stack.Name
 	removed, err := d.removeOrphanedServices(ctx, prep)

@@ -139,35 +139,50 @@ func TestDeployAllStacks_UnheldSkipReadsNoContainers(t *testing.T) {
 	}
 }
 
-// A failed read or removal keeps the hold, so the next tick tries again —
-// releasing it would leave the orphan for good.
-func TestDeployAllStacks_OrphanCleanupFailureKeepsHold(t *testing.T) {
-	cases := map[string]func(env *heldEnv){
-		"ps fails": func(env *heldEnv) { serveps(env, "", errors.New("docker daemon unreachable")) },
-		"rm fails": func(env *heldEnv) {
-			serveps(env, psWithOrphan, nil)
-			env.runner.failFn = func(_ string, args []string) error {
-				if len(args) > 0 && args[0] == "rm" {
-					return errors.New("container is busy")
-				}
-				return nil
-			}
-		},
+// A failed removal keeps the hold, so the next tick tries again — releasing
+// it would leave a known orphan for good.
+func TestDeployAllStacks_FailedOrphanRemovalKeepsHold(t *testing.T) {
+	env := newHeldEnv(t)
+	holdThenRevert(t, env)
+	serveps(env, psWithOrphan, nil)
+	env.runner.failFn = func(_ string, args []string) error {
+		if len(args) > 0 && args[0] == "rm" {
+			return errors.New("container is busy")
+		}
+		return nil
 	}
-	for name, arrange := range cases {
-		t.Run(name, func(t *testing.T) {
-			env := newHeldEnv(t)
-			holdThenRevert(t, env)
-			arrange(env)
 
-			statuses, _ := env.run("signal")
+	statuses, _ := env.run("signal")
 
-			if !slices.Equal(statuses, []events.Status{events.StatusFailed}) {
-				t.Fatalf("statuses %v, want [failed]", statuses)
-			}
-			if _, ok := env.state().Held["signal"]; !ok {
-				t.Error("a failed cleanup must keep the hold so the next tick retries")
-			}
-		})
+	if len(removals(env)) != 1 {
+		t.Fatalf("docker rm calls = %v, want the one failed attempt", removals(env))
+	}
+	if !slices.Equal(statuses, []events.Status{events.StatusFailed}) {
+		t.Fatalf("statuses %v, want [failed]", statuses)
+	}
+	if _, ok := env.state().Held["signal"]; !ok {
+		t.Error("a failed removal must keep the hold so the next tick retries")
+	}
+}
+
+// A failed container read cannot tell whether anything is orphaned, so the
+// release degrades to the plain skip: the read carries no env_files, and a
+// compose file it cannot resolve must not leave a reverted stack held for good.
+func TestDeployAllStacks_FailedContainerReadReleasesHoldAsSkip(t *testing.T) {
+	env := newHeldEnv(t)
+	holdThenRevert(t, env)
+	serveps(env, "", errors.New("required variable TOKEN is missing a value"))
+	from := len(env.runner.outputCalls)
+
+	statuses, _ := env.run("signal")
+
+	if psReads(env, from) != 1 {
+		t.Fatalf("ps reads = %d, want 1", psReads(env, from))
+	}
+	if !slices.Equal(statuses, []events.Status{events.StatusSkipped}) {
+		t.Fatalf("statuses %v, want [skipped]", statuses)
+	}
+	if _, ok := env.state().Held["signal"]; ok {
+		t.Error("a failed read must release the hold like a plain revert")
 	}
 }
