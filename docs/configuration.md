@@ -346,7 +346,7 @@ A hold is released by:
 
 - **A new push that changes the stack** — any tracked input (compose file, env files, vars file, watched dirs, Dockerfiles, the stack's deploy config). The new version deploys as usual.
 - **A retry** — the **retry** button next to the stack's `held` chip in the Stacks view, or `POST /api/stacks/<name>/retry`. That deploys the held change once more; if it fails again, it is held again. Use it when the cause was outside the change, for example a database that was down.
-- A revert that restores the stack's last deployed inputs, and removing the stack.
+- A revert that restores the stack's last deployed inputs, and removing the stack. Before a revert releases the hold, skipper removes containers of services the restored compose file no longer declares, for example ones a hand-applied held version started. Only those containers are removed (`docker rm -f`), and the removal is reported as a `success` event listing the removed services. If the removal fails, the stack stays held and the next tick tries again.
 
 A failure **before** any container was touched — a `pre_deploy` hook, `pull`, `build` — may be transient (a registry hiccup), so it is retried, but not on every tick:
 
