@@ -86,37 +86,11 @@ func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persi
 		return fmt.Errorf("no previous commit available for rollback")
 	}
 
-	oldContent, err := d.commitReader.FileAtCommit(ctx, base, run.composePath)
+	rbRun, cleanup, err := d.runAtCommit(ctx, run, base)
 	if err != nil {
-		return fmt.Errorf("retrieve old compose file: %w", err)
+		return err
 	}
-
-	tmpFile, err := os.CreateTemp("", "skipper-rollback-*.yml")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write(oldContent); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("write temp file: %w", err)
-	}
-	tmpFile.Close()
-
-	// The rollback runs the old compose file from a temp file in /tmp/. With no
-	// projectDir configured, runDockerCompose would use the temp file's
-	// directory as the working directory, so pin it to the original compose
-	// file's directory instead (Invariant 3).
-	rbRun := run
-	rbRun.composePath = tmpFile.Name()
-	if rbRun.projectDir == "" {
-		rbRun.projectDir = filepath.Dir(run.composePath)
-	}
-	// The build-context override is dropped: it was generated from the *current*
-	// compose file, so against the restored one it can name services that version
-	// does not have — and pinning a rollback's build to the clone would rebuild
-	// the very version that just failed (ADR-0057).
-	rbRun.extraComposeFiles = nil
+	defer cleanup()
 
 	slog.Info("rolling back with previous compose file", "stack", run.stack.Name, "commit", base)
 	upArgs := withHealthGate(run.stack.DeployHealthCheck, "up", "-d")
@@ -130,4 +104,45 @@ func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persi
 		return fmt.Errorf("restored version failed the health probe: %w (%w)", err, ErrRollbackUnhealthy)
 	}
 	return nil
+}
+
+// runAtCommit returns a copy of run that applies the stack's compose file as of
+// commit, materialised into a temp file; cleanup removes it. --project-directory
+// stays pinned to the original compose file's directory (Invariant 3) and the
+// build-context override is dropped: it was generated from the *current*
+// compose file, so against the restored one it can name services that version
+// does not have — and pinning such a build to the clone would build the very
+// version being stepped away from (ADR-0057).
+func (d *Deployer) runAtCommit(ctx context.Context, run stackRun, commit string) (stackRun, func(), error) {
+	content, err := d.commitReader.FileAtCommit(ctx, commit, run.composePath)
+	if err != nil {
+		return stackRun{}, nil, fmt.Errorf("retrieve old compose file: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "skipper-restored-*.yml")
+	if err != nil {
+		return stackRun{}, nil, fmt.Errorf("create temp file: %w", err)
+	}
+	cleanup := func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			slog.Warn("could not remove restored compose file", "path", tmpFile.Name(), "err", err)
+		}
+	}
+	if _, err := tmpFile.Write(content); err != nil {
+		tmpFile.Close()
+		cleanup()
+		return stackRun{}, nil, fmt.Errorf("write temp file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		cleanup()
+		return stackRun{}, nil, fmt.Errorf("write temp file: %w", err)
+	}
+
+	restored := run
+	restored.composePath = tmpFile.Name()
+	if restored.projectDir == "" {
+		restored.projectDir = filepath.Dir(run.composePath)
+	}
+	restored.extraComposeFiles = nil
+	return restored, cleanup, nil
 }

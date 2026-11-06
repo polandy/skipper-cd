@@ -291,3 +291,41 @@ what that first redeploy reacted to. Other cases produce no `healed` event:
   debounce, was never self-heal's to report.
 
 An outage that self-heal cannot fix now reads as a single `heal_exhausted`.
+
+## Amendment (2026-11-06): heal the recorded version, not the clone's HEAD
+
+"Already-deployed compose file (the repo clone)" assumed the clone and the
+deployed version are the same. They are not whenever a change is pending: queued
+behind an autosync pause, or held after it failed and was rolled back
+([ADR-0062](0062-held-changes.md)). The heal then applied that pending change —
+without approval, hooks, pull, health gate or rollback, and without recording
+its hashes. A held, known-bad version came back on the next unhealthy poll.
+
+`HealStack` now compares the clone's tracked inputs (Invariant 2) with the hashes
+recorded for the stack:
+
+- **Equal:** the clone is the deployed version; heal from it, as before.
+- **Only the compose file differs:** restore it from the stack's base commit
+  ([ADR-0061](0061-per-stack-rollback-base.md)) into a temp file, the way a
+  rollback does, and heal from that. This is the common case: an image bump that
+  is queued or held.
+- **Anything else differs, or nothing is recorded:** the deployed version cannot
+  be rebuilt from one file, so the heal is declined (`ErrHealDeferred`, ran=false).
+  It spends no attempt, and the engine logs the reason once per outage. A held
+  stack is already alerted on by `skipper_stack_held`.
+
+A failure to read the base commit is a failed attempt, not a deferral: the state
+says a version exists, so the budget runs and `heal_exhausted` reports it.
+
+The pause stays independent of self-heal, as decided above: a paused stack is
+healed, to the version it runs.
+
+Two engine changes in the same pass:
+
+- **Recovery hysteresis.** An outage ended on the first healthy poll, so a stack
+  that flapped healthy for one poll got a fresh budget each time and was healed
+  without limit. An outage now ends after `self_heal_min_unhealthy_polls`
+  consecutive healthy polls, the same count that starts one. `healed` is
+  reported then, with the duration measured to the first of those polls.
+- **Pruning.** The per-stack state of a stack the poller no longer reports, or
+  that is no longer opted in, is dropped on the next poll.
