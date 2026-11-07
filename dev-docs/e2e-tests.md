@@ -1693,10 +1693,17 @@ incident behind — at Pixel-9-Pro width and asserts the row's geometry
 
 - **UAS4 — The Deploys row shares the edge.** The same assertion on a deploy
   row: the two views are one look, so repairing the roster alone would have left
-  the sibling view ragged in exactly the way the report was about.
+  the sibling view ragged in exactly the way the report was about. It reads the
+  edges only once the row has no `new-row` class: the entrance scales the row,
+  so two reads during it land on different frames (the 1.7 px flake).
+- **UAS5 — A live row's entrance plays once.** After the rollback-then-retry and
+  a round trip through the Stacks view, no Deploys row carries `new-row` or a
+  running animation. The class used to stay on, so every return to the view slid
+  all live rows in again — the cause of UAS4's flake.
 
-All four fail against the unfixed build (three on geometry, UAS3 on the missing
-token group). Behaviour-only, no snapshot.
+UAS1–UAS4 fail against the unfixed layout (three on geometry, UAS3 on the
+missing token group); UAS5 against the build that never dropped `new-row`.
+Behaviour-only, no snapshot.
 
 ### 4.47 UI — Maske AT: a stack removed from the repo (ADR-0036 amendment)
 
@@ -2153,7 +2160,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Held change: the Stacks chip explains the hold, retry deploys it once more, a refused retry hands the button back | **UAZ1**, **UAZ2** |
 | A change that failed before it started: the Stacks chip reads `backoff` with its attempts and next try, and `held` after the third failure | **UBA1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
-| Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split | **UAS1**, **UAS2**, **UAS3**, **UAS4** |
+| Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split; a live row's entrance never replays | **UAS1**, **UAS2**, **UAS3**, **UAS4**, **UAS5** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |
