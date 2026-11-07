@@ -196,7 +196,7 @@ func TestDeployStack_UnchangedClearsQueue(t *testing.T) {
 	d := New(Config{Runner: runner, Autosync: autosync.NewController(off(), nil), Queue: q})
 
 	// Pre-seed state so the stack is unchanged.
-	hashes, err := computePerFileHashes(stackDir, nil, nil, "", nil)
+	hashes, err := computePerFileHashes(context.Background(), stackDir, nil, nil, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

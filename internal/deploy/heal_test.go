@@ -32,7 +32,7 @@ func healConfig(t *testing.T, stack string) *config.Config {
 func recordDeployed(t *testing.T, d *Deployer, cfg *config.Config, stack, commit string) {
 	t.Helper()
 	st, _ := d.effectiveStack(cfg, stack)
-	prep, err := d.prepareStackRun(st, cfg.StacksBaseDir, cfg.VarsFile, nil)
+	prep, err := d.prepareStackRun(context.Background(), st, cfg.StacksBaseDir, cfg.VarsFile, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,9 +1,12 @@
 package compose
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/polandy/skipper-cd/internal/regularfile"
 )
 
 func write(t *testing.T, content string) string {
@@ -91,5 +94,27 @@ func TestParse_ErrorOnMissingFile(t *testing.T) {
 func TestParse_ErrorOnInvalidYAML(t *testing.T) {
 	if _, err := Parse(write(t, "services: [broken")); err == nil {
 		t.Fatal("expected error for invalid yaml")
+	}
+}
+
+func TestParse_RejectsDevice(t *testing.T) {
+	link := filepath.Join(t.TempDir(), FileName)
+	if err := os.Symlink("/dev/zero", link); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Parse(link); !errors.Is(err, regularfile.ErrNotRegular) {
+		t.Fatalf("err = %v, want ErrNotRegular", err)
+	}
+}
+
+func TestParse_RejectsFileOverLimit(t *testing.T) {
+	path := write(t, "")
+	if err := os.Truncate(path, MaxFileBytes+1); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Parse(path); !errors.Is(err, regularfile.ErrTooLarge) {
+		t.Fatalf("err = %v, want ErrTooLarge", err)
 	}
 }

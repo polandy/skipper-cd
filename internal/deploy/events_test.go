@@ -148,7 +148,7 @@ func TestDeployStack_EmitsSkippedEvent(t *testing.T) {
 
 	stack := config.Stack{Name: "gitea"}
 
-	hashes, err := computePerFileHashes(stackDir, nil, nil, "", nil)
+	hashes, err := computePerFileHashes(context.Background(), stackDir, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}

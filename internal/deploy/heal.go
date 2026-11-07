@@ -95,7 +95,7 @@ func (d *Deployer) deployedVersionRun(ctx context.Context, run stackRun, cfg *co
 	if err != nil {
 		slog.Debug("self-heal: compose file does not parse, Dockerfiles are not compared", "stack", run.stack.Name, "err", err)
 	}
-	current, _, err := d.hashStackInputs(run.stack, cfg.StacksBaseDir, filepath.Dir(run.composePath), cfg.VarsFile, compose)
+	current, _, err := d.hashStackInputs(ctx, run.stack, cfg.StacksBaseDir, filepath.Dir(run.composePath), cfg.VarsFile, compose)
 	if err != nil {
 		return stackRun{}, "", nil, fmt.Errorf("compute per-file hashes: %w", err)
 	}

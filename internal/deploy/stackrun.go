@@ -32,7 +32,7 @@ type stackPrep struct {
 // prepareStackRun resolves a stack's deploy inputs: the run values from the
 // repo clone (Invariant 1), the compose parse, the effective deploy gate, and
 // the hashes of every tracked input (Invariant 2).
-func (d *Deployer) prepareStackRun(stack config.Stack, baseDir, varsFile string, baseEnv []string) (stackPrep, error) {
+func (d *Deployer) prepareStackRun(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string) (stackPrep, error) {
 	// Change detection always uses the repo clone so that merged PRs are detected.
 	run := newStackRun(stack, baseDir, baseEnv)
 	repoDir := filepath.Dir(run.composePath)
@@ -57,7 +57,7 @@ func (d *Deployer) prepareStackRun(stack config.Stack, baseDir, varsFile string,
 		currentImages = compose.images()
 	}
 
-	currentHashes, dockerfilePaths, err := d.hashStackInputs(stack, baseDir, repoDir, varsFile, compose)
+	currentHashes, dockerfilePaths, err := d.hashStackInputs(ctx, stack, baseDir, repoDir, varsFile, compose)
 	if err != nil {
 		return stackPrep{}, fmt.Errorf("compute per-file hashes: %w", err)
 	}
@@ -72,7 +72,7 @@ func (d *Deployer) prepareStackRun(stack config.Stack, baseDir, varsFile string,
 }
 
 func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) (err error) {
-	prep, err := d.prepareStackRun(stack, baseDir, varsFile, baseEnv)
+	prep, err := d.prepareStackRun(ctx, stack, baseDir, varsFile, baseEnv)
 	if err != nil {
 		d.emitDeployFailure(stack.Name, 0, err, changeSet{})
 		return err

@@ -129,7 +129,7 @@ func (d *Deployer) deployStackGated(ctx context.Context, stack config.Stack, bas
 		// A dependency failed or is queued. Only a stack that actually has a
 		// change needs holding back; an unchanged stack is already at its desired
 		// state, so the constraint is moot and it does not block its dependents.
-		if changed, att, pending := d.pendingChanges(stack, baseDir, varsFile, state); pending {
+		if changed, att, pending := d.pendingChanges(ctx, stack, baseDir, varsFile, state); pending {
 			return d.deferForDependency(ctx, stack, changed, att, state, gate)
 		}
 	}
@@ -191,7 +191,7 @@ func (d *Deployer) markPending(stack string, changed []string, reason string) {
 // state, and whether any exist — the same detection deployStackIfChanged makes,
 // exposed so the ordering layer can describe a stack it defers without deploying
 // it. A hash error yields no changes; the real deploy would surface it.
-func (d *Deployer) pendingChanges(stack config.Stack, baseDir, varsFile string, state *persistedState) ([]string, attribution, bool) {
+func (d *Deployer) pendingChanges(ctx context.Context, stack config.Stack, baseDir, varsFile string, state *persistedState) ([]string, attribution, bool) {
 	repoDir := filepath.Join(baseDir, stack.Name)
 	composePath := filepath.Join(repoDir, compose.FileName)
 
@@ -210,7 +210,7 @@ func (d *Deployer) pendingChanges(stack config.Stack, baseDir, varsFile string, 
 		stacksBaseDir: baseDir,
 	}
 
-	currentHashes, _, err := d.hashStackInputs(stack, baseDir, repoDir, varsFile, cf)
+	currentHashes, _, err := d.hashStackInputs(ctx, stack, baseDir, repoDir, varsFile, cf)
 	if err != nil {
 		return nil, att, false
 	}

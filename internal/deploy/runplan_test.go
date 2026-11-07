@@ -36,7 +36,7 @@ func TestComputeRunPlan_ChangedUnpausedStacksInDeployOrder(t *testing.T) {
 
 	// Record beta as already deployed so it is unchanged and must be excluded;
 	// alpha and gamma stay changed and keep their config order.
-	betaHashes, err := computePerFileHashes(filepath.Join(baseDir, "beta"), nil, nil, "", nil)
+	betaHashes, err := computePerFileHashes(context.Background(), filepath.Join(baseDir, "beta"), nil, nil, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestComputeRunPlan_ChangedUnpausedStacksInDeployOrder(t *testing.T) {
 		Images: map[string]serviceImageByName{},
 	}
 
-	plan := d.computeRunPlan(cfg, state)
+	plan := d.computeRunPlan(context.Background(), cfg, state)
 	if want := []string{"alpha", "gamma"}; !slices.Equal(plan, want) {
 		t.Fatalf("plan = %v, want %v", plan, want)
 	}
@@ -67,7 +67,7 @@ func TestComputeRunPlan_ExcludesPausedStacks(t *testing.T) {
 		Stacks:        []config.Stack{{Name: "alpha"}, {Name: "beta"}},
 	}
 
-	plan := d.computeRunPlan(cfg, newEmptyState())
+	plan := d.computeRunPlan(context.Background(), cfg, newEmptyState())
 	if want := []string{"alpha"}; !slices.Equal(plan, want) {
 		t.Fatalf("plan = %v, want %v (paused beta must be excluded)", plan, want)
 	}
