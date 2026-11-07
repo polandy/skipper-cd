@@ -760,6 +760,7 @@ update_check:
 - On by default; the section is only needed to change the cadence or to opt into the messages. `interval_seconds: 0` turns the feature off entirely — skipper then makes no registry requests outside a deploy.
 - After a deploy that changed what runs, the check re-runs immediately, so an applied update's marker clears right away.
 - Registry credentials come from the host's docker config (`docker login`) — the same ones your pulls use. Public images need none.
+- Each registry request times out after 15 seconds and reads at most 4 MiB. A registry may hand the check only to its own host or domain: a pagination link to another host, or a token server outside the registry's domain (e.g. `auth.docker.io` for Docker Hub is fine) or not on HTTPS, fails that image's check instead of being followed.
 - Locally-built images (`build:`) and stacks with nothing running are skipped. A per-stack `update_check: false` opts a stack out.
 - The check is read-only: applying an update is still a git commit — a tag bump by hand, or a [Renovate](#keeping-images-up-to-date) PR.
 
