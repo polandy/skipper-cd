@@ -19,7 +19,9 @@ Highest priority wins; first hit stops the search:
 
 1. **Repo override** — an `icon.png` (or `icon.svg`) file in the stack's
    directory inside the clone: `<stacks_base_dir>/<name>/icon.png`. Served
-   straight from the clone. No network, always available offline.
+   straight from the clone. No network, always available offline. The file
+   is pusher-controlled, so only a regular, non-symlink file of at most
+   256 KB is served; anything else is logged and skipped.
 2. **Config slug override** — an optional `icon:` field on the stack in
    `skipper.yml` naming an icon-set slug (e.g. `icon: jellyfin` for a stack
    named `media`). Resolved against the icon set, then cached.
@@ -59,7 +61,10 @@ Highest priority wins; first hit stops the search:
 
 - `GET /api/icons/{stack}` — resolves the stack per the order above and returns
   the image bytes with the right `Content-Type` and long-lived
-  `Cache-Control`. Repo override and cache hits serve immediately. On a cache
+  `Cache-Control`, plus `Content-Security-Policy: default-src 'none';
+  style-src 'unsafe-inline'; sandbox` and `X-Content-Type-Options: nosniff`
+  so a scripted SVG opened directly cannot run same-origin. Repo override
+  and cache hits serve immediately. On a cache
   miss it fetches once (short timeout, bounded by the existing command-timeout
   budget), caches the result, and serves it; on fetch failure it returns 404 so
   the UI shows the monogram fallback.

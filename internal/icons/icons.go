@@ -146,9 +146,6 @@ func readRegularFile(path string, limit int64) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("not a regular file (mode %s); commit the icon as a plain file", info.Mode().Type())
 	}
-	if info.Size() > limit {
-		return nil, fmt.Errorf("%d bytes exceeds the %d-byte icon limit", info.Size(), limit)
-	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -167,7 +164,7 @@ func readRegularFile(path string, limit int64) ([]byte, error) {
 		return nil, err
 	}
 	if int64(len(data)) > limit {
-		return nil, fmt.Errorf("grew past the %d-byte icon limit while reading", limit)
+		return nil, fmt.Errorf("exceeds the %d-byte icon limit", limit)
 	}
 	return data, nil
 }
