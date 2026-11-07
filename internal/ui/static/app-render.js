@@ -317,8 +317,27 @@ function renderCommitHead(commits, meta, repoBase) {
   return html;
 }
 
+// BADGE_STATUSES are the deploy statuses skipper emits (internal/events). A
+// peer's records are relayed verbatim, so anything else is untrusted: it gets
+// the neutral badge-unknown class and its label is escaped.
+const BADGE_STATUSES = [
+  'deploying',
+  'success',
+  'failed',
+  'skipped',
+  'rolled_back',
+  'rolled_back_unhealthy',
+  'queued',
+  'healed',
+  'heal_exhausted',
+  'blocked',
+  'held',
+  'removed',
+];
+
 function badgeHTML(status) {
-  const cls = `badge badge-${status}`;
+  const known = BADGE_STATUSES.indexOf(status) !== -1;
+  const cls = `badge badge-${known ? status : 'unknown'}`;
   // deploying keeps its animated spinner as the leading glyph; every other
   // status gets an icon from statusIcon (T3.14).
   if (status === 'deploying')
@@ -335,7 +354,7 @@ function badgeHTML(status) {
     // Same solid two-line treatment as rolled_back_unhealthy (ADR-0029, T3.14).
     return `<span class="${cls}" data-testid="status-badge">${icon}<span class="badge-lbl"><span>self-heal</span><span>failed</span></span></span>`;
   }
-  const label = status === 'rolled_back' ? 'rolled back' : status;
+  const label = status === 'rolled_back' ? 'rolled back' : escapeHtml(status);
   return `<span class="${cls}" data-testid="status-badge">${icon}${label}</span>`;
 }
 
@@ -975,11 +994,17 @@ function autosyncPosText(pos, queued) {
   return queued ? '●' : '';
 }
 
+// AUTOSYNC_REASONS are the pause reasons a reason chip has a colour for.
+const AUTOSYNC_REASONS = ['global', 'stack'];
+
 // autosyncReasonChipHTML tags a paused stack with why it is paused — the queue
 // item's own reason when it has one, else derived from the snapshot entry.
+// An unknown reason is escaped onto the neutral reason-unknown class.
 function autosyncReasonChipHTML(entry, item) {
   const reason = item ? item.reason : reasonFromSnap(entry);
-  return !entry.effective && reason ? `<span class="reason reason-${reason}">${reason}</span>` : '';
+  if (entry.effective || !reason) return '';
+  const cls = AUTOSYNC_REASONS.indexOf(reason) !== -1 ? reason : 'unknown';
+  return `<span class="reason reason-${cls}">${escapeHtml(reason)}</span>`;
 }
 
 // autosyncSwitchTitle is the row switch's tooltip — it names the action the

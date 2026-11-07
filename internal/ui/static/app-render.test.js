@@ -304,6 +304,23 @@ test('badgeHTML stacks heal_exhausted on two lines', () => {
   assert.match(html, /<span class="badge-lbl"><span>self-heal<\/span><span>failed<\/span><\/span>/);
 });
 
+// A peer's audit record or roster snapshot is relayed verbatim, so its status
+// is untrusted: it must never reach the markup as anything but escaped text.
+const XSS = '"><img src=x onerror=alert(1)>';
+
+test('badgeHTML escapes an unknown status and gives it the neutral class', () => {
+  const html = r.badgeHTML(XSS);
+  assert.doesNotMatch(html, /<img/);
+  assert.match(html, /^<span class="badge badge-unknown" data-testid="status-badge">/);
+  assert.match(html, /"&gt;&lt;img src=x onerror=alert\(1\)&gt;<\/span>$/);
+});
+
+test("rosterStatusHTML escapes a peer stack's unknown last status", () => {
+  const html = r.rosterStatusHTML({ name: 'web', last_status: XSS }, false);
+  assert.doesNotMatch(html, /<img/);
+  assert.match(html, /class="badge badge-unknown"/);
+});
+
 test('serviceVersionHTML renders the current tag as a labelled neutral chip', () => {
   const html = r.serviceVersionHTML('web', 'ghcr.io/app:1.26', true);
   assert.match(html, /<span class="td-svc">web<\/span>/);
@@ -865,6 +882,13 @@ test('autosyncReasonChipHTML prefers the queue item reason over the snapshot', (
   assert.equal(
     r.autosyncReasonChipHTML({ effective: false }, undefined),
     '<span class="reason reason-global">global</span>',
+  );
+  // An unknown reason is escaped text on the neutral class, never markup.
+  const odd = r.autosyncReasonChipHTML({ effective: false }, { reason: XSS });
+  assert.doesNotMatch(odd, /<img/);
+  assert.equal(
+    odd,
+    '<span class="reason reason-unknown">"&gt;&lt;img src=x onerror=alert(1)&gt;</span>',
   );
   // A running stack is never tagged, whatever the queue says.
   assert.equal(r.autosyncReasonChipHTML({ effective: true }, { reason: 'stack' }), '');
