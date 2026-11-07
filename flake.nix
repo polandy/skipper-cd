@@ -87,6 +87,8 @@
               pkgs.nodejs_24
               # Docs site.
               mkdocs
+              # `make ui-icons` rasterises the PWA icons.
+              pkgs.librsvg
             ];
             # Playwright's browser binary from nixpkgs, patched to run on NixOS
             # and version-matched to @playwright/test 1.61.1 (e2e/ui). This
