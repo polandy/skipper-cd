@@ -99,6 +99,14 @@ type Config struct {
 	// MetricsPort is the Prometheus /metrics HTTP port. Defaults to 9120.
 	MetricsPort int `yaml:"metrics_port"`
 
+	// ListenAddress is the IP address the webhook/UI server binds to (see
+	// listen.go). Empty (the default) listens on every interface.
+	ListenAddress string `yaml:"listen_address"`
+
+	// AllowedHosts lists the Host header values the UI and its API answer
+	// (see listen.go). Empty (the default) answers any Host.
+	AllowedHosts []string `yaml:"allowed_hosts"`
+
 	// Stacks lists the Docker Compose projects to deploy. When stack_discovery
 	// is false this list is the stack set; under discovery it is the optional
 	// per-stack override list (ADR-0043), matched to discovered directories by name.

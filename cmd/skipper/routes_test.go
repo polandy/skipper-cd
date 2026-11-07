@@ -40,3 +40,55 @@ func TestRegisterEventRoutes_ServesAuditOnVersionedAndLegacyPaths(t *testing.T) 
 			bodies["/api/audit"], bodies["/api/v1/audit"])
 	}
 }
+
+// The headless core answers any Host — a forge or a probe reaches skipper by
+// whatever name it has — while the UI and its API answer only an allowed one
+// (DNS rebinding, ADR-0067). Every response carries the security headers.
+func TestMainHandler_HostCheckGuardsOnlyTheUI(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	core := http.NewServeMux()
+	core.Handle("POST /webhook", ok)
+	core.Handle("GET /healthz", ok)
+	app := http.NewServeMux()
+	app.Handle("GET /api/v1/snapshot", ok)
+	h := mainHandler(core, app, []string{"skipper.lan"})
+
+	tests := []struct {
+		method, path, host string
+		want               int
+	}{
+		{http.MethodPost, "/webhook", "attacker.example", http.StatusOK},
+		{http.MethodGet, "/healthz", "10.0.0.5:8080", http.StatusOK},
+		{http.MethodGet, "/api/v1/snapshot", "attacker.example", http.StatusMisdirectedRequest},
+		{http.MethodGet, "/api/v1/snapshot", "skipper.lan:8080", http.StatusOK},
+	}
+	for _, tt := range tests {
+		req := httptest.NewRequest(tt.method, tt.path, nil)
+		req.Host = tt.host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != tt.want {
+			t.Errorf("%s %s (Host %s): status = %d, want %d", tt.method, tt.path, tt.host, rec.Code, tt.want)
+		}
+		if rec.Header().Get("Content-Security-Policy") == "" || rec.Header().Get("X-Frame-Options") != "DENY" {
+			t.Errorf("%s %s (Host %s): security headers missing: %v", tt.method, tt.path, tt.host, rec.Header())
+		}
+	}
+}
+
+// Headless (UI off), only the core routes exist and nothing is host-checked.
+func TestMainHandler_HeadlessServesCoreOnly(t *testing.T) {
+	core := http.NewServeMux()
+	core.Handle("GET /healthz", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	h := mainHandler(core, nil, []string{"skipper.lan"})
+
+	for path, want := range map[string]int{"/healthz": http.StatusOK, "/": http.StatusNotFound} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "attacker.example"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("GET %s: status = %d, want %d", path, rec.Code, want)
+		}
+	}
+}

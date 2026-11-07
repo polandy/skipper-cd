@@ -102,6 +102,8 @@ nixos_rebuild:
 | `webhook_secret` | string | no | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Optional: the webhook only accelerates the [reconcile loop](#periodic-reconcile), so leaving it empty is valid and disables the `/webhook` endpoint (it then rejects every request); when set, every request is signature-verified. Rejected only if it's empty **and** `reconcile_interval_seconds` is `0`, since then nothing would deploy after startup. |
 | `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
 | `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. Must be 1–65535 and differ from `port`. |
+| `listen_address` | string | no | every interface | IP address the webhook/UI server on `port` binds to, e.g. `127.0.0.1` behind a reverse proxy on the same host. An IP address or `localhost`, without a port. Does not affect `metrics_port` (see [Exposing the web UI](#exposing-the-web-ui)). |
+| `allowed_hosts` | list | no | any host | Host names the web UI and its API answer, e.g. `[skipper.example.com]`. Any other `Host` header gets `421`; `/webhook` and `/healthz` answer every host. An entry without a port matches any port (see [Exposing the web UI](#exposing-the-web-ui)). |
 | `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
 | `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
 | `stacks` | list | no | — | List of Docker Compose stacks (see [Stack Fields](#stack-fields)). Under discovery (the default) it is optional and holds only per-stack overrides, matched to discovered directories by `name`. With `stack_discovery: false` this list *is* the stack set. |
@@ -122,6 +124,24 @@ nixos_rebuild:
 | `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `runtime_health_poll_interval_seconds` > 0. |
 | `host_name` | string | no | OS hostname | This instance's own label in the merged [multi-host](#multi-host) view. Only meaningful when other instances fan this one in, or when this one lists `peers`. |
 | `peers` | list | no | — | Other skipper instances whose read data this one fans into a single merged UI (see [Multi-host](#multi-host)). Each entry is `{ name, url }`. Omit for a single-host instance. |
+
+## Exposing the web UI
+
+skipper ships no login: the UI and its API answer whoever reaches `port`. Put it behind a reverse proxy or auth gateway for access control, and narrow what reaches it:
+
+```yaml
+listen_address: 127.0.0.1         # only the local reverse proxy can connect
+allowed_hosts:
+  - skipper.example.com           # the name the UI is opened by
+```
+
+- `allowed_hosts` guards against **DNS rebinding**: a website a LAN user visits can point its own name at skipper's address and then read the UI's API, or pause autosync, from the browser. Its requests carry the attacker's name in `Host`, which skipper then refuses with `421`. Set it on any install whose UI is reachable from a browser — a proxy-less homelab one above all.
+- List every name the UI is opened by, with a port when the browser shows one (`skipper.lan:8080`) or without one to allow the name on any port. Include `localhost` if you also open it directly on the host. No wildcards.
+- `/webhook` and `/healthz` answer every host, so the forge and health probes need no entry.
+- A [multi-host](#multi-host) primary reaches each peer by the host in its `url`; a peer that sets `allowed_hosts` must list that name.
+- `listen_address` binds only the main `port`; `metrics_port` keeps listening on every interface. Running skipper [in a container](docker.md), leave it empty and restrict the published port instead (`127.0.0.1:8080:8080`) — inside the container, loopback is the container itself.
+
+Every response also carries a strict `Content-Security-Policy` (scripts, styles, images, fonts and connections from skipper itself only), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`. A proxy in front does not need to add them.
 
 ## Pretty console output
 
@@ -638,7 +658,7 @@ peers:
 - **What you get:** the Deploys and Stacks views merge every host's rows, each tagged with a colour **host dot**. A **Hosts** control (top right) filters by host and links out to each host's own UI. Click a host dot to isolate the view to that host; click again to clear. The filter is remembered per browser.
 - **Read-only peers.** Peer rows mirror state only — clicking one shows that deploy's commit, its **containers/health**, its **container logs**, its app link and diff (all loaded from the peer), but no local actions. To watch a peer deploy live or see its full history, open its own UI from the Hosts control.
 - **Reachability.** The merged view refreshes on the [health-poll](#stack-health) cadence, so it can lag a few seconds behind a peer's live deploy. An unreachable peer's last-known rows stay, dimmed, with a banner — never silently dropped.
-- **Access.** Peers must be reachable from the primary (server-to-server), not from the browser. Keep each peer's port on the LAN and firewall it to the primary's address.
+- **Access.** Peers must be reachable from the primary (server-to-server), not from the browser. Keep each peer's port on the LAN and firewall it to the primary's address. A peer that sets [`allowed_hosts`](#exposing-the-web-ui) must list the host name of its `url` here.
 
 If the primary goes down, every host still deploys on its own webhook and serves its own UI at its own address — the primary is a convenience layer, not a dependency.
 

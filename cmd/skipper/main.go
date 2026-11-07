@@ -361,8 +361,8 @@ func main() {
 	// return even if the other one reported first and main is already shutting
 	// down.
 	serverFail := make(chan error, 2)
-	metricsServer := startServer("metrics", cfg.MetricsPort, metricsMux(), serverFail)
-	webhookServer := startServer("webhook", cfg.Port, webhookMux(webhookDeps{
+	metricsServer := startServer("metrics", fmt.Sprintf(":%d", cfg.MetricsPort), metricsMux(), serverFail)
+	webhookServer := startServer("webhook", cfg.ListenAddr(), webhookHandler(webhookDeps{
 		cfg:             cfg,
 		stacks:          views.effective,
 		deployer:        deployer,
@@ -486,10 +486,10 @@ func boolToFloat(b bool) float64 {
 // would skip main's shutdown, and the startup sync may already be running
 // `docker compose up` by the time a port turns out to be taken. fail must be
 // buffered so a second server's failure cannot block on an unread channel.
-func startServer(name string, port int, mux *http.ServeMux, fail chan<- error) *http.Server {
+func startServer(name, addr string, h http.Handler, fail chan<- error) *http.Server {
 	srv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", port),
-		Handler:           mux,
+		Addr:              addr,
+		Handler:           h,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 	go func() {

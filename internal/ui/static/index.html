@@ -4,30 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>skipper-cd</title>
-<script>
-  // Pre-paint: the configured theme's dark variant is the stylesheet default
-  // (baked server-side into data-theme/data-server-theme above), so only a
-  // saved per-browser theme override and/or an explicit light-mode
-  // preference must be applied before first paint to avoid a flash.
-  // data-server-theme is left untouched — it is the "what is this
-  // environment actually configured for" reference the mismatch notice
-  // compares against. The override is honoured only when the theme switcher
-  // is enabled (data-theme-switcher="on"); with it off the deployed theme is
-  // fixed and any stale override in localStorage stays dormant.
-  (function() {
-    const el = document.documentElement;
-    if (el.getAttribute('data-theme-switcher') === 'on') {
-      const override = localStorage.getItem('themeOverride');
-      if (override) el.setAttribute('data-theme', override);
-    }
-    if (localStorage.getItem('colorScheme') === 'light') el.classList.add('light');
-    // First-run header tour (T3.15): the glyph-only header teaches its controls
-    // once via captions + a banner, then tucks them away for good. Applying the
-    // "seen" class here — before paint — keeps returning browsers from flashing
-    // the tour and leaves their header layout byte-identical to the no-tour case.
-    if (localStorage.getItem('headerTourSeen') === '1') el.classList.add('header-tour-seen');
-  })();
-</script>
+<script src="/app-prepaint.js"></script>
 <link rel="icon" type="image/svg+xml" href="__FAVICON_URI__">
 <!-- PWA: installable app. See docs/pwa.md. theme-color follows the OS
      light/dark preference (it cannot follow the in-page theme toggle),

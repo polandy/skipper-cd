@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -194,7 +195,7 @@ func TestStartServer_ListenFailureIsReportedNotFatal(t *testing.T) {
 	port := held.Addr().(*net.TCPAddr).Port
 
 	fail := make(chan error, 2)
-	srv := startServer("test", port, http.NewServeMux(), fail)
+	srv := startServer("test", net.JoinHostPort("", strconv.Itoa(port)), http.NewServeMux(), fail)
 	defer func() { _ = srv.Close() }()
 
 	// Blocks until the goroutine reports; no polling and no sleep. A regression
