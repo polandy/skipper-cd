@@ -3,12 +3,14 @@ package registry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // tagsPageSize is the page size requested from the tags endpoint; registries
@@ -19,6 +21,25 @@ const tagsPageSize = "1000"
 // loop the client forever. 10 pages × up to 1000 tags is far beyond any real
 // repository the update check cares about.
 const maxTagsPages = 10
+
+// requestTimeout bounds one registry request end to end, body included, so a
+// registry that never answers cannot hang the update check.
+const requestTimeout = 15 * time.Second
+
+// maxBodyBytes caps a decoded JSON body (tags list, token response); a real
+// 1000-tag page is a few tens of KiB. maxDrainBytes caps what closeBody reads
+// to keep the connection reusable — beyond it, closing is cheaper anyway.
+const (
+	maxBodyBytes  = 4 << 20
+	maxDrainBytes = 64 << 10
+)
+
+var (
+	errBodyTooLarge = errors.New("registry response body too large")
+	// errForeignURL marks a server-supplied URL (pagination Link, token
+	// realm) that points away from the registry being asked.
+	errForeignURL = errors.New("registry named a URL outside its own host")
+)
 
 // manifestAccept is the Accept header for the digest HEAD. Manifest-list /
 // index types lead: their digest is what a pull resolves and what the local
@@ -50,11 +71,11 @@ type Client struct {
 	scheme string
 }
 
-// New builds a Client. A nil doer uses http.DefaultClient; a nil creds is
-// fully anonymous.
+// New builds a Client. A nil doer uses an http.Client bounded by
+// requestTimeout; a nil creds is fully anonymous.
 func New(doer Doer, creds Credentials) *Client {
 	if doer == nil {
-		doer = http.DefaultClient
+		doer = &http.Client{Timeout: requestTimeout}
 	}
 	return &Client{doer: doer, creds: creds}
 }
@@ -94,13 +115,15 @@ func (c *Client) Tags(ctx context.Context, imageRef string) ([]string, error) {
 		var body struct {
 			Tags []string `json:"tags"`
 		}
-		err = json.NewDecoder(resp.Body).Decode(&body)
+		err = decodeJSON(resp.Body, &body)
 		closeBody(resp)
 		if err != nil {
 			return nil, fmt.Errorf("%s: parse tags list: %w", ref, err)
 		}
 		tags = append(tags, body.Tags...)
-		next = nextPageURL(resp, scheme, ref.Host)
+		if next, err = nextPageURL(resp, next); err != nil {
+			return nil, fmt.Errorf("%s: %w", ref, err)
+		}
 	}
 	return tags, nil
 }
@@ -177,7 +200,7 @@ func (c *Client) authorization(ctx context.Context, challenge string, ref Refere
 	}
 	switch scheme {
 	case "bearer":
-		token, err := c.fetchToken(ctx, params, ref, user, pass, haveCreds)
+		token, err := c.fetchToken(ctx, params, c.schemeFor(ref.Host), ref, user, pass, haveCreds)
 		if err != nil {
 			return "", err
 		}
@@ -194,11 +217,14 @@ func (c *Client) authorization(ctx context.Context, challenge string, ref Refere
 
 // fetchToken requests a bearer token from the challenge's realm, passing the
 // challenge's service and scope (defaulting to pull on the repository) and the
-// credentials, when present, as basic auth.
-func (c *Client) fetchToken(ctx context.Context, params map[string]string, ref Reference, user, pass string, haveCreds bool) (string, error) {
+// credentials, when present, as basic auth. The realm must pass checkRealm.
+func (c *Client) fetchToken(ctx context.Context, params map[string]string, scheme string, ref Reference, user, pass string, haveCreds bool) (string, error) {
 	realm := params["realm"]
 	if realm == "" {
 		return "", fmt.Errorf("bearer challenge without realm")
+	}
+	if err := checkRealm(realm, scheme, ref); err != nil {
+		return "", err
 	}
 	q := url.Values{}
 	if s := params["service"]; s != "" {
@@ -226,7 +252,7 @@ func (c *Client) fetchToken(ctx context.Context, params map[string]string, ref R
 		Token       string `json:"token"`
 		AccessToken string `json:"access_token"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := decodeJSON(resp.Body, &body); err != nil {
 		return "", fmt.Errorf("parse token response: %w", err)
 	}
 	if body.Token != "" {
@@ -251,29 +277,91 @@ func parseChallenge(header string) (string, map[string]string) {
 	return strings.ToLower(scheme), params
 }
 
+// checkRealm accepts a bearer realm only over HTTPS (or the registry's own
+// scheme, for a plain-HTTP loopback registry) and only on the registry's own
+// site — the registry host, its parent domain or a sibling — which admits
+// split setups like registry-1.docker.io → auth.docker.io while keeping a
+// challenge from aiming requests (and credentials) at an unrelated host.
+func checkRealm(realm, scheme string, ref Reference) error {
+	u, err := url.Parse(realm)
+	if err != nil || !u.IsAbs() {
+		return fmt.Errorf("%w: token realm %q is not an absolute URL", errForeignURL, realm)
+	}
+	if u.Scheme != "https" && u.Scheme != scheme {
+		return fmt.Errorf("%w: token realm %q is not HTTPS", errForeignURL, realm)
+	}
+	if siteOf(u.Hostname()) != siteOf(hostname(ref.Host)) {
+		return fmt.Errorf("%w: token realm %q is not on registry %s's domain", errForeignURL, realm, ref.Host)
+	}
+	return nil
+}
+
+// siteOf approximates a host's site without a public-suffix list: the host
+// minus its first label when it has three or more, else the host itself. An
+// IP address is its own site.
+func siteOf(host string) string {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if net.ParseIP(host) != nil {
+		return host
+	}
+	if labels := strings.Split(host, "."); len(labels) >= 3 {
+		return strings.Join(labels[1:], ".")
+	}
+	return host
+}
+
+// hostname strips an optional port from a registry host.
+func hostname(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return h
+	}
+	return host
+}
+
 // nextPageURL extracts the rel="next" target from a response's Link header,
-// resolving a path-only target against the registry host. Empty when there is
-// no next page.
-func nextPageURL(resp *http.Response, scheme, host string) string {
+// resolved against the page URL it came with. Empty when there is no next
+// page; errForeignURL when the target leaves the registry's scheme and host.
+func nextPageURL(resp *http.Response, pageURL string) (string, error) {
 	link := resp.Header.Get("Link")
 	if link == "" || !strings.Contains(link, `rel="next"`) {
-		return ""
+		return "", nil
 	}
 	start := strings.Index(link, "<")
 	end := strings.Index(link, ">")
 	if start < 0 || end <= start {
-		return ""
+		return "", nil
 	}
-	target := link[start+1 : end]
-	if strings.HasPrefix(target, "/") {
-		return scheme + "://" + host + target
+	base, err := url.Parse(pageURL)
+	if err != nil {
+		return "", err
 	}
-	return target
+	target, err := base.Parse(link[start+1 : end])
+	if err != nil {
+		return "", fmt.Errorf("parse pagination link: %w", err)
+	}
+	if target.Scheme != base.Scheme || target.Host != base.Host {
+		return "", fmt.Errorf("%w: pagination link %q", errForeignURL, target.Redacted())
+	}
+	return target.String(), nil
+}
+
+// decodeJSON decodes a response body read up to maxBodyBytes; a longer body
+// is errBodyTooLarge rather than an ever-growing buffer.
+func decodeJSON(body io.Reader, v any) error {
+	data, err := io.ReadAll(io.LimitReader(body, maxBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(data) > maxBodyBytes {
+		return fmt.Errorf("%w (over %d bytes)", errBodyTooLarge, maxBodyBytes)
+	}
+	return json.Unmarshal(data, v)
 }
 
 func closeBody(resp *http.Response) {
 	// Drain so the connection is reusable; both are best-effort on a read path
-	// whose next request would simply open a new connection.
-	_, _ = io.Copy(io.Discard, resp.Body)
+	// whose next request would simply open a new connection. Capped, so an
+	// endless body is closed rather than read to its end.
+	_, _ = io.CopyN(io.Discard, resp.Body, maxDrainBytes)
 	_ = resp.Body.Close()
 }
