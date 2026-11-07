@@ -41,7 +41,7 @@ func parseEnvFile(path string) ([]string, error) {
 			continue
 		}
 		if err := checkEnvLine(line); err != nil {
-			return nil, fmt.Errorf("%s line %d: %w", path, i+1, err)
+			return nil, fmt.Errorf("line %d: %w", i+1, err)
 		}
 		envVars = append(envVars, line)
 	}

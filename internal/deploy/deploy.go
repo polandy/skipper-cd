@@ -419,7 +419,7 @@ func BaseEnv(varsFile string) ([]string, error) {
 	}
 	varsEnv, err := parseEnvFile(varsFile)
 	if err != nil {
-		return nil, fmt.Errorf("load vars_file: %w", err)
+		return nil, fmt.Errorf("load vars_file %s: %w", varsFile, err)
 	}
 	return append(baseEnv, varsEnv...), nil
 }
