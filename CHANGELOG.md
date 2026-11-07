@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.29.3](https://github.com/polandy/skipper-cd/compare/v0.29.2...v0.29.3) (2026-11-07)
+
+
+### Bug Fixes
+
+* **deploy:** read only regular, size-capped repo files and validate env keys ([#370](https://github.com/polandy/skipper-cd/issues/370)) ([e267e9b](https://github.com/polandy/skipper-cd/commit/e267e9b64321b9fb112300946e4fe65f7859ccee))
+* **icons:** never follow symlinks for repo icons and sandbox icon responses ([#367](https://github.com/polandy/skipper-cd/issues/367)) ([aef66cf](https://github.com/polandy/skipper-cd/commit/aef66cf0da5d32cb0f4eda285d51d7ef1900b765))
+* **registry:** bound requests and keep pagination and token realm on the registry ([#371](https://github.com/polandy/skipper-cd/issues/371)) ([6633d6e](https://github.com/polandy/skipper-cd/commit/6633d6ee81f61d6ba79bf7c0c671fd796c9d8de7))
+* **ui:** escape unknown statuses in status badges and reason chips ([#369](https://github.com/polandy/skipper-cd/issues/369)) ([512d9bc](https://github.com/polandy/skipper-cd/commit/512d9bc1a6e9c1dc887ca0949ffc282a2ec80e13))
+
 ## [0.29.2](https://github.com/polandy/skipper-cd/compare/v0.29.1...v0.29.2) (2026-11-06)
 
 
