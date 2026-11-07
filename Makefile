@@ -2,7 +2,7 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps e2e-ui-lint
+.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps e2e-ui-lint ui-icons
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
@@ -111,6 +111,16 @@ ui-preview:
 # deploy outcomes, then clean up. Run in CI as skipper's startup smoke test.
 ui-preview-smoke:
 	node scripts/ui-preview.mjs --smoke
+
+## --- ui-icons (not a CI job) ----------------------------------------------
+# Rasterise the PWA icon PNGs from their SVG sources after redrawing the mark.
+# Needs rsvg-convert (librsvg, in `nix develop`).
+ICONS := internal/ui/static/icons
+ui-icons:
+	rsvg-convert -w 512 -h 512 internal/ui/static/pwa-icon.svg -o $(ICONS)/icon-512.png
+	rsvg-convert -w 192 -h 192 internal/ui/static/pwa-icon.svg -o $(ICONS)/icon-192.png
+	rsvg-convert -w 180 -h 180 internal/ui/static/pwa-icon.svg -o $(ICONS)/apple-touch-icon.png
+	rsvg-convert -w 512 -h 512 internal/ui/static/pwa-icon-maskable.svg -o $(ICONS)/icon-maskable-512.png
 
 ## --- check-host-colors (part of the ui-unit job) --------------------------
 # scripts/gen-host-colors.mjs generates the --host-N palette hand-pasted into

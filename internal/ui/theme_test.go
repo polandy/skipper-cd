@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -67,6 +69,56 @@ func TestIndexHTML_OffersEveryBuiltInThemeInThePicker(t *testing.T) {
 			t.Errorf("the theme picker has no <option> for built-in theme %q", theme)
 		}
 	}
+}
+
+// The favicon and the PWA icons draw the small-size ship mark, the header
+// keeps the primary one: the primary mark's thin hull and half-opacity wave
+// blur into mush at 16–32 px.
+func TestFaviconSVG_DrawsTheSmallMarkNotTheHeaderLogo(t *testing.T) {
+	favicon := faviconSVG(themeIdentityFor(uitheme.ThemeCatppuccin))
+	header := embeddedAsset(t, "static/index.html")
+	header = header[strings.Index(header, `<div class="brand-icon"`):]
+	header = header[:strings.Index(header, "</svg>")]
+
+	if reflect.DeepEqual(markGeometry(favicon), markGeometry(header)) {
+		t.Error("the favicon draws the header's primary mark; want the small-size variant")
+	}
+	if strings.Contains(favicon, "opacity") {
+		t.Error("the favicon still draws the half-opacity wave")
+	}
+}
+
+// The PWA icon sources are hand-kept copies of the favicon's shapes with fixed
+// colours; they must not drift into a third ship.
+func TestPWAIconSources_DrawTheFaviconMark(t *testing.T) {
+	want := markGeometry(faviconSVG(themeIdentityFor(uitheme.ThemeCatppuccin)))
+	for _, name := range []string{"static/pwa-icon.svg", "static/pwa-icon-maskable.svg"} {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		if got := markGeometry(string(data)); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s shapes = %q, want the favicon's %q", name, got, want)
+		}
+	}
+}
+
+var (
+	markShape     = regexp.MustCompile(`<(?:path|rect)\b[^>]*>`)
+	geometryAttrs = regexp.MustCompile(`\b(?:d|x|y|width|height|rx|stroke-width)="[^"]*"`)
+)
+
+// markGeometry lists each ship shape's geometry attributes, colour left out,
+// skipping a full-size background rect.
+func markGeometry(svg string) []string {
+	var shapes []string
+	for _, el := range markShape.FindAllString(svg, -1) {
+		if strings.Contains(el, `width="512"`) || strings.Contains(el, `width="64"`) {
+			continue
+		}
+		shapes = append(shapes, strings.Join(geometryAttrs.FindAllString(el, -1), " "))
+	}
+	return shapes
 }
 
 func embeddedAsset(t *testing.T, name string) string {

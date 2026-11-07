@@ -54,19 +54,21 @@ func themeIdentityFor(name string) themeIdentity {
 	return themeIdentities[uitheme.ThemeCatppuccin]
 }
 
-// faviconSVG renders the ship-logo favicon for a theme: a light variant (used
-// by default) and a dark variant swapped in via a prefers-color-scheme media
-// query — this follows the OS preference, not the in-page toggle, the same
-// platform limitation the PWA theme-color metas have.
+// faviconSVG renders the small-size ship mark for a theme: a light variant
+// (used by default) and a dark variant swapped in via a prefers-color-scheme
+// media query — this follows the OS preference, not the in-page toggle, the
+// same platform limitation the PWA theme-color metas have. The header keeps the
+// primary mark; this variant drops the wave and thickens the hull and boxes so
+// it still reads at 16 px, its edges on a 4-unit grid (one pixel at 16 px).
+// static/pwa-icon*.svg repeat its shapes for the PWA icons.
 func faviconSVG(id themeIdentity) string {
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">` +
 		`<style>svg{color:` + id.lightText + `}.a{fill:` + id.lightAccent + `}.b{fill:` + id.lightSuccess + `}` +
 		`@media(prefers-color-scheme:dark){svg{color:` + id.darkText + `}.a{fill:` + id.darkAccent + `}.b{fill:` + id.darkSuccess + `}}</style>` +
-		`<path d="M9 41 H55 L45 53 H19 Z" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/>` +
-		`<rect class="a" x="19" y="30" width="12" height="9" rx="2"/>` +
-		`<rect x="33" y="30" width="12" height="9" rx="2" stroke="currentColor" stroke-width="3"/>` +
-		`<rect class="b" x="26" y="18" width="12" height="9" rx="2"/>` +
-		`<path d="M14 60 q5 -5 10 0 t10 0 t10 0 t10 0" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".5"/>` +
+		`<path d="M5 43 H59 L49 55 H15 Z" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/>` +
+		`<rect class="a" x="10" y="24" width="20" height="12" rx="3"/>` +
+		`<rect x="36" y="26" width="16" height="8" rx="2" stroke="currentColor" stroke-width="4"/>` +
+		`<rect class="b" x="22" y="8" width="20" height="12" rx="3"/>` +
 		`</svg>`
 }
 

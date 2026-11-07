@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
   <!-- skipper-cd PWA app icon. Source for the "any"-purpose PNGs (192/512) and
-       apple-touch-icon. Fixed Catppuccin-Mocha colours (dark), solid base
-       background. Ship geometry matches the favicon in index.html. -->
+       apple-touch-icon (`make ui-icons`). Fixed Catppuccin-Mocha colours (dark),
+       solid base background. Shapes match the small-size mark of the favicon
+       (faviconSVG in theme.go). -->
   <rect width="512" height="512" fill="#1e1e2e"/>
-  <g transform="translate(16,-36.5) scale(7.5)" stroke-linejoin="round">
-    <path d="M9 41 H55 L45 53 H19 Z" stroke="#cdd6f4" stroke-width="3.5"/>
-    <rect x="19" y="30" width="12" height="9" rx="2" fill="#fab387"/>
-    <rect x="33" y="30" width="12" height="9" rx="2" stroke="#cdd6f4" stroke-width="3"/>
-    <rect x="26" y="18" width="12" height="9" rx="2" fill="#94e2d5"/>
-    <path d="M14 60 q5 -5 10 0 t10 0 t10 0 t10 0" stroke="#cdd6f4" stroke-width="3" stroke-linecap="round" opacity=".5"/>
+  <g transform="translate(32,25) scale(7)" stroke-linejoin="round">
+    <path d="M5 43 H59 L49 55 H15 Z" stroke="#cdd6f4" stroke-width="6"/>
+    <rect x="10" y="24" width="20" height="12" rx="3" fill="#fab387"/>
+    <rect x="36" y="26" width="16" height="8" rx="2" stroke="#cdd6f4" stroke-width="4"/>
+    <rect x="22" y="8" width="20" height="12" rx="3" fill="#94e2d5"/>
   </g>
 </svg>
