@@ -2,6 +2,10 @@ package icons
 
 import "net/http"
 
+// iconCSP blocks every script, fetch and embed in a served icon while still
+// letting inline SVG styles render.
+const iconCSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+
 // StackLocator maps a stack name to the inputs for resolving its icon. ok is
 // false for an unknown stack name, which the handler answers with 404.
 type StackLocator func(stackName string) (req Request, ok bool)
@@ -25,6 +29,10 @@ func Handler(svc *Service, locate StackLocator) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", res.ContentType)
+		// A repo icon.svg is pusher-controlled; opened directly (not via
+		// <img>) its scripts would run same-origin without this sandbox.
+		w.Header().Set("Content-Security-Policy", iconCSP)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		// Long cache; the refresh control busts it with a query parameter.
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		_, _ = w.Write(res.Data)

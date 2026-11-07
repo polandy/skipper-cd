@@ -427,7 +427,7 @@ The `vars_file` is included in hash tracking — any change to it triggers a red
 
 When the web UI is enabled, each stack shows an icon in the deploy table for at-a-glance recognition. Icons are resolved per stack in priority order:
 
-1. **Repo override** — an `icon.svg` (preferred) or `icon.png` in the stack's directory (`<stacks_base_dir>/<name>/`). Served directly from the clone, works offline.
+1. **Repo override** — an `icon.svg` (preferred) or `icon.png` in the stack's directory (`<stacks_base_dir>/<name>/`). Served directly from the clone, works offline. It must be a plain file of at most 256 KB — a symlink or a larger file is ignored (with a warning in the log) and resolution moves on.
 2. **Configured slug** — the stack's `icon:` field, looked up in the icon set.
 3. **Auto-match** — the stack name (slugified) looked up in the icon set, trying SVG, then PNG, then WebP.
 4. **Fallback** — a monogram (the stack's first letter) rendered in the UI when nothing matches or the source is unreachable.

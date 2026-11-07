@@ -390,3 +390,71 @@ func TestResolve_WarnsWhenCacheDirCannotBeCreated(t *testing.T) {
 		t.Errorf("expected a warning about the failed cache dir, got logs: %q", buf.String())
 	}
 }
+
+func TestResolve_RepoOverrideSymlinkIsNotServed(t *testing.T) {
+	svc, _ := newTestService(t)
+	secret := filepath.Join(t.TempDir(), "skipper.yml")
+	if err := os.WriteFile(secret, []byte("webhook_secret: TOPSECRET"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(secret, filepath.Join(dir, "icon.svg")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.Resolve(context.Background(), Request{Name: "media", Dir: dir})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Resolve = (%q, %v), want ErrNotFound for a symlinked icon", got.Data, err)
+	}
+}
+
+func TestResolve_RepoOverrideSymlinkFallsBackToPng(t *testing.T) {
+	svc, _ := newTestService(t)
+	dir := writeStackIcon(t, "icon.png", "PNGDATA")
+	if err := os.Symlink("/etc/hostname", filepath.Join(dir, "icon.svg")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.Resolve(context.Background(), Request{Name: "media", Dir: dir})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if string(got.Data) != "PNGDATA" || got.ContentType != "image/png" {
+		t.Errorf("got (%q, %q), want the regular icon.png", got.Data, got.ContentType)
+	}
+}
+
+func TestResolve_RepoOverrideOversizedIsNotServed(t *testing.T) {
+	svc, _ := newTestService(t)
+	dir := writeStackIcon(t, "icon.svg", strings.Repeat("x", maxRepoIconBytes+1))
+
+	got, err := svc.Resolve(context.Background(), Request{Name: "media", Dir: dir})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Resolve = (%d bytes, %v), want ErrNotFound for an oversized icon", len(got.Data), err)
+	}
+}
+
+func TestResolve_RepoOverrideAtSizeLimitIsServed(t *testing.T) {
+	svc, _ := newTestService(t)
+	dir := writeStackIcon(t, "icon.svg", strings.Repeat("x", maxRepoIconBytes))
+
+	got, err := svc.Resolve(context.Background(), Request{Name: "media", Dir: dir})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(got.Data) != maxRepoIconBytes {
+		t.Errorf("len = %d, want %d", len(got.Data), maxRepoIconBytes)
+	}
+}
+
+func TestResolve_RepoOverrideDirectoryIsNotServed(t *testing.T) {
+	svc, _ := newTestService(t)
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "icon.svg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.Resolve(context.Background(), Request{Name: "media", Dir: dir}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Resolve err = %v, want ErrNotFound for a directory named icon.svg", err)
+	}
+}
