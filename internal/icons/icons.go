@@ -10,6 +10,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -109,20 +111,65 @@ func (s *Service) ClearCache() error {
 	return nil
 }
 
+// maxRepoIconBytes caps a repo override read; nothing larger is a plausible icon.
+const maxRepoIconBytes = 256 << 10
+
 // repoOverride serves a stack-provided icon file (svg preferred, then png)
 // from the stack directory. These are always available offline and never
-// touch the cache or the network.
+// touch the cache or the network. The file comes from the pushed repo, so a
+// symlink, a non-regular file or an oversized one is ignored with a warning.
 func repoOverride(dir string) (Result, bool) {
 	if dir == "" {
 		return Result{}, false
 	}
 	for _, ext := range []string{".svg", ".png"} {
-		data, err := os.ReadFile(filepath.Join(dir, "icon"+ext))
+		path := filepath.Join(dir, "icon"+ext)
+		data, err := readRegularFile(path, maxRepoIconBytes)
 		if err == nil {
 			return Result{Data: data, ContentType: contentTypeForExt(ext)}, true
 		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			slog.Warn("repo icon ignored", "path", path, "err", err)
+		}
 	}
 	return Result{}, false
+}
+
+// readRegularFile reads path only if it is a regular file of at most limit
+// bytes. It never follows a symlink: a link committed to the repo could point
+// at any file the daemon can read (or at /dev/zero).
+func readRegularFile(path string, limit int64) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("not a regular file (mode %s); commit the icon as a plain file", info.Mode().Type())
+	}
+	if info.Size() > limit {
+		return nil, fmt.Errorf("%d bytes exceeds the %d-byte icon limit", info.Size(), limit)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	// Swapped for a symlink between Lstat and Open?
+	opened, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(info, opened) {
+		return nil, errors.New("file changed while opening")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("grew past the %d-byte icon limit while reading", limit)
+	}
+	return data, nil
 }
 
 type cacheState int

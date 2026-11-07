@@ -121,3 +121,24 @@ func TestRefreshHandler_ClearsCache(t *testing.T) {
 		t.Errorf("fetcher calls after refresh = %d, want 2", len(ff.calls))
 	}
 }
+
+func TestHandler_IconResponseIsSandboxed(t *testing.T) {
+	svc, _ := newTestService(t)
+	dir := writeStackIcon(t, "icon.svg", `<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>`)
+	mux := iconMux(svc, func(name string) (Request, bool) {
+		return Request{Name: name, Dir: dir}, true
+	})
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/icons/media", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if csp := rec.Header().Get("Content-Security-Policy"); csp != "default-src 'none'; style-src 'unsafe-inline'; sandbox" {
+		t.Errorf("Content-Security-Policy = %q", csp)
+	}
+	if nosniff := rec.Header().Get("X-Content-Type-Options"); nosniff != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", nosniff)
+	}
+}
