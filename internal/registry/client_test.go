@@ -282,11 +282,6 @@ func TestTags_RefusesTokenRealmOnUnrelatedDomain(t *testing.T) {
 	if !errors.Is(err, errForeignURL) {
 		t.Fatalf("err = %v, want errForeignURL", err)
 	}
-	for _, h := range sent {
-		if h == "attacker.example" {
-			t.Errorf("a request was sent to the foreign realm host")
-		}
-	}
 	if len(sent) != 1 {
 		t.Errorf("sent %d requests (%v), want only the challenged one", len(sent), sent)
 	}

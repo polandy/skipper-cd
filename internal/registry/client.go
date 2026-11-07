@@ -37,8 +37,8 @@ const (
 var (
 	errBodyTooLarge = errors.New("registry response body too large")
 	// errForeignURL marks a server-supplied URL (pagination Link, token
-	// realm) that points away from the registry being asked.
-	errForeignURL = errors.New("registry named a URL outside its own host")
+	// realm) refused because it points away from the registry being asked.
+	errForeignURL = errors.New("registry named a URL it may not send the client to")
 )
 
 // manifestAccept is the Accept header for the digest HEAD. Manifest-list /
