@@ -59,7 +59,7 @@ func themeIdentityFor(name string) themeIdentity {
 // media query — this follows the OS preference, not the in-page toggle, the
 // same platform limitation the PWA theme-color metas have. The header keeps the
 // primary mark; this variant drops the wave and thickens the hull and boxes so
-// it still reads at 16 px, its edges on a 4-unit grid (one pixel at 16 px).
+// it still reads at 16 px, the box edges on a 4-unit grid (one pixel at 16 px).
 // static/pwa-icon*.svg repeat its shapes for the PWA icons.
 func faviconSVG(id themeIdentity) string {
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">` +
