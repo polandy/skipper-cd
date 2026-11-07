@@ -1019,6 +1019,14 @@ App.deploys = (function () {
     // When diffs are available, shows a diff panel; otherwise shows file list.
     tbody.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
 
+    // The entrance plays once. A class left behind would replay it whenever the
+    // table is shown again (another view hides it with display:none).
+    function dropEntrance(e) {
+      if (e.animationName === 'rowEnter') e.target.classList.remove('new-row');
+    }
+    tbody.addEventListener('animationend', dropEntrance);
+    tbody.addEventListener('animationcancel', dropEntrance);
+
     tbody.addEventListener('click', function (e) {
       if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
       // ⋯ overflow menu: toggle it open/closed. Picking an action inside closes the

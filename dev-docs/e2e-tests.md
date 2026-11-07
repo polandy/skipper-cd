@@ -1693,7 +1693,10 @@ incident behind — at Pixel-9-Pro width and asserts the row's geometry
 
 - **UAS4 — The Deploys row shares the edge.** The same assertion on a deploy
   row: the two views are one look, so repairing the roster alone would have left
-  the sibling view ragged in exactly the way the report was about.
+  the sibling view ragged in exactly the way the report was about. It first
+  asserts the row is at rest (`getAnimations()` empty): switching back from the
+  Stacks view used to replay the live row's scaling entrance, and the two rects
+  read frames apart then disagreed by a pixel or two — an intermittent red.
 
 All four fail against the unfixed build (three on geometry, UAS3 on the missing
 token group). Behaviour-only, no snapshot.

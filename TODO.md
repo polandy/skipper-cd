@@ -13,14 +13,6 @@
   it is only worth it if swapping the *mark* — not just the palette — is actually
   wanted. The `flake` palette already covers the colour half.
 
-- **UAS4 is flaky.** `e2e/ui/tests/uas-roster-phone-align.spec.ts:156` (the
-  Deploys row's health pill and status badge share a right edge on a phone)
-  failed once on PR #356, which touched no UI: a 1.70 px gap against the 1 px
-  tolerance, red on its in-run retry too, green on a job rerun. Suspected cause:
-  the row's timing-dependent text (relative time, duration) changes width and
-  shifts the cell. Pin the clock/duration the fixture renders, or fix the layout
-  so that text cannot move the edge — not a wider tolerance.
-
 - **Converge declared services when a revert releases a hold.** ADR-0066 removes
   services a hand-applied held version added, but a declared service that version
   changed (or, with `rollback: false`, the failed version left running) keeps

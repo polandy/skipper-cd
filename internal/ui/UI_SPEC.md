@@ -438,6 +438,8 @@ shape of an unreachable server.
 | `removed` | New row created directly (a removal is preceded by no `deploying` event), superseding the stack's pending row if it had one. Emitted once, on the first run that sees the stack gone, and carries the removing commit's changed files and diff like any other change. |
 | `healed` / `heal_exhausted` | New row created directly (self-heal is not preceded by a `deploying` event); `heal_exhausted` carries an error and expands an error panel. See [Self-heal](#self-heal). |
 
+A row created live (not replayed from history) slides in once. The entrance does not replay when the Deploys table is shown again after another view hid it.
+
 Besides `deploy` events, the stream carries named **state snapshots** — `autosync`, `queue`, `upcoming`, `hookrun`, `health`, `healthwatch`, `stacks`, `app_links`, and (when peers are configured) `peers` — each replacing the prior snapshot of that name. The initial value of each rides the connect baseline (above); the stream then carries live changes to it.
 
 - **`upcoming`** `{ "upcoming": ["grafana", "loki"] }` — the stacks that will deploy *after* the one currently deploying, in deploy order. The backend hashes every stack once upfront (after the git sync) to know which will actually deploy this run, then publishes the shrinking list as each stack starts; an empty list is published when the run ends. Drives the [Deploy indicator](#header--right) look-ahead trail and the [Run panel](#run-panel). Distinct from the autosync pending `queue` (deferred, paused stacks). `_nixos` is excluded — the rebuild has no per-stack deploying state.

@@ -149,6 +149,14 @@ test.describe("Maske AS: the Stacks row lines up on a phone", () => {
         '[data-testid="deploy-row"][data-stack="web"][data-status="success"]',
       )
       .first();
+    // The row is at rest: coming back from the Stacks view must not replay
+    // its entrance. The replay is a scale transform, so two rects read a few
+    // frames apart disagreed by a pixel or two — the old flake.
+    expect(
+      await row.evaluate((el) =>
+        el.getAnimations().map((a) => (a as CSSAnimation).animationName),
+      ),
+    ).toEqual([]);
     const badge = await rect(row.locator('[data-testid="status-badge"]'));
     const pill = await rect(row.locator('[data-testid="health-pill"]'));
     expect(
