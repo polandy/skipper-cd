@@ -90,7 +90,7 @@ func TestDeployStack_SkipsWhenUnchanged(t *testing.T) {
 	stack := config.Stack{Name: "gitea"}
 
 	// Pre-populate state with the current hashes to simulate "already deployed".
-	hashes, err := computePerFileHashes(stackDir, nil, nil, "", nil)
+	hashes, err := computePerFileHashes(context.Background(), stackDir, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestDeployStack_SkipIsLoggedAtDebugLevel(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
 
-	hashes, err := computePerFileHashes(stackDir, nil, nil, "", nil)
+	hashes, err := computePerFileHashes(context.Background(), stackDir, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error computing hashes: %v", err)
 	}

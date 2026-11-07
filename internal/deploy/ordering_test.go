@@ -422,14 +422,14 @@ func TestPendingChanges_HashesTheSameInputsAsTheDeployPath(t *testing.T) {
 	}
 
 	d := newDeployerWithRunner(&recordingRunner{})
-	prep, err := d.prepareStackRun(stack, baseDir, varsFile, nil)
+	prep, err := d.prepareStackRun(context.Background(), stack, baseDir, varsFile, nil)
 	if err != nil {
 		t.Fatalf("prepareStackRun: %v", err)
 	}
 
 	// Against an empty state every tracked input reads as changed, so the paths
 	// the look-ahead reports are exactly the set it hashes.
-	changed, _, pending := d.pendingChanges(stack, baseDir, varsFile, newEmptyState())
+	changed, _, pending := d.pendingChanges(context.Background(), stack, baseDir, varsFile, newEmptyState())
 	if !pending {
 		t.Fatal("pendingChanges reported no pending change against an empty state")
 	}

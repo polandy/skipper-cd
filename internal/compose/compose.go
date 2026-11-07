@@ -6,13 +6,17 @@ package compose
 
 import (
 	"fmt"
-	"os"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/polandy/skipper-cd/internal/regularfile"
 )
 
 // FileName is the compose file skipper reads per stack.
 const FileName = "docker-compose.yml"
+
+// MaxFileBytes caps a compose file read: the file comes from a Git push.
+const MaxFileBytes = 1 << 20
 
 // DefaultDockerfile is the file a build: section without an explicit
 // dockerfile: builds from — compose's own default.
@@ -44,7 +48,7 @@ func (s Service) HasContainerName() bool { return s.ContainerName != "" }
 
 // Parse reads and parses a docker-compose.yml.
 func Parse(path string) (*File, error) {
-	data, err := os.ReadFile(path)
+	data, err := regularfile.ReadFile(path, MaxFileBytes, regularfile.FollowLinks)
 	if err != nil {
 		return nil, fmt.Errorf("read compose file: %w", err)
 	}

@@ -18,12 +18,13 @@ package deploy
 import (
 	"context"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"sort"
 
+	"github.com/polandy/skipper-cd/internal/compose"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
+	"github.com/polandy/skipper-cd/internal/regularfile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -98,7 +99,7 @@ func (d *Deployer) changedComposeServices(ctx context.Context, composePath, last
 		slog.Debug("could not read the previously deployed compose file, reporting the change stack-wide", "file", composePath, "err", err)
 		return nil, true
 	}
-	newContent, err := os.ReadFile(composePath)
+	newContent, err := regularfile.ReadFile(composePath, compose.MaxFileBytes, regularfile.FollowLinks)
 	if err != nil {
 		slog.Debug("could not read the compose file for change attribution", "file", composePath, "err", err)
 		return nil, true

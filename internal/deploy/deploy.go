@@ -598,7 +598,7 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 	// is off (no sink). The loop below re-evaluates each stack independently and
 	// remains the source of truth for what actually deploys.
 	if d.runPlanSink != nil {
-		d.plan = d.computeRunPlan(cfg, state)
+		d.plan = d.computeRunPlan(ctx, cfg, state)
 	} else {
 		d.plan = nil
 	}

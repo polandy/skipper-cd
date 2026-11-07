@@ -1,6 +1,8 @@
 package deploy
 
 import (
+	"context"
+
 	"github.com/polandy/skipper-cd/internal/config"
 )
 
@@ -29,7 +31,7 @@ func (d *Deployer) CurrentRunPlan() RunPlan {
 // deploy loop re-evaluates each stack independently and stays the source of
 // truth for what is deployed. _nixos is intentionally excluded — the rebuild has
 // no per-stack "deploying" state in the UI and may restart skipper.
-func (d *Deployer) computeRunPlan(cfg *config.Config, state *persistedState) []string {
+func (d *Deployer) computeRunPlan(ctx context.Context, cfg *config.Config, state *persistedState) []string {
 	var plan []string
 	// Plan in deploy order so the header's "next up" trail matches the real
 	// sequence, including dependency ordering (ADR-0032).
@@ -37,7 +39,7 @@ func (d *Deployer) computeRunPlan(cfg *config.Config, state *persistedState) []s
 		if d.isPaused(stack.Name) {
 			continue
 		}
-		if _, _, changed := d.pendingChanges(stack, cfg.StacksBaseDir, cfg.VarsFile, state); changed {
+		if _, _, changed := d.pendingChanges(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, state); changed {
 			plan = append(plan, stack.Name)
 		}
 	}

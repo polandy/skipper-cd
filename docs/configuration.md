@@ -163,7 +163,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 |---|---|---|---|---|
 | `name` | string | yes | — | Name of the stack. The compose file is always read from `<stacks_base_dir>/<name>/docker-compose.yml`. Also used as the key in the deploy state file. |
 | `project_directory` | string | no | `<project_directory_base>/<name>` if set, else unset | Absolute path passed as `--project-directory` to `docker compose`. Controls Docker Compose project identity (container labels) and `.env` file loading. Change detection and the compose file always come from `<stacks_base_dir>/<name>`. Must be absolute — checked at startup. See [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity). |
-| `env_files` | list of strings | no | — | Paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. With `stack_discovery: false` every entry must be absolute. Under discovery, a relative entry resolves against `stacks_base_dir` (see [Stack discovery](#stack-discovery)). |
+| `env_files` | list of strings | no | — | Paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. With `stack_discovery: false` every entry must be absolute. Under discovery, a relative entry resolves against `stacks_base_dir` (see [Stack discovery](#stack-discovery)). Format and limits: [Env file format](#env-file-format). |
 | `watch_dirs` | list of strings | no | — | Paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). Same absolute-path rule as `env_files` above. |
 | `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. The [Stack health](#stack-health) view and the [health watch](#health-watch) know about this: an exited on-demand container reads as `stopped` (its intended idle state) whatever its exit code — never as `unhealthy`. Docker Compose auto-generates container names (`<project>-<service>-1`) unless the service sets `container_name:`; a name here that matches no declared `container_name` logs a startup-adjacent warning at deploy time (not a hard error, since the auto-generated name may still happen to be right) — set `container_name:` on the corresponding service to make it deterministic and checked. |
 | `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
@@ -422,6 +422,19 @@ INTERNAL_IP=192.168.1.10
 3. Process environment (`os.Environ()`)
 
 The `vars_file` is included in hash tracking — any change to it triggers a redeploy of all stacks.
+
+### Env file format
+
+The `vars_file` and every `env_files` entry use the same format, and a file that breaks it fails the deploy with an error naming the file and line:
+
+- One `KEY=VALUE` per line; blank lines and lines starting with `#` are skipped. The value is taken verbatim (no quote stripping, no inline comments).
+- The key must match `[A-Za-z_][A-Za-z0-9_]*` — `export KEY=…` is rejected.
+- Keys that change how skipper runs `docker compose` and hooks are reserved and rejected: `PATH`, `HOME`, `BASH_ENV`, `ENV`, `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH` and any `LD_*`. Set those in the service's own environment instead.
+- At most 1 MB per file.
+
+### File limits
+
+Every file skipper reads from a stack — the compose file, env files, the vars file, Dockerfiles and the contents of `watch_dirs` — must be a regular file. A symlink is followed (an absolute env file may point at a host secret), but its target must be a regular file too; a FIFO, a device or a directory fails that stack's deploy. A compose file may be at most 1 MB and any other tracked file at most 64 MB.
 
 ## Service Icons
 

@@ -10,12 +10,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/polandy/skipper-cd/internal/regularfile"
 )
 
 // ErrNotFound reports that no icon could be resolved for a stack. Callers map
@@ -124,7 +125,7 @@ func repoOverride(dir string) (Result, bool) {
 	}
 	for _, ext := range []string{".svg", ".png"} {
 		path := filepath.Join(dir, "icon"+ext)
-		data, err := readRegularFile(path, maxRepoIconBytes)
+		data, err := regularfile.ReadFile(path, maxRepoIconBytes, regularfile.RejectLinks)
 		if err == nil {
 			return Result{Data: data, ContentType: contentTypeForExt(ext)}, true
 		}
@@ -133,40 +134,6 @@ func repoOverride(dir string) (Result, bool) {
 		}
 	}
 	return Result{}, false
-}
-
-// readRegularFile reads path only if it is a regular file of at most limit
-// bytes. It never follows a symlink: a link committed to the repo could point
-// at any file the daemon can read (or at /dev/zero).
-func readRegularFile(path string, limit int64) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("not a regular file (mode %s); commit the icon as a plain file", info.Mode().Type())
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	// Swapped for a symlink between Lstat and Open?
-	opened, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !os.SameFile(info, opened) {
-		return nil, errors.New("file changed while opening")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, limit+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(data)) > limit {
-		return nil, fmt.Errorf("exceeds the %d-byte icon limit", limit)
-	}
-	return data, nil
 }
 
 type cacheState int
