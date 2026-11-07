@@ -76,9 +76,11 @@ func TestIndexHTML_OffersEveryBuiltInThemeInThePicker(t *testing.T) {
 // blur into mush at 16–32 px.
 func TestFaviconSVG_DrawsTheSmallMarkNotTheHeaderLogo(t *testing.T) {
 	favicon := faviconSVG(themeIdentityFor(uitheme.ThemeCatppuccin))
-	header := embeddedAsset(t, "static/index.html")
-	header = header[strings.Index(header, `<div class="brand-icon"`):]
-	header = header[:strings.Index(header, "</svg>")]
+	_, header, found := strings.Cut(embeddedAsset(t, "static/index.html"), `<div class="brand-icon"`)
+	header, _, closed := strings.Cut(header, "</svg>")
+	if !found || !closed {
+		t.Fatal("index.html has no brand-icon <svg> to compare against")
+	}
 
 	if reflect.DeepEqual(markGeometry(favicon), markGeometry(header)) {
 		t.Error("the favicon draws the header's primary mark; want the small-size variant")
