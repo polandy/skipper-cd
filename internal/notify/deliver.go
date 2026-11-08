@@ -2,9 +2,11 @@ package notify
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,12 +38,12 @@ func deliverOne(ctx context.Context, doer Doer, timeout time.Duration,
 
 	req, err := format(ctx)
 	if err != nil {
-		fail("format failed", "err", err)
+		fail("format failed", errAttrs(err)...)
 		return
 	}
 	resp, err := doer.Do(req)
 	if err != nil {
-		fail("send failed", "err", err)
+		fail("send failed", errAttrs(err)...)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -51,4 +53,18 @@ func deliverOne(ctx context.Context, doer Doer, timeout time.Duration,
 		return
 	}
 	sent.WithLabelValues(formatLabel, sendResultOK).Inc()
+}
+
+// errAttrs logs a request error by host and cause only: notification URLs carry
+// tokens in their path or query, and logs are served at /api/logs.
+func errAttrs(err error) []any {
+	var ue *url.Error
+	if !errors.As(err, &ue) {
+		return []any{"err", err}
+	}
+	host := ""
+	if u, perr := url.Parse(ue.URL); perr == nil {
+		host = u.Host
+	}
+	return []any{"host", host, "err", ue.Err}
 }

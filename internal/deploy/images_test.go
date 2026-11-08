@@ -3,12 +3,14 @@ package deploy
 import (
 	"bytes"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 )
 
@@ -424,5 +426,31 @@ func TestComposeFile_WarnUnmatchedOnDemandContainers_MultipleEntriesEachChecked(
 	}
 	if !strings.Contains(log, "container=karakeep-chrome") {
 		t.Errorf("expected a warning for the unmatched entry karakeep-chrome, got %q", log)
+	}
+}
+
+func TestPullIfImagesChanged_EndsOptionsBeforeServiceNames(t *testing.T) {
+	baseDir := t.TempDir()
+	path := filepath.Join(baseDir, "app", "docker-compose.yml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, path, "services:\n  --ignore-pull-failures:\n    image: redis:7.2\n")
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+	run := newStackRun(config.Stack{Name: "app"}, baseDir, nil)
+
+	current := serviceImageByName{"--ignore-pull-failures": "redis:7.2"}
+	if err := d.pullIfImagesChanged(t.Context(), run, mustParseCompose(t, path), current, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	argv := dockerArgv(runner.calls)
+	if len(argv) != 1 {
+		t.Fatalf("want exactly one pull call, got %v", argv)
+	}
+	want := []string{"pull", "--quiet", "--", "--ignore-pull-failures"}
+	if !slices.Equal(argv[0][len(argv[0])-len(want):], want) {
+		t.Errorf("pull argv = %v, want suffix %v", argv[0], want)
 	}
 }

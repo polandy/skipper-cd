@@ -47,7 +47,7 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 	// Non-rolled services first, so a rolled service's dependencies are up before
 	// its canary starts.
 	if nonRolled := cf.servicesExcept(rolled); len(nonRolled) > 0 {
-		upArgs := append(withHealthGate(run.stack.DeployHealthCheck, "up", "-d", "--remove-orphans"), nonRolled...)
+		upArgs := append(append(withHealthGate(run.stack.DeployHealthCheck, "up", "-d", "--remove-orphans"), "--"), nonRolled...)
 		if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
 		}
@@ -81,12 +81,12 @@ func (d *Deployer) rollService(ctx context.Context, run stackRun, service string
 	if len(oldIDs) == 0 {
 		// Nothing is serving yet — a plain up has no gap to avoid.
 		slog.Info("rollout: first deploy of service, plain up", "stack", run.stack.Name, "service", service)
-		return d.runDockerCompose(ctx, run, "up", "-d", "--no-deps", service)
+		return d.runDockerCompose(ctx, run, "up", "-d", "--no-deps", "--", service)
 	}
 
 	slog.Info("rollout: starting canary alongside running version", "stack", run.stack.Name, "service", service, "replicas", len(oldIDs))
 	scale := fmt.Sprintf("%s=%d", service, len(oldIDs)+1)
-	if err := d.runDockerCompose(ctx, run, "up", "-d", "--no-deps", "--no-recreate", "--scale", scale, service); err != nil {
+	if err := d.runDockerCompose(ctx, run, "up", "-d", "--no-deps", "--no-recreate", "--scale", scale, "--", service); err != nil {
 		d.cleanupCanary(ctx, run, service, oldIDs)
 		return fmt.Errorf("start canary for %q: %w", service, err)
 	}
@@ -172,7 +172,7 @@ func (d *Deployer) cleanupCanary(ctx context.Context, run stackRun, service stri
 // `docker compose ps --format json <service>`, using the same project identity
 // the deploy path uses.
 func (d *Deployer) serviceContainers(ctx context.Context, run stackRun, service string) ([]containerLine, error) {
-	lines, err := composeJSONRead[containerLine](ctx, d, run, "ps", "--format", "json", service)
+	lines, err := composeJSONRead[containerLine](ctx, d, run, "ps", "--format", "json", "--", service)
 	if err != nil {
 		return nil, fmt.Errorf("read compose ps for service %s: %w", service, err)
 	}
@@ -193,10 +193,10 @@ func (d *Deployer) removeContainers(ctx context.Context, run stackRun, ids []str
 		if id == "" {
 			continue
 		}
-		if err := d.runner.Run(ctx, "", nil, "docker", "stop", id); err != nil {
+		if err := d.runner.Run(ctx, "", nil, "docker", "stop", "--", id); err != nil {
 			slog.Warn("rollout: could not stop container", "stack", run.stack.Name, "id", id, "err", err)
 		}
-		if err := d.runner.Run(ctx, "", nil, "docker", "rm", id); err != nil {
+		if err := d.runner.Run(ctx, "", nil, "docker", "rm", "--", id); err != nil {
 			slog.Warn("rollout: could not remove container", "stack", run.stack.Name, "id", id, "err", err)
 		}
 	}

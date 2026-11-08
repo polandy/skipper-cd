@@ -96,7 +96,13 @@ type Config struct {
 	// blocks (e.g. taking the deploy mutex) delays the next tick, which is the
 	// intended serialization.
 	OnSnapshot func(Snapshot)
+	// Now is the clock PollIfStale measures against; nil means time.Now.
+	Now func() time.Time
 }
+
+// clientPollMinInterval is how fresh the last poll must be for PollIfStale to
+// skip, so a client reconnecting in a loop cannot keep docker busy.
+const clientPollMinInterval = 5 * time.Second
 
 // Poller periodically probes each stack's health and publishes snapshots.
 type Poller struct {
@@ -107,14 +113,16 @@ type Poller struct {
 	hasSubscribers func() bool
 	alwaysPoll     bool
 	onSnapshot     func(Snapshot)
+	now            func() time.Time
 
-	last    atomic.Pointer[Snapshot]
-	trigger chan struct{}
+	last       atomic.Pointer[Snapshot]
+	lastPolled atomic.Int64 // UnixNano of the last finished poll
+	trigger    chan struct{}
 }
 
 // New builds a Poller from cfg.
 func New(cfg Config) *Poller {
-	return &Poller{
+	p := &Poller{
 		out:            cfg.Outputter,
 		stacks:         cfg.Stacks,
 		publish:        cfg.Publish,
@@ -122,8 +130,13 @@ func New(cfg Config) *Poller {
 		hasSubscribers: cfg.HasSubscribers,
 		alwaysPoll:     cfg.AlwaysPoll,
 		onSnapshot:     cfg.OnSnapshot,
+		now:            cfg.Now,
 		trigger:        make(chan struct{}, 1),
 	}
+	if p.now == nil {
+		p.now = time.Now
+	}
+	return p
 }
 
 // Run polls on the configured interval until ctx is cancelled. Each tick polls
@@ -153,6 +166,16 @@ func (p *Poller) Poll() {
 	}
 }
 
+// PollIfStale is Poll for a request an unauthenticated client can repeat (a UI
+// connect, a snapshot fetch): it skips when the last poll finished within
+// clientPollMinInterval, since Current is then fresh anyway.
+func (p *Poller) PollIfStale() {
+	if p.now().Sub(time.Unix(0, p.lastPolled.Load())) < clientPollMinInterval {
+		return
+	}
+	p.Poll()
+}
+
 // Current returns the latest published snapshot, for a client connecting
 // between polls. Safe for concurrent use.
 func (p *Poller) Current() Snapshot {
@@ -179,6 +202,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 		snap.Stacks[s.Name] = p.probe(ctx, s)
 	}
 	p.last.Store(&snap)
+	p.lastPolled.Store(p.now().UnixNano())
 	if p.publish != nil {
 		p.publish(snap)
 	}

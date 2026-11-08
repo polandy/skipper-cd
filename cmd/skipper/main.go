@@ -41,6 +41,14 @@ import (
 // headers, protecting the servers against slowloris-style connections.
 const readHeaderTimeout = 10 * time.Second
 
+// readTimeout bounds reading a whole request, body included (a slow webhook
+// body before HMAC verification); SSE handlers only write, so it does not cut
+// them. No WriteTimeout, which would.
+const readTimeout = 30 * time.Second
+
+// idleTimeout closes keep-alive connections that sit unused.
+const idleTimeout = 2 * time.Minute
+
 // shutdownTimeout bounds how long in-flight HTTP requests (e.g. open SSE
 // streams) may delay shutdown after a termination signal.
 const shutdownTimeout = 10 * time.Second
@@ -491,6 +499,8 @@ func startServer(name, addr string, h http.Handler, fail chan<- error) *http.Ser
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 	go func() {
 		slog.Info(name+" server listening", "addr", srv.Addr)

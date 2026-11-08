@@ -285,7 +285,7 @@ func (d *Deployer) stopOnDemandContainers(ctx context.Context, stack config.Stac
 		compose.warnUnmatchedOnDemandContainers(stack.Name, stack.OnDemandContainers)
 	}
 	slog.Info("stopping on-demand containers after deploy", "stack", stack.Name, "containers", stack.OnDemandContainers)
-	if err := d.runner.Run(ctx, "", nil, "docker", append([]string{"stop"}, stack.OnDemandContainers...)...); err != nil {
+	if err := d.runner.Run(ctx, "", nil, "docker", append([]string{"stop", "--"}, stack.OnDemandContainers...)...); err != nil {
 		slog.Warn("could not stop on-demand containers", "stack", stack.Name, "err", err)
 	}
 }
@@ -343,7 +343,7 @@ func (d *Deployer) pullIfImagesChanged(ctx context.Context, run stackRun, compos
 		slog.Info("skipping pull, all services use locally-built images", "stack", run.stack.Name)
 		return nil
 	}
-	pullArgs := append([]string{"pull", "--quiet"}, pullable...)
+	pullArgs := append([]string{"pull", "--quiet", "--"}, pullable...)
 	return d.runDockerCompose(ctx, run, pullArgs...)
 }
 

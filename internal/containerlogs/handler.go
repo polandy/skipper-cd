@@ -115,7 +115,8 @@ func Handler(streamer LogStreamer, resolver Resolver) http.Handler {
 		// Headers are already sent, so an error here can't change the status;
 		// log it unless it is the expected cancellation on client disconnect.
 		if err := streamer.Stream(ctx, inv.Dir, inv.Env, dockerBin, args, func(line string) {
-			if _, err := fmt.Fprintf(w, "data: %s\n\n", line); err != nil {
+			// A bare \r would end the SSE line and let the log forge frames.
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", strings.ReplaceAll(line, "\r", "")); err != nil {
 				cancel()
 				return
 			}
@@ -143,7 +144,10 @@ func logsArgs(projectArgs []string, services []string, tail int, since string) [
 	} else {
 		args = append(args, "--tail", strconv.Itoa(tail))
 	}
-	return append(args, services...)
+	if len(services) == 0 {
+		return args
+	}
+	return append(append(args, "--"), services...)
 }
 
 // parseServices reads the comma-separated ?services= list into the selected
