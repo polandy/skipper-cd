@@ -274,3 +274,33 @@ func TestPoller_PollTriggersImmediateRefresh(t *testing.T) {
 		t.Fatal("Poll did not trigger a refresh")
 	}
 }
+
+func TestPoller_PollIfStaleSkipsWhileTheLastPollIsFresh(t *testing.T) {
+	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
+	now := time.Unix(1_000_000, 0)
+	p := New(Config{
+		Outputter: out,
+		Stacks:    func() []StackRef { return []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}} },
+		Interval:  time.Hour,
+		Now:       func() time.Time { return now },
+	})
+
+	p.PollIfStale()
+	if len(p.trigger) != 1 {
+		t.Fatal("first PollIfStale must request a poll: nothing has polled yet")
+	}
+	<-p.trigger
+	p.pollOnce(t.Context())
+
+	now = now.Add(clientPollMinInterval - time.Second)
+	p.PollIfStale()
+	if len(p.trigger) != 0 {
+		t.Error("PollIfStale requested a poll although the last one is fresh")
+	}
+
+	now = now.Add(time.Second)
+	p.PollIfStale()
+	if len(p.trigger) != 1 {
+		t.Error("PollIfStale must request a poll once the last one is clientPollMinInterval old")
+	}
+}

@@ -118,14 +118,14 @@ func TestRollService_StartsCanaryThenDrainsOld(t *testing.T) {
 	}
 
 	// Canary started alongside the old container, then the old one drained.
-	if !dockerArgvContains(runner.calls, "compose", "up", "-d", "--no-deps", "--no-recreate", "--scale", "web=2", "web") {
+	if !dockerArgvContains(runner.calls, "compose", "up", "-d", "--no-deps", "--no-recreate", "--scale", "web=2", "--", "web") {
 		t.Errorf("expected scale-up canary command; docker calls=%v", dockerArgv(runner.calls))
 	}
-	if !dockerArgvContains(runner.calls, "stop", "old1") || !dockerArgvContains(runner.calls, "rm", "old1") {
+	if !dockerArgvContains(runner.calls, "stop", "--", "old1") || !dockerArgvContains(runner.calls, "rm", "--", "old1") {
 		t.Errorf("expected old container old1 to be stopped and removed; docker calls=%v", dockerArgv(runner.calls))
 	}
 	// The new container must survive.
-	if dockerArgvContains(runner.calls, "stop", "new1") || dockerArgvContains(runner.calls, "rm", "new1") {
+	if dockerArgvContains(runner.calls, "stop", "--", "new1") || dockerArgvContains(runner.calls, "rm", "--", "new1") {
 		t.Errorf("canary new1 must not be removed on success; docker calls=%v", dockerArgv(runner.calls))
 	}
 }
@@ -146,7 +146,7 @@ func TestRollService_WaitsDrainDelayThenDrainsOld(t *testing.T) {
 	}
 	// The old container is still drained — the delay only defers it, so the proxy
 	// can switch over first.
-	if !dockerArgvContains(runner.calls, "stop", "old1") || !dockerArgvContains(runner.calls, "rm", "old1") {
+	if !dockerArgvContains(runner.calls, "stop", "--", "old1") || !dockerArgvContains(runner.calls, "rm", "--", "old1") {
 		t.Errorf("old container must still be drained after the delay; docker calls=%v", dockerArgv(runner.calls))
 	}
 	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
@@ -162,7 +162,7 @@ func TestRollService_FirstDeployPlainUp(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !dockerArgvContains(runner.calls, "compose", "up", "-d", "--no-deps", "web") {
+	if !dockerArgvContains(runner.calls, "compose", "up", "-d", "--no-deps", "--", "web") {
 		t.Errorf("first deploy should be a plain up; docker calls=%v", dockerArgv(runner.calls))
 	}
 	if dockerArgvMentions(runner.calls, "--scale") {
@@ -191,11 +191,11 @@ func TestRollService_UnhealthyCanaryRemovedOldKept(t *testing.T) {
 		t.Errorf("error must wrap errCanaryUnhealthy; got %v", err)
 	}
 	// The canary is cleaned up…
-	if !dockerArgvContains(runner.calls, "stop", "new1") || !dockerArgvContains(runner.calls, "rm", "new1") {
+	if !dockerArgvContains(runner.calls, "stop", "--", "new1") || !dockerArgvContains(runner.calls, "rm", "--", "new1") {
 		t.Errorf("unhealthy canary new1 must be stopped and removed; docker calls=%v", dockerArgv(runner.calls))
 	}
 	// …and the old version is never touched — zero downtime even on failure.
-	if dockerArgvContains(runner.calls, "stop", "old1") || dockerArgvContains(runner.calls, "rm", "old1") {
+	if dockerArgvContains(runner.calls, "stop", "--", "old1") || dockerArgvContains(runner.calls, "rm", "--", "old1") {
 		t.Errorf("old container old1 must survive a failed rollout; docker calls=%v", dockerArgv(runner.calls))
 	}
 }
@@ -227,11 +227,11 @@ func TestRollService_CanaryStartFailureRemovesStrayCanaryKeepsOld(t *testing.T) 
 		t.Errorf("a canary start error must not classify as errCanaryUnhealthy; got %v", err)
 	}
 	// The stray canary is cleaned up…
-	if !dockerArgvContains(runner.calls, "stop", "new1") || !dockerArgvContains(runner.calls, "rm", "new1") {
+	if !dockerArgvContains(runner.calls, "stop", "--", "new1") || !dockerArgvContains(runner.calls, "rm", "--", "new1") {
 		t.Errorf("stray canary new1 must be stopped and removed; docker calls=%v", dockerArgv(runner.calls))
 	}
 	// …and the old container keeps serving.
-	if dockerArgvContains(runner.calls, "stop", "old1") || dockerArgvContains(runner.calls, "rm", "old1") {
+	if dockerArgvContains(runner.calls, "stop", "--", "old1") || dockerArgvContains(runner.calls, "rm", "--", "old1") {
 		t.Errorf("old container old1 must survive a failed canary start; docker calls=%v", dockerArgv(runner.calls))
 	}
 }
@@ -277,15 +277,15 @@ func TestRemoveContainers_FailuresAreBestEffort(t *testing.T) {
 	d.removeContainers(context.Background(), run, []string{"bad", "", "good"})
 
 	// bad: rm is still attempted even though stop failed.
-	if !dockerArgvContains(runner.calls, "stop", "bad") || !dockerArgvContains(runner.calls, "rm", "bad") {
+	if !dockerArgvContains(runner.calls, "stop", "--", "bad") || !dockerArgvContains(runner.calls, "rm", "--", "bad") {
 		t.Errorf("both stop and rm must be attempted for bad; docker calls=%v", dockerArgv(runner.calls))
 	}
 	// good: still processed after bad's failures.
-	if !dockerArgvContains(runner.calls, "stop", "good") || !dockerArgvContains(runner.calls, "rm", "good") {
+	if !dockerArgvContains(runner.calls, "stop", "--", "good") || !dockerArgvContains(runner.calls, "rm", "--", "good") {
 		t.Errorf("later containers must still be removed after a failure; docker calls=%v", dockerArgv(runner.calls))
 	}
 	// The empty ID never reaches docker.
-	if dockerArgvContains(runner.calls, "stop", "") || dockerArgvContains(runner.calls, "rm", "") {
+	if dockerArgvContains(runner.calls, "stop", "--", "") || dockerArgvContains(runner.calls, "rm", "--", "") {
 		t.Errorf("empty container IDs must be skipped; docker calls=%v", dockerArgv(runner.calls))
 	}
 }
@@ -311,7 +311,7 @@ func TestRollService_DrainFailureDoesNotFailTheCutover(t *testing.T) {
 		t.Fatalf("a drain failure must not fail the cutover; got %v", err)
 	}
 	// rm is still attempted after the failed stop.
-	if !dockerArgvContains(runner.calls, "rm", "old1") {
+	if !dockerArgvContains(runner.calls, "rm", "--", "old1") {
 		t.Errorf("rm old1 must still be attempted after the failed stop; docker calls=%v", dockerArgv(runner.calls))
 	}
 }
@@ -390,11 +390,11 @@ func TestRollout_UpsNonRolledBeforeCuttingOverRolled(t *testing.T) {
 
 	argv := dockerArgv(runner.calls)
 	// The non-rolled db comes up in place first…
-	if len(argv) == 0 || !slices.Equal(argv[0], []string{"compose", "up", "-d", "--remove-orphans", "db"}) {
+	if len(argv) == 0 || !slices.Equal(argv[0], []string{"compose", "up", "-d", "--remove-orphans", "--", "db"}) {
 		t.Fatalf("first command should be an in-place up of the non-rolled db; got %v", argv)
 	}
 	// …then the rolled web cuts over.
-	if !dockerArgvContains(runner.calls, "compose", "up", "-d", "--no-deps", "--no-recreate", "--scale", "web=2", "web") {
+	if !dockerArgvContains(runner.calls, "compose", "up", "-d", "--no-deps", "--no-recreate", "--scale", "web=2", "--", "web") {
 		t.Errorf("expected web to cut over after db; docker calls=%v", argv)
 	}
 	// The rolled service is never brought up in place.

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
@@ -194,10 +195,10 @@ func (r *Registry) State() State {
 // PeerDiffsURL resolves a configured peer's diff endpoint for a deploy event id
 // (its /api/events/{id}/diffs), used by the primary to proxy a peer's diff on
 // demand (ADR-0048). The second return is false when name is not a peer.
-func (r *Registry) PeerDiffsURL(name, eventID string) (string, bool) {
+func (r *Registry) PeerDiffsURL(name string, eventID int64) (string, bool) {
 	for _, p := range r.peers {
 		if p.Name == name {
-			return normalizeBaseURL(p.URL) + "/api/events/" + eventID + "/diffs", true
+			return normalizeBaseURL(p.URL) + "/api/events/" + strconv.FormatInt(eventID, 10) + "/diffs", true
 		}
 	}
 	return "", false

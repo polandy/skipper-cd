@@ -71,7 +71,7 @@ func TestHandler_SingleServiceArgv_DropsPrefix(t *testing.T) {
 	}
 	want := []string{
 		"compose", "-f", "/repo/web/docker-compose.yml", "--project-directory", "/srv/web",
-		"logs", "--no-color", "--timestamps", "--follow", "--no-log-prefix", "--tail", "200", "api",
+		"logs", "--no-color", "--timestamps", "--follow", "--no-log-prefix", "--tail", "200", "--", "api",
 	}
 	if got := strings.Join(fs.args, " "); got != strings.Join(want, " ") {
 		t.Errorf("args =\n  %v\nwant\n  %v", fs.args, want)
@@ -85,7 +85,7 @@ func TestHandler_MultiServiceArgv_KeepsPrefix(t *testing.T) {
 
 	want := []string{
 		"compose", "-f", "/repo/web/docker-compose.yml", "--project-directory", "/srv/web",
-		"logs", "--no-color", "--timestamps", "--follow", "--tail", "200", "api", "db",
+		"logs", "--no-color", "--timestamps", "--follow", "--tail", "200", "--", "api", "db",
 	}
 	if got := strings.Join(fs.args, " "); got != strings.Join(want, " ") {
 		t.Errorf("args =\n  %v\nwant\n  %v", fs.args, want)
@@ -204,7 +204,7 @@ func TestHandler_EmptyServiceTokensDropped(t *testing.T) {
 	}
 	want := []string{
 		"compose", "-f", "/repo/web/docker-compose.yml", "--project-directory", "/srv/web",
-		"logs", "--no-color", "--timestamps", "--follow", "--no-log-prefix", "--tail", "200", "api",
+		"logs", "--no-color", "--timestamps", "--follow", "--no-log-prefix", "--tail", "200", "--", "api",
 	}
 	if got := strings.Join(fs.args, " "); got != strings.Join(want, " ") {
 		t.Errorf("args =\n  %v\nwant\n  %v", fs.args, want)
@@ -232,6 +232,15 @@ func TestHandler_StreamsLinesAsSSE(t *testing.T) {
 	}
 	if !strings.Contains(body, "data: world\n\n") {
 		t.Errorf("body missing second line frame:\n%s", body)
+	}
+}
+
+func TestHandler_StripsCarriageReturnsSoALineIsOneFrame(t *testing.T) {
+	fs := &fakeStreamer{lines: []string{"real\rdata: forged\r\rid: 9"}}
+	rec := serve(fs, okResolver("api"), "/api/container-logs/web?services=api")
+
+	if got, want := rec.Body.String(), "data: realdata: forgedid: 9\n\n"; got != want {
+		t.Errorf("body = %q, want %q", got, want)
 	}
 }
 

@@ -9,8 +9,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1039,7 +1041,9 @@ func TestWriteSSE_Format(t *testing.T) {
 
 func TestPeerDiffsHandler_ProxiesAndForwardsStatus(t *testing.T) {
 	// A stub peer serving one event's diff and 404 for anything else.
+	var peerHits atomic.Int32
 	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		peerHits.Add(1)
 		if r.URL.Path == "/api/events/42/diffs" {
 			_, _ = io.WriteString(w, `{"diffs":{"x":"+a"}}`)
 			return
@@ -1048,11 +1052,11 @@ func TestPeerDiffsHandler_ProxiesAndForwardsStatus(t *testing.T) {
 	}))
 	defer peer.Close()
 
-	resolve := func(name, id string) (string, bool) {
+	resolve := func(name string, id int64) (string, bool) {
 		if name != "host-b" {
 			return "", false
 		}
-		return peer.URL + "/api/events/" + id + "/diffs", true
+		return peer.URL + "/api/events/" + strconv.FormatInt(id, 10) + "/diffs", true
 	}
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/peers/{name}/events/{id}/diffs", PeerDiffsHandler(resolve, peer.Client()))
@@ -1074,6 +1078,16 @@ func TestPeerDiffsHandler_ProxiesAndForwardsStatus(t *testing.T) {
 	// Unknown peer → 404 from the handler itself, no fetch.
 	if rec := do("/api/peers/nope/events/42/diffs"); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown peer: got %d, want 404", rec.Code)
+	}
+	// A non-numeric id never reaches the peer, so it cannot address another path there.
+	hitsBefore := peerHits.Load()
+	for _, id := range []string{"42x", "..%2F42", "%2E%2E"} {
+		if rec := do("/api/peers/host-b/events/" + id + "/diffs"); rec.Code != http.StatusBadRequest {
+			t.Errorf("id %q: got %d, want 400", id, rec.Code)
+		}
+	}
+	if got := peerHits.Load(); got != hitsBefore {
+		t.Errorf("peer was fetched %d times for invalid ids, want 0", got-hitsBefore)
 	}
 }
 

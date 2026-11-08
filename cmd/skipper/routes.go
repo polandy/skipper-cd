@@ -189,10 +189,14 @@ func registerAppRoutes(mux *http.ServeMux, cfg *config.Config, build ui.BuildInf
 	mux.Handle("GET /api/version", ui.VersionHandler(build))
 }
 
+// maxSSEStreams caps open /api/events and /api/logs streams each; a UI tab
+// holds one of each.
+const maxSSEStreams = 64
+
 // registerEventRoutes wires the live data surface: the SSE stream (seeded with
 // snap's initial state burst) plus the diff, audit and log endpoints.
 func registerEventRoutes(mux *http.ServeMux, broadcaster *events.Broadcaster[events.DeployEvent], history *events.History, auditLog *audit.Log, logRing *logbuf.Log, snap stateSnapshot) {
-	mux.Handle("GET /api/events", ui.SSEHandler(broadcaster, snap.autosync.stateB, history, snap.collect))
+	mux.Handle("GET /api/events", ui.LimitConcurrent(maxSSEStreams, ui.SSEHandler(broadcaster, snap.autosync.stateB, history, snap.collect)))
 	mux.Handle("GET /api/v1/snapshot", ui.SnapshotHandler(snap.collect))
 	mux.Handle("GET /api/events/{id}/diffs", ui.DiffHandler(history))
 	// One handler on both routes: the legacy path serves the UI, the /v1 alias
@@ -200,7 +204,7 @@ func registerEventRoutes(mux *http.ServeMux, broadcaster *events.Broadcaster[eve
 	auditH := ui.AuditHandler(auditLog)
 	mux.Handle("GET /api/audit", auditH)
 	mux.Handle("GET /api/v1/audit", auditH)
-	mux.Handle("GET /api/logs", ui.LogsSSEHandler(logRing))
+	mux.Handle("GET /api/logs", ui.LimitConcurrent(maxSSEStreams, ui.LogsSSEHandler(logRing)))
 	registerPeerRoutes(mux, snap.peers)
 }
 
@@ -284,9 +288,9 @@ func (s stateSnapshot) currentUpdates() *updatecheck.Snapshot {
 	return s.updates()
 }
 
-// collect returns the current state events. As a side effect it polls the
-// health poller so a just-connected client sees fresh data (which also
-// refreshes orphans and app links). Optional subsystems are skipped when
+// collect returns the current state events. As a side effect it asks the
+// health poller for a refresh unless its data is fresh, so a just-connected
+// client sees current data (which also refreshes orphans and app links). Optional subsystems are skipped when
 // their component is absent.
 func (s stateSnapshot) collect() []events.StateEvent {
 	as := s.autosync
@@ -299,7 +303,7 @@ func (s stateSnapshot) collect() []events.StateEvent {
 	}
 	if s.healthPoller != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealth, Data: s.healthPoller.Current()})
-		s.healthPoller.Poll() // a client just connected — refresh now (also refreshes orphans and app links)
+		s.healthPoller.PollIfStale() // a client just connected — refresh unless fresh (also refreshes orphans and app links)
 	}
 	if s.healthWatcher != nil {
 		state = append(state, events.StateEvent{Name: events.StateHealthWatch, Data: s.healthWatcher.Current()})

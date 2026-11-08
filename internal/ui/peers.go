@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 )
 
 // The peer surface for the multi-host fan-in (ADR-0048), read-only throughout:
@@ -32,9 +33,14 @@ func PeersHandler(hosts func() any) http.Handler {
 // this package need not import internal/peers. A peer that has evicted the event
 // answers a non-2xx, forwarded as-is so the UI falls back to its "open the peer"
 // link.
-func PeerDiffsHandler(resolve func(name, id string) (string, bool), hc *http.Client) http.Handler {
+func PeerDiffsHandler(resolve func(name string, id int64) (string, bool), hc *http.Client) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		url, ok := resolve(r.PathValue("name"), r.PathValue("id"))
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid event id", http.StatusBadRequest)
+			return
+		}
+		url, ok := resolve(r.PathValue("name"), id)
 		if !ok {
 			http.Error(w, "unknown peer", http.StatusNotFound)
 			return

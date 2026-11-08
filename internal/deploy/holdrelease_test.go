@@ -253,7 +253,7 @@ func TestDeployAllStacks_ConvergeStopsOnDemandContainersAgain(t *testing.T) {
 	for _, c := range env.runner.calls[from:] {
 		tail = append(tail, c.args)
 	}
-	want := [][]string{convergeUp, {"stop", "signal-worker"}}
+	want := [][]string{convergeUp, {"stop", "--", "signal-worker"}}
 	if !slices.EqualFunc(tail, want, slices.Equal) {
 		t.Errorf("calls = %v, want %v", tail, want)
 	}

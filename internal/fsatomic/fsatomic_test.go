@@ -172,13 +172,47 @@ func TestWriteFile_ReplacingAnExistingFileAppliesTheRequestedMode(t *testing.T) 
 	}
 }
 
-// Three error branches in WriteFile stay uncovered on purpose: the failures of
-// tmp.Write, tmp.Chmod and tmp.Close. All three do the same thing — close the
-// temp file and return, leaving the deferred Remove to clean up — and none is
-// reachable from an unprivileged test: they need ENOSPC, a filesystem that
-// rejects chmod, or a delayed-writeback error, not something a temp directory
-// can be made to produce. Reaching them would mean threading a fake file
-// handle through a 42-line package, which buys a coverage number rather than a
-// guarantee. The guarantee they protect — a failed write leaves the existing
+// A directory whose entries can be created and renamed but which cannot be
+// opened (write+exec, no read) makes the directory fsync fail after the rename:
+// the error must surface, since the new content may not be durable yet.
+func TestWriteFile_DirectorySyncFailureIsReported(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: the directory mode below would not deny the open")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.yaml")
+	if err := os.Chmod(dir, 0o300); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Errorf("restoring the directory mode: %v", err)
+		}
+	})
+
+	if err := fsatomic.WriteFile(path, []byte("new"), 0o640); err == nil {
+		t.Fatal("expected an error when the directory cannot be opened for fsync")
+	}
+
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "state.yaml" {
+		t.Errorf("expected only the renamed state.yaml in dir, got %v", entries)
+	}
+}
+
+// Four error branches in WriteFile stay uncovered on purpose: the failures of
+// tmp.Write, tmp.Chmod, tmp.Sync and tmp.Close. All four do the same thing —
+// close the temp file and return, leaving the deferred Remove to clean up — and
+// none is reachable from an unprivileged test: they need ENOSPC, a filesystem
+// that rejects chmod, or a delayed-writeback error, not something a temp
+// directory can be made to produce. Reaching them would mean threading a fake
+// file handle through a small package, which buys a coverage number rather than
+// a guarantee. The guarantee they protect — a failed write leaves the existing
 // file untouched, and no temp file behind — is asserted above through the
 // CreateTemp and rename doors, which are reachable.

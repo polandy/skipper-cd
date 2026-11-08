@@ -269,3 +269,15 @@ func TestStackAutosyncConfig(t *testing.T) {
 		t.Errorf("off = %v, want false", m["off"])
 	}
 }
+
+func TestStartServer_BoundsRequestReadAndIdleTimeButNotWrites(t *testing.T) {
+	srv := startServer("test", "127.0.0.1:0", http.NewServeMux(), make(chan error, 1))
+	defer func() { _ = srv.Close() }()
+
+	if srv.ReadTimeout != readTimeout || srv.IdleTimeout != idleTimeout {
+		t.Errorf("ReadTimeout = %v, IdleTimeout = %v; want %v, %v", srv.ReadTimeout, srv.IdleTimeout, readTimeout, idleTimeout)
+	}
+	if srv.WriteTimeout != 0 {
+		t.Errorf("WriteTimeout = %v, want none: it would cut the SSE streams", srv.WriteTimeout)
+	}
+}
