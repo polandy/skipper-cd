@@ -62,8 +62,8 @@ usually remote.
 - The pre-paint script costs one more blocking request on a cold load; the
   service worker caches it with the rest of the shell.
 - A future inline `<script>`, `on*=` handler or `eval` breaks in the browser.
-  The Go test catches the first two in the shell; the e2e layer asserts no
-  CSP violation across the views.
+  The Go test catches the first two in the shell; the e2e layer (Maske BB)
+  asserts no CSP violation across the views.
 - A primary whose peer sets `allowed_hosts` must reach it by a listed name.
 - Installs that do not set `allowed_hosts` remain open to rebinding; the docs
   tell a browser-reachable install to set it.
