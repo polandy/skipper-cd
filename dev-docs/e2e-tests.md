@@ -1925,6 +1925,22 @@ clock. Behaviour-only (no snapshot).
   far`, still `backoff`); a second click is the third, and the chip reads
   `held` with a `title` counting the 3 failures and the usual release text.
 
+### 4.55 UI — Maske BB: the app runs under its strict CSP (ADR-0067)
+
+Every main-port response carries a `Content-Security-Policy` with
+`script-src 'self'`, so a stray inline script or handler would silently break
+the page. A `securitypolicyviolation` listener is installed before any page
+script. Behaviour-only (no snapshot).
+
+- **UBB1 — Headers are set and no view trips the policy.** The shell response
+  carries the CSP (`script-src 'self'`, `frame-ancestors 'none'`),
+  `X-Frame-Options: DENY`, `nosniff` and `Referrer-Policy: same-origin`; a
+  saved light scheme is applied (the external pre-paint script ran). After a
+  deploy, its diff panel, the Stacks, Logs and Deploys views, no violation is
+  recorded. The test then injects one inline script: exactly one
+  `script-src-elem` violation is recorded and the script does not run, which
+  proves the recorder works.
+
 ## 5. Visual snapshot strategy
 
 Snapshots are Playwright `toHaveScreenshot` baselines, deliberately scoped to a
@@ -2159,6 +2175,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |
 | Held change: the Stacks chip explains the hold, retry deploys it once more, a refused retry hands the button back | **UAZ1**, **UAZ2** |
 | A change that failed before it started: the Stacks chip reads `backoff` with its attempts and next try, and `held` after the third failure | **UBA1** |
+| Strict CSP: security headers on the shell, no violation across the views, an injected inline script is refused | **UBB1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split; a live row's entrance never replays | **UAS1**, **UAS2**, **UAS3**, **UAS4**, **UAS5** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |

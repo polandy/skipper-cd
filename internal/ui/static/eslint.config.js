@@ -25,6 +25,15 @@ module.exports = [
     },
   },
   {
+    // app-prepaint.js is the blocking <head> script that applies the saved
+    // theme before first paint; it touches nothing but the document element.
+    files: ['app-prepaint.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: globals.browser,
+    },
+  },
+  {
     // app-state.js defines the App namespace and the shared snapshot store; a
     // plain browser <script> loaded after app-helpers.js, whose resolve*
     // helpers its per-host resolvers bind by bare name.

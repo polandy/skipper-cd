@@ -111,15 +111,17 @@ func (f healerFunc) Heal(ctx context.Context, stack string, drift []events.Drift
 	return f(ctx, stack, drift)
 }
 
-// webhookMux builds the routes served on the main port: the headless core
+// webhookHandler builds the handler served on the main port: the headless core
 // endpoints always, and — when a broadcaster is present (UI enabled) — the app
 // shell, live data surface, icons and autosync controls. Each concern is wired
 // by its own registrar, so this function only distributes dependencies.
-func webhookMux(d webhookDeps) *http.ServeMux {
-	mux := http.NewServeMux()
-	registerCoreRoutes(mux, d.cfg, d.deployer)
+func webhookHandler(d webhookDeps) http.Handler {
+	core := http.NewServeMux()
+	registerCoreRoutes(core, d.cfg, d.deployer)
 
+	var mux *http.ServeMux
 	if d.broadcaster != nil {
+		mux = http.NewServeMux()
 		snap := stateSnapshot{
 			stacks:          d.stacks,
 			deployer:        d.deployer,
@@ -140,7 +142,18 @@ func webhookMux(d webhookDeps) *http.ServeMux {
 		registerRetryRoute(mux, d.deployer, d.autosync.trigger)
 		registerContainerLogRoutes(mux, d.cfg, d.deployer, d.healthPoller)
 	}
-	return mux
+	return mainHandler(core, mux, d.cfg.AllowedHosts)
+}
+
+// mainHandler assembles the main port: core (/webhook, /healthz) answers any
+// Host — a forge or a probe reaches skipper by whatever name it has — while
+// app, the UI and its API (nil when headless), answers only an allowed one
+// (ADR-0067). Every response carries the security headers.
+func mainHandler(core, app *http.ServeMux, allowedHosts []string) http.Handler {
+	if app != nil {
+		core.Handle("/", ui.RequireAllowedHost(allowedHosts, app))
+	}
+	return ui.SecurityHeaders(core)
 }
 
 // registerCoreRoutes wires the headless endpoints that exist regardless of the
@@ -169,6 +182,7 @@ func registerAppRoutes(mux *http.ServeMux, cfg *config.Config, build ui.BuildInf
 	mux.Handle("GET /app-logs.js", ui.AppLogsJSHandler())
 	mux.Handle("GET /app-clog.js", ui.AppClogJSHandler())
 	mux.Handle("GET /app-helpers.js", ui.AppHelpersHandler())
+	mux.Handle("GET /app-prepaint.js", ui.AppPrepaintJSHandler())
 	mux.Handle("GET /app.css", ui.AppCSSHandler())
 	mux.Handle("GET /icons/", ui.IconsHandler())
 	mux.Handle("GET /fonts/", ui.FontsHandler())

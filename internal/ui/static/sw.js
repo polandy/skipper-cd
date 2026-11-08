@@ -32,6 +32,7 @@ const SHELL = [
   '/app-clog.js',
   '/app-render.js',
   '/app-helpers.js',
+  '/app-prepaint.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

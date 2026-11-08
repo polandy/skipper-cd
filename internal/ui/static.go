@@ -11,7 +11,7 @@ import (
 // Each is served from the embedded FS through staticAsset, so a gzip-capable
 // client gets the pre-compressed body (compress.go).
 
-//go:embed static/index.html static/app.css static/app-stream.js static/app-state.js static/app-chrome.js static/app-panels.js static/app-hosts.js static/app-roster.js static/app-deploys.js static/app-autosync.js static/app-logs.js static/app-clog.js static/app-render.js static/app-helpers.js static/manifest.webmanifest static/sw.js static/icons static/fonts
+//go:embed static/index.html static/app.css static/app-stream.js static/app-state.js static/app-chrome.js static/app-panels.js static/app-hosts.js static/app-roster.js static/app-deploys.js static/app-autosync.js static/app-logs.js static/app-clog.js static/app-render.js static/app-helpers.js static/app-prepaint.js static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
 
 // IndexHandler serves the embedded UI HTML page, with the configured theme
@@ -373,5 +373,23 @@ func FontsHandler() http.Handler {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		fileServer.ServeHTTP(w, r)
+	})
+}
+
+// AppPrepaintJSHandler serves GET /app-prepaint.js — the blocking <head>
+// script that applies a saved theme override and colour scheme before first
+// paint. It lives in its own file rather than inline so the CSP can forbid
+// inline script (ADR-0067). Served no-cache so it stays in lockstep with the
+// shell; the service worker caches it in the app shell for offline use. Too
+// small to gain from gzip, so it is written plain.
+func AppPrepaintJSHandler() http.Handler {
+	data, err := staticFS.ReadFile("static/app-prepaint.js")
+	if err != nil {
+		panic(err) // staticFS embeds static/app-prepaint.js at compile time, so this cannot fail.
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(data)
 	})
 }

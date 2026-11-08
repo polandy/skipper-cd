@@ -26,6 +26,8 @@ stacks_base_dir: modules                # relative to repo_dir (the clone); omit
 webhook_secret: "your-secret-here"
 port: 8080
 metrics_port: 9120
+# listen_address: 127.0.0.1           # bind the webhook/UI port to one address (e.g. behind a local proxy)
+# allowed_hosts: [skipper.example.com] # Host names the UI answers; refuses DNS-rebinding requests
 ui_enabled: false                      # enable the real-time web UI on the webhook port
 # ui_theme: catppuccin                 # optional, default: catppuccin. One of: catppuccin,
                                         # nord, solarized, gruvbox, rose-pine. Useful to tell

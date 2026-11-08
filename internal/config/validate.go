@@ -257,6 +257,9 @@ func validateConfig(cfg *Config) error {
 	if err := validatePeers(cfg.Peers); err != nil {
 		return err
 	}
+	if err := validateListen(cfg.ListenAddress, cfg.AllowedHosts); err != nil {
+		return err
+	}
 
 	if err := validateHealthWatch(cfg.HealthWatch); err != nil {
 		return fmt.Errorf("health_watch: %w", err)
