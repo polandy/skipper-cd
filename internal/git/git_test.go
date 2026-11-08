@@ -12,7 +12,8 @@ import (
 )
 
 type recordingRunner struct {
-	calls []runCall
+	calls     []runCall
+	originURL string // what `git remote get-url origin` answers
 }
 
 type runCall struct {
@@ -24,6 +25,13 @@ type runCall struct {
 func (r *recordingRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
 	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
 	return nil
+}
+
+func (r *recordingRunner) Output(_ context.Context, _ string, _ string, args ...string) ([]byte, error) {
+	if slices.Equal(args, []string{"remote", "get-url", "origin"}) {
+		return []byte(r.originURL + "\n"), nil
+	}
+	return nil, nil
 }
 
 func TestSync_ClonesWhenRepoDirDoesNotExist(t *testing.T) {
@@ -104,6 +112,63 @@ func TestSync_PinsRemoteURLToConfiguredURL(t *testing.T) {
 	}
 	if setURL.dir != repoDir {
 		t.Errorf("expected set-url in %s, got %s", repoDir, setURL.dir)
+	}
+}
+
+func TestSync_SkipsSetURLWhenOriginAlreadyMatches(t *testing.T) {
+	// A credential in repo_url must not land in argv on every sync tick.
+	repoDir := makeFakeClone(t)
+	url := "https://token@example.com/repo.git"
+	runner := &recordingRunner{originURL: url}
+	s := newRepoSyncWithRunner(runner, url, repoDir, "master")
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(runner.calls) != 2 {
+		t.Fatalf("expected only fetch + reset, got %v", runner.calls)
+	}
+	for _, c := range runner.calls {
+		if slices.Contains(c.args, "set-url") {
+			t.Errorf("expected no set-url, got %v", c.args)
+		}
+	}
+}
+
+func TestSync_CreatesCloneDirOwnerOnly(t *testing.T) {
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	s := newRepoSyncWithRunner(&recordingRunner{}, "https://example.com/repo.git", repoDir, "master")
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertMode(t, repoDir, 0o700)
+}
+
+func TestSync_RestrictsAnExistingWiderCloneDir(t *testing.T) {
+	repoDir := makeFakeClone(t)
+	if err := os.Chmod(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := newRepoSyncWithRunner(&recordingRunner{}, "https://example.com/repo.git", repoDir, "master")
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertMode(t, repoDir, 0o700)
+}
+
+func assertMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Errorf("expected mode %o on %s, got %o", want, path, got)
 	}
 }
 

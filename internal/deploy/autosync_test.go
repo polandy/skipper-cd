@@ -126,6 +126,58 @@ func TestDeployStack_QueuedEventIncludesDiffs(t *testing.T) {
 	assertCommandNotCalled(t, runner.calls, "up")
 }
 
+func TestDeployStack_EventMasksEnvAndVarsFileDiffs(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "gitea")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+	envFile := filepath.Join(stackDir, "app.env")
+	varsFile := filepath.Join(baseDir, "vars.env")
+	writeFile(t, envFile, "TOKEN=new-secret\n")
+	writeFile(t, varsFile, "SHARED=new-shared\n")
+
+	cr := &fakeCommitReader{diffs: map[string]string{
+		envFile:  "+TOKEN=new-secret\n",
+		varsFile: "+SHARED=new-shared\n",
+	}}
+	var evts []events.DeployEvent
+	d := New(Config{
+		Runner:       &recordingRunner{},
+		CommitReader: cr,
+		RepoDir:      baseDir,
+		StateDir:     t.TempDir(),
+		EventSink:    func(e events.DeployEvent) { evts = append(evts, e) },
+	})
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"gitea": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	stack := config.Stack{Name: "gitea", EnvFiles: []string{envFile}}
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, varsFile, nil, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var success *events.DeployEvent
+	for i := range evts {
+		if evts[i].Status == events.StatusSuccess {
+			success = &evts[i]
+		}
+	}
+	if success == nil {
+		t.Fatalf("expected a success event, got %v", evts)
+	}
+	want := map[string]string{"gitea/app.env": "+TOKEN=***\n", "vars.env": "+SHARED=***\n"}
+	for file, diff := range want {
+		if got := success.Diffs[file]; got != diff {
+			t.Errorf("Diffs[%s] = %q, want %q", file, got, diff)
+		}
+	}
+}
+
 func TestDeployStack_DeploysAndClearsQueueWhenEnabled(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "gitea")

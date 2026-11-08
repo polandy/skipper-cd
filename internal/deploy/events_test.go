@@ -303,7 +303,7 @@ func TestCollectDiffs_ReturnsDiffs(t *testing.T) {
 	}
 	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 
-	diffs := d.collectDiffs(context.Background(), []string{"/repo/docker-compose.yml"}, "old-sha")
+	diffs := d.collectDiffs(context.Background(), []string{"/repo/docker-compose.yml"}, "old-sha", nil)
 
 	if diffs == nil {
 		t.Fatal("expected diffs to be returned")
@@ -325,7 +325,7 @@ func TestCollectDiffs_FileChangedLogCarriesTheDiff(t *testing.T) {
 	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 
 	out := captureLogAt(t, slog.LevelInfo, func(t *testing.T) {
-		d.collectDiffs(context.Background(), []string{"/repo/docker-compose.yml"}, "old-sha")
+		d.collectDiffs(context.Background(), []string{"/repo/docker-compose.yml"}, "old-sha", nil)
 	})
 
 	if !strings.Contains(out, "file changed") || !strings.Contains(out, "docker-compose.yml") {
@@ -345,7 +345,7 @@ func TestCollectDiffs_LoggedDiffMatchesTheStoredOne(t *testing.T) {
 
 	var stored map[string]string
 	out := captureLogAt(t, slog.LevelInfo, func(t *testing.T) {
-		stored = d.collectDiffs(context.Background(), []string{"/repo/big.yml"}, "old-sha")
+		stored = d.collectDiffs(context.Background(), []string{"/repo/big.yml"}, "old-sha", nil)
 	})
 
 	// Both the stored diff and the logged one end at the cap: the console
@@ -359,9 +359,35 @@ func TestCollectDiffs_LoggedDiffMatchesTheStoredOne(t *testing.T) {
 	}
 }
 
+// A secret rotated in a committed env file must not reach UI viewers or log
+// readers: the stored and the logged diff keep the key, not the value.
+func TestCollectDiffs_MasksEnvFileValues(t *testing.T) {
+	cr := &fakeCommitReader{diffs: map[string]string{
+		"/repo/app.env":            "-TOKEN=old-secret\n+TOKEN=new-secret\n",
+		"/repo/docker-compose.yml": "+FOO=visible\n",
+	}}
+	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
+
+	var diffs map[string]string
+	out := captureLogAt(t, slog.LevelInfo, func(t *testing.T) {
+		diffs = d.collectDiffs(context.Background(), []string{"/repo/app.env", "/repo/docker-compose.yml"}, "old-sha",
+			map[string]bool{"/repo/app.env": true})
+	})
+
+	if got := diffs["/repo/app.env"]; got != "-TOKEN=***\n+TOKEN=***\n" {
+		t.Errorf("expected masked env diff, got %q", got)
+	}
+	if got := diffs["/repo/docker-compose.yml"]; got != "+FOO=visible\n" {
+		t.Errorf("expected a non-env diff unmasked, got %q", got)
+	}
+	if strings.Contains(out, "secret") {
+		t.Errorf("expected no env value in the log, got %q", out)
+	}
+}
+
 func TestCollectDiffs_NilWithoutCommitReader(t *testing.T) {
 	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
-	diffs := d.collectDiffs(context.Background(), []string{"file.yml"}, "old-sha")
+	diffs := d.collectDiffs(context.Background(), []string{"file.yml"}, "old-sha", nil)
 	if diffs != nil {
 		t.Error("expected nil diffs without commit reader")
 	}
@@ -370,7 +396,7 @@ func TestCollectDiffs_NilWithoutCommitReader(t *testing.T) {
 func TestCollectDiffs_NilWithEmptyCommit(t *testing.T) {
 	cr := &fakeCommitReader{diffs: map[string]string{}}
 	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, StateDir: t.TempDir()})
-	diffs := d.collectDiffs(context.Background(), []string{"file.yml"}, "")
+	diffs := d.collectDiffs(context.Background(), []string{"file.yml"}, "", nil)
 	if diffs != nil {
 		t.Error("expected nil diffs with empty last deployed commit")
 	}
@@ -383,7 +409,7 @@ func TestCollectDiffs_TruncatesLargeDiff(t *testing.T) {
 	}
 	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 
-	diffs := d.collectDiffs(context.Background(), []string{"/repo/big.yml"}, "old-sha")
+	diffs := d.collectDiffs(context.Background(), []string{"/repo/big.yml"}, "old-sha", nil)
 
 	if diffs == nil {
 		t.Fatal("expected diffs")
@@ -402,7 +428,7 @@ func TestCollectDiffs_SkipsFilesOutsideRepo(t *testing.T) {
 	}
 	d := New(Config{Runner: &recordingRunner{}, CommitReader: cr, RepoDir: "/repo", StateDir: t.TempDir()})
 
-	diffs := d.collectDiffs(context.Background(), []string{"/other/file.yml"}, "old-sha")
+	diffs := d.collectDiffs(context.Background(), []string{"/other/file.yml"}, "old-sha", nil)
 	if diffs != nil {
 		t.Error("expected nil for files outside repo")
 	}

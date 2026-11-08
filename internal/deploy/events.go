@@ -37,11 +37,12 @@ type changeSet struct {
 // collectChange gathers the full change context for the given changed files:
 // their diffs and the commits that produced them, both against
 // lastDeployedCommit. Diffs and commits are nil when no CommitReader is
-// configured or no previous commit is known.
-func (d *Deployer) collectChange(ctx context.Context, changedFiles []string, lastDeployedCommit string) changeSet {
+// configured or no previous commit is known. The diffs of files in envFiles
+// carry their keys only (maskEnvDiff).
+func (d *Deployer) collectChange(ctx context.Context, changedFiles []string, lastDeployedCommit string, envFiles map[string]bool) changeSet {
 	return changeSet{
 		files:   changedFiles,
-		diffs:   d.collectDiffs(ctx, changedFiles, lastDeployedCommit),
+		diffs:   d.collectDiffs(ctx, changedFiles, lastDeployedCommit, envFiles),
 		commits: d.collectCommits(ctx, changedFiles, lastDeployedCommit),
 	}
 }
@@ -223,10 +224,10 @@ const (
 )
 
 // collectDiffs collects git diffs for each changed file inside the repo and
-// returns them as a map of file path to diff content. Large diffs are
-// truncated. Returns nil when no CommitReader is configured or no previous
-// commit is known.
-func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, lastDeployedCommit string) map[string]string {
+// returns them as a map of file path to diff content. The values in a file of
+// envFiles are masked. Large diffs are truncated. Returns nil when no
+// CommitReader is configured or no previous commit is known.
+func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, lastDeployedCommit string, envFiles map[string]bool) map[string]string {
 	if d.commitReader == nil || lastDeployedCommit == "" {
 		return nil
 	}
@@ -243,6 +244,9 @@ func (d *Deployer) collectDiffs(ctx context.Context, changedFilePaths []string, 
 		}
 		if diff == "" {
 			continue
+		}
+		if envFiles[filePath] {
+			diff = maskEnvDiff(diff)
 		}
 		if len(diff) > maxDiffPerFile {
 			diff = diff[:maxDiffPerFile] + "\n... (truncated)"

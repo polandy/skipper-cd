@@ -24,7 +24,7 @@ const DefaultRepoDir = "/var/lib/skipper/repo"
 
 // RepoSync keeps a local clone of a remote Git repository up to date.
 type RepoSync struct {
-	runner  command.Runner
+	runner  syncRunner
 	repoURL string
 	repoDir string
 	branch  string
@@ -39,7 +39,17 @@ func NewRepoSync(repoURL, repoDir, branch string, commandTimeout time.Duration, 
 	return &RepoSync{runner: command.NewShellRunnerWithSink(commandTimeout, sink), repoURL: repoURL, repoDir: repoDir, branch: branch}
 }
 
-func newRepoSyncWithRunner(r command.Runner, repoURL, repoDir, branch string) *RepoSync {
+// syncRunner runs git for RepoSync; command.ShellRunner satisfies it.
+type syncRunner interface {
+	command.Runner
+	outputRunner
+}
+
+// repoDirMode keeps the clone owner-only: its .git/config can hold a
+// credential-bearing repo_url.
+const repoDirMode os.FileMode = 0o700
+
+func newRepoSyncWithRunner(r syncRunner, repoURL, repoDir, branch string) *RepoSync {
 	return &RepoSync{runner: r, repoURL: repoURL, repoDir: repoDir, branch: branch}
 }
 
@@ -61,9 +71,10 @@ func (s *RepoSync) RepoDir() string {
 
 func (s *RepoSync) cloneRepository(ctx context.Context) error {
 	slog.Info("cloning repository", "url", RedactURL(s.repoURL), "dir", s.repoDir, "branch", s.branch)
-	if err := os.MkdirAll(s.repoDir, 0o755); err != nil {
+	if err := os.MkdirAll(s.repoDir, repoDirMode); err != nil {
 		return fmt.Errorf("create repo dir: %w", err)
 	}
+	s.restrictRepoDir()
 	return s.runner.Run(ctx, "", nil, "git", "clone", "--branch", s.branch, s.repoURL, s.repoDir)
 }
 
@@ -72,10 +83,8 @@ func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
 	// cadence, not an event. A sync that moves the branch still shows up —
 	// git fetch narrates the new refs and the deploy lines name the commit.
 	slog.Debug("pulling latest commits", "dir", s.repoDir, "branch", s.branch)
-	// Pin origin to the configured URL on every sync: the clone may predate
-	// a repo_url config change (e.g. an ssh:// to https:// migration) and
-	// would otherwise fetch from the stale remote forever.
-	if err := s.runner.Run(ctx, s.repoDir, nil, "git", "remote", "set-url", "origin", s.repoURL); err != nil {
+	s.restrictRepoDir()
+	if err := s.pinOriginURL(ctx); err != nil {
 		return err
 	}
 	if err := s.runner.Run(ctx, s.repoDir, nil, "git", "fetch", "origin"); err != nil {
@@ -84,6 +93,31 @@ func (s *RepoSync) pullLatestCommits(ctx context.Context) error {
 	// --quiet: the reset prints "HEAD is now at <sha> <subject>" on every
 	// sync, changed or not, and child output is captured into the log.
 	return s.runner.Run(ctx, s.repoDir, nil, "git", "reset", "--hard", "--quiet", "origin/"+s.branch)
+}
+
+// pinOriginURL points origin at the configured URL: the clone may predate a
+// repo_url config change (e.g. an ssh:// to https:// migration) and would
+// otherwise fetch from the stale remote forever. It runs set-url only when the
+// URL differs, so a credential in repo_url is not put on a command line (and
+// into /proc/<pid>/cmdline) on every sync.
+func (s *RepoSync) pinOriginURL(ctx context.Context) error {
+	if current, err := s.runner.Output(ctx, s.repoDir, "git", "remote", "get-url", "origin"); err == nil &&
+		strings.TrimSpace(string(current)) == s.repoURL {
+		return nil
+	}
+	return s.runner.Run(ctx, s.repoDir, nil, "git", "remote", "set-url", "origin", s.repoURL)
+}
+
+// restrictRepoDir tightens a clone created under an older, wider mode. A
+// failure is logged, not returned: the sync itself does not depend on it.
+func (s *RepoSync) restrictRepoDir() {
+	info, err := os.Stat(s.repoDir)
+	if err != nil || info.Mode().Perm()&^repoDirMode == 0 {
+		return
+	}
+	if err := os.Chmod(s.repoDir, repoDirMode); err != nil {
+		slog.Warn("cannot restrict repo dir to owner-only access", "dir", s.repoDir, "error", err)
+	}
 }
 
 // redactedPlaceholder is what net/url's Redacted substitutes for a password;
