@@ -67,7 +67,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		// The interrupted run never advanced LastDeployedCommit, so it still points
 		// at the pre-rebuild baseline: diff the reconciled files against it so the UI
 		// shows what changed, exactly like a normal rebuild success (ADR-0025).
-		d.emit(events.StatusSuccess, NixosStateKey, 0, "", d.collectChange(ctx, reconciled, state.LastDeployedCommit))
+		d.emit(events.StatusSuccess, NixosStateKey, 0, "", d.collectChange(ctx, reconciled, state.LastDeployedCommit, nil))
 		slog.Info("reconciled nixos-rebuild interrupted by a self-restart", "changed_files", reconciled)
 		// Nothing changed since the interrupted rebuild → done. A change that
 		// arrived afterwards still falls through to a fresh rebuild below.
@@ -89,7 +89,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 	// Diff the changed nix files against the last deployed commit so the UI can
 	// show *what* changed, not just which files did (LastDeployedCommit is only
 	// advanced at the end of the run, so it still points at the previous state).
-	cs := d.collectChange(ctx, changed, state.LastDeployedCommit)
+	cs := d.collectChange(ctx, changed, state.LastDeployedCommit, nil)
 
 	// Autosync gate: when _nixos is paused, defer the rebuild. Keep the previous
 	// nix hashes (do not pre-save) so the change stays pending, and return true

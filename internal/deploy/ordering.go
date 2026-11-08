@@ -144,7 +144,7 @@ func (d *Deployer) deployStackGated(ctx context.Context, stack config.Stack, bas
 // clears — and leaves hashes unrecorded so the stack retries on the next sync.
 func (d *Deployer) deferForDependency(ctx context.Context, stack config.Stack, changed []string, att attribution, state *persistedState, gate gateDecision) depOutcome {
 	base := state.baseCommitFor(stack.Name)
-	cs := d.collectChange(ctx, changed, base)
+	cs := d.collectChange(ctx, changed, base, att.envFiles())
 	cs.fileChanges = d.attributeChanges(ctx, att, changed, base)
 
 	if gate.outcome == depBlocked {

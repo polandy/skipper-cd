@@ -39,6 +39,19 @@ type attribution struct {
 	stacksBaseDir string
 }
 
+// envFiles is the set of the stack's KEY=VALUE inputs, env_files and the
+// vars_file, whose diffs are masked.
+func (a attribution) envFiles() map[string]bool {
+	set := make(map[string]bool, len(a.stack.EnvFiles)+1)
+	for _, f := range a.stack.EnvFiles {
+		set[f] = true
+	}
+	if a.varsFile != "" {
+		set[a.varsFile] = true
+	}
+	return set
+}
+
 // attributeChanges maps every changed file to its change kind and the services
 // it reaches, in changed-file order. Returns nil for an empty change set, so a
 // skip or a heal carries nothing.

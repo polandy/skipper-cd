@@ -116,7 +116,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		// Carry the diff of what is waiting so the paused row can show the
 		// effective change, not just the file paths.
 		base := state.baseCommitFor(stack.Name)
-		queuedChange := d.collectChange(ctx, changed, base)
+		queuedChange := d.collectChange(ctx, changed, base, att.envFiles())
 		queuedChange.fileChanges = d.attributeChanges(ctx, att, changed, base)
 		d.emit(events.StatusQueued, stack.Name, 0, "", queuedChange)
 		slog.Info("deploy deferred: autosync paused", "stack", stack.Name, "reason", reason, "changed_files", changed)
@@ -141,7 +141,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 	d.publishUpcomingAfter(stack.Name)
 	slog.Info("deploying stack", "stack", stack.Name, "dir", filepath.Dir(prep.run.composePath), "project_dir", prep.run.projectDir, "changed_files", d.repoRelativePaths(changed))
 	base := state.baseCommitFor(stack.Name)
-	cs := d.collectChange(ctx, changed, base)
+	cs := d.collectChange(ctx, changed, base, att.envFiles())
 	// Name the services each changed file reaches, so the row can say which
 	// container of the stack moved and not just how many files did (ADR-0059).
 	cs.fileChanges = d.attributeChanges(ctx, att, changed, base)

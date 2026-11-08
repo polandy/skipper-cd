@@ -149,6 +149,50 @@ func TestDeployAllStacks_RemovedStackCarriesChangeContext(t *testing.T) {
 	}
 }
 
+// A removed stack's config — and with it which files were env files — is gone,
+// so every deleted file but the compose file is masked.
+func TestDeployAllStacks_RemovedStackMasksNonComposeDiffs(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"alpha", "beta"}, nil)
+	envFile := filepath.Join(cfg.StacksBaseDir, "beta", "app.env")
+	writeFile(t, envFile, "TOKEN=secret\n")
+	cfg.Stacks = []config.Stack{{Name: "beta", EnvFiles: []string{envFile}}}
+	stateDir := t.TempDir()
+	composePath := filepath.Join(cfg.StacksBaseDir, "beta", "docker-compose.yml")
+	reader := &fakeCommitReader{diffs: map[string]string{
+		composePath: "-image: nginx:1.25\n",
+		envFile:     "-TOKEN=secret\n",
+	}}
+	first := New(Config{Runner: &recordingRunner{}, RepoDir: repoDir, StateDir: stateDir, CommitReader: reader})
+	first.DeployAllStacks(context.Background(), cfg)
+
+	removeStackDir(t, cfg, "beta")
+	cfg.Stacks = nil
+
+	var removed *events.DeployEvent
+	second := New(Config{
+		Runner: &recordingRunner{}, RepoDir: repoDir, StateDir: stateDir, CommitReader: reader,
+		EventSink: func(e events.DeployEvent) {
+			if e.Status == events.StatusRemoved {
+				removed = &e
+			}
+		},
+	})
+	second.DeployAllStacks(context.Background(), cfg)
+
+	if removed == nil {
+		t.Fatal("no removed event")
+	}
+	want := map[string]string{
+		filepath.Join("stacks", "beta", "docker-compose.yml"): "-image: nginx:1.25\n",
+		filepath.Join("stacks", "beta", "app.env"):            "-TOKEN=***\n",
+	}
+	for file, diff := range want {
+		if got := removed.Diffs[file]; got != diff {
+			t.Errorf("Diffs[%s] = %q, want %q", file, got, diff)
+		}
+	}
+}
+
 func TestDeployAllStacks_DisabledStackEmitsNoRemovedEvent(t *testing.T) {
 	// disabled: true parks a stack — its directory is still in the repo, so it
 	// was not removed.

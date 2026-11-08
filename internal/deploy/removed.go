@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/polandy/skipper-cd/internal/compose"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 )
@@ -49,7 +50,7 @@ func (d *Deployer) announceRemovedStacks(ctx context.Context, cfg *config.Config
 		// file underneath — the same anchor-then-detail order a deploy logs in.
 		slog.Info("stack removed from the deploy set, its containers are left running",
 			"stack", name, "changed_files", d.repoRelativePaths(files))
-		d.emit(events.StatusRemoved, name, 0, "", d.collectChange(ctx, files, state.baseCommitFor(name)))
+		d.emit(events.StatusRemoved, name, 0, "", d.collectChange(ctx, files, state.baseCommitFor(name), nonComposeFiles(files)))
 		// A change still waiting behind paused autosync will never deploy now,
 		// and a stuck entry holds the commit base back for every stack.
 		d.clearQueued(name)
@@ -130,6 +131,18 @@ func (d *Deployer) trackedInputs(state *persistedState, stack string) []string {
 		}
 	}
 	return nil
+}
+
+// nonComposeFiles marks every file but the compose file for masking: a removed
+// stack's config, and with it which files were env files, is gone.
+func nonComposeFiles(files []string) map[string]bool {
+	set := make(map[string]bool, len(files))
+	for _, f := range files {
+		if filepath.Base(f) != compose.FileName {
+			set[f] = true
+		}
+	}
+	return set
 }
 
 // vanishedRepoFiles returns those of the stack's tracked inputs that lived in

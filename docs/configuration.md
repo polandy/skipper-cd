@@ -89,8 +89,8 @@ nixos_rebuild:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `repo_url` | string | yes | — | URL of the Git repository to clone and pull (supports SSH and HTTPS). |
-| `repo_dir` | string | no | `/var/lib/skipper/repo` | Local directory where the repository is cloned. skipper-cd manages this directory independently of any live checkout. Must be absolute when set. |
+| `repo_url` | string | yes | — | URL of the Git repository to clone and pull (supports SSH and HTTPS). A credential in it (`https://<token>@host/…`) appears on git's command line only at the clone and when the URL changes, not on every sync. |
+| `repo_dir` | string | no | `/var/lib/skipper/repo` | Local directory where the repository is cloned. skipper-cd manages this directory independently of any live checkout. Must be absolute when set. It is kept owner-only (`0700`, tightened on the next sync if wider), since its `.git/config` holds `repo_url` and any credential in it. |
 | `repo_web_url` | string | no | derived from `repo_url` | The repository's page on the forge, e.g. `https://forge.example.com/owner/repo`. Every commit SHA in the web UI links to `<repo_web_url>/commit/<sha>` (Gitea and GitHub path shape). Left empty it is derived from `repo_url` — credentials, `.git` and any SSH port are dropped, and SSH forms become `https://`. Set it when the clone URL is not the web address (a mirror, a clone from a local path); when neither yields a URL, SHAs render as plain text. Must be `http(s)`. |
 | `branch` | string | no | `main` | Git branch to track. Used for `git clone --branch` and `git reset --hard origin/<branch>`. |
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. When set, it must exist and be readable. |
@@ -451,6 +451,7 @@ The `vars_file` and every `env_files` entry use the same format, and a file that
 - The key must match `[A-Za-z_][A-Za-z0-9_]*` — `export KEY=…` is rejected.
 - Keys that change how skipper runs `docker compose` and hooks are reserved and rejected: `PATH`, `HOME`, `BASH_ENV`, `ENV`, `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH` and any `LD_*`. Set those in the service's own environment instead.
 - At most 1 MB per file.
+- In a deploy's diff — the web UI, the deploy history and the log — these files show their keys only: every value is replaced by `***`, so a rotated secret is not displayed. A removed stack's diff masks every file but its compose file the same way.
 
 ### File limits
 
