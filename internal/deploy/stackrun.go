@@ -88,7 +88,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		state.markSettled(stack.Name)
 		d.takeRetryRequest(stack.Name)
 		// Back at the recorded inputs (a revert): nothing is held any more,
-		// once the held version's leftover services are gone (ADR-0066).
+		// once the containers run the recorded version again (ADR-0068).
 		if _, held := state.heldFor(stack.Name); held {
 			if emitted, err := d.settleReleasedHold(ctx, prep, state); emitted {
 				return err
@@ -271,16 +271,23 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 		return d.rollBackFailedDeploy(ctx, run, state, "post_deploy hook", err)
 	}
 
-	if len(stack.OnDemandContainers) > 0 {
-		if compose != nil {
-			compose.warnUnmatchedOnDemandContainers(stack.Name, stack.OnDemandContainers)
-		}
-		slog.Info("stopping on-demand containers after deploy", "stack", stack.Name, "containers", stack.OnDemandContainers)
-		if err := d.runner.Run(ctx, "", nil, "docker", append([]string{"stop"}, stack.OnDemandContainers...)...); err != nil {
-			slog.Warn("could not stop on-demand containers", "stack", stack.Name, "err", err)
-		}
-	}
+	d.stopOnDemandContainers(ctx, stack, compose)
 	return nil
+}
+
+// stopOnDemandContainers stops the stack's on_demand_containers, which an up
+// just started. A failure is only logged: the deploy itself succeeded.
+func (d *Deployer) stopOnDemandContainers(ctx context.Context, stack config.Stack, compose *composeFile) {
+	if len(stack.OnDemandContainers) == 0 {
+		return
+	}
+	if compose != nil {
+		compose.warnUnmatchedOnDemandContainers(stack.Name, stack.OnDemandContainers)
+	}
+	slog.Info("stopping on-demand containers after deploy", "stack", stack.Name, "containers", stack.OnDemandContainers)
+	if err := d.runner.Run(ctx, "", nil, "docker", append([]string{"stop"}, stack.OnDemandContainers...)...); err != nil {
+		slog.Warn("could not stop on-demand containers", "stack", stack.Name, "err", err)
+	}
 }
 
 // recordStackSuccess persists the deployed stack's hashes, images and project

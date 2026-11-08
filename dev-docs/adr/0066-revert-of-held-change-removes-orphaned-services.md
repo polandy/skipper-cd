@@ -4,7 +4,9 @@ Date: 2026-11-06
 
 ## Status
 
-Accepted. Amends [ADR-0062](0062-held-changes.md).
+Superseded by [ADR-0068](0068-revert-of-held-change-converges-recorded-version.md):
+a revert now runs one `up -d --remove-orphans` of the recorded version, which
+also removes these containers. Amended [ADR-0062](0062-held-changes.md).
 
 ## Context
 
