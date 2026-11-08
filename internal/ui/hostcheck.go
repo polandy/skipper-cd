@@ -26,7 +26,7 @@ func RequireAllowedHost(allowed []string, next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := normalizeHost(r.Host)
-		if host == "" || !(names[host] || names[hostname(host)]) {
+		if host == "" || (!names[host] && !names[hostname(host)]) {
 			http.Error(w, "host not allowed: add it to allowed_hosts", http.StatusMisdirectedRequest)
 			return
 		}
