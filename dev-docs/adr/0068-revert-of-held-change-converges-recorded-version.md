@@ -68,6 +68,9 @@ container read and no `up`.
 - A declared service that drifted from the recorded version for any other reason
   is recreated by the release too. That is the release's purpose: it is the
   point where skipper claims the stack is at the recorded version again.
+- Like self-heal, the converge ignores the autosync pause: it applies no new
+  desired state, only the version that already deployed. A stack paused for a
+  hand test that is reverted while held is converged over that test.
 - A failing `up` retries every tick while the hold stands, the same cadence
   ADR-0066 accepted for a failing removal.
 
