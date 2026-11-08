@@ -29,3 +29,14 @@ func TestMaskEnvDiff_HidesValuesKeepsKeys(t *testing.T) {
 		t.Errorf("maskEnvDiff:\n got %q\nwant %q", got, want)
 	}
 }
+
+// Inside a hunk a removed "-- k=v" line reads "--- k=v"; it is content, not a
+// file header, and must be masked.
+func TestMaskEnvDiff_MasksHeaderLookalikeContentLines(t *testing.T) {
+	diff := "--- a/x.sql\n+++ b/x.sql\n@@ -1,2 +1,2 @@\n--- key=old\n+++ key=new\n"
+	want := "--- a/x.sql\n+++ b/x.sql\n@@ -1,2 +1,2 @@\n--- key=***\n+++ key=***\n"
+
+	if got := maskEnvDiff(diff); got != want {
+		t.Errorf("maskEnvDiff:\n got %q\nwant %q", got, want)
+	}
+}
