@@ -59,9 +59,9 @@ operators:
 ### 3.2 App identity
 
 - **Name:** "skipper-cd" (short name "skipper" where space is tight).
-- **Icon:** the existing skipper-cd container-ship logo, rendered as proper app
-  icons, including a **maskable** variant so Android can crop it into the system
-  icon shape without clipping the ship.
+- **Icon:** the small-size variant of the skipper-cd container-ship logo (the
+  favicon's), rendered as proper app icons, including a **maskable** variant so
+  Android can crop it into the system icon shape without clipping the ship.
 - **Colours / splash:** a dark Catppuccin-Mocha themed launch screen and status
   bar, consistent with the app's default dark look.
 

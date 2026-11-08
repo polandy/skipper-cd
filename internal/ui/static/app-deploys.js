@@ -325,9 +325,25 @@ App.deploys = (function () {
     return changeCellHTML(images, files);
   }
 
+  // The entrance plays once. Left on, `new-row` replays it whenever the row is
+  // shown again — a view switch or a filter un-hiding it — and a row that is
+  // mid-animation has no stable geometry. Cancelled counts too: a row hidden
+  // before its entrance finished has nothing left to announce.
+  function dropEntranceOnceSettled(row) {
+    const settle = (e) => {
+      if (e.target !== row) return;
+      row.classList.remove('new-row');
+      row.removeEventListener('animationend', settle);
+      row.removeEventListener('animationcancel', settle);
+    };
+    row.addEventListener('animationend', settle);
+    row.addEventListener('animationcancel', settle);
+  }
+
   function createRow(evt, isHistory) {
     const row = document.createElement('div');
     row.className = rowClass(isHistory);
+    if (!isHistory) dropEntranceOnceSettled(row);
     row.dataset.testid = 'deploy-row';
     row.dataset.stack = evt.stack;
     row.dataset.status = evt.status;
@@ -605,7 +621,9 @@ App.deploys = (function () {
       deployingRows[evt.stack]
     ) {
       const existing = deployingRows[evt.stack];
-      existing.className = rowClass(isHistory);
+      // Never re-add `new-row` here: the row already made its entrance, and
+      // restoring the class would replay it as the deploy settles.
+      if (isHistory) existing.classList.remove('new-row');
       existing.dataset.status = evt.status;
       existing.dataset.eventId = evt.id;
       if (evt.has_diffs) existing.dataset.hasDiffs = '1';

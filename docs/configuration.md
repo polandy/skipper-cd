@@ -354,7 +354,7 @@ When rollback is off and a deploy fails (`up`, health gate, or a `post_deploy` h
 
 - The deploy is marked **`failed`** — events, metrics and [notifications](#notifications) all see that status.
 - The **failed containers are left running** for inspection (skipper does not stop them); read their logs or `exec` in to diagnose.
-- The change is [held](#held-changes): it waits for the next push or a retry, instead of being redeployed on every [reconcile](#periodic-reconcile).
+- The change is [held](#held-changes): it waits for the next push or a retry, instead of being redeployed on every [reconcile](#periodic-reconcile). Reverting the change in Git brings the stack back to the last deployed version.
 
 This only disables the compose-file restore. Keep `deploy_health_check` alongside it if you still want failures **detected** and reported (just not reverted).
 
@@ -366,7 +366,7 @@ A hold is released by:
 
 - **A new push that changes the stack** — any tracked input (compose file, env files, vars file, watched dirs, Dockerfiles, the stack's deploy config). The new version deploys as usual.
 - **A retry** — the **retry** button next to the stack's `held` chip in the Stacks view, or `POST /api/stacks/<name>/retry`. That deploys the held change once more; if it fails again, it is held again. Use it when the cause was outside the change, for example a database that was down.
-- A revert that restores the stack's last deployed inputs, and removing the stack. Before a revert releases the hold, skipper removes containers of services the restored compose file no longer declares, for example ones a hand-applied held version started. Only those containers are removed (`docker rm -f`), and the removal is reported as a `success` event listing the removed services. If the removal fails, the stack stays held and the next tick tries again.
+- A revert that restores the stack's last deployed inputs, and removing the stack. Before a revert releases the hold, skipper brings the containers back to the last deployed version with one `docker compose up -d --remove-orphans` (plus `--build`, without `--pull`, for a stack that builds its images). That replaces a failed version left running with [rollback disabled](#disabling-rollback) or applied by hand, and removes services only that version declared. It runs no hooks, no pull and no health gate, and stops `on_demand_containers` again afterwards. If it changed what runs, it is reported as a `success` event listing the services; otherwise as `skipped`. If the `up` fails, the stack stays held and the next tick tries again.
 
 A failure **before** any container was touched — a `pre_deploy` hook, `pull`, `build` — may be transient (a registry hiccup), so it is retried, but not on every tick:
 
