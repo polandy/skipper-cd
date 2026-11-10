@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.30.0](https://github.com/polandy/skipper-cd/compare/v0.29.2...v0.30.0) (2026-11-08)
+
+
+### Features
+
+* **ui:** add a strict CSP and security headers, an allowed_hosts Host check and listen_address ([#379](https://github.com/polandy/skipper-cd/issues/379)) ([24abb10](https://github.com/polandy/skipper-cd/commit/24abb108872b776105b32c883a2a4fd0e7a6ab3f))
+* **ui:** draw a small-size ship mark for the favicon and PWA icons ([#372](https://github.com/polandy/skipper-cd/issues/372)) ([7dc28ea](https://github.com/polandy/skipper-cd/commit/7dc28eaa31f28e56af68de056702db0f64e17f22))
+
+
+### Bug Fixes
+
+* **deploy:** converge to the recorded version when a revert releases a hold ([#378](https://github.com/polandy/skipper-cd/issues/378)) ([26f73f9](https://github.com/polandy/skipper-cd/commit/26f73f9cfd7330d305a0d7399f1f05b38199c1a4))
+* **deploy:** read only regular, size-capped repo files and validate env keys ([#370](https://github.com/polandy/skipper-cd/issues/370)) ([e267e9b](https://github.com/polandy/skipper-cd/commit/e267e9b64321b9fb112300946e4fe65f7859ccee))
+* **git:** keep the clone owner-only and mask env-file values in diffs ([#381](https://github.com/polandy/skipper-cd/issues/381)) ([b6fa6a1](https://github.com/polandy/skipper-cd/commit/b6fa6a11586544cedbe4a488e9de4be0e149b7d8))
+* **icons:** never follow symlinks for repo icons and sandbox icon responses ([#367](https://github.com/polandy/skipper-cd/issues/367)) ([aef66cf](https://github.com/polandy/skipper-cd/commit/aef66cf0da5d32cb0f4eda285d51d7ef1900b765))
+* **registry:** bound requests and keep pagination and token realm on the registry ([#371](https://github.com/polandy/skipper-cd/issues/371)) ([6633d6e](https://github.com/polandy/skipper-cd/commit/6633d6ee81f61d6ba79bf7c0c671fd796c9d8de7))
+* small hardening across notify, peers, server, health, fsatomic and compose argv ([#380](https://github.com/polandy/skipper-cd/issues/380)) ([d46ea85](https://github.com/polandy/skipper-cd/commit/d46ea85af407e524b97ae2d248329fad2746b9d4))
+* **ui:** escape unknown statuses in status badges and reason chips ([#369](https://github.com/polandy/skipper-cd/issues/369)) ([512d9bc](https://github.com/polandy/skipper-cd/commit/512d9bc1a6e9c1dc887ca0949ffc282a2ec80e13))
+* **ui:** play a deploy row's entrance once (fixes flaky UAS4) ([#373](https://github.com/polandy/skipper-cd/issues/373)) ([19401f8](https://github.com/polandy/skipper-cd/commit/19401f8f0d86a417dc7f5916366e3e4a87b25922))
+
 ## [0.29.2](https://github.com/polandy/skipper-cd/compare/v0.29.1...v0.29.2) (2026-11-06)
 
 
