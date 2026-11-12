@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.1](https://github.com/polandy/skipper-cd/compare/v0.31.0...v0.31.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **health:** read every stack's container state in two docker calls ([#384](https://github.com/polandy/skipper-cd/issues/384)) ([4eb53e6](https://github.com/polandy/skipper-cd/commit/4eb53e6fe7aff8e11cea8d5d8fe418bfecc7cbf8))
+
 ## [0.31.0](https://github.com/polandy/skipper-cd/compare/v0.30.0...v0.31.0) (2026-11-12)
 
 
