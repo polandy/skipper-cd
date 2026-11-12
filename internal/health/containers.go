@@ -24,16 +24,26 @@ var listArgs = []string{
 	"--format", "{{.ID}}\t{{.Image}}",
 }
 
-// inspectColumns are the tab-separated fields inspectArgs emits per container,
-// in the order parseInspect reads them.
+// Indexes into inspectColumns, as parseInspect reads them.
+const (
+	colID = iota
+	colWorkingDir
+	colService
+	colName
+	colState
+	colHealth
+	colExitCode
+)
+
+// inspectColumns are the tab-separated fields inspectArgs emits per container.
 var inspectColumns = []string{
-	"{{.Id}}",
-	`{{index .Config.Labels "` + workingDirLabel + `"}}`,
-	`{{index .Config.Labels "` + serviceLabel + `"}}`,
-	"{{.Name}}",
-	"{{.State.Status}}",
-	"{{if .State.Health}}{{.State.Health.Status}}{{end}}",
-	"{{.State.ExitCode}}",
+	colID:         "{{.Id}}",
+	colWorkingDir: `{{index .Config.Labels "` + workingDirLabel + `"}}`,
+	colService:    `{{index .Config.Labels "` + serviceLabel + `"}}`,
+	colName:       "{{.Name}}",
+	colState:      "{{.State.Status}}",
+	colHealth:     "{{if .State.Health}}{{.State.Health.Status}}{{end}}",
+	colExitCode:   "{{.State.ExitCode}}",
 }
 
 // inspectArgs precede the container IDs in the batched inspect.

@@ -25,6 +25,13 @@ type psLine struct {
 	onDemand bool
 }
 
+// Docker container states (State.Status) the poller tells apart.
+const (
+	stateRunning = "running"
+	stateExited  = "exited"
+	stateDead    = "dead"
+)
+
 // parseList reads listArgs output (ID<TAB>image per line) into the container
 // IDs in listing order and their images.
 func parseList(out []byte) ([]string, map[string]string) {
@@ -56,18 +63,23 @@ func parseInspect(out []byte, images map[string]string) (map[string][]psLine, er
 		if len(f) != len(inspectColumns) {
 			return nil, fmt.Errorf("docker inspect: want %d columns, got %d in %q", len(inspectColumns), len(f), line)
 		}
-		exitCode, err := strconv.Atoi(f[6])
+		exitCode, err := strconv.Atoi(f[colExitCode])
 		if err != nil {
-			return nil, fmt.Errorf("docker inspect: exit code %q: %w", f[6], err)
+			return nil, fmt.Errorf("docker inspect: exit code %q: %w", f[colExitCode], err)
 		}
-		l := psLine{Service: f[2], Name: strings.TrimPrefix(f[3], "/"), Image: images[f[0]], State: f[4]}
+		l := psLine{
+			Service: f[colService],
+			Name:    strings.TrimPrefix(f[colName], "/"),
+			Image:   images[f[colID]],
+			State:   f[colState],
+		}
 		switch l.State {
-		case "running":
-			l.Health = f[5]
-		case "exited", "dead":
+		case stateRunning:
+			l.Health = f[colHealth]
+		case stateExited, stateDead:
 			l.ExitCode = exitCode
 		}
-		dir := filepath.Clean(f[1])
+		dir := filepath.Clean(f[colWorkingDir])
 		byDir[dir] = append(byDir[dir], l)
 	}
 	for _, lines := range byDir {
@@ -95,13 +107,13 @@ func serviceStatus(l psLine) Status {
 	}
 
 	switch l.State {
-	case "running":
+	case stateRunning:
 		return Healthy
-	case "restarting", "dead":
+	case "restarting", stateDead:
 		return Unhealthy
 	case "created", "starting":
 		return Starting
-	case "exited", "removing":
+	case stateExited, "removing":
 		if l.ExitCode != 0 && !l.onDemand {
 			return Unhealthy
 		}
