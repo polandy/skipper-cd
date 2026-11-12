@@ -146,3 +146,21 @@ notifications:
 		})
 	}
 }
+
+func TestLoad_NotificationNtfyTarget(t *testing.T) {
+	content := `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: modules
+stacks: []
+notifications:
+  - format: ntfy
+    url: https://ntfy.example.com/skipper
+    prefix: host-a
+    headers:
+      Authorization: "Bearer tok"
+`
+	got := loadFromString(t, content).Notifications[0]
+	if got.Format != config.NotifyFormatNtfy || got.Prefix != "host-a" || got.Headers["Authorization"] != "Bearer tok" {
+		t.Errorf("unexpected ntfy target: %+v", got)
+	}
+}

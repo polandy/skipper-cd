@@ -525,7 +525,7 @@ notifications:
     # on:  defaults to [failed, success, rolled_back, rolled_back_unhealthy, heal_exhausted]
 
   # A second, independent target for failures only.
-  - format: generic
+  - format: ntfy
     url: https://ntfy.example.com/skipper
     headers:
       Authorization: "Bearer <token>"
@@ -534,31 +534,38 @@ notifications:
 
 ### What a message says
 
-A message names each service whose version changed, with its old → new image, so you see *what* updated, not just which stack. A `signal` message appends one `• <service>: <old> → <new>` line per service; the `generic` payload carries the same list as `image_changes`. Services built from `build:` are tracked too: they run under the image name compose gives them, so a rebuild that produced a new image shows up as an image-id change under the unchanged name.
+`signal` and `ntfy` messages are compact: a title that carries the point and a short body. The `generic` payload is unchanged and carries the full event (`image_changes`, `file_changes`, `health_gated`, …).
 
-The versions compared are the ones the containers **actually ran** — recorded after each successful deploy — not the references in the compose file. A tag pinned to a digest already says what changed, so it is reported as-is; a tag without one (`nextcloud:34-ghostscript`) is blind to a re-pull, so the image id is carried alongside it and the update behind the unchanged tag is reported too:
+| Outcome | Title | Body |
+|---|---|---|
+| Success, one version change | `immich: v3.4.0 → v3.4.1` | the changed containers, one line |
+| Success, containers moved differently | `nextcloud aktualisiert` | one line per change: `app, cron: 29.0.1 → 29.0.2` |
+| Success, only the image behind an unchanged tag moved | `nextcloud: 34-apache neu gebaut` | `app: ab12cd3 → 9f8e7d6` |
+| Rolled back | `immich: Deploy fehlgeschlagen, zurück auf v3.4.0` | first line of the error |
+| Failed (no restore) | `immich: Deploy fehlgeschlagen` | first line of the error |
 
 ```
-[host-a] ✅ deploy succeeded: nextcloud (48.2s)
-  • app: 34-ghostscript@a1b2c3d4e5f6 → 34-ghostscript@9f8e7d6c5b4a
-  • redis: 7.2 → 7.4
-  ✓ health gate passed
+immich: v3.4.0 → v3.4.1
+app, immich-machine-learning (openvino)
 ```
 
-- Only the tokens that actually differ are shown, the same reduction the UI's version chip makes: the repository is dropped when both sides share it (the service name already says which image it is), a **tag bump** shows the tags alone, and an **unchanged tag** means the image behind it moved, so the image ids are what's shown — in docker's 12-character short form, even when the reference carries a full `sha256:` digest. A service that switched to a **different** image keeps both references in full.
-- A first-time image shows just the new reference; a removed service shows `<old> (removed)`. A service that merely has no container right now — an inactive [profile](https://docs.docker.com/compose/how-tos/profiles/), a scale of zero — is **not** reported as removed; only a service gone from the compose file is.
-- The **first** deploy of a stack after upgrading skipper has no recorded baseline yet and still compares compose references; from the next deploy on the delta is the real one.
-- `✓ health gate passed` appears on a **success** whose stack had an effective [health-check gate](#health-check-gated-rollback) — explicit or inferred from a compose `healthcheck:` — so the message distinguishes *applied* from *verified healthy*. No line means the deploy ran ungated. The `generic` payload carries this as `health_gated`.
+- Versions are the ones the containers **actually ran** (recorded after each successful deploy), not the compose references. Registry and repository are dropped; only the tags are shown.
+- A tag suffix both sides share (`v3.4.0-openvino` → `v3.4.1-openvino`) goes in parentheses behind the container name, and containers with the same version change share one line.
+- The digest (7 characters) is shown only when the tag is unchanged. A container that switched to a different image keeps both references in full; a new container shows its tag, a removed one `entfernt`.
+- No timestamp, duration or health-gate line: the receiving app shows the time, and the `generic` payload carries `health_gated`.
+- A first-time deploy after upgrading skipper has no recorded baseline and still compares compose references; from the next deploy on the delta is the real one.
+
+The `ntfy` format publishes the title as the `Title` header and the body as plain text. The status is the `Tags` header (`white_check_mark` / `x`) and the `Priority` header (`low` on success, `high` on any failure), not emoji in the text. On a success whose new image comes from `ghcr.io/<owner>/<name>`, a `Click` header links `https://github.com/<owner>/<name>/releases/tag/<new tag>` (assumes the package is named like its repository); other registries set none. `headers` are applied last, so they can override any of these.
 
 ### Target Fields
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `format` | string | no | `generic` | Provider shape of the request: `signal` or `generic`. |
+| `format` | string | no | `generic` | Provider shape of the request: `signal`, `ntfy` or `generic`. |
 | `url` | string | yes | — | Endpoint the notification is POSTed to. For `signal` this is the `signal-cli-rest-api` **base** (e.g. `http://localhost:8020`); `/v2/send` is appended automatically. |
 | `on` | list | no | all five | Subset of `failed`, `success`, `rolled_back`, `rolled_back_unhealthy`, `heal_exhausted` that triggers this target. |
-| `prefix` | string | no | — | Prepended as `[<prefix>] ` to the `signal` message, e.g. to label which host/instance sent it. Ignored by `generic` (its structured payload already carries the event). |
-| `headers` | map | no | — | Static HTTP headers added to the request. Only meaningful for `generic` (e.g. an auth token). |
+| `prefix` | string | no | — | Prepended as `[<prefix>] ` to the `signal` message or `ntfy` title, e.g. to label which host/instance sent it. Ignored by `generic` (its structured payload already carries the event). |
+| `headers` | map | no | — | Static HTTP headers added to the request. Only meaningful for `generic` and `ntfy` (e.g. an auth token). |
 | `number` | string | for `signal` | — | Signal sender number. Required for `format: signal`, rejected on any other format. |
 | `recipients` | list | for `signal` | — | Signal recipient numbers (non-empty). Required for `format: signal`, rejected on any other format. |
 
@@ -567,13 +574,14 @@ The versions compared are the ones the containers **actually ran** — recorded 
 | Format | Body sent | Use for |
 |---|---|---|
 | `signal` | `{"message": …, "number": …, "recipients": […]}` to `<url>/v2/send` | The `bbernhard/signal-cli-rest-api` service. |
-| `generic` | The full deploy event as JSON (diffs and commit metadata stripped; changed services under `image_changes`, and which services each changed file reached under `file_changes`), plus any `headers` | ntfy, Gotify, or your own endpoint. |
+| `ntfy` | Plain-text body plus `Title`/`Tags`/`Priority`/`Click` headers, POSTed to the topic URL | An [ntfy](https://ntfy.sh) topic. |
+| `generic` | The full deploy event as JSON (diffs and commit metadata stripped; changed services under `image_changes`, and which services each changed file reached under `file_changes`), plus any `headers` | Gotify, or your own endpoint. |
 
 > **Reachability.** `url` must be reachable from wherever skipper-cd runs. As a **host service** (e.g. the [NixOS module](nixos.md)), a container's host-published port is `http://localhost:8020` — reaching it directly, bypassing any reverse proxy/auth. When skipper-cd itself runs **in a container**, `localhost` is the container, not the host (see [Docker](docker.md)).
 
 > **No email.** Native SMTP is deliberately unsupported. Point a `generic` target at an email-capable relay (ntfy, Apprise, Shoutrrr) if you need email.
 
-> **Self-notify caveat.** If Signal is delivered through a `signal-api` stack that skipper itself deploys, a failed `signal-api` deploy cannot notify you about itself. Configure a second, independent target (e.g. `generic` → ntfy) so at least one path never depends on the stack being reported on.
+> **Self-notify caveat.** If Signal is delivered through a `signal-api` stack that skipper itself deploys, a failed `signal-api` deploy cannot notify you about itself. Configure a second, independent target (e.g. `ntfy`) so at least one path never depends on the stack being reported on.
 
 ## Web UI Theme
 

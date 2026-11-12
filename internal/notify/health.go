@@ -89,6 +89,8 @@ func healthFormatterFor(t config.NotificationTarget) (HealthFormatter, error) {
 		return signalHealthFormatter{base: t.URL, number: t.Number, recipients: t.Recipients, prefix: t.Prefix}, nil
 	case config.NotifyFormatGeneric:
 		return genericHealthFormatter{url: t.URL, headers: t.Headers}, nil
+	case config.NotifyFormatNtfy:
+		return ntfyHealthFormatter{url: t.URL, headers: t.Headers, prefix: t.Prefix}, nil
 	default:
 		return nil, fmt.Errorf("unknown format %q", t.Format)
 	}
@@ -158,4 +160,29 @@ func shortCommit(sha string) string {
 		return sha[:7]
 	}
 	return sha
+}
+
+// ntfyHealthFormatter publishes a health alert to an ntfy topic.
+type ntfyHealthFormatter struct {
+	url     string
+	headers map[string]string
+	prefix  string
+}
+
+func (f ntfyHealthFormatter) Format(ctx context.Context, a healthwatch.Alert) (*http.Request, error) {
+	prev := a.PrevDuration.Round(time.Second).String()
+	m := ntfyMessage{tag: ntfyTagOK, priority: ntfyPrioLow}
+	if a.To == health.Unhealthy {
+		m = ntfyMessage{tag: ntfyTagFailed, priority: ntfyPrioHigh}
+		m.title = a.Stack + "/" + a.Service + ": unhealthy"
+		m.body = fmt.Sprintf("%s → %s (was %s %s)", a.From, a.To, a.From, prev)
+		if a.DeployCorrelated && a.Commit != "" {
+			m.body += ", after deploy of " + shortCommit(a.Commit)
+		}
+	} else {
+		m.title = a.Stack + "/" + a.Service + ": recovered"
+		m.body = "healthy again after " + prev
+	}
+	m.title = prefixed(f.prefix, m.title)
+	return ntfyPost(ctx, f.url, f.headers, m)
 }

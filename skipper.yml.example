@@ -88,13 +88,13 @@ nixos_rebuild:
 # Outbound notifications on terminal deploy outcomes (works with the UI off).
 # Omit the section entirely to disable. See docs/configuration.md#notifications.
 # notifications:
-#   - format: signal                       # signal | generic (default: generic)
+#   - format: signal                       # signal | ntfy | generic (default: generic)
 #     url: http://localhost:8020           # signal-api base; /v2/send is appended
 #     number: "+491234567890"              # sender (required for signal)
 #     recipients: ["+491234567890"]        # recipients (required for signal)
 #     prefix: host-a                       # optional; message becomes "[host-a] …"
 #     # on: [failed, success, rolled_back, rolled_back_unhealthy] # default; subset of these four
-#   - format: generic                      # a second, independent target for failures
+#   - format: ntfy                         # a second, independent target for failures
 #     url: https://ntfy.example.com/skipper
 #     headers:
 #       Authorization: "Bearer your-token"

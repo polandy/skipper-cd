@@ -85,6 +85,8 @@ func updateFormatterFor(t config.NotificationTarget) (UpdateFormatter, error) {
 		return signalUpdateFormatter{base: t.URL, number: t.Number, recipients: t.Recipients, prefix: t.Prefix}, nil
 	case config.NotifyFormatGeneric:
 		return genericUpdateFormatter{url: t.URL, headers: t.Headers}, nil
+	case config.NotifyFormatNtfy:
+		return ntfyUpdateFormatter{url: t.URL, headers: t.Headers, prefix: t.Prefix}, nil
 	default:
 		return nil, fmt.Errorf("unknown format %q", t.Format)
 	}
@@ -137,4 +139,20 @@ func renderUpdateMessage(prefix string, a updatecheck.Alert) string {
 		return fmt.Sprintf("⬆️ image update: %s/%s %s available (running %s)", a.Stack, a.Service, a.Latest, a.Running)
 	}
 	return fmt.Sprintf("⬆️ image update: %s/%s tag %s was rebuilt upstream", a.Stack, a.Service, a.Running)
+}
+
+// ntfyUpdateFormatter publishes an update alert to an ntfy topic.
+type ntfyUpdateFormatter struct {
+	url     string
+	headers map[string]string
+	prefix  string
+}
+
+func (f ntfyUpdateFormatter) Format(ctx context.Context, a updatecheck.Alert) (*http.Request, error) {
+	title := a.Stack + "/" + a.Service + ": update available"
+	body := "tag " + a.Running + " was rebuilt upstream"
+	if a.Latest != "" {
+		body = a.Running + " → " + a.Latest
+	}
+	return ntfyPost(ctx, f.url, f.headers, ntfyMessage{title: prefixed(f.prefix, title), body: body, tag: ntfyTagUpdate, priority: ntfyPrioLow})
 }
