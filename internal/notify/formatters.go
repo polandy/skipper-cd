@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
@@ -20,6 +19,8 @@ func formatterFor(t config.NotificationTarget) (Formatter, error) {
 		return signalFormatter{base: t.URL, number: t.Number, recipients: t.Recipients, prefix: t.Prefix}, nil
 	case config.NotifyFormatGeneric:
 		return genericFormatter{url: t.URL, headers: t.Headers}, nil
+	case config.NotifyFormatNtfy:
+		return ntfyFormatter{url: t.URL, headers: t.Headers, prefix: t.Prefix}, nil
 	default:
 		return nil, fmt.Errorf("unknown format %q", t.Format)
 	}
@@ -68,117 +69,19 @@ func jsonPost(ctx context.Context, url string, payload any, headers map[string]s
 	return req, nil
 }
 
-// renderMessage renders the human-readable one-liner used by the signal
-// formatter's message body. A non-empty prefix is prepended as "[<prefix>] "
-// to label the sending host/instance.
+// renderMessage renders the compact text of the signal formatter: the title,
+// then the body on the next line. A non-empty prefix is prepended as
+// "[<prefix>] " to label the sending host/instance.
 func renderMessage(prefix string, ev events.DeployEvent) string {
+	m := composeDeploy(ev)
+	msg := m.Title
 	if prefix != "" {
-		return "[" + prefix + "] " + renderMessage("", ev)
+		msg = "[" + prefix + "] " + msg
 	}
-	dur := (time.Duration(ev.DurationMs) * time.Millisecond).Round(time.Millisecond)
-	services := renderImageChanges(ev.ImageChanges)
-	switch ev.Status {
-	case events.StatusSuccess:
-		// The health gate is reported only here: on a success it is the one thing
-		// the outcome alone does not say (applied vs. verified healthy), while a
-		// failure message already names what went wrong.
-		return fmt.Sprintf("✅ deploy succeeded: %s (%s)", ev.Stack, dur) + services + renderHealthGate(ev.HealthGated)
-	case events.StatusFailed:
-		return fmt.Sprintf("❌ deploy failed: %s (%s) — %s", ev.Stack, dur, ev.Error) + services
-	case events.StatusRolledBack:
-		return fmt.Sprintf("↩️ deploy rolled back: %s (%s) — %s", ev.Stack, dur, ev.Error) + services
-	case events.StatusRolledBackUnhealthy:
-		return fmt.Sprintf("🚨 deploy rolled back but still unhealthy: %s (%s) — %s", ev.Stack, dur, ev.Error) + services
-	case events.StatusHealExhausted:
-		return fmt.Sprintf("🚨 self-heal gave up: %s is still unhealthy after repeated redeploys — %s", ev.Stack, ev.Error)
-	default:
-		return fmt.Sprintf("deploy %s: %s", ev.Status, ev.Stack)
+	if m.Body != "" {
+		msg += "\n" + m.Body
 	}
-}
-
-// msgIndent starts every detail line appended below a deploy message's headline.
-const msgIndent = "\n  "
-
-// renderImageChanges renders the per-service image changes as indented lines
-// appended to a deploy message, or "" when there are none. Each line reads
-// "<indent>• <service>: <old> → <new>"; a service with no recorded previous
-// image (first deploy) shows just the new ref, a removed service
-// "<old> (removed)".
-func renderImageChanges(changes []events.ServiceImageChange) string {
-	if len(changes) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	for _, c := range changes {
-		b.WriteString(msgIndent + "• ")
-		b.WriteString(c.Service)
-		b.WriteString(": ")
-		switch {
-		case c.New == "":
-			b.WriteString(c.Old + " (removed)")
-		case c.Old == "":
-			b.WriteString(c.New)
-		default:
-			oldRef, newRef := versionTokens(c.Old, c.New)
-			b.WriteString(oldRef)
-			b.WriteString(" → ")
-			b.WriteString(newRef)
-		}
-	}
-	return b.String()
-}
-
-// renderHealthGate renders the gate line appended to a successful deploy
-// message, or "" when the deploy ran without an effective deploy_health_check.
-// An absent line reads as "not gated" — the message never claims a verification
-// that did not happen.
-func renderHealthGate(gated bool) string {
-	if !gated {
-		return ""
-	}
-	return msgIndent + "✓ health gate passed"
-}
-
-// versionTokens reduces an old → new image reference pair to the tokens that
-// actually differ — the same reduction the UI's version chip makes, so a change
-// reads the same in both places.
-//
-// Both sides normally share a repository (the service name beside them already
-// says which image it is), so it is dropped: a tag bump shows the tags alone
-// ("1.25 → 1.27"), while an unchanged tag means the image behind it moved and
-// the image ids are what differ ("30-apache@ab12… → 30-apache@cd34…"), shown in
-// docker's short form — a full sha256 digest is 71 characters of noise per side
-// in a chat message. When the repositories differ, the service switched images
-// entirely: both references are kept in full, because that is the change.
-func versionTokens(oldRef, newRef string) (string, string) {
-	if imageRepository(oldRef) != imageRepository(newRef) {
-		return oldRef, newRef
-	}
-	oldTag, newTag := imageTag(oldRef), imageTag(newRef)
-	if oldTag != "" && newTag != "" && oldTag != newTag {
-		return oldTag, newTag
-	}
-	return shortenImageID(dropRepository(oldRef)), shortenImageID(dropRepository(newRef))
-}
-
-// shortImageIDLen is docker's own short-ID length: the form `docker ps` prints
-// and the running-image identity records, so the message and the recorded
-// identity read the same.
-const shortImageIDLen = 12
-
-// shortenImageID shortens the image id/digest behind a version token's "@" to
-// docker's short form ("v3.7.9@sha256:652929a140a3…" → "v3.7.9@652929a140a3").
-// A token without one, or with an already-short id, passes through unchanged.
-func shortenImageID(token string) string {
-	at := strings.IndexByte(token, '@')
-	if at == -1 {
-		return token
-	}
-	id := strings.TrimPrefix(token[at+1:], "sha256:")
-	if len(id) > shortImageIDLen {
-		id = id[:shortImageIDLen]
-	}
-	return token[:at+1] + id
+	return msg
 }
 
 // imageTag returns an image reference's tag, or "" when it carries none
@@ -205,16 +108,4 @@ func imageRepository(ref string) string {
 		ref = ref[:colon]
 	}
 	return ref
-}
-
-// dropRepository strips the repository prefix from an image reference, leaving
-// the tokens that identify the version ("nginx:1.25@ab12" → "1.25@ab12"). A
-// bare repository with no version tokens is returned unchanged rather than
-// reduced to nothing.
-func dropRepository(ref string) string {
-	rest := strings.TrimPrefix(strings.TrimPrefix(ref, imageRepository(ref)), ":")
-	if rest == "" {
-		return ref
-	}
-	return rest
 }

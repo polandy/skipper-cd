@@ -13,7 +13,7 @@ import (
 // ADR-0020.
 type NotificationTarget struct {
 	// Format selects the provider shape of the request body. One of
-	// "signal", "generic". Defaults to "generic".
+	// "signal", "ntfy", "generic". Defaults to "generic".
 	Format string `yaml:"format"`
 
 	// URL is the endpoint the notification is POSTed to. For "signal" it is the
@@ -27,13 +27,13 @@ type NotificationTarget struct {
 	On []string `yaml:"on"`
 
 	// Prefix is prepended (as "[<prefix>] ") to the human-readable message of
-	// the "signal" format, e.g. to label which host/instance sent it. Optional;
+	// the "signal" and "ntfy" formats, e.g. to label which host/instance sent it. Optional;
 	// empty adds no prefix. Ignored by the "generic" format, whose structured
 	// payload already carries the event.
 	Prefix string `yaml:"prefix"`
 
 	// Headers are static HTTP headers added to the request. Only meaningful for
-	// the "generic" format (e.g. an Authorization bearer token).
+	// the "generic" and "ntfy" formats (e.g. an Authorization bearer token).
 	Headers map[string]string `yaml:"headers"`
 
 	// Number is the Signal sender number ("signal" format only, required).
@@ -48,6 +48,7 @@ type NotificationTarget struct {
 const (
 	NotifyFormatSignal  = "signal"
 	NotifyFormatGeneric = "generic"
+	NotifyFormatNtfy    = "ntfy"
 )
 
 // Terminal deploy statuses accepted in NotificationTarget.On. They mirror the
@@ -69,9 +70,9 @@ const (
 // have already been defaulted in Load.
 func validateNotificationTarget(t NotificationTarget) error {
 	switch t.Format {
-	case NotifyFormatSignal, NotifyFormatGeneric:
+	case NotifyFormatSignal, NotifyFormatGeneric, NotifyFormatNtfy:
 	default:
-		return fmt.Errorf("unknown format %q, must be %q or %q", t.Format, NotifyFormatSignal, NotifyFormatGeneric)
+		return fmt.Errorf("unknown format %q, must be %q, %q or %q", t.Format, NotifyFormatSignal, NotifyFormatNtfy, NotifyFormatGeneric)
 	}
 
 	if t.URL == "" {
