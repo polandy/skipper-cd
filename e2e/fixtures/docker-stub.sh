@@ -9,16 +9,39 @@
 # needs.
 #
 # STUB_DOCKER_UI gates the branches only the UI suite scripts (orphans,
-# container logs, per-stack health). Unset — the Go harness — this file behaves
+# container logs, scripted `compose ps`). Unset — the Go harness — this file behaves
 # exactly as its stub did before they were merged, which is what makes the merge
 # safe rather than merely tidy.
 dir=$(pwd)
 printf '%s\t%s\n' "$dir" "$*" >> "$DOCKER_LOG"
 
+# Health poll (ADR-0069): one `ps` lists every stack's containers and one
+# `inspect` reads their state, both answered from a container table — the file
+# STUB_DOCKER_HEALTH_FILE (Go harness) or every health-*.tsv under
+# STUB_DOCKER_PS_DIR (UI harness). One line per container: id, working_dir,
+# service, /name, state, health, exit code, image.
+health_table() {
+  if [ -n "$STUB_DOCKER_HEALTH_FILE" ]; then
+    cat "$STUB_DOCKER_HEALTH_FILE"
+  elif [ -n "$STUB_DOCKER_PS_DIR" ]; then
+    cat "$STUB_DOCKER_PS_DIR"/health-*.tsv 2>/dev/null
+  fi
+}
+case " $* " in
+  *" label=com.docker.compose.project.working_dir "*)
+    health_table | cut -f1,8
+    exit 0
+    ;;
+  *" inspect --format {{.Id}}"*)
+    health_table | cut -f1-7
+    exit 0
+    ;;
+esac
+
 if [ -n "$STUB_DOCKER_UI" ]; then
   # Orphan detection (ADR-0036): `volume ls` / `ps -a` answered from a shared
-  # listing (setOrphans/setVolumes). Matched before the health `ps` case: `ps -a`
-  # also contains " ps ", but health's `ps --format json --all` never does.
+  # listing (setOrphans/setVolumes). Matched before the compose `ps` case: `ps -a`
+  # also contains " ps ", but `compose ps --format json --all` never does.
   case " $* " in
     *" volume "*)
       [ -n "$STUB_DOCKER_ORPHANS_DIR" ] && [ -f "$STUB_DOCKER_ORPHANS_DIR/volumes.txt" ] && cat "$STUB_DOCKER_ORPHANS_DIR/volumes.txt"
@@ -72,7 +95,7 @@ if [ -n "$STUB_DOCKER_UI" ]; then
   # "<id>\t<working_dir>" line each) and then batch-inspects their labels
   # (`inspect --format {{json .Config.Labels}} <id>…`). Both are answered from
   # files the harness seeds; no seed means no app links, which is every other
-  # mask. Matched before the health `ps` case, which would otherwise swallow the
+  # mask. Matched before the compose `ps` case, which would otherwise swallow the
   # listing. File names mirror harness.ts's APPLINK_* constants.
   case " $* " in
     *" label=com.docker.compose.project "*)
@@ -92,8 +115,9 @@ if [ -n "$STUB_DOCKER_UI" ]; then
       ;;
   esac
 
-  # Health poll: emit the scripted `compose ps --format json` output for this
-  # stack (keyed by the project dir's basename), else nothing (-> stopped).
+  # The deploy path's running-image read (ADR-0053): emit the scripted
+  # `compose ps --format json` output for this stack (keyed by the project
+  # dir's basename), else nothing.
   case " $* " in
     *" ps "*)
       base=$(basename "$dir")
@@ -107,15 +131,6 @@ fi
 if [ -n "$STUB_DOCKER_ECHO" ]; then
   case " $* " in
     *" up "*) echo "$STUB_DOCKER_ECHO" ;;
-  esac
-fi
-
-# Health poll, single-file variant: the Go harness scripts one `compose ps`
-# answer for every stack. Deliberately falls through rather than exiting, so a
-# scripted `ps` still reaches the failure branches below.
-if [ -n "$STUB_DOCKER_PS_FILE" ]; then
-  case " $* " in
-    *" ps "*) cat "$STUB_DOCKER_PS_FILE" ;;
   esac
 fi
 

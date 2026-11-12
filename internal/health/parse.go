@@ -1,61 +1,91 @@
 package health
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 )
 
-// psLine mirrors the fields skipper needs from one object of
-// `docker compose ps --format json` output. Name is the container name — the
-// identifier on_demand_containers uses. Image is the reference the container
-// actually runs, which is what the UI shows as the service's live version.
-// onDemand is not part of the compose output; probe marks it from the stack's
-// config so classification can treat an intentionally stopped on-demand
-// container as stopped, not unhealthy.
+// psLine is one container in the shape `docker compose ps` reports it. Name
+// is the container name — the identifier on_demand_containers uses. Image is
+// the reference the container actually runs, which is what the UI shows as the
+// service's live version. onDemand is not docker's: the poller marks it from
+// the stack's config so classification can treat an intentionally stopped
+// on-demand container as stopped, not unhealthy.
 type psLine struct {
-	Service  string `json:"Service"`
-	Name     string `json:"Name"`
-	Image    string `json:"Image"`
-	State    string `json:"State"`
-	Health   string `json:"Health"`
-	ExitCode int    `json:"ExitCode"`
+	Service  string
+	Name     string
+	Image    string
+	State    string
+	Health   string
+	ExitCode int
 
 	onDemand bool
 }
 
-// parsePS parses `docker compose ps --format json` output into per-service
-// lines. Compose emits either a JSON array or newline-delimited objects
-// depending on its version, so both are accepted. Empty output (no containers)
-// yields no lines and no error.
-func parsePS(out []byte) ([]psLine, error) {
-	trimmed := bytes.TrimSpace(out)
-	if len(trimmed) == 0 {
-		return nil, nil
-	}
-	if trimmed[0] == '[' {
-		var lines []psLine
-		if err := json.Unmarshal(trimmed, &lines); err != nil {
-			return nil, err
-		}
-		return lines, nil
-	}
+// Docker container states (State.Status) the poller tells apart.
+const (
+	stateRunning = "running"
+	stateExited  = "exited"
+	stateDead    = "dead"
+)
 
-	var lines []psLine
-	sc := bufio.NewScanner(bytes.NewReader(trimmed))
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		b := bytes.TrimSpace(sc.Bytes())
-		if len(b) == 0 {
+// parseList reads listArgs output (ID<TAB>image per line) into the container
+// IDs in listing order and their images.
+func parseList(out []byte) ([]string, map[string]string) {
+	var ids []string
+	images := map[string]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		id, image, _ := strings.Cut(strings.TrimRight(line, "\r"), "\t")
+		if id == "" {
 			continue
 		}
-		var l psLine
-		if err := json.Unmarshal(b, &l); err != nil {
-			return nil, err
-		}
-		lines = append(lines, l)
+		ids = append(ids, id)
+		images[id] = image
 	}
-	return lines, sc.Err()
+	return ids, images
+}
+
+// parseInspect reads inspectArgs output (columns per inspectColumns) into
+// per-project lines keyed by the cleaned working_dir, each sorted by container
+// name as compose ps sorts them. Health is kept only for a running container
+// and ExitCode only for an exited or dead one, as compose ps does.
+func parseInspect(out []byte, images map[string]string) (map[string][]psLine, error) {
+	byDir := map[string][]psLine{}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != len(inspectColumns) {
+			return nil, fmt.Errorf("docker inspect: want %d columns, got %d in %q", len(inspectColumns), len(f), line)
+		}
+		exitCode, err := strconv.Atoi(f[colExitCode])
+		if err != nil {
+			return nil, fmt.Errorf("docker inspect: exit code %q: %w", f[colExitCode], err)
+		}
+		l := psLine{
+			Service: f[colService],
+			Name:    strings.TrimPrefix(f[colName], "/"),
+			Image:   images[f[colID]],
+			State:   f[colState],
+		}
+		switch l.State {
+		case stateRunning:
+			l.Health = f[colHealth]
+		case stateExited, stateDead:
+			l.ExitCode = exitCode
+		}
+		dir := filepath.Clean(f[colWorkingDir])
+		byDir[dir] = append(byDir[dir], l)
+	}
+	for _, lines := range byDir {
+		sort.SliceStable(lines, func(i, j int) bool { return lines[i].Name < lines[j].Name })
+	}
+	return byDir, nil
 }
 
 // serviceStatus classifies one container. The compose Health field wins when
@@ -77,13 +107,13 @@ func serviceStatus(l psLine) Status {
 	}
 
 	switch l.State {
-	case "running":
+	case stateRunning:
 		return Healthy
-	case "restarting", "dead":
+	case "restarting", stateDead:
 		return Unhealthy
 	case "created", "starting":
 		return Starting
-	case "exited", "removing":
+	case stateExited, "removing":
 		if l.ExitCode != 0 && !l.onDemand {
 			return Unhealthy
 		}

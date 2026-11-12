@@ -125,8 +125,8 @@ Only what is specific to the roster is listed here.
 - **Version** shows the running version of the stack's lead service plus a `+N`
   for the rest — the glance; the containers panel below carries every service's
   version. It reads the image each container actually runs
-  (`health.ServiceHealth.Image`, from the `compose ps` the health poller already
-  runs), so it is *live* state, not what the compose file declares. Rendered with
+  (`health.ServiceHealth.Image`, from the container listing the health poller
+  already runs), so it is *live* state, not what the compose file declares. Rendered with
   the same version chip as the Deploys view's per-service image delta, in its
   current-value mode. Details (lead-service rule, degradation, mobile) in
   `internal/ui/UI_SPEC.md`.

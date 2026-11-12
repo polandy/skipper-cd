@@ -3,20 +3,20 @@ package health
 import (
 	"context"
 	"errors"
-	"path/filepath"
+	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-// fakeOutputter records the commands it runs and returns canned output keyed by
-// the --project-directory / run dir, so a test can hand each stack its own ps.
+// fakeOutputter records the commands it runs and answers each with fn.
 type fakeOutputter struct {
 	mu    sync.Mutex
 	calls [][]string // each: name + args
 	dirs  []string
-	fn    func(dir string, args []string) ([]byte, error)
+	fn    func(args []string) ([]byte, error)
 }
 
 func (f *fakeOutputter) Output(_ context.Context, dir, name string, args ...string) ([]byte, error) {
@@ -24,11 +24,41 @@ func (f *fakeOutputter) Output(_ context.Context, dir, name string, args ...stri
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, append([]string{name}, args...))
 	f.dirs = append(f.dirs, dir)
-	return f.fn(dir, args)
+	return f.fn(args)
 }
 
-func healthyJSON(svc string) []byte {
-	return []byte(`{"Service":"` + svc + `","State":"running","Health":"healthy"}`)
+// fakeContainer is one container as the docker daemon would describe it.
+type fakeContainer struct {
+	ID, WorkingDir, Service, Name, Image, State, Health string
+	ExitCode                                            int
+}
+
+// dockerHost answers the poller's `docker ps` with every container and its
+// `docker inspect` with the ones whose IDs it is asked for, in the shapes
+// listArgs/inspectArgs request.
+func dockerHost(containers ...fakeContainer) *fakeOutputter {
+	return &fakeOutputter{fn: func(args []string) ([]byte, error) {
+		var b strings.Builder
+		switch args[0] {
+		case "ps":
+			for _, c := range containers {
+				fmt.Fprintf(&b, "%s\t%s\n", c.ID, c.Image)
+			}
+		case "inspect":
+			for _, id := range args[len(inspectArgs):] {
+				for _, c := range containers {
+					if c.ID == id {
+						fmt.Fprintf(&b, "%s\t%s\t%s\t/%s\t%s\t%s\t%d\n", c.ID, c.WorkingDir, c.Service, c.Name, c.State, c.Health, c.ExitCode)
+					}
+				}
+			}
+		}
+		return []byte(b.String()), nil
+	}}
+}
+
+func healthyIn(dir, svc string) fakeContainer {
+	return fakeContainer{ID: dir + "/" + svc, WorkingDir: dir, Service: svc, Name: svc, State: "running", Health: "healthy"}
 }
 
 func newTestPoller(out Outputter, stacks []StackRef, publish func(Snapshot), hasSubs func() bool) *Poller {
@@ -41,21 +71,24 @@ func newTestPoller(out Outputter, stacks []StackRef, publish func(Snapshot), has
 	})
 }
 
-func TestPoller_PollOnceReportsRollupPerStack(t *testing.T) {
-	stacks := []StackRef{
-		{Name: "gitea", ComposePath: "/repo/gitea/docker-compose.yml", ProjectDir: "/srv/gitea"},
-		{Name: "grafana", ComposePath: "/repo/grafana/docker-compose.yml", ProjectDir: "/srv/grafana"},
-	}
-	out := &fakeOutputter{fn: func(dir string, _ []string) ([]byte, error) {
-		if dir == "/srv/grafana" {
-			return []byte(`{"Service":"grafana","State":"restarting","Health":""}`), nil
-		}
-		return healthyJSON("gitea"), nil
-	}}
-
+func pollStacks(out Outputter, stacks ...StackRef) Snapshot {
 	var got Snapshot
-	p := newTestPoller(out, stacks, func(s Snapshot) { got = s }, nil)
-	p.pollOnce(context.Background())
+	newTestPoller(out, stacks, func(s Snapshot) { got = s }, nil).pollOnce(context.Background())
+	return got
+}
+
+var appStack = StackRef{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}
+
+func TestPoller_PollOnceReportsRollupPerStack(t *testing.T) {
+	out := dockerHost(
+		healthyIn("/srv/gitea", "gitea"),
+		fakeContainer{ID: "g", WorkingDir: "/srv/grafana", Service: "grafana", Name: "grafana", State: "restarting"},
+	)
+
+	got := pollStacks(out,
+		StackRef{Name: "gitea", ComposePath: "/repo/gitea/docker-compose.yml", ProjectDir: "/srv/gitea"},
+		StackRef{Name: "grafana", ComposePath: "/repo/grafana/docker-compose.yml", ProjectDir: "/srv/grafana"},
+	)
 
 	if got.Stacks["gitea"].Status != Healthy {
 		t.Errorf("gitea: got %q, want healthy", got.Stacks["gitea"].Status)
@@ -68,75 +101,114 @@ func TestPoller_PollOnceReportsRollupPerStack(t *testing.T) {
 	}
 }
 
-func TestPoller_ProbeReportsRunningImagePerService(t *testing.T) {
-	stacks := []StackRef{{Name: "nextcloud", ComposePath: "/repo/nextcloud/docker-compose.yml"}}
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) {
-		return []byte(`{"Service":"app","Image":"nextcloud:30.0.2","State":"running","Health":"healthy"}
-{"Service":"db","Image":"postgres:16","State":"running","Health":"healthy"}`), nil
-	}}
+func TestPoller_PollOnceRunsTwoDockerCallsWhateverTheStackCount(t *testing.T) {
+	var containers []fakeContainer
+	var stacks []StackRef
+	for _, name := range []string{"a", "b", "c", "d"} {
+		containers = append(containers, healthyIn("/repo/"+name, "app"))
+		stacks = append(stacks, StackRef{Name: name, ComposePath: "/repo/" + name + "/docker-compose.yml"})
+	}
+	out := dockerHost(containers...)
 
-	var got Snapshot
-	p := newTestPoller(out, stacks, func(s Snapshot) { got = s }, nil)
-	p.pollOnce(context.Background())
+	got := pollStacks(out, stacks...)
+
+	if len(out.calls) != 2 {
+		t.Fatalf("expected one ps + one inspect for 4 stacks, got %d calls: %v", len(out.calls), out.calls)
+	}
+	wantPS := append([]string{"docker"}, listArgs...)
+	if !reflect.DeepEqual(out.calls[0], wantPS) {
+		t.Errorf("ps argv:\n got %v\nwant %v", out.calls[0], wantPS)
+	}
+	wantInspect := append(append([]string{"docker"}, inspectArgs...), "/repo/a/app", "/repo/b/app", "/repo/c/app", "/repo/d/app")
+	if !reflect.DeepEqual(out.calls[1], wantInspect) {
+		t.Errorf("inspect argv:\n got %v\nwant %v", out.calls[1], wantInspect)
+	}
+	for _, s := range stacks {
+		if got.Stacks[s.Name].Status != Healthy {
+			t.Errorf("%s: got %q, want healthy", s.Name, got.Stacks[s.Name].Status)
+		}
+	}
+}
+
+func TestPoller_PollOnceSkipsInspectWhenNoContainerExists(t *testing.T) {
+	out := dockerHost()
+
+	got := pollStacks(out, appStack)
+
+	if len(out.calls) != 1 {
+		t.Errorf("expected only the ps call, got %v", out.calls)
+	}
+	if got.Stacks["app"].Status != Stopped {
+		t.Errorf("got %q, want stopped", got.Stacks["app"].Status)
+	}
+}
+
+func TestPoller_PollOnceRunsNothingWithoutStacks(t *testing.T) {
+	out := dockerHost(healthyIn("/repo/app", "app"))
+
+	pollStacks(out)
+
+	if len(out.calls) != 0 {
+		t.Errorf("expected no docker calls without stacks, got %v", out.calls)
+	}
+}
+
+func TestPoller_MatchesContainersByProjectDir(t *testing.T) {
+	out := dockerHost(
+		healthyIn("/srv/app", "app"),
+		healthyIn("/repo/plain", "web"),
+		healthyIn("/elsewhere/unmanaged", "x"),
+	)
+
+	got := pollStacks(out,
+		// project_directory set: compose labels the container with it.
+		StackRef{Name: "app", ComposePath: "/repo/app/docker-compose.yml", ProjectDir: "/srv/app/"},
+		// No project_directory: the compose file's own dir is the identity.
+		StackRef{Name: "plain", ComposePath: "/repo/plain/docker-compose.yml"},
+		StackRef{Name: "idle", ComposePath: "/repo/idle/docker-compose.yml"},
+	)
+
+	if s := got.Stacks["app"]; s.Status != Healthy || len(s.Services) != 1 || s.Services[0].Name != "app" {
+		t.Errorf("app: got %+v", s)
+	}
+	if s := got.Stacks["plain"]; s.Status != Healthy || len(s.Services) != 1 || s.Services[0].Name != "web" {
+		t.Errorf("plain: got %+v", s)
+	}
+	if s := got.Stacks["idle"]; s.Status != Stopped || len(s.Services) != 0 {
+		t.Errorf("idle: a stack with no containers must be stopped with no services, got %+v", s)
+	}
+}
+
+func TestPoller_ReportsRunningImagePerServiceSortedByContainerName(t *testing.T) {
+	out := dockerHost(
+		fakeContainer{ID: "2", WorkingDir: "/repo/nextcloud", Service: "db", Name: "nextcloud-db-1", Image: "postgres:16", State: "running"},
+		fakeContainer{ID: "1", WorkingDir: "/repo/nextcloud", Service: "app", Name: "nextcloud-app-1", Image: "nextcloud:30.0.2", State: "running"},
+	)
+
+	got := pollStacks(out, StackRef{Name: "nextcloud", ComposePath: "/repo/nextcloud/docker-compose.yml"})
 
 	svcs := got.Stacks["nextcloud"].Services
 	if len(svcs) != 2 {
 		t.Fatalf("expected 2 services, got %+v", svcs)
 	}
-	if svcs[0].Image != "nextcloud:30.0.2" || svcs[1].Image != "postgres:16" {
-		t.Errorf("images not carried into the snapshot: %+v", svcs)
+	if svcs[0].Name != "app" || svcs[0].Image != "nextcloud:30.0.2" || svcs[1].Name != "db" || svcs[1].Image != "postgres:16" {
+		t.Errorf("expected services in container-name order with their images, got %+v", svcs)
 	}
 }
 
-func TestPoller_ProbeUsesComposeIdentityWithProjectDir(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
-	p := newTestPoller(out, nil, nil, nil)
-
-	p.probe(context.Background(), StackRef{
-		Name: "app", ComposePath: "/repo/app/docker-compose.yml", ProjectDir: "/srv/app",
-	})
-
-	want := []string{"docker", "compose", "-f", "/repo/app/docker-compose.yml", "--project-directory", "/srv/app", "ps", "--format", "json", "--all"}
-	if !reflect.DeepEqual(out.calls[0], want) {
-		t.Errorf("argv:\n got %v\nwant %v", out.calls[0], want)
-	}
-	if out.dirs[0] != "/srv/app" {
-		t.Errorf("run dir: got %q, want /srv/app", out.dirs[0])
-	}
-}
-
-func TestPoller_ProbeUsesComposeIdentityWithoutProjectDir(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
-	p := newTestPoller(out, nil, nil, nil)
-
-	compose := "/repo/app/docker-compose.yml"
-	p.probe(context.Background(), StackRef{Name: "app", ComposePath: compose})
-
-	// No project_directory: no -f/--project-directory, run from the compose dir
-	// — mirrors how the deploy path invokes compose in that case.
-	want := []string{"docker", "compose", "ps", "--format", "json", "--all"}
-	if !reflect.DeepEqual(out.calls[0], want) {
-		t.Errorf("argv:\n got %v\nwant %v", out.calls[0], want)
-	}
-	if out.dirs[0] != filepath.Dir(compose) {
-		t.Errorf("run dir: got %q, want %q", out.dirs[0], filepath.Dir(compose))
-	}
-}
-
-func TestPoller_ProbeMarksOnDemandContainersByName(t *testing.T) {
+func TestPoller_MarksOnDemandContainersByName(t *testing.T) {
 	// monica-style stack: the on-demand app container was stopped by skipper
 	// after the deploy (exit 137), a sibling keeps running. The stack must read
 	// stopped-not-unhealthy for the app and healthy overall.
-	ps := `{"Service":"app","Name":"monica-app","State":"exited","ExitCode":137}
-{"Service":"db","Name":"monica-db","State":"running","Health":"healthy"}`
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return []byte(ps), nil }}
-	p := newTestPoller(out, nil, nil, nil)
+	out := dockerHost(
+		fakeContainer{ID: "1", WorkingDir: "/repo/monica", Service: "app", Name: "monica-app", State: "exited", ExitCode: 137},
+		fakeContainer{ID: "2", WorkingDir: "/repo/monica", Service: "db", Name: "monica-db", State: "running", Health: "healthy"},
+	)
+	monica := StackRef{Name: "monica", ComposePath: "/repo/monica/docker-compose.yml"}
+	onDemand := monica
+	onDemand.OnDemand = []string{"monica-app"}
 
-	got := p.probe(context.Background(), StackRef{
-		Name:        "monica",
-		ComposePath: "/repo/monica/docker-compose.yml",
-		OnDemand:    []string{"monica-app"},
-	})
+	got := pollStacks(out, onDemand).Stacks["monica"]
 
 	if got.Status != Healthy {
 		t.Errorf("stack rollup: got %q, want healthy (idle on-demand app must not degrade it)", got.Status)
@@ -149,40 +221,86 @@ func TestPoller_ProbeMarksOnDemandContainersByName(t *testing.T) {
 		t.Errorf("expected only the app marked on-demand, got %+v", got.Services)
 	}
 
-	// Without the on-demand marking the same output is a real failure.
-	plain := p.probe(context.Background(), StackRef{
-		Name:        "monica",
-		ComposePath: "/repo/monica/docker-compose.yml",
-	})
-	if plain.Status != Unhealthy {
+	// Without the on-demand marking the same containers are a real failure.
+	if plain := pollStacks(out, monica).Stacks["monica"]; plain.Status != Unhealthy {
 		t.Errorf("non-on-demand exit 137 must stay unhealthy, got %q", plain.Status)
 	}
 }
 
-func TestPoller_ProbeUnknownOnCommandError(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return nil, errors.New("boom") }}
-	p := newTestPoller(out, nil, nil, nil)
+func TestPoller_OnDemandMarkingStaysWithItsStack(t *testing.T) {
+	// Two stacks sharing one project dir see the same containers; one stack's
+	// on_demand_containers must not leak into the other's classification.
+	out := dockerHost(fakeContainer{ID: "1", WorkingDir: "/srv/shared", Service: "job", Name: "job", State: "exited", ExitCode: 1})
 
-	got := p.probe(context.Background(), StackRef{Name: "x", ComposePath: "/repo/x/docker-compose.yml"})
-	if got.Status != Unknown {
+	got := pollStacks(out,
+		StackRef{Name: "a", ComposePath: "/repo/a/docker-compose.yml", ProjectDir: "/srv/shared", OnDemand: []string{"job"}},
+		StackRef{Name: "b", ComposePath: "/repo/b/docker-compose.yml", ProjectDir: "/srv/shared"},
+	)
+
+	if got.Stacks["a"].Status != Stopped || got.Stacks["b"].Status != Unhealthy {
+		t.Errorf("got a=%q b=%q, want a=stopped b=unhealthy", got.Stacks["a"].Status, got.Stacks["b"].Status)
+	}
+}
+
+func TestPoller_UnknownForEveryStackWhenListingFails(t *testing.T) {
+	out := &fakeOutputter{fn: func([]string) ([]byte, error) { return nil, errors.New("boom") }}
+
+	got := pollStacks(out, appStack, StackRef{Name: "web", ComposePath: "/repo/web/docker-compose.yml"})
+
+	if got.Stacks["app"].Status != Unknown || got.Stacks["web"].Status != Unknown {
+		t.Errorf("got %+v, want every stack unknown", got.Stacks)
+	}
+}
+
+func TestPoller_UnknownWhenInspectFailsWithoutOutput(t *testing.T) {
+	ok := dockerHost(healthyIn("/repo/app", "app"))
+	out := &fakeOutputter{fn: func(args []string) ([]byte, error) {
+		if args[0] == "inspect" {
+			return nil, errors.New("daemon gone")
+		}
+		return ok.fn(args)
+	}}
+
+	if got := pollStacks(out, appStack).Stacks["app"]; got.Status != Unknown {
 		t.Errorf("got %q, want unknown", got.Status)
 	}
 }
 
-func TestPoller_ProbeUnknownOnMalformedOutput(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return []byte(`{bad`), nil }}
-	p := newTestPoller(out, nil, nil, nil)
+func TestPoller_ContainerRemovedBeforeInspectIsDroppedNotUnknown(t *testing.T) {
+	// A container removed between ps and inspect (a deploy recreating it) fails
+	// inspect for that ID alone; the others are still printed.
+	host := dockerHost(healthyIn("/repo/app", "app"))
+	out := &fakeOutputter{fn: func(args []string) ([]byte, error) {
+		if args[0] == "ps" {
+			return []byte("/repo/app/app\t\ngone\t\n"), nil
+		}
+		b, _ := host.fn(args)
+		return b, errors.New("Error: No such object: gone")
+	}}
 
-	got := p.probe(context.Background(), StackRef{Name: "x", ComposePath: "/repo/x/docker-compose.yml"})
-	if got.Status != Unknown {
+	got := pollStacks(out, appStack).Stacks["app"]
+	if got.Status != Healthy || len(got.Services) != 1 {
+		t.Errorf("got %+v, want the surviving container healthy", got)
+	}
+}
+
+func TestPoller_UnknownOnMalformedOutput(t *testing.T) {
+	out := &fakeOutputter{fn: func(args []string) ([]byte, error) {
+		if args[0] == "ps" {
+			return []byte("id1\timg\n"), nil
+		}
+		return []byte("id1\tnot enough columns\n"), nil
+	}}
+
+	if got := pollStacks(out, appStack).Stacks["app"]; got.Status != Unknown {
 		t.Errorf("got %q, want unknown", got.Status)
 	}
 }
 
 func TestPoller_TickPollsWhenSubscribed(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
+	out := dockerHost(healthyIn("/repo/app", "app"))
 	var polls int
-	p := newTestPoller(out, []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}},
+	p := newTestPoller(out, []StackRef{appStack},
 		func(Snapshot) { polls++ }, func() bool { return true })
 
 	p.tick(context.Background())
@@ -192,9 +310,9 @@ func TestPoller_TickPollsWhenSubscribed(t *testing.T) {
 }
 
 func TestPoller_TickSkipsWhenNoSubscribers(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
+	out := dockerHost(healthyIn("/repo/app", "app"))
 	var polls int
-	p := newTestPoller(out, []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}},
+	p := newTestPoller(out, []StackRef{appStack},
 		func(Snapshot) { polls++ }, func() bool { return false })
 
 	p.tick(context.Background())
@@ -209,12 +327,12 @@ func TestPoller_TickSkipsWhenNoSubscribers(t *testing.T) {
 }
 
 func TestPoller_TickAlwaysPollsWhenAlwaysPollSet(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
+	out := dockerHost(healthyIn("/repo/app", "app"))
 	var snaps int
 	// No subscribers, but AlwaysPoll (self-heal) forces the poll anyway.
 	p := New(Config{
 		Outputter:      out,
-		Stacks:         func() []StackRef { return []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}} },
+		Stacks:         func() []StackRef { return []StackRef{appStack} },
 		Interval:       time.Hour,
 		HasSubscribers: func() bool { return false },
 		AlwaysPoll:     true,
@@ -228,11 +346,11 @@ func TestPoller_TickAlwaysPollsWhenAlwaysPollSet(t *testing.T) {
 }
 
 func TestPoller_OnSnapshotReceivesEveryPoll(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
+	out := dockerHost(healthyIn("/repo/app", "app"))
 	var got Snapshot
 	p := New(Config{
 		Outputter:  out,
-		Stacks:     func() []StackRef { return []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}} },
+		Stacks:     func() []StackRef { return []StackRef{appStack} },
 		Interval:   time.Hour,
 		OnSnapshot: func(s Snapshot) { got = s },
 	})
@@ -244,8 +362,8 @@ func TestPoller_OnSnapshotReceivesEveryPoll(t *testing.T) {
 }
 
 func TestPoller_CurrentReturnsLatestSnapshot(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
-	p := newTestPoller(out, []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}}, func(Snapshot) {}, nil)
+	out := dockerHost(healthyIn("/repo/app", "app"))
+	p := newTestPoller(out, []StackRef{appStack}, func(Snapshot) {}, nil)
 
 	if got := p.Current(); len(got.Stacks) != 0 {
 		t.Errorf("expected empty snapshot before first poll, got %+v", got)
@@ -257,9 +375,9 @@ func TestPoller_CurrentReturnsLatestSnapshot(t *testing.T) {
 }
 
 func TestPoller_PollTriggersImmediateRefresh(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
+	out := dockerHost(healthyIn("/repo/app", "app"))
 	published := make(chan Snapshot, 1)
-	p := newTestPoller(out, []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}},
+	p := newTestPoller(out, []StackRef{appStack},
 		func(s Snapshot) { published <- s }, func() bool { return true })
 
 	go p.Run(t.Context()) // interval is 1h, so only Poll can trigger this within the test
@@ -276,11 +394,11 @@ func TestPoller_PollTriggersImmediateRefresh(t *testing.T) {
 }
 
 func TestPoller_PollIfStaleSkipsWhileTheLastPollIsFresh(t *testing.T) {
-	out := &fakeOutputter{fn: func(string, []string) ([]byte, error) { return healthyJSON("app"), nil }}
+	out := dockerHost(healthyIn("/repo/app", "app"))
 	now := time.Unix(1_000_000, 0)
 	p := New(Config{
 		Outputter: out,
-		Stacks:    func() []StackRef { return []StackRef{{Name: "app", ComposePath: "/repo/app/docker-compose.yml"}} },
+		Stacks:    func() []StackRef { return []StackRef{appStack} },
 		Interval:  time.Hour,
 		Now:       func() time.Time { return now },
 	})

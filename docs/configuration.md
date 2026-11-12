@@ -675,7 +675,7 @@ If the primary goes down, every host still deploys on its own webhook and serves
 
 When the web UI is enabled, skipper-cd shows the **live runtime health** of the stacks it deploys, next to each stack in the deploy view: `healthy`, `unhealthy`, `starting`, `stopped`, or `unknown`. This is a current, at-a-glance view — distinct from the deploy outcome — so a stack that deployed fine but whose container has since started crash-looping reads as `unhealthy` without waiting for the next push.
 
-The health is read by polling `docker compose ps` for each stack, using the same compose file and `--project-directory` identity used to deploy it. Nothing is written and nothing is restarted — the view is read-only. It covers only skipper-cd's own stacks (not other containers on the host). Click a stack's health to expand a per-service breakdown (each service's container state and health).
+The health is read by one `docker ps` plus one `docker inspect` per poll, however many stacks there are; a container belongs to the stack whose project directory it was deployed with. Nothing is written and nothing is restarted — the view is read-only. It covers only skipper-cd's own stacks (not other containers on the host). Click a stack's health to expand a per-service breakdown (each service's container state and health).
 
 Containers listed in a stack's [`on_demand_containers`](#stack-fields) get special treatment: skipper stops them itself after every deploy (often via SIGKILL, so they exit non-zero) and the on-demand scheduler starts them on request — that idle is their intended state. An exited on-demand container therefore always reads as `stopped`, never `unhealthy`, whatever its exit code; the per-service panel labels it `on-demand`. A crash-looping or unhealthy on-demand container still counts as a real failure.
 
@@ -691,7 +691,7 @@ On a resource-constrained host, raise the interval rather than disabling it. See
 
 The [Stack health](#stack-health) view only *shows* health, and only while a browser is watching. The **health watch** goes one step further: it tracks each **service's** health over time and reports **transitions**: a service turning `unhealthy` fires an alert, and its recovery fires a matching all-clear. Transitions between the other statuses (`starting`, `stopped`) are recorded and logged but never alert, so an intentional `docker compose down` does not page.
 
-The watchdog has no poll loop of its own: it consumes the health poller's feed (like [self-heal](#self-heal)), so its cadence **is** `runtime_health_poll_interval_seconds` — which must therefore be > 0 — and enabling it makes that poll run headless, independent of the UI and of connected browsers. There is no extra `docker compose ps` work: one poll serves the UI view, self-heal, and the watchdog.
+The watchdog has no poll loop of its own: it consumes the health poller's feed (like [self-heal](#self-heal)), so its cadence **is** `runtime_health_poll_interval_seconds` — which must therefore be > 0 — and enabling it makes that poll run headless, independent of the UI and of connected browsers. There is no extra docker work: one poll serves the UI view, self-heal, and the watchdog.
 
 ```yaml
 health_watch:                      # cadence = runtime_health_poll_interval_seconds

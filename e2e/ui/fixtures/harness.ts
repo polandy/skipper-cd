@@ -37,6 +37,55 @@ const defaultCompose = "services:\n  app:\n    image: nginx:1.25\n";
  *  shell script cannot import them. */
 const APPLINK_PS_FILE = "applinks-ps.txt";
 const APPLINK_LABELS_PREFIX = "applink-labels-";
+/** The stub docker's per-stack container table the health poller reads, also
+ *  under STUB_DOCKER_PS_DIR and mirrored in docker-stub.sh. */
+const HEALTH_TABLE_PREFIX = "health-";
+
+/** One seeded service, in the `docker compose ps --format json` shape. */
+type ServiceSeed = {
+  Service: string;
+  Name?: string;
+  /** The image the container runs — what the UI shows as the service's live
+   *  version (Maske AK). Omit to seed a snapshot that carries none. */
+  Image?: string;
+  State: string;
+  Health?: string;
+  ExitCode?: number;
+};
+
+/** stackWorkDir is the working_dir compose labels a stack's containers with:
+ *  its project_directory when the base is set, else its dir in the clone. */
+function stackWorkDir(repoDir: string, projectDirBase: string, stack: string) {
+  return join(projectDirBase || repoDir, stack);
+}
+
+/** writeStackHealth seeds a stack's services for the stub docker twice: as the
+ *  `compose ps` JSON the deploy path's running-image read gets, and as the
+ *  container table the health poller's batched `ps` + `inspect` read. */
+function writeStackHealth(
+  healthDir: string,
+  stack: string,
+  workDir: string,
+  services: ServiceSeed[],
+): void {
+  writeFileSync(join(healthDir, `${stack}.json`), JSON.stringify(services));
+  const table = services
+    .map((svc, i) =>
+      [
+        `${stack}-${i}`,
+        workDir,
+        svc.Service,
+        `/${svc.Name ?? ""}`,
+        svc.State,
+        svc.Health ?? "",
+        svc.ExitCode ?? 0,
+        svc.Image ?? "",
+      ].join("\t"),
+    )
+    .map((line) => `${line}\n`)
+    .join("");
+  writeFileSync(join(healthDir, `${HEALTH_TABLE_PREFIX}${stack}.tsv`), table);
+}
 const SECRET = "e2e-secret";
 
 /** The forge every commit SHA in the UI links to (repo_web_url). */
@@ -213,23 +262,11 @@ export interface StartOptions {
   selfHealMinUnhealthyPolls?: number;
   selfHealMaxAttempts?: number;
   selfHealCooldownSeconds?: number;
-  /** Per-stack `docker compose ps` output written *before* skipper starts, so the
+  /** Per-stack container state written *before* skipper starts, so the
    *  first health poll already sees it. Removes the boot-time race where a
    *  freshly-deployed but unscripted stack reads as `stopped` and (with self-heal
    *  on) would be healed spuriously. Same shape as setStackHealth. */
-  initialHealth?: Record<
-    string,
-    Array<{
-      Service: string;
-      Name?: string;
-      /** The image the container runs — what the UI shows as the service's live
-       *  version (Maske AK). Omit to seed a snapshot that carries none. */
-      Image?: string;
-      State: string;
-      Health?: string;
-      ExitCode?: number;
-    }>
-  >;
+  initialHealth?: Record<string, ServiceSeed[]>;
   /** Give the instance a second working copy of the origin as
    *  `project_directory_base` and switch `project_directory_sync` on
    *  (ADR-0060), so each run fast-forwards it before deploying. The path is
@@ -501,7 +538,7 @@ async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
     { mode: 0o755 },
   );
 
-  // Where setStackHealth writes per-stack `compose ps` output for the stub.
+  // Where setStackHealth writes per-stack container state for the stub.
   const healthDir = join(base, "health");
   mkdirSync(healthDir, { recursive: true });
   // Pre-boot health seed, so the very first poll already sees it.
@@ -509,7 +546,12 @@ async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
     const resolved = services.map((svc) =>
       svc.Image ? { ...svc, Image: sub(svc.Image) } : svc,
     );
-    writeFileSync(join(healthDir, `${name}.json`), JSON.stringify(resolved));
+    writeStackHealth(
+      healthDir,
+      name,
+      stackWorkDir(repoDir, projectDirBase, name),
+      resolved,
+    );
   }
   // App-link detection (ADR-0041): the stub answers the detector's labelled
   // `docker ps` with one container per stack (id + the stack's project dir, the
@@ -873,7 +915,7 @@ export class Skipper {
       // Inherited by hook commands (run via `sh -c` with os.Environ()); a hook
       // can wait on this path to hold the running-hook phase deterministically.
       SKIPPER_E2E_HOOK_HOLD: hookHoldFile,
-      STUB_DOCKER_UI: "1", // enables the stub's orphan/logs/per-stack-health branches
+      STUB_DOCKER_UI: "1", // enables the stub's orphan/logs/compose-ps branches
       STUB_DOCKER_PS_DIR: healthDir,
       STUB_DOCKER_ORPHANS_DIR: orphansDir,
       ...opts.stubEnv,
@@ -995,23 +1037,15 @@ export class Skipper {
     );
   }
 
-  /** setStackHealth scripts the stub's `docker compose ps` output for a stack, so
-   *  the health poller (enable with the `healthPoll` start option) reports the
+  /** setStackHealth scripts the stub's container state for a stack, so the
+   *  health poller (enable with the `healthPoll` start option) reports the
    *  given services on its next poll. */
-  setStackHealth(
-    stack: string,
-    services: Array<{
-      Service: string;
-      Name?: string;
-      Image?: string;
-      State: string;
-      Health?: string;
-      ExitCode?: number;
-    }>,
-  ): void {
-    writeFileSync(
-      join(this.healthDir, `${stack}.json`),
-      JSON.stringify(services),
+  setStackHealth(stack: string, services: ServiceSeed[]): void {
+    writeStackHealth(
+      this.healthDir,
+      stack,
+      stackWorkDir(this.stacksBaseDir, this.projectDirBase, stack),
+      services,
     );
   }
 
