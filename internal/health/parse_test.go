@@ -1,74 +1,84 @@
 package health
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
-func TestParsePS_NDJSON(t *testing.T) {
-	out := []byte(`{"Service":"app","State":"running","Health":"healthy"}
-{"Service":"db","State":"running","Health":""}`)
-	lines, err := parsePS(out)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestParseList(t *testing.T) {
+	ids, images := parseList([]byte("abc\tnginx:1.27\n\ndef\tsha256:0123\r\nghi\n"))
+
+	if want := []string{"abc", "def", "ghi"}; !reflect.DeepEqual(ids, want) {
+		t.Errorf("ids = %v, want %v", ids, want)
 	}
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines, got %d", len(lines))
-	}
-	if lines[0].Service != "app" || lines[1].Service != "db" {
-		t.Errorf("unexpected services: %+v", lines)
+	if images["abc"] != "nginx:1.27" || images["def"] != "sha256:0123" || images["ghi"] != "" {
+		t.Errorf("images = %v", images)
 	}
 }
 
-func TestParsePS_JSONArray(t *testing.T) {
-	out := []byte(`[{"Service":"app","State":"running","Health":"healthy"},{"Service":"db","State":"exited","ExitCode":0}]`)
-	lines, err := parsePS(out)
+func TestParseInspect_ReadsComposeLabelsAndState(t *testing.T) {
+	out := "abc\t/srv/app/\tweb\t/app-web-1\trunning\thealthy\t0\n"
+
+	got, err := parseInspect([]byte(out), map[string]string{"abc": "nginx:1.27"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines, got %d", len(lines))
+	want := map[string][]psLine{"/srv/app": {{Service: "web", Name: "app-web-1", Image: "nginx:1.27", State: "running", Health: "healthy"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v\nwant %+v", got, want)
 	}
 }
 
-func TestParsePS_EmptyIsNoLines(t *testing.T) {
-	for _, in := range [][]byte{nil, []byte(""), []byte("   \n ")} {
-		lines, err := parsePS(in)
+// compose ps reports Health only for a running container and ExitCode only for
+// an exited or dead one; inspect carries both always (a stale health status on
+// a stopped container, an old exit code on a restarted one).
+func TestParseInspect_GatesHealthAndExitCodeLikeComposePS(t *testing.T) {
+	tests := []struct {
+		line       string
+		wantHealth string
+		wantExit   int
+	}{
+		{"x\t/d\ts\t/n\trunning\tunhealthy\t3", "unhealthy", 0},
+		{"x\t/d\ts\t/n\texited\tunhealthy\t3", "", 3},
+		{"x\t/d\ts\t/n\tdead\t\t137", "", 137},
+		{"x\t/d\ts\t/n\trestarting\tstarting\t1", "", 0},
+	}
+	for _, tt := range tests {
+		got, err := parseInspect([]byte(tt.line), nil)
 		if err != nil {
-			t.Fatalf("unexpected error for %q: %v", in, err)
+			t.Fatalf("%q: unexpected error: %v", tt.line, err)
 		}
-		if len(lines) != 0 {
-			t.Errorf("expected 0 lines for %q, got %d", in, len(lines))
+		l := got["/d"][0]
+		if l.Health != tt.wantHealth || l.ExitCode != tt.wantExit {
+			t.Errorf("%q: health=%q exit=%d, want health=%q exit=%d", tt.line, l.Health, l.ExitCode, tt.wantHealth, tt.wantExit)
 		}
 	}
 }
 
-func TestParsePS_MalformedIsError(t *testing.T) {
-	if _, err := parsePS([]byte(`{not json`)); err == nil {
-		t.Fatal("expected an error for malformed output")
-	}
-}
+func TestParseInspect_SortsEachProjectByContainerName(t *testing.T) {
+	out := "2\t/d\tb\t/p-b-1\trunning\t\t0\n1\t/d\ta\t/p-a-1\trunning\t\t0\n"
 
-func TestParsePS_CarriesImage(t *testing.T) {
-	out := []byte(`{"Service":"app","Image":"nextcloud:30.0.2","State":"running","Health":"healthy"}`)
-	lines, err := parsePS(out)
+	got, err := parseInspect([]byte(out), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(lines) != 1 {
-		t.Fatalf("expected 1 line, got %d", len(lines))
-	}
-	if lines[0].Image != "nextcloud:30.0.2" {
-		t.Errorf("image = %q, want nextcloud:30.0.2", lines[0].Image)
+	if lines := got["/d"]; len(lines) != 2 || lines[0].Name != "p-a-1" || lines[1].Name != "p-b-1" {
+		t.Errorf("got %+v, want p-a-1 before p-b-1", lines)
 	}
 }
 
-func TestParsePS_MissingImageIsEmpty(t *testing.T) {
-	// An older compose (or a `ps` output without the field) must degrade to an
-	// empty image, never a parse error — the UI then simply shows no version.
-	lines, err := parsePS([]byte(`{"Service":"app","State":"running"}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestParseInspect_EmptyIsNoProjects(t *testing.T) {
+	got, err := parseInspect([]byte("  \n"), nil)
+	if err != nil || len(got) != 0 {
+		t.Errorf("got %v, %v; want no projects and no error", got, err)
 	}
-	if len(lines) != 1 || lines[0].Image != "" {
-		t.Errorf("expected one line with an empty image, got %+v", lines)
+}
+
+func TestParseInspect_MalformedIsError(t *testing.T) {
+	for _, in := range []string{"too\tfew\tcolumns", "x\t/d\ts\t/n\texited\t\tNaN"} {
+		if _, err := parseInspect([]byte(in), nil); err == nil {
+			t.Errorf("%q: expected an error", in)
+		}
 	}
 }
 

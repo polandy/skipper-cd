@@ -285,9 +285,9 @@ UI suite reuses.
   `skipper_stack_held`; two retries are the second and third failures, after
   which the gauge is `1` and a webhook again builds nothing; a push that fixes
   the Dockerfile deploys (`success`) and the gauge is deleted.
-- **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_PS_FILE`): with a
+- **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
-  never alerts; flipping the stub's `compose ps` output to `unhealthy` POSTs a
+  never alerts; flipping the stub's health table to `unhealthy` POSTs a
   `"type": "health"` alert (deploy-correlated via the startup deploy), flipping
   back POSTs the recovery, and `healthwatch.yaml` records the phases. This is
   the config→wiring→watcher→alerter through-line the unit tests cannot see.
@@ -603,8 +603,9 @@ from `deploy-filter-wrap` (collapsed to zero height until revealed).
 ### 4.9 UI — Maske H: Stack health (ADR-0027)
 
 The live per-stack health pill. The poller is enabled with `healthPoll: 1` and
-each stack's `docker compose ps --format json` output is scripted through the
-stub docker (`skipper.setStackHealth`), so it is deterministic and offline — no
+each stack's container state is scripted through the stub docker
+(`skipper.setStackHealth` writes the health table the batched `docker ps` +
+`docker inspect` read, ADR-0069), so it is deterministic and offline — no
 real docker, no real containers. Behaviour-only (no snapshot).
 
 - **UH1 — Health pill per stack.** Three stacks (`web`, `db`, `cache`) get
@@ -1105,7 +1106,7 @@ The header **health beacon** and the Deploys **attention band** lift a currently
 `unhealthy` stack out of the chronological log (where its row-bound pill can sit
 far down or age out). Both read the same live `health` snapshot via the pure
 `attentionStacks()` helper; the harness enables the poller (`healthPoll`) and
-scripts each stack's `docker compose ps` output. Behaviour-only: both surfaces
+scripts each stack's container state. Behaviour-only: both surfaces
 are hidden whenever nothing is unhealthy, so no snapshot baseline shifts.
 
 - **UZ1 — Beacon counts unhealthy stacks.** With two of three stacks unhealthy,
@@ -1401,7 +1402,7 @@ per-part text), and the per-reference token logic is exhaustively covered by the
 
 ### 4.37 UI — Maske AK: Service versions in the Stacks view
 
-`compose ps` reports the image each container runs, which rides the `health`
+The health poll reports the image each container runs, which rides the `health`
 snapshot: a roster row's **Version** cell names the service the stack is named
 after plus its running version, and the expanded containers panel carries every
 service's version — the same chip the Deploys Version column renders (Maske AI).

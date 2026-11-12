@@ -7,6 +7,7 @@ package health
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"time"
 )
@@ -21,7 +22,7 @@ const (
 	Unhealthy Status = "unhealthy"
 	Starting  Status = "starting"
 	Stopped   Status = "stopped"
-	// Unknown means the health could not be read (the ps command or its output
+	// Unknown means the health could not be read (a docker call or its output
 	// failed) — never reported as a false unhealthy.
 	Unknown Status = "unknown"
 )
@@ -32,10 +33,10 @@ const (
 // healthwatch transition detector (ADR-0031).
 type ServiceHealth struct {
 	Name string `json:"name"`
-	// Image is the reference the container is actually running (from
-	// `compose ps`), which the UI renders as the service's live version — the
-	// running counterpart to the image the compose file declares. Empty when the
-	// compose output carried no Image field, so the UI simply shows no version.
+	// Image is the reference the container is actually running, which the UI
+	// renders as the service's live version — the running counterpart to the
+	// image the compose file declares. Empty when docker reported none, so the
+	// UI simply shows no version.
 	Image  string `json:"image,omitempty"`
 	State  string `json:"state"`
 	Health string `json:"health"`
@@ -61,7 +62,8 @@ type Snapshot struct {
 // StackRef identifies a stack to probe. ComposePath and ProjectDir mirror how
 // the deploy path invokes compose (Invariant 1): the compose file comes from
 // the repo clone, and ProjectDir (a stack's project_directory, possibly empty)
-// is the --project-directory that fixes the compose project identity. OnDemand lists
+// is the --project-directory that fixes the compose project identity, which
+// the poller matches containers on (projectDir). OnDemand lists
 // the stack's on_demand_containers (container names): skipper stops those
 // after the deploy on purpose, so an exited one classifies as stopped, never
 // unhealthy.
@@ -194,12 +196,23 @@ func (p *Poller) tick(ctx context.Context) {
 	}
 }
 
-// pollOnce probes every stack, stores the snapshot for late joiners, publishes
-// it to the UI, and feeds it to any snapshot consumer (self-heal).
+// pollOnce reads every stack's containers in one batch, stores the snapshot
+// for late joiners, publishes it to the UI, and feeds it to any snapshot
+// consumer (self-heal). A failed read reports every stack Unknown rather than
+// a misleading Unhealthy.
 func (p *Poller) pollOnce(ctx context.Context) {
 	snap := Snapshot{Stacks: map[string]StackHealth{}}
-	for _, s := range p.stacks() {
-		snap.Stacks[s.Name] = p.probe(ctx, s)
+	if stacks := p.stacks(); len(stacks) > 0 {
+		byDir, err := p.listContainers(ctx)
+		for _, s := range stacks {
+			if err != nil {
+				snap.Stacks[s.Name] = StackHealth{Status: Unknown}
+				continue
+			}
+			lines := slices.Clone(byDir[s.projectDir()])
+			markOnDemand(lines, s.OnDemand)
+			snap.Stacks[s.Name] = StackHealth{Status: rollup(lines), Services: servicesOf(lines)}
+		}
 	}
 	p.last.Store(&snap)
 	p.lastPolled.Store(p.now().UnixNano())
@@ -211,29 +224,14 @@ func (p *Poller) pollOnce(ctx context.Context) {
 	}
 }
 
-// probe reads one stack's health via `docker compose ps`, using the same
-// compose file + --project-directory identity the deploy path uses so the
-// project resolves to exactly the containers skipper deployed. Any failure
-// degrades to Unknown rather than a misleading Unhealthy.
-func (p *Poller) probe(ctx context.Context, s StackRef) StackHealth {
-	args := []string{"compose"}
-	dir := filepath.Dir(s.ComposePath)
+// projectDir is the working_dir compose labels the stack's containers with:
+// project_directory when set, else the compose file's own dir — the identity
+// the deploy path gives the project (Invariant 1).
+func (s StackRef) projectDir() string {
 	if s.ProjectDir != "" {
-		args = append(args, "-f", s.ComposePath, "--project-directory", s.ProjectDir)
-		dir = s.ProjectDir
+		return filepath.Clean(s.ProjectDir)
 	}
-	args = append(args, "ps", "--format", "json", "--all")
-
-	out, err := p.out.Output(ctx, dir, "docker", args...)
-	if err != nil {
-		return StackHealth{Status: Unknown}
-	}
-	lines, err := parsePS(out)
-	if err != nil {
-		return StackHealth{Status: Unknown}
-	}
-	markOnDemand(lines, s.OnDemand)
-	return StackHealth{Status: rollup(lines), Services: servicesOf(lines)}
+	return filepath.Dir(s.ComposePath)
 }
 
 // markOnDemand flags the lines whose container is one of the stack's

@@ -42,8 +42,10 @@ const SECRET = 'ui-preview-secret';
 const stacks = ['immich', 'nextcloud', 'paperless', 'gitea'];
 const failureStacks = ['vaultwarden', 'wiki', 'backup', 'monitoring', 'syncthing'];
 
-// Stub docker: records nothing, succeeds at everything, and answers four
-// reads — `compose ps --format json` per stack for the health poller, bare
+// Stub docker: records nothing, succeeds at everything, and answers the
+// reads — the health poller's batched `ps` + `inspect` (ADR-0069) from the
+// per-stack health-*.tsv container tables, `compose ps --format json` per
+// stack for the deploy path's running-image read, bare
 // `docker ps -a` (orphan detection, ADR-0036), bare `docker ps` without `-a`
 // (app-link detection, ADR-0041) and `docker inspect` (its label lookup) —
 // from shared listings. Mirrors the harness's stub (minus the test hooks).
@@ -104,6 +106,12 @@ case " $* " in
         [ -f "$f" ] && cat "$f"
         exit 0 ;;
     esac
+    exit 0 ;;
+  *" label=com.docker.compose.project.working_dir "*)
+    cat "$STUB_PS_DIR"/health-*.tsv 2>/dev/null | cut -f1,8
+    exit 0 ;;
+  *" inspect --format {{.Id}}"*)
+    cat "$STUB_PS_DIR"/health-*.tsv 2>/dev/null | cut -f1-7
     exit 0 ;;
   *" volume "*)
     [ -f "$STUB_PS_DIR/volumes.txt" ] && cat "$STUB_PS_DIR/volumes.txt"
@@ -531,9 +539,18 @@ try {
 // the version its committed compose file names; `moveRunning` carries it to the
 // new one as part of the push that bumps it.
 const running = {};
+// writeHealth seeds both reads of a stack's containers: the `compose ps` JSON
+// and the poller's container table (id, working_dir, service, /name, state,
+// health, exit code, image).
+const writeHealth = (n) => {
+  writeFileSync(join(healthDir, `${n}.json`), JSON.stringify(running[n]));
+  const table = running[n].map((s, i) =>
+    [`${n}-${i}`, join(repoDir, n), s.Service, `/${s.Name ?? ''}`, s.State, s.Health ?? '', s.ExitCode ?? 0, s.Image ?? ''].join('\t') + '\n');
+  writeFileSync(join(healthDir, `health-${n}.tsv`), table.join(''));
+};
 const setHealth = (n, svcs) => {
   running[n] = svcs;
-  writeFileSync(join(healthDir, `${n}.json`), JSON.stringify(svcs));
+  writeHealth(n);
 };
 // moveRunning re-images the named services, i.e. what their containers report
 // once the deploy about to be pushed has run.
@@ -541,7 +558,7 @@ const moveRunning = (n, images) => {
   for (const svc of running[n]) {
     if (images[svc.Service]) svc.Image = images[svc.Service];
   }
-  writeFileSync(join(healthDir, `${n}.json`), JSON.stringify(running[n]));
+  writeHealth(n);
 };
 setHealth('immich', [
   { Service: 'immich-server', Name: 'immich-server-1', Image: 'ghcr.io/immich-app/immich-server:v1.118.0', State: 'running', Health: 'healthy' },

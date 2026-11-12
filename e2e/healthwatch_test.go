@@ -56,21 +56,30 @@ func (r *alertRecorder) firstTo(status string) map[string]any {
 	return nil
 }
 
-const (
-	psHealthy   = `{"Service":"app","State":"running","Health":"healthy"}`
-	psUnhealthy = `{"Service":"app","State":"running","Health":"unhealthy"}`
-)
+// webAppHealth is the stub docker's container table (STUB_DOCKER_HEALTH_FILE)
+// for stack "web"'s one running service "app" with the given health.
+func webAppHealth(s *skipper, health string) string {
+	return fmt.Sprintf("web-app\t%s\tapp\t/web-app-1\trunning\t%s\t0\t\n", filepath.Join(s.repoDir, "web"), health)
+}
+
+// startWithHealthFile starts skipper with the "web" stack, its container
+// scripted healthy through a health file the test then rewrites.
+func startWithHealthFile(t *testing.T, extraCfg string) (*skipper, string) {
+	t.Helper()
+	healthFile := filepath.Join(t.TempDir(), "health.tsv")
+	s := newSkipper(t, map[string]string{"STUB_DOCKER_HEALTH_FILE": healthFile}, extraCfg, []string{"web"})
+	writeFile(t, healthFile, webAppHealth(s, "healthy"))
+	s.bootstrap(t)
+	return s, healthFile
+}
 
 // P10 — Health watch journey: with a health_watch block configured, a service
-// turning unhealthy in `compose ps` output produces a health alert POST at the
+// turning unhealthy in the polled container state produces a health alert POST at the
 // generic target (deploy-correlated via the startup deploy), its recovery
 // produces the all-clear, and the phase history is persisted in
 // healthwatch.yaml. The baseline observation never alerts.
 func TestP10_HealthWatchAlertsOnUnhealthyAndRecovery(t *testing.T) {
 	rec := newAlertRecorder(t)
-
-	psFile := filepath.Join(t.TempDir(), "ps.json")
-	writeFile(t, psFile, psHealthy)
 
 	// The watchdog rides the shared health poller (ADR-0031), so the test sets
 	// the poll cadence itself to 1s; enabling health_watch makes that poll run
@@ -83,7 +92,7 @@ health_watch:
       url: %q
 `, rec.server.URL)
 
-	s := startSkipperOpts(t, map[string]string{"STUB_DOCKER_PS_FILE": psFile}, extraCfg, "web")
+	s, healthFile := startWithHealthFile(t, extraCfg)
 
 	statePath := filepath.Join(s.stateDir, "healthwatch.yaml")
 	s.waitFor("healthwatch baseline persisted", func() bool {
@@ -95,7 +104,7 @@ health_watch:
 	}
 
 	// The service turns unhealthy → one alert, correlated with the startup deploy.
-	writeFile(t, psFile, psUnhealthy)
+	writeFile(t, healthFile, webAppHealth(s, "unhealthy"))
 	s.waitFor("unhealthy health alert", func() bool { return rec.firstTo("unhealthy") != nil })
 	a := rec.firstTo("unhealthy")
 	if a["type"] != "health" || a["stack"] != "web" || a["service"] != "app" || a["from"] != "healthy" {
@@ -106,7 +115,7 @@ health_watch:
 	}
 
 	// It recovers → the matching all-clear.
-	writeFile(t, psFile, psHealthy)
+	writeFile(t, healthFile, webAppHealth(s, "healthy"))
 	s.waitFor("recovery health alert", func() bool { return rec.firstTo("healthy") != nil })
 	if a := rec.firstTo("healthy"); a["from"] != "unhealthy" {
 		t.Errorf("unexpected recovery payload: %v", a)
@@ -129,9 +138,6 @@ health_watch:
 func TestP11_HealthWatchCooldownSuppressesRepeatFlap(t *testing.T) {
 	rec := newAlertRecorder(t)
 
-	psFile := filepath.Join(t.TempDir(), "ps.json")
-	writeFile(t, psFile, psHealthy)
-
 	extraCfg := fmt.Sprintf(`runtime_health_poll_interval_seconds: 1
 health_watch:
   debounce_polls: 1
@@ -141,7 +147,7 @@ health_watch:
       url: %q
 `, rec.server.URL)
 
-	s := startSkipperOpts(t, map[string]string{"STUB_DOCKER_PS_FILE": psFile}, extraCfg, "web")
+	s, healthFile := startWithHealthFile(t, extraCfg)
 
 	statePath := filepath.Join(s.stateDir, "healthwatch.yaml")
 	s.waitFor("healthwatch baseline persisted", func() bool {
@@ -150,14 +156,14 @@ health_watch:
 	})
 
 	// The first fail + recovery pair pages both directions despite the cooldown.
-	writeFile(t, psFile, psUnhealthy)
+	writeFile(t, healthFile, webAppHealth(s, "unhealthy"))
 	s.waitFor("unhealthy health alert", func() bool { return rec.firstTo("unhealthy") != nil })
-	writeFile(t, psFile, psHealthy)
+	writeFile(t, healthFile, webAppHealth(s, "healthy"))
 	s.waitFor("recovery health alert", func() bool { return rec.firstTo("healthy") != nil })
 
 	// The repeat failure within the cooldown is suppressed: the persisted
 	// catch-up marker appears, but no further alert is delivered.
-	writeFile(t, psFile, psUnhealthy)
+	writeFile(t, healthFile, webAppHealth(s, "unhealthy"))
 	s.waitFor("suppression persisted", func() bool {
 		data, err := os.ReadFile(statePath)
 		return err == nil && strings.Contains(string(data), "suppressed: true")

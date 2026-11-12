@@ -166,6 +166,8 @@ maintainer eyeballs the rendered pill before the e2e mask is finalized.
   `Status` string (`(healthy)`/`(unhealthy)`/`(health: starting)`), which is
   brittler. Adopt it only if profiling on host-b shows the per-stack calls
   actually matter; the subscriber-gated default is cheap enough until then.
+  *Adopted in [ADR-0069](0069-health-poll-batches-container-state.md), with
+  `docker inspect` instead of `Status` scraping.*
 - **Push health from a compose/Docker event stream** (`docker events`). A live
   stream avoids polling but means holding a long-lived subprocess and parsing an
   open-ended event feed through the Runner abstraction — more moving parts than a
