@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/polandy/skipper-cd/compare/v0.30.0...v0.31.0) (2026-11-12)
+
+
+### Features
+
+* **notify:** compact deploy notifications and an ntfy format ([#382](https://github.com/polandy/skipper-cd/issues/382)) ([c037233](https://github.com/polandy/skipper-cd/commit/c03723397ca1b7cf5fc6e46dd525cd02463d57d3))
+
 ## [0.30.0](https://github.com/polandy/skipper-cd/compare/v0.29.2...v0.30.0) (2026-11-08)
 
 
