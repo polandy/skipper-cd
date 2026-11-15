@@ -52,7 +52,7 @@ Enforce `CLAUDE.md` §Testing + §Engineering-principles-test-first against the 
 
 Every spec section or criterion the diff adds or changes (`internal/ui/UI_SPEC.md`, `docs/dev/*-spec.md`, an ADR outcome, a `CLAUDE.md` invariant) gets a row in the review table naming its e2e case (file + case ID), or one line saying why the unit layer is right. A flow across client and server, or a file/system change (webhook → deploy → event, rollback, hold, notification, host check), needs e2e; NixOS internals are unit by design.
 
-- **Backend behavior the user sees** (`internal/deploy`, `webhook`, `config`, a new event status, gate, hold or notification) needs a pipeline case (`P<n>` in `e2e/`, listed in `docs/dev/e2e-tests.md` §4.1) or the one-line unit justification. Neither is a finding-free pass.
+- **Backend behavior the user sees** (`internal/deploy`, `webhook`, `config`, a new event status, gate, hold or notification) needs a pipeline case (`P<n>` in `e2e/`, listed in `docs/dev/e2e-tests.md` §4.1) or the one-line unit justification; with neither, it is a finding.
 - **Reverse direction**: grep `e2e/` and `e2e-tests.md` for cases still asserting the changed or removed behavior (event statuses, labels, config keys, endpoints) and update them in the same PR. A stale assertion is a finding.
 - **A new e2e test without a spec reference** (mask, ADR, §section in the header; an entry in `e2e-tests.md`) is a finding.
 - **Spec sentence vs assertions**: read the touched spec sentences against the test body; every promise is an assertion, or the sentence changes. An absence claim needs its positive signal (`CLAUDE.md` §Testing).
