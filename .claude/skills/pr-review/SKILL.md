@@ -48,13 +48,24 @@ Enforce `CLAUDE.md` §Testing + §Engineering-principles-test-first against the 
 - Run `go test ./... -cover` and compare touched packages against `main` — flag coverage regressions.
 - Run the full local verify exactly as `CLAUDE.md` §Commands defines it: `go build ./... && go vet ./... && go test ./... && test -z "$(gofmt -l cmd internal)"`, plus `golangci-lint run ./...` (locally `nix run nixpkgs#golangci-lint -- run ./...`) and `go test -race ./...` — CI runs both, so a red lint or race is a fix-it, not an FYI (§6).
 
+## 4b. e2e ↔ requirements/spec sync — a gate before every merge
+
+Every spec section or criterion the diff adds or changes (`internal/ui/UI_SPEC.md`, `docs/dev/*-spec.md`, an ADR outcome, a `CLAUDE.md` invariant) gets a row in the review table naming its e2e case (file + case ID), or one line saying why the unit layer is right. A flow across client and server, or a file/system change (webhook → deploy → event, rollback, hold, notification, host check), needs e2e; NixOS internals are unit by design.
+
+- **Backend behavior the user sees** (`internal/deploy`, `webhook`, `config`, a new event status, gate, hold or notification) needs a pipeline case (`P<n>` in `e2e/`, listed in `docs/dev/e2e-tests.md` §4.1) or the one-line unit justification. Neither is a finding-free pass.
+- **Reverse direction**: grep `e2e/` and `e2e-tests.md` for cases still asserting the changed or removed behavior (event statuses, labels, config keys, endpoints) and update them in the same PR. A stale assertion is a finding.
+- **A new e2e test without a spec reference** (mask, ADR, §section in the header; an entry in `e2e-tests.md`) is a finding.
+- **Spec sentence vs assertions**: read the touched spec sentences against the test body; every promise is an assertion, or the sentence changes. An absence claim needs its positive signal (`CLAUDE.md` §Testing).
+- **Verdict**: a PR with e2e still owed is **not ready**. If it is merged anyway, list every debt in the verdict as `e2e owed: <case>` and add each to `TODO.md` in the same PR.
+
 ## 5. UI changes
 
 If the PR touches `internal/ui/static/index.html` or UI behavior:
 
 - **`internal/ui/UI_SPEC.md` must be updated** in the same PR to describe the new surface.
 - User docs (`docs/user/`) must mention user-visible UI features where relevant.
-- **e2e tests**: a new UI behavior needs a corresponding Playwright e2e test (the "Maske" units under the e2e suite — one unit per PR). Check that behavior assertions exist; visual snapshots only where the established baselines pattern applies. Do **not** run Playwright locally — push and let the `e2e-ui` CI job verify.
+- **e2e tests ↔ spec, in sync before merge**: a new or changed UI behavior has its Playwright case, and `docs/dev/e2e-tests.md` names it in **both** its §4 mask section (Given/When/Then) and the §6 traceability table — the same `Uxn` ID in the file name prefix, the `describe`/`test` title and the doc. A case in the suite but not in the doc, a doc case with no test, or a reused ID is a finding. Behavior assertions, not CSS reading; visual snapshots only where the established baselines pattern applies. Playwright runs in the `e2e-ui` CI job; run `make e2e-ui` locally only on a host with the headroom for it (`CLAUDE.md` §Workflow).
+- **Headline case is mutation-proven**: revert the fix (or the guard) in production code, see that exact case go red, restore. A case that stays green is a finding.
 - **Mask-letter uniqueness**: the "Maske" letter (the `us-`/`ut-` file prefix, the `Uxn` test IDs, the `docs/dev/e2e-tests.md` §/heading) must be unique on the *target* branch. A PR that sat open can collide with a letter a concurrently-merged PR already claimed — `ls e2e/ui/tests/` on the updated branch and, if collided, rename yours to the next free letter across all three places (file, test IDs, spec section).
 - Remember: manual-test-first — if the maintainer hasn't eyeballed the rendered UI yet, flag that as a gate before finalizing e2e tests, don't silently skip it.
 
