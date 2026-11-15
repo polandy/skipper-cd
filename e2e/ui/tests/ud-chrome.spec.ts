@@ -3,7 +3,7 @@ import { buildCommit, buildVersion } from '../fixtures/harness';
 import { visualSnapshot } from '../fixtures/snapshot';
 
 // Deploy rows carry a relative time and a duration that vary run-to-run; mask
-// them out of any full-page screenshot (dev-docs/e2e-tests.md §5). The header
+// them out of any full-page screenshot (docs/dev/e2e-tests.md §5). The header
 // version label is stable — globalSetup injects a fixed buildVersion/buildCommit
 // — so it needs no mask.
 const pageMasks = (page: import('@playwright/test').Page) => [
@@ -23,7 +23,7 @@ const THEME_LABELS: Record<string, string> = {
   flake: 'Flake',
 };
 
-// Maske D: Global chrome. See dev-docs/e2e-tests.md §4.5.
+// Maske D: Global chrome. See docs/dev/e2e-tests.md §4.5.
 
 // UD5 — Build-identity label. The header shows the deployed build as
 // `v<semver> · <commit>`. globalSetup builds the binary with the version and

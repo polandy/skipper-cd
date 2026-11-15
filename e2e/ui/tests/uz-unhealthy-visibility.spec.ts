@@ -8,7 +8,7 @@ import type { Page } from '@playwright/test';
 // out entirely. The health poller is enabled (`healthPoll: 1`) and each stack's
 // `docker compose ps` output is scripted via the stub, so these are deterministic
 // and offline. Behaviour-only: both surfaces are hidden whenever nothing is
-// unhealthy, so no existing snapshot baseline changes. See dev-docs/e2e-tests.md
+// unhealthy, so no existing snapshot baseline changes. See docs/dev/e2e-tests.md
 // §4.26.
 
 const beacon = (page: Page) => page.locator('[data-testid="health-beacon"]');

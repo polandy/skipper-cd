@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import type { OrphanContainer } from "../fixtures/harness";
 
 // Maske AT: a stack removed from the deploy repo (ADR-0036 amendment). See
-// dev-docs/e2e-tests.md §4.17.
+// docs/dev/e2e-tests.md §4.17.
 //
 // Boots in discovery mode with two stacks and the health poll on (orphan
 // detection rides that cadence). `blog` is then deleted from the repo and

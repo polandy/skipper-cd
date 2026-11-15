@@ -1,5 +1,5 @@
 // app-panels.js — the per-stack detail surfaces every view opens the same way
-// (dev-docs/ui-design-concept.md, "one look and feel across every view"): the
+// (docs/dev/ui-design-concept.md, "one look and feel across every view"): the
 // bound row panels — diff, files, heal, deploy history (ADR-0033), containers/
 // health (ADR-0027/0031), deploy hooks (ADR-0038), watched files — plus the
 // row-cell affordances that open them: the ⋯ overflow menu, the app-link

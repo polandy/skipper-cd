@@ -2,7 +2,7 @@ import { test, expect } from '../fixtures/test';
 import type { Page, Locator } from '@playwright/test';
 import { openRowMenu } from '../fixtures/menu';
 
-// Maske AH: feedback & error states (T4.16 / T4.17). See dev-docs/e2e-tests.md §4.35.
+// Maske AH: feedback & error states (T4.16 / T4.17). See docs/dev/e2e-tests.md §4.35.
 //
 // Two gaps this mask covers, both deterministic (no timers):
 //   T4.17 — a loading skeleton distinct from the genuine-empty state. The deploy

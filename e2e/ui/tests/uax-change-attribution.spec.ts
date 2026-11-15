@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page, Locator } from '@playwright/test';
 
-// Maske AX: which containers a deploy's change reached. See dev-docs/e2e-tests.md
+// Maske AX: which containers a deploy's change reached. See docs/dev/e2e-tests.md
 // §4.51.
 //
 // A deploy that moves no image still redeploys the whole stack, and the row used

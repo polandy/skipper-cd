@@ -1,7 +1,7 @@
 import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 
-// Maske AQ: after-the-fact rollback visibility. See dev-docs/e2e-tests.md §4.44.
+// Maske AQ: after-the-fact rollback visibility. See docs/dev/e2e-tests.md §4.44.
 //
 // The 2026-08-05 incident: a rollback was recorded everywhere and visible
 // nowhere five minutes later, because the successful retry became every

@@ -21,7 +21,7 @@
      Theme palettes. The server bakes the configured theme (ui_theme) into
      <html data-theme="…">; the header toggle only ever flips the ".light"
      class on top of it (dark/light is a per-browser preference, the theme
-     itself is a per-deployment choice — see docs/configuration.md).
+     itself is a per-deployment choice — see docs/user/configuration.md).
      Each block defines the same raw slots: four background depths
      (crust/mantle/base/surface0), three text tiers (overlay1/overlay2/
      subtext0/text), and six raw accent colours (--raw-*). The semantic
@@ -2402,7 +2402,7 @@
      a new service worker is waiting. Bottom-centred so it never collides with
      the header (z 100) or the top-right theme notice; sits above the drawer
      (z 90). The action is a real button (tap, not hover) so it works on touch —
-     see docs/pwa.md and UI_SPEC. */
+     see docs/user/pwa.md and UI_SPEC. */
   .update-banner {
     position: fixed;
     z-index: 96;
@@ -3211,7 +3211,7 @@
   .clog-newpill:hover { background: var(--accent-dim); }
   .clog-newpill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-  /* ─── STACKS VIEW (roster / inventory, dev-docs/stack-roster-spec.md) ─── */
+  /* ─── STACKS VIEW (roster / inventory, docs/dev/stack-roster-spec.md) ─── */
   /* The full set of stacks skipper owns (stack discovery, ADR-0034), each with
      its last outcome — inventory, not an event log. A third top-level view. */
   #stacks-view { display: none; }
@@ -3706,7 +3706,7 @@
   .clog-btn.on { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
   .clog-btn svg { width: 12px; height: 12px; }
 
-  /* ── App-link icon (dev-docs/traefik-app-links-spec.md): opens a stack's
+  /* ── App-link icon (docs/dev/traefik-app-links-spec.md): opens a stack's
      Traefik-routed hostname, discovered live from container labels. A single
      host is a plain link; several open a small popover to choose. No host,
      no icon — never a disabled/ghost state. ───────────────────────────── */

@@ -11,7 +11,7 @@
 # comment next to it states the version it is matched to, and that comment IS
 # compared below — so a flake bump that moves the driver must update the comment
 # and will be caught here. Local runs compare behaviour rather than pixels
-# (dev-docs/e2e-tests.md §5), so a drift there is far less damaging than in CI.
+# (docs/dev/e2e-tests.md §5), so a drift there is far less damaging than in CI.
 set -eu
 
 cd "$(dirname "$0")/.."

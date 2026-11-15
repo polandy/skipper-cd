@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske AR: the Logs view fits the display. See dev-docs/e2e-tests.md §4.45.
+// Maske AR: the Logs view fits the display. See docs/dev/e2e-tests.md §4.45.
 //
 // The 2026-08-05 report from a tablet: the log panel hung off the right edge of
 // the screen. The cause was layout, not content — `main`'s auto side margins

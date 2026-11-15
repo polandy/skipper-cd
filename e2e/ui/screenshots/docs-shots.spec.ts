@@ -4,7 +4,7 @@ import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
 // Renders the two screenshots the docs landing page embeds
-// (docs/assets/screenshots/{deploys,stacks}.png). They are **generated, not
+// (docs/user/assets/screenshots/{deploys,stacks}.png). They are **generated, not
 // committed**: a screenshot of the UI is a derived artifact, and a PNG never
 // delta-compresses, so committing one on every UI change would grow the repo
 // without bound. CI renders them before `mkdocs build` (.github/workflows/
@@ -15,7 +15,7 @@ import type { Page } from '@playwright/test';
 // the Stacks view's Commit column only fills for webhook deploys — the deploy
 // history has to be staged first, and the roster then inherits it.
 
-const OUT = join(__dirname, '..', '..', '..', 'docs', 'assets', 'screenshots');
+const OUT = join(__dirname, '..', '..', '..', 'docs', 'user', 'assets', 'screenshots');
 
 // Realistic self-hosted stacks. The names are dashboard-icons slugs, so each
 // resolves to that project's real logo (fetched below).

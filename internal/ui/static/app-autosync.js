@@ -1,4 +1,4 @@
-// app-autosync.js — the autosync control and drawer (dev-docs/autosync-spec.md,
+// app-autosync.js — the autosync control and drawer (docs/dev/autosync-spec.md,
 // ADR-0016), cut out of the app script by view (ADR-0035 amendment) and attached as
 // App.autosync.
 //
@@ -84,7 +84,7 @@ App.autosync = (function () {
   // applyAutosyncSnapshot installs a snapshot unless it is older than the one
   // already applied — the POST response and the SSE broadcast of the same change
   // can overtake each other, which would make a switch snap back
-  // (dev-docs/autosync-spec.md, "Snapshot ordering").
+  // (docs/dev/autosync-spec.md, "Snapshot ordering").
   function applyAutosyncSnapshot(snap) {
     if (!snapshotIsFresh(S.autosyncVersion, snap)) {
       // A drop is invisible by design, so leave a trace of it.

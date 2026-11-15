@@ -1,6 +1,6 @@
 // skipper-cd service worker — installability + app-shell caching.
 //
-// See docs/pwa.md and docs/adr/0018-pwa-installable-ui.md. Two rules matter:
+// See docs/user/pwa.md and docs/dev/adr/0018-pwa-installable-ui.md. Two rules matter:
 //   1. Live traffic is NEVER cached. Requests to /api/* (incl. the SSE streams
 //      /api/events and /api/logs), /metrics and /webhook are not intercepted at
 //      all, so streaming takes the native network path untouched.
@@ -56,7 +56,7 @@ self.addEventListener('install', (event) => {
 
 // The page posts this when the user accepts the "new version available" prompt;
 // activating the waiting worker fires controllerchange, which reloads the page
-// onto the fresh shell. See docs/pwa.md.
+// onto the fresh shell. See docs/user/pwa.md.
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();

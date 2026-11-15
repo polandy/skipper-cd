@@ -2,7 +2,7 @@ import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 import { visualSnapshot } from '../fixtures/snapshot';
 
-// Maske C: Autosync-Drawer. See dev-docs/e2e-tests.md §4.4.
+// Maske C: Autosync-Drawer. See docs/dev/e2e-tests.md §4.4.
 
 // UC1 — Header state. The autosync header control (`autosync-btn`) shows the
 // *global* autosync state, and it is driven by the live `autosync` SSE event —
@@ -464,7 +464,7 @@ test.describe('UC12: collapse through the stack filter', () => {
 // UI over two channels — the toggle's own POST response and the SSE broadcast the
 // same change triggers — and they can overtake each other, so a switch could snap
 // back to the state before the last change. Ordering therefore comes from the
-// snapshot's monotonic `version`, not from arrival time (dev-docs/autosync-spec.md).
+// snapshot's monotonic `version`, not from arrival time (docs/dev/autosync-spec.md).
 //
 // The reversal is *forced*, not awaited: the POST is let through to the server so
 // it really mutates, but its response is held in the route handler until a newer

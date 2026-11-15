@@ -88,7 +88,7 @@ docker-build:
 	trivy image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 skipper-cd:ci
 
 ## --- docs screenshots (rendered, never committed) -------------------------
-# Renders docs/assets/screenshots/*.png from a seeded instance, exactly as the
+# Renders docs/user/assets/screenshots/*.png from a seeded instance, exactly as the
 # docs workflow does before `mkdocs build`. Needs the Playwright browsers
 # (`cd e2e/ui && npx playwright install chromium`); on a host whose bundled
 # Chromium cannot run, set PW_CHROMIUM_EXECUTABLE.
@@ -103,7 +103,7 @@ docs-screenshots:
 ## --- ui-preview (not a CI job) --------------------------------------------
 # Boot a seeded skipper instance for manually eyeballing the web UI, then stay
 # up until Ctrl-C. Builds from the current checkout; no docker/network needed.
-# Override the port with PORT=… (default 3000). See dev-docs/ui-preview.md.
+# Override the port with PORT=… (default 3000). See docs/dev/ui-preview.md.
 ui-preview:
 	node scripts/ui-preview.mjs
 

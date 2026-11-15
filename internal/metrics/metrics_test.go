@@ -18,7 +18,7 @@ import (
 
 // metricsDoc is the user-facing metric reference; its table is the contract
 // dashboards and alerts are built against.
-const metricsDoc = "../../docs/metrics.md"
+const metricsDoc = "../../docs/user/metrics.md"
 
 // declaredNames returns the metric names metrics.go registers, read from the
 // Name: field of each collector's Opts literal. Parsed rather than gathered

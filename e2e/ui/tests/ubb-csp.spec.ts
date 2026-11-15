@@ -2,7 +2,7 @@ import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 
 // Maske BB: the app runs under its strict Content-Security-Policy (ADR-0067).
-// See dev-docs/e2e-tests.md §4.55.
+// See docs/dev/e2e-tests.md §4.55.
 //
 // A listener installed before any page script records every
 // securitypolicyviolation. The test walks the views, opens a diff panel, then

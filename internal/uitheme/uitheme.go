@@ -8,7 +8,7 @@ import "slices"
 
 // Built-in UI theme names, accepted by the ui_theme config field and by
 // ui.IndexHandler/ui.ManifestHandler. See internal/ui/UI_SPEC.md and
-// docs/configuration.md.
+// docs/user/configuration.md.
 const (
 	ThemeCatppuccin = "catppuccin"
 	ThemeNord       = "nord"

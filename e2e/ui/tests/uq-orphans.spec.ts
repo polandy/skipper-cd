@@ -2,7 +2,7 @@ import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 import type { OrphanContainer } from "../fixtures/harness";
 
-// Maske Q: orphan detection (ADR-0036). See dev-docs/e2e-tests.md §4.17.
+// Maske Q: orphan detection (ADR-0036). See docs/dev/e2e-tests.md §4.17.
 //
 // Boots in discovery mode (web + api are the stack set) with the health poll on,
 // since orphan detection rides that cadence and is UI-gated. The stub's

@@ -1,7 +1,7 @@
 import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 
-// Maske AW: one open header pop-out at a time. See dev-docs/e2e-tests.md §4.50.
+// Maske AW: one open header pop-out at a time. See docs/dev/e2e-tests.md §4.50.
 //
 // The drawers (autosync, hosts, run) and the popovers (view options, health
 // beacon) all park under the header at the same anchor, so two open at once is

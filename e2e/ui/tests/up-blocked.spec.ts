@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 
 // Maske P: blocked rows (ADR-0032) + hostile-name escaping. See
-// dev-docs/e2e-tests.md §4.17.
+// docs/dev/e2e-tests.md §4.17.
 //
 // `app` depends on a stack whose name contains markup (`dep<img>x` — legal as a
 // directory and stack name). The stub fails the dependency's redeploy (up #3:

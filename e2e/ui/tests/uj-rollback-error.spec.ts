@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 
 // Maske J: rolled-back error panel — variant-A binding + diff. See
-// dev-docs/e2e-tests.md §4.11.
+// docs/dev/e2e-tests.md §4.11.
 //
 // A rolled-back deploy (startup up#1 succeeds and sets LastDeployedCommit; the
 // deploy's up#2 fails and the rollback up#3 succeeds → rolled_back). The

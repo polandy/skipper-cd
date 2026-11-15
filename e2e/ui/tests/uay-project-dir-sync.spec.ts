@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { openRowMenu } from "../fixtures/menu";
 
 // Maske AY: the project_directory checkout is fast-forwarded before the stack
-// phase, and a refusal is visible (ADR-0060). See dev-docs/e2e-tests.md §4.52.
+// phase, and a refusal is visible (ADR-0060). See docs/dev/e2e-tests.md §4.52.
 //
 // Compose serves a stack's relative bind mounts out of --project-directory, not
 // out of the clone the compose file came from, so a checkout nobody advances

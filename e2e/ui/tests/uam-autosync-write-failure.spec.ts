@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '../fixtures/test';
 
-// Maske AM: a refused autosync write says so. See dev-docs/e2e-tests.md §4.40.
+// Maske AM: a refused autosync write says so. See docs/dev/e2e-tests.md §4.40.
 //
 // A failed toggle is invisible in the interface — the switch simply does not
 // move, which looks exactly like a click that never landed. That ambiguity cost

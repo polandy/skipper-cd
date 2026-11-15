@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page, Locator } from '@playwright/test';
 
-// Maske AI: per-service image delta on a deploy row. See dev-docs/e2e-tests.md
+// Maske AI: per-service image delta on a deploy row. See docs/dev/e2e-tests.md
 // §4.36.
 //
 // A deploy carries `image_changes` (service, old, new) on its SSE payload; the

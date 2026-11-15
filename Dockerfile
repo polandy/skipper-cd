@@ -28,10 +28,10 @@ RUN VERSION=$(sed -n 's/.*"\.":[[:space:]]*"\([^"]*\)".*/\1/p' .release-please-m
 FROM alpine:3.24
 
 # UID/GID 1000: fixed so a volume from a previous (root-only) image version can
-# be re-chowned to a known target during upgrade (see docs/docker.md). The
+# be re-chowned to a known target during upgrade (see docs/user/docker.md). The
 # docker-cli talks to the socket over HTTP, not Linux capabilities, so running
 # as this unprivileged user doesn't affect docker.sock access — that's gated
-# entirely by group membership (docs/docker.md's `group_add`).
+# entirely by group membership (docs/user/docker.md's `group_add`).
 # apk upgrade first: pick up security patches the base image tag lags behind
 # (the CI vulnerability scan fails the build on known-fixed CVEs otherwise).
 RUN apk upgrade --no-cache \

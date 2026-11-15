@@ -20,10 +20,10 @@ Work through **all** sections below in order. Collect findings as you go and fix
 ## 1. Documentation ↔ implementation sync
 
 - **Code-level docs**: doc comments on exported symbols match actual behavior; `CLAUDE.md` invariants still hold — if the PR changes behavior covered by an invariant, `CLAUDE.md` must be updated in the same PR.
-- **User documentation** (`docs/` — published via MkDocs): every new/changed config field, stack option, API endpoint, event status, or metric must appear on the right page (`configuration.md`, `nixos.md`, `docker.md`, `metrics.md`, `state.md`, `autosync.md`). Check the reverse too: docs must not describe behavior the PR removed or changed. Do **not** run `mkdocs build` locally — CI verifies strict mode.
+- **User documentation** (`docs/user/` — published via MkDocs): every new/changed config field, stack option, API endpoint, event status, or metric must appear on the right page (`configuration.md`, `nixos.md`, `docker.md`, `metrics.md`, `state.md`, `autosync.md`). Check the reverse too: docs must not describe behavior the PR removed or changed. Do **not** run `mkdocs build` locally — CI verifies strict mode.
 - **README.md** stays a slim landing page; only touch it if the feature list or quickstart is now wrong.
 
-## 2. ADRs (`dev-docs/adr/`)
+## 2. ADRs (`docs/dev/adr/`)
 
 - Does the PR implement a design decision significant enough to need a **new ADR** that is missing?
 - Does the PR contradict or supersede an **existing ADR**? If so, the ADR needs a status update (superseded/amended) or the PR needs to change.
@@ -53,9 +53,9 @@ Enforce `CLAUDE.md` §Testing + §Engineering-principles-test-first against the 
 If the PR touches `internal/ui/static/index.html` or UI behavior:
 
 - **`internal/ui/UI_SPEC.md` must be updated** in the same PR to describe the new surface.
-- User docs (`docs/`) must mention user-visible UI features where relevant.
+- User docs (`docs/user/`) must mention user-visible UI features where relevant.
 - **e2e tests**: a new UI behavior needs a corresponding Playwright e2e test (the "Maske" units under the e2e suite — one unit per PR). Check that behavior assertions exist; visual snapshots only where the established baselines pattern applies. Do **not** run Playwright locally — push and let the `e2e-ui` CI job verify.
-- **Mask-letter uniqueness**: the "Maske" letter (the `us-`/`ut-` file prefix, the `Uxn` test IDs, the `dev-docs/e2e-tests.md` §/heading) must be unique on the *target* branch. A PR that sat open can collide with a letter a concurrently-merged PR already claimed — `ls e2e/ui/tests/` on the updated branch and, if collided, rename yours to the next free letter across all three places (file, test IDs, spec section).
+- **Mask-letter uniqueness**: the "Maske" letter (the `us-`/`ut-` file prefix, the `Uxn` test IDs, the `docs/dev/e2e-tests.md` §/heading) must be unique on the *target* branch. A PR that sat open can collide with a letter a concurrently-merged PR already claimed — `ls e2e/ui/tests/` on the updated branch and, if collided, rename yours to the next free letter across all three places (file, test IDs, spec section).
 - Remember: manual-test-first — if the maintainer hasn't eyeballed the rendered UI yet, flag that as a gate before finalizing e2e tests, don't silently skip it.
 
 ## 6. CI status — fix failures

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '../fixtures/test';
 
 // Maske AN: the web-font swap causes no layout shift. See
-// dev-docs/e2e-tests.md §4.41.
+// docs/dev/e2e-tests.md §4.41.
 //
 // app.css declares metric-compatible local fallback faces (size-adjust +
 // ascent/descent overrides) for DM Sans and JetBrains Mono, so text rendered

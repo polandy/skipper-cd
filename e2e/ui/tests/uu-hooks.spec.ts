@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import { openRowMenu } from '../fixtures/menu';
 
-// Maske U: deploy hooks in the UI (ADR-0038). See dev-docs/e2e-tests.md §4.22.
+// Maske U: deploy hooks in the UI (ADR-0038). See docs/dev/e2e-tests.md §4.22.
 //
 // Boots in discovery mode with a stack whose repo skipper.yaml declares
 // pre/post-deploy hooks. The commands are harmless `echo`s (they succeed and

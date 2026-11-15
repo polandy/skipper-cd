@@ -1,7 +1,7 @@
 // Package containerlogs serves a stack's `docker compose logs` to the UI —
 // whole stack or a selected subset of its services: an initial backlog then a
 // live follow, streamed as Server-Sent Events. It exists only when the UI is
-// enabled. See dev-docs/adr/0037-container-logs-in-ui.md.
+// enabled. See docs/dev/adr/0037-container-logs-in-ui.md.
 package containerlogs
 
 import (

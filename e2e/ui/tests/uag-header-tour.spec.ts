@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske AG: First-run header tour (T3.15). See dev-docs/e2e-tests.md §4.34.
+// Maske AG: First-run header tour (T3.15). See docs/dev/e2e-tests.md §4.34.
 //
 // The header is glyph-only by design, so learnability rested entirely on hover
 // tooltips (which touch users never get). On a fresh browser only, a caption

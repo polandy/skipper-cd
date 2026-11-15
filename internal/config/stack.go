@@ -52,7 +52,7 @@ type Stack struct {
 
 	// Autosync overrides the global autosync for this stack. nil means inherit
 	// the global setting. When autosync is not effective, a detected change is
-	// queued instead of deployed. See docs/autosync.md.
+	// queued instead of deployed. See docs/user/autosync.md.
 	Autosync *bool `yaml:"autosync"`
 
 	// DeployHealthCheck optionally gates a deploy of this stack on a post-deploy

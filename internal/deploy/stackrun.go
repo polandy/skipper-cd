@@ -101,7 +101,7 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 
 	// Autosync gate: when paused, defer instead of deploying. The hashes are
 	// deliberately not recorded, so the stack stays dirty and re-deploys once
-	// sync resumes (docs/autosync.md).
+	// sync resumes (docs/user/autosync.md).
 	att := attribution{
 		composePath:   prep.run.composePath,
 		compose:       prep.compose,

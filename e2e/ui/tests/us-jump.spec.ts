@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page, Locator } from '@playwright/test';
 
-// Maske S: cross-view stack jump. See dev-docs/e2e-tests.md §4.20.
+// Maske S: cross-view stack jump. See docs/dev/e2e-tests.md §4.20.
 //
 // The compass jump-btn beside every stack name (deploy row and roster row
 // alike) switches between the Deploys and Stacks views and lands on that

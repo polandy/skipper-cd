@@ -255,7 +255,7 @@ func buildUpdateCheck(ctx context.Context, cfg *config.Config, stateDir string, 
 
 // healthLayer bundles the stack-health poller and the detectors that ride its
 // cadence: orphan detection (ADR-0036) and app-link detection
-// (dev-docs/traefik-app-links-spec.md). Every field is nil while health
+// (docs/dev/traefik-app-links-spec.md). Every field is nil while health
 // polling is off; the detectors are additionally nil while the UI is off.
 type healthLayer struct {
 	poller   *health.Poller
@@ -311,7 +311,7 @@ func buildHealthLayer(cfg *config.Config, views stackViews, stateB *events.Broad
 				orphanDetector.Detect(context.Background())
 			}
 		})
-		// App-link detection (dev-docs/traefik-app-links-spec.md) rides the
+		// App-link detection (docs/dev/traefik-app-links-spec.md) rides the
 		// same health-poll cadence for the same reason orphan detection does:
 		// no second timer, UI-gated via HasSubscribers.
 		hl.appLinks = applink.New(applink.Config{

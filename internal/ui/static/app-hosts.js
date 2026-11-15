@@ -1,4 +1,4 @@
-// app-hosts.js — the multi-host surface (ADR-0048, dev-docs/multi-host-spec.md):
+// app-hosts.js — the multi-host surface (ADR-0048, docs/dev/multi-host-spec.md):
 // peer rows merged into the deploy feed, host chips and colours, the Hosts
 // drawer and filter, the peer detail panel. Cut out of the app script by view
 // (ADR-0035 amendment) and attached as App.hosts.

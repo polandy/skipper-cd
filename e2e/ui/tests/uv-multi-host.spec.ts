@@ -1,8 +1,8 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske V: Multi-host federated UI (dev-docs/multi-host-spec.md, ADR-0048).
-// See dev-docs/e2e-tests.md §4.23.
+// Maske V: Multi-host federated UI (docs/dev/multi-host-spec.md, ADR-0048).
+// See docs/dev/e2e-tests.md §4.23.
 //
 // The primary (host-a) fans in each peer's read data and renders one merged UI.
 // The harness stands up a reachable stub peer (host-b, serving its /api/v1

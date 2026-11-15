@@ -843,7 +843,7 @@ App.chrome = (function () {
     // Register the service worker for installability + app-shell caching, and
     // prompt to reload when a newer version has been deployed. Failure-tolerant:
     // an insecure context (plain HTTP) simply skips it, the page keeps working as
-    // a normal site. See docs/pwa.md.
+    // a normal site. See docs/user/pwa.md.
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
         registerServiceWorker();

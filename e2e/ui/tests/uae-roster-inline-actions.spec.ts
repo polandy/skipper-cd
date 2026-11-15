@@ -2,7 +2,7 @@ import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
 // Maske AE: the Stacks/roster row's inline secondary actions. See
-// dev-docs/e2e-tests.md §4.32.
+// docs/dev/e2e-tests.md §4.32.
 //
 // The roster row surfaces its secondary actions inline in the stack cell: the
 // container-logs icon always, the deploy-hooks badge only when the stack

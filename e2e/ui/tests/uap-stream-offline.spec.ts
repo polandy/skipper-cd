@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '../fixtures/test';
 
 // Maske AP: an unreachable deploy stream says so, and retries in place.
-// See dev-docs/e2e-tests.md §4.43.
+// See docs/dev/e2e-tests.md §4.43.
 //
 // The loading skeleton deliberately does not settle on a failed connection, so
 // a transient outage never reads as "no deployments" (Maske AH). Left alone

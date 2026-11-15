@@ -33,7 +33,7 @@ func effectiveAfter(ctrl *autosync.Controller, req autosyncPostRequest) bool {
 // AutosyncHandler serves GET /api/autosync (current snapshot) and
 // POST /api/autosync (set a runtime override). On a change it calls onChange to
 // publish the new state; when the change enables sync it calls triggerDeploy to
-// drain the queue. See docs/autosync.md.
+// drain the queue. See docs/user/autosync.md.
 func AutosyncHandler(ctrl *autosync.Controller, order func() []string, onChange, triggerDeploy func()) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

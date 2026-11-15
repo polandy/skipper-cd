@@ -54,7 +54,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           # mkdocs + Material theme for `mkdocs build --strict`. nixpkgs tracks
-          # a slightly newer Material (9.7.x) than docs/requirements.txt pins
+          # a slightly newer Material (9.7.x) than docs/user/requirements.txt pins
           # (9.6.14); close enough for a local pre-check, CI stays the source of
           # truth for the published site.
           mkdocs = pkgs.python3.withPackages (ps: [ ps.mkdocs-material ]);

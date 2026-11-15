@@ -128,7 +128,7 @@ type Config struct {
 
 	// Autosync is the global default for whether detected changes deploy
 	// automatically. nil means true (on). A per-stack Autosync overrides it.
-	// See docs/autosync.md.
+	// See docs/user/autosync.md.
 	Autosync *bool `yaml:"autosync"`
 
 	// Rollback is the global default for whether a failed deploy is rolled back
@@ -174,21 +174,21 @@ type Config struct {
 	// Optional; defaults to "catppuccin". Each theme has its own dark/light
 	// variant, toggled independently in the browser — this only picks which
 	// palette that toggle switches within. Distinguishes multiple skipper-cd
-	// instances (e.g. one per host) at a glance. See docs/configuration.md.
+	// instances (e.g. one per host) at a glance. See docs/user/configuration.md.
 	UITheme string `yaml:"ui_theme"`
 
 	// UIThemeSwitcher enables the in-UI theme picker: a per-browser override
 	// for trying palettes out, applied without a reload. Optional; defaults to
 	// false, so the deployed UITheme is fixed and cannot be switched from the
 	// browser (keeping the per-instance colour a reliable at-a-glance marker).
-	// See docs/configuration.md.
+	// See docs/user/configuration.md.
 	UIThemeSwitcher bool `yaml:"ui_theme_switcher"`
 
 	// RuntimeHealthPollIntervalSeconds sets how often skipper polls its stacks'
 	// runtime health (ADR-0027). nil (omitted) defaults to 30; an explicit 0
 	// disables the health view. Only meaningful with ui_enabled; the poll
 	// additionally runs only while a UI client is connected. See
-	// docs/configuration.md.
+	// docs/user/configuration.md.
 	RuntimeHealthPollIntervalSeconds *int `yaml:"runtime_health_poll_interval_seconds"`
 
 	// ReconcileIntervalSeconds sets how often skipper re-runs its git sync +
@@ -196,7 +196,7 @@ type Config struct {
 	// drifted from the deploy repo indefinitely (ADR-0028). nil (omitted)
 	// defaults to 300; an explicit 0 disables the loop (pure webhook + startup
 	// behaviour). Unlike the health poll it is not UI-gated — it runs headless.
-	// See docs/configuration.md.
+	// See docs/user/configuration.md.
 	ReconcileIntervalSeconds *int `yaml:"reconcile_interval_seconds"`
 
 	// SelfHeal is the global default for whether a stack the health poller finds
@@ -308,7 +308,7 @@ func (c *Config) EffectiveRollback(stacks []Stack, name string) bool {
 // self-heal sees degradation on an unattended host (ADR-0029). In
 // stack-discovery mode the stack set is unknown at startup, so activation
 // follows the global flag alone; a per-stack self_heal: true with the global
-// off is not supported there (documented in docs/configuration.md).
+// off is not supported there (documented in docs/user/configuration.md).
 func (c *Config) SelfHealActive() bool {
 	if c.StackDiscovery {
 		return c.SelfHeal != nil && *c.SelfHeal
@@ -363,7 +363,7 @@ func Load(path string) (*Config, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(cfg); err != nil && !errors.Is(err, io.EOF) {
 		// io.EOF is an empty document — no keys to apply, defaults stand.
-		return nil, fmt.Errorf("parse config file: %w — check the key spelling and value types against docs/configuration.md; unknown keys are rejected rather than ignored", err)
+		return nil, fmt.Errorf("parse config file: %w — check the key spelling and value types against docs/user/configuration.md; unknown keys are rejected rather than ignored", err)
 	}
 
 	// stack_discovery defaults to true (ADR-0043). The field is a plain bool, so

@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske AJ: the roster's change-detection panel. See dev-docs/e2e-tests.md §4.37.
+// Maske AJ: the roster's change-detection panel. See docs/dev/e2e-tests.md §4.37.
 //
 // skipper redeploys a stack only when one of its hashed inputs changes, so the
 // most common operator question is not "what happened" but "why did nothing
