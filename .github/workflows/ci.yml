@@ -128,7 +128,7 @@ jobs:
   # Playwright's pinned container (matching @playwright/test in the lockfile) so
   # the browser + font rasterisation are identical to how the visual-snapshot
   # baselines were generated — RUN_SNAPSHOTS turns the pixel compares on
-  # (dev-docs/e2e-tests.md §5, §7). The image already ships Node + the browsers, so
+  # (docs/dev/e2e-tests.md §5, §7). The image already ships Node + the browsers, so
   # only Go (for globalSetup's build) is installed on top.
   e2e-ui:
     needs: baselines

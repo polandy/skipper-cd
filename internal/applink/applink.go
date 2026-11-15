@@ -1,6 +1,6 @@
 // Package applink discovers each stack's Traefik-routed hostname(s) from live
 // Docker container labels, feeding the app-link icon in the Stacks view
-// (dev-docs/traefik-app-links-spec.md). Detection is read-only and
+// (docs/dev/traefik-app-links-spec.md). Detection is read-only and
 // best-effort: a docker failure or a stack with no Traefik labels simply
 // yields no hosts for it, never an error surfaced to the user.
 package applink

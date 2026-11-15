@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske AO: registry update check (ADR-0054). See dev-docs/e2e-tests.md §4.41.
+// Maske AO: registry update check (ADR-0054). See docs/dev/e2e-tests.md §4.41.
 //
 // The read-only check compares what each service runs against what its
 // registry offers and annotates the Stacks view's version chips: an amber

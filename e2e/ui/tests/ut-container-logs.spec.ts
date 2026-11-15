@@ -2,7 +2,7 @@ import { test, expect } from '../fixtures/test';
 import { openRowMenu } from '../fixtures/menu';
 import type { Page } from '@playwright/test';
 
-// Maske T: Container logs (ADR-0037). See dev-docs/e2e-tests.md §4.21.
+// Maske T: Container logs (ADR-0037). See docs/dev/e2e-tests.md §4.21.
 //
 // The health poller surfaces the per-container log icons on the health panel's
 // service lines and the per-service filter chips, and validates the ?services=

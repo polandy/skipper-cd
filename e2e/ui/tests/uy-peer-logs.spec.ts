@@ -1,8 +1,8 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske Y: Peer container logs (dev-docs/multi-host-spec.md, ADR-0048).
-// See dev-docs/e2e-tests.md §4.26.
+// Maske Y: Peer container logs (docs/dev/multi-host-spec.md, ADR-0048).
+// See docs/dev/e2e-tests.md §4.26.
 //
 // The last local-only affordance closed: a peer's container logs. The browser
 // can't reach a peer cross-origin, so the primary proxies the peer's

@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 
 // Maske I: Diff-panel commit metadata + variant-A row binding. See
-// dev-docs/e2e-tests.md §4.10.
+// docs/dev/e2e-tests.md §4.10.
 //
 // A webhook that bumps a stack's image commits against the startup commit, so
 // the deploy's diff panel carries both a real diff and commit metadata. The

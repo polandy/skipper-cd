@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import { openRowMenu } from '../fixtures/menu';
 
-// Maske M: per-stack deploy history (audit log, ADR-0033). See dev-docs/e2e-tests.md §4.14.
+// Maske M: per-stack deploy history (audit log, ADR-0033). See docs/dev/e2e-tests.md §4.14.
 //
 // The history button lives inside the newest row's ⋯ overflow menu (T3.13), so
 // each history-btn interaction opens that menu first (openRowMenu).

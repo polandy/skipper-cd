@@ -10,7 +10,7 @@ function expectForgeCommitHref(href: string | null, forge = FORGE_URL): void {
   expect(href!.slice(`${forge}/commit/`.length)).toMatch(/^[0-9a-f]{40}$/);
 }
 
-// Maske AL: commit SHAs link to the forge. See dev-docs/e2e-tests.md §4.39.
+// Maske AL: commit SHAs link to the forge. See docs/dev/e2e-tests.md §4.39.
 //
 // Every SHA the UI prints — the roster's Commit column, the deploy-history rows,
 // the diff panel's commit header, a peer's detail — is a link to that commit on

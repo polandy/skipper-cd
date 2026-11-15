@@ -93,7 +93,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 
 	// Autosync gate: when _nixos is paused, defer the rebuild. Keep the previous
 	// nix hashes (do not pre-save) so the change stays pending, and return true
-	// so Docker stack deploys still run this pass (docs/autosync.md).
+	// so Docker stack deploys still run this pass (docs/user/autosync.md).
 	if d.isPaused(NixosStateKey) {
 		reason := d.markQueued(NixosStateKey, changed)
 		metrics.DeploysQueued.WithLabelValues(NixosStateKey).Inc()

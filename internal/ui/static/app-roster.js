@@ -1,4 +1,4 @@
-// app-roster.js — the Stacks view (dev-docs/stack-roster-spec.md): the roster
+// app-roster.js — the Stacks view (docs/dev/stack-roster-spec.md): the roster
 // of every declared stack with its last outcome and live health, the peer
 // roster rows, the disabled-stacks strip, the row-click card, and the stack
 // search with its updates-only preset. Cut out of the app script by view (ADR-0035
@@ -554,7 +554,7 @@ App.roster = (function () {
         App.clog.toggle(clogB);
         return;
       }
-      // App-link icon (dev-docs/traefik-app-links-spec.md): a single-host anchor
+      // App-link icon (docs/dev/traefik-app-links-spec.md): a single-host anchor
       // navigates on its own; a multi-host button toggles its popover. Either way
       // it must not also toggle the row's history panel.
       const linkPopA = e.target.closest('.link-pop a');

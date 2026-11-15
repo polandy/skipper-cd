@@ -51,7 +51,7 @@ window.App = {
 
     // 'stacks' SSE snapshot. Inventory, not an event log — every declared stack
     // appears, including never-deployed and disabled ones. See
-    // dev-docs/stack-roster-spec.md.
+    // docs/dev/stack-roster-spec.md.
     rosterSnap: [],
 
     // The registry update-check snapshot ({stacks, checked_at}, ADR-0054) from
@@ -75,7 +75,7 @@ window.App = {
     repoWebURL: '',
 
     // Traefik-routed hostnames per stack, from the 'app_links' SSE snapshot
-    // (dev-docs/traefik-app-links-spec.md): stack name -> hostnames, absent
+    // (docs/dev/traefik-app-links-spec.md): stack name -> hostnames, absent
     // when none were discovered. Feeds the roster row's link icon.
     appLinksSnap: {},
 

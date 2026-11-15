@@ -53,7 +53,7 @@ stacks:
     # probe FROM THE HOST, only for endpoints reachable there. A stack whose
     # compose file declares a healthcheck: gets this gate automatically, so set
     # it only to override the defaults (or to `false` to opt out entirely).
-    # See docs/configuration.md.
+    # See docs/user/configuration.md.
     # deploy_health_check:
     #   timeout_seconds: 60                # optional, default: 60
     #   # url: http://localhost:3000/healthz # optional; host-reachable endpoints only
@@ -86,7 +86,7 @@ nixos_rebuild:
 #   source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons  # <root>/<fmt>/<slug>.<fmt>, tries svg,png,webp
 
 # Outbound notifications on terminal deploy outcomes (works with the UI off).
-# Omit the section entirely to disable. See docs/configuration.md#notifications.
+# Omit the section entirely to disable. See docs/user/configuration.md#notifications.
 # notifications:
 #   - format: signal                       # signal | ntfy | generic (default: generic)
 #     url: http://localhost:8020           # signal-api base; /v2/send is appended

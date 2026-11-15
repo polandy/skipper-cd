@@ -3,7 +3,7 @@ import type { Locator, Page } from '@playwright/test';
 
 // Maske AF: status badges lead with an icon, and the two worst terminal states
 // render as a solid alert chip rather than the smallest text in the column
-// (T3.14 — inverted hierarchy). See dev-docs/e2e-tests.md §4.33.
+// (T3.14 — inverted hierarchy). See docs/dev/e2e-tests.md §4.33.
 //
 // Drives the real self-heal loop (like Maske K) so three badges surface in one
 // run — the startup `success`, a corrective `healed` (a first outage the

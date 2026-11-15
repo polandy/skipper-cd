@@ -71,7 +71,7 @@ func (v stackViews) managed() orphans.Managed {
 }
 
 // appLinkDirs builds the stack-name -> project-dir map app-link detection
-// matches discovered Traefik hosts against (dev-docs/traefik-app-links-spec.md).
+// matches discovered Traefik hosts against (docs/dev/traefik-app-links-spec.md).
 // Only active stacks: a parked (disabled) or removed stack has no icon.
 func (v stackViews) appLinkDirs() map[string]string {
 	stacks := v.effective()

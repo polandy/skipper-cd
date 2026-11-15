@@ -2,7 +2,7 @@ import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 
 // Maske AV: the Stacks view's updates filter (ADR-0054 amendment). See
-// dev-docs/e2e-tests.md §4.49.
+// docs/dev/e2e-tests.md §4.49.
 //
 // The per-chip `⇡` marker (Maske AO) answers "does THIS stack have an update".
 // This mask covers the fleet-level surface built on top of it: an always-visible

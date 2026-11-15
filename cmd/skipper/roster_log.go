@@ -17,7 +17,7 @@ import (
 // disabled carries the names parked via `disabled: true` (stack-discovery
 // mode only — a static host `stacks:` list has no such concept, so callers
 // pass nil there): still discovered in the repo, but deliberately excluded
-// from stacks, matching the Stacks view's roster (dev-docs/stack-roster-spec.md).
+// from stacks, matching the Stacks view's roster (docs/dev/stack-roster-spec.md).
 func logStackRoster(stacks []config.Stack, disabled []string) {
 	slog.Info(prettylog.MsgStacksResolved, "stacks", len(stacks))
 	for _, s := range stacks {

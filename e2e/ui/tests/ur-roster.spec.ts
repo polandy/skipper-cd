@@ -1,8 +1,8 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske R: Stacks roster view (dev-docs/stack-roster-spec.md, shared design in
-// dev-docs/ui-design-concept.md). See dev-docs/e2e-tests.md §4.19.
+// Maske R: Stacks roster view (docs/dev/stack-roster-spec.md, shared design in
+// docs/dev/ui-design-concept.md). See docs/dev/e2e-tests.md §4.19.
 //
 // A third top-level view listing the full stack set skipper owns (stack
 // discovery, ADR-0034) with each stack's last outcome — inventory, not an event

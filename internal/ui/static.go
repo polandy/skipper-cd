@@ -46,7 +46,7 @@ func IndexHandler(theme string, themeSwitcher bool) http.Handler {
 // that makes the UI installable. theme_color/background_color follow the
 // configured theme's dark palette (a manifest cannot respond to a
 // prefers-color-scheme media query, so it always reflects the dark variant,
-// same as before this was made theme-aware). See docs/pwa.md.
+// same as before this was made theme-aware). See docs/user/pwa.md.
 func ManifestHandler(theme string) http.Handler {
 	data, err := staticFS.ReadFile("static/manifest.webmanifest")
 	if err != nil {

@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Locator, Page } from '@playwright/test';
 
-// Maske AC: View-toggle active-bar + options caret (T3.12). See dev-docs/e2e-tests.md §4.30.
+// Maske AC: View-toggle active-bar + options caret (T3.12). See docs/dev/e2e-tests.md §4.30.
 //
 // The active view button carries two distinct cues. A top bar (an intentional
 // ::before rectangle) marks it as the active view — on every view, Logs

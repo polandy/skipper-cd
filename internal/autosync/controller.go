@@ -2,7 +2,7 @@
 // automatically. It resolves an effective state per stack from two layers —
 // config-as-code defaults (immutable) and in-memory UI overrides that are never
 // persisted — and, via Queue, tracks the deploys deferred while sync is paused.
-// See docs/autosync.md for the full specification.
+// See docs/user/autosync.md for the full specification.
 package autosync
 
 import (
@@ -145,7 +145,7 @@ type StackState struct {
 type Snapshot struct {
 	// Version advances on every mutation so a consumer reading this state from
 	// more than one channel can drop a payload older than the one it applied
-	// (dev-docs/autosync-spec.md, "Snapshot ordering"). Not persisted.
+	// (docs/dev/autosync-spec.md, "Snapshot ordering"). Not persisted.
 	Version          uint64       `json:"version"`
 	Global           bool         `json:"global"`
 	GlobalConfig     *bool        `json:"global_config"`

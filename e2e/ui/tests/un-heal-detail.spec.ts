@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 
 // Maske N: Self-heal row detail — badge + drifted-services panel (ADR-0029
-// amendment). See dev-docs/e2e-tests.md §4.15.
+// amendment). See docs/dev/e2e-tests.md §4.15.
 //
 // Builds on Maske K: drives the *real* self-heal loop (health poller reports the
 // stack degraded → self-heal redeploys → the stack recovers → a `healed` row

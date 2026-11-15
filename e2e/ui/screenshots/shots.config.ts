@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
 // excludes this directory: these specs assert nothing about the product, they
 // stage a realistic instance and photograph it for the docs site.
 //
-// The images are generated, never committed (dev-docs/e2e-tests.md §6):
+// The images are generated, never committed (docs/dev/e2e-tests.md §6):
 //
 //   make docs-screenshots          # local
 //   .github/workflows/docs.yml     # CI, before `mkdocs build`

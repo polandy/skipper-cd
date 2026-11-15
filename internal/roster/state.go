@@ -14,7 +14,7 @@ import (
 // deploy events. Disabled carries the names parked via disabled: true in
 // stack-discovery mode (ADR-0034), driving the Deploys view's disabled line
 // (empty in host-list mode). Roster is the full inventory for the Stacks view —
-// every declared stack with its last outcome (dev-docs/stack-roster-spec.md).
+// every declared stack with its last outcome (docs/dev/stack-roster-spec.md).
 type State struct {
 	Disabled []string `json:"disabled"`
 	Roster   []Entry  `json:"roster"`

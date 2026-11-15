@@ -106,7 +106,7 @@ var (
 	})
 
 	// DeploysQueued counts deploys deferred because autosync was paused, per
-	// stack (see docs/autosync.md).
+	// stack (see docs/user/autosync.md).
 	DeploysQueued = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "skipper_deploys_queued_total",
 		Help: "Total number of deploys deferred because autosync was paused, per stack.",

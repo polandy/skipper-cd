@@ -1,6 +1,6 @@
 import { test, expect } from '../fixtures/test';
 
-// Maske O: stack discovery surface (ADR-0034). See dev-docs/e2e-tests.md §4.16.
+// Maske O: stack discovery surface (ADR-0034). See docs/dev/e2e-tests.md §4.16.
 //
 // The harness boots in discovery mode: the origin's stack dirs are the stack
 // set and the repo-root skipper.yaml carries the per-stack overrides. Covers

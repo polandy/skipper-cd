@@ -28,17 +28,17 @@ stacks_base_dir: modules                 # relative to the repo clone; omit for 
 
 Every `<stacks_base_dir>/<name>/docker-compose.yml` in the repo is a stack — skipper-cd discovers them automatically. A reconcile loop pulls, diffs, and redeploys only what changed on a timer, keeping every host converged to the repo. Wire up the (HMAC-signed) push webhook and a merge lands in seconds instead of at the next tick.
 
-New here? The **[Getting Started walkthrough](https://polandy.github.io/skipper-cd/getting-started/)** covers the whole loop end to end — repo layout, running the service, and wiring up the webhook. Run it **[on NixOS](docs/nixos.md)** as a declarative systemd service, or **[with Docker](docs/docker.md)** as a container; the full configuration reference is in **[docs/configuration.md](docs/configuration.md)**.
+New here? The **[Getting Started walkthrough](https://polandy.github.io/skipper-cd/getting-started/)** covers the whole loop end to end — repo layout, running the service, and wiring up the webhook. Run it **[on NixOS](docs/user/nixos.md)** as a declarative systemd service, or **[with Docker](docs/user/docker.md)** as a container; the full configuration reference is in **[docs/user/configuration.md](docs/user/configuration.md)**.
 
 ## Features
 
 - **Deploys only what changed** — SHA-256 hashes of each stack's compose file, env files, watched dirs, and `build:` Dockerfiles are persisted; unchanged stacks are skipped.
-- **Automatic rollback** — if `docker compose up` fails, or an optional post-deploy health check (compose `--wait` and/or an HTTP probe) doesn't pass, skipper-cd restores the previous compose file from the last deployed Git commit ([docs](docs/configuration.md#health-check-gated-rollback)).
+- **Automatic rollback** — if `docker compose up` fails, or an optional post-deploy health check (compose `--wait` and/or an HTTP probe) doesn't pass, skipper-cd restores the previous compose file from the last deployed Git commit ([docs](docs/user/configuration.md#health-check-gated-rollback)).
 - **NixOS rebuilds** — optionally run `nixos-rebuild switch` before stack deploys when `.nix` files change, so one webhook updates both the host and its containers.
-- **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([docs](docs/autosync.md)).
+- **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([docs](docs/user/autosync.md)).
 - **Web UI** — a single embedded page with live deploy status, live container logs, service icons, an event log, and installable as a PWA.
-- **Orphan detection** — surfaces compose projects still running on the host that your current stack set no longer covers, e.g. a stack directory removed from the repo ([docs](docs/state.md#orphaned-stacks)).
-- **Deploy notifications** — POST a message to Signal (via `signal-cli-rest-api`) or any HTTP endpoint (ntfy, Gotify, custom) on terminal deploy outcomes ([docs](docs/configuration.md#notifications)).
+- **Orphan detection** — surfaces compose projects still running on the host that your current stack set no longer covers, e.g. a stack directory removed from the repo ([docs](docs/user/state.md#orphaned-stacks)).
+- **Deploy notifications** — POST a message to Signal (via `signal-cli-rest-api`) or any HTTP endpoint (ntfy, Gotify, custom) on terminal deploy outcomes ([docs](docs/user/configuration.md#notifications)).
 - **Observability** — Prometheus metrics and a `/healthz` endpoint out of the box.
 - **Secure webhooks** — HMAC-SHA256 signature verification for Gitea and GitHub/Forgejo.
 
@@ -74,33 +74,33 @@ On each reconcile tick — or on an incoming webhook or at startup — skipper-c
 
 1. Checks the push payload's `ref`: only pushes to the configured `branch` trigger a deploy (payloads without a `ref`, e.g. a manual `curl`, always trigger one).
 2. Pulls the latest commits from the configured repository.
-3. **NixOS rebuild** (optional): hashes all `*.nix` files and `flake.lock`; if any changed, runs `nixos-rebuild switch` in a transient systemd unit. If the rebuild fails, all stack deploys are aborted. See [NixOS](docs/nixos.md#nixos-rebuild).
+3. **NixOS rebuild** (optional): hashes all `*.nix` files and `flake.lock`; if any changed, runs `nixos-rebuild switch` in a transient systemd unit. If the rebuild fails, all stack deploys are aborted. See [NixOS](docs/user/nixos.md#nixos-rebuild).
 4. Computes SHA-256 hashes for each stack's `docker-compose.yml`, any declared `env_files`, the global `vars_file`, watched directories, and any `Dockerfile`s of `build:` services — then compares them against the previous deployment and **skips unchanged stacks**.
 5. For changed stacks, runs `docker compose pull` for remote images only, `docker compose build --pull` when `build:` services are present, then `docker compose up -d --remove-orphans`.
-6. **Automatic rollback:** if `docker compose up` fails — or a configured [health check](docs/configuration.md#health-check-gated-rollback) does not pass afterwards — retrieves the previous `docker-compose.yml` from the last deployed commit and brings containers back up with it (marked `rolled_back`; `rolled_back_unhealthy` when even the restored version fails the health gate), otherwise `failed`.
+6. **Automatic rollback:** if `docker compose up` fails — or a configured [health check](docs/user/configuration.md#health-check-gated-rollback) does not pass afterwards — retrieves the previous `docker-compose.yml` from the last deployed commit and brings containers back up with it (marked `rolled_back`; `rolled_back_unhealthy` when even the restored version fails the health gate), otherwise `failed`.
 7. Stops any `on_demand_containers` so an on-demand scheduler can take over their lifecycle, and logs the git diff of each changed file.
 
 Concurrent webhook requests and the startup deploy are serialized by a deployment lock; if a deploy is already running, later requests wait for it to finish.
 
-**Autosync** (steps 3 and 5) can be paused globally or per stack. While a stack is paused, a detected change is not deployed: it is marked `queued`, logged, and left pending, then deployed automatically when sync is re-enabled. Autosync is on everywhere by default. See [Autosync](docs/autosync.md).
+**Autosync** (steps 3 and 5) can be paused globally or per stack. While a stack is paused, a detected change is not deployed: it is marked `queued`, logged, and left pending, then deployed automatically when sync is re-enabled. Autosync is on everywhere by default. See [Autosync](docs/user/autosync.md).
 
 ## Documentation
 
 | Topic | Description |
 |---|---|
 | **[Getting Started](https://polandy.github.io/skipper-cd/getting-started/)** | End-to-end walkthrough — deploy-repo layout, running the service, and wiring up the webhook. |
-| **[Configuration](docs/configuration.md)** | Full config reference — top-level & stack fields, `vars_file`, service icons, notifications. |
-| **[NixOS](docs/nixos.md)** | Running skipper-cd on NixOS: the `nixos_rebuild` feature, the NixOS module, and the self-registering-stacks pattern. |
-| **[Docker](docs/docker.md)** | Running skipper-cd as a container, and how locally-built images are handled. |
-| **[Autosync](docs/autosync.md)** | Pausing and queueing deploys, globally and per stack. |
-| **[Metrics](docs/metrics.md)** | Prometheus metrics exposed on `/metrics`. |
-| **[State File](docs/state.md)** | Format and semantics of `state.yaml`. |
-| **[Install as App (PWA)](docs/pwa.md)** | Installing the web UI as a Progressive Web App. |
-| **[Contributor docs](dev-docs/)** | ADRs, the E2E test spec, and feature specs — internal design records, not part of the user manual. |
+| **[Configuration](docs/user/configuration.md)** | Full config reference — top-level & stack fields, `vars_file`, service icons, notifications. |
+| **[NixOS](docs/user/nixos.md)** | Running skipper-cd on NixOS: the `nixos_rebuild` feature, the NixOS module, and the self-registering-stacks pattern. |
+| **[Docker](docs/user/docker.md)** | Running skipper-cd as a container, and how locally-built images are handled. |
+| **[Autosync](docs/user/autosync.md)** | Pausing and queueing deploys, globally and per stack. |
+| **[Metrics](docs/user/metrics.md)** | Prometheus metrics exposed on `/metrics`. |
+| **[State File](docs/user/state.md)** | Format and semantics of `state.yaml`. |
+| **[Install as App (PWA)](docs/user/pwa.md)** | Installing the web UI as a Progressive Web App. |
+| **[Contributor docs](docs/dev/)** | ADRs, the E2E test spec, and feature specs — internal design records, not part of the user manual. |
 
 ## Releases
 
-Releases are automated with [release-please](https://github.com/googleapis/release-please) based on the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) history (see [ADR-0011](dev-docs/adr/0011-release-automation-via-conventional-commits.md)). Every push to `main` updates a release PR that collects the pending changes; merging it creates the GitHub release, the `v*` tag, the CHANGELOG entry, and triggers the Docker image build.
+Releases are automated with [release-please](https://github.com/googleapis/release-please) based on the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) history (see [ADR-0011](docs/dev/adr/0011-release-automation-via-conventional-commits.md)). Every push to `main` updates a release PR that collects the pending changes; merging it creates the GitHub release, the `v*` tag, the CHANGELOG entry, and triggers the Docker image build.
 
 ## AI-Assisted Development
 

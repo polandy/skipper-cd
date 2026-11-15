@@ -1,10 +1,10 @@
-# Builds the MkDocs Material site from docs/ and deploys it to GitHub Pages.
+# Builds the MkDocs Material site from docs/user/ and deploys it to GitHub Pages.
 # Runs when the docs, the MkDocs config, this workflow, or anything the rendered
 # screenshots depend on (the web UI and the render harness) changes.
 #
 # The landing-page screenshots are NOT committed — they are rendered here, from a
 # seeded instance of the very UI in this commit, and only then does mkdocs build
-# (see the screenshots job and dev-docs/e2e-tests.md §5.1). That keeps a churning
+# (see the screenshots job and docs/dev/e2e-tests.md §5.1). That keeps a churning
 # binary out of git history: a PNG never delta-compresses, so committing one per
 # UI change would grow the repo without bound.
 #
@@ -20,14 +20,14 @@ on:
   push:
     branches: [main]
     paths:
-      - "docs/**"
+      - "docs/user/**"
       - "mkdocs.yml"
       - ".github/workflows/docs.yml"
       - "internal/ui/**"
       - "e2e/ui/**"
   pull_request:
     paths:
-      - "docs/**"
+      - "docs/user/**"
       - "mkdocs.yml"
       - ".github/workflows/docs.yml"
       - "internal/ui/**"
@@ -40,7 +40,7 @@ permissions:
   id-token: write
 
 jobs:
-  # Renders docs/assets/screenshots/*.png from a seeded skipper, in Playwright's
+  # Renders docs/user/assets/screenshots/*.png from a seeded skipper, in Playwright's
   # pinned container (browsers and fonts preinstalled — the same image the UI e2e
   # job uses, so the rendering is identical). Only Go is added on top, to build
   # the binary the render harness drives.
@@ -75,7 +75,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: docs-screenshots
-          path: docs/assets/screenshots/*.png
+          path: docs/user/assets/screenshots/*.png
           retention-days: 1
       - uses: actions/upload-artifact@v7
         if: failure()
@@ -94,12 +94,12 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: docs-screenshots
-          path: docs/assets/screenshots
+          path: docs/user/assets/screenshots
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
           cache: pip
-      - run: pip install -r docs/requirements.txt
+      - run: pip install -r docs/user/requirements.txt
       - run: mkdocs build --strict
       # Only the main-branch push needs to publish; PR runs stop at the strict
       # build above as a validation gate.

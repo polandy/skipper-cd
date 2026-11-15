@@ -1,7 +1,7 @@
 import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 
-// Maske AS: the rows line up on a phone. See dev-docs/e2e-tests.md §4.46.
+// Maske AS: the rows line up on a phone. See docs/dev/e2e-tests.md §4.46.
 //
 // The 2026-08-10 report from a phone: the Stacks rows looked untidy. The cause
 // was the status column — an `auto` track whose contents were left-aligned, so
@@ -134,7 +134,7 @@ test.describe("Maske AS: the Stacks row lines up on a phone", () => {
   });
 
   // UAS4 — the Deploys row gets the same edge. The two views share one look
-  // (dev-docs/ui-design-concept.md), so fixing the roster alone would have left
+  // (docs/dev/ui-design-concept.md), so fixing the roster alone would have left
   // the sibling view ragged in exactly the way the report was about.
   test("UAS4: the deploy row status cell shares the same right edge", async ({
     page,

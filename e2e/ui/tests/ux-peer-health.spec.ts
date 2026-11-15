@@ -1,8 +1,8 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske X: Peer health parity (dev-docs/multi-host-spec.md, ADR-0048).
-// See dev-docs/e2e-tests.md §4.25.
+// Maske X: Peer health parity (docs/dev/multi-host-spec.md, ADR-0048).
+// See docs/dev/e2e-tests.md §4.25.
 //
 // The primary fans in each peer's health / healthwatch / app_links (not just its
 // roster + deploys), so a peer's rows reach the same at-a-glance detail as a

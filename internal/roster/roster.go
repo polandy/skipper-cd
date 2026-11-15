@@ -5,7 +5,7 @@
 // Unlike the deploy table — an event log that only shows stacks with recent
 // events — the roster is inventory: every declared stack appears, including
 // ones that have never deployed and ones parked with disabled: true. It is
-// pure visualization; see dev-docs/stack-roster-spec.md.
+// pure visualization; see docs/dev/stack-roster-spec.md.
 package roster
 
 import (

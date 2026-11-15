@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske AA: Accessibility sweep (Tier 2 — T2.5–T2.10). See dev-docs/e2e-tests.md §4.28.
+// Maske AA: Accessibility sweep (Tier 2 — T2.5–T2.10). See docs/dev/e2e-tests.md §4.28.
 //
 // Covers the keyboard/AT-facing behaviours the a11y sweep added: a keyboard
 // focus ring on every control (T2.6), drawer focus management + trap (T2.7), an

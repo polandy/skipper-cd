@@ -24,7 +24,7 @@ const (
 	// is back on the old compose file yet not verified healthy.
 	StatusRolledBackUnhealthy Status = "rolled_back_unhealthy"
 	// StatusQueued marks a deploy deferred because autosync is paused; the
-	// change waits and deploys when sync resumes. See docs/autosync.md.
+	// change waits and deploys when sync resumes. See docs/user/autosync.md.
 	StatusQueued Status = "queued"
 	// StatusHealed marks a corrective redeploy that self-heal ran to restore a
 	// stack that had drifted from its deployed running state (a stopped/removed

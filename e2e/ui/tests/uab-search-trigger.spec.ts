@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Page } from '@playwright/test';
 
-// Maske AB: Always-visible search trigger (T3.11). See dev-docs/e2e-tests.md §4.29.
+// Maske AB: Always-visible search trigger (T3.11). See docs/dev/e2e-tests.md §4.29.
 //
 // Before this, the deploys/stacks stack filter was desktop-invisible — only
 // type-to-search revealed it, so the primary filter was an easter egg. A quiet

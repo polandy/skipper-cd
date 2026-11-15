@@ -93,7 +93,7 @@ type Config struct {
 
 	// Autosync and Queue install the autosync controller and the pending
 	// registry. A nil Autosync means autosync is always on; a nil Queue
-	// disables pending tracking. See docs/autosync.md.
+	// disables pending tracking. See docs/user/autosync.md.
 	Autosync *autosync.Controller
 	Queue    *autosync.Queue
 

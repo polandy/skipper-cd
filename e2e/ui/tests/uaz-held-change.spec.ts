@@ -2,7 +2,7 @@ import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 
 // Maske AZ: a held change and its retry on the Stacks view (ADR-0062).
-// See dev-docs/e2e-tests.md §4.53.
+// See docs/dev/e2e-tests.md §4.53.
 //
 // A deploy that rolls back (STUB_DOCKER_FAIL_NTH_UP=2: up#1 startup ok, up#2
 // fails, up#3 rollback ok) holds its change: the roster row carries the held

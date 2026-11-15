@@ -1,7 +1,7 @@
-// Package prettylog implements the "pretty" log_format (docs/configuration.md):
+// Package prettylog implements the "pretty" log_format (docs/user/configuration.md):
 // a colored, icon-led slog.Handler for interactive console use. It recognizes
 // skipper-cd's own deploy-lifecycle messages and renders them as a short
-// narrative that mirrors the web UI's Deploys view (dev-docs/adr/0042-pretty-console-log.md);
+// narrative that mirrors the web UI's Deploys view (docs/dev/adr/0042-pretty-console-log.md);
 // every other record still renders cleanly via a level-based fallback, so a
 // log line anywhere in the codebase is never dropped or garbled.
 package prettylog

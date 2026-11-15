@@ -2,7 +2,7 @@ import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
 
 // Maske BA: a change that failed before it started backs off, then is held
-// (ADR-0064). See dev-docs/e2e-tests.md §4.54.
+// (ADR-0064). See docs/dev/e2e-tests.md §4.54.
 //
 // STUB_DOCKER_FAIL_BUILDS=3 fails the first three builds the way BuildKit
 // reports a failed RUN step. The pushed Dockerfile fails its first attempt, so

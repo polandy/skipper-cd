@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import type { Locator, Page } from '@playwright/test';
 
-// Maske AK: per-service versions in the Stacks view. See dev-docs/e2e-tests.md
+// Maske AK: per-service versions in the Stacks view. See docs/dev/e2e-tests.md
 // §4.37.
 //
 // `compose ps` reports the image each container runs, which rides the health

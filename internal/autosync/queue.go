@@ -17,7 +17,7 @@ type PendingItem struct {
 // Queue is the in-memory registry of deploys deferred while sync is paused. It
 // mirrors the deploy hash state (the source of truth for what redeploys) so the
 // UI can show a count and an ordered list; it is derived state and is never
-// persisted. See docs/autosync.md.
+// persisted. See docs/user/autosync.md.
 type Queue struct {
 	mu      sync.Mutex
 	pending map[string]PendingItem

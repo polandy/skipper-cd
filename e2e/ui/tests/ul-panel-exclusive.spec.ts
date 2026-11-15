@@ -1,6 +1,6 @@
 import { test, expect } from '../fixtures/test';
 
-// Maske L: one open panel per deploy row. See dev-docs/e2e-tests.md §4.13.
+// Maske L: one open panel per deploy row. See docs/dev/e2e-tests.md §4.13.
 //
 // The health panel and the files/diff panel are mutually exclusive on a row:
 // opening one closes the other, so the resulting layout never depends on the

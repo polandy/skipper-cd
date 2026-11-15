@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { openRowMenu } from "../fixtures/menu";
 
 // Maske AU: a standing failure repeats without flooding the history (ADR-0056).
-// See dev-docs/e2e-tests.md §4.48.
+// See docs/dev/e2e-tests.md §4.48.
 //
 // Every `up` fails, so each sync produces the identical `failed` outcome — the
 // shape that on 2026-08-18 put 199 identical records into one stack's 200-record

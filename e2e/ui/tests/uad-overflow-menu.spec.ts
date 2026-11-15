@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import { openRowMenu } from '../fixtures/menu';
 
-// Maske AD: the deploy row's ⋯ overflow menu (T3.13). See dev-docs/e2e-tests.md §4.31.
+// Maske AD: the deploy row's ⋯ overflow menu (T3.13). See docs/dev/e2e-tests.md §4.31.
 //
 // The newest row per stack collapses its secondary actions — deploy history,
 // container logs and deploy hooks — behind one ⋯ button, so the resting row is

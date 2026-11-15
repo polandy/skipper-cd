@@ -1,6 +1,6 @@
 import { test, expect } from '../fixtures/test';
 
-// Maske K: Self-heal (ADR-0029). See dev-docs/e2e-tests.md §4.12.
+// Maske K: Self-heal (ADR-0029). See docs/dev/e2e-tests.md §4.12.
 //
 // Drives the *real* self-heal loop through the running binary: the health poller
 // (healthPoll: 1) reports a stack degraded via the stub docker's scripted `ps`

@@ -1,6 +1,6 @@
 import { test, expect } from '../fixtures/test';
 
-// Maske H: Stack health (ADR-0027). See dev-docs/e2e-tests.md §4.9.
+// Maske H: Stack health (ADR-0027). See docs/dev/e2e-tests.md §4.9.
 //
 // The health poller is enabled with `healthPoll: 1` (poll every second) and each
 // stack's `docker compose ps --format json` output is scripted via the stub
