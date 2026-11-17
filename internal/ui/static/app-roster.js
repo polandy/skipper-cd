@@ -182,7 +182,9 @@ App.roster = (function () {
     const panel = rosterList.querySelector('.detail-panel:not(.peer-panel)');
     if (!panel || panel.dataset.links === linksKey(panel.dataset.stack, '')) return;
     const c = detailContext(panel.dataset.stack, '');
-    if (c) renderHead(panel, c, panel.dataset.tab);
+    if (!c) return;
+    renderHead(panel, c, panel.dataset.tab);
+    App.stream.applyHookRun(); // the head was re-rendered — re-mark a running hook
   }
 
   // updateRosterHealth patches each local roster row's Health and Version cells
