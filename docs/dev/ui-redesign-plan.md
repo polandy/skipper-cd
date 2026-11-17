@@ -1,6 +1,6 @@
 # UI redesign plan — one design for the Stacks and Deploys views
 
-Status: **draft for review** (2026-11-17). Nothing here is implemented yet.
+Status: **approved** (2026-11-17), implementation in the PR sequence of §6.
 Mockup: the private artifact "Stacks view mockup" (toggle *View → Deploys* for
 the second view, *Layout → Side panel* for the side panel).
 
@@ -302,18 +302,22 @@ against the mockup.
 - **Width 1000–1200 px** with side panel would starve the list; hence inline
   there.
 
-## 8. Open questions for andy
+## 8. Decisions
 
-1. **Placement**: side panel on desktop (recommended), or keep the inline
-   bound card everywhere and only redesign its content?
-2. **Error strip**: remove completely (cause in the panel only), or keep the
-   condensed cause as one muted line in the failed row?
-3. **Health on Deploys rows**: drop the health pill (current health lives in
-   Stacks and in the panel's Containers tab), or keep a dot?
-4. **Columns**: fold Duration/Files/Commit into the Time cell — acceptable to
-   lose them as sortable-looking columns?
-5. **Deep links**: worth a URL hash (`#deploys/vaultwarden/412`) in this round?
-6. **Naming**: "Containers" in both views (recommended) or "Services"?
-7. **Hooks**: header action opening a pane (as mocked) or a fifth tab?
-8. **This plan file**: merge to `main` with PR 1, or keep it branch-only and
-   let the ADR + UI_SPEC carry the decisions?
+Reviewed with andy on 2026-11-17; the plan was approved as written, so each
+open question takes the option this plan and the mockup already assume:
+
+1. **Placement**: side panel on desktop ≥ 1200 px, inline 701–1199 px, sheet
+   on phones (§3.4).
+2. **Error strip**: removed completely; the condensed cause is the panel's
+   first line. The gutter, the tinted badge and `held` carry the failure in
+   the list (re-checked on the hand test, §7).
+3. **Health on Deploys rows**: dropped; current health lives in the Stacks
+   view and the panel's Containers tab.
+4. **Columns**: Duration, Files and Commit fold into the Time cell as muted
+   text.
+5. **Deep links**: stays PR 6, optional, decided after PR 5 has landed.
+6. **Naming**: "Containers" in both views.
+7. **Hooks**: a header action opening a pane, as mocked — not a fifth tab.
+8. **This plan file**: merges to `main` with PR 1, so the decision lands
+   together with the first code behind it.
