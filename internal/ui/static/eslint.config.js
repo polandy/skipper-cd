@@ -214,6 +214,7 @@ module.exports = [
         DETAIL_VIEW: 'readonly',
         DEPLOY_TAB: 'readonly',
         STACK_TAB: 'readonly',
+        changedFileCount: 'readonly',
         deployTabs: 'readonly',
         deployPanelHTML: 'readonly',
         deployPaneHTML: 'readonly',
