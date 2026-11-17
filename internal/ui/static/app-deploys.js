@@ -28,16 +28,11 @@ App.deploys = (function () {
     clogButton,
     hooksFor,
     hooksBadgeButton,
-    createHooksPanel,
-    closeHooksPanel,
     populateIcon,
-    closeHealthPanel,
-    closeDiffPanel,
-    closeAuditPanel,
-    createAuditPanel,
-    createHealthPanel,
   } = App.panels;
-  const { hostChip, hostChipKeydown, togglePeerDetail, toggleHostFilterTo } = App.hosts;
+  const { hostChip, hostChipKeydown, toggleHostFilterTo } = App.hosts;
+  const detail = App.detail;
+  const VIEW = DETAIL_VIEW.deploys;
 
   const tbody = document.getElementById('tbody');
   const table = document.getElementById('deploy-table');
@@ -437,7 +432,7 @@ App.deploys = (function () {
         }
       } else if (pill) {
         pill.remove();
-        closeHealthPanel(row);
+        detail.closeIf(VIEW, row, DETAIL_TAB.health);
       }
 
       // Secondary per-stack actions (history, container logs, deploy hooks) live
@@ -448,8 +443,8 @@ App.deploys = (function () {
         if (staleWrap) {
           closeMoreMenuIf(staleWrap);
           staleWrap.remove();
-          closeAuditPanel(row);
-          closeHooksPanel(row);
+          detail.closeIf(VIEW, row, DETAIL_TAB.history);
+          detail.closeIf(VIEW, row, DETAIL_TAB.hooks);
         }
       } else {
         const pop = ensureRowMore(cell, stack).querySelector('.more-pop');
@@ -483,7 +478,7 @@ App.deploys = (function () {
             pop.appendChild(moreMenuItem(hooksBadgeButton(stack, hooks), 'Deploy hooks'));
         } else if (hbadge) {
           hbadge.remove();
-          closeHooksPanel(row);
+          detail.closeIf(VIEW, row, DETAIL_TAB.hooks);
         }
       }
     });
@@ -548,16 +543,13 @@ App.deploys = (function () {
     });
   }
 
-  // removeQueuedRow drops a stack's pending (queued) row and any panel opened
-  // below it. The close helpers cover every panel type a queued row can carry
-  // (files/diff, health, deploy history), so a drained row never strands a
-  // panel in the table. No-op when the stack has no queued row.
+  // removeQueuedRow drops a stack's pending (queued) row and its open detail,
+  // so a drained row never strands a panel in the table. No-op when the stack
+  // has no queued row.
   function removeQueuedRow(stack) {
     const row = queuedRows[stack];
     if (!row) return;
-    closeDiffPanel(row);
-    closeHealthPanel(row);
-    closeAuditPanel(row);
+    detail.closeIf(VIEW, row);
     row.remove();
     delete queuedRows[stack];
   }
@@ -569,11 +561,9 @@ App.deploys = (function () {
     if (!evt.supersedes_id) return;
     const row = tbody.querySelector('.event-row[data-event-id="' + evt.supersedes_id + '"]');
     if (!row) return;
-    closeDiffPanel(row);
-    closeHealthPanel(row);
-    closeAuditPanel(row);
-    const detail = row.nextElementSibling;
-    if (detail && detail.classList.contains('error-detail')) detail.remove();
+    detail.closeIf(VIEW, row);
+    const errorDetail = row.nextElementSibling;
+    if (errorDetail && errorDetail.classList.contains('error-detail')) errorDetail.remove();
     row.remove();
   }
 
@@ -856,14 +846,8 @@ App.deploys = (function () {
         return;
       }
     }
-    if (!row) return;
-    const next = row.nextElementSibling;
-    if (next && next.classList.contains('audit-panel')) return; // already open
-    closeHealthPanel(row);
-    closeHooksPanel(row);
-    closeDiffPanel(row); // one panel per row
-    row.classList.add('audit-open');
-    row.after(createAuditPanel(row.dataset.stack));
+    if (!row || detail.isOpen(VIEW, row, DETAIL_TAB.history)) return;
+    detail.show(VIEW, row, DETAIL_TAB.history);
   }
 
   // ── Deploys table click delegation (row panels) ──
@@ -1093,18 +1077,7 @@ App.deploys = (function () {
       const hbadge = e.target.closest('.hooks-badge');
       if (hbadge) {
         const hrow = hbadge.closest('.event-row');
-        if (hrow) {
-          const hnext = hrow.nextElementSibling;
-          if (hnext && hnext.classList.contains('hooks-panel')) {
-            closeHooksPanel(hrow);
-          } else {
-            closeHealthPanel(hrow);
-            closeDiffPanel(hrow);
-            closeAuditPanel(hrow); // one panel per row
-            hrow.classList.add('hooks-open');
-            hrow.after(createHooksPanel(hrow.dataset.stack));
-          }
-        }
+        if (hrow) detail.toggle(VIEW, hrow, DETAIL_TAB.hooks);
         return;
       }
 
@@ -1121,18 +1094,7 @@ App.deploys = (function () {
       const histBtn = e.target.closest('.history-btn');
       if (histBtn) {
         const arow = histBtn.closest('.event-row');
-        if (arow) {
-          const anext = arow.nextElementSibling;
-          if (anext && anext.classList.contains('audit-panel')) {
-            closeAuditPanel(arow);
-          } else {
-            closeHealthPanel(arow);
-            closeHooksPanel(arow); // one panel per row
-            closeDiffPanel(arow);
-            arow.classList.add('audit-open');
-            arow.after(createAuditPanel(arow.dataset.stack));
-          }
-        }
+        if (arow) detail.toggle(VIEW, arow, DETAIL_TAB.history);
         return;
       }
 
@@ -1145,22 +1107,10 @@ App.deploys = (function () {
         // never the local health panel (which would key the peer's stack name into
         // the primary's own health).
         if (hrow && hrow.classList.contains('peer-row')) {
-          togglePeerDetail(hrow);
+          detail.toggle(VIEW, hrow, DETAIL_TAB.peer);
           return;
         }
-        if (hrow) {
-          const hnext = hrow.nextElementSibling;
-          if (hnext && hnext.classList.contains('health-panel')) {
-            closeHealthPanel(hrow);
-          } else {
-            closeDiffPanel(hrow);
-            closeHooksPanel(hrow); // one panel per row
-            closeAuditPanel(hrow);
-            hrow.dataset.health = hpill.dataset.health || 'unknown'; // tint the row (variant A)
-            hrow.classList.add('health-open');
-            hrow.after(createHealthPanel(hrow.dataset.stack));
-          }
-        }
+        if (hrow) detail.toggle(VIEW, hrow, DETAIL_TAB.health, { health: hpill.dataset.health });
         return;
       }
 
@@ -1173,23 +1123,9 @@ App.deploys = (function () {
       if (healRow) {
         const healBtn = healPill || healRow.querySelector('.heal-pill');
         if (!healBtn) return;
-        const hnext = healRow.nextElementSibling;
-        if (hnext && hnext.classList.contains('heal-panel')) {
-          closeDiffPanel(healRow);
-        } else {
-          closeHealthPanel(healRow);
-          closeHooksPanel(healRow); // one panel per row
-          closeAuditPanel(healRow);
-          closeDiffPanel(healRow);
-          healRow.classList.add('diff-open'); // shares the panel's status bar
-          const drift = JSON.parse(healBtn.dataset.drift || '[]');
-          healRow.after(
-            createHealPanel(drift, {
-              stack: healRow.dataset.stack,
-              status: healRow.dataset.status,
-            }),
-          );
-        }
+        detail.toggle(VIEW, healRow, DETAIL_TAB.heal, {
+          drift: JSON.parse(healBtn.dataset.drift || '[]'),
+        });
         return;
       }
 
@@ -1197,93 +1133,69 @@ App.deploys = (function () {
       const row = pill ? pill.closest('.event-row') : e.target.closest('.event-row');
       if (!row) return;
       if (row.classList.contains('peer-row')) {
-        togglePeerDetail(row);
+        detail.toggle(VIEW, row, DETAIL_TAB.peer);
         return;
       } // read-only detail, not a local diff
       const pillEl = pill || row.querySelector('.files-pill');
-      if (!pillEl) {
-        // A row with no changed-files panel (e.g. a deploy with nothing hashed)
-        // still has relevant info — its deploy history. Never dead-end a click:
-        // toggle the audit panel instead of doing nothing.
-        const anext = row.nextElementSibling;
-        if (anext && anext.classList.contains('audit-panel')) {
-          closeAuditPanel(row);
-        } else {
-          closeHealthPanel(row);
-          closeHooksPanel(row);
-          closeDiffPanel(row);
-          row.classList.add('audit-open');
-          row.after(createAuditPanel(row.dataset.stack));
-        }
-        return;
-      }
-      const existing = row.nextElementSibling;
-      if (
-        existing &&
-        (existing.classList.contains('files-list') ||
-          existing.classList.contains('diff-panel') ||
-          existing.classList.contains('load-error'))
-      ) {
-        closeDiffPanel(row);
-        return;
-      }
-      closeHealthPanel(row);
-      closeHooksPanel(row); // one panel per row
-      closeAuditPanel(row);
+      // A row with no changed-files panel (e.g. a deploy with nothing hashed)
+      // still has relevant info — its deploy history. Never dead-end a click.
+      if (!pillEl) detail.toggle(VIEW, row, DETAIL_TAB.history);
+      else
+        detail.toggle(VIEW, row, DETAIL_TAB.changes, { files: JSON.parse(pillEl.dataset.files) });
+    });
+  }
 
-      const eventId = row.dataset.eventId;
-      const hasDiffs = row.dataset.hasDiffs === '1';
-      // Bind the panel to its row (variant A): the shared status bar/tint keys off
-      // the row's status, so pass it to the panel and mark the row open.
+  // The changes pane: the deploy's diff when one was recorded, else its file
+  // list. Bound to its row (variant A) through the row's status.
+  detail.registerPane(DETAIL_TAB.changes, {
+    openClass: 'diff-open',
+    build: function (row, slot, opts) {
       const meta = {
         stack: row.dataset.stack,
         status: row.dataset.status,
         // Lets both panels name the services each changed file reached.
         fileChanges: row.dataset.fileChanges ? JSON.parse(row.dataset.fileChanges) : null,
       };
-
-      // Mark the row open for any panel (diff or plain file list) so it keeps the
-      // shared status bar; the trailing panel binds to it via --st.
-      row.classList.add('diff-open');
-      if (hasDiffs && eventId) {
-        // runDiffFetch drops a loading placeholder after the row and fills it once
-        // the fetch resolves. Named so the load-error's Retry can re-run it.
-        const runDiffFetch = function () {
-          const loading = document.createElement('div');
-          loading.className = 'diff-panel bound';
-          loading.dataset.status = meta.status;
-          loading.innerHTML = '<div class="diff-loading">Loading diffs...</div>';
-          row.after(loading);
-          fetchDiffs(eventId, function (diffs, commits, err) {
-            // The placeholder gone means the panel was closed (or replaced by the
-            // health panel) while loading — don't resurrect it.
-            if (!loading.parentNode) return;
-            loading.remove();
-            if (err) {
-              // Fetch failed: an amber load-error instead of a silent drop to the
-              // file list, so a network hiccup isn't mistaken for "no diff"
-              // (T4.16). Retry re-runs the fetch from the loading placeholder.
-              row.after(
-                createLoadError("Couldn't load the diff.", function (le) {
-                  le.remove();
-                  runDiffFetch();
-                }),
-              );
-            } else if (diffs && Object.keys(diffs).length > 0) {
-              row.after(renderDiffPanel(diffs, commits, meta));
-            } else {
-              const files = JSON.parse(pillEl.dataset.files);
-              row.after(createFilesPanel(files, meta));
-            }
-          });
-        };
-        runDiffFetch();
-      } else {
-        const files = JSON.parse(pillEl.dataset.files);
-        row.after(createFilesPanel(files, meta));
+      const eventId = row.dataset.eventId;
+      if (row.dataset.hasDiffs !== '1' || !eventId) {
+        slot.set(createFilesPanel(opts.files, meta));
+        return;
       }
-    });
-  }
+      // runDiffFetch shows a loading placeholder and fills the pane once the
+      // fetch resolves. Named so the load-error's Retry can re-run it.
+      const runDiffFetch = function () {
+        const loading = document.createElement('div');
+        loading.className = 'diff-panel bound';
+        loading.dataset.status = meta.status;
+        loading.innerHTML = '<div class="diff-loading">Loading diffs...</div>';
+        slot.set(loading);
+        fetchDiffs(eventId, function (diffs, commits, err) {
+          if (!slot.live()) return; // closed or replaced while loading
+          if (err) {
+            // An amber load-error rather than a silent drop to the file list,
+            // so a network hiccup isn't mistaken for "no diff" (T4.16).
+            slot.set(createLoadError("Couldn't load the diff.", runDiffFetch));
+          } else if (diffs && Object.keys(diffs).length > 0) {
+            slot.set(renderDiffPanel(diffs, commits, meta));
+          } else {
+            slot.set(createFilesPanel(opts.files, meta));
+          }
+        });
+      };
+      runDiffFetch();
+    },
+  });
+
+  // The self-heal pane: the drift a corrective redeploy fixed (ADR-0029). It
+  // shares the changes pane's status bar.
+  detail.registerPane(DETAIL_TAB.heal, {
+    openClass: 'diff-open',
+    build: function (row, slot, opts) {
+      slot.set(
+        createHealPanel(opts.drift, { stack: row.dataset.stack, status: row.dataset.status }),
+      );
+    },
+  });
 
   return {
     isDeploying,

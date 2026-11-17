@@ -281,11 +281,6 @@ App.panels = (function () {
       group('post_deploy', hooks.post_deploy);
     return panel;
   }
-  function closeHooksPanel(row) {
-    const next = row.nextElementSibling;
-    if (next && next.classList.contains('hooks-panel')) next.remove();
-    row.classList.remove('hooks-open');
-  }
 
   // Wraps the running-hook sub-label, shared by both views so it looks
   // identical in Deploys and Stacks.
@@ -322,41 +317,9 @@ App.panels = (function () {
     chip.textContent = (stack || '?').charAt(0);
   }
 
-  function closeHealthPanel(row) {
-    const next = row.nextElementSibling;
-    if (next && next.classList.contains('health-panel')) next.remove();
-    row.classList.remove('health-open');
-    row.removeAttribute('data-health');
-  }
-
-  // closeDiffPanel is the files/diff counterpart of closeHealthPanel. Together
-  // they enforce one open panel per row: opening either panel first closes the
-  // other, so a toggleable panel is always the row's direct next sibling.
-  function closeDiffPanel(row) {
-    const next = row.nextElementSibling;
-    if (
-      next &&
-      (next.classList.contains('files-list') ||
-        next.classList.contains('diff-panel') ||
-        next.classList.contains('heal-panel') ||
-        next.classList.contains('load-error'))
-    )
-      next.remove();
-    row.classList.remove('diff-open');
-  }
-
   // Counter behind every deploy-history panel's raw-list id (see the fold
   // toggle below); a panel is rebuilt on each open, so it only ever grows.
   let auditHistorySeq = 0;
-
-  // closeAuditPanel is the deploy-history counterpart, part of the same
-  // one-panel-per-row rule (ADR-0033): opening the history panel closes the
-  // health/diff panel and vice versa.
-  function closeAuditPanel(row) {
-    const next = row.nextElementSibling;
-    if (next && next.classList.contains('audit-panel')) next.remove();
-    row.classList.remove('audit-open');
-  }
 
   // fetchAudit loads one stack's durable deploy history. Not cached: the history
   // grows with every deploy, and a re-fetch against localhost is cheap, so a
@@ -603,12 +566,8 @@ App.panels = (function () {
     hooksFor,
     hooksBadgeButton,
     createHooksPanel,
-    closeHooksPanel,
     hookPhaseNode,
     populateIcon,
-    closeHealthPanel,
-    closeDiffPanel,
-    closeAuditPanel,
     createAuditPanel,
     createWatchedPanel,
     createHealthPanel,

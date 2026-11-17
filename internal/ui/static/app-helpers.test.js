@@ -1981,3 +1981,48 @@ test('rosterLastDeploy carries time and commit only for a settled past deploy', 
   assert.deepEqual(h.rosterLastDeploy({ name: 'new' }, false), none);
   assert.deepEqual(h.rosterLastDeploy({ name: 'x', last_status: 'failed' }, false), none);
 });
+
+test('detailSelection keys a row by view, host, stack and deploy event', () => {
+  assert.deepEqual(
+    h.detailSelection(
+      h.DETAIL_VIEW.deploys,
+      { stack: 'web', host: 'b', eventId: '42' },
+      h.DETAIL_TAB.changes,
+    ),
+    { view: 'deploys', host: 'b', stack: 'web', eventId: '42', tab: 'changes' },
+  );
+  // A local roster row carries neither a host nor an event.
+  assert.deepEqual(
+    h.detailSelection(h.DETAIL_VIEW.stacks, { stack: 'web' }, h.DETAIL_TAB.overview),
+    {
+      view: 'stacks',
+      host: '',
+      stack: 'web',
+      eventId: '',
+      tab: 'overview',
+    },
+  );
+});
+
+test('detailMatchesRow finds the selected row again after a rebuild', () => {
+  const sel = h.detailSelection(h.DETAIL_VIEW.stacks, { stack: 'web' }, h.DETAIL_TAB.overview);
+  assert.equal(h.detailMatchesRow(sel, { stack: 'web' }), true);
+  assert.equal(h.detailMatchesRow(sel, { stack: 'db' }), false);
+  // The same stack name on a peer host is another row.
+  assert.equal(h.detailMatchesRow(sel, { stack: 'web', host: 'b' }), false);
+  const peer = h.detailSelection(
+    h.DETAIL_VIEW.stacks,
+    { stack: 'web', host: 'b' },
+    h.DETAIL_TAB.peer,
+  );
+  assert.equal(h.detailMatchesRow(peer, { stack: 'web', host: 'b' }), true);
+  // A deploy selection names its event: another row of the same stack is not it.
+  const dep = h.detailSelection(
+    h.DETAIL_VIEW.deploys,
+    { stack: 'web', eventId: '7' },
+    h.DETAIL_TAB.history,
+  );
+  assert.equal(h.detailMatchesRow(dep, { stack: 'web', eventId: '7' }), true);
+  assert.equal(h.detailMatchesRow(dep, { stack: 'web', eventId: '8' }), false);
+  assert.equal(h.detailMatchesRow(null, { stack: 'web' }), false);
+});
