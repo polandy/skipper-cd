@@ -1193,7 +1193,7 @@ App.deploys = (function () {
       const logHost = peer ? host : '';
       const repoBase = peer ? repoWebURLFor(host) : S.repoWebURL;
       const health = healthMapFor(logHost)[evt.stack];
-      const d = { diffs: null, commits: [], loading: false, error: null, repoBase: repoBase };
+      const d = { diffs: null, commits: [], loading: false, error: null, expanded: false, repoBase: repoBase };
       const panel = document.createElement('div');
       panel.className = 'detail-panel' + (peer ? ' peer-panel' : '');
       panel.dataset.testid = 'detail-panel';
@@ -1264,7 +1264,7 @@ App.deploys = (function () {
       });
 
       slot.set(panel);
-      const hasDiff = peer ? !!evt.id && Number(evt.changed_files) > 0 : !!evt.has_diffs;
+      const hasDiff = peer ? !!evt.id && changedFileCount(evt) > 0 : !!evt.has_diffs;
       if (hasDiff) loadDiff();
       else render();
     },

@@ -1100,7 +1100,8 @@ snapshot shifts).
 - **UX4 — Healthwatch timeline + pill routing.** Clicking a peer row's
   `health-pill` opens the peer stack's Stacks detail on its containers (never
   the primary's own local health panel); the fanned-in `healthwatch` renders the `health-history` /
-  `health-phase` status timeline.
+  `health-phase` status timeline. Clicked again while that detail is open on
+  another tab, the pill switches it back to the containers.
 
 ### 4.26 UI — Maske Y: Peer container logs (ADR-0048)
 

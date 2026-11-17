@@ -148,4 +148,11 @@ test('UX4: peer containers show the healthwatch timeline; the pill opens the det
   // The fanned-in healthwatch renders the per-service status timeline.
   await expect(health.locator('[data-testid="health-history"]')).toBeVisible();
   await expect(health.locator('[data-testid="health-phase"]').first()).toBeVisible();
+
+  // The pill lands on the containers even when that detail is open on another tab.
+  await detail.locator('[data-testid="detail-tab"][data-tab="history"]').click();
+  await expect(health).toHaveCount(0);
+  await page.locator('[data-testid="view-toggle"] button[data-view="deploys"]').click();
+  await postgres.locator('[data-testid="health-pill"]').click();
+  await expect(detail.locator('[data-testid="health-panel"]')).toBeVisible();
 });

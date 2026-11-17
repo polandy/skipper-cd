@@ -374,7 +374,7 @@ App.roster = (function () {
     const row = Array.prototype.find.call(rosterList.querySelectorAll('.roster-row'), function (r) {
       return r.dataset.stack === stack && (r.dataset.host || S.selfHost) === want;
     });
-    if (!row || detail.isOpen(VIEW, row)) return;
+    if (!row || detail.isOpen(VIEW, row, tab)) return;
     detail.show(VIEW, row, DETAIL_TAB.overview, { tab: tab });
     refilterRoster();
   }
