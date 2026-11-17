@@ -76,10 +76,10 @@ test('UR1: lists the full set as an aligned table and replaces the deploy table'
 // stack open at a time.
 test('UR2: clicking a row shows the stack containers and deploy history', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
-  // Wait until the health snapshot has landed (the deploy table shows a pill),
-  // so the containers tab is offered once we open a roster row.
-  await expect(page.locator('[data-testid="health-pill"]').first()).toBeVisible();
+  // Wait until the health snapshot has landed (the roster shows a pill), so
+  // the containers tab is offered once we open a roster row.
   await stacksBtn(page).click();
+  await expect(page.locator('[data-testid="roster-row"] [data-testid="health-pill"]').first()).toBeVisible();
 
   const apiRow = row(page, 'api');
   await apiRow.click();
@@ -195,13 +195,13 @@ test('UR5: the time-mode toggle switches roster times to absolute', async ({ pag
 // only ever be read after the republish, never before it.
 test('UR6: an open panel survives a roster republish and carries the new data', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
-  await expect(page.locator('[data-testid="health-pill"]').first()).toBeVisible();
   // Let the startup deploy settle before pushing, so the change below gets its
   // own run (and its own commit) rather than being swept up by the one already
   // in flight. Row counts are the seam; nothing here waits on the clock.
   const deployed = page.locator('[data-testid="deploy-row"][data-stack="api"][data-status="success"]');
   await expect(deployed).toHaveCount(1);
   await stacksBtn(page).click();
+  await expect(page.locator('[data-testid="roster-row"] [data-testid="health-pill"]').first()).toBeVisible();
 
   const apiRow = row(page, 'api');
   await apiRow.click();

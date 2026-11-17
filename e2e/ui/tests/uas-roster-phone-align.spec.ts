@@ -14,8 +14,9 @@ import type { Page } from "@playwright/test";
 // since moved into the detail panel, so the row is two lines (UI_SPEC Responsive
 // — phone): health pill and last deploy share one right edge (UAS1), the
 // version cell keeps a real width beside the status on the second line (UAS2),
-// a wrapping version chip never splits a version (UAS3), the Deploys row gets
-// the same edge, since the two views are one look (UAS4), and a live row's
+// a long version chip stays on one line and gives up its label before the
+// change (UAS3), the Deploys row gets the same edge, since the two views are
+// one look (UAS4), and a live row's
 // entrance never replays when the view comes back (UAS5). Behaviour-only, no
 // snapshot.
 
@@ -140,7 +141,8 @@ test.describe("Maske AS: the Stacks row lines up on a phone", () => {
     await expect(row.locator(".roster-sha")).toBeHidden();
   });
 
-  // UAS4 — the Deploys row gets the same edge. The two views share one look
+  // UAS4 — the Deploys row gets the same edge: the time on the first line and
+  // the status cell (badge plus any note) on the second. The two views share one look
   // (docs/dev/ui-design-concept.md), so fixing the roster alone would have left
   // the sibling view ragged in exactly the way the report was about.
   test("UAS4: the deploy row status cell shares the same right edge", async ({
@@ -157,13 +159,14 @@ test.describe("Maske AS: the Stacks row lines up on a phone", () => {
         '[data-testid="deploy-row"][data-stack="web"][data-status="success"]',
       )
       .first();
-    // The row's entrance scales it: badge and pill, read one after the other
+    // The row's entrance scales it: badge and time, read one after the other
     // while it runs, land on different frames (the edge moved by 1.7 px).
     await expect(row).not.toHaveClass(/\bnew-row\b/);
-    const badge = await rect(row.locator('[data-testid="status-badge"]'));
-    const pill = await rect(row.locator('[data-testid="health-pill"]'));
+    const status = await rect(row.locator(".status-cell"));
+    const time = await rect(row.locator('[data-testid="time-cell"]'));
+    expect(status.y).toBeGreaterThanOrEqual(time.y + time.height);
     expect(
-      Math.abs(pill.x + pill.width - (badge.x + badge.width)),
+      Math.abs(time.x + time.width - (status.x + status.width)),
     ).toBeLessThanOrEqual(1);
   });
 
@@ -189,11 +192,11 @@ test.describe("Maske AS: the Stacks row lines up on a phone", () => {
   });
 });
 
-// UAS3 — a version chip that has to wrap breaks after the service label, never
-// inside the change. The Deploys column is where a chip wraps (the roster's
-// stays on one line), so this drives it there: a long service name plus long
-// tags at phone width.
-test.describe("Maske AS: a wrapping version chip keeps its change on one line", () => {
+// UAS3 — a version chip too long for its cell stays on one line: the service
+// label ellipsises, never the change itself. The Deploys column is the narrow
+// one, so this drives it there: a long service name plus long tags at phone
+// width.
+test.describe("Maske AS: a long version chip keeps its change whole", () => {
   const LONG_SERVICE = "web-application-server";
   const LONG_TAG = "30.0.2-alpine-hardened-build";
 
@@ -207,7 +210,7 @@ test.describe("Maske AS: a wrapping version chip keeps its change on one line", 
     },
   });
 
-  test("UAS3: the change tokens stay on one line when the chip wraps", async ({
+  test("UAS3: the label gives way and the change tokens stay on one line", async ({
     page,
     skipper,
   }) => {
@@ -231,14 +234,17 @@ test.describe("Maske AS: a wrapping version chip keeps its change on one line", 
 
     const box = await rect(chip);
     const group = await rect(chip.locator(".td-val"));
-    const label = await rect(chip.locator(".td-svc"));
+    const label = chip.locator(".td-svc");
 
-    // The chip really is in the wrapped case — otherwise the assertion below
+    // The label really is in the clipped case — otherwise the assertions below
     // would hold trivially and prove nothing.
-    expect(box.height).toBeGreaterThan(group.height * 1.5);
-    expect(label.y + label.height).toBeLessThanOrEqual(group.y + 1);
+    expect(
+      await label.evaluate((el) => el.scrollWidth > el.clientWidth),
+    ).toBe(true);
 
-    // Every token of the change shares the group's single line.
+    // One line, and the change ends inside the chip.
+    expect(box.height).toBeLessThan(group.height * 1.5);
+    expect(group.x + group.width).toBeLessThanOrEqual(box.x + box.width + 1);
     const tops = await chip
       .locator(".td-val > *")
       .evaluateAll((els) =>

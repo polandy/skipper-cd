@@ -56,7 +56,7 @@ test.describe('Maske J: rolled-back deploy detail', () => {
     // The deploy fix: a rolled-back deploy reports its diff, not just the path.
     await expect(row).toHaveAttribute('data-has-diffs', '1');
 
-    await row.locator('[data-testid="files-pill"]').click();
+    await row.locator('.stack-name').click();
     await expect(panel(page)).toHaveCount(1);
     const verdict = panel(page).locator('[data-testid="detail-verdict"]');
     await expect(verdict).toContainText('Rolled back to app 1.25');

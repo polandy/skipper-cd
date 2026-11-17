@@ -3125,7 +3125,7 @@
     padding: 2px 9px; border: 1px dashed var(--border); border-radius: 999px;
     white-space: nowrap;
   }
-  /* A held change (ADR-0062): the paused-tag's queued tint, since it is a
+  /* A held change (ADR-0062): the queued tint, since it is a
      standing wait, plus the one control that lifts it. */
   .held-line { display: inline-flex; align-items: center; gap: 6px; }
   .held-chip {
@@ -3232,7 +3232,6 @@
   .dp-fv .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .dp-sha { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
   .dp-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-  .dp-more { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
   .dp-meta { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 
   /* Tabs over one pane. */
@@ -3402,14 +3401,14 @@
   }
 
   /* ─── RESPONSIVE ─── */
-  /* Tablet/narrow desktop: not every column fits, so both views drop their two
-     least essential ones and keep Version on the row's first line, in front of
-     the status — Deploys drops Duration and Files, Stacks drops Commit. The
-     version is the answer to "what moved / what runs", which is worth more per
-     pixel than a duration, a file count or a SHA; those stay reachable (the
-     duration and files in the row's own panel, the commit in the deploy
-     history). Hiding a column, rather than squeezing all of them, is what keeps
-     the stack NAME — the row's identity — whole. */
+  /* Tablet/narrow desktop: not every read-out fits, so both views drop their
+     least essential one and keep Version/Change on the row's first line, in
+     front of the status — Deploys drops When's duration, Stacks drops Commit.
+     The version is the answer to "what moved / what runs", which is worth more
+     per pixel than a duration or a SHA; those stay reachable (the duration in
+     the row's own panel, the commit in the deploy history). Hiding a read-out,
+     rather than squeezing all of them, is what keeps the stack NAME — the
+     row's identity — whole. */
   @media (min-width: 701px) and (max-width: 1000px) {
     /* Last deploy drops its commit and keeps badge + `48s ago` (absolute mode
        ellipsises, as it does on a phone), so the width goes to Stack and

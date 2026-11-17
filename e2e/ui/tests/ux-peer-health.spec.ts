@@ -6,8 +6,8 @@ import type { Page } from '@playwright/test';
 //
 // The primary fans in each peer's health / healthwatch / app_links (not just its
 // roster + deploys), so a peer's rows reach the same at-a-glance detail as a
-// local stack: a live health pill inline on the overview (no expand needed), an
-// app-link on the roster row, and — on expand — the containers panel rendered
+// local stack: a live health pill inline on the roster row, an app-link in its
+// detail head, and — on expand — the containers panel rendered
 // from the peer's fanned-in health. The harness stub peer (host-b) now serves
 // health/healthwatch/app_links in its snapshot; local health is enabled with
 // healthPoll so the parity is visible on both sides. Behaviour-only. (The
@@ -68,21 +68,6 @@ const rosterRow = (page: Page, host: string, stack: string) =>
   page.locator(`[data-testid="roster-row"][data-host="${host}"][data-stack="${stack}"]`);
 const stacksBtn = (page: Page) => page.locator('[data-testid="view-toggle"] button[data-view="stacks"]');
 
-// UX1 — the merged Deploys overview shows a live health pill on the peer's rows,
-// inline, without expanding — the same pill local rows carry.
-test('UX1: peer deploy rows show an inline health pill', async ({ page, skipper }) => {
-  skipper.setStackHealth('api', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
-  skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
-  await page.goto(`${skipper.baseURL}/`);
-
-  // Peer rows carry the pill with the fanned-in status — no click needed.
-  await expect(deployRow(page, 'host-b', 'gitea').locator('[data-testid="health-pill"]')).toHaveAttribute('data-health', 'healthy');
-  await expect(deployRow(page, 'host-b', 'postgres').locator('[data-testid="health-pill"]')).toHaveAttribute('data-health', 'unhealthy');
-
-  // Local rows show the pill too (parity between the primary and its peers).
-  await expect(deployRow(page, 'host-a', 'api').locator('[data-testid="health-pill"]')).toHaveAttribute('data-health', 'healthy');
-});
-
 // UX2 — the merged Stacks roster shows the peer's live health pill inline on
 // the row, so the overview answers "is it healthy" without opening anything; the
 // peer's app-link rides the head of its detail panel.
@@ -131,28 +116,24 @@ test('UX3: a peer deploy detail shows its containers in Stacks', async ({ page, 
 });
 
 // UX4 — the peer's healthwatch timeline fans in too, so the peer stack's
-// containers show its status history; and the inline pill is a shortcut into
-// that Stacks detail, not a click into the primary's own (empty) local health.
-test('UX4: peer containers show the healthwatch timeline; the pill opens the detail', async ({ page, skipper }) => {
+// containers show its status history — reached through the peer deploy's Show
+// in Stacks, host-scoped, never a blank local health panel.
+test('UX4: peer containers show the healthwatch timeline', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   const postgres = deployRow(page, 'host-b', 'postgres');
+  await expect(postgres).toBeVisible();
 
-  // Clicking the peer row's health pill opens its containers in Stacks
-  // (host-scoped), never a blank local health panel.
-  await postgres.locator('[data-testid="health-pill"]').click();
+  await postgres.click();
+  const deployDetail = page.locator('[data-testid="detail-panel"][data-kind="deploy"][data-host="host-b"]');
+  await deployDetail.locator('[data-testid="jump-btn"]').click();
   const detail = page.locator('[data-testid="stacks-view"] [data-testid="detail-panel"][data-host="host-b"]');
-  await expect(detail).toHaveCount(1);
+  await expect(detail).toHaveAttribute('data-stack', 'postgres');
+  // A failed stack's detail opens on its history; the containers are one tab away.
+  await detail.locator('[data-testid="detail-tab"][data-tab="containers"]').click();
   const health = detail.locator('[data-testid="health-panel"]');
   await expect(health).toBeVisible();
 
   // The fanned-in healthwatch renders the per-service status timeline.
   await expect(health.locator('[data-testid="health-history"]')).toBeVisible();
   await expect(health.locator('[data-testid="health-phase"]').first()).toBeVisible();
-
-  // The pill lands on the containers even when that detail is open on another tab.
-  await detail.locator('[data-testid="detail-tab"][data-tab="history"]').click();
-  await expect(health).toHaveCount(0);
-  await page.locator('[data-testid="view-toggle"] button[data-view="deploys"]').click();
-  await postgres.locator('[data-testid="health-pill"]').click();
-  await expect(detail.locator('[data-testid="health-panel"]')).toBeVisible();
 });

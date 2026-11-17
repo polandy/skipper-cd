@@ -2009,13 +2009,14 @@ test('deployPanelHTML: a success has no verdict', () => {
   assert.doesNotMatch(html, /data-tab="output"/);
 });
 
-test('deployFactsHTML: Commit waits for the diff, Change is the first chip plus a count', () => {
+test('deployFactsHTML: Commit waits for the diff, Change lists every chip', () => {
   const facts = r.deployFactsHTML(FAILED_EVT, { commits: null });
   const cells = [...facts.matchAll(/class="dp-k">([^<]*)</g)].map((m) => m[1]);
   assert.deepEqual(cells, ['Commit', 'Change', 'Duration', 'Files']);
   assert.match(facts, /class="dp-k">Commit<\/div><div class="dp-fv">—</);
   assert.match(facts, /app<\/span>[\s\S]*1\.25[\s\S]*1\.26/);
-  assert.match(facts, /<span class="dp-more">\+1<\/span>/);
+  assert.equal(facts.match(/class="tag-delta/g).length, 2);
+  assert.doesNotMatch(facts, /dp-more"/);
   assert.match(facts, /class="dp-k">Duration<\/div><div class="dp-fv">4s</);
   assert.match(facts, /class="dp-k">Files<\/div><div class="dp-fv">2 files</);
 });

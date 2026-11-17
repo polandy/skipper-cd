@@ -27,10 +27,9 @@ the health pill, the panel is variant A, and the log is the container-logs panel
 in a second mode.)
 
 **Budget every addition.** Reuse keeps the *look* consistent; it does not keep
-the surface small. A deploy row already carries a status badge, a health pill,
-a files pill, a jump button and an overflow menu; a Stacks row is a summary
-line with no controls, and its detail panel already carries a verdict, a facts
-strip and three tabs.
+the surface small. Deploy and Stacks rows are summary lines with no controls
+(a deploy row: name and cause, result, one change chip, when), and each detail
+panel already carries a verdict, a facts strip and tabs.
 Each was justified on its own, and the sum is what an operator has to read. So
 a change that adds a badge, chip, panel, or row control answers two questions
 in its PR:
@@ -84,29 +83,24 @@ practical the *same CSS rules* are shared rather than duplicated.
   view has a header (`.event-list-header`, `.roster-list-header`) with the same
   type treatment: the sheet's head strip (`.sheet-head`), 12 px sentence-case
   labels in the display face on a faintly sunken ground.
-  - Deploys: `Time · Stack · Version · Status · Duration · Files`.
+  - Deploys: `Stack · Result · Change · When` (one change chip plus `+N`;
+    time, duration and SHA as one group).
   - Stacks: `Stack · Health · Version · Last deploy` (status, time and SHA as
     one wrapping group).
 - **One version chip everywhere** (`.tag-delta`): both views render versions with
   the same component — a deploy's `old → new` change in Deploys, a stack's running
   version in Stacks, each line of the containers panel. Never a second chip built
   per surface.
-- **Tablet (≤ 1000 px)**: drop columns, don't squeeze them all. Deploys drops
-  **Duration** and **Files** (header labels included), so **Version keeps the
-  row's first line** in front of the status and stays a column to scan down;
-  Stacks drops the SHA from its Last deploy group. A cell that still runs out shrinks and ellipsises inside
-  its track — a row never prints one column over the next — and the stack name
-  keeps a floor: below it the row's affordances wrap to a second line inside the
-  cell rather than the name being squeezed away. A cell that no longer fits its track
-  shrinks and ellipsises **inside** it — a row never prints one column over the
-  next, which is what a column layout is for.
-- **Mobile (≤ 700 px)**: the header hides and each row is **two lines** — in
-  Deploys identity + status on the first, time + **version** on the second, the
-  status cell spanning both so its health pill sits level with the versions; in
-  Stacks identity + health pill on the first, version + last deploy on the
-  second. The
-  columns the tablet drops stay dropped: never truncated off-screen, always
-  reachable in the row's panels.
+- **Tablet (≤ 1000 px)**: drop content, don't squeeze every column. Deploys
+  drops When's duration and keeps all four columns; Stacks drops the SHA from
+  its Last deploy group. A cell that no longer fits its track shrinks and
+  ellipsises **inside** it — a row never prints one column over the next — and
+  the stack name keeps a floor.
+- **Mobile (≤ 700 px)**: the header hides and each row is **two lines** with no
+  horizontal scroll — in Deploys name + time on the first, change + result on
+  the second; in Stacks identity + health pill on the first, version + last
+  deploy on the second. What a narrower width drops stays reachable in the
+  row's detail panel.
 
 ## Expand → bound panels
 
@@ -130,11 +124,9 @@ directly below it. The open row and its trailing panels read as **one card**:
 
 | Panel | Opened by | Shows |
 |---|---|---|
-| diff / files | row / files pill | changed files + git diff of the deploy |
-| health (containers) | health pill (Deploys) · Containers tab (Stacks) | the stack's containers: name · state · health |
-| audit (history) | clock button (Deploys) · History tab (Stacks) | past terminal deploy outcomes |
-| heal | healed row | self-heal attempt detail |
-| error-detail | failed/rolled-back row | the error message, full width |
+| deploy detail | deploy row | verdict, facts, then Changes (diff) · Drift · Output · Commits tabs |
+| health (containers) | Containers tab (Stacks) | the stack's containers: name · state · health |
+| audit (history) | History tab (Stacks) | past terminal deploy outcomes |
 
 In the **Stacks** roster a row opens one **detail panel** instead of a stack of
 cards: a head (identity + the stack's actions as labelled buttons, in a fixed

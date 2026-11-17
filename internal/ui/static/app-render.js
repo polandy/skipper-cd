@@ -1686,9 +1686,8 @@ function deployFactsHTML(evt, o) {
   const chips = imageDeltaChips(evt.image_changes).concat(
     changeChips(evt.file_changes, evt.image_changes),
   );
-  const change = chips.length
-    ? chips[0] + (chips.length > 1 ? `<span class="dp-more">+${chips.length - 1}</span>` : '')
-    : 'none';
+  // Every chip: the row shows one plus "+N" and points here for the rest.
+  const change = chips.length ? chips.join('') : 'none';
   const files = changedFileCount(evt);
   return factsHTML([
     { label: 'Commit', html: commit },
