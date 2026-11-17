@@ -354,6 +354,7 @@ App.roster = (function () {
         App.stream.applyHookRun(); // the head was re-rendered — re-mark a running hook
       });
       slot.set(panel);
+      App.stream.applyHookRun(); // a panel opened mid-hook carries the pulse at once
     },
   });
 
