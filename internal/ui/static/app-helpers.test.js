@@ -1987,9 +1987,9 @@ test('detailSelection keys a row by view, host, stack and deploy event', () => {
     h.detailSelection(
       h.DETAIL_VIEW.deploys,
       { stack: 'web', host: 'b', eventId: '42' },
-      h.DETAIL_TAB.changes,
+      h.DETAIL_TAB.deploy,
     ),
-    { view: 'deploys', host: 'b', stack: 'web', eventId: '42', tab: 'changes' },
+    { view: 'deploys', host: 'b', stack: 'web', eventId: '42', tab: 'deploy' },
   );
   // A local roster row carries neither a host nor an event.
   assert.deepEqual(
@@ -2013,7 +2013,7 @@ test('detailMatchesRow finds the selected row again after a rebuild', () => {
   const peer = h.detailSelection(
     h.DETAIL_VIEW.stacks,
     { stack: 'web', host: 'b' },
-    h.DETAIL_TAB.peer,
+    h.DETAIL_TAB.overview,
   );
   assert.equal(h.detailMatchesRow(peer, { stack: 'web', host: 'b' }), true);
   // A deploy selection names its event: another row of the same stack is not it.
@@ -2263,4 +2263,246 @@ test('stackTabs marks history red for a held or failed stack and drops container
       ['triggers', 0, false],
     ],
   );
+});
+
+test('deployFailure: splits the stage off and drops the exit status', () => {
+  const f = h.deployFailure(
+    'docker compose up: exit status 1: Error response from daemon: port is already allocated',
+  );
+  assert.equal(f.phase, 'docker compose up');
+  assert.equal(f.cause, 'Error response from daemon: port is already allocated');
+  assert.equal(f.beforeStart, false);
+  assert.equal(f.rollback, '');
+});
+
+test('deployFailure: pull, build, pre_deploy and a bare rollout fail before start', () => {
+  for (const [err, phase] of [
+    ['docker compose pull: exit status 1: manifest unknown', 'docker compose pull'],
+    ['docker compose build: exit status 1: E: Unable to locate package', 'docker compose build'],
+    ['pre_deploy hook 2 ("./migrate.sh"): exit status 3', 'pre_deploy hook 2 ("./migrate.sh")'],
+    ['rollout: compose file could not be parsed', 'rollout'],
+  ]) {
+    const f = h.deployFailure(err);
+    assert.equal(f.phase, phase, err);
+    assert.equal(f.beforeStart, true, err);
+  }
+});
+
+test('deployFailure: a stage alone keeps its exit status as the cause', () => {
+  assert.equal(h.deployFailure('health check: exit status 1').cause, 'exit status 1');
+});
+
+test('deployFailure: reads the rollback outcome off the suffix', () => {
+  const ok = h.deployFailure('health check: probe returned 503 (rolled back to previous version)');
+  assert.equal(ok.phase, 'health check');
+  assert.equal(ok.cause, 'probe returned 503');
+  assert.equal(ok.rollback, 'ok');
+  const bad = h.deployFailure(
+    'rollout web: timeout (restored version did not come up healthy: exit status 1 (rolled back but still unhealthy))',
+  );
+  assert.equal(bad.phase, 'rollout web');
+  assert.equal(bad.cause, 'timeout');
+  assert.equal(bad.rollback, 'unhealthy');
+  assert.equal(bad.restored, 'restored version did not come up healthy: exit status 1');
+  const failed = h.deployFailure(
+    'post_deploy hook: exit status 2 (rollback also failed: no previous commit available for rollback)',
+  );
+  assert.equal(failed.phase, 'post_deploy hook');
+  assert.equal(failed.cause, 'exit status 2');
+  assert.equal(failed.rollback, 'failed');
+  assert.equal(failed.restored, 'no previous commit available for rollback');
+});
+
+test('deployFailure: an unknown format is all cause', () => {
+  const f = h.deployFailure('something odd');
+  assert.equal(f.phase, '');
+  assert.equal(f.cause, 'something odd');
+});
+
+test('deployVerdict: a success or a running deploy needs no verdict', () => {
+  assert.deepEqual(h.deployVerdict({ status: 'success' }), []);
+  assert.deepEqual(h.deployVerdict({ status: 'deploying' }), []);
+  assert.deepEqual(h.deployVerdict({ status: 'skipped' }), []);
+});
+
+test('deployVerdict: a failure after start names phase and cause and says it is held', () => {
+  const v = h.deployVerdict({
+    status: 'failed',
+    error: 'docker compose up: exit status 1: port is already allocated',
+  });
+  assert.equal(v.length, 1);
+  assert.equal(v[0].tone, 'danger');
+  assert.equal(v[0].head, 'Failed at docker compose up.');
+  assert.equal(v[0].text, 'port is already allocated');
+  assert.match(v[0].sub, /left running/);
+  assert.match(v[0].sub, /held/);
+  assert.match(v[0].sub, /retry/);
+  assert.equal(v[0].action, null);
+});
+
+test('deployVerdict: a failure with no deploy stage claims no hold', () => {
+  const v = h.deployVerdict({
+    stack: '_config',
+    status: 'failed',
+    error: 'skipper.yaml at stacks_base_dir is no longer read',
+  });
+  assert.equal(v[0].head, 'Failed.');
+  assert.equal(v[0].text, 'skipper.yaml at stacks_base_dir is no longer read');
+  assert.equal(v[0].sub, '');
+});
+
+test('deployVerdict: a failure before start says nothing was touched and it retries', () => {
+  const v = h.deployVerdict({
+    status: 'failed',
+    error: 'docker compose pull: exit status 1: manifest unknown',
+  });
+  assert.equal(v[0].head, 'Failed at docker compose pull.');
+  assert.equal(v[0].text, 'manifest unknown');
+  assert.match(v[0].sub, /Nothing was touched/);
+  assert.doesNotMatch(v[0].sub, /left running/);
+});
+
+test('deployVerdict: a failed rollback says so', () => {
+  const v = h.deployVerdict({
+    status: 'failed',
+    error:
+      'health check: timeout (rollback also failed: no previous commit available for rollback)',
+  });
+  assert.match(v[0].sub, /rollback failed too: no previous commit/);
+});
+
+test('deployVerdict: a rollback names its target and says the change is held', () => {
+  const v = h.deployVerdict({
+    status: 'rolled_back',
+    error: 'health check: probe returned 503 (rolled back to previous version)',
+    image_changes: [{ service: 'web', old: 'nginx:1.25', new: 'nginx:1.26' }],
+  });
+  assert.equal(v[0].tone, 'rollback');
+  assert.equal(v[0].head, 'Rolled back to web 1.25.');
+  assert.equal(v[0].text, 'health check failed: probe returned 503');
+  assert.match(v[0].sub, /previous version is running/);
+  assert.match(v[0].sub, /held/);
+});
+
+test('deployVerdict: a rollback without one image change targets the previous version', () => {
+  const v = h.deployVerdict({
+    status: 'rolled_back',
+    error: 'docker compose up: exit status 1 (rolled back to previous version)',
+  });
+  assert.equal(v[0].head, 'Rolled back to the previous version.');
+});
+
+test('deployVerdict: an unhealthy rollback is danger and names the restored failure', () => {
+  const v = h.deployVerdict({
+    status: 'rolled_back_unhealthy',
+    error:
+      'health check: timeout (restored version did not come up healthy: exit status 1 (rolled back but still unhealthy))',
+  });
+  assert.equal(v[0].tone, 'danger');
+  assert.match(v[0].head, /restored version is unhealthy/);
+  assert.equal(v[0].text, 'health check failed: timeout');
+  assert.match(v[0].sub, /restored version did not come up healthy: exit status 1/);
+  assert.match(v[0].sub, /held/);
+});
+
+test('deployVerdict: a blocked deploy names the stack that blocks it', () => {
+  const v = h.deployVerdict({ status: 'blocked', error: 'dependency db failed this run' });
+  assert.equal(v[0].tone, 'warn');
+  assert.equal(v[0].head, 'Not deployed.');
+  assert.equal(v[0].text, 'It depends on db, which failed in this run.');
+  assert.match(v[0].sub, /once db succeeds/);
+});
+
+test('deployVerdict: a queued change says autosync is paused, per stack or globally', () => {
+  const stack = h.deployVerdict({ status: 'queued' }, { queueReason: 'stack' });
+  assert.equal(stack[0].tone, 'muted');
+  assert.equal(stack[0].head, 'Waiting.');
+  assert.equal(stack[0].text, 'Autosync is paused for this stack.');
+  assert.match(stack[0].sub, /Resume autosync/);
+  const global = h.deployVerdict({ status: 'queued' }, { queueReason: 'global' });
+  assert.equal(global[0].text, 'Autosync is paused for every stack.');
+  assert.equal(h.deployVerdict({ status: 'queued' })[0].text, 'Autosync is paused.');
+});
+
+test('deployVerdict: a heal names the drift and says there is no diff', () => {
+  const v = h.deployVerdict({
+    status: 'healed',
+    heal_drift: [
+      { name: 'web', status: 'exited' },
+      { name: 'db', status: 'missing' },
+    ],
+  });
+  assert.equal(v[0].tone, 'muted');
+  assert.equal(v[0].head, 'Self-heal restarted web (exited), db (missing).');
+  assert.equal(v[0].text, 'No git change, so there is no diff.');
+});
+
+test('deployVerdict: an exhausted heal is danger', () => {
+  const v = h.deployVerdict({
+    status: 'heal_exhausted',
+    heal_drift: [{ name: 'web', status: 'exited' }],
+  });
+  assert.equal(v[0].tone, 'danger');
+  assert.equal(v[0].head, 'Self-heal gave up.');
+  assert.match(v[0].text, /web \(exited\)/);
+});
+
+test('deployVerdict: a repeated outcome adds a muted ×N since line', () => {
+  const v = h.deployVerdict({
+    status: 'failed',
+    error: 'docker compose up: exit status 1',
+    repeat_count: 4,
+    first_seen: '2026-11-01T10:00:00Z',
+    timestamp: '2026-11-02T10:00:00Z',
+  });
+  assert.equal(v.length, 2);
+  assert.equal(v[1].kind, 'repeat');
+  assert.equal(v[1].tone, 'muted');
+  assert.equal(v[1].head, '×4');
+  assert.equal(v[1].text, 'since ' + h.fullTime('2026-11-01T10:00:00Z') + '.');
+  const once = h.deployVerdict({ status: 'failed', error: 'x', repeat_count: 1 });
+  assert.equal(once.length, 1);
+});
+
+test('deployTabs: changes, output for a failure, commits only beyond one', () => {
+  const evt = {
+    status: 'failed',
+    error: 'docker compose up: exit status 1',
+    has_diffs: true,
+    changed_files: ['a/docker-compose.yml', 'a/.env'],
+  };
+  assert.deepEqual(h.deployTabs(evt, { commits: 1 }), [
+    { id: 'changes', label: 'Changes', count: 2, bad: false },
+    { id: 'output', label: 'Output', count: null, bad: true },
+  ]);
+  const three = h.deployTabs(evt, { commits: 3 });
+  assert.deepEqual(three[2], { id: 'commits', label: 'Commits', count: 3, bad: false });
+});
+
+test('deployTabs: a peer record counts its changed files as a number', () => {
+  assert.deepEqual(h.deployTabs({ status: 'success', changed_files: 3 }, {}), [
+    { id: 'changes', label: 'Changes', count: 3, bad: false },
+  ]);
+});
+
+test('deployTabs: a heal shows Drift instead of Changes', () => {
+  const tabs = h.deployTabs(
+    { status: 'healed', heal_drift: [{ name: 'web', status: 'exited' }] },
+    {},
+  );
+  assert.deepEqual(tabs, [{ id: 'drift', label: 'Drift', count: 1, bad: false }]);
+});
+
+test('deployTabs: no diffs and no error means no tabs', () => {
+  assert.deepEqual(h.deployTabs({ status: 'success' }, {}), []);
+  assert.deepEqual(
+    h.deployTabs({ status: 'blocked', error: 'dependency db failed this run' }, {}),
+    [],
+  );
+});
+
+test('diffStat counts added and removed lines, not the file headers', () => {
+  const diff = '--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-old\n+new\n+more\n same';
+  assert.deepEqual(h.diffStat(diff), { add: 2, del: 1 });
+  assert.deepEqual(h.diffStat(''), { add: 0, del: 0 });
 });

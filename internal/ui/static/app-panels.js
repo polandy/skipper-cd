@@ -119,56 +119,19 @@ App.panels = (function () {
     if (openMoreWrap === wrap) closeMoreMenu();
   }
 
-  // createHealPanel wraps the healed row's detail body in its element, bound to
-  // the row (variant A) so it shares the teal status bar.
-  function createHealPanel(drift, meta) {
-    const el = document.createElement('div');
-    el.className = 'heal-panel';
-    el.dataset.testid = 'heal-panel';
-    if (meta) {
-      el.classList.add('bound');
-      el.dataset.status = meta.status;
-    }
-    el.innerHTML = healPanelHTML(drift);
-    return el;
-  }
-
-  function createFilesPanel(files, meta) {
-    const el = document.createElement('div');
-    el.className = 'files-list';
-    el.dataset.testid = 'files-panel';
-    // Bound to its row (variant A) when opened from a deploy row, so it carries
-    // the same status left bar as the diff panel — keeps the bar continuous when
-    // an error detail is stacked below it. Unbound in the log view (no meta).
-    if (meta) {
-      el.classList.add('bound');
-      el.dataset.status = meta.status;
-    }
-    el.innerHTML = filesPanelHTML(files, meta && meta.fileChanges);
-    return el;
-  }
-
-  // renderDiffPanel wraps the diff body in its element. meta (optional) carries
-  // the deploy row's stack + status: when set, the panel binds to its row
-  // (variant A — shared status bar/tint). Opened from a log line, meta is
-  // absent and the panel stays unbound.
-  function renderDiffPanel(diffs, commits, meta) {
+  // renderDiffPanel wraps a log line's diff body in its element; the log
+  // view shows only the local repo's deploys.
+  function renderDiffPanel(diffs, commits) {
     const el = document.createElement('div');
     el.className = 'diff-panel';
     el.dataset.testid = 'diff-panel';
-    if (meta && meta.status) {
-      el.classList.add('bound');
-      el.dataset.status = meta.status;
-    }
-    // The diff panel only ever shows the local repo's commits — a peer's diff
-    // arrives without commit metadata — so the local forge base is right here.
-    el.innerHTML = diffPanelHTML(diffs, commits, meta, S.repoWebURL);
+    el.innerHTML = diffPanelHTML(diffs, commits, null, S.repoWebURL);
     return el;
   }
 
   // createLoadError builds the shared amber "couldn't load" line (T4.16) that
   // the lazy detail fetches (deploy history, diff, peer diff) show when a fetch
-  // fails or answers 5xx. It is deliberately NOT the red .error-detail: the
+  // fails or answers 5xx. It is deliberately not red: the
   // deploy itself is fine — only the panel fetch failed — and it is distinct
   // from the muted genuine-empty line. onRetry runs when the user clicks Retry;
   // the caller re-runs its fetch and replaces this element with the result (or a
@@ -553,8 +516,6 @@ App.panels = (function () {
     toggleMoreMenu,
     closeMoreMenu,
     closeMoreMenuIf,
-    createHealPanel,
-    createFilesPanel,
     renderDiffPanel,
     createLoadError,
     fetchDiffs,

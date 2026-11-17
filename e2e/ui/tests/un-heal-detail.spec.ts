@@ -7,9 +7,9 @@ import { test, expect } from '../fixtures/test';
 // stack degraded → self-heal redeploys → the stack recovers → a `healed` row
 // appears), then asserts
 // the row's UI affordance. A heal is not a git deploy, so the healed row has no
-// files pill; its files cell instead carries a teal self-heal badge that expands
-// a detail panel explaining the corrective redeploy and listing the services
-// that had drifted when it ran. Behaviour-only (no snapshot).
+// files pill; its files cell instead carries a teal self-heal badge that opens
+// the deploy detail on its Drift tab: the verdict explains the corrective
+// redeploy, the tab lists the services that had drifted when it ran. Behaviour-only (no snapshot).
 
 const healthyBoth = [
   { Service: 'app', State: 'running', Health: 'healthy' },
@@ -40,7 +40,7 @@ test.describe('UN1: healed row shows a self-heal badge that expands the drift de
     },
   });
 
-  test('the badge opens a panel explaining the heal and listing the drifted service', async ({ page, skipper }) => {
+  test('the badge opens the detail explaining the heal and listing the drifted service', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     await expect(
       page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]'),
@@ -62,28 +62,29 @@ test.describe('UN1: healed row shows a self-heal badge that expands the drift de
     await expect(badge).toHaveText(/self-heal/);
     await expect(row.locator('[data-testid="files-pill"]')).toHaveCount(0);
 
-    // Click the badge → the bound heal-detail panel opens below the row.
+    // Click the badge → the deploy detail opens below the row on its Drift tab.
     await badge.click();
-    const panel = page.locator('[data-testid="heal-panel"]');
+    const panel = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
     await expect(panel).toBeVisible();
-    await expect(panel).toHaveClass(/bound/);
     await expect(panel).toHaveAttribute('data-status', 'healed');
-    // The explanation makes clear there is no diff.
-    await expect(panel).toContainText(/no diff/i);
+    await expect(panel.locator('[data-testid="detail-tab"][aria-selected="true"]')).toHaveAttribute('data-tab', 'drift');
+    // The verdict makes clear there is no diff.
+    await expect(panel.locator('[data-testid="detail-verdict"]')).toContainText(/no diff/i);
 
     // The drifted service is listed with its degraded status; the healthy
     // service is not.
-    await expect(panel.getByText('app', { exact: true })).toBeVisible();
-    await expect(panel.getByText('unhealthy', { exact: true })).toBeVisible();
-    await expect(panel.getByText('db', { exact: true })).toHaveCount(0);
+    const drift = panel.locator('[data-testid="heal-drift"]');
+    await expect(drift.getByText('app', { exact: true })).toBeVisible();
+    await expect(drift.getByText('unhealthy', { exact: true })).toBeVisible();
+    await expect(drift.getByText('db', { exact: true })).toHaveCount(0);
 
-    // Clicking the badge again toggles the panel closed (one panel per row).
+    // Clicking the badge again toggles the detail closed (one panel per row).
     await badge.click();
-    await expect(page.locator('[data-testid="heal-panel"]')).toHaveCount(0);
+    await expect(panel).toHaveCount(0);
   });
 });
 
-test.describe('UN2: the heal panel obeys the one-open-panel-per-row rule', () => {
+test.describe('UN2: the heal detail obeys the one-open-panel-per-row rule', () => {
   test.use({
     startOptions: {
       stacks: ['web'],
@@ -96,7 +97,7 @@ test.describe('UN2: the heal panel obeys the one-open-panel-per-row rule', () =>
     },
   });
 
-  test('opening the heal panel closes an open health panel on the same row', async ({ page, skipper }) => {
+  test('opening the heal detail closes an open health panel on the same row', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
     const upsBefore = skipper.dockerUps('web');
@@ -110,9 +111,9 @@ test.describe('UN2: the heal panel obeys the one-open-panel-per-row rule', () =>
     await row.locator('[data-testid="health-pill"]').click();
     await expect(page.locator('[data-testid="health-panel"]')).toBeVisible();
 
-    // Opening the heal panel replaces it — never two panels under one row.
+    // Opening the heal detail replaces it — never two panels under one row.
     await row.locator('[data-testid="heal-pill"]').click();
-    await expect(page.locator('[data-testid="heal-panel"]')).toBeVisible();
+    await expect(page.locator('[data-testid="heal-drift"]')).toBeVisible();
     await expect(page.locator('[data-testid="health-panel"]')).toHaveCount(0);
   });
 });

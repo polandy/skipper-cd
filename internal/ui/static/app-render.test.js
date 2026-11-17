@@ -207,18 +207,9 @@ test('changeAttributionHTML labels the three attribution states', () => {
   assert.equal(r.changeAttributionHTML(null, 'a.yml'), '');
 });
 
-test('renderCommitHead returns empty with neither row echo nor commits', () => {
-  assert.equal(r.renderCommitHead(null, null, ''), '');
-  assert.equal(r.renderCommitHead([], {}, 'https://forge.example/repo'), '');
-});
-
-test('renderCommitHead renders the row echo alone', () => {
-  const html = r.renderCommitHead(null, { stack: 'blog', status: 'success' }, '');
-  assert.match(html, /^<div class="diff-head" data-testid="diff-head">/);
-  assert.match(html, /<span class="dh-who">blog<\/span>/);
-  assert.match(html, /Deploy diff/);
-  assert.match(html, /dh-pill/);
-  assert.doesNotMatch(html, /diff-commit/);
+test('renderCommitHead returns empty without commits', () => {
+  assert.equal(r.renderCommitHead(null, ''), '');
+  assert.equal(r.renderCommitHead([], 'https://forge.example/repo'), '');
 });
 
 test('renderCommitHead renders a single commit with subject, author, time and linked SHA', () => {
@@ -231,7 +222,6 @@ test('renderCommitHead renders a single commit with subject, author, time and li
         date: '2026-07-01T10:00:00Z',
       },
     ],
-    null,
     'https://forge.example/repo',
   );
   assert.match(html, /<span class="dh-subject">fix &lt;thing&gt;<\/span>/);
@@ -247,7 +237,7 @@ test('renderCommitHead renders a multi-commit range with pill and list', () => {
     { sha: 'bbbbbbb2222222', subject: 'newer', author: 'x', date: '2026-07-02T10:00:00Z' },
     { sha: 'aaaaaaa1111111', subject: 'older', author: 'y', date: '2026-07-01T10:00:00Z' },
   ];
-  const html = r.renderCommitHead(commits, null, '');
+  const html = r.renderCommitHead(commits, '');
   assert.match(html, /<span class="m-range">.*aaaaaaa.*→.*bbbbbbb.*<\/span>/);
   assert.match(html, /<button class="commits-pill" data-testid="commits-pill">2 commits<\/button>/);
   assert.match(html, /<ul class="diff-commit-list" data-testid="diff-commit-list">/);
@@ -257,11 +247,7 @@ test('renderCommitHead renders a multi-commit range with pill and list', () => {
 });
 
 test('renderCommitHead renders inert SHA chips without a repo base', () => {
-  const html = r.renderCommitHead(
-    [{ sha: 'abcdef1234567890', subject: 's', author: 'a' }],
-    null,
-    '',
-  );
+  const html = r.renderCommitHead([{ sha: 'abcdef1234567890', subject: 's', author: 'a' }], '');
   assert.match(html, /<span class="m-sha"[^>]*>abcdef1<\/span>/);
   assert.doesNotMatch(html, /href/);
 });
@@ -1021,29 +1007,19 @@ test('watchedPanelHTML escapes the watched file names', () => {
   assert.match(html, /watched-file">a&lt;b&amp;"c"\.env</);
 });
 
-test('healPanelHTML lists the drifted services under a label', () => {
-  const html = r.healPanelHTML([
+test('driftListHTML lists the drifted services with their status', () => {
+  const html = r.driftListHTML([
     { name: 'web', status: 'exited' },
     { name: 'db', status: 'missing' },
   ]);
-  assert.match(html, /class="heal-summary"/);
-  assert.match(html, /class="heal-drift-label">Drifted when it ran</);
   const names = [...html.matchAll(/class="hd-name">([^<]*)</g)].map((m) => m[1]);
   assert.deepEqual(names, ['web', 'db']);
   // The status doubles as a CSS-class suffix and as the visible text.
   assert.match(html, /class="hd-status hd-exited">exited</);
 });
 
-test('healPanelHTML drops the drift list when nothing drifted', () => {
-  for (const drift of [undefined, null, []]) {
-    const html = r.healPanelHTML(drift);
-    assert.ok(!html.includes('heal-drift'), `unexpected drift list for ${drift}: ${html}`);
-    assert.match(html, /class="heal-summary"/);
-  }
-});
-
-test('healPanelHTML escapes the drifted service name and status', () => {
-  const html = r.healPanelHTML([{ name: 'a<b&"c"', status: 'x"y' }]);
+test('driftListHTML escapes the drifted service name and status', () => {
+  const html = r.driftListHTML([{ name: 'a<b&"c"', status: 'x"y' }]);
   assert.ok(!html.includes('a<b&"c"'), `raw name leaked: ${html}`);
   assert.match(html, /class="hd-name">a&lt;b&amp;"c"</);
   // The status lands in an attribute and in text, so it takes the two different
@@ -1968,4 +1944,158 @@ test('stackFactsHTML says what is missing instead of leaving a fact blank', () =
   assert.match(html, /Last deploy<\/div><div class="dp-fv">never</);
   assert.match(html, /Health<\/div><div class="dp-fv">—</);
   assert.match(html, /Hooks<\/div><div class="dp-fv">none</);
+});
+
+// ── Deploys detail panel: the Stacks anatomy for one deploy event ──
+
+const DEPLOY_NOW = Date.parse('2026-11-17T12:00:00Z');
+const FAILED_EVT = {
+  id: 7,
+  stack: 'web',
+  status: 'failed',
+  timestamp: '2026-11-17T11:55:00Z',
+  duration_ms: 4000,
+  error: 'docker compose up: exit status 1: port is already allocated',
+  has_diffs: true,
+  changed_files: ['web/docker-compose.yml', 'web/.env'],
+  image_changes: [{ service: 'app', old: 'nginx:1.25', new: 'nginx:1.26' }],
+  file_changes: [{ file: 'web/.env', kind: 'env', services: ['app', 'worker'] }],
+};
+
+test('detailHeadHTML carries a badge and meta, and jumps to the view it is given', () => {
+  const html = r.detailHeadHTML({
+    stack: 'web',
+    badge: '<BADGE>',
+    meta: '5m ago · 4s',
+    logs: true,
+    jump: true,
+    jumpView: 'stacks',
+  });
+  assert.match(html, /web<\/span><BADGE><span class="dp-meta">5m ago · 4s<\/span>/);
+  assert.match(html, /data-jump-view="stacks" data-jump-stack="web"[\s\S]*Show in Stacks/);
+  const actions = [...html.matchAll(/data-action="([a-z]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(actions, ['logs', 'jump', 'close']);
+});
+
+test('deployPanelHTML: head, then the verdict before facts, tabs and the pane', () => {
+  const html = r.deployPanelHTML(FAILED_EVT, { nowMs: DEPLOY_NOW, jump: true, tab: 'changes' });
+  const order = [
+    'class="dp-head"',
+    'data-testid="detail-verdict"',
+    'data-testid="detail-facts"',
+    'class="dp-tabs"',
+    'class="dp-pane"',
+  ].map((s) => html.indexOf(s));
+  order.forEach((i) => assert.ok(i >= 0, html));
+  assert.deepEqual(
+    [...order].sort((a, b) => a - b),
+    order,
+  );
+  assert.match(html, /badge-failed/);
+  assert.match(html, /<span class="dp-meta">5m ago · 4s<\/span>/);
+  assert.match(html, /Failed at docker compose up\./);
+  assert.match(html, /data-jump-view="stacks"/);
+  assert.match(html, /data-tab="changes" aria-selected="true"/);
+  assert.match(html, /data-tab="output" aria-selected="false"/);
+});
+
+test('deployPanelHTML: a success has no verdict', () => {
+  const html = r.deployPanelHTML(
+    { ...FAILED_EVT, status: 'success', error: '' },
+    { nowMs: DEPLOY_NOW },
+  );
+  assert.doesNotMatch(html, /detail-verdict/);
+  assert.doesNotMatch(html, /data-tab="output"/);
+});
+
+test('deployFactsHTML: Commit waits for the diff, Change is the first chip plus a count', () => {
+  const facts = r.deployFactsHTML(FAILED_EVT, { commits: null });
+  const cells = [...facts.matchAll(/class="dp-k">([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(cells, ['Commit', 'Change', 'Duration', 'Files']);
+  assert.match(facts, /class="dp-k">Commit<\/div><div class="dp-fv">—</);
+  assert.match(facts, /app<\/span>[\s\S]*1\.25[\s\S]*1\.26/);
+  assert.match(facts, /<span class="dp-more">\+1<\/span>/);
+  assert.match(facts, /class="dp-k">Duration<\/div><div class="dp-fv">4s</);
+  assert.match(facts, /class="dp-k">Files<\/div><div class="dp-fv">2 files</);
+});
+
+test('deployFactsHTML: the landed commit shows its SHA and subject', () => {
+  const facts = r.deployFactsHTML(FAILED_EVT, {
+    commits: [{ sha: 'abcdef1234567', subject: 'bump <nginx>' }],
+    repoBase: 'https://forge/r',
+  });
+  assert.match(facts, /href="https:\/\/forge\/r\/commit\/abcdef1234567"[^>]*>abcdef1</);
+  assert.match(facts, /<span class="dp-subject">bump &lt;nginx&gt;<\/span>/);
+});
+
+test('deployFactsHTML: nothing changed reads none, a peer count reads as files', () => {
+  const none = r.deployFactsHTML({ status: 'success', duration_ms: 0 }, {});
+  assert.match(none, /Change<\/div><div class="dp-fv">none</);
+  assert.match(none, /Files<\/div><div class="dp-fv">none</);
+  const peer = r.deployFactsHTML(
+    { status: 'success', changed_files: 1, commit_sha: 'abc1234def' },
+    {},
+  );
+  assert.match(peer, /Files<\/div><div class="dp-fv">1 file</);
+  assert.match(peer, /Commit<\/div><div class="dp-fv"><span class="dp-sha"[^>]*>abc1234</);
+});
+
+test('deployPaneHTML: changes with a diff, one file open and several closed, with a stat', () => {
+  const one = r.deployPaneHTML('changes', FAILED_EVT, {
+    diffs: { 'web/.env': '--- a\n+++ b\n@@ -1 +1 @@\n-A=1\n+A=2\n+B=3' },
+  });
+  assert.match(one, /data-testid="diff-panel"/);
+  assert.match(one, /diff-file-header expanded/);
+  assert.match(
+    one,
+    /<span class="df-stat"><span class="df-add">\+2<\/span><span class="df-del">−1<\/span><\/span>/,
+  );
+  assert.match(one, /data-testid="file-services"/);
+  const two = r.deployPaneHTML('changes', FAILED_EVT, { diffs: { 'a.yml': '+x', 'b.yml': '-y' } });
+  assert.doesNotMatch(two, /expanded/);
+});
+
+test('deployPaneHTML: changes without a diff list the files; loading says so', () => {
+  const files = r.deployPaneHTML('changes', FAILED_EVT, { diffs: null });
+  assert.match(files, /data-testid="files-panel"/);
+  assert.match(files, /web\/docker-compose\.yml/);
+  assert.match(r.deployPaneHTML('changes', FAILED_EVT, { loading: true }), /diff-loading/);
+});
+
+test('deployPaneHTML: drift lists the drifted containers', () => {
+  const html = r.deployPaneHTML('drift', { heal_drift: [{ name: 'web', status: 'exited' }] }, {});
+  assert.match(html, /class="hd-name">web</);
+  assert.match(html, /class="hd-status hd-exited">exited</);
+});
+
+test('deployOutputHTML clamps beyond six lines with a Show all toggle', () => {
+  const short = r.deployOutputHTML('one\ntwo', false);
+  assert.match(short, /<pre class="dp-output" data-testid="deploy-output">one\ntwo<\/pre>/);
+  assert.doesNotMatch(short, /output-more/);
+  const long = 'l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8';
+  const clamped = r.deployOutputHTML(long, false);
+  assert.match(clamped, /class="dp-output clamped"/);
+  assert.match(clamped, /data-action="output-more"[^>]*>Show all 8 lines</);
+  const open = r.deployOutputHTML(long, true);
+  assert.doesNotMatch(open, /clamped/);
+  assert.match(open, />Show less</);
+  assert.doesNotMatch(r.deployOutputHTML('<img src=x>', false), /<img/);
+});
+
+test('deployPaneHTML: commits list each commit with its linked SHA', () => {
+  const html = r.deployPaneHTML('commits', FAILED_EVT, {
+    commits: [
+      { sha: 'aaaaaaa111', subject: 'two', author: 'ann' },
+      { sha: 'bbbbbbb222', subject: 'one', author: 'bob' },
+    ],
+    repoBase: 'https://forge/r',
+  });
+  assert.match(html, /<ul class="diff-commit-list expanded" data-testid="diff-commit-list">/);
+  assert.equal([...html.matchAll(/<li>/g)].length, 2);
+  assert.match(html, /commit\/aaaaaaa111/);
+});
+
+test('deployPanelHTML escapes a repo-controlled stack name and error', () => {
+  const html = r.deployPanelHTML({ ...FAILED_EVT, stack: XSS, error: XSS }, { nowMs: DEPLOY_NOW });
+  assert.doesNotMatch(html, /<img/);
 });

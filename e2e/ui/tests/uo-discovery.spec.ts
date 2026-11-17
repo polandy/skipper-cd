@@ -61,6 +61,7 @@ test.describe('UO2: leftover repo config', () => {
     const row = page.locator('[data-testid="deploy-row"][data-stack="_config"]');
     await expect(row).toHaveCount(1);
     await expect(row).toHaveAttribute('data-status', 'failed');
-    await expect(page.locator('[data-testid="error-panel"]')).toContainText('no longer read');
+    await row.click();
+    await expect(page.locator('[data-testid="detail-verdict"]')).toContainText('no longer read');
   });
 });

@@ -106,19 +106,21 @@ test('UX2: peer roster rows show an inline health pill; the panel carries the ap
   await expect(rosterRow(page, 'host-a', 'api').locator('[data-testid="health-pill"]')).toHaveAttribute('data-health', 'healthy');
 });
 
-// UX3 — expanding a peer deploy row renders the peer's containers (health) panel
-// inline, read-only: it lists the fanned-in services but drops the per-service
-// log button (the container-logs proxy is a follow-up).
-test('UX3: expanding a peer row shows its containers, read-only', async ({ page, skipper }) => {
+// UX3 — a peer deploy's detail reaches the peer's containers: its Show in
+// Stacks action opens that host's Stacks detail, whose containers tab lists
+// the fanned-in services.
+test('UX3: a peer deploy detail shows its containers in Stacks', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   const gitea = deployRow(page, 'host-b', 'gitea');
   await expect(gitea).toBeVisible();
 
   await gitea.click();
-  const detail = page.locator('[data-testid="peer-detail"]');
-  await expect(detail).toHaveCount(1);
+  const deployDetail = page.locator('[data-testid="detail-panel"][data-kind="deploy"][data-host="host-b"]');
+  await expect(deployDetail).toHaveCount(1);
+  await deployDetail.locator('[data-testid="jump-btn"]').click();
 
-  // The containers panel rides inside the peer-detail, from the peer's health.
+  const detail = page.locator('[data-testid="stacks-view"] [data-testid="detail-panel"][data-host="host-b"]');
+  await expect(detail).toHaveCount(1);
   const health = detail.locator('[data-testid="health-panel"]');
   await expect(health).toBeVisible();
   await expect(health.locator('[data-testid="health-service"]')).toHaveCount(1);
@@ -128,17 +130,17 @@ test('UX3: expanding a peer row shows its containers, read-only', async ({ page,
   await expect(health.locator('[data-testid="clog-btn"]')).toHaveCount(1);
 });
 
-// UX4 — the peer's healthwatch timeline fans in too, so an expanded peer stack
-// shows its status history; and the inline pill is a shortcut into that detail,
-// not a click into the primary's own (empty) local health.
+// UX4 — the peer's healthwatch timeline fans in too, so the peer stack's
+// containers show its status history; and the inline pill is a shortcut into
+// that Stacks detail, not a click into the primary's own (empty) local health.
 test('UX4: peer containers show the healthwatch timeline; the pill opens the detail', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   const postgres = deployRow(page, 'host-b', 'postgres');
 
-  // Clicking the peer row's health pill opens its containers detail (host-scoped),
-  // never a blank local health panel.
+  // Clicking the peer row's health pill opens its containers in Stacks
+  // (host-scoped), never a blank local health panel.
   await postgres.locator('[data-testid="health-pill"]').click();
-  const detail = page.locator('[data-testid="peer-detail"]');
+  const detail = page.locator('[data-testid="stacks-view"] [data-testid="detail-panel"][data-host="host-b"]');
   await expect(detail).toHaveCount(1);
   const health = detail.locator('[data-testid="health-panel"]');
   await expect(health).toBeVisible();

@@ -62,17 +62,15 @@ function rosterLastDeploy(entry, deploying) {
 // own selection (App.detail, docs/dev/ui-redesign-plan.md §3.6).
 const DETAIL_VIEW = Object.freeze({ deploys: 'deploys', stacks: 'stacks' });
 
-// DETAIL_TAB names the panes a row's detail can show: a deploy's changes or
-// self-heal drift, the stack's health, history or hooks, the Stacks card
-// (overview) and a peer row's read-only detail.
+// DETAIL_TAB names the panes a row's detail can show: a deploy row's detail
+// (deploy), the stack's health, history or hooks, and the Stacks card
+// (overview).
 const DETAIL_TAB = Object.freeze({
-  changes: 'changes',
-  heal: 'heal',
+  deploy: 'deploy',
   health: 'health',
   history: 'history',
   hooks: 'hooks',
   overview: 'overview',
-  peer: 'peer',
 });
 
 // detailSelection is the App.detail record for a row (its dataset): the view,
@@ -1831,6 +1829,233 @@ function settledVerdict(entry, healthy) {
   return verdictLine('ok', 'ok', head, '', since);
 }
 
+// DEPLOY_TAB names the tabs of a deploy row's detail panel.
+const DEPLOY_TAB = Object.freeze({
+  changes: 'changes',
+  drift: 'drift',
+  output: 'output',
+  commits: 'commits',
+});
+
+// DEPLOY_STAGE matches the stage a deploy error leads with (ADR-0063); the
+// before-start ones touched no container, so the running version stays.
+const DEPLOY_STAGE =
+  /^(docker compose (?:up|pull|build)|health check|post_deploy hook|pre_deploy hook \d+ \(".*?"\)|rollout(?: \S+)?): /;
+const BEFORE_START_STAGE = /^(docker compose (?:pull|build)|pre_deploy hook|rollout$)/;
+const ROLLED_BACK_SUFFIX = ' (rolled back to previous version)';
+const ROLLBACK_UNHEALTHY = / \((restored version .*) \(rolled back but still unhealthy\)\)$/;
+const ROLLBACK_FAILED = / \(rollback also failed: (.*)\)$/;
+const EXIT_STATUS_PREFIX = /^exit status \d+: /;
+
+// deployFailure splits a deploy error into the stage that failed, its
+// condensed cause and how the rollback went ('' none, ok, unhealthy, failed;
+// restored carries the rollback's own error). An unknown shape is all cause.
+function deployFailure(error) {
+  let rest = error || '';
+  let rollback = '';
+  let restored = '';
+  let m;
+  if (rest.endsWith(ROLLED_BACK_SUFFIX)) {
+    rollback = 'ok';
+    rest = rest.slice(0, -ROLLED_BACK_SUFFIX.length);
+  } else if ((m = rest.match(ROLLBACK_UNHEALTHY))) {
+    rollback = 'unhealthy';
+    restored = m[1];
+    rest = rest.slice(0, m.index);
+  } else if ((m = rest.match(ROLLBACK_FAILED))) {
+    rollback = 'failed';
+    restored = m[1];
+    rest = rest.slice(0, m.index);
+  }
+  const stage = rest.match(DEPLOY_STAGE);
+  const phase = stage ? stage[1] : '';
+  const cause = (stage ? rest.slice(stage[0].length) : rest).replace(EXIT_STATUS_PREFIX, '');
+  return {
+    phase: phase,
+    cause: cause,
+    beforeStart: BEFORE_START_STAGE.test(phase),
+    rollback: rollback,
+    restored: restored,
+  };
+}
+
+// driftNames lists a heal's drifted containers with their state.
+function driftNames(drift) {
+  return (drift || [])
+    .map(function (d) {
+      return d.name + (d.status ? ' (' + d.status + ')' : '');
+    })
+    .join(', ');
+}
+
+// rollbackTarget names what a rollback restored: the one service's previous
+// tag when the deploy moved exactly one image, else the previous version.
+function rollbackTarget(evt) {
+  const images = evt.image_changes || [];
+  if (images.length === 1 && images[0].old) {
+    return images[0].service + ' ' + shortImageTag(images[0].old);
+  }
+  return 'the previous version';
+}
+
+// failedAt phrases a failure's stage and cause as one clause.
+function failedAt(f) {
+  return f.phase ? f.phase + ' failed: ' + f.cause : f.cause;
+}
+
+// DEPLOY_HELD is the sub of every verdict whose change is now held.
+const DEPLOY_HELD = 'The change is held. ' + HELD_RELEASE;
+
+// deployOutcomeVerdict is the one line that says how a deploy ended, or null
+// for an outcome that needs none (success, skipped, still running).
+function deployOutcomeVerdict(evt, ctx) {
+  const f = deployFailure(evt.error);
+  switch (evt.status) {
+    case 'failed': {
+      const head = f.phase ? 'Failed at ' + f.phase + '.' : 'Failed.';
+      let sub = '';
+      if (!f.phase) {
+        // Config, project-dir or hashing failure: no container step, no hold.
+      } else if (f.beforeStart) {
+        sub =
+          'Nothing was touched; the running version stays. skipper retries after a backoff and holds the change after the third failure.';
+      } else if (f.rollback === 'failed') {
+        sub = 'The rollback failed too: ' + f.restored + '. ' + DEPLOY_HELD;
+      } else {
+        sub = 'The new containers are left running. ' + DEPLOY_HELD;
+      }
+      return verdictLine('failed', 'danger', head, f.cause, sub);
+    }
+    case 'rolled_back':
+      return verdictLine(
+        'rolled_back',
+        'rollback',
+        'Rolled back to ' + rollbackTarget(evt) + '.',
+        failedAt(f),
+        'The previous version is running' +
+          (evt.health_gated ? ' and healthy' : '') +
+          '. ' +
+          DEPLOY_HELD,
+      );
+    case 'rolled_back_unhealthy':
+      return verdictLine(
+        'rolled_back',
+        'danger',
+        'Rolled back, but the restored version is unhealthy too.',
+        failedAt(f),
+        (f.restored ? f.restored + '. ' : '') + DEPLOY_HELD,
+      );
+    case 'blocked': {
+      const dep = (evt.error || '').match(/^dependency (.+) failed this run$/);
+      if (!dep) return verdictLine('blocked', 'warn', 'Not deployed.', evt.error || '');
+      return verdictLine(
+        'blocked',
+        'warn',
+        'Not deployed.',
+        'It depends on ' + dep[1] + ', which failed in this run.',
+        'It deploys with the next run once ' + dep[1] + ' succeeds.',
+      );
+    }
+    case 'queued': {
+      const scope = { stack: ' for this stack', global: ' for every stack' }[ctx.queueReason] || '';
+      return verdictLine(
+        'queued',
+        'muted',
+        'Waiting.',
+        'Autosync is paused' + scope + '.',
+        'Resume autosync to apply this change.',
+      );
+    }
+    case 'healed': {
+      const names = driftNames(evt.heal_drift);
+      return verdictLine(
+        'healed',
+        'muted',
+        names ? 'Self-heal restarted ' + names + '.' : 'Self-heal restored drifted containers.',
+        'No git change, so there is no diff.',
+      );
+    }
+    case 'heal_exhausted': {
+      const names = driftNames(evt.heal_drift);
+      return verdictLine(
+        'healed',
+        'danger',
+        'Self-heal gave up.',
+        names
+          ? names + ' kept drifting after repeated restarts.'
+          : 'The containers kept drifting after repeated restarts.',
+      );
+    }
+    case 'held':
+      return verdictLine('held', 'danger', 'Held.', evt.error || '', HELD_RELEASE);
+    default:
+      return null;
+  }
+}
+
+// deployVerdict answers, in plain sentences, how one deploy ended: its phase
+// and cause, whether the change is held, what blocks or queues it — and, for
+// a repeated outcome, since when. A success needs no verdict. ctx carries
+// what the event does not: queueReason (stack|global) of a queued change.
+function deployVerdict(evt, ctx) {
+  const lines = [];
+  const outcome = deployOutcomeVerdict(evt, ctx || {});
+  if (outcome) lines.push(outcome);
+  if ((evt.repeat_count || 0) >= 2) {
+    lines.push(
+      verdictLine(
+        'repeat',
+        'muted',
+        '×' + evt.repeat_count,
+        evt.first_seen ? 'since ' + fullTime(evt.first_seen) + '.' : '',
+      ),
+    );
+  }
+  return lines;
+}
+
+// changedFileCount is how many files a deploy changed: a peer's audit record
+// carries the count where a local event carries the list.
+function changedFileCount(evt) {
+  const f = evt.changed_files;
+  return typeof f === 'number' ? f : (f || []).length;
+}
+
+// deployTabs lists a deploy panel's tabs: Changes (Drift for a heal), Output
+// for a failure that left an error, Commits only when the push carried more
+// than one. o.commits is the commit count of the lazily loaded diff.
+function deployTabs(evt, o) {
+  const tabs = [];
+  const drift = evt.heal_drift || [];
+  if (evt.status === 'healed' || evt.status === 'heal_exhausted') {
+    if (drift.length) {
+      tabs.push({ id: DEPLOY_TAB.drift, label: 'Drift', count: drift.length, bad: false });
+    }
+  } else if (evt.has_diffs || changedFileCount(evt)) {
+    const files = changedFileCount(evt);
+    tabs.push({ id: DEPLOY_TAB.changes, label: 'Changes', count: files || null, bad: false });
+  }
+  if (evt.error && AUDIT_BAD_STATUSES.indexOf(evt.status) !== -1) {
+    tabs.push({ id: DEPLOY_TAB.output, label: 'Output', count: null, bad: true });
+  }
+  const commits = (o && o.commits) || 0;
+  if (commits > 1) {
+    tabs.push({ id: DEPLOY_TAB.commits, label: 'Commits', count: commits, bad: false });
+  }
+  return tabs;
+}
+
+// diffStat counts a unified diff's added and removed lines.
+function diffStat(diff) {
+  const stat = { add: 0, del: 0 };
+  (diff || '').split('\n').forEach(function (line) {
+    const cls = classifyDiffLine(line);
+    if (cls === 'diff-add') stat.add++;
+    else if (cls === 'diff-del') stat.del++;
+  });
+  return stat;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   // Some of these are internal to this file (parseImageRef, imageRepoName,
   // HOST_COLOR_COUNT, hostColorIndex — each used only by another helper here).
@@ -1855,6 +2080,12 @@ if (typeof module !== 'undefined' && module.exports) {
     STACK_TAB,
     stackDefaultTab,
     stackVerdict,
+    DEPLOY_TAB,
+    deployFailure,
+    deployVerdict,
+    changedFileCount,
+    deployTabs,
+    diffStat,
     stackTabs,
     detailSelection,
     detailMatchesRow,

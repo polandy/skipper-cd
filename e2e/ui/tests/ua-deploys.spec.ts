@@ -147,8 +147,10 @@ test.describe('UA2: status badges', () => {
       const row = webRow(page, 'failed');
       await expect(row).toHaveCount(1);
       await expect(row.locator('[data-testid="status-badge"]')).toHaveText('failed');
-      // A failed deploy expands an error panel below the row.
-      await expect(page.locator('[data-testid="error-panel"]')).toBeVisible();
+      // Nothing opens by itself; a click opens the detail with the verdict.
+      await expect(page.locator('[data-testid="detail-panel"][data-kind="deploy"]')).toHaveCount(0);
+      await row.click();
+      await expect(page.locator('[data-testid="detail-verdict"]')).toBeVisible();
     });
   });
 });
@@ -291,8 +293,8 @@ test.describe('UA5: stack icon + monogram fallback', () => {
 });
 
 // UA7 — Files pill. A deploy that changed files renders a `files-pill` in its row;
-// clicking it inserts a `files-panel` (the changed file paths) right below the row,
-// and clicking again removes it. The startup deploy is a stack's first deploy, so it
+// clicking it opens the row's deploy detail right below it, on the Changes tab
+// listing the changed file paths (`files-panel`), and clicking again closes it. The startup deploy is a stack's first deploy, so it
 // has no previous commit to diff against (no `has_diffs`) — clicking yields the plain
 // files-panel, not the diff-panel (that path is UA8). The startup success row already
 // carries changed files, so no webhook is needed.
@@ -304,7 +306,7 @@ test.describe('UA7: files pill', () => {
   const filesPanel = (page: import('@playwright/test').Page) =>
     page.locator('[data-testid="files-panel"]');
 
-  test('clicking the files pill toggles the files panel below the row', async ({ page, skipper }) => {
+  test('clicking the files pill toggles the deploy detail on its Changes tab', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     await expect(successRow(page)).toHaveCount(1); // startup settled
 
@@ -312,7 +314,7 @@ test.describe('UA7: files pill', () => {
     await expect(filesPill(page)).toHaveCount(1);
     await expect(filesPanel(page)).toHaveCount(0);
 
-    // First click inserts the panel directly after the row.
+    // First click opens the deploy detail directly after the row.
     await filesPill(page).click();
     await expect(filesPanel(page)).toHaveCount(1);
     await expect(filesPanel(page)).toBeVisible();
@@ -321,7 +323,8 @@ test.describe('UA7: files pill', () => {
     const siblingTestid = await successRow(page).evaluate(
       (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
-    expect(siblingTestid).toBe('files-panel');
+    expect(siblingTestid).toBe('detail-panel');
+    await expect(page.locator('[data-testid="detail-tab"][aria-selected="true"]')).toHaveAttribute('data-tab', 'changes');
 
     // Second click removes it again.
     await filesPill(page).click();
@@ -331,7 +334,8 @@ test.describe('UA7: files pill', () => {
 
 // UA8 — Diff panel. When a deploy has a previous commit to diff against, its event
 // carries `has_diffs` and clicking the files-pill fetches `/api/events/{id}/diffs`
-// and renders a `diff-panel` (not the plain files-panel) with per-line add/delete/
+// and renders a `diff-panel` (not the plain files-panel) in the deploy detail's
+// Changes tab with per-line add/delete/
 // hunk colouring. The startup deploy is a stack's first (no prior commit, no diffs);
 // a second deploy driven by a webhook that bumps the compose image is the first with
 // a real diff, so its success row is the one carrying `has_diffs`.
@@ -360,8 +364,8 @@ test.describe('UA8: diff panel', () => {
     await expect(filesPill(page)).toHaveCount(1);
     await expect(diffPanel(page)).toHaveCount(0);
 
-    // Clicking the pill issues the diffs fetch and expands a diff-panel — not the
-    // plain files-panel — directly below the row.
+    // Clicking the pill issues the diffs fetch and opens the deploy detail below
+    // the row, its Changes tab holding a diff-panel — not the plain files-panel.
     const diffsReq = page.waitForRequest((r) => /\/api\/events\/[^/]+\/diffs$/.test(r.url()));
     await filesPill(page).click();
     await diffsReq;
@@ -372,7 +376,8 @@ test.describe('UA8: diff panel', () => {
     const siblingTestid = await diffRow(page).evaluate(
       (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
-    expect(siblingTestid).toBe('diff-panel');
+    expect(siblingTestid).toBe('detail-panel');
+    await expect(page.locator('[data-testid="detail-panel"] [data-testid="diff-panel"]')).toHaveCount(1);
 
     // The image bump renders as a deleted and an added line (colour-classified),
     // plus a hunk header — the diff colouring the panel exists to show.
@@ -386,28 +391,17 @@ test.describe('UA8: diff panel', () => {
       .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
     for (const h of lineHeights) expect(h).toBeLessThan(24);
 
-    // Snapshot: the coloured diff panel (§5 anchor). Its content is the static
-    // nginx image bump, so nothing needs masking.
-    // Mask the commit header's volatile bits: the real git short SHA and the
-    // relative commit time both vary per run (the harness makes real commits).
-    await visualSnapshot(diffPanel(page), 'diff-panel.png', {
-      mask: [
-        page.locator('[data-testid="commit-sha"]'),
-        page.locator('[data-testid="commit-time"]'),
-      ],
-    });
-
     // Clicking again collapses it.
     await filesPill(page).click();
     await expect(diffPanel(page)).toHaveCount(0);
   });
 });
 
-// UA9 — Error detail. A `failed` deploy carries the backend error string, and the
-// UI renders it as an `error-panel` tied to that row: the panel is the row's direct
-// sibling, is tagged `data-error-for` with the stack, and shows the real message
-// (not an empty or placeholder box). The startup `up` fails with no prior commit to
-// roll back to, so the stack's first row is `failed`.
+// UA9 — Error detail. A `failed` deploy's detail leads with the cause: its
+// verdict sits above the facts and tabs, and the Output tab carries the real
+// backend error. Nothing opens by itself — no error box rides the list. The
+// startup `up` fails with no prior commit to roll back to, so the stack's first
+// row is `failed`.
 test.describe('UA9: error detail', () => {
   test.use({
     startOptions: { stacks: ['web'], stubEnv: { STUB_DOCKER_FAIL_ON: 'up' }, readiness: 'listening' },
@@ -415,27 +409,33 @@ test.describe('UA9: error detail', () => {
 
   const failedRow = (page: import('@playwright/test').Page) =>
     page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="failed"]');
-  const errorPanel = (page: import('@playwright/test').Page) =>
-    page.locator('[data-testid="error-panel"]');
+  const panel = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
 
-  test('a failed deploy renders an error panel tied to its row with the message', async ({ page, skipper }) => {
+  test('a failed deploy’s detail shows the cause before the diff and the output', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
     await expect(failedRow(page)).toHaveCount(1);
-    await expect(errorPanel(page)).toHaveCount(1);
-    await expect(errorPanel(page)).toBeVisible();
+    await expect(panel(page)).toHaveCount(0);
+    await failedRow(page).click();
 
-    // The panel belongs to the failed row: it is the row's direct next sibling and
-    // is tagged with the stack it reports on.
+    // The detail belongs to the failed row: it is the row's next sibling.
     const siblingTestid = await failedRow(page).evaluate(
       (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
-    expect(siblingTestid).toBe('error-panel');
-    await expect(errorPanel(page)).toHaveAttribute('data-error-for', 'web');
+    expect(siblingTestid).toBe('detail-panel');
+    await expect(panel(page)).toHaveAttribute('data-stack', 'web');
 
-    // It carries the real backend error, not an empty placeholder.
-    await expect(errorPanel(page)).toContainText('docker compose up');
-    await expect(errorPanel(page)).not.toBeEmpty();
+    // The verdict names the failed phase and comes before the facts and tabs.
+    const order = await panel(page).evaluate((p) =>
+      Array.from(p.children).map((c) => c.getAttribute('data-testid') ?? c.className),
+    );
+    expect(order.indexOf('detail-verdict')).toBeLessThan(order.indexOf('detail-facts'));
+    await expect(panel(page).locator('[data-testid="detail-verdict"]')).toContainText('Failed at docker compose up');
+
+    // The Output tab carries the real backend error.
+    await panel(page).locator('[data-testid="detail-tab"][data-tab="output"]').click();
+    await expect(panel(page).locator('[data-testid="deploy-output"]')).toContainText('docker compose up');
   });
 });
 
@@ -525,8 +525,8 @@ test.describe('UA12: queued row diff', () => {
     await expect(filesPill(page)).toHaveCount(1);
     await expect(diffPanel(page)).toHaveCount(0);
 
-    // Clicking the pill fetches diffs and expands a diff-panel (not the plain
-    // files-panel) with the image change colour-classified.
+    // Clicking the pill fetches diffs and opens the detail's Changes tab: a
+    // diff-panel (not the plain files-panel), the image change colour-classified.
     const diffsReq = page.waitForRequest((r) => /\/api\/events\/[^/]+\/diffs$/.test(r.url()));
     await filesPill(page).click();
     await diffsReq;

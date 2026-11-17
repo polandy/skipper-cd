@@ -82,8 +82,8 @@ test.describe('cross-view jump', () => {
 
     await jumpBtnIn(deployRows(page, 'api').first()).click();
     await expect(page.locator('[data-testid="stacks-view"]')).toBeVisible();
-    // No diff/files panel opened on the deploy row behind the jump.
-    await expect(deployRows(page, 'api').first()).not.toHaveClass(/diff-open/);
+    // No deploy detail opened on the deploy row behind the jump.
+    await expect(deployRows(page, 'api').first()).not.toHaveClass(/audit-open/);
 
     await (await rosterJump(page, 'api')).click();
     await expect(page.locator('[data-testid="deploys-table"]')).toBeVisible();

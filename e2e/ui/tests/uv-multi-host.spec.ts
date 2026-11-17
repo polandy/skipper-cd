@@ -183,28 +183,29 @@ test('UV5: the merged roster shows peer stacks, read-only', async ({ page, skipp
 });
 
 // UV6 — a peer row is a read-only mirror, but a click never dead-ends: it opens
-// a compact detail (commit + file count) and loads the peer's diff inline via the
-// primary's proxy. This is the case behind the "clicking the peer _nixos row does
+// the same deploy detail a local row does (commit + file count facts) and loads
+// the peer's diff into its Changes tab via the primary's proxy. This is the case behind the "clicking the peer _nixos row does
 // nothing" report.
 test('UV6: clicking a peer row opens a read-only detail with the peer diff inline', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   const peerRow = page.locator('[data-testid="deploy-row"][data-host="host-b"][data-stack="gitea"]');
   await expect(peerRow).toBeVisible();
-  await expect(page.locator('[data-testid="peer-detail"]')).toHaveCount(0);
+  const detail = page.locator('[data-testid="detail-panel"][data-kind="deploy"][data-host="host-b"]');
+  await expect(detail).toHaveCount(0);
 
   await peerRow.click();
-  const detail = page.locator('[data-testid="peer-detail"]');
   await expect(detail).toHaveCount(1);
-  await expect(detail).toContainText('aaa1111'); // the peer record's commit
-  await expect(detail).toContainText('1 file changed');
+  const facts = detail.locator('[data-testid="detail-facts"]');
+  await expect(facts).toContainText('aaa1111'); // the peer record's commit
+  await expect(facts).toContainText('1 file');
 
-  // The peer's diff is fetched through the primary's proxy and rendered inline.
-  await expect(detail.locator('[data-testid="peer-diff"] [data-testid="diff-panel"]')).toBeVisible();
-  await expect(detail.locator('[data-testid="peer-diff"]')).toContainText('gitea:1.22');
+  // The peer's diff is fetched through the primary's proxy into the Changes tab.
+  await expect(detail.locator('[data-testid="diff-panel"]')).toBeVisible();
+  await expect(detail.locator('[data-testid="diff-panel"]')).toContainText('gitea:1.22');
 
   // Clicking again closes it.
   await peerRow.click();
-  await expect(page.locator('[data-testid="peer-detail"]')).toHaveCount(0);
+  await expect(detail).toHaveCount(0);
 });
 
 // UV7 — the Hosts filter is persisted per browser and restores once the peers

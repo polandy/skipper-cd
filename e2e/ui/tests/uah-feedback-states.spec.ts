@@ -137,6 +137,9 @@ test.describe('UAH4: diff load-error + retry', () => {
     await expect(err).toBeVisible();
     await expect(err).toContainText("Couldn't load the diff");
     await expect(page.locator('[data-testid="diff-panel"]')).toHaveCount(0);
+    // The error sits in the Changes tab; the facts above it stay.
+    await expect(page.locator('.dp-pane [data-testid="load-error"]')).toBeVisible();
+    await expect(page.locator('[data-testid="detail-facts"]')).toBeVisible();
 
     await err.locator('[data-testid="load-retry"]').click();
     await expect(loadError(page)).toHaveCount(0);
@@ -145,7 +148,7 @@ test.describe('UAH4: diff load-error + retry', () => {
 });
 
 // UAH5 — the peer-diff proxy fails (peer unreachable): the detail keeps its facts
-// and shows a load-error in the diff slot instead of the slot vanishing; Retry
+// and shows a load-error in its Changes tab instead of the tab vanishing; Retry
 // loads the peer's diff.
 const hostB = {
   name: 'host-b',
@@ -177,15 +180,15 @@ test.describe('UAH5: peer-diff load-error + retry', () => {
     await expect(peerRow).toBeVisible();
     await peerRow.click();
 
-    const detail = page.locator('[data-testid="peer-detail"]');
-    await expect(detail).toContainText('aaa1111'); // the read-only facts remain
+    const detail = page.locator('[data-testid="detail-panel"][data-kind="deploy"][data-host="host-b"]');
+    await expect(detail.locator('[data-testid="detail-facts"]')).toContainText('aaa1111'); // the facts remain
     const err = loadError(detail);
     await expect(err).toBeVisible();
     await expect(err).toContainText('reach host-b');
 
     await err.locator('[data-testid="load-retry"]').click();
     await expect(loadError(detail)).toHaveCount(0);
-    await expect(detail.locator('[data-testid="peer-diff"] [data-testid="diff-panel"]')).toBeVisible();
-    await expect(detail.locator('[data-testid="peer-diff"]')).toContainText('gitea:1.22');
+    await expect(detail.locator('[data-testid="diff-panel"]')).toBeVisible();
+    await expect(detail.locator('[data-testid="diff-panel"]')).toContainText('gitea:1.22');
   });
 });
