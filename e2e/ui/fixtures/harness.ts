@@ -148,6 +148,10 @@ async function freePorts(n: number): Promise<number[]> {
  *  with a wide margin while a systematic bind failure still surfaces fast. */
 const MAX_LAUNCH_ATTEMPTS = 3;
 
+/** WEBHOOK_BOUND_LOG is what skipper logs once its webhook/UI port is bound
+ *  (startServer, cmd/skipper/main.go). */
+const WEBHOOK_BOUND_LOG = "webhook server listening";
+
 /** isStolenPort matches the two shapes a stolen reserved port fails with:
  *  skipper's own bind error (captured in the wait failure's output) and a
  *  peer stub's listen rejection. */
@@ -1188,7 +1192,17 @@ export class Skipper {
     }
   }
 
+  /** waitBound waits for this process's own bind: skipper logs the line only
+   *  once its port is bound, so a /healthz answer after it cannot come from
+   *  another worker's instance that took the reserved port first. */
+  private async waitBound(): Promise<void> {
+    await this.waitFor("webhook port bound", () =>
+      this.out.includes(WEBHOOK_BOUND_LOG),
+    );
+  }
+
   private async waitHealthy(): Promise<void> {
+    await this.waitBound();
     await this.waitFor("healthz 200", async () => {
       try {
         return (await fetch(`${this.baseURL}/healthz`)).status === 200;
@@ -1201,6 +1215,7 @@ export class Skipper {
   /** waitListening waits until the HTTP server responds at all (any status),
    *  used when the startup deploy is expected to fail so /healthz stays 503. */
   private async waitListening(): Promise<void> {
+    await this.waitBound();
     await this.waitFor("server listening", async () => {
       try {
         await fetch(`${this.baseURL}/healthz`);

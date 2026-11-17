@@ -72,9 +72,9 @@ test("UAY2: a dirty checkout is reported without blocking the deploys", async ({
   await expect(stackRow(page)).toHaveCount(2);
   expect(skipper.projectDirHead()).toBe(before);
 
-  // The reason is on the row's error panel, naming what to do about it.
+  // The reason is the verdict of the row's detail, naming what to do about it.
   await row.click();
-  await expect(page.locator('[data-testid="error-panel"]')).toContainText(
+  await expect(page.locator('[data-testid="detail-verdict"]')).toContainText(
     /uncommitted changes/,
   );
 });

@@ -70,10 +70,7 @@ App.detail = (function () {
           n.remove();
         });
         entry.nodes = [].concat(nodes);
-        // A failed row's error box stays directly under the row, above the pane.
-        const next = entry.row.nextElementSibling;
-        const anchor = next && next.classList.contains('error-detail') ? next : entry.row;
-        anchor.after.apply(anchor, entry.nodes);
+        entry.row.after.apply(entry.row, entry.nodes);
       },
     };
   }
@@ -101,6 +98,15 @@ App.detail = (function () {
   // given) — for a row about to leave, or an affordance that went away.
   function closeIf(view, row, tab) {
     if (isOpen(view, row, tab)) close(view);
+  }
+
+  // rebind moves view's detail, when it is open on from, onto to and rebuilds
+  // it there — a row a repeat supersedes, or one that settled in place.
+  function rebind(view, from, to) {
+    const e = entryFor(view);
+    if (!e || e.row !== from) return;
+    close(view);
+    show(view, to, e.sel.tab, e.opts);
   }
 
   // reapply re-opens view's selection on its row among rows, after the view
@@ -138,5 +144,5 @@ App.detail = (function () {
     },
   });
 
-  return { registerPane, isOpen, show, toggle, close, closeIf, reapply };
+  return { registerPane, isOpen, show, toggle, close, closeIf, rebind, reapply };
 })();

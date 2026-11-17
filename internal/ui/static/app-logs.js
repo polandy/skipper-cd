@@ -443,7 +443,7 @@ App.logs = (function () {
               }),
             );
           } else if (diffs && Object.keys(diffs).length > 0) {
-            line.after(App.panels.renderDiffPanel(diffs, commits, null));
+            line.after(App.panels.renderDiffPanel(diffs, commits));
           } else {
             const note = document.createElement('div');
             note.className = 'files-list';

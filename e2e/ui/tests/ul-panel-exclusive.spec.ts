@@ -2,7 +2,7 @@ import { test, expect } from '../fixtures/test';
 
 // Maske L: one open detail per deploy table. See docs/dev/e2e-tests.md §4.13.
 //
-// The health panel and the files/diff panel are mutually exclusive on a row:
+// The health panel and the deploy detail are mutually exclusive on a row:
 // opening one closes the other, so the resulting layout never depends on the
 // click order and the variant-A row binding is never split across two panels.
 // A webhook image bump puts a diff on the newest row while the health poller
@@ -14,7 +14,7 @@ const row = (page: import('@playwright/test').Page) =>
 
 // UL1 — whichever panel opens second replaces the first, in both orders, and the
 // surviving panel is always the row's direct sibling.
-test.describe('UL1: health and diff panels are mutually exclusive', () => {
+test.describe('UL1: health panel and deploy detail are mutually exclusive', () => {
   test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
 
   test('opening one panel closes the other, regardless of click order', async ({ page, skipper }) => {
@@ -29,23 +29,23 @@ test.describe('UL1: health and diff panels are mutually exclusive', () => {
     await expect(healthPill).toHaveAttribute('data-health', 'healthy');
 
     const healthPanel = page.locator('[data-testid="health-panel"]');
-    const diffPanel = page.locator('[data-testid="diff-panel"]');
+    const diffPanel = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
 
-    // Health first, then diff: the diff panel replaces the health panel.
+    // Health first, then diff: the deploy detail replaces the health panel.
     await healthPill.click();
     await expect(healthPanel).toHaveCount(1);
     await row(page).locator('[data-testid="files-pill"]').click();
     await expect(diffPanel).toHaveCount(1);
     await expect(healthPanel).toHaveCount(0);
-    await expect(row(page)).toHaveClass(/diff-open/);
+    await expect(row(page)).toHaveClass(/audit-open/);
     await expect(row(page)).not.toHaveClass(/health-open/);
 
-    // Diff open, then health: the health panel replaces the diff panel.
+    // Detail open, then health: the health panel replaces the deploy detail.
     await healthPill.click();
     await expect(healthPanel).toHaveCount(1);
     await expect(diffPanel).toHaveCount(0);
     await expect(row(page)).toHaveClass(/health-open/);
-    await expect(row(page)).not.toHaveClass(/diff-open/);
+    await expect(row(page)).not.toHaveClass(/audit-open/);
 
     // The surviving panel is the row's direct sibling (unbroken left bar).
     const sibling = await row(page).evaluate(
@@ -72,18 +72,18 @@ test.describe('UL2: a panel on another row closes the open one', () => {
     await expect(changed('web')).toHaveCount(1);
     await expect(changed('api')).toHaveCount(1);
 
-    const diffPanel = page.locator('[data-testid="diff-panel"]');
+    const diffPanel = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
     await changed('web').locator('[data-testid="files-pill"]').click();
     await expect(diffPanel).toHaveCount(1);
-    await expect(changed('web')).toHaveClass(/diff-open/);
+    await expect(changed('web')).toHaveClass(/audit-open/);
 
     await changed('api').locator('[data-testid="files-pill"]').click();
-    await expect(changed('api')).toHaveClass(/diff-open/);
-    await expect(changed('web')).not.toHaveClass(/diff-open/);
+    await expect(changed('api')).toHaveClass(/audit-open/);
+    await expect(changed('web')).not.toHaveClass(/audit-open/);
     await expect(diffPanel).toHaveCount(1);
     const sibling = await changed('api').evaluate(
       (r) => r.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
-    expect(sibling).toBe('diff-panel');
+    expect(sibling).toBe('detail-panel');
   });
 });

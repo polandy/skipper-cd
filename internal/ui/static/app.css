@@ -781,31 +781,6 @@
      like the local files pill's resting state. */
   .peer-files { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
 
-  /* Peer-row read-only detail (multi-host fan-in). A peer row cannot drill down
-     locally (the primary has no peer diffs), so a click opens this compact card:
-     what the fan-in knows (commit, file count, error) + a link to the peer's own
-     UI for the full diff. Sits below its row like the other expand panels. */
-  .peer-detail {
-    background: var(--bg-sunken);
-    border-radius: 8px;
-    padding: 12px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .peer-detail .host-mono { display: inline-flex; }
-  .peer-detail .pd-head { display: flex; align-items: center; gap: 10px; }
-  .peer-detail .pd-note { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.5px; }
-  .peer-detail .pd-facts { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--text-secondary); }
-  .peer-detail .pd-sha { font-family: var(--font-mono); color: var(--text-primary); }
-  .peer-detail .pd-error { font-family: var(--font-mono); font-size: 12px; color: var(--danger); white-space: pre-wrap; }
-  /* The proxied peer diff renders as a normal diff panel; flatten it into the
-     peer-detail card (no second background/padding/margin) and hide its status
-     bar (the peer-detail already carries the context). */
-  .peer-detail .pd-diff .diff-panel { margin: 0; padding: 0; background: transparent; }
-  .peer-detail .pd-diff .diff-panel::before { display: none; }
-  .peer-detail .diff-loading { font-size: 12px; color: var(--text-muted); }
-
   .event-row.new-row {
     animation: rowEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -840,15 +815,15 @@
      container, so nothing inherits a status that is not its own; each consumer
      names its own fallback for a status the map leaves unset. `removed` colours
      only the row bar: in the history a stack leaving is not an outcome to rate. */
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="success"], [data-status="healed"])
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="success"], [data-status="healed"])
     { --st: var(--success); }
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="failed"], [data-status="rolled_back_unhealthy"], [data-status="heal_exhausted"])
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="failed"], [data-status="rolled_back_unhealthy"], [data-status="heal_exhausted"])
     { --st: var(--danger); }
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="rolled_back"]
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="rolled_back"]
     { --st: var(--rollback); }
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="queued"], [data-status="blocked"])
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="queued"], [data-status="blocked"])
     { --st: var(--queued); }
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="deploying"]
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="deploying"]
     { --st: var(--accent); }
   .event-row[data-status="removed"] { --st: color-mix(in srgb, var(--rollback) 55%, transparent); }
   .event-row::before {
@@ -1465,7 +1440,7 @@
 
   /* Landing flash: a temporary accent pulse on the row a jump lands on, so the
      eye finds it immediately without leaving a permanent state change behind
-     (unlike diff-open/health-open/audit-open, which persist until closed). */
+     (unlike health-open/audit-open, which persist until closed). */
   .event-row.jump-target, .roster-row.jump-target {
     animation: jumpLand 1.8s ease-out;
   }
@@ -1483,8 +1458,8 @@
     .event-row.jump-target, .roster-row.jump-target { animation: none; background: var(--accent-dim); }
   }
 
-  /* History lists many statuses, so the open row uses the neutral accent bar,
-     not a status colour. Shared with the roster's open row. */
+  /* The open row of a detail uses the neutral accent bar its panel continues,
+     not a status colour. Shared by both views. */
   .event-row.audit-open, .roster-row.audit-open {
     background: color-mix(in srgb, var(--accent) 7%, transparent);
     box-shadow: inset 3px 0 0 var(--accent);
@@ -1719,34 +1694,6 @@
     color: var(--text-muted); white-space: nowrap;
   }
 
-  .heal-panel {
-    padding: 11px 14px 12px 16px;
-    background: var(--bg-sunken);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    animation: expand 0.2s ease-out;
-  }
-  .heal-summary {
-    font-size: 12px;
-    line-height: 1.5;
-    color: var(--text-secondary);
-  }
-  .heal-summary code {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 1px 5px;
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--overlay2) 12%, transparent);
-    color: var(--text-primary);
-  }
-  .heal-drift-label {
-    margin-top: 10px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-    font-weight: 600;
-    color: var(--text-muted);
-  }
   .heal-drift-list {
     list-style: none;
     margin: 6px 0 0;
@@ -1809,8 +1756,6 @@
     .files-list,
     .audit-panel,
     .watched-panel,
-    .heal-panel,
-    .error-detail,
     .load-error,
     .sk-spin,
     .sk-bar,
@@ -1829,42 +1774,9 @@
     margin: 1px 0;
   }
 
-  /* ─── ERROR ─── */
-  /* Bound to its deploy row like the diff/health panels (variant A), and part of
-     the sheet the same way they are: no frame and no radius of its own, and the
-     row above drops its hairline so the two read as one card. --ec is the row's
-     status colour (set below). */
-  .error-detail {
-    padding: 10px 14px;
-    background: color-mix(in srgb, var(--ec, var(--danger)) 6%, transparent);
-    border: none;
-    box-shadow: inset 3px 0 0 var(--ec, var(--danger));
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--danger);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    line-height: 1.6;
-    animation: expand 0.2s ease-out;
-  }
-
-  /* --ec: the deploy-status colour shared by the row's left bar and its error
-     box, so the two read as one unit. The row keeps a continuous full-height bar
-     (via box-shadow) and squares its bottom corners only while an error box
-     trails it. Rolled-back uses the rollback tint; failed / rolled_back_unhealthy
-     use danger. */
-  .event-row[data-status="failed"]:has(+ .error-detail),                .error-detail[data-status="failed"]                { --ec: var(--danger); }
-  .event-row[data-status="rolled_back"]:has(+ .error-detail),           .error-detail[data-status="rolled_back"]           { --ec: var(--rollback); }
-  .event-row[data-status="rolled_back_unhealthy"]:has(+ .error-detail), .error-detail[data-status="rolled_back_unhealthy"] { --ec: var(--danger); }
-  .event-row[data-status="heal_exhausted"]:has(+ .error-detail),        .error-detail[data-status="heal_exhausted"]        { --ec: var(--danger); }
-  .event-row:has(+ .error-detail) {
-    box-shadow: inset 3px 0 0 var(--ec, var(--danger));
-    border-bottom: 0; /* the strip is this row's own, not the next row's neighbour */
-  }
-
   /* ─── LOAD ERROR (T4.16) ─── */
   /* A lazy detail fetch (deploy history, diff, peer diff) failed or returned
-     non-OK. Amber caution — deliberately NOT the red of .error-detail: the
+     non-OK. Amber caution — deliberately not danger red: the
      *deploy* is fine, the UI just couldn't load a panel. Distinct from the
      muted genuine-empty line, and retryable in place via .le-retry. */
   .load-error {
@@ -1896,9 +1808,8 @@
 
   /* The load-error carries the whole visual when it stands in for a panel's
      body: strip the host panel's own bar/tint/padding so the two bars don't
-     stack. Covers the audit panel and the peer-detail diff slot. */
+     stack. Covers the audit panel. */
   .audit-panel:has(> .load-error) { padding: 0; background: transparent; border: none; box-shadow: none; }
-  .pd-diff > .load-error { margin-top: 6px; }
 
   /* ─── DIFF PANEL ─── */
   .diff-panel {
@@ -1994,28 +1905,12 @@
     font-style: italic;
   }
 
-  /* Variant-A binding (as for the health panel): the open row and its trailing
-     panels — diff, files, peer-detail, and the error detail — share a status-coloured
-     left bar + tint so they always read as tied to the row, in the row's --st
-     status colour; a diff panel opened from a log line is unbound (no row to
-     tie to) and keeps the plain background. */
-  .event-row.diff-open {
-    background: color-mix(in srgb, var(--st, var(--accent)) 8%, transparent);
-    box-shadow: inset 3px 0 0 var(--st, var(--accent));
-  }
-  .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound {
-    background: color-mix(in srgb, var(--st, var(--accent)) 5%, var(--bg-sunken));
-    border-color: color-mix(in srgb, var(--st, var(--accent)) 22%, var(--border));
-    box-shadow: inset 3px 0 0 var(--st, var(--accent));
-  }
-
   /* A bound panel is part of the sheet, not a card resting on it: it sits flush
      under its row inside the same border, so the only edges it draws are the
      shared 3px status bar on the left and the hairline the list puts between
      every child. The sheet's own :last-child rule rounds whichever panel ends
      the card, so no panel carries a radius of its own. */
-  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel,
-  .heal-panel.bound, .peer-detail.bound, .watched-panel {
+  .health-panel, .audit-panel, .watched-panel {
     border-radius: 0;
     border-top: none;
     border-left: none;
@@ -2032,29 +1927,6 @@
     flex-direction: column;
     gap: 8px;
   }
-  .diff-head-echo {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-  }
-  .diff-head-echo .dh-who { color: var(--text-primary); font-size: 12.5px; font-weight: 700; }
-  .diff-head-echo .dh-label { color: var(--text-muted); font-family: var(--font-display); font-size: 12px; font-weight: 500; }
-  .diff-head-echo .dh-pill {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 2px 8px 2px 6px;
-    border-radius: 999px;
-    font-size: 10.5px;
-    font-weight: 600;
-    color: var(--st, var(--accent));
-    border: 1px solid color-mix(in srgb, var(--st, var(--accent)) 32%, transparent);
-    background: color-mix(in srgb, var(--st, var(--accent)) 13%, transparent);
-  }
-  .diff-head-echo .dh-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--st, var(--accent)); }
   .diff-commit { display: flex; align-items: flex-start; gap: 9px; }
   .diff-commit .commit-glyph { width: 14px; height: 14px; margin-top: 1px; color: var(--text-muted); flex-shrink: 0; }
   .diff-commit .dh-subject {
@@ -3400,9 +3272,12 @@
     display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0;
     font-size: 13px; color: var(--text-primary);
   }
-  .dp-fv .tag-delta { flex-wrap: nowrap; max-width: 100%; }
+  .dp-fv .tag-delta, .dp-fv .tag-delta .td-val { flex-wrap: wrap; max-width: 100%; }
   .dp-fv .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .dp-sha { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+  .dp-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .dp-more { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+  .dp-meta { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 
   /* Tabs over one pane. */
   .dp-tabs {
@@ -3422,10 +3297,30 @@
   /* The shared panel builders draw their own bound frame; inside the pane they
      are content, not cards. The Containers head drops the stack name — the
      panel head already names it. */
-  .dp-pane > .health-panel, .dp-pane > .audit-panel, .dp-pane > .watched-panel, .dp-pane > .hooks-panel {
+  .dp-pane > .health-panel, .dp-pane > .audit-panel, .dp-pane > .watched-panel, .dp-pane > .hooks-panel,
+  .dp-pane > .diff-panel, .dp-pane > .files-list {
     background: none; box-shadow: none; border: 0; border-radius: 0; animation: none;
   }
   .dp-pane .health-panel .hp-head-who { display: none; }
+  .dp-pane > .heal-drift-list, .dp-pane > .diff-commit-list, .dp-pane > .load-error { margin: 8px 14px; }
+  .dp-pane > .diff-loading { padding: 10px 14px; }
+  /* A diff file's added/removed counts, in its header. */
+  .df-stat { display: inline-flex; gap: 6px; font-family: var(--font-mono); font-size: 11px; }
+  .df-add { color: var(--success); }
+  .df-del { color: var(--danger); }
+  /* Output: the deploy's error text, clamped to six lines until expanded. */
+  .dp-output {
+    margin: 8px 14px 0; padding: 10px 12px; border-radius: var(--radius);
+    background: var(--bg-base); border: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6;
+    color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .dp-output.clamped { max-height: calc(6 * 1.6em + 20px); overflow: hidden; }
+  .dp-more-btn {
+    margin: 6px 14px 0; padding: 2px 4px; font: inherit; font-size: 12px; cursor: pointer;
+    background: none; border: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+  }
+  .dp-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   /* #log-pane is the panel's .clog-body (chrome comes from the .clog-panel
      wrapper); override the small popup panel's capped height so it fills the
@@ -3728,6 +3623,8 @@
        (each keeps its title / aria-label). */
     .dp-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dp-head { padding-left: 14px; padding-right: 14px; }
+    .dp-title { flex-wrap: wrap; row-gap: 4px; }
+    .dp-meta { flex-basis: 100%; }
     .dp-verdict, .dp-facts, .dp-tabs { margin-left: 14px; margin-right: 14px; }
     .dp-lbl { display: none; }
 

@@ -69,15 +69,15 @@ test.describe('UM2: history button is per-stack, newest row only', () => {
 });
 
 // UM3 — the history panel obeys one-open-panel-per-row: opening it closes an
-// open diff panel on the row, and opening the diff panel closes it.
-test.describe('UM3: history and diff panels are mutually exclusive', () => {
+// open deploy detail on the row, and opening the deploy detail closes it.
+test.describe('UM3: history panel and deploy detail are mutually exclusive', () => {
   test('opening one panel closes the other', async ({ page, skipper }) => {
     await twoDeploys(page, skipper);
     const newest = webRows(page).first();
     const auditPanel = page.locator('[data-testid="audit-panel"]');
-    const diffPanel = page.locator('[data-testid="diff-panel"]');
+    const diffPanel = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
 
-    // History first, then diff: the diff panel replaces the history panel. The
+    // History first, then diff: the deploy detail replaces the history panel. The
     // files pill stays on the row itself, so only history needs the menu opened.
     await openRowMenu(newest);
     await newest.locator('[data-testid="history-btn"]').click();
@@ -85,16 +85,13 @@ test.describe('UM3: history and diff panels are mutually exclusive', () => {
     await newest.locator('[data-testid="files-pill"]').click();
     await expect(diffPanel).toHaveCount(1);
     await expect(auditPanel).toHaveCount(0);
-    await expect(newest).toHaveClass(/diff-open/);
-    await expect(newest).not.toHaveClass(/audit-open/);
 
-    // Diff open, then history: the history panel replaces the diff panel.
+    // Detail open, then history: the history panel replaces the deploy detail.
     await openRowMenu(newest);
     await newest.locator('[data-testid="history-btn"]').click();
     await expect(auditPanel).toHaveCount(1);
     await expect(diffPanel).toHaveCount(0);
     await expect(newest).toHaveClass(/audit-open/);
-    await expect(newest).not.toHaveClass(/diff-open/);
   });
 });
 

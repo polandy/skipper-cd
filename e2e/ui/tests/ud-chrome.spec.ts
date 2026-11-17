@@ -73,7 +73,7 @@ test.describe('UD4: responsive ≤700px', () => {
     await visualSnapshot(page, 'mobile-layout.png', { mask: pageMasks(page) });
 
     // Table collapses: the Files pill is hidden, yet tapping the row still
-    // toggles the files panel directly below it (open, then close).
+    // toggles the deploy detail and its file list directly below it.
     await expect(filesPill(page)).toBeHidden();
     await expect(filesPanel(page)).toHaveCount(0);
     await successRow(page).click();
@@ -81,7 +81,7 @@ test.describe('UD4: responsive ≤700px', () => {
     const siblingTestid = await successRow(page).evaluate(
       (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
-    expect(siblingTestid).toBe('files-panel');
+    expect(siblingTestid).toBe('detail-panel');
     await successRow(page).click();
     await expect(filesPanel(page)).toHaveCount(0);
   });

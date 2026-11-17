@@ -1,6 +1,6 @@
 // app-hosts.js — the multi-host surface (ADR-0048, docs/dev/multi-host-spec.md):
 // peer rows merged into the deploy feed, host chips and colours, the Hosts
-// drawer and filter, the peer detail panel. Cut out of the app script by view
+// drawer and filter. Cut out of the app script by view
 // (ADR-0035 amendment) and attached as App.hosts.
 //
 // A peer instance's read data, merged into the local views and tagged by host.
@@ -14,9 +14,8 @@
 // has stored a peers snapshot.
 App.hosts = (function () {
   const S = App.state;
-  const { healthMapFor, repoWebURLFor } = App.resolve;
-  const { CHECK_ICON, renderDiffPanel, createLoadError, populateIcon, createHealthPanel } =
-    App.panels;
+  const { healthMapFor } = App.resolve;
+  const { CHECK_ICON, populateIcon } = App.panels;
   // Peer rows live in the deploys table, so the feed is addressed directly.
   const tbody = document.getElementById('tbody');
 
@@ -73,10 +72,12 @@ App.hosts = (function () {
     if (r) toggleHostFilterTo(r.dataset.host);
   }
 
+  // peerRecords keeps each peer row's audit record for its deploy detail.
+  const peerRecords = new WeakMap();
+
   // createPeerRow builds one read-only deploy row from a peer's audit record.
-  // Peer rows carry no *local* drill-down (no diff/hook/history/log fetch), but a
-  // click opens a compact read-only detail (commit + file count + status) with a
-  // link to the peer's own UI for the full diff — a glance that never dead-ends.
+  // Peer rows carry no local drill-down (hooks, history); a click opens the
+  // same deploy detail as a local row, its diff fetched through the proxy.
   //
   // newest marks the newest deploy row for a (host, stack): only it carries the
   // live health pill (health is a current per-stack value, not per-event — the
@@ -88,10 +89,7 @@ App.hosts = (function () {
     row.dataset.stack = rec.stack;
     row.dataset.status = rec.status;
     row.dataset.host = hostName;
-    if (rec.commit_sha) row.dataset.commit = rec.commit_sha;
-    row.dataset.changed = String(rec.changed_files || 0);
-    if (rec.error) row.dataset.error = rec.error;
-    if (rec.id) row.dataset.peerEventId = String(rec.id); // for the proxied peer diff
+    if (rec.id) row.dataset.eventId = String(rec.id); // keys the open detail
     const h = newest ? healthMapFor(hostName)[rec.stack] : null;
     const pill = h && h.status ? healthPillHTML(rec.stack, h.status) : '';
     row.innerHTML = tableRowHTML(ROW_KIND.deploy, {
@@ -110,114 +108,21 @@ App.hosts = (function () {
     });
     if (rec.error) row.title = rec.stack + ' — ' + rec.error;
     populateIcon(row.querySelector('.stack-icon'), rec.stack);
+    peerRecords.set(row, rec);
     return row;
   }
 
-  // createPeerDetailPanel is what a peer row expands to on click: the read-only
-  // facts the fan-in carries (commit, changed-file count, error) plus the peer's
-  // diff, loaded inline through the primary's proxy. A click never dead-ends,
-  // even on a mirror row.
-  function createPeerDetailPanel(row) {
-    const host = row.dataset.host;
-    const el = document.createElement('div');
-    el.className = 'peer-detail bound';
-    el.dataset.testid = 'peer-detail';
-    el.dataset.status = row.dataset.status || '';
-    el.dataset.peerFor = host;
-    let facts = '';
-    if (row.dataset.commit) {
-      facts +=
-        '<span class="pd-fact">commit ' +
-        commitLinkHTML(row.dataset.commit, {
-          cls: 'pd-sha',
-          base: repoWebURLFor(host),
-          title: row.dataset.commit,
-        }) +
-        '</span>';
-    }
-    if (row.dataset.changed !== undefined) {
-      const n = parseInt(row.dataset.changed, 10) || 0;
-      facts += '<span class="pd-fact">' + n + ' file' + (n === 1 ? '' : 's') + ' changed</span>';
-    }
-    const eventId = row.dataset.peerEventId;
-    let html =
-      '<div class="pd-head">' +
-      hostChip(host) +
-      '<span class="pd-note">peer deploy · read-only mirror</span></div>' +
-      (facts ? '<div class="pd-facts">' + facts + '</div>' : '');
-    if (row.dataset.error)
-      html += '<div class="pd-error">' + escapeHtml(row.dataset.error) + '</div>';
-    // The diff is fetched from the peer through the primary's proxy (the browser
-    // can't reach the peer cross-origin) and rendered here on expand. (The
-    // per-host "open its own UI" affordance lives in the Hosts drawer, not here.)
-    if (eventId)
-      html +=
-        '<div class="pd-diff" data-testid="peer-diff"><div class="diff-loading">Loading diff…</div></div>';
-    el.innerHTML = html;
-    // Containers: the peer's fanned-in health for this stack, rendered with the
-    // same panel the primary uses for its own stacks so peers reach health
-    // parity. Inserted above the diff; omitted when the peer reported no health
-    // record for the stack (a never-deployed or health-less stack).
-    const stack = row.dataset.stack;
-    if (stack && healthMapFor(host)[stack]) {
-      const hp = createHealthPanel(stack, host);
-      const diffSlot = el.querySelector('.pd-diff');
-      if (diffSlot) el.insertBefore(hp, diffSlot);
-      else el.appendChild(hp);
-    }
-    if (eventId) loadPeerDiff(el, host, eventId);
-    return el;
+  // peerRecord is the audit record a peer row was built from.
+  function peerRecord(row) {
+    return peerRecords.get(row);
   }
-
-  // loadPeerDiff fetches a peer deploy's diff via the primary's proxy
-  // (/api/peers/{host}/events/{id}/diffs) and renders it into the panel's diff
-  // slot. A peer that has evicted the event answers 404 — genuine "no diff", so
-  // the slot is dropped and the peer-UI link stands in. An unreachable peer
-  // (502 / network) is a transient failure: keep the slot and show an amber
-  // load-error with a retry (T4.16) rather than silently vanishing.
-  function loadPeerDiff(panel, host, id) {
-    fetch('/api/peers/' + encodeURIComponent(host) + '/events/' + encodeURIComponent(id) + '/diffs')
-      .then(function (r) {
-        if (r.ok) return r.json();
-        if (r.status >= 500) throw new Error('unreachable'); // 502 peer unreachable
-        return null; // 404: event evicted, genuine no-diff
-      })
-      .then(function (data) {
-        const slot = panel.querySelector('.pd-diff');
-        if (!slot) return;
-        if (data && data.diffs && Object.keys(data.diffs).length > 0) {
-          slot.textContent = '';
-          slot.appendChild(renderDiffPanel(data.diffs, null, {})); // files only — the commit is already in the facts row
-        } else {
-          slot.remove(); // no diff to show; the peer-UI link remains
-        }
-      })
-      .catch(function () {
-        const slot = panel.querySelector('.pd-diff');
-        if (!slot) return;
-        slot.textContent = '';
-        slot.appendChild(
-          createLoadError('Couldn’t reach ' + host + ' for the diff.', function () {
-            loadPeerDiff(panel, host, id); // re-query the (still-present) slot and refetch
-          }),
-        );
-      });
-  }
-
-  // A peer row's read-only detail, in both table views. It reuses the bound
-  // status bar/tint of the changes pane.
-  App.detail.registerPane(DETAIL_TAB.peer, {
-    openClass: 'diff-open',
-    build: function (row, slot) {
-      slot.set(createPeerDetailPanel(row));
-    },
-  });
 
   // renderPeerRows rebuilds every peer row from the current snapshot, interleaved
   // into the local rows by timestamp. Local rows and their panels are never
-  // touched; only peer rows (which have no panels) are removed and rebuilt.
+  // touched; an open peer detail re-opens on its rebuilt row.
   function renderPeerRows() {
-    tbody.querySelectorAll('.peer-row, .peer-detail').forEach(function (r) {
+    const peerOpen = !!tbody.querySelector('.detail-panel.peer-panel');
+    tbody.querySelectorAll('.peer-row, .detail-panel.peer-panel').forEach(function (r) {
       r.remove();
     });
     if (!S.peersSnap) return;
@@ -245,6 +150,7 @@ App.hosts = (function () {
         it.rec.timestamp,
       );
     });
+    if (peerOpen) App.detail.reapply(DETAIL_VIEW.deploys, tbody.querySelectorAll('.peer-row'));
   }
 
   // setLeadingChip replaces (or clears) a stack cell's leading host chip in place.
@@ -562,6 +468,7 @@ App.hosts = (function () {
 
   return {
     hostChip,
+    peerRecord,
     hostChipKeydown,
     applyHostFilter,
     toggleHostFilterTo,

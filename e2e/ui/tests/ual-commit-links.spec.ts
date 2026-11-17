@@ -16,7 +16,7 @@ function expectForgeCommitHref(href: string | null, forge = FORGE_URL): void {
 // the diff panel's commit header, a peer's detail — is a link to that commit on
 // the forge (`repo_web_url`, or one derived from `repo_url`). Covers the roster
 // link and its full-SHA target (UAL1), that following it never also toggles the
-// row's panel (UAL2), the panel/diff-header links (UAL3), a peer linking to its
+// row's panel (UAL2), the panel/deploy-detail links (UAL3), a peer linking to its
 // OWN forge rather than the primary's (UAL4) and the degradation to plain text
 // when no forge is known (UAL5).
 
@@ -99,16 +99,16 @@ test('UAL2: following the commit link does not also expand the row', async ({ pa
 });
 
 // UAL3 — the same treatment reaches the SHAs inside panels: the deploy-history
-// rows and the diff panel's commit header. One helper renders them all, so they
+// rows and the deploy detail's Commit fact. One helper renders them all, so they
 // either all link or all do not.
-test('UAL3: deploy-history and diff-header SHAs link to the same forge', async ({ page, skipper }) => {
+test('UAL3: deploy-history and deploy-detail SHAs link to the same forge', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   await pushApi(page, skipper);
 
-  // Diff panel: the commit header's SHA chip. Rows are newest first, so the
-  // pushed deploy — the one with commit metadata — is the first.
+  // Deploy detail: the Commit fact's SHA. Rows are newest first, so the pushed
+  // deploy — the one with commit metadata — is the first.
   await apiDeploys(page).first().locator('[data-testid="files-pill"]').click();
-  const headSha = page.locator('[data-testid="commit-sha"]');
+  const headSha = page.locator('[data-testid="detail-facts"] [data-testid="commit-sha"]');
   await expect(headSha).toBeVisible();
   expectForgeCommitHref(await headSha.getAttribute('href'));
 

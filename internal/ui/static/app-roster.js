@@ -367,6 +367,18 @@ App.roster = (function () {
     refilterRoster();
   }
 
+  // showDetail opens a stack's Stacks detail on host ('' or the self host for
+  // a local stack) — where the Deploys detail's Show in Stacks lands.
+  function showDetail(stack, host, tab) {
+    const want = host || S.selfHost;
+    const row = Array.prototype.find.call(rosterList.querySelectorAll('.roster-row'), function (r) {
+      return r.dataset.stack === stack && (r.dataset.host || S.selfHost) === want;
+    });
+    if (!row || detail.isOpen(VIEW, row, tab)) return;
+    detail.show(VIEW, row, DETAIL_TAB.overview, { tab: tab });
+    refilterRoster();
+  }
+
   // countRosterUpdates counts the roster rows a registry update is waiting on,
   // skipping rows a host filter has taken out of view — the badge and the chip
   // must both promise exactly the rows the filter can hand back.
@@ -638,6 +650,7 @@ App.roster = (function () {
     renderRoster,
     refreshPeerRosterRows,
     refilterRoster,
+    showDetail,
     updateAppLinks,
     updateRosterHealth,
     refreshRosterRow,

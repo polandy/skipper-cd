@@ -82,8 +82,11 @@ test.describe('UK2: self-heal gives up after repeated failures', () => {
     const exhausted = webRow(page, 'heal_exhausted').first();
     await expect(exhausted).toBeVisible();
     await expect(exhausted.locator('[data-testid="status-badge"]')).toContainText('self-heal');
-    const errorPanel = page.locator('[data-testid="error-panel"][data-error-for="web"]');
-    await expect(errorPanel).toContainText('self-heal exhausted');
+    await exhausted.click();
+    const detail = page.locator('[data-testid="detail-panel"][data-kind="deploy"][data-stack="web"]');
+    await expect(detail.locator('[data-testid="detail-verdict"]')).toContainText('Self-heal gave up');
+    await detail.locator('[data-testid="detail-tab"][data-tab="output"]').click();
+    await expect(detail.locator('[data-testid="deploy-output"]')).toContainText('self-heal exhausted');
 
     // Exactly one heal_exhausted — the give-up is emitted once, not per poll.
     await expect(webRow(page, 'heal_exhausted')).toHaveCount(1);
