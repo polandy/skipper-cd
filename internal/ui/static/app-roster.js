@@ -81,22 +81,7 @@ App.roster = (function () {
     // never on a live health poll — so rows never jump under an open panel.
     rosterOrdered(S.rosterSnap, S.healthSnap).forEach(function (entry) {
       const deploying = App.deploys.isDeploying(entry.name);
-      // Time + commit only apply to a real past deploy.
-      const showMeta = !entry.disabled && !deploying && !!entry.last_status;
-      // Shared time mode; title carries the opposite (relative <-> absolute).
-      const when =
-        showMeta && entry.last_at
-          ? S.absoluteTime
-            ? fullTime(entry.last_at)
-            : formatTime(entry.last_at)
-          : '';
-      const whenTitle =
-        showMeta && entry.last_at
-          ? S.absoluteTime
-            ? formatTime(entry.last_at)
-            : fullTime(entry.last_at)
-          : '';
-      const commit = showMeta ? entry.last_commit || '' : '';
+      const last = rosterLastDeploy(entry, deploying);
       const row = document.createElement('div');
       row.className = entry.disabled ? 'roster-row disabled' : 'roster-row';
       row.dataset.testid = 'roster-row';
@@ -110,21 +95,26 @@ App.roster = (function () {
       // updateRosterHealth). Only enabled locals — disabled stacks aren't polled.
       const rowHealth = entry.disabled ? null : S.healthSnap[entry.name];
       if (rowHealth && rowHealth.status) row.dataset.health = rowHealth.status;
-      row.innerHTML =
-        `<span class="roster-stack"><span class="roster-ident">${hostChip(S.selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="${escapeAttr(entry.name)}">${escapeHtml(entry.name)}</span></span>${rowActionClusterHTML(
+      row.innerHTML = tableRowHTML(ROW_KIND.roster, {
+        host: hostChip(S.selfHost),
+        stack: entry.name,
+        actions: [
           jumpBtnHTML('deploys', entry.name),
           entry.disabled ? '' : linkCell(entry.name),
           rosterRowActionsHTML(entry),
-        )}</span>` +
-        rosterVersionCellHTML(
+        ],
+        version: rosterVersionCellHTML(
           entry.name,
           rowHealth,
           entry.disabled,
           stackUpdatesFor(entry.name, ''),
-        ) +
-        `<span class="roster-status">${rosterStatusInnerHTML(entry, App.deploys.isDeploying(entry.name), true, rowHealth, Date.now())}</span>` +
-        `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
-        commitLinkHTML(commit, { cls: 'roster-sha', base: S.repoWebURL, title: commit });
+        ),
+        state: rosterStatusInnerHTML(entry, deploying, true, rowHealth, Date.now()),
+        lastAt: last.at,
+        absolute: S.absoluteTime,
+        commit: last.commit,
+        repoBase: S.repoWebURL,
+      });
       populateIcon(row.querySelector('.stack-icon'), entry.name);
       list.appendChild(row);
     });
@@ -162,20 +152,10 @@ App.roster = (function () {
       const roster = (p.state && p.state.stacks && p.state.stacks.roster) || [];
       const peerRepo = repoWebURLFor(p.name); // a peer's commits live on its own forge
       roster.forEach(function (entry) {
-        const showMeta = !entry.disabled && !!entry.last_status;
-        const when =
-          showMeta && entry.last_at
-            ? S.absoluteTime
-              ? fullTime(entry.last_at)
-              : formatTime(entry.last_at)
-            : '';
-        const whenTitle =
-          showMeta && entry.last_at
-            ? S.absoluteTime
-              ? formatTime(entry.last_at)
-              : fullTime(entry.last_at)
-            : '';
-        const commit = showMeta ? entry.last_commit || '' : '';
+        // deploying=false: deployingRows is the primary's own in-flight set,
+        // never a peer's.
+        const last = rosterLastDeploy(entry, false);
+        const health = stackHealthFor(entry.name, p.name);
         const row = document.createElement('div');
         row.className =
           'roster-row peer-row' +
@@ -187,21 +167,22 @@ App.roster = (function () {
         if (stackHasUpdate(stackUpdatesFor(entry.name, p.name))) row.dataset.updates = '1';
         row.dataset.status = entry.last_status || '';
         if (entry.last_commit) row.dataset.commit = entry.last_commit;
-        row.innerHTML =
-          `<span class="roster-stack"><span class="roster-ident">${hostChip(p.name)}<span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="${escapeAttr(entry.name)}">${escapeHtml(entry.name)}</span></span>${rowActionClusterHTML(
-            entry.disabled ? '' : linkCell(entry.name, p.name),
-          )}</span>` +
-          rosterVersionCellHTML(
+        row.innerHTML = tableRowHTML(ROW_KIND.roster, {
+          host: hostChip(p.name),
+          stack: entry.name,
+          actions: [entry.disabled ? '' : linkCell(entry.name, p.name)],
+          version: rosterVersionCellHTML(
             entry.name,
-            stackHealthFor(entry.name, p.name),
+            health,
             entry.disabled,
             stackUpdatesFor(entry.name, p.name),
-          ) +
-          // deploying=false: deployingRows is the primary's own in-flight set,
-          // never a peer's.
-          `<span class="roster-status">${rosterStatusInnerHTML(entry, false, false, stackHealthFor(entry.name, p.name), Date.now())}</span>` +
-          `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
-          commitLinkHTML(commit, { cls: 'roster-sha', base: peerRepo, title: commit });
+          ),
+          state: rosterStatusInnerHTML(entry, false, false, health, Date.now()),
+          lastAt: last.at,
+          absolute: S.absoluteTime,
+          commit: last.commit,
+          repoBase: peerRepo,
+        });
         populateIcon(row.querySelector('.stack-icon'), entry.name);
         list.appendChild(row);
       });

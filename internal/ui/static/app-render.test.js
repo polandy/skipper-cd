@@ -1823,3 +1823,73 @@ test('auditRowsHTML shows a repeat count on an incident that carries no error te
   );
   assert.match(html, /×4/);
 });
+
+test('tableRowHTML renders a deploy row: time, identity, version, state, duration, files', () => {
+  const ts = '2020-01-02T03:04:05Z';
+  const html = r.tableRowHTML(r.ROW_KIND.deploy, {
+    host: '<HOST>',
+    stack: 'a<b',
+    identExtras: '<JUMP>',
+    ts,
+    absolute: false,
+    version: '<VER>',
+    state: '<STATE>',
+    durationMs: 65000,
+    files: '<FILES>',
+  });
+  assert.equal(
+    html,
+    `<span class="cell-time" data-testid="time-cell" data-ts="${ts}" title="${globalThis.fullTime(ts)}">${globalThis.formatTime(ts)}</span>` +
+      '<span class="cell-stack"><HOST><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">a&lt;b</span><JUMP></span>' +
+      '<span class="col-version"><VER></span>' +
+      '<span class="status-cell"><STATE></span>' +
+      '<span class="cell-duration" data-testid="duration-cell">1m 5s</span>' +
+      '<span class="col-files"><FILES></span>',
+  );
+});
+
+test('tableRowHTML renders a roster row: identity + actions, version, state, last deploy, commit', () => {
+  const ts = '2020-01-02T03:04:05Z';
+  const html = r.tableRowHTML(r.ROW_KIND.roster, {
+    host: '<HOST>',
+    stack: 'web',
+    actions: ['<JUMP>', '', '<LOGS>'],
+    version: '<VERCELL>',
+    state: '<STATE>',
+    lastAt: ts,
+    absolute: true,
+    commit: 'abc1234def',
+    repoBase: '',
+  });
+  assert.equal(
+    html,
+    '<span class="roster-stack"><span class="roster-ident"><HOST><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="web">web</span></span>' +
+      '<span class="row-actions"><JUMP><LOGS></span></span>' +
+      '<VERCELL>' +
+      '<span class="roster-status"><STATE></span>' +
+      `<span class="roster-when" title="${globalThis.formatTime(ts)}">${globalThis.fullTime(ts)}</span>` +
+      r.commitLinkHTML('abc1234def', { cls: 'roster-sha', base: '', title: 'abc1234def' }),
+  );
+});
+
+test('tableRowHTML leaves a roster row with no past deploy untitled and its cells empty', () => {
+  const html = r.tableRowHTML(r.ROW_KIND.roster, {
+    host: '',
+    stack: 'web',
+    actions: [],
+    version: '',
+    state: '',
+    lastAt: '',
+    absolute: false,
+    commit: '',
+    repoBase: '',
+  });
+  assert.match(html, /<span class="roster-when"><\/span>/);
+  assert.doesNotMatch(html, /row-actions/);
+});
+
+test("peerFilesHTML counts a peer record's changed files and hides a zero", () => {
+  assert.equal(r.peerFilesHTML(0), '');
+  assert.equal(r.peerFilesHTML(1), '<span class="peer-files">1 file</span>');
+  assert.equal(r.peerFilesHTML(3), '<span class="peer-files">3 files</span>');
+});

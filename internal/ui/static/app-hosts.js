@@ -92,42 +92,22 @@ App.hosts = (function () {
     row.dataset.changed = String(rec.changed_files || 0);
     if (rec.error) row.dataset.error = rec.error;
     if (rec.id) row.dataset.peerEventId = String(rec.id); // for the proxied peer diff
-    const absTs = fullTime(rec.timestamp);
-    const relTs = formatTime(rec.timestamp);
-    const n = rec.changed_files || 0;
-    const files =
-      n > 0 ? '<span class="peer-files">' + n + ' file' + (n === 1 ? '' : 's') + '</span>' : '';
     const h = newest ? healthMapFor(hostName)[rec.stack] : null;
     const pill = h && h.status ? healthPillHTML(rec.stack, h.status) : '';
-    row.innerHTML =
-      '<span class="cell-time" data-testid="time-cell" data-ts="' +
-      escapeAttr(rec.timestamp) +
-      '" title="' +
-      escapeAttr(S.absoluteTime ? relTs : absTs) +
-      '">' +
-      (S.absoluteTime ? absTs : relTs) +
-      '</span>' +
-      '<span class="cell-stack">' +
-      hostChip(hostName) +
-      '<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">' +
-      escapeHtml(rec.stack) +
-      '</span></span>' +
+    row.innerHTML = tableRowHTML(ROW_KIND.deploy, {
+      host: hostChip(hostName),
+      stack: rec.stack,
+      ts: rec.timestamp,
+      absolute: S.absoluteTime,
       // Empty Version cell: the fan-in's audit records carry no image_changes, but
       // the peer row shares the deploy grid, so the cell must exist to stay aligned.
-      '<span class="col-version"></span>' +
-      '<span class="status-cell">' +
-      badgeHTML(rec.status) +
+      version: '',
       // A peer's record collapses repeats the same way ours does (ADR-0056), and
       // without the count its one row would read as a one-off incident.
-      repeatNoteHTML(rec) +
-      pill +
-      '</span>' +
-      '<span class="cell-duration" data-testid="duration-cell">' +
-      formatDuration(rec.duration_ms) +
-      '</span>' +
-      '<span class="col-files">' +
-      files +
-      '</span>';
+      state: badgeHTML(rec.status) + repeatNoteHTML(rec) + pill,
+      durationMs: rec.duration_ms,
+      files: peerFilesHTML(rec.changed_files || 0),
+    });
     if (rec.error) row.title = rec.stack + ' — ' + rec.error;
     populateIcon(row.querySelector('.stack-icon'), rec.stack);
     return row;

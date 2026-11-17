@@ -646,26 +646,27 @@
   .sheet-body > :last-child { border-radius: 0 0 var(--r-sheet) var(--r-sheet); }
   .event-list-header {
     display: grid;
-    grid-template-columns: var(--deploy-cols);
+    grid-template-columns: var(--row-cols);
     gap: 12px;
   }
 
 
   /* Deploy-table columns: Time · Stack · Version · Status · Duration · Files.
-     Held in a variable because the header and the rows must stay in lockstep, and
+     Held in --row-cols, the one grid variable each table (this one, #stacks-view)
+     sets for its header and rows, so the two stay in lockstep, and
      the Version column collapses away when its view-option is off (.no-version) —
      an empty column would otherwise keep taking width. Stack and Version share
      the free width (minmax(0,…) so both can shrink instead of overflowing). */
   /* Stack keeps the larger share: the name must stay readable, while a too-narrow
      Version chip degrades gracefully by wrapping (see .col-version .tag-delta).
      The other columns are trimmed slightly to buy the Version column its width. */
-  #deploy-table { --deploy-cols: 150px minmax(0, 1.15fr) minmax(0, 1fr) 110px 76px 96px; }
-  #deploy-table.no-version { --deploy-cols: 160px minmax(0, 1fr) 110px 80px 100px; }
+  #deploy-table { --row-cols: 150px minmax(0, 1.15fr) minmax(0, 1fr) 110px 76px 96px; }
+  #deploy-table.no-version { --row-cols: 160px minmax(0, 1fr) 110px 80px 100px; }
   #deploy-table.no-version .col-version { display: none; }
 
   .event-row {
     display: grid;
-    grid-template-columns: var(--deploy-cols);
+    grid-template-columns: var(--row-cols);
     gap: 12px;
     /* Top-aligned, not centred: the Version column is routinely taller than one
        line, and centring would let it drag Time/Stack/Status to its middle — the
@@ -833,17 +834,23 @@
      the success green but is rare, so a green bar comes to mean "self-heal
      acted here", which is worth seeing. The Stacks roster already followed this
      rule (healthy draws nothing), so the two views now read alike. */
-  .event-row { --sc: transparent; }
-  .event-row[data-status="success"]                { --sc: var(--success); }
-  .event-row[data-status="healed"]                 { --sc: var(--success); }
-  .event-row[data-status="failed"]                 { --sc: var(--danger); }
-  .event-row[data-status="rolled_back_unhealthy"]  { --sc: var(--danger); }
-  .event-row[data-status="heal_exhausted"]         { --sc: var(--danger); }
-  .event-row[data-status="rolled_back"]            { --sc: var(--rollback); }
-  .event-row[data-status="removed"]                { --sc: color-mix(in srgb, var(--rollback) 55%, transparent); }
-  .event-row[data-status="queued"],
-  .event-row[data-status="blocked"]                { --sc: var(--queued); }
-  .event-row[data-status="deploying"]              { --sc: var(--accent); }
+  /* The one deploy-status colour map (--st) for every element that carries a
+     status in data-status: the row bar, the row's bound panels, the history
+     rows and folds, the outcome dots. Set on those elements only, never on a
+     container, so nothing inherits a status that is not its own; each consumer
+     names its own fallback for a status the map leaves unset. `removed` colours
+     only the row bar: in the history a stack leaving is not an outcome to rate. */
+  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="success"], [data-status="healed"])
+    { --st: var(--success); }
+  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="failed"], [data-status="rolled_back_unhealthy"], [data-status="heal_exhausted"])
+    { --st: var(--danger); }
+  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="rolled_back"]
+    { --st: var(--rollback); }
+  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="queued"], [data-status="blocked"])
+    { --st: var(--queued); }
+  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="deploying"]
+    { --st: var(--accent); }
+  .event-row[data-status="removed"] { --st: color-mix(in srgb, var(--rollback) 55%, transparent); }
   .event-row::before {
     content: '';
     position: absolute;
@@ -851,7 +858,7 @@
     top: 0;
     bottom: 0;
     width: 3px;
-    background: var(--sc);
+    background: var(--st, transparent);
   }
   .event-row[data-status="success"]::before {
     opacity: 0;
@@ -1373,7 +1380,7 @@
   .audit-panel .ap-history.show-raw .ap-raw { display: block; }
   .audit-panel .ap-history.show-raw .ap-folded { display: none; }
   .health-panel .hp-upin { color: var(--text-muted); font-weight: 400; }
-  .hp-fold .hp-fold-glyph { flex: none; color: var(--ac, var(--text-muted)); }
+  .hp-fold .hp-fold-glyph { flex: none; color: var(--st, var(--text-muted)); }
   .hp-fold .hp-count { color: var(--text-primary); font-weight: 600; }
   .hp-fold-toggle {
     align-self: flex-start; margin: 2px 0; padding: 1px 7px;
@@ -1536,14 +1543,8 @@
   }
   .audit-row:first-of-type { border-top: 0; }
   .audit-row .ar-time { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .audit-row .ar-status { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: var(--ac); }
-  .audit-row .ar-status .adot { width: 6px; height: 6px; border-radius: 50%; background: var(--ac); flex: none; }
-  .audit-row[data-status="success"]               { --ac: var(--success); }
-  .audit-row[data-status="failed"]                { --ac: var(--danger); }
-  .audit-row[data-status="rolled_back"]           { --ac: var(--rollback); }
-  .audit-row[data-status="rolled_back_unhealthy"] { --ac: var(--danger); }
-  .audit-row[data-status="healed"]                { --ac: var(--success); }
-  .audit-row[data-status="heal_exhausted"]        { --ac: var(--danger); }
+  .audit-row .ar-status { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: var(--st); }
+  .audit-row .ar-status .adot { width: 6px; height: 6px; border-radius: 50%; background: var(--st); flex: none; }
   /* A folded run of routine outcomes: the audit row's frame (border, padding,
      status colour) carrying the health timeline's fold line instead of the
      column grid — the two panels of the card fold in the same words. */
@@ -1554,14 +1555,6 @@
     border-top: 1px solid color-mix(in srgb, var(--overlay2) 7%, transparent);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  /* Same status tiers as the rows: a folded repeat of a rollback must not read
-     calmer than the rollback it sits under. */
-  .audit-panel .ar-fold[data-status="success"]               { --ac: var(--success); }
-  .audit-panel .ar-fold[data-status="healed"]                { --ac: var(--success); }
-  .audit-panel .ar-fold[data-status="failed"]                { --ac: var(--danger); }
-  .audit-panel .ar-fold[data-status="rolled_back"]           { --ac: var(--rollback); }
-  .audit-panel .ar-fold[data-status="rolled_back_unhealthy"] { --ac: var(--danger); }
-  .audit-panel .ar-fold[data-status="heal_exhausted"]        { --ac: var(--danger); }
   .audit-row .ar-dur { color: var(--text-muted); }
   .audit-row .ar-sha { color: var(--text-secondary); }
   .audit-row .ar-files { color: var(--text-muted); text-align: right; }
@@ -2006,24 +1999,17 @@
 
   /* Variant-A binding (as for the health panel): the open row and its trailing
      panels — diff, files, peer-detail, and the error detail — share a status-coloured
-     left bar + tint so they always read as tied to the row. --dc is the row's
-     deploy-status colour; a diff panel opened from a log line is unbound (no row to
+     left bar + tint so they always read as tied to the row, in the row's --st
+     status colour; a diff panel opened from a log line is unbound (no row to
      tie to) and keeps the plain background. */
-  .event-row.diff-open[data-status="success"],              .diff-panel.bound[data-status="success"],              .files-list.bound[data-status="success"],              .peer-detail.bound[data-status="success"]              { --dc: var(--success); }
-  .event-row.diff-open[data-status="failed"],               .diff-panel.bound[data-status="failed"],               .files-list.bound[data-status="failed"],               .peer-detail.bound[data-status="failed"]               { --dc: var(--danger); }
-  .event-row.diff-open[data-status="rolled_back"],          .diff-panel.bound[data-status="rolled_back"],          .files-list.bound[data-status="rolled_back"],          .peer-detail.bound[data-status="rolled_back"]          { --dc: var(--rollback); }
-  .event-row.diff-open[data-status="rolled_back_unhealthy"],.diff-panel.bound[data-status="rolled_back_unhealthy"],.files-list.bound[data-status="rolled_back_unhealthy"],.peer-detail.bound[data-status="rolled_back_unhealthy"]{ --dc: var(--danger); }
-  .event-row.diff-open[data-status="queued"],               .diff-panel.bound[data-status="queued"],               .files-list.bound[data-status="queued"],               .peer-detail.bound[data-status="queued"]               { --dc: var(--queued); }
-  .event-row.diff-open[data-status="deploying"],            .diff-panel.bound[data-status="deploying"],            .files-list.bound[data-status="deploying"],            .peer-detail.bound[data-status="deploying"]            { --dc: var(--accent); }
-  .event-row.diff-open[data-status="healed"],               .heal-panel.bound[data-status="healed"],               .peer-detail.bound[data-status="healed"]                                                                     { --dc: var(--success); }
   .event-row.diff-open {
-    background: color-mix(in srgb, var(--dc, var(--accent)) 8%, transparent);
-    box-shadow: inset 3px 0 0 var(--dc, var(--accent));
+    background: color-mix(in srgb, var(--st, var(--accent)) 8%, transparent);
+    box-shadow: inset 3px 0 0 var(--st, var(--accent));
   }
   .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound {
-    background: color-mix(in srgb, var(--dc, var(--accent)) 5%, var(--bg-sunken));
-    border-color: color-mix(in srgb, var(--dc, var(--accent)) 22%, var(--border));
-    box-shadow: inset 3px 0 0 var(--dc, var(--accent));
+    background: color-mix(in srgb, var(--st, var(--accent)) 5%, var(--bg-sunken));
+    border-color: color-mix(in srgb, var(--st, var(--accent)) 22%, var(--border));
+    box-shadow: inset 3px 0 0 var(--st, var(--accent));
   }
 
   /* A bound panel is part of the sheet, not a card resting on it: it sits flush
@@ -2067,11 +2053,11 @@
     border-radius: 999px;
     font-size: 10.5px;
     font-weight: 600;
-    color: var(--dc, var(--accent));
-    border: 1px solid color-mix(in srgb, var(--dc, var(--accent)) 32%, transparent);
-    background: color-mix(in srgb, var(--dc, var(--accent)) 13%, transparent);
+    color: var(--st, var(--accent));
+    border: 1px solid color-mix(in srgb, var(--st, var(--accent)) 32%, transparent);
+    background: color-mix(in srgb, var(--st, var(--accent)) 13%, transparent);
   }
-  .diff-head-echo .dh-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--dc, var(--accent)); }
+  .diff-head-echo .dh-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--st, var(--accent)); }
   .diff-commit { display: flex; align-items: flex-start; gap: 9px; }
   .diff-commit .commit-glyph { width: 14px; height: 14px; margin-top: 1px; color: var(--text-muted); flex-shrink: 0; }
   .diff-commit .dh-subject {
@@ -3233,9 +3219,10 @@
      single line (one lead version + a "+N" pointer, not the Deploys column's full
      per-service stack), so the roster keeps its one-line-per-stack inventory
      rhythm; a shared track lets the versions align down the page. */
+  #stacks-view { --row-cols: minmax(0, 1.2fr) minmax(0, 1fr) 130px 150px 84px; }
   .roster-list-header, .roster-row {
     display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 130px 150px 84px;
+    grid-template-columns: var(--row-cols);
     gap: 12px;
     align-items: center;
   }
@@ -3475,7 +3462,7 @@
     /* Commit goes; Last deploy is trimmed to what `48s ago` needs (absolute
        mode ellipsises, as it does on a phone) so the width goes to Stack and
        Version. */
-    .roster-list-header, .roster-row { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) 130px 104px; }
+    #stacks-view { --row-cols: minmax(0, 1.1fr) minmax(0, 1fr) 130px 104px; }
     .roster-list-header .rh-sha, .roster-row .roster-sha { display: none; }
     /* Top-align once the stack cell can wrap: centred cells drop the version,
        status and time to the middle of a two-line row, i.e. *below* the name
@@ -3485,8 +3472,8 @@
 
     /* Deploys: Duration and Files go, Time is trimmed to `22h ago`, and the two
        that carry the row's meaning — Stack and Version — take what is freed. */
-    #deploy-table { --deploy-cols: 92px minmax(0, 1.05fr) minmax(0, 1fr) 124px; }
-    #deploy-table.no-version { --deploy-cols: 92px minmax(0, 1fr) 124px; }
+    #deploy-table { --row-cols: 92px minmax(0, 1.05fr) minmax(0, 1fr) 124px; }
+    #deploy-table.no-version { --row-cols: 92px minmax(0, 1fr) 124px; }
     .event-list-header .eh-dur, .event-list-header .eh-files,
     .event-row .cell-duration, .event-row .col-files { display: none; }
   }
@@ -3851,17 +3838,11 @@
 
   /* Outcome strip: the roster row's mini-history — one dot per terminal audit
      record, oldest → newest so it reads as a timeline into the badge. Colours
-     reuse the audit-row status tiers; dots are aria-hidden decoration (the
+     are the --st status map; dots are aria-hidden decoration (the
      badge + incident line say the same in words). */
   .outcome-strip { display: inline-flex; align-items: center; gap: 3px; }
   .outcome-dot { width: 6px; height: 6px; border-radius: 50%; flex: none;
-    background: color-mix(in srgb, var(--oc, var(--overlay1)) 75%, transparent); }
-  .outcome-dot[data-status="success"]               { --oc: var(--success); }
-  .outcome-dot[data-status="failed"]                { --oc: var(--danger); }
-  .outcome-dot[data-status="rolled_back"]           { --oc: var(--rollback); }
-  .outcome-dot[data-status="rolled_back_unhealthy"] { --oc: var(--danger); }
-  .outcome-dot[data-status="healed"]                { --oc: var(--success); }
-  .outcome-dot[data-status="heal_exhausted"]        { --oc: var(--danger); }
+    background: color-mix(in srgb, var(--st, var(--overlay1)) 75%, transparent); }
 
   /* Last-incident line: names the newest bad outcome that later successes have
      papered over (server-side rule — absent when the badge already says it). */
