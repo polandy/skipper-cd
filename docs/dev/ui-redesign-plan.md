@@ -129,6 +129,12 @@ Four tracks, same grid variable, same breakpoints:
   Jump, logs, hooks, history, app link move to the panel header (§3.3).
 - The 3 px gutter keeps its rule: exceptions only (Stacks: unhealthy / stopped
   / held; Deploys: failed, rolled back, queued, blocked, healed).
+- **Cell spacing**: the row owns its vertical padding (`padding-block`, one
+  token), and the State cell lays its badges out as a wrapping flex group
+  (`flex-wrap: wrap` + `gap`, `align-content: center`, right-aligned on
+  phones). No margins on badges or notes, so a cell with two or three badges
+  (`rolled back` + `held`, `failed ↻ ×4` + `held`) keeps the same space above
+  as below when it wraps, at every width and in both themes.
 - Attention ordering stays per view (Stacks floats problems up; Deploys stays
   chronological).
 - Removed from the row: health pill on Deploys (current health is the Stacks
@@ -222,7 +228,7 @@ One panel component, three hosts:
 | `app-chrome.js` | Register the detail surface; `jumpToStack` opens the panel; optional URL hash (Q5). |
 | `app-stream.js` | Route health/stacks/hookrun/deploy updates to `App.detail.refresh(stack)`. |
 | `index.html` | Side-panel host element next to each sheet; script tag for `app-detail.js`. |
-| `app.css` | One grid variable for both tables; `--st` token map; panel/tab/verdict/facts styles; delete per-panel binding rules (`diff-open`, `health-open`, `audit-open`, `hooks-open`, `.bound`, `:has(+ .error-detail)` chains), error strip, `⋯` menu, row-actions. Expected net shrink of several hundred lines. |
+| `app.css` | One grid variable for both tables; one row `padding-block` token and a wrapping flex State cell with `gap` (§3.1, no badge margins); `--st` token map; panel/tab/verdict/facts styles; delete per-panel binding rules (`diff-open`, `health-open`, `audit-open`, `hooks-open`, `.bound`, `:has(+ .error-detail)` chains), error strip, `⋯` menu, row-actions. Expected net shrink of several hundred lines. |
 
 ## 5. Impact on UI_SPEC.md and e2e
 
