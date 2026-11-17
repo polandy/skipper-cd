@@ -198,10 +198,14 @@ func TestStartServer_ListenFailureIsReportedNotFatal(t *testing.T) {
 	srv := startServer("test", net.JoinHostPort("", strconv.Itoa(port)), http.NewServeMux(), fail)
 	defer func() { _ = srv.Close() }()
 
-	// Blocks until the goroutine reports; no polling and no sleep. A regression
-	// that exits instead would take the test binary down with it, which the
-	// runner reports as a failure rather than a hang.
-	got := <-fail
+	// The bind happens before startServer returns, so the error is already
+	// queued: its "listening" log line is then proof the port is this process's.
+	var got error
+	select {
+	case got = <-fail:
+	default:
+		t.Fatal("listen failure not reported by the time startServer returned")
+	}
 	if got == nil {
 		t.Fatal("expected a listen error")
 	}

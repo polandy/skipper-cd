@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -488,9 +489,10 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-// startServer runs an HTTP server in a goroutine and returns it so the caller
-// can shut it down. A listen failure (a port already in use, most often) is
-// reported on fail rather than exiting here: an os.Exit from this goroutine
+// startServer binds addr, then serves it in a goroutine, and returns the server
+// so the caller can shut it down. The bind is synchronous, so the "listening"
+// line is only logged once the port is ours. A listen failure (a port already
+// in use, most often) is reported on fail rather than exiting here: an os.Exit
 // would skip main's shutdown, and the startup sync may already be running
 // `docker compose up` by the time a port turns out to be taken. fail must be
 // buffered so a second server's failure cannot block on an unread channel.
@@ -502,9 +504,14 @@ func startServer(name, addr string, h http.Handler, fail chan<- error) *http.Ser
 		ReadTimeout:       readTimeout,
 		IdleTimeout:       idleTimeout,
 	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		fail <- fmt.Errorf("%s server: %w", name, err)
+		return srv
+	}
+	slog.Info(name+" server listening", "addr", srv.Addr)
 	go func() {
-		slog.Info(name+" server listening", "addr", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fail <- fmt.Errorf("%s server: %w", name, err)
 		}
 	}()
