@@ -379,6 +379,12 @@ test.describe('UA8: diff panel', () => {
     await expect(diffPanel(page).locator('.diff-line.diff-del')).toContainText('nginx:1.25');
     await expect(diffPanel(page).locator('.diff-line.diff-add')).toContainText('nginx:1.26');
     await expect(diffPanel(page).locator('.diff-line.diff-hunk').first()).toBeVisible();
+    // No git header lines, and lines are single-height (no blank line between).
+    await expect(diffPanel(page).locator('.diff-line.diff-meta')).toHaveCount(0);
+    const lineHeights = await diffPanel(page)
+      .locator('.diff-line')
+      .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
+    for (const h of lineHeights) expect(h).toBeLessThan(24);
 
     // Snapshot: the coloured diff panel (§5 anchor). Its content is the static
     // nginx image bump, so nothing needs masking.

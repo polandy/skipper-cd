@@ -70,7 +70,10 @@ App.detail = (function () {
           n.remove();
         });
         entry.nodes = [].concat(nodes);
-        entry.row.after.apply(entry.row, entry.nodes);
+        // A failed row's error box stays directly under the row, above the pane.
+        const next = entry.row.nextElementSibling;
+        const anchor = next && next.classList.contains('error-detail') ? next : entry.row;
+        anchor.after.apply(anchor, entry.nodes);
       },
     };
   }

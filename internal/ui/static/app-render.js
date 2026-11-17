@@ -1246,15 +1246,21 @@ function filesPanelHTML(files, fileChanges) {
 }
 
 // diffContentHTML renders one file's unified diff, each line tagged with the
-// CSS class classifyDiffLine derives from it.
+// CSS class classifyDiffLine derives from it. The leading git header block
+// (diff --git, index, ---, +++) is dropped: the section header names the file.
+// Lines are joined without a separator — they are block elements, and a '\n'
+// between them would add a blank line under `white-space: pre`.
 function diffContentHTML(diff) {
-  return diff
-    .split('\n')
+  const lines = diff.split('\n');
+  let start = 0;
+  while (start < lines.length && classifyDiffLine(lines[start]) === 'diff-meta') start++;
+  return lines
+    .slice(start)
     .map(function (line) {
       const cls = classifyDiffLine(line);
       return `<span class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line)}</span>`;
     })
-    .join('\n');
+    .join('');
 }
 
 // diffPanelHTML renders the diff panel's body: the commit header plus one

@@ -47,9 +47,9 @@ test.describe('Maske J: rolled-back error panel', () => {
   });
 
   // UJ2 — the rolled-back event now carries a diff, so the row is diffable; opening
-  // it inserts the diff panel between the row and its error box, keeping the bar
-  // continuous across row → panel → error.
-  test('UJ2: opening the diff keeps the bar continuous through row → panel → error', async ({
+  // it inserts the diff panel below the row's error box, keeping the bar
+  // continuous across row → error → panel.
+  test('UJ2: opening the diff keeps the bar continuous through row → error → panel', async ({
     page,
     skipper,
   }) => {
@@ -65,12 +65,12 @@ test.describe('Maske J: rolled-back error panel', () => {
     await expect(diffPanel).toHaveAttribute('data-status', 'rolled_back');
     await expect(row).toHaveClass(/diff-open/);
 
-    // DOM order row → diff-panel → error-panel: all three share one unbroken bar.
+    // DOM order row → error-panel → diff-panel: all three share one unbroken bar.
     const order = await row.evaluate((r) => {
       const a = r.nextElementSibling;
       const b = a?.nextElementSibling;
       return [a?.getAttribute('data-testid') ?? null, b?.getAttribute('data-testid') ?? null];
     });
-    expect(order).toEqual(['diff-panel', 'error-panel']);
+    expect(order).toEqual(['error-panel', 'diff-panel']);
   });
 });
