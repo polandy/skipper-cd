@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.2](https://github.com/polandy/skipper-cd/compare/v0.31.1...v0.31.2) (2026-11-17)
+
+
+### Bug Fixes
+
+* **ui:** keep the roster status cell whole on a live deploy event ([#390](https://github.com/polandy/skipper-cd/issues/390)) ([af52a9a](https://github.com/polandy/skipper-cd/commit/af52a9a0212ad6a435bafc739e6d99236596549a))
+
 ## [0.31.1](https://github.com/polandy/skipper-cd/compare/v0.31.0...v0.31.1) (2026-11-12)
 
 
