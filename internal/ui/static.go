@@ -11,7 +11,7 @@ import (
 // Each is served from the embedded FS through staticAsset, so a gzip-capable
 // client gets the pre-compressed body (compress.go).
 
-//go:embed static/index.html static/app.css static/app-stream.js static/app-state.js static/app-chrome.js static/app-panels.js static/app-hosts.js static/app-roster.js static/app-deploys.js static/app-autosync.js static/app-logs.js static/app-clog.js static/app-render.js static/app-helpers.js static/app-prepaint.js static/manifest.webmanifest static/sw.js static/icons static/fonts
+//go:embed static/index.html static/app.css static/app-stream.js static/app-state.js static/app-chrome.js static/app-panels.js static/app-detail.js static/app-hosts.js static/app-roster.js static/app-deploys.js static/app-autosync.js static/app-logs.js static/app-clog.js static/app-render.js static/app-helpers.js static/app-prepaint.js static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
 
 // IndexHandler serves the embedded UI HTML page, with the configured theme
@@ -196,9 +196,27 @@ func AppPanelsJSHandler() http.Handler {
 	})
 }
 
+// AppDetailJSHandler serves GET /app-detail.js — the row detail selection
+// (App.detail) every table view opens its panes through. The app shell loads it
+// after app-panels.js and before the view files. Served no-cache so it stays in
+// lockstep with the shell; the service worker caches it in the app shell for
+// offline use. Served via staticAsset, so a gzip-capable client gets the
+// pre-compressed body (see compress.go).
+func AppDetailJSHandler() http.Handler {
+	data, err := staticFS.ReadFile("static/app-detail.js")
+	if err != nil {
+		panic(err) // staticFS embeds static/app-detail.js at compile time, so this cannot fail.
+	}
+	asset := newStaticAsset("text/javascript; charset=utf-8", data)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		asset.ServeHTTP(w, r)
+	})
+}
+
 // AppHostsJSHandler serves GET /app-hosts.js — the multi-host surface
 // (ADR-0048), cut out of the app script by view (ADR-0035 amendment). The app
-// shell loads it after app-panels.js and before app-stream.js. Served no-cache so it
+// shell loads it after app-detail.js and before app-stream.js. Served no-cache so it
 // stays in lockstep with the shell; the service worker caches it in the app
 // shell for offline use. Served via staticAsset, so a gzip-capable client gets
 // the pre-compressed body (see compress.go).

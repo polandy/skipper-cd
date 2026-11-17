@@ -113,6 +113,25 @@ module.exports = [
     },
   },
   {
+    // app-detail.js holds the row detail selection: a plain browser <script>
+    // loaded after app-panels.js that attaches itself as App.detail and calls
+    // the pure layers by bare name — the globals below are that contract.
+    files: ['app-detail.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+        App: 'readonly',
+        DETAIL_TAB: 'readonly',
+        detailMatchesRow: 'readonly',
+        detailSelection: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
     // app-hosts.js is the multi-host view file: a plain browser <script>
     // loaded after app-panels.js that attaches itself as App.hosts and calls
     // the pure layers by bare name — the globals below are that contract.
@@ -122,6 +141,7 @@ module.exports = [
       globals: {
         ...globals.browser,
         App: 'readonly',
+        DETAIL_TAB: 'readonly',
         ROW_KIND: 'readonly',
         peerFilesHTML: 'readonly',
         tableRowHTML: 'readonly',
@@ -154,6 +174,8 @@ module.exports = [
       globals: {
         ...globals.browser,
         App: 'readonly',
+        DETAIL_TAB: 'readonly',
+        DETAIL_VIEW: 'readonly',
         ROW_KIND: 'readonly',
         rosterLastDeploy: 'readonly',
         tableRowHTML: 'readonly',
@@ -185,6 +207,8 @@ module.exports = [
       globals: {
         ...globals.browser,
         App: 'readonly',
+        DETAIL_TAB: 'readonly',
+        DETAIL_VIEW: 'readonly',
         ROW_KIND: 'readonly',
         tableRowHTML: 'readonly',
         timeLabelPair: 'readonly',

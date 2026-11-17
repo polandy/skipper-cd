@@ -204,24 +204,14 @@ App.hosts = (function () {
       });
   }
 
-  // togglePeerDetail opens or closes a peer row's read-only detail panel.
-  function togglePeerDetail(row) {
-    const next = row.nextElementSibling;
-    if (next && next.classList.contains('peer-detail')) {
-      next.remove();
-      row.classList.remove('diff-open');
-      return;
-    }
-    openPeerDetail(row);
-  }
-
-  // openPeerDetail opens a peer row's read-only detail card. Shared with the
-  // re-open after a roster rebuild, so a restored panel is built exactly like a
-  // clicked one — and the restore never has to rely on the row being closed.
-  function openPeerDetail(row) {
-    row.classList.add('diff-open'); // reuse the bound status bar/tint
-    row.after(createPeerDetailPanel(row));
-  }
+  // A peer row's read-only detail, in both table views. It reuses the bound
+  // status bar/tint of the changes pane.
+  App.detail.registerPane(DETAIL_TAB.peer, {
+    openClass: 'diff-open',
+    build: function (row, slot) {
+      slot.set(createPeerDetailPanel(row));
+    },
+  });
 
   // renderPeerRows rebuilds every peer row from the current snapshot, interleaved
   // into the local rows by timestamp. Local rows and their panels are never
@@ -573,8 +563,6 @@ App.hosts = (function () {
   return {
     hostChip,
     hostChipKeydown,
-    togglePeerDetail,
-    openPeerDetail,
     applyHostFilter,
     toggleHostFilterTo,
     schedulePeerReflow,

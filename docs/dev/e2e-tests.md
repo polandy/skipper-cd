@@ -83,8 +83,9 @@ asserting **behaviour + visual snapshots**.
 > (§4.12) covers self-heal — **UK1** (a degraded stack is restored, `healed`
 > row), **UK2** (a stack that stays unhealthy exhausts into `heal_exhausted`) —
 > driving the real self-heal loop off the scripted health poller. **Mask L**
-> (§4.13) covers the one-open-panel-per-row rule — **UL1** (the health panel and
-> the files/diff panel swap each other out, in both click orders). **Mask M**
+> (§4.13) covers the one-open-detail-per-table rule — **UL1** (the health panel and
+> the files/diff panel swap each other out, in both click orders), **UL2** (a
+> panel on another row closes the open one). **Mask M**
 > (§4.14) covers the per-stack deploy-history panel (audit log, ADR-0033) —
 > **UM1** (the history button opens a panel of the stack's terminal outcomes
 > from `/api/audit`), **UM2** (the button is on the newest row per stack only),
@@ -698,10 +699,11 @@ snapshots badge colouring, and the two new badges are covered there in spirit).
   with the give-up error in its `error-panel`, emitted once (not per poll), and
   no `healed` row — the redeploy that did not restore it is no heal.
 
-### 4.13 UI — Maske L: one open panel per deploy row
+### 4.13 UI — Maske L: one open detail per deploy table
 
-The health panel and the files/diff panel are mutually exclusive on a row:
-opening one closes the other, so the layout never depends on click order and the
+The health panel and the files/diff panel are mutually exclusive on a row,
+and a panel opened on another row closes the open one (UI_SPEC "Expandable
+panels", detail selection): opening one closes the other, so the layout never depends on click order and the
 variant-A row binding is never split across two panels. A webhook image bump
 puts a diff on the newest row while the health poller (scripted stub) puts the
 health pill on the same row. Behaviour-only (no snapshot).
@@ -710,6 +712,9 @@ health pill on the same row. Behaviour-only (no snapshot).
   the files pill swaps in the diff panel (row `diff-open`, not `health-open`);
   clicking the health pill swaps the health panel back (row `health-open`, not
   `diff-open`). The surviving panel is always the row's direct sibling.
+- **UL2 — Across rows.** With two stacks bumped in one run, opening the files
+  pill on `api`'s row while `web`'s diff panel is open closes it: `web` loses
+  `diff-open`, one diff panel remains, and it is `api`'s direct sibling.
 
 ### 4.14 UI — Maske M: per-stack deploy history (ADR-0033)
 
@@ -2176,6 +2181,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stack health: exited on-demand container reads stopped + on-demand label | **UH5** |
 | Stack health: folded timeline — routine start absorbed, strip, raw-list toggle | **UH7** |
 | One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
+| One open detail per table (a panel on another row closes the open one) | **UL2** |
 | One open header pop-out at a time (drawers ↔ beacon/view-options popovers) | **UAW1**–**UAW3** |
 | Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
 | project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |

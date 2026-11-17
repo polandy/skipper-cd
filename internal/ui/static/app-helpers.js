@@ -58,6 +58,47 @@ function rosterLastDeploy(entry, deploying) {
   };
 }
 
+// DETAIL_VIEW names the table views that open a row's detail; each keeps its
+// own selection (App.detail, docs/dev/ui-redesign-plan.md §3.6).
+const DETAIL_VIEW = Object.freeze({ deploys: 'deploys', stacks: 'stacks' });
+
+// DETAIL_TAB names the panes a row's detail can show: a deploy's changes or
+// self-heal drift, the stack's health, history or hooks, the Stacks card
+// (overview) and a peer row's read-only detail.
+const DETAIL_TAB = Object.freeze({
+  changes: 'changes',
+  heal: 'heal',
+  health: 'health',
+  history: 'history',
+  hooks: 'hooks',
+  overview: 'overview',
+  peer: 'peer',
+});
+
+// detailSelection is the App.detail record for a row (its dataset): the view,
+// the host ('' for local), the stack, the deploy event ('' on a roster row)
+// and the open pane.
+function detailSelection(view, row, tab) {
+  return {
+    view: view,
+    host: row.host || '',
+    stack: row.stack || '',
+    eventId: row.eventId || '',
+    tab: tab,
+  };
+}
+
+// detailMatchesRow reports whether a row (its dataset) is the one a selection
+// names — how the selection finds its row again after the view rebuilt it.
+function detailMatchesRow(sel, row) {
+  return (
+    !!sel &&
+    sel.stack === (row.stack || '') &&
+    sel.host === (row.host || '') &&
+    sel.eventId === (row.eventId || '')
+  );
+}
+
 // classifyDiffLine maps a unified-diff line to its CSS class (meta/hunk/add/del).
 function classifyDiffLine(line) {
   if (
@@ -1607,6 +1648,10 @@ if (typeof module !== 'undefined' && module.exports) {
     fullTime,
     timeLabelPair,
     rosterLastDeploy,
+    DETAIL_VIEW,
+    DETAIL_TAB,
+    detailSelection,
+    detailMatchesRow,
     classifyDiffLine,
     shortSHA,
     commitURL,

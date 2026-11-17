@@ -18,21 +18,14 @@ App.roster = (function () {
     closeAppLinkPopover,
     toggleMoreMenu,
     closeMoreMenu,
-    createHooksPanel,
-    closeHooksPanel,
     populateIcon,
     createAuditPanel,
     createWatchedPanel,
     createHealthPanel,
   } = App.panels;
-  const {
-    hostChip,
-    hostChipKeydown,
-    togglePeerDetail,
-    openPeerDetail,
-    applyHostFilter,
-    toggleHostFilterTo,
-  } = App.hosts;
+  const { hostChip, hostChipKeydown, applyHostFilter, toggleHostFilterTo } = App.hosts;
+  const detail = App.detail;
+  const VIEW = DETAIL_VIEW.stacks;
 
   // ── Disabled-stacks strip (ADR-0034) ──
 
@@ -57,23 +50,6 @@ App.roster = (function () {
 
   function renderRoster() {
     const list = document.getElementById('roster-list');
-    // A `stacks` snapshot lands after every run, so a rebuild that drops the
-    // open panel yanks the answer away from whoever is reading it — and the run
-    // that republished is exactly when the panel has something new to say (the
-    // deploy history gained a record, change detection a commit). So note which
-    // row is open and re-open it after the rebuild, from the new snapshot.
-    const openRow = list.querySelector(
-      '.roster-row.audit-open, .roster-row.hooks-open, .roster-row.peer-row.diff-open',
-    );
-    const reopen = openRow && {
-      stack: openRow.dataset.stack,
-      host: openRow.dataset.host,
-      kind: openRow.classList.contains('hooks-open')
-        ? 'hooks'
-        : openRow.classList.contains('peer-row')
-          ? 'peer'
-          : 'detail',
-    };
     list.textContent = '';
     closeAppLinkPopover(); // rebuilt rows drop any open app-link popover too
     // Attention-ranked, stable (rosterOrdered, app-helpers.js): unhealthy first,
@@ -119,25 +95,14 @@ App.roster = (function () {
       list.appendChild(row);
     });
     renderPeerRosterRows(list); // append each peer's stacks, host-tagged + read-only
-    reopenRosterPanel(list, reopen); // the open panel returns, carrying the new snapshot
+    // A `stacks` snapshot lands after every run — exactly when the open panel
+    // has something new to say (a history record, a commit) — so the selection
+    // re-opens on its rebuilt row, from the new snapshot.
+    detail.reapply(VIEW, list.querySelectorAll('.roster-row'));
     applyHostFilter(); // dots + host filtering on the rebuilt roster
     refilterRoster(); // a re-render replaces the rows; re-apply any active filter
     App.stream.applyHookRun(); // re-paint a running hook's phase on the rebuilt roster rows
     App.chrome.renderUpdateBadge(); // the badge counts these rows, so it follows them
-  }
-
-  // reopenRosterPanel restores the panel renderRoster noted before the rebuild.
-  // A stack that left the set (parked, or removed from the repo) simply has no
-  // row to re-open on, which is the correct outcome — its panel is gone with it.
-  function reopenRosterPanel(list, reopen) {
-    if (!reopen) return;
-    const row = [...list.querySelectorAll('.roster-row')].find(function (r) {
-      return r.dataset.stack === reopen.stack && r.dataset.host === reopen.host;
-    });
-    if (!row) return;
-    if (reopen.kind === 'peer') openPeerDetail(row);
-    else if (reopen.kind === 'hooks') openRosterHooksPanel(row);
-    else openRosterDetail(row);
   }
 
   // renderPeerRosterRows appends every peer's stacks to the roster, one read-only
@@ -216,27 +181,11 @@ App.roster = (function () {
   // severity chips demonstrated.
   let rosterUpdatesOnly = false;
 
-  // Toggle a stack's deploy-history panel (ADR-0033), reusing the deploy table's
-  // audit panel. One open at a time; the panel trails its row as a sibling, so
-  // clicks inside it don't re-trigger the row.
-  function closeRosterPanels() {
-    rosterList
-      .querySelectorAll('.audit-panel, .health-panel, .hooks-panel, .watched-panel')
-      .forEach(function (p) {
-        p.remove();
-      });
-    rosterList
-      .querySelectorAll('.roster-row.audit-open, .roster-row.hooks-open')
-      .forEach(function (r) {
-        r.classList.remove('audit-open', 'hooks-open');
-      });
-  }
-
   // updateAppLinks patches each already-rendered row's link icon in place from
   // the current S.appLinksSnap, without a full renderRoster() rebuild — app_links
   // updates on the health-poll cadence, far more often than the 'stacks'
   // snapshot, and a rebuild at that rate would tear down and refetch an open
-  // card every few seconds (see reopenRosterPanel) for a single icon.
+  // card every few seconds (see renderRoster) for a single icon.
   function updateAppLinks() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function (row) {
       const cell = row.querySelector('.roster-stack');
@@ -262,7 +211,7 @@ App.roster = (function () {
   // refreshPeerRosterRows), so a health change — or the first poll after the
   // roster rendered — shows on the Stacks overview without a full re-render,
   // which at poll cadence would tear down and refetch an open card (see
-  // reopenRosterPanel). Mirrors updateStackAffordances' pill logic for the roster.
+  // renderRoster). Mirrors updateStackAffordances' pill logic for the roster.
   function updateRosterHealth() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function (row) {
       const statusCell = row.querySelector('.roster-status');
@@ -302,33 +251,26 @@ App.roster = (function () {
     });
   }
 
-  // openRosterDetail opens a local row's bound panels as one card. Shared with
-  // the re-open after a roster rebuild, so a restored panel is built exactly
-  // like a clicked one.
-  function openRosterDetail(row) {
-    row.classList.add('audit-open');
-    const stack = row.dataset.stack;
-    // Containers (health, if known) above deploy history, bound as one card.
-    let anchor = row;
-    const h = S.healthSnap[stack];
-    if (h && h.services && h.services.length) {
-      const health = createHealthPanel(stack);
-      anchor.after(health);
-      anchor = health;
-    }
-    const audit = createAuditPanel(stack);
-    anchor.after(audit);
-    // Change detection last: it explains why the history above ends where it
-    // does — which inputs are watched, and that none has changed since.
-    audit.after(createWatchedPanel(stack));
-    refilterRoster(); // freshly opened panels obey an active filter
-  }
+  // The Stacks card: a local row's panels bound as one — containers (health,
+  // if known) above the deploy history (ADR-0033), then change detection, which
+  // explains why the history ends where it does.
+  detail.registerPane(DETAIL_TAB.overview, {
+    openClass: 'audit-open',
+    build: function (row, slot) {
+      const stack = row.dataset.stack;
+      const nodes = [];
+      const h = S.healthSnap[stack];
+      if (h && h.services && h.services.length) nodes.push(createHealthPanel(stack));
+      nodes.push(createAuditPanel(stack), createWatchedPanel(stack));
+      slot.set(nodes);
+    },
+  });
 
-  // openRosterHooksPanel opens the configured-hooks panel (ADR-0038) on a row.
-  function openRosterHooksPanel(row) {
-    row.classList.add('hooks-open');
-    row.after(createHooksPanel(row.dataset.stack));
-    refilterRoster(); // a freshly opened panel obeys an active filter
+  // toggleRosterDetail toggles a row's tab pane; a freshly opened panel obeys
+  // an active filter.
+  function toggleRosterDetail(row, tab) {
+    detail.toggle(VIEW, row, tab);
+    refilterRoster();
   }
 
   // countRosterUpdates counts the roster rows a registry update is waiting on,
@@ -516,15 +458,7 @@ App.roster = (function () {
       const hbadge = e.target.closest('.hooks-badge');
       if (hbadge) {
         const hrow = hbadge.closest('.roster-row');
-        if (hrow) {
-          const hnext = hrow.nextElementSibling;
-          if (hnext && hnext.classList.contains('hooks-panel')) {
-            closeHooksPanel(hrow);
-          } else {
-            closeRosterPanels(); // one panel per row
-            openRosterHooksPanel(hrow);
-          }
-        }
+        if (hrow) toggleRosterDetail(hrow, DETAIL_TAB.hooks);
         return;
       }
       // Retry a held change (ADR-0062): a write, so it never also toggles the
@@ -557,15 +491,11 @@ App.roster = (function () {
       if (e.target.closest('.link-btn')) return;
       const row = e.target.closest('.roster-row');
       if (!row || !rosterList.contains(row)) return;
-      if (row.classList.contains('peer-row')) {
-        togglePeerDetail(row);
-        return;
-      } // read-only detail + link
-      const next = row.nextElementSibling;
-      const isOpen =
-        next && (next.classList.contains('audit-panel') || next.classList.contains('health-panel'));
-      closeRosterPanels();
-      if (!isOpen) openRosterDetail(row);
+      // A peer row opens its read-only detail + link.
+      toggleRosterDetail(
+        row,
+        row.classList.contains('peer-row') ? DETAIL_TAB.peer : DETAIL_TAB.overview,
+      );
     });
 
     // Chip click: the single updates-only toggle.
