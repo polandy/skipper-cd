@@ -2180,6 +2180,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
 | project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |
 | Held change: the Stacks chip explains the hold, retry deploys it once more, a refused retry hands the button back | **UAZ1**, **UAZ2** |
+| Live deploy event on a roster row: the status cell keeps its outcome strip and last-incident line while deploying | **UAQ7** |
 | A change that failed before it started: the Stacks chip reads `backoff` with its attempts and next try, and `held` after the third failure | **UBA1** |
 | Strict CSP: security headers on the shell, no violation across the views, an injected inline script is refused | **UBB1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
