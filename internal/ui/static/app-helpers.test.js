@@ -2020,7 +2020,7 @@ test('detailMatchesRow finds the selected row again after a rebuild', () => {
   const dep = h.detailSelection(
     h.DETAIL_VIEW.deploys,
     { stack: 'web', eventId: '7' },
-    h.DETAIL_TAB.history,
+    h.DETAIL_TAB.deploy,
   );
   assert.equal(h.detailMatchesRow(dep, { stack: 'web', eventId: '7' }), true);
   assert.equal(h.detailMatchesRow(dep, { stack: 'web', eventId: '8' }), false);
@@ -2505,4 +2505,42 @@ test('diffStat counts added and removed lines, not the file headers', () => {
   const diff = '--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-old\n+new\n+more\n same';
   assert.deepEqual(h.diffStat(diff), { add: 2, del: 1 });
   assert.deepEqual(h.diffStat(''), { add: 0, del: 0 });
+});
+
+test('deployRowCause: a failure names its stage and condensed cause', () => {
+  const err = 'docker compose up: exit status 1: port is already allocated';
+  assert.equal(
+    h.deployRowCause('failed', err),
+    'docker compose up failed: port is already allocated',
+  );
+  assert.equal(
+    h.deployRowCause(
+      'rolled_back',
+      'health check: probe returned 503 (rolled back to previous version)',
+    ),
+    'health check failed: probe returned 503',
+  );
+  assert.equal(
+    h.deployRowCause('rolled_back_unhealthy', 'health check: exit status 1'),
+    'health check failed: exit status 1',
+  );
+  assert.equal(h.deployRowCause('failed', ''), '');
+});
+
+test('deployRowCause: a blocked row names the dependency', () => {
+  assert.equal(h.deployRowCause('blocked', 'dependency db failed this run'), 'blocked by db');
+  assert.equal(h.deployRowCause('blocked', '', 'blocked by db'), 'blocked by db');
+  assert.equal(h.deployRowCause('blocked', ''), 'blocked');
+});
+
+test('deployRowCause: a queued row says autosync is paused, and where', () => {
+  assert.equal(h.deployRowCause('queued', '', 'stack'), 'autosync paused for this stack');
+  assert.equal(h.deployRowCause('queued', '', 'global'), 'autosync paused for every stack');
+  assert.equal(h.deployRowCause('queued', ''), 'autosync paused');
+});
+
+test('deployRowCause: every other outcome has no cause line', () => {
+  for (const s of ['success', 'deploying', 'healed', 'heal_exhausted', 'skipped', 'removed']) {
+    assert.equal(h.deployRowCause(s, 'boom'), '', s);
+  }
 });

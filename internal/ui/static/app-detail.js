@@ -9,13 +9,10 @@
 // A pane is registered once per DETAIL_TAB: openClass marks the row open (it
 // drives the bound status bar), build(row, slot, opts) fills the pane through
 // slot.set(nodes) — now or after a fetch, while slot.live() — and the optional
-// onClose(row) undoes what build put on the row. The shared panes (health,
-// history, hooks) are registered here; a view registers its own.
+// onClose(row) undoes what build put on the row. Each view registers its own.
 //
 // Loads after app-panels.js and before every view. Attached as App.detail.
 App.detail = (function () {
-  const { createHealthPanel, createAuditPanel, createHooksPanel } = App.panels;
-
   const panes = {};
   // view → { sel, row, opts, nodes }; nodes are the pane's elements after row.
   const open = {};
@@ -120,29 +117,6 @@ App.detail = (function () {
     });
     if (row) show(view, row, e.sel.tab, e.opts);
   }
-
-  registerPane(DETAIL_TAB.health, {
-    openClass: 'health-open',
-    build: function (row, slot, opts) {
-      row.dataset.health = opts.health || 'unknown'; // tints the row (variant A)
-      slot.set(createHealthPanel(row.dataset.stack));
-    },
-    onClose: function (row) {
-      row.removeAttribute('data-health');
-    },
-  });
-  registerPane(DETAIL_TAB.history, {
-    openClass: 'audit-open',
-    build: function (row, slot) {
-      slot.set(createAuditPanel(row.dataset.stack));
-    },
-  });
-  registerPane(DETAIL_TAB.hooks, {
-    openClass: 'hooks-open',
-    build: function (row, slot) {
-      slot.set(createHooksPanel(row.dataset.stack));
-    },
-  });
 
   return { registerPane, isOpen, show, toggle, close, closeIf, rebind, reapply };
 })();

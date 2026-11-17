@@ -305,7 +305,7 @@ App.chrome = (function () {
     manageSurfaceFocus(viewOptions, activeBtn, open);
   }
 
-  // jumpToStack drives the cross-view jump-btn (deploys <-> stacks): switch to
+  // jumpToStack drives the cross-view jumps (deploys <-> stacks): switch to
   // targetView, then scroll to and briefly flash that stack's row there. In
   // the deploys view a stack can have many rows (it's an event log), so the
   // newest one — first in DOM order — is the landing target; the stacks view
@@ -349,12 +349,12 @@ App.chrome = (function () {
 
   // ─── Live-health attention surface (ADR-0027 extension) ───
   // Two always-consistent affordances that lift a currently-unhealthy stack out
-  // of the chronological deploy log — where its row-bound health pill can sit far
+  // of the chronological deploy log — where its row can sit far
   // down, or vanish once the row ages out of the bounded log: a header BEACON
   // (present in every view) and, in the Deploys view, an attention BAND pinned
   // above the log. Both render from attentionStacks(S.healthSnap) and jump to the
   // stack's newest row on activate (degrading to a plain view switch when the
-  // stack has no row, exactly like jumpBtn).
+  // stack has no row, exactly like jumpToStack).
   // ─── Incident badge (UI_SPEC.md "Incident badge") ───
   // The beacon answers "what is unhealthy NOW"; this badge answers "what went
   // wrong RECENTLY" — the axis a recovered rollback disappears on. Counts
