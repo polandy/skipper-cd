@@ -1067,8 +1067,19 @@ test('diffContentHTML tags each line with its diff class', () => {
   const html = r.diffContentHTML('@@ -1 +1 @@\n-old\n+new\n plain');
   const classes = [...html.matchAll(/class="diff-line([^"]*)"/g)].map((m) => m[1].trim());
   assert.deepEqual(classes, ['diff-hunk', 'diff-del', 'diff-add', '']);
-  // Lines stay newline-separated so the <pre>-style panel keeps its layout.
-  assert.equal(html.split('\n').length, 4);
+  // Block lines need no separator: a '\n' under white-space: pre doubles the height.
+  assert.ok(!html.includes('\n'), `newline between lines: ${html}`);
+});
+
+test('diffContentHTML drops the leading git header block but keeps hunks and content', () => {
+  const diff =
+    'diff --git a/x.yml b/x.yml\nindex 1..2 100644\n--- a/x.yml\n+++ b/x.yml\n' +
+    '@@ -1,2 +1,2 @@\n-- old comment\n+new\n@@ -9 +9 @@\n-z';
+  const html = r.diffContentHTML(diff);
+  assert.ok(!/diff --git|index 1|a\/x\.yml|b\/x\.yml/.test(html), `header leaked: ${html}`);
+  assert.equal([...html.matchAll(/class="diff-line/g)].length, 5);
+  assert.match(html, /diff-hunk">@@ -1,2/);
+  assert.match(html, /diff-del">-- old comment/);
 });
 
 test('diffContentHTML escapes diff payload that looks like markup', () => {
