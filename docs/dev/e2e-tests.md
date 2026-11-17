@@ -79,7 +79,7 @@ asserting **behaviour + visual snapshots**.
 > binding), **UI3** (multi-commit range) — driven by webhook image bumps. **Mask
 > J** (§4.11) covers the rolled-back error panel — **UJ1** (error box bound to its
 > row), **UJ2** (diff carried on the rolled-back event, bar continuous through
-> row → panel → error) — driven by a failing `up` that rolls back. **Mask K**
+> row → error → panel) — driven by a failing `up` that rolls back. **Mask K**
 > (§4.12) covers self-heal — **UK1** (a degraded stack is restored, `healed`
 > row), **UK2** (a stack that stays unhealthy exhausts into `heal_exhausted`) —
 > driving the real self-heal loop off the scripted health poller. **Mask L**
@@ -675,8 +675,8 @@ Behaviour-only (no snapshot).
   bar is unbroken (the message reads as attached to its row, not a floating card).
 - **UJ2 — Diff carried + continuous bar.** The rolled-back event now reports its
   diff, so the row is `data-has-diffs="1"`; opening the files pill inserts a
-  `bound` `diff-panel` (`data-status="rolled_back"`) between the row and the error
-  panel, so the DOM order is row → `diff-panel` → `error-panel` — one unbroken bar.
+  `bound` `diff-panel` (`data-status="rolled_back"`) below the error
+  panel, so the DOM order is row → `error-panel` → `diff-panel` — one unbroken bar.
 
 ### 4.12 UI — Maske K: Self-heal (ADR-0029)
 
