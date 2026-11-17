@@ -1549,6 +1549,48 @@ test('outcomeStripHTML is empty with fewer than two records — a lone dot only 
   assert.equal(r.outcomeStripHTML([{ status: 'success', at: '2026-08-05T11:00:00Z' }], now), '');
 });
 
+test('rosterStatusInnerHTML carries badge → health pill → strip → incident line, deploying or not', () => {
+  const now = Date.parse('2026-08-05T12:00:00Z');
+  const entry = {
+    name: 'web',
+    last_status: 'success',
+    recent: [
+      { status: 'success', at: '2026-08-05T11:00:00Z' },
+      { status: 'rolled_back', at: '2026-08-05T10:00:00Z' },
+    ],
+    last_incident: { status: 'rolled_back', at: '2026-08-05T10:00:00Z' },
+  };
+  const health = { status: 'healthy' };
+  for (const deploying of [false, true]) {
+    const html = r.rosterStatusInnerHTML(entry, deploying, true, health, now);
+    assert.match(
+      html,
+      /data-testid="status-badge"[\s\S]*health-pill[\s\S]*data-testid="outcome-strip"[\s\S]*data-testid="last-incident"/,
+      `deploying=${deploying}`,
+    );
+  }
+});
+
+test('rosterStatusInnerHTML gives a disabled stack only its flag', () => {
+  const now = Date.parse('2026-08-05T12:00:00Z');
+  const html = r.rosterStatusInnerHTML(
+    {
+      name: 'web',
+      disabled: true,
+      recent: [
+        { status: 'success', at: '2026-08-05T11:00:00Z' },
+        { status: 'failed', at: '2026-08-05T10:00:00Z' },
+      ],
+      last_incident: { status: 'failed', at: '2026-08-05T10:00:00Z' },
+    },
+    false,
+    true,
+    { status: 'healthy' },
+    now,
+  );
+  assert.equal(html, '<span class="roster-flag">disabled</span>');
+});
+
 test('lastIncidentHTML names the papered-over outcome with its age', () => {
   const now = Date.parse('2026-08-05T12:00:00Z');
   const html = r.lastIncidentHTML({ status: 'rolled_back', at: '2026-08-05T10:00:00Z' }, now);

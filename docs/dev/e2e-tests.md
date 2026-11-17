@@ -1630,6 +1630,11 @@ not pinned) is covered at the unit layer on both sides (`internal/logbuf`,
   zero has to be said explicitly in CSS — without that line an empty
   rollback-tinted pill sits in the header of every instance with a clean 24 h.
   Verified to fail against the unfixed CSS.
+- **UAQ7 — A live deploy keeps the roster cell whole.** With the next `up`
+  held, a push turns the roster row `deploying` through the per-row live
+  refresh (no `stacks` snapshot rebuilds it while the deploy is in flight); the
+  row still shows its outcome strip and last-incident line. Verified to fail
+  against the unfixed refresh, which rewrote the cell with the badge only.
 
 ### 4.45 UI — Maske AR: the Logs view fits the display
 
