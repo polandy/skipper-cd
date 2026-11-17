@@ -13,6 +13,8 @@ These files deliberately live outside `docs/user/` so they are **not** published
   eyeballing the web UI.
 - [`ui-design-concept.md`](ui-design-concept.md) — shared row/table/panel
   design language across the UI's views.
+- [`ui-redesign-plan.md`](ui-redesign-plan.md) — draft plan for one shared
+  row and detail-panel design across the Stacks and Deploys views.
 - [`http-api-spec.md`](http-api-spec.md) — the read-only HTTP JSON API
   reference.
 - [`autosync-spec.md`](autosync-spec.md) — autosync and the leave-dirty queue.

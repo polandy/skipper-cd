@@ -38,6 +38,26 @@ function fullTime(ts) {
   return new Date(ts).toLocaleString();
 }
 
+// timeLabelPair is a row's time cell in the shared time mode: the chosen
+// rendering as text, the other one as its title. Both empty without a time.
+function timeLabelPair(ts, absolute) {
+  if (!ts) return { text: '', title: '' };
+  const rel = formatTime(ts);
+  const abs = fullTime(ts);
+  return absolute ? { text: abs, title: rel } : { text: rel, title: abs };
+}
+
+// rosterLastDeploy is the last-deploy time and commit a roster row shows:
+// only for a real past deploy, never while one is in flight or for a parked
+// stack. Empty strings otherwise.
+function rosterLastDeploy(entry, deploying) {
+  const shown = !entry.disabled && !deploying && !!entry.last_status;
+  return {
+    at: shown ? entry.last_at || '' : '',
+    commit: shown ? entry.last_commit || '' : '',
+  };
+}
+
 // classifyDiffLine maps a unified-diff line to its CSS class (meta/hunk/add/del).
 function classifyDiffLine(line) {
   if (
@@ -1585,6 +1605,8 @@ if (typeof module !== 'undefined' && module.exports) {
     OFFLINE_AFTER_FAILURES,
     formatTime,
     fullTime,
+    timeLabelPair,
+    rosterLastDeploy,
     classifyDiffLine,
     shortSHA,
     commitURL,

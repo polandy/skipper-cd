@@ -351,8 +351,6 @@ App.deploys = (function () {
     row.dataset.host = S.selfHost; // local rows belong to the primary host
     if (evt.has_diffs) row.dataset.hasDiffs = '1';
 
-    const absTs = fullTime(evt.timestamp);
-    const relTs = formatTime(evt.timestamp);
     const pausedTag =
       evt.status === 'queued' || evt.status === 'blocked'
         ? pendingTagHTML(evt.status, pendingReason(evt.stack))
@@ -372,13 +370,17 @@ App.deploys = (function () {
     // Rendered from the stash, like the settle path below: one source for the
     // cell, so a healed row's empty stash is the only thing that empties it.
     const delta = S.imageDeltaOn ? stashedChangeCellHTML(row) : '';
-    row.innerHTML =
-      `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(evt.timestamp)}" title="${escapeAttr(S.absoluteTime ? relTs : absTs)}">${S.absoluteTime ? absTs : relTs}</span>` +
-      `<span class="cell-stack">${hostChip(S.selfHost)}<span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">${escapeHtml(evt.stack)}</span>${isPseudoStack(evt.stack) ? '' : jumpBtnHTML('stacks', evt.stack)}${pausedTag}</span>` +
-      `<span class="col-version">${delta}</span>` +
-      `<span class="status-cell">${badgeHTML(evt.status)}${retryNoteHTML(evt)}${repeatNoteHTML(evt)}</span>` +
-      `<span class="cell-duration" data-testid="duration-cell">${formatDuration(evt.duration_ms)}</span>` +
-      `<span class="col-files">${filesCell}</span>`;
+    row.innerHTML = tableRowHTML(ROW_KIND.deploy, {
+      host: hostChip(S.selfHost),
+      stack: evt.stack,
+      identExtras: (isPseudoStack(evt.stack) ? '' : jumpBtnHTML('stacks', evt.stack)) + pausedTag,
+      ts: evt.timestamp,
+      absolute: S.absoluteTime,
+      version: delta,
+      state: badgeHTML(evt.status) + retryNoteHTML(evt) + repeatNoteHTML(evt),
+      durationMs: evt.duration_ms,
+      files: filesCell,
+    });
 
     populateIcon(row.querySelector('.stack-icon'), evt.stack);
     return row;
@@ -634,8 +636,7 @@ App.deploys = (function () {
       existing.querySelector('.cell-duration').textContent = formatDuration(evt.duration_ms);
       const tc = existing.querySelector('.cell-time');
       tc.dataset.ts = evt.timestamp;
-      tc.textContent = S.absoluteTime ? fullTime(evt.timestamp) : formatTime(evt.timestamp);
-      tc.title = S.absoluteTime ? formatTime(evt.timestamp) : fullTime(evt.timestamp);
+      setTimeCell(tc, evt.timestamp);
       if (evt.changed_files && evt.changed_files.length > 0) {
         existing.querySelector('.col-files').innerHTML = filesHTML(evt.changed_files);
       }
@@ -686,6 +687,12 @@ App.deploys = (function () {
     document.getElementById('roster-time-mode'),
   ];
 
+  function setTimeCell(cell, ts) {
+    const t = timeLabelPair(ts, S.absoluteTime);
+    cell.textContent = t.text;
+    cell.title = t.title;
+  }
+
   function applyTimeMode() {
     timeModeBtns.forEach(function (btn) {
       if (!btn) return;
@@ -695,8 +702,7 @@ App.deploys = (function () {
     tbody.querySelectorAll('.cell-time').forEach(function (cell) {
       const ts = cell.dataset.ts;
       if (!ts) return;
-      cell.textContent = S.absoluteTime ? fullTime(ts) : formatTime(ts);
-      cell.title = S.absoluteTime ? formatTime(ts) : fullTime(ts);
+      setTimeCell(cell, ts);
     });
   }
 
@@ -1237,7 +1243,7 @@ App.deploys = (function () {
       };
 
       // Mark the row open for any panel (diff or plain file list) so it keeps the
-      // shared status bar; the trailing panel binds to it via --dc.
+      // shared status bar; the trailing panel binds to it via --st.
       row.classList.add('diff-open');
       if (hasDiffs && eventId) {
         // runDiffFetch drops a loading placeholder after the row and fills it once

@@ -1959,3 +1959,25 @@ test('repeatNote survives a run with no recorded first_seen', () => {
   assert.equal(note.count, 3);
   assert.equal(note.title.includes('→'), false);
 });
+
+test('timeLabelPair shows the chosen mode and titles the other one', () => {
+  const ts = '2020-01-02T03:04:05Z';
+  assert.deepEqual(h.timeLabelPair(ts, false), { text: h.formatTime(ts), title: h.fullTime(ts) });
+  assert.deepEqual(h.timeLabelPair(ts, true), { text: h.fullTime(ts), title: h.formatTime(ts) });
+});
+
+test('timeLabelPair renders nothing for a missing timestamp', () => {
+  assert.deepEqual(h.timeLabelPair('', true), { text: '', title: '' });
+  assert.deepEqual(h.timeLabelPair(undefined, false), { text: '', title: '' });
+});
+
+test('rosterLastDeploy carries time and commit only for a settled past deploy', () => {
+  const entry = { name: 'web', last_status: 'success', last_at: 'T', last_commit: 'abc1234' };
+  assert.deepEqual(h.rosterLastDeploy(entry, false), { at: 'T', commit: 'abc1234' });
+  const none = { at: '', commit: '' };
+  // In flight, the last deploy is about to be replaced: the row shows neither.
+  assert.deepEqual(h.rosterLastDeploy(entry, true), none);
+  assert.deepEqual(h.rosterLastDeploy({ ...entry, disabled: true }, false), none);
+  assert.deepEqual(h.rosterLastDeploy({ name: 'new' }, false), none);
+  assert.deepEqual(h.rosterLastDeploy({ name: 'x', last_status: 'failed' }, false), none);
+});

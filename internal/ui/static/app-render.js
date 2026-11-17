@@ -647,6 +647,59 @@ function rowActionClusterHTML(...parts) {
   return inner ? `<span class="row-actions">${inner}</span>` : '';
 }
 
+// ── Table rows ──
+// One renderer for every row of both tables — local and peer, Deploys and
+// Stacks. The caller resolves the state-bound parts (host chip, per-host
+// lookups, the live flags) into the model; this file only lays them out.
+
+const ROW_KIND = Object.freeze({ deploy: 'deploy', roster: 'roster' });
+
+// tableRowHTML renders the cells of one row of the given kind.
+//
+// deploy model: host (chip HTML), stack, identExtras (HTML after the name),
+// ts, absolute, version (inner HTML), state (inner HTML), durationMs, files
+// (inner HTML).
+//
+// roster model: host, stack, actions (glyph HTML parts, empty ones dropped),
+// version (the whole cell, rosterVersionCellHTML), state (inner HTML), lastAt,
+// absolute, commit, repoBase.
+function tableRowHTML(kind, m) {
+  return kind === ROW_KIND.roster ? rosterRowCellsHTML(m) : deployRowCellsHTML(m);
+}
+
+function stackIconHTML() {
+  return '<span class="stack-icon" data-testid="stack-icon"></span>';
+}
+
+function deployRowCellsHTML(m) {
+  const t = timeLabelPair(m.ts, m.absolute);
+  return (
+    `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(m.ts)}" title="${escapeAttr(t.title)}">${escapeHtml(t.text)}</span>` +
+    `<span class="cell-stack">${m.host}${stackIconHTML()}<span class="stack-name">${escapeHtml(m.stack)}</span>${m.identExtras || ''}</span>` +
+    `<span class="col-version">${m.version}</span>` +
+    `<span class="status-cell">${m.state}</span>` +
+    `<span class="cell-duration" data-testid="duration-cell">${formatDuration(m.durationMs)}</span>` +
+    `<span class="col-files">${m.files}</span>`
+  );
+}
+
+function rosterRowCellsHTML(m) {
+  const t = timeLabelPair(m.lastAt, m.absolute);
+  return (
+    `<span class="roster-stack"><span class="roster-ident">${m.host}${stackIconHTML()}<span class="roster-name" title="${escapeAttr(m.stack)}">${escapeHtml(m.stack)}</span></span>${rowActionClusterHTML(...m.actions)}</span>` +
+    m.version +
+    `<span class="roster-status">${m.state}</span>` +
+    `<span class="roster-when"${t.title ? ` title="${escapeAttr(t.title)}"` : ''}>${escapeHtml(t.text)}</span>` +
+    commitLinkHTML(m.commit, { cls: 'roster-sha', base: m.repoBase, title: m.commit })
+  );
+}
+
+// peerFilesHTML is a peer deploy row's files cell: the fan-in carries only a
+// changed-file count, not the list. Empty for none.
+function peerFilesHTML(n) {
+  return n > 0 ? `<span class="peer-files">${n} file${n === 1 ? '' : 's'}</span>` : '';
+}
+
 // pendingTagHTML renders the tag on a pending deploy row. Queued rows show
 // "paused[: reason]"; blocked rows (ADR-0032) show the dependency reason
 // ("blocked by <dep>") directly. The caller draws reason from the queue
@@ -1553,6 +1606,9 @@ function clogSvcsHTML(services, selected) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     escapeHtml,
+    ROW_KIND,
+    tableRowHTML,
+    peerFilesHTML,
     escapeAttr,
     commitLinkHTML,
     versionChipHTML,
