@@ -83,9 +83,10 @@ test('UX1: peer deploy rows show an inline health pill', async ({ page, skipper 
   await expect(deployRow(page, 'host-a', 'api').locator('[data-testid="health-pill"]')).toHaveAttribute('data-health', 'healthy');
 });
 
-// UX2 — the merged Stacks roster shows the peer's live health pill and app-link
-// inline on the row, so the overview answers "is it healthy" without expanding.
-test('UX2: peer roster rows show an inline health pill and app-link', async ({ page, skipper }) => {
+// UX2 — the merged Stacks roster shows the peer's live health pill inline on
+// the row, so the overview answers "is it healthy" without opening anything; the
+// peer's app-link rides the head of its detail panel.
+test('UX2: peer roster rows show an inline health pill; the panel carries the app-link', async ({ page, skipper }) => {
   skipper.setStackHealth('api', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
   skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
   await page.goto(`${skipper.baseURL}/`);
@@ -94,7 +95,10 @@ test('UX2: peer roster rows show an inline health pill and app-link', async ({ p
 
   const gitea = rosterRow(page, 'host-b', 'gitea');
   await expect(gitea.locator('[data-testid="health-pill"]')).toHaveAttribute('data-health', 'healthy');
-  await expect(gitea.locator('[data-testid="app-link-btn"]')).toBeVisible();
+  await expect(gitea.locator('[data-testid="app-link-btn"]')).toHaveCount(0);
+  await gitea.click();
+  const panel = page.locator('[data-testid="detail-panel"].peer-panel[data-host="host-b"][data-stack="gitea"]');
+  await expect(panel.locator('[data-testid="app-link-btn"]')).toBeVisible();
   await expect(rosterRow(page, 'host-b', 'postgres').locator('[data-testid="health-pill"]')).toHaveAttribute('data-health', 'unhealthy');
 
   // Local roster rows carry the pill too — the roster showed no live health for

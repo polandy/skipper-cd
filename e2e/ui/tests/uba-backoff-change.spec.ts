@@ -20,8 +20,11 @@ const rosterRow = (page: Page) =>
   page.locator('[data-testid="roster-row"][data-stack="web"]');
 const heldChip = (page: Page) =>
   rosterRow(page).locator('[data-testid="held-chip"]');
+// The retry lives in the open detail panel's verdict line.
 const retryBtn = (page: Page) =>
-  rosterRow(page).locator('[data-testid="retry-btn"]');
+  page.locator(
+    '[data-testid="detail-panel"][data-stack="web"] [data-testid="retry-btn"]',
+  );
 
 test.describe("Maske BA: backoff before a hold", () => {
   test.use({
@@ -52,9 +55,10 @@ test.describe("Maske BA: backoff before a hold", () => {
     await stacksBtn(page).click();
 
     await expect(heldChip(page)).toHaveText("backoff");
+    await rosterRow(page).click(); // open the detail panel carrying the retry
     await expect(heldChip(page)).toHaveAttribute(
       "title",
-      /failed before it started \(1 attempt so far\),.*\. Next attempt .*; if it keeps failing, it is held\. Retry attempts it now\./,
+      /failed before it started \(1 attempt so far\),.*\. Next attempt .*; if it keeps failing, it is held\.$/,
     );
     await expect(retryBtn(page)).toBeEnabled();
 
@@ -69,7 +73,7 @@ test.describe("Maske BA: backoff before a hold", () => {
     await expect(heldChip(page)).toHaveText("held");
     await expect(heldChip(page)).toHaveAttribute(
       "title",
-      /failed 3 times before it started, last .*not retried until a new commit changes web\. Retry deploys it once more\./,
+      /failed 3 times before it started, last .*not retried until a new commit changes web\.$/,
     );
     await expect(retryBtn(page)).toBeEnabled();
   });

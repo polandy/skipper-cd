@@ -133,10 +133,12 @@ test.describe('UU4: running phase in the Stacks roster', () => {
 
     const rrow = page.locator('[data-testid="roster-row"][data-stack="web"]');
     await expect(rrow.locator('[data-testid="hook-phase"]')).toContainText('pre_deploy hook');
-    // The hooks badge sits inline on the roster row, so the running-hook pulse
-    // rides the badge itself (no ⋯ menu here).
-    await expect(rrow.locator('[data-testid="more-btn"]')).toHaveCount(0);
-    await expect(rrow.locator('[data-testid="hooks-badge"]')).toHaveAttribute('data-hook-active', '1');
+    // The row carries no controls; the running-hook pulse rides the Hooks
+    // action of the stack's open detail panel.
+    await expect(rrow.locator('[data-testid="hooks-badge"]')).toHaveCount(0);
+    await rrow.click();
+    const panel = page.locator('[data-testid="detail-panel"][data-stack="web"]');
+    await expect(panel.locator('[data-testid="hooks-badge"]')).toHaveAttribute('data-hook-active', '1');
 
     skipper.releaseHook(); // let the held hook finish so the deploy settles and teardown is clean
   });

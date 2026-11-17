@@ -8,7 +8,8 @@ import type { Page } from '@playwright/test';
 // discovery, ADR-0034) with each stack's last outcome — inventory, not an event
 // log, rendered as an aligned table that reuses the deploy table's row/column/
 // expand language. Covers the view switch + deployed/disabled rows + aligned
-// column header (UR1), click-a-row → containers + deploy history (UR2), the
+// column header (UR1), click-a-row → the detail panel's containers + history
+// tabs (UR2; the panel itself is Maske BC, §4.56), the
 // search filter incl. the mobile popover entry (UR3/UR4), and the shared
 // time-mode toggle (UR5). The "never deployed" synthetic state is unit-tested
 // (internal/roster) and shares its .roster-flag rendering with the disabled row
@@ -48,9 +49,7 @@ test('UR1: lists the full set as an aligned table and replaces the deploy table'
   // Aligned column header, like the deploy table — and no count/mode line above.
   const header = page.locator('.roster-list-header');
   await expect(header).toBeVisible();
-  await expect(header).toContainText('Stack');
-  await expect(header).toContainText('Last deploy');
-  await expect(header).toContainText('Commit');
+  await expect(header.locator('> span')).toHaveText(['Stack', 'Health', 'Version', 'Last deploy']);
 
   // Every declared stack has a row — enabled (deployed) first alphabetically,
   // then the parked one: api, web, wip.
@@ -72,12 +71,13 @@ test('UR1: lists the full set as an aligned table and replaces the deploy table'
   await expect(page.locator('[data-testid="deploys-table"]')).toBeVisible();
 });
 
-// UR2 — clicking a row expands the stack into its containers (health) panel
-// above its deploy-history panel; one stack open at a time.
+// UR2 — clicking a row opens the stack's detail panel on its containers tab (a
+// healthy, deployed stack), and the history tab shows its deploy history; one
+// stack open at a time.
 test('UR2: clicking a row shows the stack containers and deploy history', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   // Wait until the health snapshot has landed (the deploy table shows a pill),
-  // so the containers panel is populated once we expand a roster row.
+  // so the containers tab is offered once we open a roster row.
   await expect(page.locator('[data-testid="health-pill"]').first()).toBeVisible();
   await stacksBtn(page).click();
 
@@ -85,26 +85,29 @@ test('UR2: clicking a row shows the stack containers and deploy history', async 
   await apiRow.click();
   await expect(apiRow).toHaveClass(/audit-open/);
 
-  const health = page.locator('[data-testid="health-panel"]');
-  const audit = page.locator('[data-testid="audit-panel"]');
-  // Containers panel first (from the health snapshot), then the history panel.
-  await expect(health).toHaveCount(1);
+  const panel = page.locator('[data-testid="detail-panel"]');
+  await expect(panel).toHaveCount(1);
+  await expect(panel).toHaveAttribute('data-stack', 'api');
+  await expect(panel).toHaveAttribute('data-tab', 'containers');
+  const health = panel.locator('[data-testid="health-panel"]');
   await expect(health.locator('[data-testid="health-service"]')).toHaveCount(1);
-  await expect(audit).toHaveCount(1);
+
+  await panel.locator('[data-testid="detail-tab"][data-tab="history"]').click();
+  const audit = panel.locator('[data-testid="audit-panel"]');
   await expect(audit).toHaveAttribute('data-audit-for', 'api');
   await expect(audit.locator('[data-testid="audit-row"]').first()).toBeVisible();
-
-  // Clicking the same row again closes both panels.
-  await apiRow.click();
   await expect(health).toHaveCount(0);
-  await expect(audit).toHaveCount(0);
+
+  // Clicking the same row again closes the panel.
+  await apiRow.click();
+  await expect(panel).toHaveCount(0);
 
   // Opening another row closes the first — one stack at a time.
   await apiRow.click();
   await row(page, 'web').click();
-  await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="audit-panel"]')).toHaveAttribute('data-audit-for', 'web');
-  await expect(page.locator('[data-testid="health-panel"]')).toHaveCount(1);
+  await expect(panel).toHaveCount(1);
+  await expect(panel).toHaveAttribute('data-stack', 'web');
+  await expect(apiRow).not.toHaveClass(/audit-open/);
 });
 
 // UR3 — desktop type-to-search: a printable key reveals the bar, seeds it, and
@@ -202,6 +205,8 @@ test('UR6: an open panel survives a roster republish and carries the new data', 
 
   const apiRow = row(page, 'api');
   await apiRow.click();
+  const panel = page.locator('[data-testid="detail-panel"]');
+  await panel.locator('[data-testid="detail-tab"][data-tab="triggers"]').click();
   const watched = page.locator('[data-testid="watched-panel"]');
   await expect(watched).toHaveCount(1);
   // The startup deploy has no prior commit to diff against, so the lead names
@@ -212,10 +217,11 @@ test('UR6: an open panel survives a roster republish and carries the new data', 
   skipper.setStackImage('api', '1.26');
   expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
 
-  // Still open, still on the same row — and now carrying what the run produced:
-  // the commit its inputs have not changed since.
+  // Still open, on the same row and the same tab — and now carrying what the
+  // run produced: the commit its inputs have not changed since.
   await expect(watched.locator('[data-testid="watched-lead"]')).toContainText(/^Unchanged since [0-9a-f]{7}\./);
   await expect(watched).toHaveCount(1);
   await expect(apiRow).toHaveClass(/audit-open/);
-  await expect(page.locator('[data-testid="audit-panel"]')).toHaveAttribute('data-audit-for', 'api');
+  await expect(panel).toHaveAttribute('data-stack', 'api');
+  await expect(panel).toHaveAttribute('data-tab', 'triggers');
 });
