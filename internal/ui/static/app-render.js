@@ -886,6 +886,21 @@ function lastIncidentHTML(incident, nowMs) {
   return `<span class="last-incident" data-testid="last-incident" title="${escapeAttr(fullTime(incident.at))}">${glyph} ${escapeHtml(outcomeLabel(incident.status))} · ${escapeHtml(age)} ago</span>`;
 }
 
+// rosterStatusInnerHTML is the whole roster status cell — badge (+ held chip),
+// live-health pill, outcome strip, last-incident line — so the full render and
+// the live per-row refresh cannot drift apart. A disabled stack shows only its
+// flag. health is the row's host-scoped health record; nowMs keeps it pure.
+function rosterStatusInnerHTML(entry, deploying, canRetry, health, nowMs) {
+  const status = rosterStatusHTML(entry, deploying, canRetry);
+  if (entry.disabled) return status;
+  return (
+    status +
+    rosterHealthPillHTML(entry.name, health) +
+    outcomeStripHTML(entry.recent, nowMs) +
+    lastIncidentHTML(entry.last_incident, nowMs)
+  );
+}
+
 // DEPLOY_STATUS_ORDER fixes the Deploys status-filter chip order — worst
 // first, so the chips a triage reaches for lead the row. A status outside the
 // list (a future addition) still renders, sorted alphabetically after these.
@@ -1572,6 +1587,7 @@ if (typeof module !== 'undefined' && module.exports) {
     outcomeLabel,
     outcomeStripHTML,
     lastIncidentHTML,
+    rosterStatusInnerHTML,
     retryNoteHTML,
     repeatNoteHTML,
     DEPLOY_STATUS_ORDER,

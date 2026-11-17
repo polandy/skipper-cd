@@ -11,7 +11,8 @@ import type { Page } from "@playwright/test";
 // (up#4) — and asserts each surface keeps the rollback readable:
 // the retry note pairing (UAQ1), the Deploys status filter (UAQ2), the header
 // incident badge landing on the pre-filtered view (UAQ3), the roster's outcome
-// strip + last-incident line (UAQ4), and the Logs severity threshold that
+// strip + last-incident line (UAQ4) — kept while a deploy is in flight
+// (UAQ7) — and the Logs severity threshold that
 // keeps the WARN-level rollback outcome under the errors chip (UAQ5). UAQ6
 // takes its own clean instance: with nothing to report the badge must take
 // up no space at all.
@@ -197,6 +198,33 @@ test.describe("Maske AQ: rollback visibility after the fact", () => {
     const incident = row.locator('[data-testid="last-incident"]');
     await expect(incident).toBeVisible();
     await expect(incident).toContainText("rolled back");
+  });
+
+  // UAQ7 — a live deploy event repaints only the roster row's status cell; it
+  // must keep the strip and the incident line, not just swap the badge. The
+  // held `up` keeps the row in `deploying` with no `stacks` snapshot to rebuild
+  // it, so the cell the assertions read is the one the live refresh wrote.
+  test("UAQ7: a deploying roster row keeps its outcome strip", async ({
+    page,
+    skipper,
+  }) => {
+    await rollBackThenRetry(page, skipper);
+
+    await page
+      .locator('[data-testid="view-toggle"] button[data-view="stacks"]')
+      .click();
+    const row = page.locator('[data-testid="roster-row"][data-stack="web"]');
+    await expect(row.locator('[data-testid="outcome-dot"]')).toHaveCount(3);
+
+    skipper.hold();
+    skipper.setStackImage("web", "1.28");
+    expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
+    await expect(row.locator('[data-testid="status-badge"]')).toHaveClass(
+      /badge-deploying/,
+    );
+    await expect(row.locator('[data-testid="outcome-dot"]')).toHaveCount(3);
+    await expect(row.locator('[data-testid="last-incident"]')).toBeVisible();
+    skipper.release();
   });
 
   // UAQ5 — the Logs severity chips are thresholds and classify narrated

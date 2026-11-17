@@ -1630,6 +1630,11 @@ not pinned) is covered at the unit layer on both sides (`internal/logbuf`,
   zero has to be said explicitly in CSS — without that line an empty
   rollback-tinted pill sits in the header of every instance with a clean 24 h.
   Verified to fail against the unfixed CSS.
+- **UAQ7 — A live deploy keeps the roster cell whole.** With the next `up`
+  held, a push turns the roster row `deploying` through the per-row live
+  refresh (no `stacks` snapshot rebuilds it while the deploy is in flight); the
+  row still shows its outcome strip and last-incident line. Verified to fail
+  against the unfixed refresh, which rewrote the cell with the badge only.
 
 ### 4.45 UI — Maske AR: the Logs view fits the display
 
@@ -2175,6 +2180,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
 | project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |
 | Held change: the Stacks chip explains the hold, retry deploys it once more, a refused retry hands the button back | **UAZ1**, **UAZ2** |
+| Live deploy event on a roster row: the status cell keeps its outcome strip and last-incident line while deploying | **UAQ7** |
 | A change that failed before it started: the Stacks chip reads `backoff` with its attempts and next try, and `held` after the third failure | **UBA1** |
 | Strict CSP: security headers on the shell, no violation across the views, an injected inline script is refused | **UBB1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |

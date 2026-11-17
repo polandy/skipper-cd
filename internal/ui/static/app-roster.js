@@ -122,7 +122,7 @@ App.roster = (function () {
           entry.disabled,
           stackUpdatesFor(entry.name, ''),
         ) +
-        `<span class="roster-status">${rosterStatusHTML(entry, App.deploys.isDeploying(entry.name), true)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, rowHealth)}${entry.disabled ? '' : outcomeStripHTML(entry.recent, Date.now()) + lastIncidentHTML(entry.last_incident, Date.now())}</span>` +
+        `<span class="roster-status">${rosterStatusInnerHTML(entry, App.deploys.isDeploying(entry.name), true, rowHealth, Date.now())}</span>` +
         `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
         commitLinkHTML(commit, { cls: 'roster-sha', base: S.repoWebURL, title: commit });
       populateIcon(row.querySelector('.stack-icon'), entry.name);
@@ -199,7 +199,7 @@ App.roster = (function () {
           ) +
           // deploying=false: deployingRows is the primary's own in-flight set,
           // never a peer's.
-          `<span class="roster-status">${rosterStatusHTML(entry, false)}${entry.disabled ? '' : rosterHealthPillHTML(entry.name, stackHealthFor(entry.name, p.name))}${entry.disabled ? '' : outcomeStripHTML(entry.recent, Date.now()) + lastIncidentHTML(entry.last_incident, Date.now())}</span>` +
+          `<span class="roster-status">${rosterStatusInnerHTML(entry, false, false, stackHealthFor(entry.name, p.name), Date.now())}</span>` +
           `<span class="roster-when"${whenTitle ? ` title="${escapeAttr(whenTitle)}"` : ''}>${escapeHtml(when)}</span>` +
           commitLinkHTML(commit, { cls: 'roster-sha', base: peerRepo, title: commit });
         populateIcon(row.querySelector('.stack-icon'), entry.name);
@@ -467,8 +467,14 @@ App.roster = (function () {
     });
     const cell = row.querySelector('.roster-status');
     if (entry && cell)
-      cell.innerHTML = rosterStatusHTML(entry, App.deploys.isDeploying(name), true);
-    App.stream.applyHookRun(); // rosterStatusHTML replaces the cell — re-paint a running hook's phase
+      cell.innerHTML = rosterStatusInnerHTML(
+        entry,
+        App.deploys.isDeploying(name),
+        true,
+        entry.disabled ? null : S.healthSnap[name],
+        Date.now(),
+      );
+    App.stream.applyHookRun(); // the cell was replaced — re-paint a running hook's phase
   }
 
   // The three questions the header chrome asks the filter — kept as calls so
