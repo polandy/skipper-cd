@@ -1,6 +1,6 @@
 // app-roster.js — the Stacks view (docs/dev/stack-roster-spec.md): the roster
 // of every declared stack with its last outcome and live health, the peer
-// roster rows, the disabled-stacks strip, the row-click card, and the stack
+// roster rows, the disabled-stacks strip, the row-click detail panel, and the stack
 // search with its updates-only preset. Cut out of the app script by view (ADR-0035
 // amendment) and attached as App.roster.
 //
@@ -11,17 +11,15 @@
 // type-to-search keeps its place behind the deploys one.
 App.roster = (function () {
   const S = App.state;
-  const { repoWebURLFor, stackUpdatesFor, stackHealthFor } = App.resolve;
+  const { repoWebURLFor, stackUpdatesFor, stackHealthFor, appLinksMapFor } = App.resolve;
   const {
-    linkCell,
     toggleAppLinkPopover,
     closeAppLinkPopover,
-    toggleMoreMenu,
-    closeMoreMenu,
     populateIcon,
     createAuditPanel,
     createWatchedPanel,
     createHealthPanel,
+    createHooksPanel,
   } = App.panels;
   const { hostChip, hostChipKeydown, applyHostFilter, toggleHostFilterTo } = App.hosts;
   const detail = App.detail;
@@ -74,18 +72,14 @@ App.roster = (function () {
       row.innerHTML = tableRowHTML(ROW_KIND.roster, {
         host: hostChip(S.selfHost),
         stack: entry.name,
-        actions: [
-          jumpBtnHTML('deploys', entry.name),
-          entry.disabled ? '' : linkCell(entry.name),
-          rosterRowActionsHTML(entry),
-        ],
+        health: rosterHealthHTML(rowHealth),
         version: rosterVersionCellHTML(
           entry.name,
           rowHealth,
           entry.disabled,
           stackUpdatesFor(entry.name, ''),
         ),
-        state: rosterStatusInnerHTML(entry, deploying, true, rowHealth, Date.now()),
+        state: rosterStatusHTML(entry, deploying),
         lastAt: last.at,
         absolute: S.absoluteTime,
         commit: last.commit,
@@ -105,12 +99,10 @@ App.roster = (function () {
     App.chrome.renderUpdateBadge(); // the badge counts these rows, so it follows them
   }
 
-  // renderPeerRosterRows appends every peer's stacks to the roster, one read-only
-  // row each (host chip + icon + name + app-link, status, last deploy, commit).
-  // The app-link opens the peer's own routed app directly (the browser can reach
-  // it); there is no jump/logs/hooks affordance, since the primary cannot act on
-  // a peer's stack. A click expands the row's read-only detail (containers, from
-  // the peer's fanned-in health). Rows are grouped per host after the local set.
+  // renderPeerRosterRows appends every peer's stacks to the roster, one row each
+  // in the local rows' shape. A click opens the same detail panel, read-only
+  // (no retry, no jump), from the peer's fanned-in state. Rows are grouped per
+  // host after the local set.
   function renderPeerRosterRows(list) {
     if (!S.peersSnap) return;
     (S.peersSnap.peers || []).forEach(function (p) {
@@ -135,14 +127,14 @@ App.roster = (function () {
         row.innerHTML = tableRowHTML(ROW_KIND.roster, {
           host: hostChip(p.name),
           stack: entry.name,
-          actions: [entry.disabled ? '' : linkCell(entry.name, p.name)],
+          health: entry.disabled ? '' : rosterHealthHTML(health),
           version: rosterVersionCellHTML(
             entry.name,
             health,
             entry.disabled,
             stackUpdatesFor(entry.name, p.name),
           ),
-          state: rosterStatusInnerHTML(entry, false, false, health, Date.now()),
+          state: rosterStatusHTML(entry, false),
           lastAt: last.at,
           absolute: S.absoluteTime,
           commit: last.commit,
@@ -154,15 +146,17 @@ App.roster = (function () {
     });
   }
 
-  // refreshPeerRosterRows rebuilds only the peer roster rows (which carry no
-  // panels), leaving local roster rows and any open audit/health panel intact —
-  // the roster's equivalent of renderPeerRows for the deploy feed.
+  // refreshPeerRosterRows rebuilds only the peer roster rows, leaving local rows
+  // and an open local panel intact — the roster's equivalent of renderPeerRows
+  // for the deploy feed. An open peer panel is rebuilt from the new snapshot.
   function refreshPeerRosterRows() {
     const list = document.getElementById('roster-list');
-    list.querySelectorAll('.roster-row.peer-row, .peer-detail').forEach(function (r) {
+    const peerOpen = !!list.querySelector('.detail-panel.peer-panel');
+    list.querySelectorAll('.roster-row.peer-row, .detail-panel.peer-panel').forEach(function (r) {
       r.remove();
     });
     renderPeerRosterRows(list);
+    if (peerOpen) detail.reapply(VIEW, list.querySelectorAll('.roster-row.peer-row'));
   }
 
   // ── Stacks view: click-a-row-for-history + search (mirrors the deploys filter) ──
@@ -181,88 +175,185 @@ App.roster = (function () {
   // severity chips demonstrated.
   let rosterUpdatesOnly = false;
 
-  // updateAppLinks patches each already-rendered row's link icon in place from
-  // the current S.appLinksSnap, without a full renderRoster() rebuild — app_links
-  // updates on the health-poll cadence, far more often than the 'stacks'
-  // snapshot, and a rebuild at that rate would tear down and refetch an open
-  // card every few seconds (see renderRoster) for a single icon.
+  // updateAppLinks re-renders the open local panel's head when the stack's
+  // app links changed — app_links updates on the health-poll cadence, far more
+  // often than the 'stacks' snapshot that rebuilds the panel.
   function updateAppLinks() {
-    rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function (row) {
-      const cell = row.querySelector('.roster-stack');
-      if (!cell) return;
-      const old = cell.querySelector('.link-wrap');
-      if (old) old.remove();
-      if (row.classList.contains('disabled')) return;
-      const html = linkCell(row.dataset.stack);
-      if (html) {
-        // Back into the action cluster, ahead of the logs icon — the render
-        // order. A plain append to the cell would drop the link *outside* the
-        // cluster (it is rebuilt on every health poll, the cluster is not), so
-        // a narrow row would strand it on its own line again.
-        const logs = cell.querySelector('.clog-btn');
-        if (logs) logs.insertAdjacentHTML('beforebegin', html);
-        else (cell.querySelector('.row-actions') || cell).insertAdjacentHTML('beforeend', html);
-      }
-    });
+    const panel = rosterList.querySelector('.detail-panel:not(.peer-panel)');
+    if (!panel || panel.dataset.links === linksKey(panel.dataset.stack, '')) return;
+    const c = detailContext(panel.dataset.stack, '');
+    if (c) renderHead(panel, c, panel.dataset.tab);
   }
 
-  // updateRosterHealth patches each local roster row's live-health pill and
-  // Version cell in place from the health snapshot (peer rows refresh via
+  // updateRosterHealth patches each local roster row's Health and Version cells
+  // in place from the health snapshot (peer rows refresh via
   // refreshPeerRosterRows), so a health change — or the first poll after the
-  // roster rendered — shows on the Stacks overview without a full re-render,
-  // which at poll cadence would tear down and refetch an open card (see
-  // renderRoster). Mirrors updateStackAffordances' pill logic for the roster.
+  // roster rendered — shows without a full re-render, which at poll cadence
+  // would tear down and refetch an open panel (see renderRoster).
   function updateRosterHealth() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function (row) {
-      const statusCell = row.querySelector('.roster-status');
-      if (!statusCell || row.classList.contains('disabled')) return;
+      if (row.classList.contains('disabled')) return;
+      const h = S.healthSnap[row.dataset.stack];
       const verCell = row.querySelector('.col-version');
       // The versions ride the health snapshot, so the cell is refreshed here
       // rather than only at render — on connect the roster arrives first.
       if (verCell)
         verCell.innerHTML = rosterVersionInnerHTML(
           row.dataset.stack,
-          stackHealthFor(row.dataset.stack, row.dataset.host),
-          stackUpdatesFor(row.dataset.stack, row.dataset.host),
+          h,
+          stackUpdatesFor(row.dataset.stack, ''),
         );
-      const h = S.healthSnap[row.dataset.stack];
+      const healthCell = row.querySelector('.roster-health');
+      if (healthCell) healthCell.innerHTML = rosterHealthHTML(h);
       // Keep the row's health marker (drives the severity bar + tint) in sync
       // in place — no re-sort, so a row never jumps out from under an open panel.
       if (h && h.status) row.dataset.health = h.status;
       else row.removeAttribute('data-health');
-      let pill = statusCell.querySelector('.health-pill');
-      if (h && h.status) {
-        if (!pill) {
-          // Keep the render order (badge → pill → strip → incident line): a
-          // pill arriving with the first poll after a roster render must land
-          // where a full render would have put it, not at the cell's end.
-          const anchor = statusCell.querySelector('.outcome-strip, .last-incident');
-          const html = healthPillHTML(row.dataset.stack, h.status);
-          if (anchor) anchor.insertAdjacentHTML('beforebegin', html);
-          else statusCell.insertAdjacentHTML('beforeend', html);
-          return;
-        }
-        pill.dataset.health = h.status;
-        pill.title = row.dataset.stack + ' — ' + h.status;
-        pill.querySelector('.hlabel').textContent = h.status;
-      } else if (pill) {
-        pill.remove();
-      }
     });
   }
 
-  // The Stacks card: a local row's panels bound as one — containers (health,
-  // if known) above the deploy history (ADR-0033), then change detection, which
-  // explains why the history ends where it does.
+  // ── Detail panel (docs/dev/ui-redesign-plan.md §3.2) ──
+
+  // detailContext resolves what a stack's detail panel shows on a host ('' for
+  // local): its roster entry, health and updates, and for a peer its fanned-in
+  // history and forge. null once the stack left the snapshot.
+  function detailContext(stack, host) {
+    const byName = function (r) {
+      return r.name === stack;
+    };
+    let entry,
+      peer = null;
+    if (host) {
+      const p = ((S.peersSnap && S.peersSnap.peers) || []).find(function (x) {
+        return x.name === host;
+      });
+      entry = ((p && p.state && p.state.stacks && p.state.stacks.roster) || []).find(byName);
+      if (entry) {
+        peer = {
+          entry: entry,
+          base: repoWebURLFor(host),
+          records: (p.deploys || []).filter(function (rec) {
+            return rec.stack === stack;
+          }),
+        };
+      }
+    } else {
+      entry = S.rosterSnap.find(byName);
+    }
+    if (!entry) return null;
+    return {
+      stack: stack,
+      host: host,
+      entry: entry,
+      peer: peer,
+      health: entry.disabled ? null : stackHealthFor(stack, host),
+      updates: stackUpdatesFor(stack, host),
+    };
+  }
+
+  function linksKey(stack, host) {
+    return JSON.stringify(appLinksMapFor(host)[stack] || []);
+  }
+
+  // resolveTab keeps the wanted tab while the panel still offers it (the
+  // Containers tab goes when the host stops reporting health), else falls back
+  // to the stack's default, else to Triggers, which is always there.
+  function resolveTab(c, tabs, want) {
+    const offered = function (t) {
+      return (
+        (t === DETAIL_TAB.hooks && hookCount(c.entry.hooks || {}) > 0) ||
+        tabs.some(function (x) {
+          return x.id === t;
+        })
+      );
+    };
+    if (want && offered(want)) return want;
+    const def = stackDefaultTab(c.entry);
+    return offered(def) ? def : STACK_TAB.triggers;
+  }
+
+  function renderHead(panel, c, tab) {
+    panel.querySelector('.dp-head').outerHTML = detailHeadHTML({
+      stack: c.stack,
+      host: hostChip(c.host || S.selfHost),
+      links: c.entry.disabled ? [] : appLinksMapFor(c.host)[c.stack],
+      logs: !!(c.health && c.health.services && c.health.services.length),
+      logHost: c.host,
+      hooks: c.entry.hooks,
+      hooksOpen: tab === DETAIL_TAB.hooks,
+      jump: !c.peer,
+    });
+    panel.dataset.links = linksKey(c.stack, c.host);
+    populateIcon(panel.querySelector('.dp-head .stack-icon'), c.stack);
+  }
+
+  // paneBody builds the open tab's content from the shared panel builders.
+  function paneBody(c, tab) {
+    switch (tab) {
+      case STACK_TAB.containers:
+        return createHealthPanel(c.stack, c.host || undefined);
+      case STACK_TAB.history:
+        return createAuditPanel(c.stack, c.peer);
+      case DETAIL_TAB.hooks:
+        return createHooksPanel(c.stack, c.peer ? c.entry.hooks : undefined);
+      default:
+        return createWatchedPanel(c.stack, c.peer);
+    }
+  }
+
+  // showTab points the panel's head, tab strip and pane at tab. Hooks is a
+  // pseudo-tab the head's Hooks action toggles; it selects no strip tab.
+  function showTab(panel, c, tabs, tab) {
+    panel.dataset.tab = tab;
+    renderHead(panel, c, tab);
+    panel.querySelector('.dp-tabs').outerHTML = tabsHTML(tabs, tab);
+    const pane = panel.querySelector('.dp-pane');
+    pane.textContent = '';
+    pane.appendChild(paneBody(c, tab));
+  }
+
+  // The Stacks detail: a row's head, verdict, facts and one tab — local rows
+  // and peer rows alike, a peer's read-only. opts.tab survives the rebuild a
+  // new snapshot triggers, so the reader stays on the tab they picked.
   detail.registerPane(DETAIL_TAB.overview, {
     openClass: 'audit-open',
-    build: function (row, slot) {
-      const stack = row.dataset.stack;
-      const nodes = [];
-      const h = S.healthSnap[stack];
-      if (h && h.services && h.services.length) nodes.push(createHealthPanel(stack));
-      nodes.push(createAuditPanel(stack), createWatchedPanel(stack));
-      slot.set(nodes);
+    build: function (row, slot, opts) {
+      const host = row.classList.contains('peer-row') ? row.dataset.host : '';
+      const c = detailContext(row.dataset.stack, host);
+      if (!c) return;
+      const tabs = stackTabs(c.entry, c.health);
+      const panel = document.createElement('div');
+      panel.className = 'detail-panel' + (host ? ' peer-panel' : '');
+      panel.dataset.testid = 'detail-panel';
+      panel.dataset.stack = c.stack;
+      panel.dataset.host = host || S.selfHost;
+      panel.innerHTML =
+        '<div class="dp-head"></div>' +
+        verdictHTML(stackVerdict(c.entry, c.health, c.updates), c.stack, {
+          canRetry: !c.peer,
+          logHost: host,
+        }) +
+        stackFactsHTML(c.entry, c.health, c.updates, {
+          repoBase: c.peer ? c.peer.base : S.repoWebURL,
+          nowMs: Date.now(),
+        }) +
+        '<div class="dp-tabs"></div><div class="dp-pane" role="tabpanel"></div>';
+      opts.tab = resolveTab(c, tabs, opts.tab);
+      showTab(panel, c, tabs, opts.tab);
+      panel.addEventListener('click', function (e) {
+        const tabBtn = e.target.closest('.dp-tab');
+        const hooksBtn = e.target.closest('[data-action="hooks"]');
+        if (!tabBtn && !hooksBtn) return;
+        let next;
+        if (tabBtn) next = tabBtn.dataset.tab;
+        else if (opts.tab === DETAIL_TAB.hooks) next = resolveTab(c, tabs, opts.lastTab);
+        else next = DETAIL_TAB.hooks;
+        if (opts.tab !== DETAIL_TAB.hooks) opts.lastTab = opts.tab;
+        opts.tab = next;
+        showTab(panel, c, tabs, next);
+        App.stream.applyHookRun(); // the head was re-rendered — re-mark a running hook
+      });
+      slot.set(panel);
     },
   });
 
@@ -355,10 +446,11 @@ App.roster = (function () {
   }
 
   // retryHeld asks the server to deploy a held stack's change once more. The
-  // button disables itself until the next roster snapshot replaces it: the run
+  // button disables itself until the next roster snapshot rebuilds the panel: the run
   // it starts either clears the hold or records it again. A refusal is
   // announced as a UI note and the button re-enabled, so a dead click is never
   // mistaken for a pending one.
+  const RETRY_LABEL = 'Retry once';
   function retryHeld(btn) {
     const stack = btn.dataset.retryStack;
     App.chrome.uiNote('debug', 'retry: requesting', stack);
@@ -369,12 +461,12 @@ App.roster = (function () {
         if (r.ok) return;
         App.chrome.uiNote('warn', 'retry: refused for', stack, '— HTTP', r.status);
         btn.disabled = false;
-        btn.textContent = 'retry';
+        btn.textContent = RETRY_LABEL;
       })
       .catch(function (err) {
         App.chrome.uiNote('warn', 'retry: request for', stack, 'did not reach the server —', err);
         btn.disabled = false;
-        btn.textContent = 'retry';
+        btn.textContent = RETRY_LABEL;
       });
   }
 
@@ -389,14 +481,7 @@ App.roster = (function () {
       return x.name === name;
     });
     const cell = row.querySelector('.roster-status');
-    if (entry && cell)
-      cell.innerHTML = rosterStatusInnerHTML(
-        entry,
-        App.deploys.isDeploying(name),
-        true,
-        entry.disabled ? null : S.healthSnap[name],
-        Date.now(),
-      );
+    if (entry && cell) cell.innerHTML = rosterStatusHTML(entry, App.deploys.isDeploying(name));
     App.stream.applyHookRun(); // the cell was replaced — re-paint a running hook's phase
   }
 
@@ -420,18 +505,9 @@ App.roster = (function () {
 
     rosterList.addEventListener('click', function (e) {
       if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
-      // ⋯ overflow menu: toggle open/closed. Picking an action closes the menu,
-      // then falls through to that action's own handler below (the relocated
-      // buttons still carry their .clog-btn/.hooks-badge classes). Mirrors Deploys.
-      const moreBtn = e.target.closest('.more-btn');
-      if (moreBtn) {
-        toggleMoreMenu(moreBtn.closest('.row-more'));
-        return;
-      }
-      if (e.target.closest('.more-item')) closeMoreMenu();
 
       // Host chip: quick-filter the merged view to this row's host (toggle). Before
-      // the peer-row guard and panel logic so it works on every row's chip.
+      // the panel logic so it works on every row's chip and on the panel head's.
       const hostChip = e.target.closest('.host-mono');
       if (hostChip) {
         const r = hostChip.closest('[data-host]');
@@ -439,11 +515,28 @@ App.roster = (function () {
         return;
       }
 
-      // Cross-view jump button: hand off to Deploys. Handled before the row's
-      // own click (which opens its history panel) so a tap never opens both.
-      const jumpBtn = e.target.closest('.jump-btn');
-      if (jumpBtn) {
-        App.chrome.jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
+      // Panel head and verdict actions. Tabs and Hooks are the panel's own listener.
+      const act = e.target.closest('[data-action]');
+      if (act) {
+        switch (act.dataset.action) {
+          case 'jump':
+            App.chrome.jumpToStack(act.dataset.jumpView, act.dataset.jumpStack);
+            break;
+          case 'close':
+            detail.close(VIEW);
+            break;
+          case 'logs':
+            App.clog.toggle(act);
+            break;
+          case 'app':
+            // A single link is an anchor that navigates on its own.
+            if (act.tagName === 'BUTTON') toggleAppLinkPopover(act.closest('.link-wrap'));
+            break;
+        }
+        return;
+      }
+      if (e.target.closest('.link-pop a')) {
+        closeAppLinkPopover();
         return;
       }
       // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
@@ -452,50 +545,21 @@ App.roster = (function () {
         App.clog.openHookLog(hookLog, hookLog.dataset.hookLog);
         return;
       }
-      // Deploy hooks (ADR-0038): toggle the bound hooks panel (configured commands),
-      // like the Deploys hooks badge. On the roster the badge only acts from inside
-      // the ⋯ menu; a click elsewhere on the row opens the history panel instead.
-      const hbadge = e.target.closest('.hooks-badge');
-      if (hbadge) {
-        const hrow = hbadge.closest('.roster-row');
-        if (hrow) toggleRosterDetail(hrow, DETAIL_TAB.hooks);
-        return;
-      }
-      // Retry a held change (ADR-0062): a write, so it never also toggles the
-      // row's history panel.
+      // Retry a held change (ADR-0062), the held verdict's action.
       const retryB = e.target.closest('.retry-btn');
       if (retryB) {
         retryHeld(retryB);
         return;
       }
-      // Container-logs button (ADR-0037) — per stack on the row, per container on a
-      // health-panel service line. Handled first so it never toggles the history panel.
+      // Container logs of one service, on a Containers tab line (ADR-0037).
       const clogB = e.target.closest('.clog-btn');
       if (clogB) {
         App.clog.toggle(clogB);
         return;
       }
-      // App-link icon (docs/dev/traefik-app-links-spec.md): a single-host anchor
-      // navigates on its own; a multi-host button toggles its popover. Either way
-      // it must not also toggle the row's history panel.
-      const linkPopA = e.target.closest('.link-pop a');
-      if (linkPopA) {
-        closeAppLinkPopover();
-        return;
-      }
-      const linkTrigger = e.target.closest('.link-wrap > .link-btn');
-      if (linkTrigger && linkTrigger.tagName === 'BUTTON') {
-        toggleAppLinkPopover(linkTrigger.closest('.link-wrap'));
-        return;
-      }
-      if (e.target.closest('.link-btn')) return;
       const row = e.target.closest('.roster-row');
       if (!row || !rosterList.contains(row)) return;
-      // A peer row opens its read-only detail + link.
-      toggleRosterDetail(
-        row,
-        row.classList.contains('peer-row') ? DETAIL_TAB.peer : DETAIL_TAB.overview,
-      );
+      toggleRosterDetail(row, DETAIL_TAB.overview);
     });
 
     // Chip click: the single updates-only toggle.

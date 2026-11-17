@@ -2026,3 +2026,241 @@ test('detailMatchesRow finds the selected row again after a rebuild', () => {
   assert.equal(h.detailMatchesRow(dep, { stack: 'web', eventId: '8' }), false);
   assert.equal(h.detailMatchesRow(null, { stack: 'web' }), false);
 });
+
+test('stackDefaultTab opens where the row needs attention', () => {
+  const cases = [
+    [{ name: 'a', disabled: true, last_status: 'success' }, 'triggers'],
+    [{ name: 'a' }, 'triggers'],
+    [{ name: 'a', last_status: 'success', held: { status: 'failed' } }, 'history'],
+    [{ name: 'a', last_status: 'failed' }, 'history'],
+    [{ name: 'a', last_status: 'rolled_back' }, 'history'],
+    [{ name: 'a', last_status: 'healed' }, 'history'],
+    [{ name: 'a', last_status: 'success' }, 'containers'],
+  ];
+  for (const [entry, want] of cases) {
+    assert.equal(h.stackDefaultTab(entry), want, JSON.stringify(entry));
+    assert.equal(h.STACK_TAB[want], want);
+  }
+});
+
+const svc = (name, state, health, extra) =>
+  Object.assign({ name, state, health: health || '' }, extra);
+
+test('stackVerdict: a parked stack says only that it is parked', () => {
+  const v = h.stackVerdict(
+    { name: 'a', disabled: true, last_status: 'failed' },
+    { services: [svc('a', 'exited')] },
+    { a: {} },
+  );
+  assert.equal(v.length, 1);
+  assert.equal(v[0].kind, 'parked');
+  assert.equal(v[0].tone, 'muted');
+});
+
+test('stackVerdict: a never-deployed stack says the next sync deploys it', () => {
+  const v = h.stackVerdict({ name: 'a' }, null, null);
+  assert.deepEqual(
+    v.map((l) => [l.kind, l.tone]),
+    [['never', 'muted']],
+  );
+  assert.match(v[0].text, /next sync deploys it/);
+});
+
+test('stackVerdict: a held change names its commit, how it failed and offers one retry', () => {
+  const cases = [
+    [{ status: 'rolled_back', commit: 'd430ece1234' }, 'rollback', /rolled back/],
+    [
+      { status: 'rolled_back_unhealthy', commit: 'd430ece1234' },
+      'danger',
+      /restored version is unhealthy/,
+    ],
+    [{ status: 'failed', commit: 'd430ece1234' }, 'danger', /not rolled back/],
+    [
+      { status: 'failed', commit: 'd430ece1234', attempts: 3 },
+      'danger',
+      /failed 3 times before it started/,
+    ],
+  ];
+  for (const [held, tone, text] of cases) {
+    const v = h.stackVerdict({ name: 'a', last_status: held.status, held }, null, null);
+    assert.equal(v[0].kind, 'held');
+    assert.equal(v[0].tone, tone, held.status);
+    assert.match(v[0].head, /d430ece/);
+    assert.match(v[0].head + ' ' + v[0].text, text);
+    assert.match(v[0].sub, /new push, a revert or one retry/);
+    assert.deepEqual(v[0].action, { kind: 'retry' });
+  }
+});
+
+test('stackVerdict: a change in backoff warns with its next attempt', () => {
+  const v = h.stackVerdict(
+    {
+      name: 'a',
+      last_status: 'failed',
+      held: { status: 'failed', commit: 'abc1234', attempts: 1, retry_at: '2026-11-17T10:00:00Z' },
+    },
+    null,
+    null,
+  );
+  assert.equal(v[0].kind, 'backoff');
+  assert.equal(v[0].tone, 'warn');
+  assert.match(v[0].text, /1 attempt so far/);
+  assert.match(v[0].sub, /Next attempt/);
+  assert.deepEqual(v[0].action, { kind: 'retry' });
+});
+
+test('stackVerdict: an unheld bad outcome is one line in its own tone', () => {
+  const cases = [
+    ['failed', 'danger'],
+    ['rolled_back', 'rollback'],
+    ['rolled_back_unhealthy', 'danger'],
+    ['heal_exhausted', 'danger'],
+  ];
+  for (const [status, tone] of cases) {
+    const v = h.stackVerdict(
+      { name: 'a', last_status: status, last_commit: 'abc1234' },
+      null,
+      null,
+    );
+    assert.deepEqual(
+      v.map((l) => [l.kind, l.tone]),
+      [['failed', tone]],
+      status,
+    );
+    assert.equal(v[0].action, null);
+  }
+});
+
+test('stackVerdict: each unhealthy service gets a line with its logs', () => {
+  const v = h.stackVerdict(
+    { name: 'a', last_status: 'success' },
+    {
+      services: [
+        svc('db', 'running', 'unhealthy'),
+        svc('web', 'restarting'),
+        svc('cache', 'running', 'healthy'),
+      ],
+    },
+    null,
+  );
+  assert.deepEqual(
+    v.map((l) => [l.kind, l.tone, l.action && l.action.service]),
+    [
+      ['unhealthy', 'danger', 'db'],
+      ['unhealthy', 'danger', 'web'],
+    ],
+  );
+  assert.deepEqual(v[0].action, { kind: 'logs', service: 'db' });
+});
+
+test('stackVerdict: stopped services are named, on-demand ones are not', () => {
+  const v = h.stackVerdict(
+    { name: 'a', last_status: 'success' },
+    {
+      services: [
+        svc('worker', 'exited'),
+        svc('job', 'exited', '', { on_demand: true }),
+        svc('web', 'running'),
+      ],
+    },
+    null,
+  );
+  assert.deepEqual(
+    v.map((l) => [l.kind, l.tone]),
+    [['stopped', 'muted']],
+  );
+  assert.match(v[0].text, /worker/);
+  assert.doesNotMatch(v[0].text, /job/);
+});
+
+test('stackVerdict: only on-demand services stopped reads as healthy', () => {
+  const v = h.stackVerdict(
+    { name: 'a', last_status: 'success', last_commit: 'abc1234def' },
+    { services: [svc('job', 'exited', '', { on_demand: true }), svc('web', 'running')] },
+    null,
+  );
+  assert.deepEqual(
+    v.map((l) => [l.kind, l.tone]),
+    [['ok', 'ok']],
+  );
+});
+
+test('stackVerdict: a starting service is a quiet line', () => {
+  const v = h.stackVerdict(
+    { name: 'a', last_status: 'success' },
+    { services: [svc('web', 'running', 'starting')] },
+    null,
+  );
+  assert.deepEqual(
+    v.map((l) => [l.kind, l.tone]),
+    [['starting', 'muted']],
+  );
+});
+
+test('stackVerdict: an available update names its services', () => {
+  const v = h.stackVerdict(
+    { name: 'a', last_status: 'success' },
+    { services: [svc('web', 'running'), svc('db', 'running')] },
+    { web: { latest: '1.2' }, db: { rebuilt: true } },
+  );
+  assert.deepEqual(
+    v.map((l) => [l.kind, l.tone]),
+    [['update', 'warn']],
+  );
+  assert.match(v[0].text, /db, web/);
+});
+
+test('stackVerdict: a settled stack reads healthy and unchanged since its commit', () => {
+  const v = h.stackVerdict(
+    { name: 'a', last_status: 'success', last_commit: 'abc1234def' },
+    { services: [svc('web', 'running', 'healthy'), svc('db', 'running')] },
+    {},
+  );
+  assert.equal(v.length, 1);
+  assert.equal(v[0].kind, 'ok');
+  assert.equal(v[0].tone, 'ok');
+  assert.match(v[0].head, /All 2 services healthy/);
+  assert.equal(v[0].sub, 'Unchanged since abc1234.');
+});
+
+test('stackVerdict: a settled stack without health still reports the deploy', () => {
+  const v = h.stackVerdict({ name: 'a', last_status: 'success' }, null, null);
+  assert.match(v[0].head, /Last deploy succeeded/);
+  assert.equal(v[0].sub, 'Unchanged since the last deploy.');
+});
+
+test('stackVerdict: a healed stack says so', () => {
+  const v = h.stackVerdict(
+    { name: 'a', last_status: 'healed', last_commit: 'abc1234def' },
+    { services: [svc('web', 'running')] },
+    null,
+  );
+  assert.equal(v[0].kind, 'healed');
+  assert.equal(v[0].tone, 'ok');
+});
+
+test('stackTabs counts containers, history and triggers, red where they hold a problem', () => {
+  const entry = {
+    name: 'a',
+    last_status: 'success',
+    recent: [{ status: 'success' }, { status: 'failed' }],
+    watched: ['a/docker-compose.yml', 'a/.env'],
+  };
+  const health = { services: [svc('web', 'running'), svc('db', 'running', 'unhealthy')] };
+  assert.deepEqual(h.stackTabs(entry, health), [
+    { id: 'containers', label: 'Containers', count: 2, bad: true },
+    { id: 'history', label: 'History', count: null, bad: false },
+    { id: 'triggers', label: 'Triggers', count: 2, bad: false },
+  ]);
+});
+
+test('stackTabs marks history red for a held or failed stack and drops containers without health', () => {
+  const tabs = h.stackTabs({ name: 'a', last_status: 'failed', held: { status: 'failed' } }, null);
+  assert.deepEqual(
+    tabs.map((t) => [t.id, t.count, t.bad]),
+    [
+      ['history', null, true],
+      ['triggers', 0, false],
+    ],
+  );
+});
