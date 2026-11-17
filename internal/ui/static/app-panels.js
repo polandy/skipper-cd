@@ -12,14 +12,8 @@
 // register, so document-level listener order is unchanged.
 App.panels = (function () {
   const S = App.state;
-  const {
-    healthMapFor,
-    healthwatchMapFor,
-    appLinksMapFor,
-    repoWebURLFor,
-    updatesFor,
-    stackUpdatesFor,
-  } = App.resolve;
+  const { healthMapFor, healthwatchMapFor, repoWebURLFor, updatesFor, stackUpdatesFor } =
+    App.resolve;
 
   // The currently open app-link popover's wrapping element (multi-host case),
   // or null. One open at a time; a stale reference (its row was replaced by a
@@ -28,12 +22,6 @@ App.panels = (function () {
 
   const CHECK_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
-
-  // linkCell resolves a stack's discovered app-link hostnames on a host and
-  // renders the cell (linkCellHTML in app-render.js owns the markup).
-  function linkCell(stack, host) {
-    return linkCellHTML(appLinksMapFor(host)[stack]);
-  }
 
   // toggleAppLinkPopover opens wrap's popover, closing whichever was open
   // before (including wrap itself, so a second click closes it again).
@@ -261,8 +249,9 @@ App.panels = (function () {
     return tmp.content.firstElementChild;
   }
   // Bound panel (variant A) listing the configured commands, from the snapshot.
-  function createHooksPanel(stack) {
-    const hooks = hooksFor(stack) || {};
+  // hooks is optional: a peer's panel passes the peer's roster entry hooks.
+  function createHooksPanel(stack, hooks) {
+    hooks = hooks || hooksFor(stack) || {};
     const group = function (title, cmds) {
       if (!cmds || !cmds.length) return '';
       const lines = cmds
@@ -346,7 +335,9 @@ App.panels = (function () {
   // createAuditPanel returns the panel immediately with a loading line and fills
   // it once the fetch resolves — the same lazy pattern the diff panel uses. The
   // panel is removed-if-closed guard keeps a slow fetch from resurrecting it.
-  function createAuditPanel(stack) {
+  // A peer's panel passes peer ({records, base}): the fanned-in records, which
+  // need no fetch, and the peer's own forge for the commit links.
+  function createAuditPanel(stack, peer) {
     const el = document.createElement('div');
     el.className = 'audit-panel';
     el.dataset.testid = 'audit-panel';
@@ -355,6 +346,10 @@ App.panels = (function () {
     el.innerHTML =
       `<div class="ap-head"><span class="ap-count"></span></div>` +
       `<div class="ap-empty">Loading history…</div>`;
+    if (peer) {
+      renderAuditRecords(el, stack, peer.records, false, peer.base);
+      return el;
+    }
     fetchAudit(stack, function (records, err) {
       if (!el.parentNode) return; // closed (or replaced) while loading
       renderAuditRecords(el, stack, records, err);
@@ -367,21 +362,23 @@ App.panels = (function () {
   // commit nothing has changed since. It answers "I pushed and this stack did
   // nothing, why?", which every other surface leaves to state.yaml on the host.
   // The data rides the `stacks` snapshot, so unlike the history panel beside it
-  // there is no fetch and no loading state.
-  function createWatchedPanel(stack) {
-    const entry =
-      S.rosterSnap.find(function (r) {
-        return r.name === stack;
-      }) || {};
+  // there is no fetch and no loading state. A peer's panel passes peer
+  // ({entry, base}): its roster entry and its own forge.
+  function createWatchedPanel(stack, peer) {
+    const entry = peer
+      ? peer.entry
+      : S.rosterSnap.find(function (r) {
+          return r.name === stack;
+        }) || {};
     const el = document.createElement('div');
     el.className = 'watched-panel';
     el.dataset.testid = 'watched-panel';
     el.dataset.watchedFor = stack;
-    el.innerHTML = watchedPanelHTML(entry, S.repoWebURL);
+    el.innerHTML = watchedPanelHTML(entry, peer ? peer.base : S.repoWebURL);
     return el;
   }
 
-  function renderAuditRecords(el, stack, records, err) {
+  function renderAuditRecords(el, stack, records, err, base) {
     // Fetch failed (network / 5xx): an amber load-error with a retry that
     // re-runs the same fetch, distinct from a stack that genuinely has no
     // history (T4.16). The :has(> .load-error) rule flattens the panel bar.
@@ -408,7 +405,7 @@ App.panels = (function () {
     }
     // The fold toggle's aria-controls needs a document-unique id: several rows
     // can hold an open history at once, so the stack name would not do.
-    const body = auditRowsHTML(records, S.repoWebURL, S.absoluteTime, {
+    const body = auditRowsHTML(records, base === undefined ? S.repoWebURL : base, S.absoluteTime, {
       id: 'a' + ++auditHistorySeq,
     });
     // Replace the loading line with the rows (keep the head).
@@ -549,7 +546,6 @@ App.panels = (function () {
 
   return {
     CHECK_ICON,
-    linkCell,
     toggleAppLinkPopover,
     closeAppLinkPopover,
     ensureRowMore,

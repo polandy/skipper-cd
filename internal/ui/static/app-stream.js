@@ -48,11 +48,9 @@ App.stream = (function () {
     document.querySelectorAll('.hook-phase').forEach(function (n) {
       n.remove();
     });
-    document
-      .querySelectorAll('.hooks-badge[data-hook-active], .more-btn[data-hook-active]')
-      .forEach(function (b) {
-        b.removeAttribute('data-hook-active');
-      });
+    document.querySelectorAll('[data-hook-active]').forEach(function (b) {
+      b.removeAttribute('data-hook-active');
+    });
     const hr = S.hookRunSnap;
     if (!hr || !hr.stack) return;
 
@@ -88,11 +86,15 @@ App.stream = (function () {
       if (rrow) {
         const rcell = rrow.querySelector('.roster-status');
         if (rcell) rcell.appendChild(hookPhaseNode(hr));
-        // The hooks badge sits inline on the roster row, so the running-hook
-        // pulse rides the badge itself.
-        const rb = rrow.querySelector('.hooks-badge');
-        if (rb) rb.dataset.hookActive = '1';
       }
+      // The roster row has no hooks control; the pulse rides the open detail
+      // panel's Hooks action.
+      const rb = Array.from(
+        rlist.querySelectorAll('.detail-panel:not(.peer-panel) [data-action="hooks"]'),
+      ).find(function (x) {
+        return x.dataset.hooksStack === hr.stack;
+      });
+      if (rb) rb.dataset.hookActive = '1';
     }
   }
 

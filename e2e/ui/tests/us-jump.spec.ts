@@ -3,8 +3,8 @@ import type { Page, Locator } from '@playwright/test';
 
 // Maske S: cross-view stack jump. See docs/dev/e2e-tests.md §4.20.
 //
-// The compass jump-btn beside every stack name (deploy row and roster row
-// alike) switches between the Deploys and Stacks views and lands on that
+// The compass jump-btn — beside the stack name on a deploy row, in the head of
+// a roster row's detail panel — switches between the Deploys and Stacks views and lands on that
 // stack's row there — Deploys -> Stacks always lands on the one roster row
 // (inventory); Stacks -> Deploys lands on the *newest* deploy row (the table
 // is an event log, newest first). Behaviour-only (no new snapshot — the
@@ -18,6 +18,14 @@ const deployRows = (page: Page, stack: string) =>
 const rosterRow = (page: Page, stack: string) =>
   page.locator(`[data-testid="roster-row"][data-stack="${stack}"]`);
 const jumpBtnIn = (row: Locator) => row.locator('[data-testid="jump-btn"]');
+const detailPanel = (page: Page, stack: string) =>
+  page.locator(`[data-testid="detail-panel"][data-stack="${stack}"]`);
+// A roster row carries no controls: its jump is in the head of its detail
+// panel, so opening the row comes first.
+async function rosterJump(page: Page, stack: string): Promise<Locator> {
+  await rosterRow(page, stack).click();
+  return jumpBtnIn(detailPanel(page, stack));
+}
 
 test.describe('cross-view jump', () => {
   test.use({ startOptions: { stacks: ['api', 'web'] } });
@@ -40,7 +48,7 @@ test.describe('cross-view jump', () => {
     await expect(target).not.toHaveClass(/jump-target/, { timeout: 3000 });
   });
 
-  // US2 — a roster row's jump button switches to Deploys and lands on the
+  // US2 — a roster row's jump button (in its detail panel) switches to Deploys and lands on the
   // *newest* row for that stack, not an older one (the table is a log with
   // one row per deploy; the roster only knows one row per stack).
   test('US2: Stacks -> Deploys jump lands on the newest row, not an older one', async ({
@@ -57,7 +65,7 @@ test.describe('cross-view jump', () => {
     await expect(deployRows(page, 'api').first()).toHaveAttribute('data-status', 'success');
 
     await stacksBtn(page).click();
-    await jumpBtnIn(rosterRow(page, 'api')).click();
+    await (await rosterJump(page, 'api')).click();
 
     await expect(page.locator('[data-testid="deploys-table"]')).toBeVisible();
     await expect(deploysBtn(page)).toHaveClass(/active/);
@@ -66,8 +74,9 @@ test.describe('cross-view jump', () => {
   });
 
   // US3 — the jump button pre-empts the row's own click handler: it must
-  // switch view instead of also opening the row's diff/history panel (a
-  // regression guard: both listeners are on the same delegated element).
+  // switch view instead of also opening the deploy row's diff panel, or
+  // toggling the roster's detail panel it sits in (a regression guard: both
+  // listeners are on the same delegated element).
   test('US3: the jump button does not also open the row/panel it sits on', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
@@ -76,11 +85,14 @@ test.describe('cross-view jump', () => {
     // No diff/files panel opened on the deploy row behind the jump.
     await expect(deployRows(page, 'api').first()).not.toHaveClass(/diff-open/);
 
-    await jumpBtnIn(rosterRow(page, 'api')).click();
+    await (await rosterJump(page, 'api')).click();
     await expect(page.locator('[data-testid="deploys-table"]')).toBeVisible();
-    // No history/containers panel opened on the roster row behind the jump.
-    await expect(rosterRow(page, 'api')).not.toHaveClass(/audit-open/);
-    await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(0);
+    // The detail panel the jump sits in is left as it was — not closed, its
+    // tab unchanged — so Stacks still shows it on the way back.
+    await expect(detailPanel(page, 'api')).toHaveCount(1);
+    await expect(detailPanel(page, 'api')).toHaveAttribute('data-tab', 'triggers');
+    await stacksBtn(page).click();
+    await expect(detailPanel(page, 'api')).toBeVisible();
   });
 
   // US5 — a leftover search filter in the target view must not leave the
@@ -106,7 +118,7 @@ test.describe('cross-view jump', () => {
 
     // Jumping from api's roster row must clear that stale Deploys filter so
     // its landing row is actually visible.
-    await jumpBtnIn(rosterRow(page, 'api')).click();
+    await (await rosterJump(page, 'api')).click();
     await expect(deployRows(page, 'api').first()).toBeVisible();
     await expect(deployRows(page, 'api').first()).toHaveClass(/jump-target/);
     await expect(page.locator('[data-testid="deploy-filter"]')).toHaveValue('');
@@ -129,7 +141,7 @@ test.describe('cross-view jump', () => {
 });
 
 // US4 — a stack the Deploys view has no row for yet (parked, never deployed)
-// still carries a jump button on its roster row; the jump degrades to a plain
+// still carries a jump button in its detail panel; the jump degrades to a plain
 // view switch with nothing to land on.
 test.describe('US4: jump with no landing target', () => {
   test.use({
@@ -144,7 +156,7 @@ test.describe('US4: jump with no landing target', () => {
     await stacksBtn(page).click();
     await expect(rosterRow(page, 'wip')).toBeVisible();
 
-    await jumpBtnIn(rosterRow(page, 'wip')).click();
+    await (await rosterJump(page, 'wip')).click();
 
     await expect(page.locator('[data-testid="deploys-table"]')).toBeVisible();
     await expect(deploysBtn(page)).toHaveClass(/active/);

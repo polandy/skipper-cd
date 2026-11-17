@@ -1629,6 +1629,208 @@ function makeSurfaceRegistry() {
   };
 }
 
+// STACK_TAB names the tabs of a Stacks row's detail panel: the running
+// containers, the deploy history and what triggers a deploy.
+const STACK_TAB = Object.freeze({
+  containers: 'containers',
+  history: 'history',
+  triggers: 'triggers',
+});
+
+// stackDefaultTab is the tab a Stacks row's detail opens on: the one that
+// explains the row's state — triggers for a parked or never-deployed stack,
+// history after a held, failed or healed outcome, the containers otherwise.
+function stackDefaultTab(entry) {
+  if (entry.disabled) return STACK_TAB.triggers;
+  if (entry.held) return STACK_TAB.history;
+  if (!entry.last_status) return STACK_TAB.triggers;
+  if (AUDIT_BAD_STATUSES.indexOf(entry.last_status) !== -1 || entry.last_status === 'healed') {
+    return STACK_TAB.history;
+  }
+  return STACK_TAB.containers;
+}
+
+// stackTabs is the tab strip of a Stacks row's detail: each tab's count and
+// whether it holds a problem (a red count). Containers only when the host
+// reports health for the stack; History has no count, since the full history
+// is fetched on open, but turns red for a held or failed stack.
+function stackTabs(entry, health) {
+  const services = (health && health.services) || [];
+  const tabs = [];
+  if (services.length) {
+    tabs.push({
+      id: STACK_TAB.containers,
+      label: 'Containers',
+      count: services.length,
+      bad: services.some(function (s) {
+        return healthClass(s) === HEALTH.UNHEALTHY;
+      }),
+    });
+  }
+  tabs.push({
+    id: STACK_TAB.history,
+    label: 'History',
+    count: null,
+    bad: !!entry.held || AUDIT_BAD_STATUSES.indexOf(entry.last_status) !== -1,
+  });
+  tabs.push({
+    id: STACK_TAB.triggers,
+    label: 'Triggers',
+    count: (entry.watched || []).length,
+    bad: false,
+  });
+  return tabs;
+}
+
+// HELD_RELEASE is how a held change is released (ADR-0062), stated on every
+// held verdict line.
+const HELD_RELEASE = 'A new push, a revert or one retry releases it.';
+
+// verdictLine is one line of a stack's verdict: kind says what it is about,
+// tone how it reads (danger, rollback, warn, ok, muted), head the bold lead,
+// text and sub the explanation, action the one control it offers or null.
+function verdictLine(kind, tone, head, text, sub, action) {
+  return { kind, tone, head, text, sub: sub || '', action: action || null };
+}
+
+// stackVerdict answers, in plain sentences, what is going on with a stack: its
+// held or failed change first, then each unhealthy, stopped or starting
+// service, then an available update — or, with none of those, that it is fine.
+// health is the stack's health snapshot ({services}), updates its update map.
+function stackVerdict(entry, health, updates) {
+  if (entry.disabled) {
+    return [
+      verdictLine(
+        'parked',
+        'muted',
+        'Parked.',
+        'disabled: true in the host config — skipper neither watches nor deploys this stack.',
+      ),
+    ];
+  }
+  const lines = [];
+  const outcome = entry.held ? heldVerdict(entry.held) : outcomeVerdict(entry);
+  if (outcome) lines.push(outcome);
+  const services = ((health && health.services) || []).filter(function (s) {
+    return s && s.name;
+  });
+  const byClass = function (cls) {
+    return services.filter(function (s) {
+      return healthClass(s) === cls && !(cls === HEALTH.STOPPED && s.on_demand);
+    });
+  };
+  byClass(HEALTH.UNHEALTHY).forEach(function (s) {
+    lines.push(
+      verdictLine(
+        'unhealthy',
+        'danger',
+        s.name + ' is unhealthy.',
+        'Its container reports ' +
+          (s.health === HEALTH.UNHEALTHY ? 'a failing healthcheck' : s.state) +
+          '.',
+        '',
+        { kind: 'logs', service: s.name },
+      ),
+    );
+  });
+  const stopped = byClass(HEALTH.STOPPED);
+  if (stopped.length) {
+    lines.push(verdictLine('stopped', 'muted', 'Stopped:', serviceNames(stopped) + '.'));
+  }
+  const starting = byClass(HEALTH.STARTING);
+  if (starting.length) {
+    lines.push(verdictLine('starting', 'muted', 'Starting:', serviceNames(starting) + '.'));
+  }
+  const updated = Object.keys(updates || {}).sort();
+  if (updated.length) {
+    lines.push(
+      verdictLine('update', 'warn', 'Update available', 'for ' + updated.join(', ') + '.'),
+    );
+  }
+  if (!lines.length) lines.push(settledVerdict(entry, byClass(HEALTH.HEALTHY).length));
+  return lines;
+}
+
+// serviceNames lists services by name, sorted, for a verdict sentence.
+function serviceNames(services) {
+  return services
+    .map(function (s) {
+      return s.name;
+    })
+    .sort()
+    .join(', ');
+}
+
+// heldVerdict is the verdict line of a held change (ADR-0062/0064): one in
+// backoff warns with its next attempt, a held one says how it failed.
+function heldVerdict(held) {
+  const commit = held.commit ? 'Commit ' + shortSHA(held.commit) : 'The change';
+  const retry = { kind: 'retry' };
+  if (held.retry_at) {
+    const tries = held.attempts === 1 ? '1 attempt' : held.attempts + ' attempts';
+    return verdictLine(
+      'backoff',
+      'warn',
+      commit + ' failed before it started',
+      '(' + tries + ' so far).',
+      'Next attempt ' + fullTime(held.retry_at) + '; if it keeps failing, it is held.',
+      retry,
+    );
+  }
+  let tone = 'danger';
+  let text;
+  if (held.attempts) {
+    text = 'failed ' + held.attempts + ' times before it started and is held.';
+  } else if (held.status === 'rolled_back') {
+    tone = 'rollback';
+    text = 'failed and was rolled back; the previous version is running.';
+  } else if (held.status === 'rolled_back_unhealthy') {
+    text = 'failed and was rolled back, but the restored version is unhealthy too.';
+  } else {
+    text = 'failed after it started and was not rolled back.';
+  }
+  return verdictLine('held', tone, commit, text, HELD_RELEASE, retry);
+}
+
+// outcomeVerdict is the verdict line of a stack's last outcome when it needs
+// one — never deployed, or a bad outcome that is not held — else null.
+function outcomeVerdict(entry) {
+  const status = entry.last_status;
+  if (!status) {
+    return verdictLine('never', 'muted', 'Never deployed.', 'The next sync deploys it.');
+  }
+  if (AUDIT_BAD_STATUSES.indexOf(status) === -1) return null;
+  const commit = entry.last_commit ? ' at ' + shortSHA(entry.last_commit) : '';
+  const text = {
+    failed: 'The last deploy' + commit + ' failed.',
+    rolled_back: 'The last deploy' + commit + ' failed and was rolled back.',
+    rolled_back_unhealthy:
+      'The last deploy' + commit + ' was rolled back, but the restored version is unhealthy.',
+    heal_exhausted: 'Self-heal gave up: the containers kept drifting.',
+  }[status];
+  return verdictLine('failed', status === 'rolled_back' ? 'rollback' : 'danger', '', text);
+}
+
+// settledVerdict is the all-clear line: healthy (or healed) and unchanged
+// since the last deploy's commit. healthy counts the running services.
+function settledVerdict(entry, healthy) {
+  const since =
+    UNCHANGED_SINCE + (entry.last_commit ? shortSHA(entry.last_commit) : 'the last deploy') + '.';
+  if (entry.last_status === 'healed') {
+    return verdictLine(
+      'healed',
+      'ok',
+      'Self-healed.',
+      'skipper brought drifted containers back to the deployed version.',
+      since,
+    );
+  }
+  let head = 'Last deploy succeeded.';
+  if (healthy === 1) head = 'Its service is healthy.';
+  else if (healthy) head = 'All ' + healthy + ' services healthy.';
+  return verdictLine('ok', 'ok', head, '', since);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   // Some of these are internal to this file (parseImageRef, imageRepoName,
   // HOST_COLOR_COUNT, hostColorIndex — each used only by another helper here).
@@ -1650,6 +1852,10 @@ if (typeof module !== 'undefined' && module.exports) {
     rosterLastDeploy,
     DETAIL_VIEW,
     DETAIL_TAB,
+    STACK_TAB,
+    stackDefaultTab,
+    stackVerdict,
+    stackTabs,
     detailSelection,
     detailMatchesRow,
     classifyDiffLine,

@@ -435,8 +435,12 @@ App.clog = (function () {
     query = '';
     btn.classList.add('on');
     panel = buildPanel(scopeText());
+    // In a Stacks detail panel the logs open under the verdict, so the head
+    // and the verdict that sent the reader there stay in view.
+    const dpanel = button.closest('.detail-panel');
     const anchor =
       button.closest('.hp-svc') ||
+      (dpanel && dpanel.querySelector('.dp-verdict')) ||
       button.closest('.event-row') ||
       button.closest('.roster-row') ||
       button;

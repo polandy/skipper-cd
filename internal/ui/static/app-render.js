@@ -636,17 +636,6 @@ function jumpBtnHTML(targetView, stack) {
   );
 }
 
-// rowActionClusterHTML groups a stack cell's affordance glyphs (jump, app
-// link, container logs, hooks) into one non-wrapping box. The cell itself
-// wraps on a narrow screen, and without the box each glyph is its own flex
-// item: the row broke *between* icons, leaving one stranded on a second line.
-// As a cluster the affordances move to the next line whole. Empty when the row
-// has none, so the cell's gap adds no phantom space after the name.
-function rowActionClusterHTML(...parts) {
-  const inner = parts.filter(Boolean).join('');
-  return inner ? `<span class="row-actions">${inner}</span>` : '';
-}
-
 // ── Table rows ──
 // One renderer for every row of both tables — local and peer, Deploys and
 // Stacks. The caller resolves the state-bound parts (host chip, per-host
@@ -660,9 +649,10 @@ const ROW_KIND = Object.freeze({ deploy: 'deploy', roster: 'roster' });
 // ts, absolute, version (inner HTML), state (inner HTML), durationMs, files
 // (inner HTML).
 //
-// roster model: host, stack, actions (glyph HTML parts, empty ones dropped),
-// version (the whole cell, rosterVersionCellHTML), state (inner HTML), lastAt,
-// absolute, commit, repoBase.
+// roster model: host, stack, health (inner HTML, rosterHealthHTML), version
+// (the whole cell, rosterVersionCellHTML), state (the last-deploy status,
+// rosterStatusHTML), lastAt, absolute, commit, repoBase. The row carries no
+// controls: a click anywhere opens its detail panel, where the actions live.
 function tableRowHTML(kind, m) {
   return kind === ROW_KIND.roster ? rosterRowCellsHTML(m) : deployRowCellsHTML(m);
 }
@@ -686,11 +676,13 @@ function deployRowCellsHTML(m) {
 function rosterRowCellsHTML(m) {
   const t = timeLabelPair(m.lastAt, m.absolute);
   return (
-    `<span class="roster-stack"><span class="roster-ident">${m.host}${stackIconHTML()}<span class="roster-name" title="${escapeAttr(m.stack)}">${escapeHtml(m.stack)}</span></span>${rowActionClusterHTML(...m.actions)}</span>` +
+    `<span class="roster-stack"><span class="roster-ident">${m.host}${stackIconHTML()}<span class="roster-name" title="${escapeAttr(m.stack)}">${escapeHtml(m.stack)}</span></span></span>` +
+    `<span class="roster-health" data-testid="roster-health">${m.health}</span>` +
     m.version +
-    `<span class="roster-status">${m.state}</span>` +
+    `<span class="roster-last"><span class="roster-status">${m.state}</span>` +
     `<span class="roster-when"${t.title ? ` title="${escapeAttr(t.title)}"` : ''}>${escapeHtml(t.text)}</span>` +
-    commitLinkHTML(m.commit, { cls: 'roster-sha', base: m.repoBase, title: m.commit })
+    commitLinkHTML(m.commit, { cls: 'roster-sha', base: m.repoBase, title: m.commit }) +
+    '</span>'
   );
 }
 
@@ -747,39 +739,6 @@ function hostChipHTML(hostName, slot) {
 const LINK_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M10 14L20 4M18 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>';
 
-// linkCellHTML renders the app-link icon for a stack: nothing when no host
-// was discovered, a plain external link for exactly one, or a button that
-// opens a popover listing each when there are several. hosts is the stack's
-// discovered hostnames (app-panels.js linkCell wraps the per-host lookup).
-function linkCellHTML(hosts) {
-  if (!hosts || !hosts.length) return '';
-  if (hosts.length === 1) {
-    const url = 'https://' + hosts[0];
-    return `<span class="link-wrap"><a class="link-btn" data-testid="app-link-btn" data-taptip href="${escapeAttr(url)}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + hosts[0])}">${LINK_ICON}</a></span>`;
-  }
-  const items = hosts
-    .map(function (h) {
-      return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
-    })
-    .join('');
-  const label = hosts.length + ' app links';
-  return `<span class="link-wrap"><button class="link-btn" type="button" data-testid="app-link-btn" data-taptip title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${LINK_ICON}</button><div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
-}
-
-// rosterRowActionsHTML surfaces an enabled roster row's secondary actions
-// inline in the stack cell, beside the jump + app-link icons: the container-
-// logs icon (ADR-0037) always, the deploy-hooks badge (ADR-0038) only when the
-// stack declares hooks. Formerly folded behind the same ⋯ overflow menu the
-// Deploys row uses (T3.13b), but on the roster the row-body click already opens
-// the health + history panel, so the menu usually wrapped a single action
-// (logs) — an extra click for no density gain. Disabled stacks carry neither.
-function rosterRowActionsHTML(entry) {
-  if (entry.disabled) return '';
-  let html = clogBtnHTML(entry.name, ''); // container logs
-  if (entry.hooks && hookCount(entry.hooks) > 0) html += hooksBadgeHTML(entry.name, entry.hooks);
-  return html;
-}
-
 // rosterVersionInnerHTML fills a Stacks row's Version cell from the live health
 // snapshot: the running version of the service the stack is named after, plus a
 // muted "+N" for the rest — the glance. The full per-service list lives one
@@ -818,16 +777,16 @@ function rosterVersionCellHTML(stack, health, disabled, updates) {
   return `<span class="col-version" data-testid="roster-version">${inner}</span>`;
 }
 
-// rosterStatusHTML picks the row's status: a live in-flight deploy wins
-// (deploying — a peer row always passes false, since the in-flight set is the
-// primary's own), then the parked/never-deployed synthetic flags, else the
+// rosterStatusHTML picks the row's last-deploy status: a live in-flight deploy
+// wins (deploying — a peer row always passes false, since the in-flight set is
+// the primary's own), then the parked/never-deployed synthetic flags, else the
 // last terminal badge, followed by the held chip when the stack's change is
-// held. canRetry adds the chip's retry button (the primary's own rows only).
-function rosterStatusHTML(entry, deploying, canRetry) {
+// held. Retrying a held change is the detail verdict's action, not the row's.
+function rosterStatusHTML(entry, deploying) {
   if (deploying) return badgeHTML('deploying');
   if (entry.disabled) return `<span class="roster-flag">disabled</span>`;
   if (!entry.last_status) return `<span class="roster-flag">never deployed</span>`;
-  return badgeHTML(entry.last_status) + heldChipHTML(entry.name, entry.held, !!canRetry);
+  return badgeHTML(entry.last_status) + heldChipHTML(entry.name, entry.held);
 }
 
 // heldChipHTML marks a stack whose change is held (ADR-0062): its new version
@@ -835,10 +794,8 @@ function rosterStatusHTML(entry, deploying, canRetry) {
 // re-failing it every reconcile tick. A change that failed before it started
 // and is still retried on its own carries retry_at and reads "backoff"
 // (ADR-0064). The tooltip says when and how it failed, and for a backoff when
-// the next attempt is due. canRetry adds the button that attempts it once
-// more; a peer's roster is read-only, so its rows never get one. Empty when
-// nothing is held.
-function heldChipHTML(stack, held, canRetry) {
+// the next attempt is due. Empty when nothing is held.
+function heldChipHTML(stack, held) {
   if (!held) return '';
   const backoff = !!held.retry_at;
   const when = held.since ? ' ' + formatTime(held.since) + ' (' + fullTime(held.since) + ')' : '';
@@ -855,8 +812,7 @@ function heldChipHTML(stack, held, canRetry) {
       when +
       '. Next attempt ' +
       fullTime(held.retry_at) +
-      '; if it keeps failing, it is held.' +
-      (canRetry ? ' Retry attempts it now.' : '');
+      '; if it keeps failing, it is held.';
   } else {
     const how = held.attempts
       ? 'failed ' + held.attempts + ' times before it started, last'
@@ -869,23 +825,19 @@ function heldChipHTML(stack, held, canRetry) {
       when +
       '. It is not retried until a new commit changes ' +
       stack +
-      '.' +
-      (canRetry ? ' Retry deploys it once more.' : '');
+      '.';
   }
   const label = backoff ? 'backoff' : 'held';
-  let html = `<span class="held-chip" data-testid="held-chip" title="${escapeAttr(title)}">${statusIcon('held')}${label}</span>`;
-  if (canRetry) {
-    html += `<button type="button" class="retry-btn" data-testid="retry-btn" data-retry-stack="${escapeAttr(stack)}" aria-label="${escapeAttr('Retry the held change of ' + stack)}">retry</button>`;
-  }
-  return `<span class="held-line">${html}</span>`;
+  return `<span class="held-line"><span class="held-chip" data-testid="held-chip" title="${escapeAttr(title)}">${statusIcon('held')}${label}</span></span>`;
 }
 
-// rosterHealthPillHTML is the live-health pill shown inline in a roster row's
-// status cell (under the deploy badge), so the Stacks overview surfaces current
-// container health without expanding — for local stacks and, host-scoped, for
-// peers alike. Empty when the host reports no health for the stack.
-function rosterHealthPillHTML(stack, health) {
-  return health && health.status ? healthPillHTML(stack, health.status) : '';
+// rosterHealthHTML is a Stacks row's Health cell: the stack's live health as
+// a dot and a word — what it is now, beside the Last deploy cell saying what
+// happened then. Not a control (the row's click opens the panel). Empty while
+// the host reports no health for the stack.
+function rosterHealthHTML(health) {
+  if (!health || !health.status) return '';
+  return `<span class="health-pill" data-testid="health-pill" data-health="${escapeAttr(health.status)}"><span class="hdot"></span><span class="hlabel">${escapeHtml(health.status)}</span></span>`;
 }
 
 // outcomeLabel says a terminal status in words for the strip tooltips and the
@@ -897,7 +849,7 @@ function outcomeLabel(status) {
   return status;
 }
 
-// outcomeStripHTML is the roster status cell's mini-history: the stack's last
+// outcomeStripHTML is the detail panel's Last deploy mini-history: the stack's last
 // terminal outcomes as small status-coloured dots, oldest → newest left →
 // right, so the strip reads as a timeline running into the badge — a success
 // can no longer paper over the rollback right behind it. recent arrives
@@ -937,21 +889,6 @@ function lastIncidentHTML(incident, nowMs) {
   const glyph = incident.status.indexOf('rolled_back') === 0 ? '↺' : '✗';
   const age = phaseDuration(nowMs - new Date(incident.at).getTime());
   return `<span class="last-incident" data-testid="last-incident" title="${escapeAttr(fullTime(incident.at))}">${glyph} ${escapeHtml(outcomeLabel(incident.status))} · ${escapeHtml(age)} ago</span>`;
-}
-
-// rosterStatusInnerHTML is the whole roster status cell — badge (+ held chip),
-// live-health pill, outcome strip, last-incident line — so the full render and
-// the live per-row refresh cannot drift apart. A disabled stack shows only its
-// flag. health is the row's host-scoped health record; nowMs keeps it pure.
-function rosterStatusInnerHTML(entry, deploying, canRetry, health, nowMs) {
-  const status = rosterStatusHTML(entry, deploying, canRetry);
-  if (entry.disabled) return status;
-  return (
-    status +
-    rosterHealthPillHTML(entry.name, health) +
-    outcomeStripHTML(entry.recent, nowMs) +
-    lastIncidentHTML(entry.last_incident, nowMs)
-  );
 }
 
 // DEPLOY_STATUS_ORDER fixes the Deploys status-filter chip order — worst
@@ -1540,7 +1477,7 @@ function auditRowsHTML(records, repoBase, absolute, opts) {
         return (
           `<div class="audit-row"${withTestid ? ' data-testid="audit-row"' : ''} data-status="${escapeAttr(r.status)}">` +
           `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absolute ? rel : abs)}">${escapeHtml(absolute ? abs : rel)}</span>` +
-          `<span class="ar-status"><span class="adot"></span>${escapeHtml(auditStatusLabel(r.status))}</span>` +
+          `<span class="ar-status">${badgeHTML(r.status)}</span>` +
           `<span class="ar-dur">${escapeHtml(formatDuration(r.duration_ms))}</span>` +
           sha +
           `<span class="ar-files">${files}</span>` +
@@ -1601,6 +1538,209 @@ function clogSvcsHTML(services, selected) {
   );
 }
 
+// ── Detail panel (docs/dev/ui-redesign-plan.md §3.2) ──
+// The panel a selected row opens: a head naming the stack with its labelled
+// actions, the verdict, a facts strip and a tab strip over one pane. Pure
+// string builders; app-roster.js resolves the state and wires the clicks
+// (every control carries data-action, or is a tab).
+
+const CLOSE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const JUMP_ICON =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>';
+
+// detailActionHTML is one labelled head button. attrs is the raw attribute
+// string the action's handler reads (already escaped by the caller).
+function detailActionHTML(action, testid, attrs, icon, label, extra) {
+  return `<button class="dp-act" type="button" data-action="${action}" data-testid="${testid}"${attrs}>${icon}<span class="dp-lbl">${label}</span>${extra || ''}</button>`;
+}
+
+// detailAppLinkHTML is the head's Open app action: a plain link for one
+// discovered hostname, a button over the app-link popover for several.
+function detailAppLinkHTML(links) {
+  if (!links || !links.length) return '';
+  if (links.length === 1) {
+    return `<span class="link-wrap"><a class="dp-act" data-action="app" data-testid="app-link-btn" href="${escapeAttr('https://' + links[0])}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + links[0])}">${LINK_ICON}<span class="dp-lbl">Open app</span></a></span>`;
+  }
+  const items = links
+    .map(function (h) {
+      return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
+    })
+    .join('');
+  return `<span class="link-wrap">${detailActionHTML('app', 'app-link-btn', ` title="${links.length} app links"`, LINK_ICON, links.length + ' apps')}<div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
+}
+
+// detailHeadHTML is the panel head: icon, name and host chip, then the
+// actions that apply, always in the order Open app · Logs · Hooks · Show in
+// Deploys · close. m: stack, host (chip HTML), links (app-link hostnames),
+// logs (the stack runs containers), logHost (a peer's name, so the logs
+// stream through the primary's proxy), hooks ({pre_deploy, post_deploy} or
+// null), hooksOpen (the Hooks pane is showing), jump (offer Show in Deploys).
+function detailHeadHTML(m) {
+  const stack = escapeAttr(m.stack);
+  let actions = detailAppLinkHTML(m.links);
+  if (m.logs) {
+    const host = m.logHost ? ` data-clog-host="${escapeAttr(m.logHost)}"` : '';
+    actions += detailActionHTML(
+      'logs',
+      'clog-btn',
+      ` data-clog-stack="${stack}" data-clog-service=""${host} title="Container logs of every service"`,
+      CLOG_ICON,
+      'Logs',
+    );
+  }
+  if (m.hooks && hookCount(m.hooks) > 0) {
+    const pre = (m.hooks.pre_deploy || []).length,
+      post = (m.hooks.post_deploy || []).length;
+    actions += detailActionHTML(
+      'hooks',
+      'hooks-badge',
+      ` data-hooks-stack="${stack}" aria-pressed="${m.hooksOpen ? 'true' : 'false'}" title="${escapeAttr(`pre-deploy hooks: ${pre}, post-deploy hooks: ${post}`)}"`,
+      HOOK_ICON,
+      'Hooks',
+      `<span class="dp-n">${pre}+${post}</span>`,
+    );
+  }
+  if (m.jump) {
+    actions += detailActionHTML(
+      'jump',
+      'jump-btn',
+      ` data-jump-view="deploys" data-jump-stack="${stack}"`,
+      JUMP_ICON,
+      'Show in Deploys',
+    );
+  }
+  actions += `<button class="dp-act dp-close" type="button" data-action="close" data-testid="detail-close" title="Close" aria-label="${escapeAttr('Close ' + m.stack)}">${CLOSE_ICON}</button>`;
+  return (
+    '<div class="dp-head">' +
+    `<div class="dp-title">${stackIconHTML()}<span class="dp-name" title="${stack}">${escapeHtml(m.stack)}</span>${m.host || ''}</div>` +
+    `<div class="dp-actions">${actions}</div>` +
+    '</div>'
+  );
+}
+
+// VERDICT_GLYPH leads each verdict line by tone, so the line reads before its
+// words do.
+const VERDICT_GLYPH = Object.freeze({
+  danger: '✗',
+  rollback: '↺',
+  warn: '!',
+  ok: '✓',
+  muted: '·',
+});
+
+// verdictHTML renders the verdict lines (stackVerdict, app-helpers.js) with
+// their one action each: Retry once on a held change — only with
+// opts.canRetry, since a peer's panel is read-only — and Logs of the service
+// an unhealthy line names (through opts.logHost for a peer).
+function verdictHTML(lines, stack, opts) {
+  const o = opts || {};
+  const body = lines
+    .map(function (l) {
+      let action = '';
+      if (l.action && l.action.kind === 'retry' && o.canRetry) {
+        action = `<button type="button" class="retry-btn" data-testid="retry-btn" data-retry-stack="${escapeAttr(stack)}">Retry once</button>`;
+      } else if (l.action && l.action.kind === 'logs') {
+        const host = o.logHost ? ` data-clog-host="${escapeAttr(o.logHost)}"` : '';
+        action = detailActionHTML(
+          'logs',
+          'clog-btn',
+          ` data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(l.action.service)}"${host}`,
+          CLOG_ICON,
+          'Logs',
+        );
+      }
+      const head = l.head ? `<b>${escapeHtml(l.head)}</b>${l.text ? ' ' : ''}` : '';
+      const sub = l.sub ? `<div class="dp-v-sub">${escapeHtml(l.sub)}</div>` : '';
+      return (
+        `<div class="dp-v" data-tone="${escapeAttr(l.tone)}" data-kind="${escapeAttr(l.kind)}">` +
+        `<span class="dp-v-ico" aria-hidden="true">${VERDICT_GLYPH[l.tone] || ''}</span>` +
+        `<div class="dp-v-body"><div class="dp-v-text">${head}${escapeHtml(l.text || '')}</div>${sub}</div>` +
+        action +
+        '</div>'
+      );
+    })
+    .join('');
+  return `<div class="dp-verdict" data-testid="detail-verdict">${body}</div>`;
+}
+
+// factsHTML is the panel's facts strip; each fact's html is the caller's
+// markup (escaped where it carries data).
+function factsHTML(facts) {
+  const cells = facts
+    .map(function (f) {
+      return `<div class="dp-fact"><div class="dp-k">${escapeHtml(f.label)}</div><div class="dp-fv">${f.html}</div></div>`;
+    })
+    .join('');
+  return `<div class="dp-facts" data-testid="detail-facts">${cells}</div>`;
+}
+
+// stackFactsHTML is a stack's facts: its running version, its last deploy
+// (age, commit, the outcome dots and the incident they paper over), its
+// health as a count, and its hooks. o: repoBase, nowMs (kept pure).
+function stackFactsHTML(entry, health, updates, o) {
+  const running = rosterVersionInnerHTML(entry.name, health, updates) || '—';
+  let last = 'never';
+  if (entry.last_at) {
+    last =
+      escapeHtml(phaseDuration(o.nowMs - new Date(entry.last_at).getTime()) + ' ago') +
+      (entry.last_commit
+        ? ' · ' +
+          commitLinkHTML(entry.last_commit, {
+            cls: 'dp-sha',
+            base: o.repoBase,
+            title: entry.last_commit,
+          })
+        : '') +
+      outcomeStripHTML(entry.recent, o.nowMs) +
+      lastIncidentHTML(entry.last_incident, o.nowMs);
+  }
+  // On-demand services are stopped on purpose; they are counted apart so
+  // the healthy count is out of the services meant to run.
+  const services = (health && health.services) || [];
+  const onDemand = services.filter(function (s) {
+    return s.on_demand;
+  }).length;
+  const healthy = services.filter(function (s) {
+    return !s.on_demand && healthClass(s) === HEALTH.HEALTHY;
+  }).length;
+  const healthText = services.length
+    ? healthy +
+      ' of ' +
+      (services.length - onDemand) +
+      ' healthy' +
+      (onDemand ? ' · ' + onDemand + ' on-demand' : '')
+    : '—';
+  const hooks = entry.hooks || {};
+  const hooksText = hookCount(hooks)
+    ? (hooks.pre_deploy || []).length + ' pre · ' + (hooks.post_deploy || []).length + ' post'
+    : 'none';
+  return factsHTML([
+    { label: 'Running', html: running },
+    { label: 'Last deploy', html: last },
+    { label: 'Health', html: escapeHtml(healthText) },
+    { label: 'Hooks', html: escapeHtml(hooksText) },
+  ]);
+}
+
+// tabsHTML is the panel's tab strip (stackTabs, app-helpers.js). A count turns
+// red when the tab holds a problem; a tab without a count shows a red "!"
+// instead, so the problem still shows.
+function tabsHTML(tabs, active) {
+  const btns = tabs
+    .map(function (t) {
+      let n = '';
+      if (t.count !== null && t.count !== undefined) {
+        n = `<span class="dp-n${t.bad ? ' bad' : ''}">${t.count}</span>`;
+      } else if (t.bad) {
+        n = '<span class="dp-n bad">!</span>';
+      }
+      return `<button class="dp-tab" type="button" role="tab" data-testid="detail-tab" data-tab="${escapeAttr(t.id)}" aria-selected="${t.id === active ? 'true' : 'false'}">${escapeHtml(t.label)}${n}</button>`;
+    })
+    .join('');
+  return `<div class="dp-tabs" role="tablist">${btns}</div>`;
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
@@ -1629,21 +1769,17 @@ if (typeof module !== 'undefined' && module.exports) {
     hookCount,
     hooksBadgeHTML,
     jumpBtnHTML,
-    rowActionClusterHTML,
     pendingTagHTML,
     hostChipHTML,
-    linkCellHTML,
-    rosterRowActionsHTML,
     rosterVersionInnerHTML,
     rosterVersionCellHTML,
     rosterUpdateChipHTML,
     rosterStatusHTML,
     heldChipHTML,
-    rosterHealthPillHTML,
+    rosterHealthHTML,
     outcomeLabel,
     outcomeStripHTML,
     lastIncidentHTML,
-    rosterStatusInnerHTML,
     retryNoteHTML,
     repeatNoteHTML,
     DEPLOY_STATUS_ORDER,
@@ -1672,5 +1808,10 @@ if (typeof module !== 'undefined' && module.exports) {
     logDiffBlockHTML,
     auditRowsHTML,
     clogSvcsHTML,
+    detailHeadHTML,
+    verdictHTML,
+    factsHTML,
+    tabsHTML,
+    stackFactsHTML,
   };
 }

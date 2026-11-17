@@ -71,7 +71,7 @@ test('UAL1: the roster Commit cell links to the commit on the forge', async ({ p
   await expect(sha).toHaveAttribute('rel', /noopener/);
 });
 
-// UAL2 — the SHA sits inside a row whose body toggles the expand panel. Clicking
+// UAL2 — the SHA sits inside a row whose body toggles the detail panel. Clicking
 // the link must do one thing only: the panel must not open behind the new tab.
 test('UAL2: following the commit link does not also expand the row', async ({ page, skipper }) => {
   await deployAndOpenStacks(page, skipper);
@@ -91,11 +91,11 @@ test('UAL2: following the commit link does not also expand the row', async ({ pa
   });
 
   await rosterSha(page, 'api').click();
-  await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="detail-panel"]')).toHaveCount(0);
 
-  // The row itself still expands — the guard is scoped to the link, not the row.
+  // The row itself still opens — the guard is scoped to the link, not the row.
   await row(page, 'api').locator('.roster-name').click();
-  await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="detail-panel"]')).toHaveCount(1);
 });
 
 // UAL3 — the same treatment reaches the SHAs inside panels: the deploy-history
@@ -115,6 +115,7 @@ test('UAL3: deploy-history and diff-header SHAs link to the same forge', async (
   // Deploy history: every recorded outcome's SHA.
   await stacksBtn(page).click();
   await row(page, 'api').locator('.roster-name').click();
+  await page.locator('[data-testid="detail-tab"][data-tab="history"]').click();
   const auditSha = page.locator('[data-testid="audit-row"] .ar-sha').first();
   await expect(auditSha).toBeVisible();
   expectForgeCommitHref(await auditSha.getAttribute('href'));
@@ -122,6 +123,7 @@ test('UAL3: deploy-history and diff-header SHAs link to the same forge', async (
   // Change detection: the commit the lead prose names ("Unchanged since <sha>")
   // is a SHA on screen like any other, so it links too — and the sentence around
   // it is untouched.
+  await page.locator('[data-testid="detail-tab"][data-tab="triggers"]').click();
   const lead = page.locator('[data-testid="watched-lead"]');
   await expect(lead).toContainText(/^Unchanged since [0-9a-f]{7}\./);
   const leadSha = lead.locator('a.sha-link');

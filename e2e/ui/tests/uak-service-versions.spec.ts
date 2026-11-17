@@ -160,16 +160,14 @@ test('UAK5: a new image on the next poll updates the cell without dropping a pan
   await expect(row(page, 'immich')).toHaveClass(/audit-open/);
 });
 
-// UAK6 — no room for five columns below 1000 px: Commit gives up its track so
-// Version can keep its place on the row's first line, between name and status.
-test('UAK6: Commit gives up its column so Version keeps the first line', async ({ page, skipper }) => {
+// UAK6 — less room below 1000 px: the Last deploy cell gives up its SHA so
+// Version can keep its place on the row's first line, beside the name.
+test('UAK6: the SHA gives up its place so Version keeps the first line', async ({ page, skipper }) => {
   await page.setViewportSize({ width: 820, height: 900 });
   await openStacks(page, skipper.baseURL);
 
-  // The Commit column goes — header label and cells — so the four that remain
-  // stay in lockstep.
+  // The header keeps its four columns; only the SHA inside Last deploy goes.
   await expect(page.locator('.roster-list-header .rh-ver')).toBeVisible();
-  await expect(page.locator('.roster-list-header .rh-sha')).toBeHidden();
   await expect(row(page, 'immich').locator('.roster-sha')).toBeHidden();
 
   // Version keeps its own column on the first line, beside the name.
@@ -186,9 +184,7 @@ test('UAK6: Commit gives up its column so Version keeps the first line', async (
   });
   expect(Math.abs(verBox.y - stackBox.y)).toBeLessThan(6);
   expect(verBox.x).toBeGreaterThan(stackBox.x + stackBox.width - 2);
-  // The stack name still renders in full: its cell carries a change chip, an
-  // app link and the log/jump glyphs, which wrap to a second line inside the
-  // cell rather than squeezing the row's identity away.
+  // The stack name still renders in full rather than squeezed away.
   await expect(row(page, 'immich').locator('.roster-name')).toHaveText('immich');
   expect(nameWidth).toBeGreaterThan(0);
 });
