@@ -75,9 +75,7 @@ App.hosts = (function () {
   // peerRecords keeps each peer row's audit record for its deploy detail.
   const peerRecords = new WeakMap();
 
-  // createPeerRow builds one read-only deploy row from a peer's audit record.
-  // A click opens the same deploy detail as a local row, its diff fetched
-  // through the proxy.
+  // createPeerRow builds a read-only deploy row from a peer's audit record.
   function createPeerRow(rec, hostName, stale) {
     const row = document.createElement('div');
     row.className = rowClass(true) + ' peer-row' + (stale ? ' peer-stale' : '');
@@ -92,8 +90,7 @@ App.hosts = (function () {
       cause: deployRowCause(rec.status, rec.error),
       ts: rec.timestamp,
       absolute: S.absoluteTime,
-      // Empty Change cell: the fan-in's audit records carry no image_changes, but
-      // the peer row shares the deploy grid, so the cell must exist to stay aligned.
+      // Audit records carry no changes; the empty cell keeps the grid aligned.
       version: '',
       // A peer's record collapses repeats the same way ours does (ADR-0056), and
       // without the count its one row would read as a one-off incident.

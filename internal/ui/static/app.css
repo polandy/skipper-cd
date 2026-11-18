@@ -651,11 +651,7 @@
   }
 
 
-  /* Deploy-table columns: Stack · Result · Change · When — the Stacks row's
-     positions (Stack · Health · Version · Last deploy), held in --row-cols, the
-     one grid variable each table (this one, #stacks-view) sets for its header
-     and rows. The Change column collapses away when its view-option is off
-     (.no-version) — an empty column would otherwise keep taking width. */
+  /* Stack · Result · Change · When, the Stacks row's positions; .no-version drops Change. */
   #deploy-table { --row-cols: minmax(0, 1.25fr) 120px minmax(0, 1fr) minmax(0, 0.9fr); }
   #deploy-table.no-version { --row-cols: minmax(0, 1.25fr) 120px minmax(0, 0.9fr); }
   #deploy-table.no-version .col-version { display: none; }
@@ -926,8 +922,7 @@
     white-space: nowrap;
   }
 
-  /* Stack cell: the name line, plus the one-line cause of a failed, rolled
-     back, blocked or queued row beneath it, indented to the name. */
+  /* Stack cell: the name, plus the cause line indented under it. */
   .cell-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .cell-cause {
     padding-left: 26px;
@@ -1358,34 +1353,6 @@
   .hp-fold-toggle:hover { color: var(--text-primary); border-color: var(--border-lit); }
 
   /* ─── AUDIT (per-stack deploy history, ADR-0033) ─── */
-  /* ─── CROSS-VIEW JUMP (Deploys <-> Stacks) ─── */
-  /* A compass button beside every stack name, in both the deploy row and the
-     roster row: switches to the other view and lands on that stack's row
-     there (jumpToStack). */
-  .jump-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
-    border: 0; border-radius: var(--r-chip);
-    background: transparent; color: var(--text-muted); cursor: pointer;
-  }
-  .jump-btn:hover {
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  .jump-btn svg { width: 12px; height: 12px; }
-
-  /* The row's affordance glyphs rest at a low weight and lift on hover, focus,
-     or while their own surface is open. On touch there is no hover, so the
-     resting state stays legible rather than invisible (0.62, measured against
-     --text-muted, not a dimming of the colour itself). */
-  .event-row .row-actions, .event-row .link-wrap { opacity: 0.62; transition: opacity 0.15s; }
-  .event-row:hover .row-actions, .event-row:hover .link-wrap,
-  .event-row:focus-within .row-actions, .event-row:focus-within .link-wrap,
-  .event-row[class*="-open"] .row-actions {
-    opacity: 1;
-  }
-
   /* ─── TOUCH TARGETS (T2.9) ───
      The row-cluster glyph buttons and status pills render small by design, but
      their *tappable* area is enlarged with a transparent ::after overlay so a
@@ -1393,9 +1360,9 @@
      surrounding whitespace/gaps — a full 44px (AAA) would overlap neighbours in
      this dense cluster (that needs the row redesign, T3.13), so this lifts them
      from ~18px to ≥24px (WCAG 2.5.8 AA) with nothing visible changing. */
-  .jump-btn, .clog-btn, .link-btn,
+  .clog-btn, .link-btn,
   .health-pill, .hooks-badge, .files-pill, .commits-pill { position: relative; }
-  .jump-btn::after, .clog-btn::after, .link-btn::after,
+  .clog-btn::after, .link-btn::after,
   .health-pill::after, .hooks-badge::after, .files-pill::after,
   .commits-pill::after {
     content: ''; position: absolute; top: 50%; left: 50%;
@@ -3099,11 +3066,6 @@
      version always share the first line. min-width: 0 is what lets it shrink;
      the full name stays in the title. */
   .roster-ident { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  /* The row's affordance glyphs are one cluster (rowActionClusterHTML): the
-     same 8px rhythm as the cell around them, but a single flex item, so a
-     narrow cell wraps them to the next line together instead of breaking
-     between two icons. flex: none keeps the name the part that yields. */
-  .row-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; }
   .roster-health { display: flex; align-items: center; min-width: 0; }
   /* Last deploy: badges, age and commit as one wrapping group — gap, not
      margins, so a wrapped line keeps the row's own spacing. */
@@ -3440,15 +3402,9 @@
        breakage, not as identity. The ship alone carries the brand here, and the
        full `v<semver> · <commit>` string moves to its tooltip / tap-tip. */
     .brand-text { display: none; }
-    /* The name shrinks and ellipsises inside its own column instead of
-       overflowing into the next one. */
+    /* The name ellipsises inside its own column instead of overflowing. */
     .cell-stack .stack-name { flex-shrink: 1; }
-    /* But never to nothing: a row carrying a change chip, an app link and the
-       log/jump glyphs ran the name out of width entirely, leaving an icon
-       cluster with no stack behind it. The floor is the row's identity — below
-       it the affordances wrap to a second line inside the cell instead, since
-       they are the part that can move. Only here: the desktop grid has the
-       width, and a floor there would pad short names out and shift every row. */
+    /* Never to nothing: below the floor the chip and icon wrap instead. */
     .cell-stack, .roster-stack { flex-wrap: wrap; }
     .cell-stack .stack-name, .roster-stack .roster-name { min-width: 7ch; }
     /* Only the action cluster is left to wrap, so it is what moves. */
@@ -3522,9 +3478,7 @@
        popover "Search" row above is the entry point, so hide the glyph. (T3.11) */
     .stack-search-btn { display: none; }
 
-    /* Deploy rows go to two lines, like the roster: name + time, then change
-       + result, the right-hand cells right-aligned. Duration and SHA stay in
-       the row's panel. */
+    /* Two lines like the roster: name + time, then change + result. */
     .event-row {
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-rows: auto auto;

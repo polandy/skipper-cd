@@ -1903,9 +1903,7 @@ function failedAt(f) {
 // DEPLOY_BLOCKED reads a blocked event's error: the dependency that failed.
 const DEPLOY_BLOCKED = /^dependency (.+) failed this run$/;
 
-// deployRowCause is the one-line cause a deploy row prints under its stack
-// name, or '' for an outcome that needs none. queueReason is the pending
-// row's reason from the queue snapshot (stack|global, or "blocked by <dep>").
+// deployRowCause is the line under a deploy row's name; queueReason comes from the queue snapshot.
 function deployRowCause(status, error, queueReason) {
   switch (status) {
     case 'failed':

@@ -215,11 +215,7 @@ function changeChipsHTML(fileChanges, imageChanges) {
   return changeChips(fileChanges, imageChanges).join('');
 }
 
-// changeCellHTML renders the Change column of a deploy row the way the Stacks
-// Version column reads: one chip plus a muted "+N" for the rest, so the row
-// stays one line. An image bump leads (it says what the stack now runs), else
-// the first change kind; the full list lives in the detail panel. Empty when
-// the deploy carried neither, so the cell holds no frame around nothing.
+// changeCellHTML is a deploy row's Change cell: the first chip (image bump first) plus "+N".
 function changeCellHTML(imageChanges, fileChanges) {
   const chips = imageDeltaChips(imageChanges).concat(changeChips(fileChanges, imageChanges));
   if (!chips.length) return '';
@@ -594,9 +590,7 @@ function deployShaHTML(sha, repoBase) {
   return commitLinkHTML(sha, { cls: 'cell-sha', base: repoBase, title: sha, testid: 'row-sha' });
 }
 
-// deployWhenHTML is a deploy row's When cell: the relative time, the duration
-// muted, and the short commit once it is known. Its own export so a row that
-// settles or learns its commit re-renders just this cell.
+// deployWhenHTML is a deploy row's When cell: relative time, muted duration, short commit.
 function deployWhenHTML(m) {
   const t = timeLabelPair(m.ts, m.absolute);
   const sha = m.commit ? deployShaHTML(m.commit, m.repoBase) : '';

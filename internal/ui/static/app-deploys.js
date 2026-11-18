@@ -334,10 +334,7 @@ App.deploys = (function () {
     row.dataset.host = S.selfHost; // local rows belong to the primary host
     if (evt.has_diffs) row.dataset.hasDiffs = '1';
 
-    // A healed row applied no change at all (self-heal re-applies the same
-    // version); every other row names what moved in the Change column. Stash
-    // both lists on the row so the view-options toggle can fill/empty the column
-    // live without a reload.
+    // A healed row applied no change; others stash theirs for the live view-options toggle.
     if (evt.status !== 'healed') {
       stashChanges(row, evt);
     }
@@ -406,12 +403,7 @@ App.deploys = (function () {
 
   // ── Deploy-event ingest: queued rows + handleEvent ──
 
-  // refreshPendingCauses re-renders the cause line of every live pending row.
-  // The pending deploy event and the queue snapshot (which carries the
-  // authoritative reason) are not ordered — the snapshot is published after the
-  // run's events, and after the history replay on connect — so a row can render
-  // before its reason is known. This re-render makes the line deterministic once
-  // the snapshot lands.
+  // refreshPendingCauses re-renders pending rows' causes once the (unordered) queue snapshot lands.
   function refreshPendingCauses() {
     Object.keys(queuedRows).forEach(function (stack) {
       const row = queuedRows[stack];
@@ -420,8 +412,7 @@ App.deploys = (function () {
     });
   }
 
-  // setRowCommit writes the deploy's commit — known only once its diff loaded —
-  // into the row's When cell.
+  // setRowCommit writes the commit, known once the diff loaded, into the When cell.
   function setRowCommit(row, sha) {
     if (row.dataset.commit === sha) return;
     row.dataset.commit = sha;

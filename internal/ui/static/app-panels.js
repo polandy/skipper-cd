@@ -3,8 +3,7 @@
 // bound row panels — diff, files, heal, deploy history (ADR-0033), containers/
 // health (ADR-0027/0031), deploy hooks (ADR-0038), watched files — plus the
 // row-cell affordances that open them: the app-link popover and the stack
-// icon. Cut out of
-// the app script by view (ADR-0035 amendment) and attached as App.panels.
+// icon. Cut out of the app script by view (ADR-0035 amendment) and attached as App.panels.
 //
 // Loads after app-state.js and before every view. Reads only the store and the
 // per-host resolvers; a view passes in the row or cell it wants a panel on.
