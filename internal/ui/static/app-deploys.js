@@ -1225,6 +1225,9 @@ App.deploys = (function () {
           render();
         }
       });
+      panel.addEventListener('keydown', function (e) {
+        detail.tabKeydown(panel, e);
+      });
 
       slot.set(panel);
       const hasDiff = peer ? !!evt.id && changedFileCount(evt) > 0 : !!evt.has_diffs;

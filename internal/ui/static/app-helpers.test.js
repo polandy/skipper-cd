@@ -2670,3 +2670,18 @@ test('retryRefusalText names why a retry was refused, the server reason first', 
     "Retry didn't reach the server. Check the connection and try again.",
   );
 });
+
+test('tabKeyIndex moves along the tab strip and wraps at both ends', () => {
+  assert.equal(h.tabKeyIndex('ArrowRight', 0, 3), 1);
+  assert.equal(h.tabKeyIndex('ArrowRight', 2, 3), 0);
+  assert.equal(h.tabKeyIndex('ArrowLeft', 0, 3), 2);
+  assert.equal(h.tabKeyIndex('ArrowLeft', 2, 3), 1);
+  assert.equal(h.tabKeyIndex('Home', 2, 3), 0);
+  assert.equal(h.tabKeyIndex('End', 0, 3), 2);
+});
+
+test('tabKeyIndex ignores every other key and a tab outside the strip', () => {
+  assert.equal(h.tabKeyIndex('Enter', 0, 3), -1);
+  assert.equal(h.tabKeyIndex('ArrowDown', 0, 3), -1);
+  assert.equal(h.tabKeyIndex('ArrowRight', -1, 3), -1);
+});

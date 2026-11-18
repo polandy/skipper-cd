@@ -118,5 +118,21 @@ App.detail = (function () {
     if (row) show(view, row, e.sel.tab, e.opts);
   }
 
-  return { registerPane, isOpen, show, toggle, close, closeIf, rebind, reapply };
+  // tabKeydown moves a detail panel's tab selection by keyboard (tabKeyIndex):
+  // it clicks the tab the key lands on — the view's own click path re-renders
+  // the strip — then focuses that tab in the new strip.
+  function tabKeydown(panel, e) {
+    const tab = e.target.closest('.dp-tab');
+    if (!tab) return;
+    const strip = Array.prototype.slice.call(panel.querySelectorAll('.dp-tab'));
+    const next = tabKeyIndex(e.key, strip.indexOf(tab), strip.length);
+    if (next < 0) return;
+    e.preventDefault();
+    const id = strip[next].dataset.tab;
+    strip[next].click();
+    const landed = panel.querySelector('.dp-tab[data-tab="' + id + '"]');
+    if (landed) landed.focus();
+  }
+
+  return { registerPane, isOpen, show, toggle, close, closeIf, rebind, reapply, tabKeydown };
 })();

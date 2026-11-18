@@ -1635,8 +1635,14 @@ function stackFactsHTML(entry, health, updates, o) {
 
 // tabsHTML is the panel's tab strip (stackTabs, app-helpers.js). A count turns
 // red when the tab holds a problem; a tab without a count shows a red "!"
-// instead, so the problem still shows.
-function tabsHTML(tabs, active) {
+// instead, so the problem still shows. idBase names the panel's tab and pane
+// ids; only the selected tab (else the first) is in the Tab order.
+function tabsHTML(tabs, active, idBase) {
+  const stop = tabs.some(function (t) {
+    return t.id === active;
+  })
+    ? active
+    : tabs.length && tabs[0].id;
   const btns = tabs
     .map(function (t) {
       let n = '';
@@ -1645,10 +1651,26 @@ function tabsHTML(tabs, active) {
       } else if (t.bad) {
         n = '<span class="dp-n bad">!</span>';
       }
-      return `<button class="dp-tab" type="button" role="tab" data-testid="detail-tab" data-tab="${escapeAttr(t.id)}" aria-selected="${t.id === active ? 'true' : 'false'}">${escapeHtml(t.label)}${n}</button>`;
+      const id = escapeAttr(idBase + '-tab-' + t.id);
+      const sel = t.id === active ? 'true' : 'false';
+      const tabindex = t.id === stop ? '0' : '-1';
+      return `<button class="dp-tab" type="button" role="tab" id="${id}" aria-controls="${escapeAttr(idBase)}-pane" data-testid="detail-tab" data-tab="${escapeAttr(t.id)}" aria-selected="${sel}" tabindex="${tabindex}">${escapeHtml(t.label)}${n}</button>`;
     })
     .join('');
   return `<div class="dp-tabs" role="tablist">${btns}</div>`;
+}
+
+// tabPaneHTML is the empty pane under tabsHTML's strip, labelled by the
+// selected tab, or by label when the head selects it instead (Hooks).
+function tabPaneHTML(tabs, active, idBase, label) {
+  if (!tabs.length) return '<div class="dp-pane"></div>';
+  const inStrip = tabs.some(function (t) {
+    return t.id === active;
+  });
+  const name = inStrip
+    ? `aria-labelledby="${escapeAttr(idBase + '-tab-' + active)}"`
+    : `aria-label="${escapeAttr(label || '')}"`;
+  return `<div class="dp-pane" role="tabpanel" id="${escapeAttr(idBase)}-pane" tabindex="0" ${name}></div>`;
 }
 
 // ── Deploys detail panel: one deploy event in the Stacks detail's anatomy ──
@@ -1656,6 +1678,10 @@ function tabsHTML(tabs, active) {
 // DEPLOY_OUTPUT_LINES is how many lines of a deploy's error the Output tab
 // shows before it clamps.
 const DEPLOY_OUTPUT_LINES = 6;
+
+// DEPLOY_DETAIL_ID prefixes the deploy detail's tab and pane ids; the view
+// keeps one detail open at a time.
+const DEPLOY_DETAIL_ID = 'deploy-detail';
 
 // deployFactsHTML is a deploy's facts: its commit (from the lazily loaded
 // diff, else the peer record's SHA, else —), the first change chip plus how
@@ -1722,8 +1748,8 @@ function deployPanelHTML(evt, o) {
     }) +
     (lines.length ? verdictHTML(lines, evt.stack, { logHost: opts.logHost }) : '') +
     deployFactsHTML(evt, opts) +
-    (tabs.length ? tabsHTML(tabs, opts.tab) : '') +
-    '<div class="dp-pane" role="tabpanel"></div>'
+    (tabs.length ? tabsHTML(tabs, opts.tab, DEPLOY_DETAIL_ID) : '') +
+    tabPaneHTML(tabs, opts.tab, DEPLOY_DETAIL_ID)
   );
 }
 
@@ -1871,6 +1897,7 @@ if (typeof module !== 'undefined' && module.exports) {
     verdictHTML,
     factsHTML,
     tabsHTML,
+    tabPaneHTML,
     stackFactsHTML,
   };
 }
