@@ -1,10 +1,13 @@
 package deploy
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
+	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/fsatomic"
 )
 
@@ -124,5 +127,74 @@ func TestStackCommits_RoundTripAndForget(t *testing.T) {
 	loaded.forgetStack("web")
 	if _, ok := loaded.StackCommits["web"]; ok {
 		t.Error("forgetStack must drop the stack's commit base")
+	}
+}
+
+// A run that dies after one stack must not redeploy it next time: the state
+// on disk already records that stack's hashes and base while the next stack
+// runs, and the stack not yet reached stays unrecorded.
+func TestDeployAllStacks_SavesStateAfterEachStack(t *testing.T) {
+	baseDir := t.TempDir()
+	stateDir := t.TempDir()
+	makeStacks(t, baseDir, "alpha", "beta")
+
+	var onDisk *persistedState
+	runner := &recordingRunner{failFn: func(dir string, args []string) error {
+		if onDisk == nil && filepath.Base(dir) == "beta" && slices.Contains(args, "up") {
+			loaded, err := loadPersistedDeployState(stateDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			onDisk = loaded
+		}
+		return nil
+	}}
+	d := New(Config{Runner: runner, CommitReader: &fakeCommitReader{head: "head-sha"}, StateDir: stateDir})
+	cfg := &config.Config{
+		StacksBaseDir: baseDir,
+		Stacks:        []config.Stack{{Name: "alpha"}, {Name: "beta"}},
+	}
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if onDisk == nil {
+		t.Fatal("beta's up never ran, so the mid-run state was never read")
+	}
+	if len(onDisk.hashesFor("alpha")) == 0 {
+		t.Error("alpha's hashes must be on disk before beta deploys")
+	}
+	if got := onDisk.baseCommitFor("alpha"); got != "head-sha" {
+		t.Errorf("alpha's base on disk = %q, want head-sha", got)
+	}
+	if len(onDisk.hashesFor("beta")) != 0 {
+		t.Error("beta must not be recorded before it deployed")
+	}
+}
+
+// Checkpoints write only when the state changed, so an unchanged reconcile
+// tick does not rewrite state.yaml once per stack.
+func TestStateCheckpoint_WritesOnlyOnChange(t *testing.T) {
+	dir := t.TempDir()
+	state := newEmptyState()
+	state.Stacks["web"] = stackFileHashes{"f": "h"}
+	cp := newStateCheckpoint(dir, state)
+
+	if err := cp.save(state); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, stateFileName)); !os.IsNotExist(err) {
+		t.Fatalf("an unchanged state must not be written, stat err = %v", err)
+	}
+
+	state.Stacks["api"] = stackFileHashes{"f": "h2"}
+	if err := cp.save(state); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadPersistedDeployState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.hashesFor("api")) == 0 {
+		t.Error("a changed state must be written")
 	}
 }

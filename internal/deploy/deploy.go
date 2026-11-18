@@ -557,8 +557,23 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// outcome is the summary line the caller logs at the end (ADR-0042
 	// amendment).
 	slog.Debug("starting deploy run", "stacks", len(cfg.Stacks))
-	d.deployStacksGated(ctx, cfg, baseEnv, state, stackErrs)
-	d.finishRun(ctx, state)
+	head := d.headCommit(ctx)
+	d.deployStacksGated(ctx, cfg, baseEnv, state, stackErrs, head)
+	d.finishRun(state, head)
+}
+
+// headCommit returns the clone's HEAD the run deploys, or "" when there is no
+// commit reader or it cannot be read.
+func (d *Deployer) headCommit(ctx context.Context) string {
+	if d.commitReader == nil {
+		return ""
+	}
+	sha, err := d.commitReader.HeadCommitSHA(ctx)
+	if err != nil {
+		slog.Warn("could not read HEAD commit SHA", "err", err)
+		return ""
+	}
+	return sha
 }
 
 // resolveStackSet returns the effective config for this run. With stack
@@ -592,7 +607,7 @@ func (d *Deployer) resolveStackSet(cfg *config.Config) (*config.Config, []config
 // stable topological sort that keeps config order among stacks not otherwise
 // constrained) behind the dependency gate, and maintains the UI's run-plan
 // look-ahead while doing so.
-func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, baseEnv []string, state *persistedState, stackErrs []config.StackError) {
+func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, baseEnv []string, state *persistedState, stackErrs []config.StackError, head string) {
 	// Look-ahead for the UI: hash every stack upfront to learn which will deploy
 	// this run, so the header can show what is coming next. Skipped when the UI
 	// is off (no sink). The loop below re-evaluates each stack independently and
@@ -613,6 +628,7 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 	for _, se := range stackErrs {
 		gate.record(se.Stack, depBlocked)
 	}
+	checkpoint := newStateCheckpoint(d.stateDir, state)
 	for _, stack := range orderStacks(cfg.Stacks) {
 		// Resolve the effective rollback policy here, where the global default is
 		// in scope, so the deploy path (rollBackFailedDeploy) can honor an opt-out
@@ -621,6 +637,12 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 		stack.Rollback = &rollback
 		outcome := d.deployStackGated(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state, gate.decide(stack.DependsOn))
 		gate.record(stack.Name, outcome)
+		if head != "" {
+			state.advanceCommitBases(head)
+		}
+		if err := checkpoint.save(state); err != nil {
+			slog.Error("could not save deploy state", "stack", stack.Name, "err", err)
+		}
 	}
 
 	// Run finished: clear the look-ahead so the header returns to idle.
@@ -628,7 +650,7 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 }
 
 // finishRun persists the run's results and publishes the post-run views.
-func (d *Deployer) finishRun(ctx context.Context, state *persistedState) {
+func (d *Deployer) finishRun(state *persistedState, head string) {
 	// Record the current HEAD commit so future deploys can diff against it — but
 	// only when nothing is still queued. A change deferred by paused autosync has
 	// not deployed yet; advancing the base past it would make its eventual deploy
@@ -638,14 +660,10 @@ func (d *Deployer) finishRun(ctx context.Context, state *persistedState) {
 	//
 	// A stack's own base (ADR-0061) advances regardless of the queue: it only
 	// moves for the stacks this run left at their desired state.
-	if d.commitReader != nil {
-		if sha, err := d.commitReader.HeadCommitSHA(ctx); err != nil {
-			slog.Warn("could not read HEAD commit SHA", "err", err)
-		} else {
-			state.advanceCommitBases(sha)
-			if d.queue == nil || d.queue.Count() == 0 {
-				state.LastDeployedCommit = sha
-			}
+	if head != "" {
+		state.advanceCommitBases(head)
+		if d.queue == nil || d.queue.Count() == 0 {
+			state.LastDeployedCommit = head
 		}
 	}
 
