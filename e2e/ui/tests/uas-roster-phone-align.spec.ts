@@ -224,12 +224,12 @@ test.describe("Maske AS: a long version chip keeps its change whole", () => {
     skipper.setStackImage("web", "30.0.3-alpine-hardened-build");
     expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
 
-    const chip = page
-      .locator(
-        '[data-testid="deploy-row"][data-stack="web"][data-status="success"]',
-      )
-      .first()
-      .locator(".tag-delta");
+    // Until the redeploy settles, .first() is the startup row's single-token chip.
+    const successRows = page.locator(
+      '[data-testid="deploy-row"][data-stack="web"][data-status="success"]',
+    );
+    await expect(successRows).toHaveCount(2);
+    const chip = successRows.first().locator(".tag-delta");
     await expect(chip).toBeVisible();
 
     const box = await rect(chip);
