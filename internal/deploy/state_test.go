@@ -137,6 +137,11 @@ func TestDeployAllStacks_SavesStateAfterEachStack(t *testing.T) {
 	baseDir := t.TempDir()
 	stateDir := t.TempDir()
 	makeStacks(t, baseDir, "alpha", "beta")
+	seeded := newEmptyState()
+	seeded.LastDeployedCommit = "old-sha" // not a bootstrap run
+	if err := saveDeployState(stateDir, seeded); err != nil {
+		t.Fatal(err)
+	}
 
 	var onDisk *persistedState
 	runner := &recordingRunner{failFn: func(dir string, args []string) error {
@@ -196,5 +201,38 @@ func TestStateCheckpoint_WritesOnlyOnChange(t *testing.T) {
 	}
 	if len(loaded.hashesFor("api")) == 0 {
 		t.Error("a changed state must be written")
+	}
+}
+
+// A bootstrap run is not checkpointed: a kill midway must leave the state
+// empty, so the resumed run is a bootstrap run too and pulls nothing (ADR-0051).
+func TestDeployAllStacks_BootstrapRunSavesOnlyAtTheEnd(t *testing.T) {
+	baseDir := t.TempDir()
+	stateDir := t.TempDir()
+	makeStacks(t, baseDir, "alpha", "beta")
+
+	betaReached := false
+	runner := &recordingRunner{failFn: func(dir string, args []string) error {
+		if !betaReached && filepath.Base(dir) == "beta" && slices.Contains(args, "up") {
+			betaReached = true
+			if _, err := os.Stat(filepath.Join(stateDir, stateFileName)); !os.IsNotExist(err) {
+				t.Errorf("a bootstrap run must not save before it ends, stat err = %v", err)
+			}
+		}
+		return nil
+	}}
+	d := New(Config{Runner: runner, CommitReader: &fakeCommitReader{head: "head-sha"}, StateDir: stateDir})
+	cfg := &config.Config{
+		StacksBaseDir: baseDir,
+		Stacks:        []config.Stack{{Name: "alpha"}, {Name: "beta"}},
+	}
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if !betaReached {
+		t.Fatal("beta's up never ran, so the mid-run check never happened")
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, stateFileName)); err != nil {
+		t.Errorf("the bootstrap run must still save at its end: %v", err)
 	}
 }

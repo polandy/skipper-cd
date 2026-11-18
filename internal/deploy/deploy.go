@@ -637,16 +637,25 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 		stack.Rollback = &rollback
 		outcome := d.deployStackGated(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state, gate.decide(stack.DependsOn))
 		gate.record(stack.Name, outcome)
-		if head != "" {
-			state.advanceCommitBases(head)
-		}
-		if err := checkpoint.save(state); err != nil {
-			slog.Error("could not save deploy state", "stack", stack.Name, "err", err)
+		// A killed bootstrap run must leave the state empty, so its resume is a bootstrap run too (ADR-0051).
+		if !d.bootstrapRun {
+			d.checkpointState(checkpoint, state, head)
 		}
 	}
 
 	// Run finished: clear the look-ahead so the header returns to idle.
 	d.publishRunPlan(nil)
+}
+
+// checkpointState saves the state between two stacks, with the settled
+// stacks' bases already at head; last_deployed_commit waits for finishRun.
+func (d *Deployer) checkpointState(checkpoint *stateCheckpoint, state *persistedState, head string) {
+	if head != "" {
+		state.advanceCommitBases(head)
+	}
+	if err := checkpoint.save(state); err != nil {
+		slog.Error("could not save deploy state", "err", err)
+	}
 }
 
 // finishRun persists the run's results and publishes the post-run views.
