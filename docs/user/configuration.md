@@ -1,0 +1,822 @@
+# skipper-cd Configuration — Reference
+
+The configuration file is a YAML file passed via the `-config` flag (default: `/etc/skipper/skipper.yml`).
+
+For a guided walkthrough see the [Quickstart](index.md#quickstart). This page is the full reference for every field.
+
+---
+
+## Checking a Config
+
+```bash
+skipper -config /etc/skipper/skipper.yml -validate
+```
+
+Loads the config, prints what skipper would run with, and exits `0` (valid) or `1` (invalid) — no server, no deploy. When the repo clone already exists it also resolves the stack set, so a broken compose file or an invalid per-stack override shows up here instead of on the next push.
+
+- Unknown keys are **rejected**, not ignored: a typo like `env_file` for `env_files` fails the load rather than silently dropping the setting.
+- A key renamed in an earlier version fails with its current name: `working_dir` → `project_directory`, `health_check` → `deploy_health_check`, `health_poll_interval_seconds` → `runtime_health_poll_interval_seconds`.
+- A credential embedded in `repo_url` is masked in the report (`https://user:xxxxx@…`, and `https://xxxxx@…` for a bare access token), so sharing the output does not disclose it. An `ssh://git@…` login name is kept.
+- The report shows where the web UI's commit links will point (`commit links: https://forge.example.com/owner/repo/commit/<sha>`). That URL is usually derived from `repo_url` rather than configured, so this is the place to catch a wrong guess — set [`repo_web_url`](#top-level-fields) if it is not where your repository lives.
+
+---
+
+## Minimal Example
+
+The smallest working config. Stack discovery is on by default, so every `<stacks_base_dir>/<name>/docker-compose.yml` in the deploy repo is a stack — no `stacks:` list needed:
+
+```yaml
+repo_url: ssh://git@gitea.example.com/user/deploy.git
+stacks_base_dir: stacks                  # relative to repo_dir; omit for the repo root
+# webhook_secret: "your-secret-here"     # optional — enables the push webhook; reconcile runs without it
+```
+
+skipper clones the repo and deploys every discovered stack, then keeps it converged with a [reconcile loop](#periodic-reconcile) that re-syncs on a timer and redeploys only what changed; the signed webhook is an optional accelerator that makes a push land in seconds instead of at the next tick. `port` (8080), `metrics_port` (9120), `ui_enabled`, and `autosync` all take their defaults. Add a `stacks:` list only to override a discovered stack (hooks, `deploy_health_check`, …), or set `stack_discovery: false` to list the stacks manually instead.
+
+---
+
+## Full Example
+
+```yaml
+repo_url: ssh://git@gitea.example.com/user/nixos-config.git
+repo_dir: /var/lib/skipper/repo        # optional, this is the default
+repo_web_url: https://gitea.example.com/user/nixos-config   # optional; derived from repo_url when omitted
+branch: main                            # optional, default: main
+vars_file: /etc/skipper/vars.env        # optional
+command_timeout_seconds: 300            # optional, default: 300
+log_format: pretty                      # optional, default: pretty (colored console); "text" or "json" for machine-readable logs
+stacks_base_dir: modules                # relative to repo_dir (the clone); omit for the repo root
+project_directory_base: /etc/nixos/modules    # optional; see project_directory_base below
+project_directory_sync: true            # optional, default: false (keep that checkout up to date)
+webhook_secret: "your-secret-here"      # optional — enables the /webhook accelerator; reconcile runs without it
+port: 8080
+metrics_port: 9120
+ui_enabled: true                        # optional, default: true (live web UI on the webhook port)
+autosync: true                          # optional, default: true (pause deploys globally)
+stack_discovery: false                  # this example lists stacks manually; omit it to auto-discover them (the default)
+
+stacks:
+  - name: traefik
+    env_files:
+      - /run/secrets/rendered/skipper/compose.env
+
+  - name: gitea
+    # autosync: false                    # optional; pause just this stack (default: inherit global)
+    env_files:
+      - /run/secrets/rendered/skipper/compose.env
+
+  # project_directory_base above already derives this stack's project_directory as
+  # /etc/nixos/modules/nextcloud (matching the NixOS systemd service that
+  # also manages it) — nothing to repeat here.
+  - name: nextcloud
+    env_files:
+      - /run/secrets/rendered/skipper/compose.env
+
+  # A stack whose NixOS-managed directory doesn't follow the pattern still
+  # overrides project_directory explicitly; it wins over project_directory_base.
+  - name: legacy-app
+    project_directory: /etc/nixos/modules/legacy-app-v2
+    env_files:
+      - /run/secrets/rendered/skipper/compose.env
+
+# Optional: trigger nixos-rebuild when the host's configuration changes.
+nixos_rebuild:
+  flake: ".#myhost"
+  change_detection: derivation   # optional, default: derivation (only when this host's system changed); "files" for any .nix file or flake.lock
+```
+
+## Top-level Fields
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `repo_url` | string | yes | — | URL of the Git repository to clone and pull (supports SSH and HTTPS). A credential in it (`https://<token>@host/…`) appears on git's command line only at the clone and when the URL changes, not on every sync. |
+| `repo_dir` | string | no | `/var/lib/skipper/repo` | Local directory where the repository is cloned. skipper-cd manages this directory independently of any live checkout. Must be absolute when set. It is kept owner-only (`0700`, tightened on the next sync if wider), since its `.git/config` holds `repo_url` and any credential in it. |
+| `repo_web_url` | string | no | derived from `repo_url` | The repository's page on the forge, e.g. `https://forge.example.com/owner/repo`. Every commit SHA in the web UI links to `<repo_web_url>/commit/<sha>` (Gitea and GitHub path shape). Left empty it is derived from `repo_url` — credentials, `.git` and any SSH port are dropped, and SSH forms become `https://`. Set it when the clone URL is not the web address (a mirror, a clone from a local path); when neither yields a URL, SHAs render as plain text. Must be `http(s)`. |
+| `branch` | string | no | `main` | Git branch to track. Used for `git clone --branch` and `git reset --hard origin/<branch>`. |
+| `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. When set, it must exist and be readable. |
+| `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |
+| `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
+| `stacks_base_dir` | string | no | repo root | Base directory holding one subdirectory per stack (`<stacks_base_dir>/<name>/docker-compose.yml`); always the source of the compose file and change detection. Relative to `repo_dir` (the clone) — e.g. `stacks`, not `/var/lib/skipper/repo/stacks`. Omit it for the repo root itself. An absolute value, or one escaping the clone via `../`, is rejected at startup. |
+| `project_directory_base` | string | no | — | Base directory a stack's `project_directory` is derived from as `<project_directory_base>/<name>` when the stack does not set its own `project_directory` (see [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity)). Avoids repeating a common prefix (e.g. a NixOS modules directory) across stacks. Must be absolute — checked at startup. |
+| `project_directory_sync` | bool | no | `false` | Fast-forward the `project_directory_base` checkout once per run, before any stack deploys, so a stack's relative bind mounts serve current content (see [Keeping the project directory current](#keeping-the-project-directory-current)). Requires `project_directory_base` — setting it without one is rejected at startup. |
+| `webhook_secret` | string | no | — | HMAC-SHA256 secret validating incoming webhook payloads (Gitea and GitHub/Forgejo signatures). Optional: the webhook only accelerates the [reconcile loop](#periodic-reconcile), so leaving it empty is valid and disables the `/webhook` endpoint (it then rejects every request); when set, every request is signature-verified. Rejected only if it's empty **and** `reconcile_interval_seconds` is `0`, since then nothing would deploy after startup. |
+| `port` | int | no | `8080` | Port on which the webhook HTTP server listens. Exposes `/webhook` and `/healthz` (200 while the last repository sync succeeded or none ran yet, 503 with the error when it failed). Must be 1–65535 and differ from `metrics_port`. |
+| `metrics_port` | int | no | `9120` | Port on which the Prometheus metrics HTTP server listens. Exposes `/metrics`. Must be 1–65535 and differ from `port`. |
+| `listen_address` | string | no | every interface | IP address the webhook/UI server on `port` binds to, e.g. `127.0.0.1` behind a reverse proxy on the same host. An IP address or `localhost`, without a port. Does not affect `metrics_port` (see [Exposing the web UI](#exposing-the-web-ui)). |
+| `allowed_hosts` | list | no | any host | Host names the web UI and its API answer, e.g. `[skipper.example.com]`. Any other `Host` header gets `421`; `/webhook` and `/healthz` answer every host. An entry without a port matches any port (see [Exposing the web UI](#exposing-the-web-ui)). |
+| `ui_enabled` | bool | no | `true` | Serve the web UI (live deploy dashboard, event history, [autosync](autosync.md) controls) on the webhook `port`. Also required for [stack health](#stack-health), [service icons](#service-icons), the deploy audit API, and the [PWA](pwa.md). |
+| `autosync` | bool | no | `true` | Global default for whether detected changes deploy automatically. Set to `false` to pause all stacks (a per-stack `autosync` still overrides it). See [Autosync](autosync.md). |
+| `stacks` | list | no | — | List of Docker Compose stacks (see [Stack Fields](#stack-fields)). Under discovery (the default) it is optional and holds only per-stack overrides, matched to discovered directories by `name`. With `stack_discovery: false` this list *is* the stack set. |
+| `stack_discovery` | bool | no | `true` | Discover the stack set from the deploy repo: every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack; per-stack overrides come from the optional `stacks:` list above (see [Stack discovery](#stack-discovery)). Set `false` to list the stacks in this file yourself. |
+| `nixos_rebuild` | object | no | — | NixOS rebuild configuration (see [NixOS](nixos.md)). Omit the section entirely to disable. |
+| `icons` | object | no | — | Web-UI service-icon configuration (see [Service Icons](#service-icons)). Omit to use defaults. |
+| `notifications` | list | no | — | Outbound notification targets messaged on terminal deploy outcomes (see [Notifications](#notifications)). Omit to disable. |
+| `ui_theme` | string | no | `catppuccin` | Web UI colour palette: one of `catppuccin`, `nord`, `solarized`, `gruvbox`, `rose-pine`, `flake` (see [Web UI Theme](#web-ui-theme)). |
+| `ui_theme_switcher` | bool | no | `false` | Show the in-UI theme picker so a browser can try other palettes locally. Off by default — the deployed `ui_theme` is then fixed (see [Web UI Theme](#web-ui-theme)). |
+| `runtime_health_poll_interval_seconds` | int | no | `30` | How often the web UI polls its stacks' runtime health (see [Stack health](#stack-health)). `0` disables the health view. Only used when `ui_enabled`; the poll also runs only while a browser is connected. |
+| `reconcile_interval_seconds` | int | no | `300` | How often skipper re-runs its git sync + deploy on a timer — the convergence baseline that keeps each host caught up to the repo with or without a webhook (see [Periodic reconcile](#periodic-reconcile)). `0` disables it, leaving the webhook + startup as the only triggers (valid only when `webhook_secret` is set). Runs headless — not tied to the UI. |
+| `self_heal` | bool | no | `false` | Global default for whether a stack the health poller finds degraded is automatically restored to its running state by a corrective redeploy (see [Self-heal](#self-heal)). A per-stack `self_heal` overrides it. Requires `runtime_health_poll_interval_seconds` > 0. |
+| `update_check` | section | no | on, every 6h | Read-only registry [update check](#update-check): shows an "update available" marker in the Stacks view, and optionally sends one notification per new update. `interval_seconds` (default `21600`, `0` disables) and `notify` (default `false`). It never deploys anything. |
+| `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce), and consecutive healthy polls that end an outage. Must be ≥ 1. |
+| `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
+| `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0; an explicit `0` disables the cooldown. |
+| `rollback` | bool | no | `true` | Global default for whether a failed deploy is rolled back to the previous compose version. A per-stack `rollback` overrides it. Set `false` to make failures fail loud instead (see [Disabling rollback](#disabling-rollback)). |
+| `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `runtime_health_poll_interval_seconds` > 0. |
+| `host_name` | string | no | OS hostname | This instance's own label in the merged [multi-host](#multi-host) view. Only meaningful when other instances fan this one in, or when this one lists `peers`. |
+| `peers` | list | no | — | Other skipper instances whose read data this one fans into a single merged UI (see [Multi-host](#multi-host)). Each entry is `{ name, url }`. Omit for a single-host instance. |
+
+## Exposing the web UI
+
+skipper ships no login: the UI and its API answer whoever reaches `port`. Put it behind a reverse proxy or auth gateway for access control, and narrow what reaches it:
+
+```yaml
+listen_address: 127.0.0.1         # only the local reverse proxy can connect
+allowed_hosts:
+  - skipper.example.com           # the name the UI is opened by
+```
+
+- `allowed_hosts` guards against **DNS rebinding**: a website a LAN user visits can point its own name at skipper's address and then read the UI's API, or pause autosync, from the browser. Its requests carry the attacker's name in `Host`, which skipper then refuses with `421`. Set it on any install whose UI is reachable from a browser — a proxy-less homelab one above all.
+- List every name the UI is opened by, with a port when the browser shows one (`skipper.lan:8080`) or without one to allow the name on any port. Include `localhost` if you also open it directly on the host. No wildcards.
+- `/webhook` and `/healthz` answer every host, so the forge and health probes need no entry.
+- A [multi-host](#multi-host) primary reaches each peer by the host in its `url`; a peer that sets `allowed_hosts` must list that name.
+- `listen_address` binds only the main `port`; `metrics_port` keeps listening on every interface. Running skipper [in a container](docker.md), leave it empty and restrict the published port instead (`127.0.0.1:8080:8080`) — inside the container, loopback is the container itself.
+
+Every response also carries a strict `Content-Security-Policy` (scripts, styles, images, fonts and connections from skipper itself only), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`. A proxy in front does not need to add them.
+
+## Pretty console output
+
+With the default `log_format: pretty`, startup logs the effective stack set (name, hook counts, watch dirs), and every sync-and-deploy run is narrated with icons and color, mirroring the web UI's Deploys view:
+
+```
+14:32:07  ▣ stacks  · 4 discovered
+14:32:07  ◆ nextcloud  hooks pre_deploy·1 post_deploy·1   watch ./nextcloud
+14:32:08  ▸ nextcloud  changed · 2 files
+14:32:08    ↳ nextcloud/docker-compose.yml
+      @@ -8,7 +8,7 @@ services:
+         app:
+      -    image: nextcloud:30.0.4-apache
+      +    image: nextcloud:30.0.6-apache
+           restart: unless-stopped
+14:32:08    ↳ pre_deploy [1]
+14:32:20  ✓ nextcloud  deployed
+14:32:41  ↺ arr-stack  rolled back  — health check failed: GET /ping: context deadline exceeded
+14:32:41  ↺ run complete  1 deployed · 1 rolled back · 1 skipped
+```
+
+Each changed file is listed with its **diff** below it, in the usual add/remove/hunk colours — the console has no way to open a diff on demand the way the web UI does, so it prints the one the deploy recorded. It is the same content, and it is bounded the same way: 10 KB per file, 50 KB per deploy. The diff is part of the `file changed` record, so `text` and `json` carry it too as a `diff` field; drop that field in the shipper if you do not want it there.
+
+Color auto-disables when stdout is not a terminal (e.g. redirected to a file) or `NO_COLOR` is set; icons still render. Use `log_format: text` or `log_format: json` for a log shipper (Loki, journald) or any other machine consumer.
+
+**A run that changes nothing logs one line** — its summary:
+
+```
+14:37:41  · run complete  12 skipped
+```
+
+The [reconcile loop](#periodic-reconcile) syncs every few minutes whether or not anything moved, so the log reports what *happened*, not that it looked. An unchanged stack is still a `skipped` deploy event, still counted in the summary, and still shows its state in the web UI. There is no verbosity setting: filtering is done in the web UI's log view, on what it already has, without a restart.
+
+## Stack Fields
+
+Each entry under `stacks` configures one Docker Compose stack.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | string | yes | — | Name of the stack. The compose file is always read from `<stacks_base_dir>/<name>/docker-compose.yml`. Also used as the key in the deploy state file. |
+| `project_directory` | string | no | `<project_directory_base>/<name>` if set, else unset | Absolute path passed as `--project-directory` to `docker compose`. Controls Docker Compose project identity (container labels) and `.env` file loading. Change detection and the compose file always come from `<stacks_base_dir>/<name>`. Must be absolute — checked at startup. See [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity). |
+| `env_files` | list of strings | no | — | Paths to `KEY=VALUE` env files whose contents are injected into the `docker compose` environment. These files are also hash-tracked: a change to any declared env file triggers a redeploy of that stack. With `stack_discovery: false` every entry must be absolute. Under discovery, a relative entry resolves against `stacks_base_dir` (see [Stack discovery](#stack-discovery)). Format and limits: [Env file format](#env-file-format). |
+| `watch_dirs` | list of strings | no | — | Paths to directories whose contents are recursively hash-tracked. Any file change inside a watched directory triggers a redeploy of that stack. Useful for stacks with auxiliary configuration directories (e.g. Grafana provisioning). Same absolute-path rule as `env_files` above. |
+| `on_demand_containers` | list of strings | no | — | Container names to stop after a successful deployment. Use this for containers managed by an on-demand scheduler (e.g. Sablier): skipper-cd starts them via `docker compose up`, then immediately stops them so the scheduler can control their lifecycle. The [Stack health](#stack-health) view and the [health watch](#health-watch) know about this: an exited on-demand container reads as `stopped` (its intended idle state) whatever its exit code — never as `unhealthy`. Docker Compose auto-generates container names (`<project>-<service>-1`) unless the service sets `container_name:`; a name here that matches no declared `container_name` logs a startup-adjacent warning at deploy time (not a hard error, since the auto-generated name may still happen to be right) — set `container_name:` on the corresponding service to make it deterministic and checked. |
+| `icon` | string | no | — | Icon-set slug for this stack's web-UI icon (e.g. `jellyfin` for a stack named `media`). Overrides the auto-match on the stack name. See [Service Icons](#service-icons). Purely visual — never hash-tracked. |
+| `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
+| `deploy_health_check` | section or bool | no | automatic if the compose file has a `healthcheck:` (except on-demand stacks) | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this as a section to change the timeout or add an HTTP probe. A stack with `on_demand_containers` is never auto-gated. The scalar `false` explicitly disables the gate (keep a compose `healthcheck:` without gating on it); `true` enables it at the defaults. See [Health-check-gated rollback](#health-check-gated-rollback). |
+| `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
+| `rollback` | bool | no | *inherit* | Overrides the global `rollback` for this stack (in both directions). When unset, the stack follows the global setting (on). Set `false` for a stateful stack that must not be reverted over forward-migrated data. See [Disabling rollback](#disabling-rollback). |
+| `update_check` | bool | no | `true` | Set `false` to exclude this stack from the registry [update check](#update-check) — for a stack meant to lag behind upstream, or whose registry is unreachable. Never hash-tracked. |
+| `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
+| `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
+| `rollout` | section | no | — | Deploy the named services with a zero-downtime cutover (new container alongside the old, then drain) instead of an in-place recreate. Needs a reverse proxy in front of the service (only Traefik tested). Never hash-tracked. See [Zero-downtime rollout](#zero-downtime-rollout). |
+
+## Keeping the project directory current
+
+`project_directory` sets `--project-directory`, and Docker Compose resolves every relative path in a compose file against it — bind mounts included. When it points at a checkout separate from skipper's clone (the usual case with `project_directory_base`), the mounted content only advances when someone pulls that checkout by hand. The stack deploys, the container runs, and it serves a file older than the compose file that mounts it.
+
+`project_directory_sync: true` makes skipper fast-forward that checkout itself, once per run, **before** any stack deploys — so a container recreated by the run reads the new file, not the one after it.
+
+```yaml
+project_directory_base: /srv/modules
+project_directory_sync: true
+```
+
+- **Fast-forward only.** No merge, no rebase, no reset. The checkout is a working copy someone edits.
+- **A clean tree is required.** Modified *tracked* files stop it; untracked files are ignored (a fast-forward never touches them).
+- **A diverged branch, or one with no upstream, stops it** too — those need a human.
+- **A refusal never blocks the deploys.** The stacks converge against the content the checkout has, and the reason is reported once — row, log line, notification — as a `_project_dir` row, with the `skipper_project_dir_sync_error` [metric](metrics.md) raised for as long as it lasts. A fast-forward that works is silent.
+- **A global [autosync](autosync.md) pause stops it too.** Running containers mount that tree, so a paused host stops changing there as well; a per-stack pause does not apply (the checkout is shared).
+- **Off by default**, requires `project_directory_base`, and does nothing when that base is inside the repo clone — every sync already resets that.
+
+## First run and state loss
+
+skipper decides what to deploy by comparing each stack's files against the hashes in [`state.yaml`](state.md). With nothing recorded — a first start, a new host, a lost or corrupt state file — every stack counts as changed and is deployed.
+
+That run **converges the host but does not refresh images already on it**: `docker compose pull` is skipped, and a `build:` service builds without `--pull`. Nothing else changes.
+
+Why: `docker compose up -d` recreates nothing when a container already matches, so re-deploying a stack that is already correct is harmless. A forced `pull` is not — under a floating tag (`:latest`, `:2`) it would move **every service on the host** to whatever it resolves to today, unattended, in one run.
+
+- **Fresh install** — the images aren't on the host, so compose fetches each one when it creates the container. Unchanged.
+- **Stacks already running the repo's version** (migrating a host to skipper, or restoring a lost `state.yaml`) — nothing is pulled and nothing is recreated. The run is a no-op.
+- **The repo has moved on** — the stack is recreated from the image already on the host, so it converges without a surprise version jump. The next change to it pulls normally.
+
+No configuration: this applies to any run that starts from an empty state, and only to that run.
+
+Back up `state.yaml` (and the rest of `/var/lib/skipper`) along with your other host state — it is what keeps a restart from re-deploying every stack.
+
+## Stack discovery
+
+Stack discovery is **on by default** (`stack_discovery: true`; set `false` to list the stacks yourself). The **stack set** is discovered from the deploy repo — every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack — so adding or removing a stack is a single git push. Per-stack **overrides** live in this one config's optional `stacks:` list, matched to discovered directories by `name`:
+
+```
+deploy-repo/
+└── stacks/               # = stacks_base_dir
+    ├── gitea/docker-compose.yml
+    ├── traefik/docker-compose.yml
+    └── wip/docker-compose.yml
+```
+
+```yaml
+# host config (skipper.yaml)
+stack_discovery: true
+stacks_base_dir: stacks     # relative to repo_dir; omit to discover from the repo root
+stacks:                     # optional — only the exceptions
+  - name: traefik
+    depends_on: [gitea]
+    deploy_health_check: { url: http://localhost:8080/ping }
+  - name: wip
+    disabled: true          # discovered, deliberately not deployed
+```
+
+- Every directory under `stacks_base_dir` with a `docker-compose.yml` is a stack; name = directory name, deploy order alphabetical (plus `depends_on`). Defaults apply — a bare directory with no `stacks:` entry is a fully functional stack.
+- **Fields** — the [Stack Fields](#stack-fields) above, plus `disabled`. An entry's `name` must match a discovered directory (a typo fails that entry). Relative `env_files`/`watch_dirs` paths resolve against `stacks_base_dir`; a relative path that escapes it via `../`, or that does not exist, fails that stack entry (absolute paths are unrestricted and not existence-checked — the host-secret escape hatch).
+- **`disabled: true`** — parked: not deployed, not health-checked; a running stack keeps running. The web UI lists parked names in a `disabled` line below the deploy table.
+- **Removing a stack** — deleting its directory takes it out of the set; its containers are **not** touched. The run that first sees it gone records a `removed` deploy event against the removing commit, so the history says when the stack stopped being managed, and the still-running project is listed as orphaned (see [State](state.md#orphaned-stacks)). A run that discovers no stacks at all reports nothing removed — that reads as a broken clone, not a deleted fleet.
+- **One config file** — there is no separate in-repo override file. A leftover `<stacks_base_dir>/skipper.yaml` in the clone is **not read** and fails the whole stack phase loudly (a `_config` row), so un-migrated overrides never silently revert stacks to defaults.
+- **Config edits redeploy** — changing a stack's effective config (e.g. its `watch_dirs`) redeploys exactly that stack. Because the config is host-side, the change is not a tracked repo file, so the UI shows the redeploy without a config diff (the diff is in the host's own git, e.g. `/etc/nixos`).
+- **Validated every sync** — because discovery runs against the repo clone, each stack is checked up front, not only when it next deploys: its `docker-compose.yml` must parse, any relative `env_files`/`watch_dirs` must exist, and any `rollout` service must be present and eligible. A failure shows on the stack's row and excludes only that stack.
+- **Reported once** — a configuration error stands until someone fixes it, so it is reported (row, log line, notification) when it appears and again only when its message changes — not on every sync in between. The stack stays excluded, and its dependents stay blocked, the whole time; the `skipper_stack_config_error` [metric](metrics.md) is what stays raised while the error lasts. Restarting skipper-cd reports each standing error once more.
+- **Self-heal** — activation is global-only here: the poller runs only when the host config sets `self_heal: true`. A per-stack `self_heal: true` cannot turn it on by itself (it never activates); once global is on, per-stack `self_heal: false` opts a stack out. A `stacks:` override that sets `self_heal: true` while the global flag stays off logs a startup warning, since it looks like a working opt-in but silently never activates.
+
+## Health-check-gated rollback
+
+Without any gate, a rollback only happens when `docker compose up` itself fails. A deploy whose containers *start* but stay broken (crash-loop, 500s) would be marked successful. A `healthcheck:` in the compose file closes that gap automatically (see Stage 1 below); a `deploy_health_check` section in this config adds an HTTP probe on top, or tunes the timeout:
+
+```yaml
+stacks:
+  - name: whoami
+    deploy_health_check:
+      timeout_seconds: 60                # optional, default: 60
+      url: http://localhost:8080/health  # optional HTTP probe
+```
+
+The gate has two stages.
+
+### Stage 1 — the compose healthcheck (automatic)
+
+The `healthy` state comes from a [`healthcheck:`](https://docs.docker.com/reference/compose-file/services/#healthcheck) defined on a service in your compose file. **This is the exposure-free path: the healthcheck command runs *inside* the container, so nothing needs a published port.** For a container whose endpoint is not reachable from the host, this is the mechanism to use:
+
+```yaml
+# docker-compose.yml
+services:
+  web:
+    image: myapp:latest
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]  # localhost = inside the container
+      interval: 5s
+      retries: 5
+```
+
+As soon as any service in the stack's compose file declares a `healthcheck:`, skipper-cd applies this gate **automatically** — no `deploy_health_check` section needed in this config at all. `docker compose up` runs with `--wait --wait-timeout 60` (the default), so the `up` fails and the deploy rolls back unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
+
+Add an explicit `deploy_health_check` section only to change the default 60s timeout, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `deploy_health_check` itself.
+
+!!! warning "A healthcheck's first probe waits for `interval` — and can lose the race against the gate"
+    Docker runs a service's **first** health probe only after `interval` has elapsed. A healthcheck with `interval: 60s` and no `start_period`/`start_interval` therefore cannot prove health before the default 60-second wait budget expires — the first probe and the timeout fire in the same instant, and whether the deploy succeeds or rolls back is a coin flip, even though the container itself came up fine within seconds. The telltale symptom: a deploy is marked `rolled_back` with `docker compose up: exit status 1` (often as `dependency <service> failed to start` from a dependent container), and the **identical commit deploys cleanly on the next retry**. Before suspecting the new image, check the healthcheck timings. The fix is fast probing during startup only, which keeps the slow steady-state cadence:
+
+    ```yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 60s        # steady-state cadence stays slow
+      start_period: 60s
+      start_interval: 5s   # fast probes while starting (Docker Engine 25+ / Compose 2.20+)
+    ```
+
+    Alternatively, raise `timeout_seconds` comfortably above the largest `interval` in the stack — but that slows down every legitimate rollback by the same margin.
+
+**On-demand stacks are never auto-gated.** A stack with [`on_demand_containers`](#stack-fields) is stopped right after `up`, so skipper skips the automatic gate for it even when its compose file declares a `healthcheck:` — `--wait` would cold-start the on-demand container only for skipper to stop it again, and a slow warm-up would time out into a spurious rollback. No config is needed; set an explicit `deploy_health_check` only if you deliberately want a gate on such a stack.
+
+**Opting out on any other stack.** To keep a compose `healthcheck:` (for external monitoring, `docker ps` status, or an orchestrator) *without* letting skipper `--wait` on it and roll back, set the scalar `deploy_health_check: false`. It overrides the automatic gate so the stack deploys with a plain `up`. The scalar `deploy_health_check: true` is the inverse — gate on at the defaults, equivalent to an empty `deploy_health_check: {}` mapping.
+
+```yaml
+stacks:
+  - name: metrics-exporter
+    deploy_health_check: false   # compose healthcheck is for monitoring; don't gate the deploy on it
+```
+
+### Stage 2 — the HTTP probe (optional)
+
+Only when `url` is set: after a successful `up`, skipper-cd GETs the URL every 2 seconds until it answers with a 2xx status; anything else for `timeout_seconds` fails the deploy. The probe runs **from the skipper-cd host**, so the URL must be reachable from there (a published port on `localhost`, or a routable address via a reverse proxy). Use it when the stack has no internal `healthcheck:` but does expose a reachable endpoint, or as an extra end-to-end check on top of stage 1.
+
+A failure in either stage triggers the regular rollback: the previous compose file is restored from the commit the stack last ran, the deploy is marked `rolled_back` (events, metrics and [notifications](#notifications) all see that status), and the change is [held](#held-changes) until a new push or a retry.
+
+The rollback itself is verified through the same gate: its `up` also runs with `--wait`, and the HTTP probe (if configured) must pass again. So `rolled_back` guarantees the old version is actually healthy again. If the restored version *also* fails the gate — typically an environment problem such as a dead database or a broken secret — the deploy is marked **`rolled_back_unhealthy`** instead: the stack sits on the old compose file but needs attention *now*, because no version of it is verified healthy.
+
+!!! warning "Rollback restores the compose file, not your data"
+    A rollback only reverts the `docker-compose.yml` (image tag and config) to the last deployed commit — it does **not** roll back volumes, databases, or anything on disk. If the failed version already ran a **schema migration** or otherwise changed persistent data, the restored old image now runs against forward-migrated data. The health gate may still pass, so the stack looks `rolled_back` and healthy while being subtly broken — and many migrations can't be undone anyway. For stateful stacks, back up first with a [`pre_deploy` hook](#deploy-hooks) (e.g. `pg_dump`), and consider [disabling rollback](#disabling-rollback) so a failure fails loud instead of reverting over migrated data. See also [zero-downtime rollout](#zero-downtime-rollout) caveats for stacks that migrate on start.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
+| `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
+
+> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Stacks with `on_demand_containers` are excluded from the automatic gate for this reason; for a deliberate one-shot container on a non-on-demand stack, set `deploy_health_check: false` to opt out (even if the compose file has a `healthcheck:`), or model the one-shot as a [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependency.
+
+## Disabling rollback
+
+Rollback is on by default. For a **stateful stack that runs irreversible, forward-only migrations**, reverting the compose file over already-migrated data is usually worse than the failed deploy — so you can turn rollback off and have a failure **fail loud** instead:
+
+```yaml
+stacks:
+  - name: nextcloud
+    rollback: false          # don't revert; a failed deploy stays failed
+```
+
+Set it globally with a top-level `rollback: false` (a per-stack `rollback: true` then opts a stack back in).
+
+When rollback is off and a deploy fails (`up`, health gate, or a `post_deploy` hook):
+
+- The deploy is marked **`failed`** — events, metrics and [notifications](#notifications) all see that status.
+- The **failed containers are left running** for inspection (skipper does not stop them); read their logs or `exec` in to diagnose.
+- The change is [held](#held-changes): it waits for the next push or a retry, instead of being redeployed on every [reconcile](#periodic-reconcile). Reverting the change in Git brings the stack back to the last deployed version.
+
+This only disables the compose-file restore. Keep `deploy_health_check` alongside it if you still want failures **detected** and reported (just not reverted).
+
+## Held changes
+
+A change whose new version **failed after it started** — `up` failed, a [health gate](#health-check-gated-rollback) or a `post_deploy` hook failed, or a [zero-downtime rollout](#zero-downtime-rollout) cutover failed — is **held**. The same inputs fail the same way, so skipper does not redeploy them on every [reconcile](#periodic-reconcile) tick. The stack stays on the version the rollback restored (or, with [rollback disabled](#disabling-rollback), on the failed one), and the failure is reported once.
+
+A hold is released by:
+
+- **A new push that changes the stack** — any tracked input (compose file, env files, vars file, watched dirs, Dockerfiles, the stack's deploy config). The new version deploys as usual.
+- **A retry** — the **retry** button next to the stack's `held` chip in the Stacks view, or `POST /api/stacks/<name>/retry`. That deploys the held change once more; if it fails again, it is held again. Use it when the cause was outside the change, for example a database that was down.
+- A revert that restores the stack's last deployed inputs, and removing the stack. Before a revert releases the hold, skipper brings the containers back to the last deployed version with one `docker compose up -d --remove-orphans` (plus `--build`, without `--pull`, for a stack that builds its images). That replaces a failed version left running with [rollback disabled](#disabling-rollback) or applied by hand, and removes services only that version declared. It runs no hooks, no pull and no health gate, and stops `on_demand_containers` again afterwards. If it changed what runs, it is reported as a `success` event listing the services; otherwise as `skipped`. If the `up` fails, the stack stays held and the next tick tries again.
+
+A failure **before** any container was touched — a `pre_deploy` hook, `pull`, `build` — may be transient (a registry hiccup), so it is retried, but not on every tick:
+
+- After the first failure the change waits 5 minutes, after the second 10 minutes. Other stacks deploy as usual meanwhile.
+- The third consecutive failure of the same inputs holds the change like any other hold. A deterministic failure — a broken `RUN` step, an apt pin the mirror no longer ships — therefore costs three attempts, not one per tick.
+- While it waits, the Stacks view's chip reads `backoff` and says when the next attempt is due; its **retry** button attempts the change at once. A new push, a revert or removing the stack ends the wait like it releases a hold, and a successful attempt clears it.
+- Each attempt is reported like any failed deploy. A deploy interrupted by skipper shutting down is not counted.
+
+While a stack is held or waiting, its changed [dependents](#deploy-ordering) stay `blocked`. Holds and waits are kept in `state.yaml` (`held`), so they survive a restart, and the `skipper_stack_held` gauge carries the standing condition for alerting — only for a hold, since a wait ends on its own. The run summary counts held stacks; the Deploys view shows no row per tick, since the failure row already says what happened.
+
+## Deploy hooks
+
+Run a shell command around a stack's deploy — most often a **backup before it updates**:
+
+```yaml
+stacks:
+  - name: paperless
+    hooks:
+      pre_deploy:
+        - "docker exec paperless-db pg_dump -U paperless | zstd > /backup/paperless-$(date +%F-%H%M).sql.zst"
+      post_deploy:
+        - "curl -fsS http://localhost:8000/api/health/"
+      timeout_seconds: 120   # optional; per-hook, capped by command_timeout_seconds
+```
+
+- Each entry is one `sh -c` command line, run in order. Env = the stack's deploy environment plus `SKIPPER_STACK` and `SKIPPER_HOOK` (`pre_deploy`/`post_deploy`); working directory = the stack's project directory.
+- `pre_deploy` runs **before any container is touched** — the old version is still up, so a `docker exec … pg_dump` backs up the running old version. A failing `pre_deploy` hook aborts the deploy before pull/up, with no rollback (nothing changed); the next sync retries. On a stack's first-ever deploy there is nothing to back up yet — guard the command if that matters.
+- `post_deploy` runs after a successful `up` (and health gate). A failing `post_deploy` hook **rolls the deploy back** to the previous version, exactly like a `deploy_health_check` failure — even without a `deploy_health_check` set.
+- Hooks are **not** hash-tracked: editing a hook does not trigger a redeploy; it takes effect on the stack's next deploy. (A hook that runs a script under a `watch_dirs` entry still redeploys when that script changes.)
+- Hooks run only when the stack actually deploys — never on a skip, a self-heal, or a rollback.
+- `timeout_seconds` bounds each hook; `command_timeout_seconds` is the hard ceiling (a larger value has no effect — and logs a startup warning). For a backup slower than that, raise `command_timeout_seconds`.
+
+In the web UI, a stack with hooks shows a **hook badge** on its row (in both the Deploys and Stacks views) with a `pre+post` count — click it to see the configured commands. While a deploy runs a hook, the row shows which one is running (`pre_deploy hook 1/2`); the logs icon there opens the hook's live output in a log panel, inline on the same page.
+
+## Zero-downtime rollout
+
+Recreating a service in place stops the old container before the new one serves — a brief gap. `rollout` closes that gap: skipper starts the new container alongside the old, waits for it to become healthy, then drains the old one, so a healthy container is serving the whole time.
+
+```yaml
+stacks:
+  - name: dashboard
+    rollout:
+      services: [web]              # only these roll; every other service recreates in place
+      health_timeout_seconds: 60   # optional; default = deploy_health_check timeout, else 60
+      drain_seconds: 5             # optional; hold the old container this long after the new one is healthy
+```
+
+**How it works.** For each listed service, skipper starts a second container, waits for its `healthcheck` to pass, waits `drain_seconds`, then stops and removes the old container. The reverse proxy in front of the service is what shifts traffic onto the new container and stops using the old one — skipper does no proxy configuration.
+
+**Requirements.**
+
+- A **reverse proxy** in front of the rolled services that load-balances across a service's containers by health and stops sending traffic to one once it is removed. **Only Traefik (v3) has been tested**; any proxy with these properties should work, but that is untested. Route the service through the proxy the way you already do (e.g. Traefik Docker labels) — there is nothing rollout-specific to configure on the proxy.
+- Each rolled service must **name a service defined in the stack's `docker-compose.yml`**, **publish no host `ports:`** (two replicas would collide on the port — route it through the proxy), set no fixed **`container_name:`** (compose cannot scale a named container), and define a compose **`healthcheck:`** (the readiness signal). These are checked at deploy time, and in **stack-discovery mode** also at discovery — every sync, before any deploy — so a mistake surfaces in the Stacks view immediately (since `rollout` is not hash-tracked, an edit alone would otherwise not redeploy to reveal it).
+- **`drain_seconds`** waits that many seconds after the new container is healthy before removing the old one, so the proxy can start routing to the new container while the old is still up (the equivalent of `docker-rollout`'s `--wait-after-healthy`). With Traefik, adding a **retry** middleware to the service as well makes a cutover drop from seconds of `502`s (in-place recreate) to at most a single sub-second blip.
+- Only listed services roll. Everything else — databases, anything with a volume lock or a published port — recreates in place as usual.
+- **Failure is zero-downtime too:** if the new container never turns healthy, skipper removes it and leaves the old one serving. The deploy is reported as `rolled_back`.
+- `rollout` is **not** hash-tracked: switching a service to/from rollout does not itself redeploy.
+- On a service's first-ever deploy (nothing running yet) there is no gap to avoid, so it comes up with a plain `up`.
+
+## `vars_file`
+
+The `vars_file` is a `KEY=VALUE` env file containing non-secret configuration values (e.g. a domain name) that should be available as environment variables during `docker compose` execution. This is useful for `${VAR}` substitutions in Docker Compose files without storing the values in a secrets manager.
+
+**Example `vars.env`:**
+```env
+DOMAIN=example.com
+INTERNAL_IP=192.168.1.10
+```
+
+**Environment variable precedence** (highest wins):
+1. `env_files` entries (stack-level, typically secrets)
+2. `vars_file` values (global non-secret values)
+3. Process environment (`os.Environ()`)
+
+The `vars_file` is included in hash tracking — any change to it triggers a redeploy of all stacks.
+
+### Env file format
+
+The `vars_file` and every `env_files` entry use the same format, and a file that breaks it fails the deploy with an error naming the file and line:
+
+- One `KEY=VALUE` per line; blank lines and lines starting with `#` are skipped. The value is taken verbatim (no quote stripping, no inline comments).
+- The key must match `[A-Za-z_][A-Za-z0-9_]*` — `export KEY=…` is rejected.
+- Keys that change how skipper runs `docker compose` and hooks are reserved and rejected: `PATH`, `HOME`, `BASH_ENV`, `ENV`, `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH` and any `LD_*`. Set those in the service's own environment instead.
+- At most 1 MB per file.
+- In a deploy's diff — the web UI, the deploy history and the log — these files show their keys only: every value is replaced by `***`, so a rotated secret is not displayed. A removed stack's diff masks every file but its compose file the same way.
+
+### File limits
+
+Every file skipper reads from a stack — the compose file, env files, the vars file, Dockerfiles and the contents of `watch_dirs` — must be a regular file. A symlink is followed (an absolute env file may point at a host secret), but its target must be a regular file too; a FIFO, a device or a directory fails that stack's deploy. A compose file may be at most 1 MB and any other tracked file at most 64 MB.
+
+## Service Icons
+
+When the web UI is enabled, each stack shows an icon in the deploy table for at-a-glance recognition. Icons are resolved per stack in priority order:
+
+1. **Repo override** — an `icon.svg` (preferred) or `icon.png` in the stack's directory (`<stacks_base_dir>/<name>/`). Served directly from the clone, works offline. It must be a plain file of at most 256 KB — a symlink or a larger file is ignored (with a warning in the log) and resolution moves on.
+2. **Configured slug** — the stack's `icon:` field, looked up in the icon set.
+3. **Auto-match** — the stack name (slugified) looked up in the icon set, trying SVG, then PNG, then WebP.
+4. **Fallback** — a monogram (the stack's first letter) rendered in the UI when nothing matches or the source is unreachable.
+
+Browse available slugs at the [dashboard-icons repo](https://github.com/homarr-labs/dashboard-icons) before setting `icon:`.
+
+Icons from the set are fetched once and cached on disk; the UI serves them same-origin from `/api/icons/<stack>`. `POST /api/icons/refresh` clears the cache so renamed stacks and newly published icons are picked up on the next load (e.g. `curl -X POST …/api/icons/refresh`).
+
+The reserved NixOS pseudo-stack `_nixos` (see [NixOS](nixos.md)) is not a configured stack, so it resolves its icon by auto-matching the `nixos` slug — giving the rebuild a recognizable logo rather than a monogram.
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `cache_dir` | string | no | `/var/lib/skipper/icons` | Directory where fetched icons are cached on disk. Must be absolute. |
+| `source_url` | string | no | dashboard-icons CDN | Icon-set **root** URL; icons are fetched from `<source_url>/<format>/<slug>.<format>` for `format` in `svg`, `png`, `webp` (first hit wins). |
+
+```yaml
+icons:
+  cache_dir: /var/lib/skipper/icons        # optional, this is the default
+  source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons
+```
+
+> **Note:** A repo `icon.svg`/`icon.png` is **not** hash-tracked, so adding or changing an icon never triggers a redeploy. The one exception: if you list a stack's own directory under `watch_dirs`, its icon files would be hashed along with everything else — keep icons out of watched directories.
+
+## Traefik app links
+
+skipper-cd has no Traefik configuration of its own — there is nothing to set in `skipper.yml`. Instead, when the web UI is enabled, it reads the [Traefik](https://doc.traefik.io/traefik/) routing labels your stack's `docker-compose.yml` *already* declares and, when it finds one, shows a link icon in the Stacks view that opens the app directly. This section documents how skipper-cd interprets **your** Traefik setup, not a feature you configure here.
+
+```yaml
+services:
+  app:
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.app.rule: "Host(`app.example.com`)"
+```
+
+- Detection requires `traefik.enable: "true"` on the container — Traefik's own opt-in convention (skipper-cd honours the same gate Traefik itself does; a container Traefik wouldn't route to gets no icon either).
+- The hostname is read from the container's **live** labels (`docker inspect`), not the compose file text, so `${DOMAIN}`-style variables resolve to their real, running value.
+- A stack with several routers/hosts shows a popover to pick from; one with no matching label shows no icon — there is nothing to turn on or off.
+- Links always open over `https://`.
+
+> **Docker labels only.** This only sees routing declared via Traefik's **Docker provider** (the `labels:` shown above). A stack whose Traefik routes are instead defined through the file/dynamic provider, a Kubernetes Ingress, or any non-Docker provider carries no container labels for skipper-cd to read, so it gets no icon — even though Traefik is actively routing to it. That's not a bug to work around; it's just outside what this reads.
+
+## Notifications
+
+skipper-cd can POST a message to one or more targets whenever a deploy reaches a **terminal** outcome. This works independently of the web UI — notifications need neither `ui_enabled` nor an open browser.
+
+Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back`, `rolled_back_unhealthy`, `heal_exhausted` (the transient `deploying`, `skipped` and `queued` are never sent, and neither is the routine `healed` or a `removed` stack — nothing broke, and nothing changed about what is running). Each target chooses which of the five it wants via `on:`; when omitted, all five are delivered.
+
+The message of a failed deploy names the cause, not only the exit status: when `build`, `pull`, `up` or a deploy hook fails, the error ends with the line the failing command printed to stderr that explains it — for a failed `RUN` step, the step's first error line plus BuildKit's verdict, e.g. `docker compose build: exit status 1: E: Unable to correct problems, you have held broken packages. — process "/bin/sh -c apt-get …" did not complete successfully: exit code: 100`. Colours, progress output and per-run timestamps are removed and the text is capped, so the same failure always reads the same. The same text appears in the Deploys view and the audit log.
+
+Delivery is **fire-and-forget**: sending runs in the background with its own 10-second per-request timeout, never blocking or delaying a deploy. A failed or slow target is logged and dropped — there is no retry queue, so a notification can be lost if the target is down. For guaranteed history, read the persisted events or scrape metrics instead.
+
+```yaml
+notifications:
+  # Signal via the signal-cli-rest-api stack.
+  - format: signal
+    url: http://localhost:8020        # service base; /v2/send is appended
+    number: "+491234567890"           # sender (required for signal)
+    recipients: ["+491234567890"]     # recipients (required for signal)
+    prefix: host-a                    # optional; message becomes "[host-a] …"
+    # on:  defaults to [failed, success, rolled_back, rolled_back_unhealthy, heal_exhausted]
+
+  # A second, independent target for failures only.
+  - format: ntfy
+    url: https://ntfy.example.com/skipper
+    headers:
+      Authorization: "Bearer <token>"
+    on: [failed, rolled_back, rolled_back_unhealthy]
+```
+
+### What a message says
+
+`signal` and `ntfy` messages are compact: a title that carries the point and a short body. The `generic` payload is unchanged and carries the full event (`image_changes`, `file_changes`, `health_gated`, …).
+
+| Outcome | Title | Body |
+|---|---|---|
+| Success, one version change | `immich: v3.4.0 → v3.4.1` | the changed containers, one line |
+| Success, containers moved differently | `nextcloud aktualisiert` | one line per change: `app, cron: 29.0.1 → 29.0.2` |
+| Success, only the image behind an unchanged tag moved | `nextcloud: 34-apache neu gebaut` | `app: ab12cd3 → 9f8e7d6` |
+| Rolled back | `immich: Deploy fehlgeschlagen, zurück auf v3.4.0` | first line of the error |
+| Failed (no restore) | `immich: Deploy fehlgeschlagen` | first line of the error |
+
+```
+immich: v3.4.0 → v3.4.1
+app, immich-machine-learning (openvino)
+```
+
+- Versions are the ones the containers **actually ran** (recorded after each successful deploy), not the compose references. Registry and repository are dropped; only the tags are shown.
+- A tag suffix both sides share (`v3.4.0-openvino` → `v3.4.1-openvino`) goes in parentheses behind the container name, and containers with the same version change share one line.
+- The digest (7 characters) is shown only when the tag is unchanged. A container that switched to a different image keeps both references in full; a new container shows its tag, a removed one `entfernt`.
+- No timestamp, duration or health-gate line: the receiving app shows the time, and the `generic` payload carries `health_gated`.
+- A first-time deploy after upgrading skipper has no recorded baseline and still compares compose references; from the next deploy on the delta is the real one.
+
+The `ntfy` format publishes the title as the `Title` header and the body as plain text. The status is the `Tags` header (`white_check_mark` / `x`) and the `Priority` header (`low` on success, `high` on any failure), not emoji in the text. On a success whose new image comes from `ghcr.io/<owner>/<name>`, a `Click` header links `https://github.com/<owner>/<name>/releases/tag/<new tag>` (assumes the package is named like its repository); other registries set none. `headers` are applied last, so they can override any of these.
+
+### Target Fields
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `format` | string | no | `generic` | Provider shape of the request: `signal`, `ntfy` or `generic`. |
+| `url` | string | yes | — | Endpoint the notification is POSTed to. For `signal` this is the `signal-cli-rest-api` **base** (e.g. `http://localhost:8020`); `/v2/send` is appended automatically. |
+| `on` | list | no | all five | Subset of `failed`, `success`, `rolled_back`, `rolled_back_unhealthy`, `heal_exhausted` that triggers this target. |
+| `prefix` | string | no | — | Prepended as `[<prefix>] ` to the `signal` message or `ntfy` title, e.g. to label which host/instance sent it. Ignored by `generic` (its structured payload already carries the event). |
+| `headers` | map | no | — | Static HTTP headers added to the request. Only meaningful for `generic` and `ntfy` (e.g. an auth token). |
+| `number` | string | for `signal` | — | Signal sender number. Required for `format: signal`, rejected on any other format. |
+| `recipients` | list | for `signal` | — | Signal recipient numbers (non-empty). Required for `format: signal`, rejected on any other format. |
+
+### Formats
+
+| Format | Body sent | Use for |
+|---|---|---|
+| `signal` | `{"message": …, "number": …, "recipients": […]}` to `<url>/v2/send` | The `bbernhard/signal-cli-rest-api` service. |
+| `ntfy` | Plain-text body plus `Title`/`Tags`/`Priority`/`Click` headers, POSTed to the topic URL | An [ntfy](https://ntfy.sh) topic. |
+| `generic` | The full deploy event as JSON (diffs and commit metadata stripped; changed services under `image_changes`, and which services each changed file reached under `file_changes`), plus any `headers` | Gotify, or your own endpoint. |
+
+> **Reachability.** `url` must be reachable from wherever skipper-cd runs. As a **host service** (e.g. the [NixOS module](nixos.md)), a container's host-published port is `http://localhost:8020` — reaching it directly, bypassing any reverse proxy/auth. When skipper-cd itself runs **in a container**, `localhost` is the container, not the host (see [Docker](docker.md)).
+
+> **No email.** Native SMTP is deliberately unsupported. Point a `generic` target at an email-capable relay (ntfy, Apprise, Shoutrrr) if you need email.
+
+> **Self-notify caveat.** If Signal is delivered through a `signal-api` stack that skipper itself deploys, a failed `signal-api` deploy cannot notify you about itself. Configure a second, independent target (e.g. `ntfy`) so at least one path never depends on the stack being reported on.
+
+## Web UI Theme
+
+`ui_theme` picks the web UI's colour palette. This is a per-instance, config-time choice — handy for telling several skipper-cd instances apart at a glance (e.g. one per host) — and is independent of the header's dark/light toggle, which stays a per-browser preference within whichever palette is configured.
+
+```yaml
+ui_theme: nord   # optional, default: catppuccin
+```
+
+Six palettes ship, each with a dark and light variant (the header's dark/light toggle flips between them per browser). The previews below are scaled-down mockups of the header and stack list in each palette.
+
+**`catppuccin`** — the default. Soft pastels on a muted indigo base (Mocha dark / Latte light).
+
+<div class="theme-grid">
+<figure class="tp" data-theme="catppuccin"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>Mocha · dark</figcaption></figure>
+<figure class="tp light" data-theme="catppuccin"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>Latte · light</figcaption></figure>
+</div>
+
+**`nord`** — arctic blue-greys, a single frost-blue accent.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="nord"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="nord"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
+
+**`solarized`** — the low-contrast terminal classic.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="solarized"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="solarized"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
+
+**`gruvbox`** — warm retro-groove browns, orange accent.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="gruvbox"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="gruvbox"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
+
+**`rose-pine`** — muted rose and iris-purple on a plum-black base.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="rose-pine"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="rose-pine"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
+
+**`flake`** — blue on a cool near-black, with an LED green for anything running.
+
+<div class="theme-grid">
+<figure class="tp" data-theme="flake"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>dark</figcaption></figure>
+<figure class="tp light" data-theme="flake"><div class="tp-bar"><span class="tp-logo">skipper<i>-cd</i></span><span class="tp-dot tp-a"></span><span class="tp-dot tp-s"></span><span class="tp-dot tp-d"></span></div><div class="tp-body"><div class="tp-card"><span class="tp-dot tp-s"></span><span class="tp-line"></span><em class="tp-badge tp-s">up</em></div><div class="tp-card"><span class="tp-dot tp-d"></span><span class="tp-line short"></span><em class="tp-badge tp-d">fail</em></div></div><figcaption>light</figcaption></figure>
+</div>
+
+Every palette drives the whole UI, including the PWA install identity (favicon, browser theme colour, app splash screen) — see [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#design) for the full token design and [PWA](pwa.md) for the installed-app behaviour.
+
+### Theme switcher
+
+By default the deployed `ui_theme` is fixed: there is no way to change it from the browser, which keeps the per-instance colour a reliable at-a-glance marker. Set `ui_theme_switcher: true` to add a small palette picker to the header — handy for trying the built-in themes out before committing one to the config.
+
+```yaml
+ui_theme_switcher: true   # optional, default: false
+```
+
+The picker is a **local, per-browser** override only: it never changes the deployment's `ui_theme` (there is no endpoint to do so) and only affects the browser that set it, applied instantly with no reload. While an override differs from the configured theme, a dismissible notice under the header points it out. Turning the flag back off hides the picker and re-pins every browser to the configured theme (a stale override left in a browser's `localStorage` simply lies dormant). See [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#theme-override) for the exact behaviour.
+
+## Multi-host
+
+Run skipper on several hosts and view them all in **one merged UI**. Every host keeps running its own independent skipper (own clone, own state, own webhook); one instance is additionally the **primary** that reads the others' data and renders it together. Deploys stay per-host and git-driven — the primary only ever *reads* from its peers, never deploys or controls them.
+
+```yaml
+# on the primary only
+host_name: host-a
+peers:
+  - name: host-b
+    url: http://host-b:8001
+  - name: host-c
+    url: http://host-c:8001
+```
+
+- **Only the primary needs `peers`.** A peer needs no extra config — just `ui_enabled: true` (it already serves the read API) and to be reachable from the primary.
+- `name` is the host's label and its identity colour in the merged view; `url` is its skipper base URL on the LAN.
+- `host_name` is the primary's own label (defaults to the OS hostname); set it to match how the hosts name each other.
+- **What you get:** the Deploys and Stacks views merge every host's rows, each tagged with a colour **host dot**. A **Hosts** control (top right) filters by host and links out to each host's own UI. Click a host dot to isolate the view to that host; click again to clear. The filter is remembered per browser.
+- **Read-only peers.** Peer rows mirror state only — clicking one shows that deploy's commit, its **containers/health**, its **container logs**, its app link and diff (all loaded from the peer), but no local actions. To watch a peer deploy live or see its full history, open its own UI from the Hosts control.
+- **Reachability.** The merged view refreshes on the [health-poll](#stack-health) cadence, so it can lag a few seconds behind a peer's live deploy. An unreachable peer's last-known rows stay, dimmed, with a banner — never silently dropped.
+- **Access.** Peers must be reachable from the primary (server-to-server), not from the browser. Keep each peer's port on the LAN and firewall it to the primary's address. A peer that sets [`allowed_hosts`](#exposing-the-web-ui) must list the host name of its `url` here.
+
+If the primary goes down, every host still deploys on its own webhook and serves its own UI at its own address — the primary is a convenience layer, not a dependency.
+
+## Stack health
+
+When the web UI is enabled, skipper-cd shows the **live runtime health** of the stacks it deploys, next to each stack in the deploy view: `healthy`, `unhealthy`, `starting`, `stopped`, or `unknown`. This is a current, at-a-glance view — distinct from the deploy outcome — so a stack that deployed fine but whose container has since started crash-looping reads as `unhealthy` without waiting for the next push.
+
+The health is read by one `docker ps` plus one `docker inspect` per poll, however many stacks there are; a container belongs to the stack whose project directory it was deployed with. Nothing is written and nothing is restarted — the view is read-only. It covers only skipper-cd's own stacks (not other containers on the host). Click a stack's health to expand a per-service breakdown (each service's container state and health).
+
+Containers listed in a stack's [`on_demand_containers`](#stack-fields) get special treatment: skipper stops them itself after every deploy (often via SIGKILL, so they exit non-zero) and the on-demand scheduler starts them on request — that idle is their intended state. An exited on-demand container therefore always reads as `stopped`, never `unhealthy`, whatever its exit code; the per-service panel labels it `on-demand`. A crash-looping or unhealthy on-demand container still counts as a real failure.
+
+`runtime_health_poll_interval_seconds` controls the cadence:
+
+- **default `30`** — poll every 30 seconds.
+- **`0`** — disable the health view entirely (no polling, no pill).
+- The poll only runs while `ui_enabled` **and** at least one browser is connected to the dashboard, so an unattended instance does no health work.
+
+On a resource-constrained host, raise the interval rather than disabling it. See [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md#stack-health) for the UI surface.
+
+## Health watch
+
+The [Stack health](#stack-health) view only *shows* health, and only while a browser is watching. The **health watch** goes one step further: it tracks each **service's** health over time and reports **transitions**: a service turning `unhealthy` fires an alert, and its recovery fires a matching all-clear. Transitions between the other statuses (`starting`, `stopped`) are recorded and logged but never alert, so an intentional `docker compose down` does not page.
+
+The watchdog has no poll loop of its own: it consumes the health poller's feed (like [self-heal](#self-heal)), so its cadence **is** `runtime_health_poll_interval_seconds` — which must therefore be > 0 — and enabling it makes that poll run headless, independent of the UI and of connected browsers. There is no extra docker work: one poll serves the UI view, self-heal, and the watchdog.
+
+```yaml
+health_watch:                      # cadence = runtime_health_poll_interval_seconds
+  debounce_polls: 2                # consecutive confirmations before a change is accepted
+  attribution_window_seconds: 300  # transitions this soon after a deploy are marked deploy-correlated
+  alert_cooldown_seconds: 1800     # rate limit for repeat alerts of one service; 0 = off
+  targets:                         # optional; same fields as notifications targets, but no `on:`
+    - format: signal
+      url: http://localhost:8020
+      number: "+491234567890"
+      recipients: ["+491234567890"]
+      prefix: host-a
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `debounce_polls` | int | no | `2` | How many consecutive health polls a new status must persist before it is accepted. Absorbs transient blips; a service flapping every poll never alerts. |
+| `attribution_window_seconds` | int | no | `300` | A transition beginning within this window after a stack's deploy is reported as *deploy-correlated* (with the deploy's newest commit). Later transitions still carry the commit as context, without the correlation. |
+| `alert_cooldown_seconds` | int | no | `1800` | Minimum gap between repeat alerts of the same service and direction (failure / recovery) — rate-limits a flapping service. A first failure and its recovery are never delayed, and a suppressed alert is delivered late if the state still holds when the cooldown expires (delayed, never missing). `0` disables the cooldown. |
+| `targets` | list | no | — | Alert sinks in the same shape as [notification targets](#target-fields), except `on:` is not valid here (a health target receives all alert-worthy transitions). With no targets, transitions are still logged and recorded. |
+
+A new failure reads `🚨 stack health: <stack>/<service> healthy → unhealthy (was healthy 2h13m) — after deploy of a1b2c3d`; the recovery reads `✅ stack health recovered: <stack>/<service> after 4m12s`. The `generic` format posts the structured alert as JSON with a `"type": "health"` marker so a receiver shared with deploy notifications can tell the payloads apart.
+
+Transitions are persisted across restarts (no re-alerting of known failures; a failure that happened while skipper was down is alerted after startup), and with the web UI enabled each service's [Stack health](#stack-health) panel shows a timeline of its recent status phases, summarized by a duration-weighted status bar. The timeline folds routine churn — a quick `starting → healthy` from a deploy or restart shows as `· up in 58s` on the settled line (repeats collapse into one `↻ N more starts …` summary; an on-demand service's idle cycles fold the same way) while anything unhealthy, a stop, or a slow start stays line-by-line, with a toggle to the unfolded list. This watches **only skipper's own stacks** — it is not a host-wide container watchdog.
+
+## Deploy ordering
+
+By default stacks deploy in the order they appear under `stacks`. When one stack must come up before another — a database before the app that migrates against it — declare it with `depends_on`:
+
+```yaml
+stacks:
+  - name: postgres
+  - name: app
+    depends_on: [postgres]
+  - name: monitoring        # unrelated, deploys in config order
+```
+
+Stacks then deploy in dependency order (a stable topological sort: a stack never deploys before one it depends on, and stacks not otherwise constrained keep their config order). A config with no `depends_on` anywhere behaves exactly as before. Deploys stay sequential — this orders the sequence, it does not run stacks in parallel. Names must refer to defined stacks and the graph must be acyclic — a typo or cycle fails fast, before any stack deploys.
+
+Within a run, a dependency's outcome gates its dependents:
+
+- **Dependency failed or rolled back** → the dependent does not deploy. It emits a `blocked` event, stays dirty (its hashes are not recorded), and retries automatically on the next sync — once the dependency deploys cleanly, the dependent follows in the same run. `blocked` is deliberately not a notification (the dependency's own failure already alerts, and a blocked stack re-reports every reconcile tick).
+- **Dependency queued** (its `autosync` is paused) → the dependent queues too, rather than overtaking a change that is being deliberately held back.
+- **Dependency unchanged** (skipped) → it is already at its desired state, so the dependent proceeds.
+
+`depends_on` guarantees the dependency's deploy *completed*; by default `docker compose up` returns once containers start, not once they are ready. For true readiness (the database accepting connections before the app starts), add a [`deploy_health_check`](#health-check-gated-rollback) to the **dependency** — because deploys are sequential, the dependent only starts once the dependency proved healthy.
+
+## Periodic reconcile
+
+Reconcile is skipper's convergence loop: it re-runs its git sync + deploy on a timer so the running stacks always catch up to the deploy repo, whether or not a webhook ever fired. Each tick fetches the branch tip and deploys only what actually changed (via the same hash-based change detection as a webhook), so a reconcile against an unchanged repo is a cheap no-op: no compose command runs and no event is emitted. It reconciles against **git desired state only** — it does not inspect or restart containers.
+
+The [webhook](#top-level-fields) is an optional accelerator on top of this loop: it makes a push land in seconds instead of at the next tick. It is not the baseline, and it is not a single point of failure — if a webhook is lost (skipper was down when the push landed, a network blip, a misconfigured hook, or a change that reached the branch some other way), the next reconcile tick converges the host anyway. Run reconcile-only by leaving `webhook_secret` empty.
+
+`reconcile_interval_seconds` controls the cadence:
+
+- **default `300`** — reconcile every 5 minutes. On by default, so the host converges within one interval even with no webhook.
+- **`0`** — disable the loop entirely. Only valid alongside a configured `webhook_secret`; with both off, nothing would deploy after startup (rejected at load).
+- Unlike the health poll, it is **not** tied to the UI — it runs headless, since it is a correctness feature rather than a display feed.
+
+A tick is skipped while a deploy is already in flight (a reconcile carries no unique information, so it is dropped rather than queued behind the running deploy), and it flows through the same per-stack deploy gate as a webhook — so a stack with `autosync` off is queued, not force-deployed.
+
+## Self-heal
+
+Periodic reconcile closes drift on the **git axis** (git changed, live didn't). Self-heal closes it on the **runtime axis**: a stack the [health poller](#stack-health) finds degraded — a container that was stopped or removed out of band, exhausted its restart policy, or turned `unhealthy` — is automatically restored to its **currently deployed** running state by a corrective `docker compose up -d`. It is **not** a git deploy: the desired version is unchanged, so there is no change detection and no rollback — it only restarts what should already be running.
+
+"Deployed" means the version skipper last recorded for the stack, never a change still waiting in the clone. When a change is pending — queued behind an [autosync pause](autosync.md) or held after it failed — and only the compose file differs, self-heal restores that file from the last deployed commit and heals from it. When another tracked input differs too (an env file, the vars file, a watched directory, a Dockerfile), the deployed version cannot be rebuilt, so self-heal does not act; it logs the reason once per outage and spends no attempt.
+
+Self-heal is **opt-in and off by default**. Enable it globally with `self_heal: true`, or per stack, and leave it off for stacks you deliberately stop (a one-shot job). It is a backstop for the cases Docker's own `restart:` policy cannot handle — recreating a removed container, recovering an exhausted policy, reacting to a failing `HEALTHCHECK` — not a replacement for it; set a restart policy too.
+
+An idle [`on_demand_containers`](#stack-fields) container is exempt: skipper stops it on purpose after each deploy, so its `stopped` state is not drift and self-heal never wakes it — even under a global `self_heal: true`. An on-demand container in any other bad state (crash-looping, `unhealthy`) is still a real failure and is healed as usual.
+
+Guardrails keep it from fighting a genuinely broken stack:
+
+- **Debounce** — a stack must read degraded for `self_heal_min_unhealthy_polls` consecutive polls (default 3) before the first redeploy, so a transient blip or Docker's own restart wins the race first.
+- **Cooldown** — at least `self_heal_cooldown_seconds` (default 60, explicit `0` disables) between redeploys of the same stack.
+- **Circuit breaker** — after `self_heal_max_attempts` (default 3) redeploys that don't restore the stack, skipper gives up, leaves it reported `unhealthy`, and emits a single `heal_exhausted` event (a `heal_exhausted` [notification](#notifications) fires by default — the "a stack is down and I couldn't fix it" alarm). The counter resets when a real git deploy of the stack runs, or when the stack stays healthy for `self_heal_min_unhealthy_polls` consecutive polls — so a stack that flaps back for a single poll keeps its counter.
+
+Self-heal rides the health-poll cadence and, like periodic reconcile, runs **headless** — so it needs `runtime_health_poll_interval_seconds` > 0 even with the UI off. Once a redeployed stack has stayed healthy for `self_heal_min_unhealthy_polls` polls, a `healed` event appears in the deploy log — one per outage, with the time it took to recover. A redeploy that leaves the stack degraded is only counted as an attempt; if the attempts run out, a single `heal_exhausted` event says so.
+
+## Update check
+
+skipper periodically asks each registry what it offers for the images your stacks actually run, and shows the answer — it never acts on it. In the Stacks view, a service with an available update carries an amber `⇡` marker on its version chip:
+
+- `1.22.3 ⇡ 1.22.6` — a newer tag of the same shape exists. Only same-shaped tags are compared: same `v`-or-no prefix, same number of version components, same suffix (`6.2-alpine` is only ever compared against other `-alpine` tags), so the marker never suggests `latest` or a different variant.
+- `v3.1 ⇡ rebuilt` — the tag you run was republished upstream (its digest moved). This is the only check for non-version tags like `latest`.
+
+The expanded containers panel marks each affected service and shows when the registry was last asked. A counter in the header says how many stacks have an update; clicking it filters the Stacks view down to exactly those, and clicking it again clears the filter. The check reports in the UI only; set `notify: true` (and configure [notifications](#notifications)) to also have each update's first appearance sent once — deploying it (or a newer one appearing) re-arms the message.
+
+```yaml
+update_check:
+  interval_seconds: 21600   # default: every 6h; 0 disables the check
+  notify: false             # default: UI only; true = one message per newly appearing update
+```
+
+- On by default; the section is only needed to change the cadence or to opt into the messages. `interval_seconds: 0` turns the feature off entirely — skipper then makes no registry requests outside a deploy.
+- After a deploy that changed what runs, the check re-runs immediately, so an applied update's marker clears right away.
+- Registry credentials come from the host's docker config (`docker login`) — the same ones your pulls use. Public images need none.
+- Each registry request times out after 15 seconds and reads at most 4 MiB. A registry may hand the check only to its own host or domain: a pagination link to another host, or a token server outside the registry's domain (e.g. `auth.docker.io` for Docker Hub is fine) or not on HTTPS, fails that image's check instead of being followed.
+- Locally-built images (`build:`) and stacks with nothing running are skipped. A per-stack `update_check: false` opts a stack out.
+- The check is read-only: applying an update is still a git commit — a tag bump by hand, or a [Renovate](#keeping-images-up-to-date) PR.
+
+## Keeping images up to date
+
+skipper deploys the images your compose files declare; on its own it only *reports* newer versions (the [update check](#update-check) above) — it never acts on them. That is a deliberate scope choice: skipper acts on git, so an image update should reach it *as a change in git*. The supported way to automate updates is to let [Renovate](https://docs.renovatebot.com/) keep the `image:` references in your **deploy repo** current: Renovate opens (or auto-merges) a change that bumps the reference and pins it to a digest, and that merge is an ordinary push, so skipper's webhook and [periodic reconcile](#periodic-reconcile) path pick it up and redeploy — no skipper configuration required.
+
+Digest pinning is what makes this work. With a plain mutable tag like `image: caddy:latest`, the text in git never changes when the registry publishes a new image behind the same tag, so skipper never sees a change. Renovate's digest pinning rewrites the reference to `image: caddy:2.8.4@sha256:…` and keeps that digest current — so **every** update lands in git as a changed reference and deploys through the normal path.
+
+A minimal `renovate.json` for the deploy repo:
+
+```json
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "docker:pinDigests"],
+  "packageRules": [
+    {
+      "matchManagers": ["docker-compose"],
+      "automerge": true,
+      "automergeType": "pr"
+    }
+  ]
+}
+```
+
+- `docker:pinDigests` makes Renovate pin (and keep current) a `@sha256:…` digest on every image reference — the key that closes the mutable-tag gap.
+- The `docker-compose` manager covers `docker-compose.yml` / `compose.yaml` `image:` fields out of the box.
+- `automerge: true` lets low-risk updates merge without review, so the deploy is hands-off end to end. Drop it to keep every bump behind a reviewed PR — the merge still triggers the deploy either way.
+
+On a Gitea/Gogs forge, run **self-hosted** Renovate (the hosted Mend app is GitHub-only) — for example a scheduled `renovatebot/renovate` container with `RENOVATE_PLATFORM=gitea`, a bot token, and an explicit repo list (or `RENOVATE_AUTODISCOVER=true`) pointed at the deploy repo. A missed merge webhook is not fatal: the [periodic reconcile](#periodic-reconcile) loop re-fetches the branch tip within its interval and converges.

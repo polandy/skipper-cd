@@ -1,0 +1,357 @@
+// Package selfheal drives automatic recovery of stacks that have drifted from
+// their deployed running state. It consumes the runtime-health snapshots the
+// health poller already produces (ADR-0027) and, for stacks opted into
+// self-heal, triggers a corrective redeploy through an injected Healer when a
+// stack stays degraded — guarded by a debounce, a cooldown, and a max-attempts
+// circuit breaker so an app-level fault a redeploy cannot fix never becomes a
+// hot loop (ADR-0029).
+//
+// The package owns only the policy (when to heal, when to give up); it knows
+// nothing about docker, git, or config. The redeploy itself lives behind the
+// Healer seam and the per-stack opt-in behind an Enabled predicate, which keeps
+// this package isolated and testable.
+package selfheal
+
+import (
+	"context"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/polandy/skipper-cd/internal/events"
+	"github.com/polandy/skipper-cd/internal/health"
+)
+
+// Healer performs one corrective redeploy of a single stack, restoring it to
+// its currently deployed running state (a plain `compose up`, no version
+// change, no rollback). drift lists the services that were degraded when the
+// heal was triggered, so the healed event can show what it reacted to. It
+// reports whether the redeploy actually ran: false means a deploy was already in
+// progress, or the healer declined to act — then err says why — so this tick
+// was skipped and must not count against the stack's attempt budget. Backed by the deployer's HealStack in production; tests supply
+// a fake.
+type Healer interface {
+	Heal(ctx context.Context, stack string, drift []events.DriftedService) (ran bool, err error)
+}
+
+// Config wires an Engine.
+type Config struct {
+	// Healer performs the corrective redeploy.
+	Healer Healer
+	// Enabled reports whether self-heal is effective for a stack (per-stack
+	// opt-in resolved against the global default).
+	Enabled func(stack string) bool
+	// MinUnhealthyPolls is how many consecutive degraded polls a stack must show
+	// before the first heal — the debounce against transient blips. The same
+	// count of consecutive healthy polls ends an outage, so a stack that flaps
+	// keeps one attempt budget instead of a fresh one per healthy blip.
+	MinUnhealthyPolls int
+	// MaxAttempts caps corrective redeploys per outage before giving up.
+	MaxAttempts int
+	// Cooldown is the minimum gap between corrective redeploys of one stack.
+	Cooldown time.Duration
+	// OnExhausted is called once when a stack's attempts are exhausted, so the
+	// wiring can emit the heal_exhausted event. Optional.
+	OnExhausted func(stack string)
+	// OnHealed is called once when a stack self-heal acted on is observed
+	// healthy again, so the wiring can emit the healed event: after is the time
+	// from the first corrective redeploy to the recovery, drift what that first
+	// redeploy reacted to. A redeploy that leaves the stack degraded reports
+	// nothing of its own. Optional.
+	OnHealed func(stack string, after time.Duration, drift []events.DriftedService)
+	// Now overrides the clock in tests; nil uses time.Now.
+	Now func() time.Time
+}
+
+// Engine applies the self-heal policy across successive health snapshots.
+type Engine struct {
+	healer      Healer
+	enabled     func(stack string) bool
+	minPolls    int
+	maxAttempts int
+	cooldown    time.Duration
+	onExhausted func(stack string)
+	onHealed    func(stack string, after time.Duration, drift []events.DriftedService)
+	now         func() time.Time
+
+	mu     sync.Mutex
+	states map[string]*stackState
+}
+
+// stackState is one stack's self-heal bookkeeping across polls.
+type stackState struct {
+	degraded    int                     // consecutive degraded polls
+	healthy     int                     // consecutive healthy polls since the last degraded one
+	declined    bool                    // the healer declined this outage; logged once
+	attempts    int                     // corrective redeploys performed this outage
+	lastTry     time.Time               // when the last redeploy ran, for the cooldown
+	exhausted   bool                    // gave up; heal_exhausted already emitted
+	firstTry    time.Time               // when this outage's first redeploy ran
+	recoveredAt time.Time               // the first of the current healthy polls
+	drift       []events.DriftedService // what that first redeploy reacted to
+}
+
+// New builds an Engine from cfg.
+func New(cfg Config) *Engine {
+	now := cfg.Now
+	if now == nil {
+		now = time.Now
+	}
+	return &Engine{
+		healer:      cfg.Healer,
+		enabled:     cfg.Enabled,
+		minPolls:    cfg.MinUnhealthyPolls,
+		maxAttempts: cfg.MaxAttempts,
+		cooldown:    cfg.Cooldown,
+		onExhausted: cfg.OnExhausted,
+		onHealed:    cfg.OnHealed,
+		now:         now,
+		states:      map[string]*stackState{},
+	}
+}
+
+// Observe evaluates a health snapshot and heals any opted-in stack that has
+// stayed degraded past the debounce, subject to the cooldown and attempt cap.
+// It is called once per poll from the poller's goroutine. A snapshot names
+// every stack the poller probes, so the state of a stack it no longer names —
+// or one no longer opted in — is dropped here.
+func (e *Engine) Observe(ctx context.Context, snap health.Snapshot) {
+	e.prune(snap)
+	for name, sh := range snap.Stacks {
+		if !e.isEnabled(name) {
+			continue
+		}
+		e.evaluate(ctx, name, sh)
+	}
+}
+
+func (e *Engine) isEnabled(stack string) bool {
+	return e.enabled == nil || e.enabled(stack)
+}
+
+// prune forgets the state of every stack snap does not name or that is no
+// longer opted in.
+func (e *Engine) prune(snap health.Snapshot) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for stack := range e.states {
+		if _, probed := snap.Stacks[stack]; !probed || !e.isEnabled(stack) {
+			delete(e.states, stack)
+		}
+	}
+}
+
+// onDemandIdle reports whether a service is an on-demand container in its
+// intended stopped state. skipper stops on_demand_containers right after a
+// deploy and a scheduler starts them on request, so their stopped state is not
+// drift — self-heal must ignore it, mirroring how the health package classifies
+// an exited on-demand container as stopped rather than unhealthy (ADR-0029).
+func onDemandIdle(svc health.ServiceHealth) bool {
+	return svc.OnDemand && svc.Status == health.Stopped
+}
+
+// driftedServices lists the services that are degraded (unhealthy or stopped) in
+// a stack's health, in the order the poller reported them — the "what triggered
+// the heal" detail carried on the healed event. Idle on-demand containers are
+// skipped: they are intended, not drift. Returns nil when the rollup is degraded
+// but no individual service is (e.g. an unreadable per-service state).
+func driftedServices(sh health.StackHealth) []events.DriftedService {
+	var drift []events.DriftedService
+	for _, svc := range sh.Services {
+		if onDemandIdle(svc) {
+			continue
+		}
+		if classify(svc.Status) == degradedCat {
+			drift = append(drift, events.DriftedService{Name: svc.Name, Status: string(svc.Status)})
+		}
+	}
+	return drift
+}
+
+// selfHealStatus reduces a stack's health to the status self-heal acts on,
+// discounting on-demand containers that are idle (stopped) so their intended
+// state never reads as drift. It re-rolls the remaining services with the same
+// precedence the health package uses (any unhealthy, then starting, then
+// healthy, else stopped). A stack made up entirely of idle on-demand containers
+// counts as healthy — nothing to heal. With no per-service detail (a fully-down
+// stack reports none) it falls back to the rolled-up status unchanged.
+func selfHealStatus(sh health.StackHealth) health.Status {
+	if len(sh.Services) == 0 {
+		return sh.Status
+	}
+	var anyStarting, anyHealthy, anyStopped, anyRelevant bool
+	for _, svc := range sh.Services {
+		if onDemandIdle(svc) {
+			continue
+		}
+		anyRelevant = true
+		switch svc.Status {
+		case health.Unhealthy:
+			return health.Unhealthy
+		case health.Starting:
+			anyStarting = true
+		case health.Healthy:
+			anyHealthy = true
+		case health.Stopped:
+			anyStopped = true
+		}
+	}
+	switch {
+	case !anyRelevant:
+		return health.Healthy // every service is an idle on-demand container
+	case anyStarting:
+		return health.Starting
+	case anyHealthy:
+		return health.Healthy
+	case anyStopped:
+		return health.Stopped
+	default:
+		return health.Healthy
+	}
+}
+
+// Reset clears a stack's self-heal state. The wiring calls it when a real git
+// deploy of the stack runs: a push may have fixed the underlying fault, so the
+// stack gets a fresh attempt budget rather than staying exhausted (ADR-0029).
+func (e *Engine) Reset(stack string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	delete(e.states, stack)
+}
+
+func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHealth) {
+	cat := classify(selfHealStatus(sh))
+	e.mu.Lock()
+	s := e.states[stack]
+	if s == nil {
+		if cat != degradedCat {
+			e.mu.Unlock() // no outage to track
+			return
+		}
+		s = &stackState{}
+		e.states[stack] = s
+	}
+
+	switch cat {
+	case recovered:
+		// Healthy again. The outage ends — and a future one starts fresh — only
+		// after minPolls healthy polls in a row; until then a relapse continues
+		// this outage and its budget. Only an ended outage is a heal: a redeploy
+		// that exits 0 says nothing about whether the stack came back. A recovery
+		// after giving up is not self-heal's.
+		s.degraded = 0
+		s.healthy++
+		if s.healthy == 1 {
+			s.recoveredAt = e.now()
+		}
+		if s.healthy < e.minPolls {
+			e.mu.Unlock()
+			return
+		}
+		healed := s.attempts > 0 && !s.exhausted
+		after, drift := s.recoveredAt.Sub(s.firstTry), s.drift
+		delete(e.states, stack)
+		e.mu.Unlock()
+		if healed && e.onHealed != nil {
+			e.onHealed(stack, after, drift)
+		}
+		return
+	case ignore:
+		// starting/unknown: neither degraded nor recovered — wait, keep state.
+		e.mu.Unlock()
+		return
+	}
+
+	// Degraded from here on.
+	s.healthy = 0
+	if s.exhausted {
+		e.mu.Unlock()
+		return
+	}
+	s.degraded++
+	if s.degraded < e.minPolls {
+		e.mu.Unlock()
+		return
+	}
+	if s.attempts >= e.maxAttempts {
+		s.exhausted = true
+		e.mu.Unlock()
+		slog.Warn("self-heal exhausted: stack still degraded after repeated redeploys", "stack", stack, "attempts", e.maxAttempts)
+		if e.onExhausted != nil {
+			e.onExhausted(stack)
+		}
+		return
+	}
+	if !s.lastTry.IsZero() && e.now().Sub(s.lastTry) < e.cooldown {
+		e.mu.Unlock()
+		return
+	}
+	e.mu.Unlock()
+
+	// Trigger the corrective redeploy outside the lock (it takes the deploy
+	// mutex and can block). A skipped run (deploy already in progress) does not
+	// count against the attempt budget — the next poll retries.
+	slog.Info("self-heal triggering corrective redeploy", "stack", stack)
+	drift := driftedServices(sh)
+	ran, err := e.healer.Heal(ctx, stack, drift)
+	if !ran {
+		e.logSkipped(stack, err)
+		return
+	}
+	if err != nil {
+		slog.Warn("self-heal corrective redeploy errored", "stack", stack, "err", err)
+	}
+
+	e.mu.Lock()
+	if s = e.states[stack]; s != nil {
+		if s.attempts == 0 {
+			s.firstTry, s.drift = e.now(), drift
+		}
+		s.attempts++
+		s.lastTry = e.now()
+	}
+	e.mu.Unlock()
+}
+
+// logSkipped says why a heal did not run. A declined heal (err set) is logged
+// once per outage: its cause usually persists across every poll.
+func (e *Engine) logSkipped(stack string, err error) {
+	if err == nil {
+		slog.Debug("self-heal skipped: deploy already in progress", "stack", stack)
+		return
+	}
+	e.mu.Lock()
+	s := e.states[stack]
+	first := s != nil && !s.declined
+	if first {
+		s.declined = true
+	}
+	e.mu.Unlock()
+	if first {
+		slog.Info("self-heal not run for this stack while it stays degraded", "stack", stack, "reason", err)
+	}
+}
+
+// category is how self-heal classifies a stack's health status.
+type category int
+
+const (
+	degradedCat category = iota // needs restoring
+	recovered                   // healthy again
+	ignore                      // starting/unknown — neither
+)
+
+// classify maps a rolled-up health status to a self-heal category. Unknown is
+// deliberately ignored, never treated as degraded, so a failed health read can
+// never trigger a spurious redeploy (mirrors ADR-0027's "never a false
+// unhealthy").
+func classify(s health.Status) category {
+	switch s {
+	case health.Healthy:
+		return recovered
+	case health.Unhealthy, health.Stopped:
+		return degradedCat
+	default: // Starting, Unknown
+		return ignore
+	}
+}

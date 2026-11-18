@@ -1,0 +1,101 @@
+# skipper-cd — minimal example config.
+#
+# Deliberately a quickstart, not the full surface: it carries the keys a first
+# deployment needs, plus a few commented-out blocks worth seeing early
+# (deploy_health_check, notifications). Left out entirely and documented only in
+# the manual: autosync, hooks, rollout, self_heal, health_watch, peers,
+# depends_on, watch_dirs, on_demand_containers, project_directory_base,
+# reconcile_interval_seconds, log_format, host_name and the rest.
+#
+# Full reference, every key with its default:
+# https://polandy.github.io/skipper-cd/configuration/
+#
+# `skipper -validate -config <file>` checks a config — and, once the clone
+# exists, the stack set it discovers — without starting anything.
+
+repo_url: ssh://git@gitea.example.com/user/nixos-config.git
+repo_dir: /var/lib/skipper/repo         # optional, default: /var/lib/skipper/repo
+# repo_web_url: https://gitea.example.com/user/nixos-config
+#                                       # optional; the UI links every commit SHA to
+#                                       # <repo_web_url>/commit/<sha>. Derived from
+#                                       # repo_url when omitted
+branch: main                            # optional, default: main
+# vars_file: /etc/skipper/vars.env      # optional, changes trigger redeploy
+command_timeout_seconds: 300            # optional, default: 300 (5 minutes)
+stacks_base_dir: modules                # relative to repo_dir (the clone); omit for the repo root
+webhook_secret: "your-secret-here"
+port: 8080
+metrics_port: 9120
+# listen_address: 127.0.0.1           # bind the webhook/UI port to one address (e.g. behind a local proxy)
+# allowed_hosts: [skipper.example.com] # Host names the UI answers; refuses DNS-rebinding requests
+ui_enabled: false                      # enable the real-time web UI on the webhook port
+# ui_theme: catppuccin                 # optional, default: catppuccin. One of: catppuccin,
+                                        # nord, solarized, gruvbox, rose-pine. Useful to tell
+                                        # multiple skipper-cd instances apart at a glance.
+# ui_theme_switcher: false             # optional, default: false. When true, shows an in-UI
+                                        # palette picker (a per-browser override) — handy for
+                                        # trying themes out; off keeps the deployed theme fixed.
+# runtime_health_poll_interval_seconds: 30  # optional, default: 30. How often the UI polls its
+                                        # stacks' runtime health (docker compose ps). 0 disables
+                                        # the health view. Only polls while a browser is connected.
+
+stacks:
+  - name: traefik
+    env_files:
+      - /run/secrets/rendered/skipper/compose.env
+
+  - name: gitea
+    env_files:
+      - /run/secrets/rendered/skipper/compose.env
+    # Optional post-deploy health gate → rollback on failure. `up` runs with
+    # --wait, so it waits for the service's compose `healthcheck:` (which runs
+    # INSIDE the container — no published port needed). `url` adds an extra HTTP
+    # probe FROM THE HOST, only for endpoints reachable there. A stack whose
+    # compose file declares a healthcheck: gets this gate automatically, so set
+    # it only to override the defaults (or to `false` to opt out entirely).
+    # See docs/user/configuration.md.
+    # deploy_health_check:
+    #   timeout_seconds: 60                # optional, default: 60
+    #   # url: http://localhost:3000/healthz # optional; host-reachable endpoints only
+
+  - name: monitoring
+    env_files:
+      - /run/secrets/rendered/skipper/compose.env
+    icon: grafana    # optional web-UI icon slug; overrides the auto-match on the stack name
+
+  # Set project_directory when a NixOS systemd service also manages this stack,
+  # so Docker Compose uses the same project identity for both. It is NOT where
+  # the compose file is read from — that is always <stacks_base_dir>/<name> in
+  # the repo clone.
+  - name: nextcloud
+    project_directory: /etc/nixos/modules/nextcloud
+    env_files:
+      - /run/secrets/rendered/skipper/compose.env
+
+# NixOS rebuild: triggered when any .nix file or flake.lock changes.
+# The skipper-cd systemd service must run as root for nixos-rebuild to work.
+# Omit this section entirely to disable NixOS rebuild.
+nixos_rebuild:
+  flake: ".#host-a"    # required; passed as: nixos-rebuild switch --flake <flake>
+  # enabled: false  # set to false to temporarily disable without removing the section
+  # change_detection: files  # rebuild on any .nix file or flake.lock change (default: derivation — only when this host's system changed)
+
+# Web-UI service icons (only used when ui_enabled). Omit to use the defaults below.
+# icons:
+#   cache_dir: /var/lib/skipper/icons
+#   source_url: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons  # <root>/<fmt>/<slug>.<fmt>, tries svg,png,webp
+
+# Outbound notifications on terminal deploy outcomes (works with the UI off).
+# Omit the section entirely to disable. See docs/user/configuration.md#notifications.
+# notifications:
+#   - format: signal                       # signal | ntfy | generic (default: generic)
+#     url: http://localhost:8020           # signal-api base; /v2/send is appended
+#     number: "+491234567890"              # sender (required for signal)
+#     recipients: ["+491234567890"]        # recipients (required for signal)
+#     prefix: host-a                       # optional; message becomes "[host-a] …"
+#     # on: [failed, success, rolled_back, rolled_back_unhealthy] # default; subset of these four
+#   - format: ntfy                         # a second, independent target for failures
+#     url: https://ntfy.example.com/skipper
+#     headers:
+#       Authorization: "Bearer your-token"
+#     on: [failed, rolled_back, rolled_back_unhealthy]

@@ -1,0 +1,76 @@
+# Architecture Decision Records
+
+One file per decision, numbered sequentially (see
+[ADR-0001](0001-record-architecture-decisions.md) for the process).
+
+| ADR | Title |
+|-----|-------|
+| [0001](0001-record-architecture-decisions.md) | Record architecture decisions |
+| [0002](0002-hash-based-change-detection.md) | Hash-based change detection with persisted state |
+| [0003](0003-runner-abstraction-and-fake-based-tests.md) | Runner abstraction and fake-based tests |
+| [0004](0004-rollback-via-old-compose-file-from-git.md) | Rollback via the old compose file from git |
+| [0005](0005-nixos-hashes-saved-before-rebuild.md) | NixOS hashes are persisted before the rebuild runs |
+| [0006](0006-atomic-state-writes.md) | Atomic writes for persisted state |
+| [0007](0007-graceful-shutdown-waits-for-running-deploy.md) | Graceful shutdown waits for the running deploy |
+| [0008](0008-per-command-timeouts.md) | Timeouts apply per command, not per deploy run |
+| [0009](0009-webhook-branch-filter.md) | Webhook filters pushes by branch ref |
+| [0010](0010-no-deploy-coalescing.md) | Concurrent deploy runs serialize and wait — no coalescing (yet) |
+| [0011](0011-release-automation-via-conventional-commits.md) | Releases are automated from Conventional Commits |
+| [0012](0012-dependabot-auto-merge.md) | Dependabot patch/minor updates merge automatically |
+| [0013](0013-child-process-output-through-log-pipeline.md) | Child process output is tee'd through the log pipeline |
+| [0014](0014-nixos-rebuild-in-transient-systemd-unit.md) | NixOS rebuild runs in a transient systemd unit |
+| [0015](0015-revert-nix-hashes-on-surviving-rebuild-failure.md) | Revert nix hashes when a rebuild fails and skipper survives |
+| [0016](0016-autosync-and-queue-via-leave-dirty.md) | Autosync with a leave-dirty queue and non-persistent overrides |
+| [0017](0017-self-heal-failed-self-update.md) | Self-heal skipper-cd after a failed self-update |
+| [0018](0018-pwa-installable-ui.md) | Installable PWA web UI with app-shell caching |
+| [0019](0019-autosync-ui-overrides-collapse-to-inherit.md) | Autosync UI overrides collapse to inherit when they match the baseline |
+| [0020](0020-outbound-deploy-notifications.md) | Outbound deploy notifications via a generic HTTP sink |
+| [0021](0021-configurable-ui-themes.md) | Configurable UI themes, with a per-browser override |
+| [0022](0022-health-check-gated-rollback.md) | Health-check-gated rollback |
+| [0023](0023-pwa-update-prompt.md) | Prompt to reload when a new PWA version is waiting |
+| [0024](0024-upcoming-deploys-look-ahead.md) | Upcoming-deploys look-ahead (run plan) in the header |
+| [0025](0025-reconcile-self-restart-interrupted-nixos-rebuild.md) | Reconcile a self-restart-interrupted NixOS rebuild into a success |
+| [0026](0026-yaml-state-persistence-not-sqlite.md) | Persist state as YAML files, not an embedded database |
+| [0027](0027-live-stack-health-in-ui.md) | Live stack health in the UI (own stacks, display-only) |
+| [0028](0028-periodic-reconcile-loop.md) | Periodic reconcile loop against git |
+| [0029](0029-runtime-drift-self-heal.md) | Runtime drift self-heal via corrective redeploy (opt-in) |
+| [0030](0030-image-update-automation.md) | Image-update automation (delegate to Renovate; git write-back if in-repo) |
+| [0031](0031-notify-on-own-stack-health-change.md) | Notify on own-stack health change (background watchdog, persisted phase history) |
+| [0032](0032-stack-deploy-ordering-via-depends-on.md) | Stack deploy ordering via depends_on (block on failed dependency, queue-aware) |
+| [0033](0033-durable-per-stack-deploy-audit-log.md) | Durable per-stack deploy audit log (append-only NDJSON, terminal outcomes) |
+| [0034](0034-stack-discovery-from-repo.md) | Stack definitions come from the deploy repo (auto-discovery + central overrides) |
+| [0035](0035-ui-assets-same-origin-from-embed.md) | UI assets served same-origin from embed.FS (self-contained UI) |
+| [0036](0036-orphan-detection-and-prune.md) | Orphan detection and optional prune (working_dir identity, health-poll cadence) |
+| [0037](0037-container-logs-in-ui.md) | Container logs in the UI (live-streamed via SSE, one follow-child per viewer) |
+| [0038](0038-pre-post-deploy-hooks.md) | Pre-/post-deploy hooks (backup-before-update) |
+| [0039](0039-read-only-http-json-api.md) | Read-only HTTP JSON API (snapshot + stream; proposed) |
+| [0040](0040-zero-downtime-rollout-traefik.md) | Zero-downtime rollout (Traefik), opt-in per service |
+| [0041](0041-traefik-app-link-detection.md) | Traefik app-link detection (live labels, health-poll cadence) |
+| [0042](0042-pretty-console-log.md) | Pretty console output (default `log_format`) |
+| [0043](0043-single-config-file.md) | Single configuration file (fold per-stack overrides into the host config) |
+| [0044](0044-gzip-compressed-static-assets.md) | Gzip-compressed app-shell assets, negotiated at request time |
+| [0045](0045-project-directory.md) | `project_directory` — rename `working_dir`, add a derived base directory |
+| [0046](0046-automatic-health-check-from-compose-healthcheck.md) | Automatic health_check gate from the compose file's own healthcheck |
+| [0047](0047-deploy-health-check-and-runtime-health-poll-rename.md) | Rename `health_check` to `deploy_health_check`, `health_poll_interval_seconds` to `runtime_health_poll_interval_seconds` |
+| [0048](0048-multi-host-federated-ui.md) | Multi-host federated UI (read-data fan-in over /api/v1, merged view; proposed) |
+| [0049](0049-explicit-deploy-health-check-opt-out.md) | Suppress the auto deploy gate for on-demand stacks + explicit `deploy_health_check: false` opt-out |
+| [0050](0050-rollback-opt-out.md) | Per-stack (and global) `rollback: false` opt-out for stateful/migrating stacks (fail loud, leave failed containers running) |
+| [0051](0051-bootstrap-run-does-not-refresh-images.md) | A run with no recorded state converges the host but does not `pull` — no floating tag moves unattended |
+| [0052](0052-binary-assets-out-of-git-history.md) | Churning binaries stay out of git history — docs screenshots generated in CI, Playwright baselines in Git LFS; write-once binaries stay committed |
+| [0053](0053-deploy-reports-running-image-versions.md) | A deploy reports the version it actually put into service (`running_images`, separate from the pull-deciding `images`), plus whether it was health-gated |
+| [0054](0054-read-only-registry-update-check.md) | Read-only registry update check — "update available" in the Stacks view + one notification; acting stays a git commit |
+| [0055](0055-standing-config-errors-are-reported-once.md) | A standing configuration error is reported once (and again when it changes), with `skipper_stack_config_error` as the live signal |
+| [0056](0056-repeated-outcomes-collapse-in-the-history.md) | A repeated terminal outcome collapses into the record it repeats, carrying `repeat_count` — so a failure loop cannot evict a stack's real history |
+| [0057](0057-build-context-pinned-to-the-repo-clone.md) | A relative `build:` context is pinned to the repo clone via a generated compose override, so the build reads the Dockerfile skipper hashed |
+| [0058](0058-git-sync-is-retried-before-a-run-gives-up.md) | A failed git sync is retried before the run gives up, so a transient forge hiccup does not skip a whole reconcile |
+| [0059](0059-per-service-change-attribution.md) | A deploy names which containers its changed files reached — compose blocks compared against the deployed revision; project-wide inputs stay stack-wide |
+| [0060](0060-project-directory-checkout-is-fast-forwarded.md) | The `project_directory` checkout is fast-forwarded before the stack phase, so relative bind mounts serve current content; it refuses on a dirty or diverged tree rather than repairing it |
+| [0061](0061-per-stack-rollback-base.md) | Each stack rolls back to, and diffs against, the commit it last ran (`stack_commits`), so a retried broken change never restores the broken version itself |
+| [0062](0062-held-changes.md) | A change whose new version failed after it started is held until a new push or an operator retry, instead of failing again every reconcile tick; pre-start failures still retry |
+| [0063](0063-failure-event-names-the-cause.md) | A failed command's event names the cause condensed from its stderr tail, with per-run timestamps removed so repeats still collapse |
+| [0064](0064-failures-before-start-back-off-then-hold.md) | A change that failed before any container was touched is retried after 5, then 10 minutes and held after its third failure, using ADR-0062's hold record instead of retrying every tick |
+| [0065](0065-nixos-change-detection-by-system-derivation.md) | NixOS change detection rebuilds only when the host's system derivation changed (revision neutralized), by default; `files` keeps the old any-`*.nix` behavior |
+| [0066](0066-revert-of-held-change-removes-orphaned-services.md) | Releasing a hold by revert first removes containers of services the compose file no longer declares (a hand-applied held version), keeping the hold if the removal fails. Superseded by 0068 |
+| [0067](0067-csp-and-host-allowlist.md) | Every response carries a strict CSP (inline pre-paint script moved to its own file) and security headers; an optional `allowed_hosts` refuses other `Host` values on the UI routes (DNS rebinding) and `listen_address` binds the main port |
+| [0068](0068-revert-of-held-change-converges-recorded-version.md) | Releasing a hold by revert runs one `up -d --remove-orphans` (`--build` without `--pull` for built images) of the recorded version, so a `rollback: false` or hand-applied held version stops running; a failed `up` keeps the hold |
+| [0069](0069-health-poll-batches-container-state.md) | The health poll reads every stack's containers in one `docker ps` + one `docker inspect`, matched by the compose working_dir label, instead of one `docker compose ps` per stack |

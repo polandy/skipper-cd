@@ -1,0 +1,30 @@
+# release-please reads the Conventional Commits history and maintains a
+# release PR (CHANGELOG.md + next semver). Merging that PR creates the
+# GitHub release and the v* tag.
+#
+# release-please runs with a fine-grained PAT (RELEASE_PLEASE_TOKEN) instead of
+# the default GITHUB_TOKEN. Refs created by the default token do not trigger
+# other workflows; using a PAT means the release PR runs the normal CI checks
+# and the release tag triggers the Docker image build (docker.yml, on: push
+# tags) automatically — so no explicit dispatch and no admin merge are needed.
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v5
+        with:
+          # Manifest mode: release-please-config.json + .release-please-manifest.json
+          # drive the release. The manifest is the single source of truth for the
+          # version string that the Docker and Nix builds inject via -ldflags.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}

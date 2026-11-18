@@ -1,0 +1,3818 @@
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/dm-sans-400.woff2) format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/dm-sans-500.woff2) format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/dm-sans-600.woff2) format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/jetbrains-mono-400.woff2) format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/jetbrains-mono-500.woff2) format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/jetbrains-mono-600.woff2) format('woff2')}
+/* Metric-compatible local fallbacks: size-adjust + ascent/descent overrides are
+   computed from the real font metrics (fontTools; e.g. JetBrains Mono advance
+   0.6em vs Ubuntu Mono 0.5em → 120%), so text rendered before the webfont
+   swaps in occupies exactly the space of the loaded face — the swap causes no
+   layout shift on slow connections. One family per local candidate; a
+   candidate that isn't installed fails to match and the stack moves on. The
+   Liberation faces double as their metric clones (Arial, Courier New). */
+@font-face{font-family:'DM Sans Fallback Ubuntu';src:local('Ubuntu');font-weight:400 600;size-adjust:102.9239%;ascent-override:96.3819%;descent-override:30.1193%;line-gap-override:0%}
+@font-face{font-family:'DM Sans Fallback DejaVu';src:local('DejaVu Sans');font-weight:400 600;size-adjust:92.0931%;ascent-override:107.7171%;descent-override:33.6616%;line-gap-override:0%}
+@font-face{font-family:'DM Sans Fallback Liberation';src:local('Liberation Sans'),local('Arial'),local('Helvetica');font-weight:400 600;size-adjust:105.7305%;ascent-override:93.8235%;descent-override:29.3198%;line-gap-override:0%}
+@font-face{font-family:'JetBrains Mono Fallback Ubuntu';src:local('Ubuntu Mono');font-weight:400 600;size-adjust:120%;ascent-override:85%;descent-override:25%;line-gap-override:0%}
+@font-face{font-family:'JetBrains Mono Fallback DejaVu';src:local('DejaVu Sans Mono');font-weight:400 600;size-adjust:99.6594%;ascent-override:102.3486%;descent-override:30.1025%;line-gap-override:0%}
+@font-face{font-family:'JetBrains Mono Fallback Liberation';src:local('Liberation Mono'),local('Courier New');font-weight:400 600;size-adjust:99.9837%;ascent-override:102.0166%;descent-override:30.0049%;line-gap-override:0%}
+  /* ---------------------------------------------------------------------
+     Theme palettes. The server bakes the configured theme (ui_theme) into
+     <html data-theme="…">; the header toggle only ever flips the ".light"
+     class on top of it (dark/light is a per-browser preference, the theme
+     itself is a per-deployment choice — see docs/user/configuration.md).
+     Each block defines the same raw slots: four background depths
+     (crust/mantle/base/surface0), three text tiers (overlay1/overlay2/
+     subtext0/text), and six raw accent colours (--raw-*). The semantic
+     layer further down consumes only these tokens, so adding a theme here
+     is the only change needed to restyle the whole page. Fallback (bare
+     :root, lowest specificity) is Catppuccin dark, in case data-theme is
+     ever missing. */
+  :root {
+    --crust: #11111b; --mantle: #181825; --base: #1e1e2e; --surface0: #313244;
+    --overlay1: #82879e; --overlay2: #9399b2; --subtext0: #a6adc8; --text: #cdd6f4;
+    --raw-accent: #fab387; --raw-success: #94e2d5; --raw-danger: #f38ba8;
+    --raw-rollback: #eba0ac; --raw-diffadd: #a6e3a1; --raw-queued: #f9e2af;
+    color-scheme: dark;
+  }
+
+  /* Catppuccin — Mocha (dark) / Latte (light). The original default. */
+  :root[data-theme="catppuccin"] {
+    --crust: #11111b; --mantle: #181825; --base: #1e1e2e; --surface0: #313244;
+    --overlay1: #82879e; --overlay2: #9399b2; --subtext0: #a6adc8; --text: #cdd6f4;
+    --raw-accent: #fab387; --raw-success: #94e2d5; --raw-danger: #f38ba8;
+    --raw-rollback: #eba0ac; --raw-diffadd: #a6e3a1; --raw-queued: #f9e2af;
+    color-scheme: dark;
+  }
+  :root[data-theme="catppuccin"].light {
+    --crust: #dce0e8; --mantle: #e6e9ef; --base: #eff1f5; --surface0: #ccd0da;
+    --overlay1: #686c80; --overlay2: #7c7f93; --subtext0: #5c5f71; --text: #4c4f69;
+    --raw-accent: #fe640b; --raw-success: #179299; --raw-danger: #d20f39;
+    --raw-rollback: #e64553; --raw-diffadd: #40a02b; --raw-queued: #df8e1d;
+    color-scheme: light;
+  }
+
+  /* Nord — arctic blue-greys, single frost-blue accent. */
+  :root[data-theme="nord"] {
+    --crust: #252a33; --mantle: #2e3440; --base: #3b4252; --surface0: #434c5e;
+    --overlay1: #a8b0c0; --overlay2: #616e88; --subtext0: #d8dee9; --text: #eceff4;
+    --raw-accent: #88c0d0; --raw-success: #a3be8c; --raw-danger: #bf616a;
+    --raw-rollback: #b48ead; --raw-diffadd: #a3be8c; --raw-queued: #ebcb8b;
+    color-scheme: dark;
+  }
+  :root[data-theme="nord"].light {
+    --crust: #dbe1ea; --mantle: #e5e9f0; --base: #eceff4; --surface0: #d8dee9;
+    --overlay1: #5f6d7b; --overlay2: #7b8494; --subtext0: #4c566a; --text: #2e3440;
+    --raw-accent: #4c6f96; --raw-success: #4c8f6b; --raw-danger: #b3434f;
+    --raw-rollback: #966a92; --raw-diffadd: #4c8f6b; --raw-queued: #a6790a;
+    color-scheme: light;
+  }
+
+  /* Solarized — the low-contrast terminal classic. */
+  :root[data-theme="solarized"] {
+    --crust: #00212a; --mantle: #002b36; --base: #073642; --surface0: #0a4552;
+    --overlay1: #879ea5; --overlay2: #657b83; --subtext0: #aeb9bb; --text: #d2d8d8;
+    --raw-accent: #268bd2; --raw-success: #2aa198; --raw-danger: #dc322f;
+    --raw-rollback: #d33682; --raw-diffadd: #859900; --raw-queued: #b58900;
+    color-scheme: dark;
+  }
+  :root[data-theme="solarized"].light {
+    --crust: #f5eeda; --mantle: #f8f1dd; --base: #fdf6e3; --surface0: #eee8d5;
+    --overlay1: #647373; --overlay2: #839496; --subtext0: #4b5c62; --text: #38474b;
+    --raw-accent: #268bd2; --raw-success: #2aa198; --raw-danger: #dc322f;
+    --raw-rollback: #d33682; --raw-diffadd: #728a00; --raw-queued: #956f00;
+    color-scheme: light;
+  }
+
+  /* Gruvbox — warm retro-groove browns, orange accent. */
+  :root[data-theme="gruvbox"] {
+    --crust: #1d2021; --mantle: #282828; --base: #32302f; --surface0: #3c3836;
+    --overlay1: #a3978d; --overlay2: #928374; --subtext0: #bdae93; --text: #ebdbb2;
+    --raw-accent: #fe8019; --raw-success: #8ec07c; --raw-danger: #fb4934;
+    --raw-rollback: #d3869b; --raw-diffadd: #b8bb26; --raw-queued: #fabd2f;
+    color-scheme: dark;
+  }
+  :root[data-theme="gruvbox"].light {
+    --crust: #f2e5bc; --mantle: #f9f5d7; --base: #fbf1c7; --surface0: #ebdbb2;
+    --overlay1: #796a56; --overlay2: #7c6f64; --subtext0: #504945; --text: #3c3836;
+    --raw-accent: #af3a03; --raw-success: #427b58; --raw-danger: #9d0006;
+    --raw-rollback: #8f3f71; --raw-diffadd: #79740e; --raw-queued: #b57614;
+    color-scheme: light;
+  }
+
+  /* Rosé Pine — muted rose and iris-purple on a plum-black base. */
+  :root[data-theme="rose-pine"] {
+    --crust: #14121f; --mantle: #191724; --base: #1f1d2e; --surface0: #26233a;
+    --overlay1: #88849e; --overlay2: #908caa; --subtext0: #908caa; --text: #e0def4;
+    --raw-accent: #c4a7e7; --raw-success: #9ccfd8; --raw-danger: #eb6f92;
+    --raw-rollback: #ebbcba; --raw-diffadd: #9ccfd8; --raw-queued: #f6c177;
+    color-scheme: dark;
+  }
+  :root[data-theme="rose-pine"].light {
+    --crust: #f2e9e1; --mantle: #faf4ed; --base: #fffaf3; --surface0: #f2e9e1;
+    --overlay1: #756f86; --overlay2: #797593; --subtext0: #66627d; --text: #575279;
+    --raw-accent: #907aa9; --raw-success: #56949f; --raw-danger: #b4637a;
+    --raw-rollback: #d7827e; --raw-diffadd: #56949f; --raw-queued: #ea9d34;
+    color-scheme: light;
+  }
+
+  /* Flake — blue on a cool near-black, LED green for anything running. The one
+     palette whose accent is a different colour per variant, not the same one
+     retuned: #5277c3 reaches only ~3.5:1 on the dark ground (ADR-0021
+     amendment). Rollback has no counterpart here and tints the red. */
+  :root[data-theme="flake"] {
+    --crust: #0e1116; --mantle: #14181f; --base: #1a1f28; --surface0: #262e3a;
+    --overlay1: #7b8698; --overlay2: #93a0b3; --subtext0: #a8b4c5; --text: #e4eaf2;
+    --raw-accent: #7ebae4; --raw-success: #3ddc84; --raw-danger: #ff5e78;
+    --raw-rollback: #ff9baa; --raw-diffadd: #3ddc84; --raw-queued: #ffd54a;
+    color-scheme: dark;
+  }
+  :root[data-theme="flake"].light {
+    --crust: #dee4eb; --mantle: #e9edf2; --base: #f2f4f6; --surface0: #dce3ea;
+    --overlay1: #5b6675; --overlay2: #78828f; --subtext0: #49525f; --text: #14181f;
+    --raw-accent: #5277c3; --raw-success: #12794a; --raw-danger: #c42a45;
+    --raw-rollback: #b4485c; --raw-diffadd: #12794a; --raw-queued: #d99e00;
+    color-scheme: light;
+  }
+
+  /* Per-host identity colours (multi-host fan-in). Six categorical slots per
+     theme, deliberately kept clear of the status hues above so a host tint
+     never reads as a deploy state. assignHostColors() (app-helpers.js) picks a
+     slot per host name; the [data-host-color="N"] map below resolves it to
+     --host-slot for the dot/chip. One row per theme, dark then light.
+     The hues sit on the cool arc (azure → magenta, ~190–320°) — the part of the
+     wheel each theme's status colours (warm / green / teal / red) leave free, so
+     a host tint never reads as a deploy state. The slot ORDER is interleaved
+     (not the monotonic ramp): assignHostColors hands out numerically adjacent
+     slots first, so consecutive slots must jump across the arc to stay ≥~50°
+     apart and not read as the same colour. Saturation follows each theme's mood;
+     lightness suits its ground. (A full-wheel variant was more distinct but
+     overlapped the status hues and read worse.) Generated by
+     scripts/gen-host-colors.mjs; retune there and regenerate, don't hand-edit. */
+  :root,
+  :root[data-theme="catppuccin"] {
+    --host-0:#90dbea; --host-1:#b890ea; --host-2:#90b7ea; --host-3:#e190ea; --host-4:#9090ea; --host-5:#ea90cc;
+  }
+  :root[data-theme="catppuccin"].light {
+    --host-0:#28a9c3; --host-1:#6e28c3; --host-2:#286bc3; --host-3:#b328c3; --host-4:#2828c3; --host-5:#c3288f;
+  }
+  :root[data-theme="nord"] {
+    --host-0:#92c8d3; --host-1:#af92d3; --host-2:#92aed3; --host-3:#cc92d3; --host-4:#9292d3; --host-5:#d392bd;
+  }
+  :root[data-theme="nord"].light {
+    --host-0:#41909f; --host-1:#6b419f; --host-2:#416a9f; --host-3:#96419f; --host-4:#41419f; --host-5:#9f4180;
+  }
+  :root[data-theme="solarized"] {
+    --host-0:#7bc6d5; --host-1:#a47bd5; --host-2:#7ba2d5; --host-3:#cc7bd5; --host-4:#7b7bd5; --host-5:#d57bb7;
+  }
+  :root[data-theme="solarized"].light {
+    --host-0:#2b9fb6; --host-1:#692bb6; --host-2:#2b67b6; --host-3:#a82bb6; --host-4:#2b2bb6; --host-5:#b62b87;
+  }
+  :root[data-theme="gruvbox"] {
+    --host-0:#8ecbd7; --host-1:#af8ed7; --host-2:#8eaed7; --host-3:#d08ed7; --host-4:#8e8ed7; --host-5:#d78ebf;
+  }
+  :root[data-theme="gruvbox"].light {
+    --host-0:#3092a6; --host-1:#6530a6; --host-2:#3063a6; --host-3:#9a30a6; --host-4:#3030a6; --host-5:#a6307f;
+  }
+  :root[data-theme="rose-pine"] {
+    --host-0:#9cd3de; --host-1:#b99cde; --host-2:#9cb8de; --host-3:#d79cde; --host-4:#9c9cde; --host-5:#de9cc8;
+  }
+  :root[data-theme="rose-pine"].light {
+    --host-0:#419daf; --host-1:#7241af; --host-2:#4170af; --host-3:#a441af; --host-4:#4141af; --host-5:#af418a;
+  }
+  :root[data-theme="flake"] {
+    --host-0:#8ed3e1; --host-1:#b38ee1; --host-2:#8eb2e1; --host-3:#d98ee1; --host-4:#8e8ee1; --host-5:#e18ec5;
+  }
+  :root[data-theme="flake"].light {
+    --host-0:#2f9cb1; --host-1:#6a2fb1; --host-2:#2f68b1; --host-3:#a42fb1; --host-4:#2f2fb1; --host-5:#b12f86;
+  }
+  /* Semantic layer — everything below consumes only these tokens, so
+     swapping a palette above restyles the whole page. */
+  :root {
+    --bg-deep: var(--mantle);      /* page */
+    --bg-base: var(--base);        /* header glass, cards */
+    --bg-sunken: var(--crust);     /* log pane, diff/files panels */
+    --bg-raised: var(--surface0);  /* tags, toggle tracks */
+    --border: color-mix(in srgb, var(--overlay2) 14%, transparent);
+    --border-lit: color-mix(in srgb, var(--overlay2) 28%, transparent);
+    --text-primary: var(--text);
+    --text-secondary: var(--subtext0);
+    --text-muted: var(--overlay1);
+    --accent: var(--raw-accent);   /* brand, active deploy */
+    --success: var(--raw-success);
+    --danger: var(--raw-danger);
+    --rollback: var(--raw-rollback);
+    --skip: var(--overlay1);
+    --queued: var(--raw-queued);   /* Queued/deferred deploy, autosync paused */
+    /* Queued amber rendered as a TEXT/label colour (tags, badges, counts). The
+       amber that reads fine as a bar/dot fails WCAG on a light ground, so light
+       themes darken this below; dark themes inherit --queued unchanged. */
+    --queued-text: var(--queued);
+    --diff-add: var(--raw-diffadd);
+    --hunk: var(--raw-queued);
+    /* Stack health (ADR-0027) — its own tier, derived from existing raws so it
+       tracks every theme; a hue kept distinct from --accent and --success. */
+    --h-healthy: var(--raw-diffadd);
+    --h-unhealthy: var(--raw-danger);
+    --h-starting: var(--raw-queued);
+    --h-stopped: var(--overlay2);
+    --h-unknown: var(--overlay1);
+    --accent-dim: color-mix(in srgb, var(--accent) 12%, transparent);
+    --accent-glow: color-mix(in srgb, var(--accent) 30%, transparent);
+    --success-dim: color-mix(in srgb, var(--success) 12%, transparent);
+    --danger-dim: color-mix(in srgb, var(--danger) 10%, transparent);
+    --rollback-dim: color-mix(in srgb, var(--rollback) 12%, transparent);
+    --queued-dim: color-mix(in srgb, var(--queued) 14%, transparent);
+    --font-display: 'DM Sans', 'DM Sans Fallback Ubuntu', 'DM Sans Fallback DejaVu', 'DM Sans Fallback Liberation', sans-serif;
+    --font-mono: 'JetBrains Mono', 'JetBrains Mono Fallback Ubuntu', 'JetBrains Mono Fallback DejaVu', 'JetBrains Mono Fallback Liberation', 'SF Mono', 'Cascadia Code', monospace;
+    /* Radius says what kind of thing an element is, so it is a scale, not one
+       value: the sheet a table sits on, a control/panel (--radius), a chip
+       inside a row, and a full pill for the states that need to read as a
+       token. */
+    --r-sheet: 12px;
+    --radius: 8px;
+    --r-chip: 5px;
+  }
+
+  /* Light themes: darken the queued amber used as text so tag/badge/count
+     labels clear WCAG AA (≥4.6:1) on the --queued-dim tint. Calibrated per
+     theme against that tinted background (the worst case for dark text). The
+     bar/dot/glyph uses of --queued stay the brighter amber (non-text, ≥3:1). */
+  :root[data-theme="catppuccin"].light { --queued-text: #8d5a12; }
+  :root[data-theme="nord"].light       { --queued-text: #7d5b08; }
+  :root[data-theme="solarized"].light  { --queued-text: #805f00; }
+  :root[data-theme="gruvbox"].light    { --queued-text: #88590f; }
+  :root[data-theme="rose-pine"].light  { --queued-text: #985e10; }
+  :root[data-theme="flake"].light      { --queued-text: #835c11; }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-display);
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Keyboard focus ring (T2.6) — one consistent, theme-aware indicator for
+     every interactive control. :focus-visible fires only on keyboard focus, so
+     pointer users never see it. The glyph-only header controls, the
+     role=button/switch custom controls and the host chips (a <span>/<div> given
+     tabindex) are all covered via the element/role/attribute selectors. This
+     sits EARLY on purpose: the few controls with a tuned ring (deploy
+     indicator, health beacon, …) declare their own :focus-visible later and win
+     on source order at equal specificity, so they keep their bespoke offset. */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible,
+  [role="button"]:focus-visible,
+  [role="switch"]:focus-visible,
+  [role="menuitem"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Commit-SHA link — every SHA the UI prints (roster, deploy history, diff
+     header, health timeline, peer detail) opens that commit on the forge. One
+     shared treatment so they behave alike wherever they appear, and it only
+     styles the affordance: colour, size and font stay whatever the surrounding
+     cell sets, so a linked SHA looks exactly like the inert one it replaced
+     until pointed at. That restraint is deliberate — these are dense metadata
+     columns, and colouring every SHA would shout over the status badges that
+     carry the actual signal. Hover/focus is where the link reveals itself. */
+  .sha-link {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  /* `a.…:hover` on purpose: the cells these links live in (`.diff-meta-line
+     .m-sha`, `.audit-row .ar-sha`, …) set their own colour at equal specificity
+     and later in this file, so a bare `.sha-link:hover` would lose the accent in
+     some places and win it in others. */
+  a.sha-link:hover,
+  a.sha-link:focus-visible {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* Page ground: one quiet vertical wash, nothing drawn on top of it. The
+     tables are the figure and they now sit on their own sheet (--r-sheet), so a
+     48px grid and an accent glow behind them competed with the content for the
+     eye — the grid lines in particular showed THROUGH every transparent row and
+     read as cell borders the layout never had. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--bg-sunken) 55%, transparent) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: color-mix(in srgb, var(--bg-base) 82%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 28px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    /* Let the version label clip (ellipsis) instead of widening the header. */
+    min-width: 0;
+  }
+
+  .brand-icon {
+    width: 32px;
+    height: 32px;
+    position: relative;
+    color: var(--text-primary);
+  }
+
+  .brand-icon svg { display: block; width: 32px; height: 32px; }
+
+  /* Wordmark over version, stacked beside the logo. */
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    line-height: 1.1;
+  }
+
+  .brand-name {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+    /* Same rule as the version label below: clip, never wrap. A squeezed header
+       broke `skipper-cd` across two lines, and the second line then sat under
+       the control row it had just been pushed out of. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .brand-name span {
+    color: var(--accent);
+  }
+
+  .brand-version {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    letter-spacing: 0.2px;
+    /* Sits under the wordmark; shows in full and only clips (ellipsis) when the
+       column actually runs out of width — no fixed character cap. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .brand-version:empty { display: none; }
+
+  .status-area {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+  /* Screen-reader-only: visually hidden but kept in the accessibility tree, so a
+     live region announces it. (T2.8) Distinct from display:none, which drops the
+     node from the a11y tree and would never announce. */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+    white-space: nowrap; border: 0;
+  }
+  /* Only the link glyph shows; the state word stays sr-only so the indicator's
+     aria-live region can announce connection changes (T2.8). */
+  .indicator span {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+    white-space: nowrap; border: 0;
+  }
+
+  /* Connection state as a chain-link glyph: closed link when up, broken link
+     when reconnecting. Colour carries the state (success/accent/danger); the
+     transient states (connecting/reconnecting) animate so they don't read as a
+     static error. */
+  .indicator-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--success);
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--success) 45%, transparent));
+    flex-shrink: 0;
+  }
+  .ci-ico { display: block; width: 18px; height: 18px; }
+  .indicator-dot .ci-broken { display: none; }
+
+  .indicator-dot.warn {
+    color: var(--accent);
+    filter: drop-shadow(0 0 5px var(--accent-glow));
+    animation: breathe 2s ease-in-out infinite;
+  }
+
+  .indicator-dot.err {
+    color: var(--danger);
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--danger) 45%, transparent));
+    animation: reconnect-pulse 1s ease-in-out infinite;
+  }
+  .indicator-dot.err .ci-link { display: none; }
+  .indicator-dot.err .ci-broken { display: block; }
+
+  @keyframes breathe {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  @keyframes reconnect-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .deploy-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    transition: color 0.3s;
+  }
+
+  .deploy-status.active { color: var(--accent); }
+  .deploy-status.active .deploy-dot {
+    color: var(--accent);
+    filter: drop-shadow(0 0 5px var(--accent-glow));
+    animation: breathe 2s ease-in-out infinite;
+  }
+
+  /* Anchor at rest (idle, muted), ship under way when deploying (accent,
+     pulsing). The glyph colour follows the indicator via currentColor. */
+  .deploy-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: color 0.3s;
+    flex-shrink: 0;
+  }
+  .ds-ico { display: block; width: 18px; height: 18px; }
+  .deploy-status .ds-ship { display: none; }
+  .deploy-status.active .ds-anchor { display: none; }
+  .deploy-status.active .ds-ship { display: block; }
+  /* No text when idle (the anchor + its title tooltip say enough). When a run is
+     active the labels appear: the deploying stack (ds-active) and the look-ahead
+     trail of what deploys next (ds-next). The +N count chip (ds-count) is the
+     mobile-only fallback for the trail (see Responsive). Clicking the indicator
+     opens the run panel, so it reads as a button while active. */
+  .deploy-status .ds-active,
+  .deploy-status .ds-next,
+  .deploy-status .ds-count { display: none; }
+  .deploy-status.active { cursor: pointer; }
+  .deploy-status.active .ds-active { display: inline; }
+  .deploy-status.active .ds-next { display: inline-flex; align-items: center; gap: 6px; }
+  .deploy-status .ds-next:empty { display: none; }
+  .deploy-status:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+  /* Look-ahead trail: "→ grafana · loki", dimmed so the active stack leads. */
+  .ds-next .arrow { color: var(--text-muted); opacity: 0.7; }
+  .ds-next .up { color: var(--text-secondary); }
+  .ds-next .up.more { color: var(--text-muted); }
+  .ds-next .sep { color: var(--text-muted); opacity: 0.55; }
+
+  /* Mobile fallback: a compact peach count chip (accent-tied to the active run,
+     distinct from the yellow autosync pending pill). */
+  .ds-count {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600; line-height: 1;
+    color: var(--accent); background: var(--accent-dim);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    padding: 3px 7px; border-radius: 999px;
+  }
+  .deploy-status .ds-count:empty { display: none; }
+
+  /* ─── MAIN ─── */
+  /* Shared by every view, so they stay one column width. 1180px is set by the
+     widest thing the deploy table has to fit on one line: a Version chip like
+     `machine-learning v1.118.0 → v1.119.0` wants ~236px, and at this width the
+     column gets ~283px — headroom for longer service names without wrapping.
+     Still a centred column on a 13" laptop (~1440px viewport), not edge-to-edge. */
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 1180px;
+    margin: 32px auto;
+    padding: 0 20px;
+  }
+
+  /* ─── EMPTY STATE ─── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 100px 24px;
+    color: var(--text-muted);
+  }
+
+  .empty-icon {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 20px;
+    opacity: 0.3;
+  }
+
+  .empty-state p {
+    font-size: 14px;
+    font-family: var(--font-mono);
+    letter-spacing: -0.2px;
+  }
+  /* Second line of the genuine-empty state (T4.17): a quieter hint under the
+     headline, shown only once the snapshot confirms there are no deploys. */
+  .empty-state p.empty-sub { font-size: 12px; opacity: 0.72; margin-top: 8px; }
+
+  /* ─── LOADING SKELETON (T4.17) ─── */
+  /* Shown from page load until the first snapshot settles, so "connecting"
+     never reads as "no deployments". Ghost rows shimmer where the real event
+     rows will land; on settle it yields to the table or the genuine-empty
+     state. Deterministic seam: driven by a flag, not a timer. */
+  .deploy-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px 0 28px;
+  }
+  .sk-status {
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    color: var(--text-muted); font-family: var(--font-mono); font-size: 12px;
+    padding: 4px 0 14px; letter-spacing: -0.2px;
+  }
+  .sk-spin {
+    width: 13px; height: 13px; border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  .sk-row {
+    display: grid;
+    grid-template-columns: 96px 1fr 84px 72px;
+    gap: 14px; align-items: center;
+    padding: 11px 14px; border-radius: 6px;
+    background: color-mix(in srgb, var(--overlay2) 4%, transparent);
+  }
+  .sk-bar {
+    height: 9px; border-radius: 4px;
+    background: linear-gradient(90deg,
+      color-mix(in srgb, var(--overlay2) 10%, transparent) 25%,
+      color-mix(in srgb, var(--overlay2) 20%, transparent) 50%,
+      color-mix(in srgb, var(--overlay2) 10%, transparent) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.3s ease-in-out infinite;
+  }
+  .sk-row:nth-child(3) .sk-bar { animation-delay: 0.15s; }
+  .sk-row:nth-child(4) .sk-bar { animation-delay: 0.30s; }
+  .sk-bar.sk-pill { height: 16px; border-radius: 20px; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ─── EVENT LIST ─── */
+  /* One sheet, not a stack of floating rows: the column header is the sheet's
+     top strip and the row list its body, so the two are a single bordered
+     surface with hairlines between the rows. Rows used to be transparent cards
+     with a 2px gap, which left the page ground (and, before it went, its grid)
+     showing between and through them. The shared .sheet-* rules below give the
+     roster the same treatment. */
+  .sheet-head {
+    align-items: center;
+    height: 36px;
+    padding: 0 20px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: color-mix(in srgb, var(--bg-sunken) 45%, var(--bg-base));
+    border: 1px solid var(--border);
+    border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  }
+  .sheet-body {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 var(--r-sheet) var(--r-sheet);
+  }
+  /* Nothing to frame: an empty sheet is a 1px box around nothing (the views
+     render their own empty state beside it). */
+  .sheet-body:empty { border: 0; }
+  /* Rows are square inside the sheet; only the last one follows its corners, so
+     a hover wash or an open panel never paints past the rounded edge. */
+  .sheet-body > :last-child { border-radius: 0 0 var(--r-sheet) var(--r-sheet); }
+  .event-list-header {
+    display: grid;
+    grid-template-columns: var(--row-cols);
+    gap: 12px;
+  }
+
+
+  /* Stack · Result · Change · When, the Stacks row's positions; .no-version drops Change. */
+  #deploy-table { --row-cols: minmax(0, 1.25fr) 120px minmax(0, 1fr) minmax(0, 0.9fr); }
+  #deploy-table.no-version { --row-cols: minmax(0, 1.25fr) 120px minmax(0, 0.9fr); }
+  #deploy-table.no-version .col-version { display: none; }
+
+  .event-row {
+    display: grid;
+    grid-template-columns: var(--row-cols);
+    gap: 12px;
+    /* Every cell is one line; a cause line under the name centres the rest. */
+    align-items: center;
+    padding: 12px 20px;
+    transition: background 0.2s, transform 0.2s;
+    position: relative;
+  }
+
+  /* Rows sit flush inside the sheet, separated by a hairline rather than by a
+     gap that shows the page through. The last one has none — the sheet's own
+     edge closes the table. Panels between rows carry the same line, so the rule
+     is on every child of the list, not just the rows. */
+  .event-list > *:not(:last-child), .roster-list > *:not(:last-child) {
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay2) 10%, transparent);
+  }
+
+  .event-row:hover {
+    background: color-mix(in srgb, var(--overlay2) 6%, transparent);
+  }
+
+  /* Host identity chip (multi-host fan-in) — a small colour-tinted monogram
+     leading the stack cell, telling which host a row belongs to without a
+     dedicated column. A labelled chip, deliberately NOT a dot: a dot already
+     means deploy status here, so the identity channel takes a different shape.
+     Shown only with more than one host in view (#deploy-table/#stacks-view
+     .show-hosts). Just another flex child of the stack cell, so it flows inline
+     at every width. */
+  .host-mono {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    min-width: 23px;
+    height: 17px;
+    padding: 0 5px;
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    color: color-mix(in srgb, var(--host-slot) 85%, var(--text));
+    background: color-mix(in srgb, var(--host-slot) 18%, transparent);
+  }
+  .host-mono:hover { background: color-mix(in srgb, var(--host-slot) 30%, transparent); }
+  /* While a host filter is active the visible chips wear a steady selected-state
+     halo so it is clear the filter is on and any chip clears it on re-click.
+     Steady, not pulsing (a row of pulsing chips reads as an alert). */
+  .host-filter-active .host-mono {
+    border-color: color-mix(in srgb, var(--host-slot) 60%, transparent);
+    box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3.5px color-mix(in srgb, var(--host-slot) 45%, transparent);
+  }
+  .host-mono[data-host-color="0"] { --host-slot: var(--host-0); }
+  .host-mono[data-host-color="1"] { --host-slot: var(--host-1); }
+  .host-mono[data-host-color="2"] { --host-slot: var(--host-2); }
+  .host-mono[data-host-color="3"] { --host-slot: var(--host-3); }
+  .host-mono[data-host-color="4"] { --host-slot: var(--host-4); }
+  .host-mono[data-host-color="5"] { --host-slot: var(--host-5); }
+  .show-hosts .host-mono { display: inline-flex; }
+
+  /* A peer row whose host is unreachable shows its last-known data, dimmed, so
+     an offline host is never silently blanked (only staler). Applies to both the
+     merged deploy feed and the merged roster. */
+  .event-row.peer-stale, .roster-row.peer-stale { opacity: 0.5; }
+  /* Host filter: a row (and its trailing panel) whose host is deselected. Shares
+     display:none with .filtered-out so the two filters compose. */
+  .event-list .host-hidden, .roster-list .host-hidden { display: none !important; }
+  .peer-row { cursor: default; }
+
+  /* Host chip: a compact tinted pill carrying the host name, coloured by its
+     assigned palette slot (--host-slot, resolved per element from the slot
+     attribute). Used in the Hosts filter drawer. Soft tint fill + solid dot and
+     text in that hue, styled like the other row tags so it reads as one system. */
+  .host-tag[data-host-color="0"] { --host-slot: var(--host-0); }
+  .host-tag[data-host-color="1"] { --host-slot: var(--host-1); }
+  .host-tag[data-host-color="2"] { --host-slot: var(--host-2); }
+  .host-tag[data-host-color="3"] { --host-slot: var(--host-3); }
+  .host-tag[data-host-color="4"] { --host-slot: var(--host-4); }
+  .host-tag[data-host-color="5"] { --host-slot: var(--host-5); }
+  .host-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 2px 8px 2px 7px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--host-slot) 82%, var(--text));
+    background: color-mix(in srgb, var(--host-slot) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--host-slot) 34%, transparent);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .host-tag::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--host-slot);
+  }
+  .host-tag .host-name { overflow: hidden; text-overflow: ellipsis; }
+
+  /* Peer rows show a plain changed-file count (no diff drill-down), styled muted
+     like the local files pill's resting state. */
+  .peer-files { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+
+  .event-row.new-row {
+    animation: rowEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes rowEnter {
+    from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* One status bar rule for every outcome, driven by the row's own
+     data-status. It replaces a per-status pair of rules (a full-row tint plus a
+     centred 60%-tall ::before) that said the same thing three times over — bar,
+     tint, and the badge itself — and left a busy feed looking blotchy once the
+     rows sat flush on one sheet. The bar runs the row's full height, so the
+     left edge of the table is a status gutter; what a row still tints is the
+     ERROR strip under it, which is the part that needs the alarm.
+
+     The gutter belongs to the EXCEPTIONS: `success` is over nine rows in ten,
+     and painting it turned the gutter into an unbroken green line that the two
+     rows worth finding had to compete with. So success stays silent at rest and
+     only answers a hover (as it did before the sheet), which keeps the gutter
+     explicable to a mouse without spending it on the normal case. Nothing is
+     lost by the silence — the status column says `success` in words and an icon
+     either way, which is exactly why the redundant channel can afford to drop
+     the norm and keep the exception. `healed` is not covered by this: it shares
+     the success green but is rare, so a green bar comes to mean "self-heal
+     acted here", which is worth seeing. The Stacks roster already followed this
+     rule (healthy draws nothing), so the two views now read alike. */
+  /* The one deploy-status colour map (--st) for every element that carries a
+     status in data-status: the row bar, the row's bound panels, the history
+     rows and folds, the outcome dots. Set on those elements only, never on a
+     container, so nothing inherits a status that is not its own; each consumer
+     names its own fallback for a status the map leaves unset. `removed` colours
+     only the row bar: in the history a stack leaving is not an outcome to rate. */
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="success"], [data-status="healed"])
+    { --st: var(--success); }
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="failed"], [data-status="rolled_back_unhealthy"], [data-status="heal_exhausted"])
+    { --st: var(--danger); }
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="rolled_back"]
+    { --st: var(--rollback); }
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="queued"], [data-status="blocked"])
+    { --st: var(--queued); }
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="deploying"]
+    { --st: var(--accent); }
+  .event-row[data-status="removed"] { --st: color-mix(in srgb, var(--rollback) 55%, transparent); }
+  .event-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--st, transparent);
+  }
+  .event-row[data-status="success"]::before {
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .event-row[data-status="success"]:hover::before { opacity: 1; }
+
+  /* The one row that still carries a wash: a deploy running right now is the
+     only transient state in the table, and the glow is what makes it findable
+     while it lasts. */
+  .event-row[data-status="deploying"] {
+    background: var(--accent-dim);
+  }
+  .event-row[data-status="deploying"]::before {
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
+
+  /* ─── CELLS ─── */
+  .cell-time {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    /* Absolute mode (the view option) prints a full locale timestamp, which is
+       wider than the column on a narrow viewport — clip it inside the cell
+       instead of letting it print over the stack name. No effect while it
+       fits, which is every relative-time row. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The stack name is a name, not a machine token: it reads in the display face
+     like every other label, and the mono face is kept for what is literally
+     machine output — versions, SHAs, diffs, log lines. Same treatment in the
+     roster (.roster-stack), so the two views name a stack identically. */
+  .cell-stack {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: -0.005em;
+  }
+
+  /* The name is the row's identity, the pending tag beside it is context, so
+     the tag gives way first. Left to itself the opposite happens: overflow:hidden
+     resolves the name's automatic flex minimum to zero, making it the only
+     shrinkable item while the nowrap tag refuses to give way at all — which
+     clipped `backup` to `bac`, past its own ellipsis, next to a
+     `blocked by vaultwarden`. flex-shrink (not a min-width, which would pad
+     short names out and shift every row, tagged or not) keeps the box at the
+     name's own width; the cap only catches a pathological name, which then
+     ellipsises as it always did. */
+  .stack-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+    max-width: 24ch;
+  }
+
+  /* Recognizable per-stack icon; falls back to a monogram (.mono) when no
+     image resolves. Fixed box so mixed SVG/PNG sources line up. */
+  .stack-icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .stack-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .stack-icon.mono {
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .cell-duration {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  /* Stack cell: the name, plus the cause line indented under it. */
+  .cell-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .cell-cause {
+    padding-left: 26px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Past the host chip too, when one leads the name (min-width + gap). */
+  .show-hosts .cell-cause { padding-left: 57px; }
+  .event-row:is([data-status="failed"], [data-status="rolled_back_unhealthy"]) .cell-cause { color: var(--danger); }
+  .event-row[data-status="rolled_back"] .cell-cause { color: var(--rollback); }
+  .event-row:is([data-status="queued"], [data-status="blocked"]) .cell-cause { color: var(--queued-text); }
+
+  /* When: relative time, the duration muted, the short SHA once known. */
+  .cell-when { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .cell-when .cell-time { min-width: 0; }
+  .cell-sha {
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--text-secondary); white-space: nowrap;
+  }
+  /* The status cell is one line in a deploy row: badge, then "↻ ×N". */
+  .event-row .status-cell { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+
+  /* ─── STATUS BADGES ─── */
+  /* A status is a word with an icon, not a box. Every outcome used to be an
+     outlined uppercase chip of the same weight, so a failure had to be read
+     rather than seen; now only the states that want attention take a surface
+     (see the -failed/-rolled_back fills below), and the settled ones are just
+     their icon plus the word. Sentence-cased by the source labels, which stay
+     lowercase to speak with the health pill sitting right under them. */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    border-radius: 999px;
+    font-family: var(--font-display);
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.25;
+    white-space: nowrap;
+    color: var(--text-primary);
+  }
+  /* The states that carry a fill get their padding back — without it the tint
+     would sit tight against the glyph. */
+  .badge-failed, .badge-rolled_back,
+  .badge-rolled_back_unhealthy, .badge-heal_exhausted { padding: 3px 10px 3px 8px; }
+
+  /* Every status badge leads with a small icon in a fixed slot, so the glyphs
+     read at one optical size regardless of the label (T3.14). deploying keeps
+     its .spinner. */
+  .badge-ico { flex: none; width: 13px; height: 13px; }
+  .badge-lbl { display: inline-flex; flex-direction: column; gap: 0; line-height: 1.15; }
+
+  /* Settled and good: the icon carries the colour, the word stays in the
+     body colour so a page of successes reads as quiet text. */
+  .badge-success .badge-ico { color: var(--success); }
+  .badge-healed .badge-ico { color: var(--success); }
+
+  /* Wrong now: a tinted pill, the only fill in a column of plain words. */
+  .badge-failed {
+    background: var(--danger-dim);
+    color: var(--danger);
+  }
+
+  .badge-deploying {
+    color: var(--accent);
+  }
+
+  .badge-rolled_back {
+    background: var(--rollback-dim);
+    color: var(--rollback);
+  }
+
+  /* Rollback ran but the restored version is also unhealthy, and self-heal
+     giving up (.badge-heal_exhausted) — the two worst terminal states. They
+     lead with a warning icon on a SOLID danger fill so they are the loudest
+     chip in the status column, not the smallest as before (T3.14). The label
+     still stacks two lines (one line overflows the column) via .badge-lbl,
+     while the badge itself stays a row for the leading icon. */
+  .badge-rolled_back_unhealthy,
+  .badge-heal_exhausted {
+    background: var(--danger);
+    color: var(--crust);
+    gap: 5px;
+    font-size: 11px;
+    line-height: 1.2;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--danger) 26%, transparent);
+  }
+  .badge-rolled_back_unhealthy .badge-ico,
+  .badge-heal_exhausted .badge-ico { width: 14px; height: 14px; }
+
+  /* Pending, not wrong: the amber says "waiting", and no fill — the row's
+     amber status bar already places it. */
+  .badge-queued, .badge-blocked {
+    color: var(--queued-text);
+  }
+
+  /* Left the deploy set — the same colour the Orphans section tags the still
+     running project with, so the two read as one fact. */
+  .badge-removed {
+    color: var(--rollback);
+  }
+
+  .spinner {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: breathe 1.4s ease-in-out infinite;
+  }
+
+  /* ─── STACK HEALTH (ADR-0027) ─── */
+  .health-pill {
+    /* Rendered as a <button> (keyboard-operable); neutralize UA button styles
+       so it stays pixel-identical to the old inline chip. */
+    appearance: none;
+    margin: 0;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px 2px 6px;
+    margin-left: -6px; /* the dot, not the padding box, starts the line */
+    border: 0;
+    border-radius: 999px;
+    font-family: var(--font-display);
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.4;
+    cursor: pointer;
+    color: var(--hc);
+    background: transparent;
+    transition: background 0.15s;
+    user-select: none;
+  }
+  /* The dot is the state; the frame around it was one more box in a row that
+     had nine. Hover fills it in so it still reads as a control. */
+  .health-pill:hover { background: color-mix(in srgb, var(--hc) 16%, transparent); }
+  .health-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--hc); flex-shrink: 0; }
+  .health-pill[data-health="healthy"]   { --hc: var(--h-healthy); color: var(--text-secondary); }
+  .health-pill[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-pill[data-health="starting"]  { --hc: var(--h-starting); }
+  .health-pill[data-health="stopped"]   { --hc: var(--h-stopped); }
+  .health-pill[data-health="unknown"]   { --hc: var(--h-unknown); color: var(--text-muted); }
+  .health-pill[data-health="starting"] .hdot,
+  .health-pill[data-health="unhealthy"] .hdot { animation: hpulse 1.4s ease-in-out infinite; }
+  @keyframes hpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { .health-pill .hdot { animation: none; } }
+
+  /* ── Live-health attention surface (ADR-0027 extension) ──
+     A header BEACON and a Deploys ATTENTION BAND that lift a currently-unhealthy
+     stack out of the chronological log. Both borrow the --danger tier so they
+     read as "something is wrong", distinct from the accent/deploy hues. */
+  .health-beacon-wrap { position: relative; display: flex; align-items: center; }
+  /* Collapse the wrap entirely when the beacon is hidden, so an empty flex slot
+     never adds a status-area gap (keeps the healthy-case header unchanged). */
+  .health-beacon-wrap[hidden] { display: none; }
+
+  .health-beacon[hidden], .attention-band[hidden] { display: none; }
+  .health-beacon {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 600; font-family: var(--font-mono);
+    color: var(--danger); background: var(--danger-dim);
+    border: 0;
+    border-radius: 999px; padding: 4px 11px 4px 9px;
+    transition: background 0.16s;
+  }
+  .health-beacon:hover { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+  .health-beacon:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
+  .health-beacon .hb-icon { display: grid; place-items: center; width: 14px; height: 14px; }
+  .health-beacon .hb-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--danger);
+    animation: hpulse 1.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .health-beacon .hb-dot { animation: none; } }
+
+  /* Incident badge (UI_SPEC.md): recent-history counterpart of the beacon —
+     rollback-tinted, no pulse (nothing is wrong NOW), counts the bad terminal
+     outcomes of the last 24h and opens the pre-filtered Deploys view. */
+  .incident-badge {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 600; font-family: var(--font-mono);
+    color: var(--rollback); background: color-mix(in srgb, var(--rollback) 12%, transparent);
+    border: 0;
+    border-radius: 999px; padding: 4px 11px 4px 9px;
+    transition: background 0.16s;
+  }
+  .incident-badge:hover { background: color-mix(in srgb, var(--rollback) 20%, transparent); }
+  .incident-badge:focus-visible { outline: 2px solid var(--rollback); outline-offset: 2px; }
+  .incident-badge .ib-icon { font-size: 13px; line-height: 1; }
+  /* The component's own display beats the UA [hidden] rule, so hiding at zero
+     needs saying explicitly — otherwise an empty pill sits in the header of
+     every instance with a clean 24h (measured: 46px wide). */
+  .incident-badge[hidden] { display: none; }
+
+  /* Update badge (UI_SPEC.md "Updates filter"): the incident badge's shape in
+     the queued amber the update markers already wear — the app's "waiting to be
+     applied" colour, which is exactly what an available update is. Counts
+     STACKS, not services: it lands on a filtered roster, so the number has to
+     be the number of rows that come back. Applying stays a git commit; the
+     badge is a filter, never a trigger. */
+  .update-badge {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 600; font-family: var(--font-mono);
+    color: var(--queued-text);
+    /* Not --queued-dim (14%): the amber is far lighter than the incident
+       badge's rosé, and at that strength the pill all but disappears on the
+       light ground. Matched by eye against .incident-badge instead. */
+    background: color-mix(in srgb, var(--queued) 22%, transparent);
+    border: 0;
+    border-radius: 999px; padding: 4px 11px 4px 9px;
+    transition: background 0.16s;
+  }
+  .update-badge:hover { background: color-mix(in srgb, var(--queued) 32%, transparent); }
+  .update-badge:focus-visible { outline: 2px solid var(--queued); outline-offset: 2px; }
+  /* Steady state while its own preset is the whole filter — the badge shows
+     that the roster below is the list it points at. */
+  .update-badge.active {
+    background: color-mix(in srgb, var(--queued) 38%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--queued) 70%, transparent);
+  }
+  .update-badge .ub-icon { font-size: 13px; line-height: 1; }
+  /* The component's own display beats the UA [hidden] rule, so hiding at zero
+     needs saying explicitly — otherwise an empty pill sits in the header on
+     every instance with nothing to report (measured: 42px wide). */
+  .update-badge[hidden] { display: none; }
+
+  /* Beacon popover — same surface language as the run/view popovers. */
+  .beacon-pop {
+    position: absolute; top: calc(100% + 8px); right: 0; min-width: 220px;
+    background: var(--bg-base); border: 1px solid var(--border-lit);
+    border-radius: 10px; padding: 6px; z-index: 30;
+    box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.55);
+    display: none;
+  }
+  .beacon-pop.open { display: block; }
+  .beacon-pop .bp-head {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-muted); padding: 5px 8px 7px;
+  }
+  .beacon-item {
+    display: flex; align-items: center; gap: 9px; width: 100%; cursor: pointer;
+    font: inherit; text-align: left; background: none; border: 0;
+    border-radius: 7px; padding: 8px; color: var(--text-primary);
+  }
+  .beacon-item:hover { background: var(--bg-raised); }
+  .beacon-item:focus-visible { outline: 2px solid var(--danger); outline-offset: -2px; }
+  .beacon-item .bi-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--hc); }
+  .beacon-item .bi-dot[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .beacon-item .bi-name { font-weight: 600; font-size: 13px; }
+
+  /* Attention band — pinned above the deploy log, inside #deploy-table so it
+     hides with the view; borrows the host-stale-banner's placement idiom. */
+  .attention-band {
+    margin: 0 0 10px; border-radius: 10px; overflow: hidden;
+    background: color-mix(in srgb, var(--danger) 7%, var(--bg-base));
+    border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent);
+  }
+  .attention-band .att-head {
+    display: flex; align-items: center; gap: 9px; padding: 9px 14px;
+    color: var(--danger); font-weight: 600; font-size: 13px;
+    border-bottom: 1px solid color-mix(in srgb, var(--danger) 16%, transparent);
+  }
+  .attention-band .att-head svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .attention-band .att-title { color: var(--text-primary); }
+  .attention-band .att-count {
+    margin-left: auto; font-family: var(--font-mono); font-size: 11px;
+    color: var(--danger); background: var(--danger-dim);
+    border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent);
+    border-radius: 999px; padding: 1px 8px;
+  }
+  .attention-row {
+    display: flex; align-items: center; gap: 10px; width: 100%; cursor: pointer;
+    font: inherit; text-align: left; background: none; border: 0;
+    padding: 10px 14px; color: var(--text-primary);
+    border-top: 1px solid color-mix(in srgb, var(--danger) 10%, transparent);
+  }
+  .attention-row:first-of-type { border-top: 0; }
+  .attention-row:hover { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+  .attention-row:focus-visible { outline: 2px solid var(--danger); outline-offset: -2px; }
+  .attention-row .stack-icon { flex-shrink: 0; }
+  .attention-row .att-name { font-weight: 600; font-size: 14px; }
+  .attention-row .att-pill { margin-left: auto; cursor: inherit; }
+
+  /* Variant A: the open row and its panel share a health-coloured left bar and a
+     tint, and the panel repeats the stack + status — so it always reads as tied
+     to its row, whatever its position. --hc is the row/stack's health colour. */
+  .health-panel[data-health="healthy"] { --hc: var(--h-healthy); }
+  .health-panel[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-panel[data-health="starting"] { --hc: var(--h-starting); }
+  .health-panel[data-health="stopped"] { --hc: var(--h-stopped); }
+  .health-panel[data-health="unknown"] { --hc: var(--h-unknown); }
+
+  .health-panel {
+    padding: 9px 14px 12px;
+    background: color-mix(in srgb, var(--hc) 6%, var(--bg-sunken));
+    box-shadow: inset 3px 0 0 var(--hc);
+  }
+  .health-panel .health-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 0 9px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .health-panel .hp-head-label { color: var(--text-secondary); font-family: var(--font-display); font-size: 12px; font-weight: 600; }
+  .health-panel .hp-head-who { color: var(--text-primary); font-size: 12.5px; font-weight: 600; }
+  /* Update summary in the panel head (ADR-0054): amber count + muted check
+     freshness. Takes over the right-alignment when present; the pill then
+     sits directly after it. Absent entirely while nothing is advertised. */
+  .health-panel .hp-head-check { margin-left: auto; color: var(--text-muted); font-size: 10.5px; white-space: nowrap; }
+  .health-panel .hp-head-check .hc-count { color: var(--queued-text); font-weight: 600; }
+  .health-panel .hp-head-check + .hp-head-pill { margin-left: 0; }
+  .health-panel .hp-head-pill {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px 2px 6px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--hc);
+    border: 1px solid color-mix(in srgb, var(--hc) 32%, transparent);
+    background: color-mix(in srgb, var(--hc) 13%, transparent);
+  }
+  .health-panel .hp-head-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--hc); }
+  /* Service line: name · state · status · logs button (ADR-0037). A snapshot that
+     carries container images inserts the running version right after the name,
+     making five — and only then, so a stack whose containers report none keeps
+     the tighter line instead of an empty track indenting every row. With versions
+     the free width moves out of the name column into the version one: the name
+     track then ends at the longest name, so every chip starts on the same x right
+     beside its service (name + version read as one unit) while state/status/logs
+     stay grouped at the right edge. The ≤700px block re-lays this out. */
+  .health-panel .hp-svc {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 5px 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay2) 8%, transparent);
+  }
+  .health-panel.has-versions .hp-svc { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+  .health-panel .hp-svc:last-child { border-bottom: 0; }
+  /* A service line directly followed by its timeline hands the separator down
+     to the timeline block, so the pair reads as one unit. */
+  .health-panel .hp-svc:has(+ .hp-history) { border-bottom: 0; }
+  .health-panel .hp-ver { justify-self: start; min-width: 0; }
+  .health-panel .hp-name { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+  .health-panel .hp-state { color: var(--text-muted); }
+  .health-panel .hp-status { display: inline-flex; align-items: center; gap: 5px; color: var(--hc); font-weight: 600; }
+  .health-panel .hp-status .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--hc); }
+  .health-panel .hp-status[data-health="healthy"]   { --hc: var(--h-healthy); }
+  .health-panel .hp-status[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-panel .hp-status[data-health="starting"]  { --hc: var(--h-starting); }
+  .health-panel .hp-status[data-health="stopped"]   { --hc: var(--h-stopped); }
+  .health-panel .hp-status[data-health="unknown"]   { --hc: var(--h-unknown); }
+  .health-panel .hp-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
+  /* Health-watch additions (ADR-0031): current-phase age on the service line,
+     and a compact per-service status timeline below it. Absent entirely when
+     the watchdog is off (no healthwatch snapshot). */
+  .health-panel .hp-for { color: var(--text-muted); font-weight: 400; }
+  .health-panel .hp-history {
+    padding: 2px 0 6px 14px;
+    border-bottom: 1px solid color-mix(in srgb, var(--overlay2) 8%, transparent);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .health-panel .hp-history:last-child { border-bottom: 0; }
+  .health-panel .hp-phase {
+    display: flex; align-items: baseline; gap: 7px;
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .health-panel .hp-phase .hdot { width: 5px; height: 5px; border-radius: 50%; background: var(--hc); flex: none; align-self: center; }
+  .health-panel .hp-phase .hp-pstatus { color: var(--hc); font-weight: 600; }
+  .health-panel .hp-phase[data-health="healthy"]   { --hc: var(--h-healthy); }
+  .health-panel .hp-phase[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-panel .hp-phase[data-health="starting"]  { --hc: var(--h-starting); }
+  .health-panel .hp-phase[data-health="stopped"]   { --hc: var(--h-stopped); }
+  .health-panel .hp-phase[data-health="unknown"]   { --hc: var(--h-unknown); }
+  .health-panel .hp-commit, .audit-panel .hp-commit {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
+    background: color-mix(in srgb, var(--overlay2) 8%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 4px; padding: 0 4px;
+  }
+  /* Folded timeline (healthHistoryHTML): the duration-weighted strip on top,
+     the folded view, and the raw phase list the toggle swaps in. The strip
+     reuses the outcome strip's reading direction (oldest → newest) and the
+     timeline's --hc status colours; min-width keeps a short start visible as
+     a sliver — that sliver IS the deploy. */
+  .health-panel .hp-strip { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 3px 0; max-width: 420px; }
+  .health-panel .hp-strip span { flex-basis: 0; min-width: 3px; background: var(--hc, var(--h-unknown)); }
+  .health-panel .hp-strip span[data-health="healthy"]   { --hc: var(--h-healthy); }
+  .health-panel .hp-strip span[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-panel .hp-strip span[data-health="starting"]  { --hc: var(--h-starting); }
+  .health-panel .hp-strip span[data-health="stopped"]   { --hc: var(--h-stopped); }
+  .health-panel .hp-strip span[data-health="unknown"]   { --hc: var(--h-unknown); }
+  /* The fold line and its toggle are shared with the deploy-history panel
+     below, which folds runs of one outcome the same way — one set of rules
+     rather than a parallel component per panel. Only the folded/raw swap is
+     per panel: the timeline's lines sit in a gapped column, the history's rows
+     stay flush behind their own separators. */
+  .health-panel .hp-folded, .health-panel .hp-raw { display: flex; flex-direction: column; gap: 2px; }
+  .health-panel .hp-raw { display: none; }
+  .health-panel .hp-history.show-raw .hp-raw { display: flex; }
+  .health-panel .hp-history.show-raw .hp-folded { display: none; }
+  .audit-panel .ap-raw { display: none; }
+  .audit-panel .ap-history.show-raw .ap-raw { display: block; }
+  .audit-panel .ap-history.show-raw .ap-folded { display: none; }
+  .health-panel .hp-upin { color: var(--text-muted); font-weight: 400; }
+  .hp-fold .hp-fold-glyph { flex: none; color: var(--st, var(--text-muted)); }
+  .hp-fold .hp-count { color: var(--text-primary); font-weight: 600; }
+  .hp-fold-toggle {
+    align-self: flex-start; margin: 2px 0; padding: 1px 7px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    color: var(--text-muted); background: none;
+    border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+  }
+  .hp-fold-toggle:hover { color: var(--text-primary); border-color: var(--border-lit); }
+
+  /* ─── AUDIT (per-stack deploy history, ADR-0033) ─── */
+  /* ─── TOUCH TARGETS (T2.9) ───
+     The row-cluster glyph buttons and status pills render small by design, but
+     their *tappable* area is enlarged with a transparent ::after overlay so a
+     finger (esp. on iPad) lands reliably. The overlay grows only into the
+     surrounding whitespace/gaps — a full 44px (AAA) would overlap neighbours in
+     this dense cluster (that needs the row redesign, T3.13), so this lifts them
+     from ~18px to ≥24px (WCAG 2.5.8 AA) with nothing visible changing. */
+  .clog-btn, .link-btn,
+  .health-pill, .hooks-badge, .files-pill, .commits-pill { position: relative; }
+  .clog-btn::after, .link-btn::after,
+  .health-pill::after, .hooks-badge::after, .files-pill::after,
+  .commits-pill::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%; height: 100%; min-width: 24px; min-height: 24px;
+  }
+  /* Header controls have vertical room (56px, 48px mobile), so their tap area
+     grows tall as well as into the gaps — a glyph is never an ~18px target. */
+  #theme-toggle, #autosync-btn, #hosts-btn,
+  #view-toggle button, [data-testid="conn-indicator"] { position: relative; }
+  #theme-toggle::after, #autosync-btn::after, #hosts-btn::after,
+  #view-toggle button::after, [data-testid="conn-indicator"]::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%; height: 100%; min-width: 30px; min-height: 40px;
+  }
+
+  /* Landing flash: a temporary accent pulse on the row a jump lands on, so the
+     eye finds it immediately without leaving a permanent state change behind
+     (unlike health-open/audit-open, which persist until closed). */
+  .event-row.jump-target, .roster-row.jump-target {
+    animation: jumpLand 1.8s ease-out;
+  }
+  @keyframes jumpLand {
+    0%, 60% {
+      background: var(--accent-dim);
+      box-shadow: inset 3px 0 0 var(--accent), 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    100% {
+      background: transparent;
+      box-shadow: inset 3px 0 0 transparent, 0 0 0 1px transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .event-row.jump-target, .roster-row.jump-target { animation: none; background: var(--accent-dim); }
+  }
+
+  /* The open row of a detail uses the neutral accent bar its panel continues,
+     not a status colour. Shared by both views. */
+  .event-row.audit-open, .roster-row.audit-open {
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .audit-panel {
+    padding: 9px 14px 12px;
+    background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+    box-shadow: inset 3px 0 0 var(--accent);
+    animation: expand 0.2s ease-out;
+  }
+  .audit-panel .ap-head {
+    display: flex; align-items: center; gap: 8px; padding: 0 0 8px;
+    font-family: var(--font-mono); font-size: 11px;
+  }
+  .audit-panel .ap-count { color: var(--text-secondary); font-family: var(--font-display); font-size: 12px; font-weight: 600; }
+  .audit-panel .ap-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px; }
+  /* Change detection: the last card of the roster's expand stack, same bound
+     accent frame as the history panel above it. */
+  .watched-panel {
+    padding: 9px 14px 12px;
+    background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: inset 3px 0 0 var(--accent);
+    animation: expand 0.2s ease-out;
+  }
+  .watched-panel .wp-head { padding: 0 0 8px; font-family: var(--font-mono); font-size: 11px; }
+  .watched-panel .wp-label { color: var(--text-secondary); font-family: var(--font-display); font-size: 12px; font-weight: 600; }
+  .watched-panel .wp-lead { color: var(--text-secondary); font-size: 12px; padding-bottom: 8px; }
+  .watched-panel .wp-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .watched-panel .wp-file {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-primary);
+    background: color-mix(in srgb, var(--overlay2) 7%, transparent);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px;
+    overflow-x: auto; white-space: nowrap;
+  }
+  /* Not a path — the stack's own settings, hashed under a synthetic key. A
+     plain muted line rather than a boxed entry: sharing the file box's shape
+     made it read as a second file, and a border style alone is too weak a
+     signal to carry that in the light variant. */
+  .watched-panel .wp-config {
+    padding: 2px 2px 0; font-size: 11.5px; color: var(--text-muted);
+  }
+  .watched-panel .wp-config code { font-family: var(--font-mono); font-size: 10.5px; }
+  .audit-row {
+    display: grid;
+    grid-template-columns: 150px 116px 66px 76px 1fr;
+    align-items: center; gap: 8px;
+    padding: 3px 0;
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    border-top: 1px solid color-mix(in srgb, var(--overlay2) 7%, transparent);
+  }
+  .audit-row:first-of-type { border-top: 0; }
+  .audit-row .ar-time { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .audit-row .ar-status { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: var(--st); }
+  .audit-row .ar-status .adot { width: 6px; height: 6px; border-radius: 50%; background: var(--st); flex: none; }
+  /* A folded run of routine outcomes: the audit row's frame (border, padding,
+     status colour) carrying the health timeline's fold line instead of the
+     column grid — the two panels of the card fold in the same words. */
+  .audit-panel .ar-fold {
+    display: flex; align-items: baseline; gap: 7px;
+    padding: 3px 0;
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    border-top: 1px solid color-mix(in srgb, var(--overlay2) 7%, transparent);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .audit-row .ar-dur { color: var(--text-muted); }
+  .audit-row .ar-sha { color: var(--text-secondary); }
+  .audit-row .ar-files { color: var(--text-muted); text-align: right; }
+  .audit-row .ar-err { color: var(--danger); grid-column: 2 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ─── FILES PILL ─── */
+  /* A file count is a fact the eye should be able to skip, so it is text with
+     an icon; the surface appears on hover, where it says "this opens the diff". */
+  .files-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    margin-left: -8px;
+    border: 0;
+    border-radius: var(--r-chip);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .files-pill:hover {
+    background: color-mix(in srgb, var(--overlay2) 12%, transparent);
+    color: var(--text-primary);
+  }
+
+  .files-pill svg {
+    width: 12px;
+    height: 12px;
+    opacity: 0.5;
+  }
+
+  /* ─── PER-SERVICE IMAGE DELTA (Version column) ─── */
+  /* A `service old→new` chip per changed service, in the deploy table's own
+     Version column so the versions line up down the page — the point of a column
+     over an inline note. Chips stack one per line, all of them (a stack often
+     changes several services at once). Deliberately low-chroma — a neutral chip
+     so it does not compete with the status colour
+     (the log's primary scan signal); only the new tag carries the diff-add
+     accent, the one small "this is the new version" cue. */
+  .col-version {
+    display: flex;
+    min-width: 0; /* let the chips wrap rather than overflow the column */
+  }
+  .svc-delta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+  }
+  /* A chip never outgrows its column. It wraps within itself rather than
+     truncating: the service name is the point of the column, so nothing is
+     ellipsized away — a narrow column costs height, not information. */
+  .col-version .tag-delta { max-width: 100%; flex-wrap: wrap; }
+  .tag-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--overlay2) 9%, transparent);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  /* The value tokens are one unwrappable group (see versionChipHTML): a chip
+     that must wrap breaks after the service label, never inside a version. */
+  .tag-delta .td-val {
+    display: inline-flex; align-items: center; gap: 5px;
+    white-space: nowrap; min-width: 0;
+  }
+  .tag-delta .td-svc { color: var(--text-primary); font-weight: 600; }
+  /* Shared tag shown as context on a digest-only change, so `1.25 ↻` reads as
+     "same 1.25, image rebuilt" rather than a bare digest pair. */
+  .tag-delta .td-ctx { color: var(--text-secondary); }
+  .tag-delta .td-old {
+    color: var(--text-muted);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+  .tag-delta .td-arr { color: var(--text-muted); }
+  .tag-delta .td-new { color: var(--diff-add); font-weight: 500; }
+  .tag-delta .td-gone { color: var(--danger); }
+  /* The ↻ rebuilt marker for a same-tag digest change — muted, not an accent. */
+  .tag-delta .td-rebuilt { color: var(--text-secondary); font-weight: 600; }
+  /* Current-value mode (Stacks row + containers panel): the version a service is
+     running right now. Neutral on purpose — the add-green above says "this is the
+     NEW version", which a standing fact must not claim. */
+  .tag-delta .td-cur { color: var(--text-secondary); font-weight: 500; }
+  /* Registry update marker (ADR-0054): an available upstream version — the
+     newer tag, or "rebuilt" when the running tag's digest moved. Queued amber,
+     the app's "waiting to be applied" colour: not green (that claims new),
+     not red (that claims a fault). The chip itself takes the faint queued
+     tint so a marked row reads at a glance without a second element. */
+  .tag-delta .td-upd {
+    display: inline-flex; align-items: center; gap: 3px;
+    color: var(--queued-text); font-weight: 600;
+  }
+  .tag-delta:has(.td-upd) {
+    background: var(--queued-dim);
+    border-color: color-mix(in srgb, var(--queued) 30%, transparent);
+  }
+  /* Change chips (ADR-0059): the same .tag-delta frame as a version chip, for a
+     change that carries no new image — `env  mealie-restic`. The kind is the
+     muted lead token and the service names take the same weight they have in a
+     version chip, so one column reads as one system: what moved, then who.
+     Deliberately no per-kind hue — the word is the distinction, and a second
+     colour channel here would compete with the status column. */
+  .tag-delta .td-kind {
+    color: var(--text-secondary);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  /* A file every service reads (a project-wide --env-file, the global vars_file)
+     names no container, and says so rather than guessing. */
+  .tag-delta .td-wide, .tag-delta .td-count { color: var(--text-muted); }
+
+  /* The same attribution on a panel line — beside a diff file header or a
+     changed-file path. A quiet trailing note: the file name stays the line's
+     subject. */
+  .fc-svc {
+    margin-left: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+  .fc-svc.fc-wide { color: var(--text-muted); font-style: italic; }
+
+  /* "+3" beside a Stacks row's lead version, and the bare service count when no
+     lead could be named: a pointer to the containers panel, not a value. */
+  .ver-count {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--text-muted); white-space: nowrap;
+  }
+
+  .heal-drift-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .heal-drift-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+  .heal-drift-list .hd-name { color: var(--text-primary); }
+  .heal-drift-list .hd-status {
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--h-unhealthy);
+    background: color-mix(in srgb, var(--h-unhealthy) 14%, transparent);
+  }
+
+  .files-list {
+    padding: 10px 14px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 2;
+    word-break: break-all;
+    animation: expand 0.2s ease-out;
+  }
+
+  @keyframes expand {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Reduced-motion guard for the always-on/enter animations shared across the
+     app: the connection + deploy indicators (breathe/reconnect-pulse), the
+     new-row entrance (rowEnter) and the panel-expand transitions. Each element's
+     rest state is its natural (visible) state, so disabling the animation just
+     shows it immediately. */
+  @media (prefers-reduced-motion: reduce) {
+    .indicator-dot.warn,
+    .indicator-dot.err,
+    .deploy-status.active .deploy-dot,
+    .spinner,
+    .pending-count .pc-dot,
+    .run-badge.ship,
+    .event-row.new-row,
+    .diff-panel,
+    .files-list,
+    .audit-panel,
+    .watched-panel,
+    .load-error,
+    .sk-spin,
+    .sk-bar,
+    .load-error.busy .le-retry svg {
+      animation: none;
+    }
+    /* Static (non-shimmering) skeleton bars still read as placeholders. */
+    .sk-bar { background: color-mix(in srgb, var(--overlay2) 14%, transparent); }
+  }
+
+  .file-path {
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--overlay2) 9%, transparent);
+    display: inline-block;
+    margin: 1px 0;
+  }
+
+  /* ─── LOAD ERROR (T4.16) ─── */
+  /* A lazy detail fetch (deploy history, diff, peer diff) failed or returned
+     non-OK. Amber caution — deliberately not danger red: the
+     *deploy* is fine, the UI just couldn't load a panel. Distinct from the
+     muted genuine-empty line, and retryable in place via .le-retry. */
+  .load-error {
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    padding: 9px 14px;
+    background: color-mix(in srgb, var(--queued) 6%, var(--bg-sunken));
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: inset 3px 0 0 var(--queued);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--text-secondary);
+    animation: expand 0.2s ease-out;
+  }
+  .load-error .le-ico { width: 14px; height: 14px; color: var(--queued); flex-shrink: 0; }
+  .load-error .le-msg { color: var(--text-secondary); word-break: break-word; }
+  .load-error .le-retry {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--font-mono); font-size: 11px; cursor: pointer;
+    background: transparent; color: var(--accent);
+    border: none; padding: 3px 5px; border-radius: 4px;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .load-error .le-retry:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); text-decoration: none; }
+  .load-error .le-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .load-error .le-retry svg { width: 12px; height: 12px; }
+  .load-error.busy .le-retry { color: var(--text-muted); pointer-events: none; text-decoration: none; }
+  .load-error.busy .le-retry svg { animation: spin 0.8s linear infinite; }
+
+  /* The load-error carries the whole visual when it stands in for a panel's
+     body: strip the host panel's own bar/tint/padding so the two bars don't
+     stack. Covers the audit panel. */
+  .audit-panel:has(> .load-error) { padding: 0; background: transparent; border: none; box-shadow: none; }
+
+  /* ─── DIFF PANEL ─── */
+  .diff-panel {
+    padding: 0;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    animation: expand 0.2s ease-out;
+  }
+
+  .diff-file-section {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diff-file-section:last-child {
+    border-bottom: none;
+  }
+
+  .diff-file-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: color-mix(in srgb, var(--overlay2) 6%, transparent);
+    cursor: pointer;
+    user-select: none;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 11px;
+    transition: background 0.15s;
+  }
+
+  .diff-file-header:hover {
+    background: color-mix(in srgb, var(--overlay2) 10%, transparent);
+  }
+
+  .diff-file-header svg {
+    width: 10px;
+    height: 10px;
+    opacity: 0.5;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+
+  .diff-file-header.expanded svg {
+    transform: rotate(90deg);
+  }
+
+  .diff-content {
+    display: none;
+    padding: 0;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.6;
+  }
+
+  .diff-file-header.expanded + .diff-content {
+    display: block;
+  }
+
+  .diff-line {
+    padding: 0 14px;
+    display: block;
+  }
+
+  .diff-add {
+    background: color-mix(in srgb, var(--diff-add) 12%, transparent);
+    color: var(--diff-add);
+  }
+
+  .diff-del {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
+  }
+
+  .diff-hunk {
+    background: color-mix(in srgb, var(--hunk) 10%, transparent);
+    color: var(--hunk);
+    font-weight: 500;
+  }
+
+  .diff-meta {
+    color: var(--text-muted);
+  }
+
+  .diff-loading {
+    padding: 12px 14px;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  /* A bound panel is part of the sheet, not a card resting on it: it sits flush
+     under its row inside the same border, so the only edges it draws are the
+     shared 3px status bar on the left and the hairline the list puts between
+     every child. The sheet's own :last-child rule rounds whichever panel ends
+     the card, so no panel carries a radius of its own. */
+  .health-panel, .audit-panel, .watched-panel {
+    border-radius: 0;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  /* Commit-metadata header — the message/author/time/SHA of what shipped, above
+     the file diffs (git range LastDeployedCommit..HEAD, restricted to the changed
+     files). Fetched with the diffs from /api/events/{id}/diffs. */
+  .diff-head {
+    padding: 10px 14px 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .diff-commit { display: flex; align-items: flex-start; gap: 9px; }
+  .diff-commit .commit-glyph { width: 14px; height: 14px; margin-top: 1px; color: var(--text-muted); flex-shrink: 0; }
+  .diff-commit .dh-subject {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.35;
+  }
+  .diff-meta-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-left: 23px;
+    font-family: var(--font-display);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+  .diff-meta-line .m-item { display: inline-flex; align-items: center; gap: 5px; }
+  .diff-meta-line .m-item svg { width: 12px; height: 12px; opacity: 0.7; }
+  .diff-meta-line .m-sep { color: var(--text-muted); }
+  .diff-meta-line .m-sha {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+  .diff-meta-line .m-range { display: inline-flex; align-items: center; gap: 5px; }
+  .diff-meta-line .m-range .m-arr { color: var(--text-muted); }
+  .diff-meta-line .commits-pill {
+    font-family: var(--font-display);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    padding: 1px 7px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .diff-commit-list {
+    list-style: none;
+    margin: 9px 0 0 23px;
+    padding: 9px 0 0;
+    border-top: 1px dashed var(--border);
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .diff-commit-list.expanded { display: flex; }
+  .diff-commit-list li { display: flex; gap: 9px; align-items: baseline; }
+  .diff-commit-list .cl-subject { font-family: var(--font-display); font-size: 12px; color: var(--text-primary); }
+  .diff-commit-list .cl-meta { font-family: var(--font-display); font-size: 10.5px; color: var(--text-muted); }
+
+  /* ─── SEPARATOR ─── */
+  .sep {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+  }
+
+  .sep::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ─── FILTER TOGGLE ─── */
+  .filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    background: none;
+    border: none;
+    padding: 0;
+    transition: color 0.2s;
+  }
+
+  .filter-toggle:hover { color: var(--text-secondary); }
+
+  /* Glyph-only controls on every viewport: the switch track and text label are
+     dropped in favour of a single self-describing glyph (icon = identity,
+     accent tint = active state), the same treatment the compact mobile row
+     already used. */
+  .filter-toggle span { display: none; }
+  .filter-toggle .toggle-track { display: none; }
+
+  .toggle-track {
+    width: 28px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-lit);
+    position: relative;
+    transition: background 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform 0.2s, background 0.2s;
+  }
+
+  .filter-toggle.active .toggle-track {
+    background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  /* Palette-glyph picker: the native <select> keeps all its behaviour and
+     accessibility but is laid transparently over an 18px palette icon, so it
+     reads as one more icon control while still opening the native option list
+     on click. */
+  .theme-picker {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: color 0.2s;
+  }
+  .theme-picker:hover { color: var(--text-secondary); }
+  .tp-ico { display: block; width: 18px; height: 18px; pointer-events: none; }
+  .theme-select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    opacity: 0;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .theme-picker:focus-within { color: var(--text-primary); }
+  .theme-select:focus-visible { outline: none; }
+  .theme-picker:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+  /* The theme picker is opt-in (ui_theme_switcher). With it off the deployed
+     theme is fixed, so the picker is hidden entirely. */
+  html[data-theme-switcher="off"] .theme-picker { display: none; }
+
+  /* Tap-reveal label: on touch there are no hover tooltips, so a tap on any
+     header control briefly shows its title in this bubble (the control's action
+     still fires). Pointer/mouse users keep the native title tooltip. */
+  .tap-tip {
+    position: fixed;
+    z-index: 200;
+    pointer-events: none;
+    max-width: 240px;
+    padding: 5px 9px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+    text-align: center;
+    white-space: pre-line; /* honour \n in the title so multi-line tips wrap */
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--bg-base) 96%, transparent);
+    backdrop-filter: blur(12px) saturate(1.2);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+    border: 1px solid var(--border-lit);
+    border-radius: 8px;
+    box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+  .tap-tip.show { opacity: 1; transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    .tap-tip { transition: opacity 0.12s ease; transform: none; }
+    .tap-tip.show { transform: none; }
+  }
+
+  .theme-notice {
+    position: fixed;
+    z-index: 95;
+    top: 66px;
+    right: 14px;
+    max-width: min(360px, calc(100vw - 28px));
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--bg-base) 97%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--border-lit);
+    border-radius: 10px;
+    box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.5);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    animation: theme-notice-in 0.18s ease;
+  }
+  .theme-notice[hidden] { display: none; }
+  .theme-notice-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .theme-notice-close:hover { color: var(--text-primary); background: var(--bg-raised); }
+  @keyframes theme-notice-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .theme-notice { animation: none; }
+  }
+
+  /* ─── FIRST-RUN HEADER TOUR (T3.15) ─── */
+  /* The header is glyph-only by design (the glyph migration); learnability
+     otherwise rests entirely on hover tooltips, which touch users never get.
+     On a fresh browser only, a caption sits under each control and a banner
+     explains it; "Got it"/Esc marks it seen for good. The seen state (default
+     for every returning browser, applied pre-paint) must be byte-identical to
+     the pre-tour header — so each caption wrapper is display:contents when seen,
+     collapsing to nothing, and only becomes a column during the one-time tour. */
+  .ht-cap { display: contents; }
+  .ht-lbl { display: none; }
+
+  /* First run = <html> without .header-tour-seen. Captions appear, controls
+     stack over their label, and the header grows to fit (var kept in sync so
+     the Logs fullscreen offset stays correct). */
+  html:not(.header-tour-seen) .ht-cap {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  html:not(.header-tour-seen) .ht-lbl {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+    line-height: 1;
+    animation: ht-cap-in 0.22s ease;
+  }
+  html:not(.header-tour-seen) header { height: auto; min-height: 74px; }
+  /* The captions are wider than the glyphs they sit under, so for the one visit
+     they are up the row tightens rather than growing past the viewport. */
+  @media (min-width: 701px) and (max-width: 1000px) {
+    html:not(.header-tour-seen) .status-area { gap: 10px; }
+    html:not(.header-tour-seen) .ht-lbl { font-size: 9px; }
+  }
+  /* A caption whose control isn't currently rendered would float with no glyph
+     under it, so drop it: the Hosts control only exists on a multi-host instance
+     (.hosts-btn.enabled). The wrapper then has no visible child and collapses to
+     nothing. (The search glyph used to need this too — it is on every view now.) */
+  html:not(.header-tour-seen) .ht-cap-hosts:not(:has(.hosts-btn.enabled)) .ht-lbl { display: none; }
+
+  @keyframes ht-cap-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Dismiss banner — a slim strip under the header, styled from the accent like
+     an onboarding note (distinct from the top-right theme notice). Hidden once
+     the tour is seen. */
+  .header-tour {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 28px;
+    background: var(--accent-dim);
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    font-size: 12.5px;
+    color: var(--text-primary);
+    animation: ht-cap-in 0.22s ease;
+  }
+  .header-tour-seen .header-tour { display: none; }
+  .header-tour .ht-ico { width: 17px; height: 17px; flex-shrink: 0; color: var(--accent); }
+  .header-tour .ht-text { color: var(--text-secondary); margin-right: auto; }
+  .header-tour-dismiss {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--crust);
+    background: var(--accent);
+    border: none;
+    border-radius: 7px;
+    padding: 5px 13px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .header-tour-dismiss:hover { filter: brightness(1.08); }
+  .header-tour-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ht-lbl, .header-tour { animation: none; }
+  }
+
+  /* PWA update banner — appears when a newer skipper-cd version is deployed and
+     a new service worker is waiting. Bottom-centred so it never collides with
+     the header (z 100) or the top-right theme notice; sits above the drawer
+     (z 90). The action is a real button (tap, not hover) so it works on touch —
+     see docs/user/pwa.md and UI_SPEC. */
+  .update-banner {
+    position: fixed;
+    z-index: 96;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: min(420px, calc(100vw - 28px));
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px 10px 14px;
+    background: color-mix(in srgb, var(--bg-base) 97%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--border-lit);
+    border-radius: 10px;
+    box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.5);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    animation: update-banner-in 0.18s ease;
+  }
+  .update-banner[hidden] { display: none; }
+  .update-banner-text { flex: 1; }
+  .update-banner-reload {
+    flex-shrink: 0;
+    background: var(--accent);
+    color: var(--bg-base);
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 7px;
+  }
+  .update-banner-reload:hover { filter: brightness(1.08); }
+  .update-banner-reload:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .update-banner-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .update-banner-close:hover { color: var(--text-primary); background: var(--bg-raised); }
+  @keyframes update-banner-in {
+    from { opacity: 0; transform: translate(-50%, 8px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .update-banner { animation: none; }
+  }
+
+  .filter-toggle.active .toggle-thumb {
+    transform: translateX(12px);
+    background: var(--accent);
+  }
+
+  .filter-toggle.active { color: var(--accent); }
+
+  /* Per-toggle glyph — the sole visible part of each control on every viewport.
+     Colour follows the toggle (muted → accent when active) via currentColor. */
+  .tg-ico { display: block; width: 18px; height: 18px; flex-shrink: 0; }
+  /* Theme glyph reflects the current mode: moon in dark (default), sun in light
+     (active). Sort glyph flips vertically when active (oldest-first) to signal
+     the reversed order. */
+  #theme-toggle .tg-sun { display: none; }
+  #theme-toggle.active .tg-moon { display: none; }
+  #theme-toggle.active .tg-sun { display: block; }
+  #log-sort.active .tg-ico { transform: scaleY(-1); }
+
+  /* ─── VIEW TOGGLE ─── */
+  .view-toggle {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+  }
+
+  .view-toggle button {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  .vt-ico { display: block; width: 16px; height: 16px; }
+  /* The one navigation control in the header says what it navigates to. The
+     labels are the first thing to go when the row runs out of width (below), and
+     the glyph plus the button's aria-label carry it from there — which is what
+     the first-run tour used to have to explain with a caption row of its own. */
+  .vt-lbl { line-height: 1; }
+
+  .view-toggle button:hover:not(.active) { color: var(--text-secondary); }
+
+  .view-toggle button.active {
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+  /* The active view button carries two distinct cues. A top bar marks it as the
+     active view (every view, Logs included): an intentional ::before rectangle
+     — not the earlier accident where the a11y sweep's touch-target box (on the
+     shared ::after at id-specificity) reshaped this caret's border into a bar.
+     And a caret marks that the view has an options popover: a real .vt-caret
+     child, because ::before is the bar and ::after is the touch target, so the
+     caret needs its own box. The caret shows only on views that have a popup
+     (not Logs) and flips up while it is open (aria-expanded). Both are
+     absolutely positioned, so nothing in the header shifts as they appear or
+     the popover toggles. */
+  .view-toggle button { position: relative; }
+  .view-toggle button.active::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: -5px;
+    height: 3px;
+    background: currentColor;
+    opacity: 0.6;
+    border-radius: 2px;
+  }
+  .vt-caret {
+    position: absolute;
+    left: 50%;
+    bottom: -1px;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid currentColor;
+    opacity: 0;
+    transform: translateX(-50%);
+    transition: transform 0.18s ease;
+  }
+  body:not(.view-logs) .view-toggle button.active .vt-caret { opacity: 0.9; }
+  .view-toggle button.active[aria-expanded="true"] .vt-caret {
+    transform: translateX(-50%) rotate(180deg);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vt-caret { transition: none; }
+  }
+
+  /* Splits the controls that report what the instance is doing from the two
+     that are only this browser's preference. */
+  .hdr-sep { width: 1px; height: 20px; flex: none; background: var(--border); margin: 0 2px; }
+
+  /* ─── VIEW OPTIONS POPOVER ─── */
+  /* View-specific toggles (deploys: time mode; logs: sort + auto-scroll) live
+     here instead of the header row, so switching views never makes controls
+     appear/disappear. Opened by clicking the already-active view button;
+     dismisses on outside-click / Esc, like the autosync drawer. */
+  .view-switch { position: relative; display: flex; }
+  .view-options {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 97;
+    min-width: 190px;
+    padding: 5px;
+    background: color-mix(in srgb, var(--bg-base) 97%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--border-lit);
+    border-radius: 10px;
+    box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.5);
+    display: none;
+  }
+  .view-options.open { display: block; animation: theme-notice-in 0.16s ease; }
+  /* No .vo-group for "logs": its controls live inline in the log panel's own
+     header now (see LOG VIEW below), not in this popover. */
+  .vo-group { display: none; }
+  body:not(.view-logs):not(.view-stacks) .view-options .vo-group[data-view="deploys"] { display: block; }
+  body.view-stacks .view-options .vo-group[data-view="stacks"] { display: block; }
+
+  /* Filter toggles are glyph-only in the header, but inside the popover there is
+     room for the full label + switch track (like the autosync drawer rows). */
+  .view-options .filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 7px;
+    font-size: 12px;
+  }
+  .view-options .filter-toggle:hover { background: var(--bg-raised); }
+  .view-options .filter-toggle .tg-ico { display: block; width: 16px; height: 16px; order: 0; }
+  .view-options .filter-toggle span { display: inline; margin-right: auto; order: 1; white-space: nowrap; }
+  .view-options .filter-toggle .toggle-track { display: block; order: 2; }
+  /* The "Search stacks" popover row is a mobile-only entry point (desktop uses
+     type-to-search); shown via the media query in the responsive section. */
+  .view-options .vo-search { display: none; }
+
+  /* Always-visible search trigger (T3.11) — the deploys/stacks filter was
+     desktop-invisible (type-to-search only, an easter egg); this quiet magnifier
+     sits by the view switch and opens the same bar with a click. Hidden on Logs
+     (its own in-panel search covers it) and on mobile (the view-options popover
+     carries the entry there — see the responsive media query). */
+  .stack-search-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: color 0.15s, background 0.15s;
+  }
+  .stack-search-btn:hover { color: var(--text-secondary); }
+  .stack-search-btn.active { color: var(--accent); }
+  .stack-search-btn .ss-ico { display: block; width: 18px; height: 18px; }
+
+  /* ─── AUTOSYNC HEADER CONTROL ─── */
+  /* Icon-only, like the filter toggles: no box or label. Muted by default
+     (nothing special happening); the glyph's colour only changes for a real
+     signal — queued = paused, accent = drawer open — and the pending pill rides
+     alongside it. */
+  .autosync-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  .autosync-btn > span:not(.pending-count) { display: none; }
+  .autosync-btn .as-ico { width: 18px; height: 18px; flex-shrink: 0; color: var(--text-muted); transition: color 0.15s; }
+  .autosync-btn:hover .as-ico { color: var(--text-secondary); }
+  .autosync-btn.paused .as-ico { color: var(--queued); }
+  .autosync-btn.paused:hover .as-ico { color: var(--queued); }
+  .autosync-btn.open .as-ico { color: var(--accent); }
+  .pending-count {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    font-weight: 600;
+    color: var(--queued-text);
+    background: var(--queued-dim);
+    border: 1px solid color-mix(in srgb, var(--queued) 32%, transparent);
+    border-radius: 20px;
+    padding: 1px 8px 1px 6px;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .autosync-btn.has-pending .pending-count { display: inline-flex; }
+  .pending-count .pc-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--queued); animation: breathe 2s ease-in-out infinite; }
+
+  /* ─── HOSTS CONTROL (multi-host fan-in) ─── */
+  /* A compact header control mirroring .autosync-btn: a server-rack glyph, a
+     sel/total badge that lights accent when the host filter is narrowing the
+     view, a warning dot when any peer is unreachable, and a chevron. Hidden
+     entirely on a single-host instance (no peers configured). */
+  .hosts-btn {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-secondary);
+  }
+  .hosts-btn.enabled { display: inline-flex; }
+  .hosts-btn .hb-ico { width: 18px; height: 18px; flex-shrink: 0; color: var(--text-muted); transition: color 0.15s; }
+  .hosts-btn:hover .hb-ico { color: var(--text-secondary); }
+  .hosts-btn.open .hb-ico { color: var(--accent); }
+  .hosts-btn .hb-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-raised);
+    border: 1px solid var(--border-lit);
+    border-radius: 20px;
+    padding: 1px 7px;
+    line-height: 1.6;
+  }
+  .hosts-btn.filtered .hb-count {
+    color: var(--accent);
+    background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .hosts-btn .hb-warn { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); display: none; }
+  .hosts-btn.has-offline .hb-warn { display: inline-block; }
+  .hosts-btn .hb-chev { width: 12px; height: 12px; color: var(--text-muted); transition: transform 0.2s; }
+  .hosts-btn.open .hb-chev { transform: rotate(180deg); }
+
+  /* Host list inside the shared .drawer shell. One row per host: a multi-select
+     check, the host's colour chip + name, a reachability dot, and a link to open
+     that host's own UI. Self carries a small badge and no link. */
+  .host-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .host-row:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
+  .host-check {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1.5px solid var(--border-lit);
+    flex: none;
+    display: grid;
+    place-items: center;
+    color: transparent;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .host-row.selected .host-check {
+    background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--accent);
+  }
+  .host-check svg { width: 11px; height: 11px; }
+  .host-row .hr-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+  .host-row .hr-self {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 0 6px;
+  }
+  .host-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .host-dot.up { background: var(--h-healthy); }
+  .host-dot.stale { background: var(--queued); }
+  .host-dot.down { background: var(--danger); }
+  .host-link { color: var(--text-muted); display: inline-flex; }
+  .host-link:hover { color: var(--accent); }
+  .host-link svg { width: 15px; height: 15px; }
+  /* Fixed slot so the reachability dot lines up down the column whether or not a
+     row carries an "open UI" link (self has none). */
+  .host-link-slot { flex: none; width: 15px; display: inline-flex; justify-content: center; }
+  .hosts-all-btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 2px;
+    margin-top: 2px;
+  }
+
+  /* Stale banner above the merged feed when at least one selected peer is
+     unreachable — its rows are shown last-known (dimmed), never blanked. */
+  .host-stale-banner {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--queued-text);
+    background: var(--queued-dim);
+    border: 1px solid color-mix(in srgb, var(--queued) 30%, transparent);
+  }
+  .host-stale-banner.show { display: flex; }
+  .host-stale-banner svg { width: 15px; height: 15px; flex: none; }
+
+  /* ─── AUTOSYNC DRAWER ─── */
+  .drawer {
+    position: fixed;
+    z-index: 90;
+    top: 56px;
+    right: 14px;
+    width: 390px;
+    max-width: calc(100vw - 28px);
+    background: color-mix(in srgb, var(--bg-base) 97%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid var(--border-lit);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 26px 50px -24px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: max-height 0.22s ease, opacity 0.18s ease, visibility 0.22s;
+  }
+  .drawer.open { max-height: min(72vh, 640px); opacity: 1; visibility: visible; overflow-y: auto; }
+  .drawer-inner { padding: 14px 16px 16px; }
+  .drawer-title { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.3px; color: var(--text-primary); text-transform: uppercase; }
+  .drawer-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+  .drawer-sub b { color: var(--queued-text); font-weight: 600; }
+
+  .global-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 12px 0 6px;
+  }
+  .global-row .gr-label { font-size: 13px; font-weight: 600; }
+  .global-row .gr-note { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
+
+  .sec-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 2px 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .sec-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .sec-label .sec-count { color: var(--queued-text); }
+
+  .qlist { display: flex; flex-direction: column; gap: 2px; }
+  .qempty { font-size: 12.5px; color: var(--text-muted); padding: 8px 4px 4px; font-family: var(--font-mono); }
+
+  .stack-filter-wrap { position: relative; margin: 0 2px 6px; }
+  .stack-filter-wrap .fi { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; color: var(--text-muted); pointer-events: none; }
+  .stack-filter {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 7px 26px 7px 28px;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .stack-filter::placeholder { color: var(--text-muted); }
+  .stack-filter:focus { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  /* Keyboard focus keeps a visible ring even though the mouse-focus outline is
+     suppressed above (T2.6); offset inward so the drawer's clip can't hide it. */
+  .stack-filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .stack-filter-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; display: none; border-radius: 4px; }
+  .stack-filter-clear:hover { color: var(--text-primary); }
+  .stack-filter-wrap.has-value .stack-filter-clear { display: block; }
+
+  /* Deploys filter: hidden until the user starts typing (type-to-search), then
+     the bar folds down above the table. Collapsed while empty and unfocused. */
+  .deploy-filter { max-height: 0; opacity: 0; margin: 0 2px; overflow: hidden;
+    transition: max-height 0.18s ease, opacity 0.16s ease, margin-bottom 0.18s ease; }
+  .deploy-filter.revealed { max-height: 48px; opacity: 1; margin-bottom: 10px; }
+  .deploy-filter .stack-filter { padding-right: 52px; }
+
+  /* Status filter (UI_SPEC.md): the chip row under the Deploys search input,
+     sharing the bar's fold. Chips reuse the log quick-filter chip family; an
+     active chip carries its own status hue, not the shared accent, so a
+     narrowed log reads as narrowed by that status rather than as broken. */
+  .status-filter { display: none; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 2px 10px; }
+  #deploy-filter-wrap.revealed + .status-filter:not(:empty) { display: flex; }
+  #roster-filter-wrap.revealed + .status-filter:not(:empty) { display: flex; }
+  .status-chip .sc-count { margin-left: 6px; font-weight: 700; opacity: 0.75; }
+  .status-chip.active[data-status="failed"],
+  .status-chip.active[data-status="rolled_back_unhealthy"],
+  .status-chip.active[data-status="heal_exhausted"] {
+    color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  }
+  .status-chip.active[data-status="rolled_back"] {
+    color: var(--rollback); background: color-mix(in srgb, var(--rollback) 12%, transparent);
+    border-color: color-mix(in srgb, var(--rollback) 40%, transparent);
+  }
+  .status-chip.active[data-status="success"],
+  .status-chip.active[data-status="healed"] {
+    color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent);
+    border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  }
+  .status-chip.active[data-status="queued"],
+  .status-chip.active[data-status="blocked"] {
+    color: var(--queued-text); background: color-mix(in srgb, var(--queued) 12%, transparent);
+    border-color: color-mix(in srgb, var(--queued) 40%, transparent);
+  }
+  .stack-filter-count { position: absolute; right: 28px; top: 50%; transform: translateY(-50%);
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); pointer-events: none; }
+  .filter-empty { display: none; text-align: center; padding: 28px 0; color: var(--text-muted); font-size: 13px; }
+
+  /* Disabled stacks (stack discovery): a quiet inventory line below the table
+     for stacks parked with disabled: true — present in the repo, deliberately
+     not deployed. Hidden entirely when the set is empty. */
+  .disabled-stacks {
+    display: none;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 0 14px;
+  }
+  .disabled-stacks.shown { display: flex; }
+  .dis-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-right: 2px;
+  }
+  .dis-chip {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    background: color-mix(in srgb, var(--text-muted) 9%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--text-muted) 35%, transparent);
+    padding: 1px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .filter-empty.show { display: block; }
+  .event-list .filtered-out { display: none !important; }
+
+  /* Orphans (ADR-0036): compose projects running on the host that the discovered
+     stack set no longer accounts for — a collapsed inventory section below the
+     table, hidden entirely when none are found. Read-only: pruning is
+     config-driven, not a UI action. */
+  .orphans { display: none; margin-top: 14px; padding: 0 14px; }
+  .orphans.shown { display: block; }
+  .orphans-head {
+    display: flex; align-items: center; gap: 7px; width: 100%;
+    background: none; border: 0; padding: 4px 0; cursor: pointer;
+    font-family: var(--font-mono); color: var(--text-muted); font-size: 10px;
+    font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  .orphans-caret { font-size: 9px; transition: transform 0.15s; }
+  .orphans.open .orphans-caret { transform: rotate(90deg); }
+  .orphans-count {
+    background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+    color: var(--text-muted); border-radius: 9px; padding: 0 7px;
+    font-size: 10px; line-height: 16px;
+  }
+  /* A formerly-managed project among them is news, not inventory: the pill takes
+     the same colour its row's `orphaned` tag carries. */
+  .orphans-count.has-orphaned {
+    background: color-mix(in srgb, var(--rollback) 14%, transparent);
+    color: var(--rollback);
+  }
+  .orphans-body { display: none; margin-top: 6px; flex-direction: column; gap: 4px; }
+  .orphans.open .orphans-body { display: flex; }
+  .orphan-item { display: flex; flex-direction: column; }
+  .orphan-row {
+    display: grid; grid-template-columns: 12px auto minmax(0, auto) 1fr auto;
+    align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px;
+    background: color-mix(in srgb, var(--overlay2) 5%, transparent);
+    font-family: var(--font-mono); font-size: 12px; width: 100%; text-align: left;
+    border: 0; color: inherit;
+  }
+  button.orphan-row { cursor: pointer; }
+  button.orphan-row:hover { background: color-mix(in srgb, var(--overlay2) 10%, transparent); }
+  .orphan-caret { font-size: 8px; color: var(--text-muted); transition: transform 0.15s; }
+  .orphan-item.open .orphan-caret { transform: rotate(90deg); }
+  .orphan-caret.blank { visibility: hidden; }
+  .orphan-tag {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+    padding: 1px 7px; border-radius: 4px; white-space: nowrap;
+  }
+  .orphan-tag.orphaned { color: var(--rollback); background: color-mix(in srgb, var(--rollback) 14%, transparent); }
+  .orphan-tag.unmanaged {
+    color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--text-muted) 30%, transparent);
+  }
+  .orphan-name { color: var(--text); font-weight: 500; white-space: nowrap; }
+  .orphan-dir { color: var(--text-muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .orphan-meta { color: var(--text-muted); font-size: 10.5px; white-space: nowrap; }
+
+  /* Per-container expansion of one orphan row. */
+  .orphan-detail { display: none; flex-direction: column; gap: 2px; padding: 4px 8px 8px 30px; }
+  .orphan-item.open .orphan-detail { display: flex; }
+  /* Project-level facts (config file, volumes) above the container list. */
+  .orphan-facts { display: flex; flex-direction: column; gap: 2px; margin-bottom: 5px; }
+  .of-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-family: var(--font-mono); font-size: 10.5px; }
+  .of-key { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; font-weight: 600; min-width: 52px; }
+  .of-val { color: var(--text-secondary); word-break: break-all; }
+  .of-note { color: var(--text-muted); font-style: italic; }
+  .orphan-cont {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 3px 0; font-family: var(--font-mono); font-size: 11px;
+  }
+  .oc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex: none; }
+  .oc-dot.healthy { background: var(--h-healthy); }
+  .oc-dot.unhealthy { background: var(--h-unhealthy); }
+  .oc-dot.stopped { background: var(--text-muted); }
+  .oc-name { color: var(--text); }
+  .oc-image { color: var(--text-muted); }
+  .oc-ports { color: var(--text-muted); font-size: 10px; }
+  .oc-status { color: var(--text-muted); margin-left: auto; white-space: nowrap; }
+  .orphan-cont.filtered-out { display: none !important; }
+  .orphan-item.filtered-out { display: none !important; }
+  body.view-logs #orphans { display: none !important; }
+
+  .stack-row {
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 7px;
+    transition: background 0.15s;
+  }
+  .stack-row:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
+  .qpos { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--queued-text); background: var(--queued-dim); border-radius: 5px; text-align: center; line-height: 20px; height: 20px; }
+  .qpos.blank { background: none; color: var(--text-muted); }
+  .stack-meta { min-width: 0; }
+  /* Scoped to the drawer row: unscoped it also caught the deploy table's stack
+     name, and `display: flex` there silently disabled its text-overflow — a
+     clipped name lost even its ellipsis. The flex box is this row's own need
+     (the name carries a trailing reason chip). */
+  .stack-row .stack-name { font-family: var(--font-mono); font-size: 13px; font-weight: 500; letter-spacing: -0.2px; display: flex; align-items: center; gap: 7px; }
+  .stack-detail { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stack-detail .warn { color: var(--queued-text); }
+
+  .reason { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; }
+  .reason-global { color: var(--accent); background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent); }
+  .reason-stack { color: var(--success); background: var(--success-dim); border: 1px solid color-mix(in srgb, var(--success) 26%, transparent); }
+
+  .sw { width: 28px; height: 16px; border-radius: 8px; background: var(--bg-raised); border: 1px solid var(--border-lit); position: relative; cursor: pointer; flex-shrink: 0; transition: background 0.2s, border-color 0.2s; }
+  .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); transition: transform 0.2s, background 0.2s; }
+  .sw.on { background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .sw.on::after { transform: translateX(12px); background: var(--accent); }
+
+  /* ─── RUN PANEL (upcoming deploys) ─── */
+  /* Shares the .drawer shell + .sec-label/.qlist with the autosync drawer, but
+     its rows are read-only (no switches) and accent-tinted (active run) rather
+     than queued-yellow (deferred). */
+  #run-count { color: var(--accent); }
+  .run-row {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 7px;
+  }
+  .run-row.active { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  .run-badge {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    color: var(--accent); background: var(--accent-dim);
+    border-radius: 5px; text-align: center; height: 20px;
+    display: grid; place-items: center;
+  }
+  .run-badge.ship { animation: breathe 2s ease-in-out infinite; }
+  .run-badge .ds-ico { width: 13px; height: 13px; }
+  .run-name { font-family: var(--font-mono); font-size: 13px; font-weight: 500; letter-spacing: -0.2px; color: var(--text-primary); }
+  .run-detail { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
+  .run-row.active .run-detail { color: var(--accent); }
+  .sw.lg { width: 34px; height: 19px; border-radius: 10px; }
+  .sw.lg::after { width: 13px; height: 13px; }
+  .sw.lg.on::after { transform: translateX(15px); }
+  /* Before the first autosync snapshot the drawer is guessing at the global
+     state, so its switch does not accept a click yet — pointer-events off makes
+     the click wait for the real state instead of being swallowed. */
+  .drawer[data-ready="false"] .global-row .sw { pointer-events: none; opacity: 0.5; }
+
+  /* ─── LOG VIEW ─── */
+  /* body.view-logs switches between the deploy table and the log pane;
+     !important wins over the inline display set by showTable(). The view is
+     styled as one big clog-panel (same header/search/body/footer chrome as
+     the Stacks/Deploys container-log panel — see CONTAINER LOGS below), just
+     page-sized, so live/search/wrap/auto-scroll/fullscreen live inline in its
+     own header instead of the view-options popover. */
+  #log-view { display: none; }
+  /* The Logs view is one full-height panel and the page behind it must not
+     scroll. Rather than computing the panel's height from the header and
+     margins — which cannot work, since the first-run tour adds a banner above
+     <main> and makes the header taller, and the PWA update prompt is another
+     such banner — the view turns the page into a flex column and hands the
+     panel whatever is left. No constant to keep in sync with the chrome.
+     dvh, not vh: on mobile Safari `100vh` is the *large* viewport (toolbars
+     collapsed), which overshoots what is actually visible and scrolls the page
+     by the height of the browser chrome. The vh line is the fallback for
+     engines without dvh. */
+  body.view-logs {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    /* body's global `min-height: 100vh` would otherwise win over the dvh
+       height above and put the mobile-Safari overshoot straight back. */
+    min-height: 0;
+    overflow: hidden;
+  }
+  /* The pane is the page here, so main drops its centred column, its padding
+     and its margins: a log line is the widest thing the UI renders, and margins
+     around it are screen a viewer paid for. Fullscreen is then only about hiding
+     the header too, not the only way to get the width.
+
+     `width: 100%` is load-bearing on top of that. main's side margins are `auto`
+     in the base rule, and auto margins in this flex column's *cross* axis
+     suppress the stretch that would size it to the viewport — leaving it
+     shrink-to-fit, i.e. at least its min-content width, which one pre-formatted
+     diff line inside the pane pushes past a tablet. An explicit width takes
+     shrink-to-fit out of the picture whatever the margins later become. */
+  body.view-logs main {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+    width: 100%; max-width: none; margin: 0; padding: 0;
+  }
+  body.view-logs #log-view {
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
+    margin: 0; border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0;
+  }
+  /* Full width earns the fullscreen type size — the same one .clog-fullscreen uses. */
+  body.view-logs #log-pane.clog-body { font-size: 12px; }
+  /* position: relative anchors the "N new lines" pill over the pane's lower
+     edge. It lives on the :not(.clog-fullscreen) rule deliberately: on
+     `body.view-logs #log-view` it would out-specify the fullscreen rule's
+     `position: fixed` and leave fullscreen merely offset down the page.
+     In fullscreen the panel is itself `position: fixed`, so the pill still
+     has its containing block. */
+  #log-view:not(.clog-fullscreen) { position: relative; }
+  body.view-logs #deploy-table, body.view-logs #empty-state, body.view-logs #disabled-stacks { display: none !important; }
+  /* Revealed by the search tool or type-to-search, like .clog-search's
+     .clog-hide toggle in the container-log panel — just the opposite polarity
+     (shown on .revealed, matching the deploys/stacks filter bars' own class). */
+  #log-filter-wrap { display: none; }
+  #log-filter-wrap.revealed { display: flex; }
+
+  /* Quick filters — the Logs panel's one chrome row. Same chrome as the
+     container-log panel's per-service chip row (.clog-svcs/.clog-chip) so the
+     two read as one control family; the difference is that this row is always
+     shown. It has to be: the filter state persists across reloads, a narrowed
+     pane that hides its own filter reads as an empty log, and since the view
+     dropped its title bar (the view switch already names it) this row carries
+     the live pill and the pane tools too. It takes the head's background for
+     that reason — it *is* the head now. */
+  .clog-quick {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px 12px;
+    background: var(--mantle); border-bottom: 1px solid var(--border);
+  }
+  /* First in the row, so it drops .clog-live's leading margin. */
+  .clog-quick .clog-live { margin-left: 0; }
+  /* Right-hand cluster: the count pushes it to the far end (margin-left: auto
+     below), and the tools stay together when the row wraps on a narrow screen. */
+  .clog-tools { display: inline-flex; align-items: center; gap: 2px; }
+  /* One magnifier per viewport. Above the mobile breakpoint the header trigger
+     (T3.11) opens this view's search, so an in-panel tool would be a second
+     control for the same state, a few pixels away. Below it the header glyph is
+     hidden (the view-options popover carries search there) and the Logs view has
+     no popover — so the in-panel tool is the only way in and stays. */
+  @media (min-width: 701px) {
+    #log-search-open { display: none; }
+    /* ...except in fullscreen, where the header magnifier is covered. */
+    #log-view.clog-fullscreen #log-search-open { display: inline-flex; }
+  }
+  .clog-quick-lbl { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-right: 2px; }
+  .clog-quick-sep { width: 1px; height: 14px; background: var(--border-lit); margin: 0 3px; }
+  /* An active severity chip carries its own severity hue rather than the shared
+     accent: "errors only" has to read as a severity, not just as "selected", or
+     a deliberately narrowed pane looks like a broken one. */
+  .clog-chip.active[data-sev="WARN"] {
+    color: var(--hunk); background: color-mix(in srgb, var(--hunk) 12%, transparent);
+    border-color: color-mix(in srgb, var(--hunk) 40%, transparent);
+  }
+  .clog-chip.active[data-sev="ERROR"] {
+    color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  }
+  .clog-chip.stack-chip { display: inline-flex; align-items: center; gap: 6px; }
+  .clog-chip.stack-chip .chip-x { color: var(--text-muted); font-weight: 600; }
+  .clog-chip.stack-chip:hover .chip-x { color: var(--danger); }
+  #log-quick-count { margin-left: auto; }
+
+  /* A stack prefix in a log line doubles as the control that filters to it. */
+  #log-pane .log-stack { cursor: pointer; border-radius: 4px; padding: 0 2px; margin: 0 -2px; }
+  #log-pane .log-stack:hover { background: var(--accent-dim); }
+  #log-pane .log-stack:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* "N new lines" — shown only while auto-scroll is disengaged, so a viewer
+     reading history is told what arrived instead of being yanked to the tail. */
+  .clog-newpill {
+    position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 2;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    color: var(--accent); background: var(--bg-base);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    border-radius: 20px; padding: 4px 12px; cursor: pointer;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 28%);
+  }
+  .clog-newpill[hidden] { display: none; }
+  .clog-newpill:hover { background: var(--accent-dim); }
+  .clog-newpill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ─── STACKS VIEW (roster / inventory, docs/dev/stack-roster-spec.md) ─── */
+  /* The full set of stacks skipper owns (stack discovery, ADR-0034), each with
+     its last outcome — inventory, not an event log. A third top-level view. */
+  #stacks-view { display: none; }
+  body.view-stacks #stacks-view { display: block; }
+  body.view-stacks #deploy-table, body.view-stacks #empty-state,
+  body.view-stacks #disabled-stacks, body.view-stacks #orphans { display: none !important; }
+  /* The Logs panel belongs to its view — and in fullscreen it is a fixed,
+     viewport-filling overlay whose own `display: flex` would otherwise outrank
+     the base `#log-view { display: none }`, leaving it covering whichever view
+     the viewer switched to. The class is cleared on a view switch as well
+     (applyView), so this is the backstop, not the mechanism. */
+  body:not(.view-logs) #log-view { display: none !important; }
+
+  /* Roster rows reuse the deploy row frame minus the status left bar (status is
+     the badge); open-state + panel binding are shared with .event-row.audit-open.
+     Header + rows share one fixed grid so columns align, like the deploy table. */
+  .roster-list { display: flex; flex-direction: column; }
+  /* Stack · Health · Version · Last deploy. The Version column stays a single
+     line (one lead version + a "+N" pointer, not the Deploys column's full
+     per-service stack), so the roster keeps its one-line-per-stack inventory
+     rhythm; a shared track lets the versions align down the page. */
+  #stacks-view { --row-cols: minmax(0, 1.2fr) 112px minmax(0, 1fr) minmax(0, 1.1fr); }
+  .roster-list-header, .roster-row {
+    display: grid;
+    grid-template-columns: var(--row-cols);
+    gap: 12px;
+    align-items: center;
+  }
+  .roster-row .col-version { align-items: center; gap: 5px; overflow: hidden; }
+  /* The roster's chip stays on ONE line where the Deploys column lets a chip wrap
+     within itself: a variable-height roster row would lose the inventory rhythm.
+     Under pressure the service name ellipsizes and the version survives — the
+     version is what the cell is for. */
+  .roster-row .col-version .tag-delta { flex-wrap: nowrap; }
+  .roster-row .col-version .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* Deploys' Change cell follows the same rule: one chip plus "+N", one line. */
+  .event-row .col-version { align-items: center; overflow: hidden; }
+  .event-row .svc-delta { flex-direction: row; align-items: center; gap: 5px; min-width: 0; }
+  .event-row .col-version .tag-delta { flex-wrap: nowrap; min-width: 0; }
+  .event-row .col-version .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .event-row .col-version .ver-count { flex: none; }
+
+  /* Empty set: drop the lone column header. */
+  .roster-list-header:has(+ .roster-list:empty) { display: none; }
+  .roster-row {
+    padding: 12px 20px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .roster-row:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
+  .roster-row.disabled { opacity: 0.55; }
+
+  /* Unhealthy roster row — the same severity idiom a failed deploy row uses, so
+     the Stacks view and the deploy log mark a bad row the same way (a red left
+     bar + faint tint), not just a small pill. Guarded so the jump flash and the
+     open-row accent bar still win; the extra :not() specificity also keeps the
+     tint through :hover, which is defined earlier and would otherwise override. */
+  .roster-row[data-health="unhealthy"]:not(.audit-open):not(.jump-target)::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--h-unhealthy);
+  }
+  /* Health is what the inventory is about, so a stopped stack gets the gutter
+     too — quieter than the unhealthy red, since stopped is a choice, not a fault. */
+  .roster-row[data-health="stopped"]:not(.audit-open):not(.jump-target)::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: color-mix(in srgb, var(--h-stopped) 70%, transparent);
+  }
+  .roster-list .filtered-out { display: none !important; }
+  .roster-stack {
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+    font-family: var(--font-display); font-size: 15px; font-weight: 500;
+    color: var(--text-primary); letter-spacing: -0.005em;
+  }
+  .roster-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Host chip + icon + name are one identity group, and it never wraps: as
+     separate flex items a long name took a line of its own below the chip,
+     which put the version — aligned to the row's first line — above the name it
+     describes. As a group the name ellipsises instead, so the identity and its
+     version always share the first line. min-width: 0 is what lets it shrink;
+     the full name stays in the title. */
+  .roster-ident { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .roster-health { display: flex; align-items: center; min-width: 0; }
+  /* Last deploy: badges, age and commit as one wrapping group — gap, not
+     margins, so a wrapped line keeps the row's own spacing. */
+  .roster-last { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 4px 8px; min-width: 0; }
+  .roster-last .roster-status { display: inline-flex; align-items: center; gap: 6px; }
+  .roster-when {
+    font-family: var(--font-display); font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .roster-sha {
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--text-secondary); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .roster-flag {
+    font-size: 11px; color: var(--text-muted);
+    padding: 2px 9px; border: 1px dashed var(--border); border-radius: 999px;
+    white-space: nowrap;
+  }
+  /* A held change (ADR-0062): the queued tint, since it is a
+     standing wait, plus the one control that lifts it. */
+  .held-line { display: inline-flex; align-items: center; gap: 6px; }
+  .held-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--font-display); font-size: 11.5px; font-weight: 500;
+    color: var(--queued-text); background: var(--queued-dim);
+    padding: 2px 7px; border-radius: var(--r-chip);
+    white-space: nowrap;
+  }
+  .held-chip svg { width: 12px; height: 12px; }
+  .retry-btn {
+    font: inherit; font-size: 11.5px; font-weight: 500;
+    color: var(--queued-text); background: none;
+    border: 1px solid var(--queued-dim); border-radius: var(--r-chip);
+    padding: 1px 8px; cursor: pointer; white-space: nowrap;
+  }
+  .retry-btn:hover:not(:disabled) { background: var(--queued-dim); }
+  .retry-btn:focus-visible { outline: 2px solid var(--queued-text); outline-offset: 1px; }
+  .retry-btn:disabled { cursor: default; opacity: .6; }
+  .roster-empty { display: none; color: var(--text-muted); text-align: center; padding: 28px 12px; }
+  .roster-list:empty ~ .roster-empty { display: block; }
+  /* ── Stacks detail panel (docs/dev/ui-redesign-plan.md §3.2) ──
+     The selected row's card: head with labelled actions, the verdict, a facts
+     strip, then a tab strip over one pane. Bound to its row by the open row's
+     accent bar, which the panel continues down its left edge. */
+  .detail-panel {
+    position: relative; padding-bottom: 6px;
+    background: var(--bg-sunken);
+    box-shadow: inset 3px 0 0 var(--accent);
+    animation: expand 0.2s ease-out;
+  }
+  .dp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 20px 12px; }
+  .dp-title { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .dp-title .host-mono { display: inline-flex; }
+  .dp-name {
+    font-family: var(--font-display); font-size: 18px; font-weight: 600; letter-spacing: -0.01em;
+    color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .dp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .dp-act {
+    display: inline-flex; align-items: center; gap: 6px;
+    font: inherit; font-size: 12.5px; padding: 5px 10px; cursor: pointer;
+    border: 1px solid var(--border-lit); border-radius: 7px;
+    background: var(--bg-base); color: var(--text-secondary); text-decoration: none; white-space: nowrap;
+  }
+  .dp-act:hover { color: var(--text-primary); border-color: var(--overlay2); }
+  .dp-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .dp-act svg { width: 14px; height: 14px; flex: none; }
+  .dp-act[aria-pressed="true"], .link-wrap.open > .dp-act {
+    color: var(--accent); background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .dp-act[data-hook-active] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    animation: hookpulse 1.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .dp-act[data-hook-active] { animation: none; } }
+  .dp-close { padding: 5px 8px; }
+  .dp-actions .link-wrap { margin-left: 0; }
+  .dp-actions .link-pop { top: 34px; left: auto; right: 0; }
+  /* The count chip inside an action and a tab. */
+  .dp-n {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
+    color: var(--text-muted); background: var(--bg-raised); border-radius: 999px; padding: 0 6px;
+  }
+  .dp-n.bad { color: var(--danger); background: var(--danger-dim); }
+
+  /* Verdict: one line per thing worth knowing, the tone leading with its glyph. */
+  .dp-verdict { display: grid; gap: 6px; margin: 0 20px; }
+  .dp-v {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 9px 12px; border-radius: var(--radius); font-size: 13.5px; color: var(--text-primary);
+  }
+  .dp-v-ico { flex: none; width: 18px; text-align: center; font-weight: 600; }
+  .dp-v-body { flex: 1; min-width: 0; }
+  .dp-v-text b { font-weight: 600; }
+  .dp-v-sub { color: var(--text-secondary); font-size: 12.5px; margin-top: 2px; overflow-wrap: anywhere; }
+  .dp-v > .dp-act, .dp-v > .retry-btn { flex: none; align-self: center; }
+  .dp-v .retry-btn { font-size: 12.5px; padding: 4px 11px; border-radius: 7px; }
+  .dp-v[data-tone="danger"]   { background: var(--danger-dim); }
+  .dp-v[data-tone="danger"]   .dp-v-ico { color: var(--danger); }
+  .dp-v[data-tone="rollback"] { background: var(--rollback-dim); }
+  .dp-v[data-tone="rollback"] .dp-v-ico { color: var(--rollback); }
+  .dp-v[data-tone="warn"]     { background: var(--queued-dim); }
+  .dp-v[data-tone="warn"]     .dp-v-ico { color: var(--queued-text); }
+  .dp-v[data-tone="ok"]       { background: var(--success-dim); }
+  .dp-v[data-tone="ok"]       .dp-v-ico { color: var(--success); }
+  .dp-v[data-tone="muted"]    { background: color-mix(in srgb, var(--bg-raised) 50%, transparent); color: var(--text-secondary); }
+
+  /* Facts: four labelled cells sharing hairlines. */
+  .dp-facts {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
+    margin: 12px 20px 0; background: var(--border);
+    border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  }
+  .dp-fact { background: var(--bg-base); padding: 8px 12px; min-width: 0; }
+  .dp-k {
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px;
+  }
+  .dp-fv {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0;
+    font-size: 13px; color: var(--text-primary);
+  }
+  .dp-fv .tag-delta, .dp-fv .tag-delta .td-val { flex-wrap: wrap; max-width: 100%; }
+  .dp-fv .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .dp-sha { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+  .dp-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .dp-meta { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+  /* Tabs over one pane. */
+  .dp-tabs {
+    display: flex; gap: 2px; margin: 14px 20px 0; overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .dp-tab {
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+    font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer;
+    padding: 8px 12px; margin-bottom: -1px; background: none;
+    border: 0; border-bottom: 2px solid transparent;
+  }
+  .dp-tab:hover { color: var(--text-primary); }
+  .dp-tab[aria-selected="true"] { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--accent); }
+  .dp-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .dp-pane { padding: 4px 6px 8px; }
+  /* The shared panel builders draw their own bound frame; inside the pane they
+     are content, not cards. The Containers head drops the stack name — the
+     panel head already names it. */
+  .dp-pane > .health-panel, .dp-pane > .audit-panel, .dp-pane > .watched-panel, .dp-pane > .hooks-panel,
+  .dp-pane > .diff-panel, .dp-pane > .files-list {
+    background: none; box-shadow: none; border: 0; border-radius: 0; animation: none;
+  }
+  .dp-pane .health-panel .hp-head-who { display: none; }
+  .dp-pane > .heal-drift-list, .dp-pane > .diff-commit-list, .dp-pane > .load-error { margin: 8px 14px; }
+  .dp-pane > .diff-loading { padding: 10px 14px; }
+  /* A diff file's added/removed counts, in its header. */
+  .df-stat { display: inline-flex; gap: 6px; font-family: var(--font-mono); font-size: 11px; }
+  .df-add { color: var(--success); }
+  .df-del { color: var(--danger); }
+  /* Output: the deploy's error text, clamped to six lines until expanded. */
+  .dp-output {
+    margin: 8px 14px 0; padding: 10px 12px; border-radius: var(--radius);
+    background: var(--bg-base); border: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6;
+    color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .dp-output.clamped { max-height: calc(6 * 1.6em + 20px); overflow: hidden; }
+  .dp-more-btn {
+    margin: 6px 14px 0; padding: 2px 4px; font: inherit; font-size: 12px; cursor: pointer;
+    background: none; border: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+  }
+  .dp-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* #log-pane is the panel's .clog-body (chrome comes from the .clog-panel
+     wrapper); override the small popup panel's capped height so it fills the
+     page, and its preformatted whitespace — .log-line lays each entry out as
+     a flex row of its own spans, unlike the raw preformatted .clog-ln text.
+     Also drop .clog-body's smooth scroll-behavior: with lines streaming in
+     continuously while following, an instant jump (its pre-existing behaviour)
+     reads better here than a per-line animation. */
+  #log-pane.clog-body {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    padding: 10px 0;
+    white-space: normal;
+    scroll-behavior: auto;
+  }
+
+  .log-empty {
+    padding: 90px 24px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* flex-wrap is what lets a full-width child (the inline diff below, and the
+     attrs blob on a phone) break onto its own row; row-gap: 0 keeps those rows
+     reading as one entry rather than as separate lines. */
+  .log-line {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 0;
+    gap: 10px;
+    align-items: baseline;
+    padding: 0 14px;
+  }
+
+  .log-line:hover { background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
+
+  .log-time {
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .log-level {
+    flex-shrink: 0;
+    width: 44px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+  }
+
+  .log-level.ERROR { color: var(--danger); }
+  .log-level.WARN { color: var(--hunk); }
+  .log-level.DEBUG { color: var(--skip); }
+
+  .log-cmd {
+    color: var(--skip);
+    flex-shrink: 0;
+  }
+
+  .log-stack {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .log-diff-pill {
+    flex-shrink: 0;
+  }
+
+  /* overflow-wrap: anywhere, not word-break: break-all — break-all splits at
+     any character even when a space would do, which turns a squeezed column
+     into "st / ac / k di / sc / ov / er / ed". `anywhere` breaks between words
+     first and only inside one that genuinely does not fit; it also lets the
+     flex item report a narrow min-content width, so the column can shrink
+     without forcing the row wider than the pane. */
+  .log-msg {
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* Narrated lines (the console's rendering, mirrored). The glyph replaces the
+     level badge and carries the status tone; it keeps a fixed width so lines
+     still align down the pane whether or not they are narrated. */
+  .log-glyph { flex-shrink: 0; width: 12px; text-align: center; color: var(--text-muted); }
+  .log-glyph.tone-ok { color: var(--success); }
+  .log-glyph.tone-bad { color: var(--danger); }
+  .log-glyph.tone-roll { color: var(--rollback); }
+  .log-glyph.tone-warn { color: var(--queued-text); }
+  .log-glyph.tone-accent { color: var(--accent); }
+  .log-msg.tone-ok, .log-seg.tone-ok { color: var(--success); }
+  .log-msg.tone-bad, .log-seg.tone-bad { color: var(--danger); }
+  .log-msg.tone-roll, .log-seg.tone-roll { color: var(--rollback); }
+  .log-msg.tone-warn, .log-seg.tone-warn { color: var(--queued-text); }
+  .log-seg { color: var(--text-primary); }
+  .log-dim { color: var(--text-muted); overflow-wrap: anywhere; }
+
+  /* A changed file's diff, inline under its line — the console prints it there
+     too, and the log is the one place both surfaces show the same thing. It
+     reuses the diff panel's line classes so one diff looks the same wherever
+     it is rendered. Breaks the flex row so it spans the full width. */
+  .log-diff {
+    /* The basis discounts the indent: a full 100% *plus* a left margin is wider
+       than the row, and with flex-shrink 0 nothing takes it back — the block
+       then pushes the pane sideways on every viewport narrow enough to notice.
+       One variable so the phone's tighter indent below stays in step. */
+    --log-diff-indent: 62px;
+    flex: 1 0 calc(100% - var(--log-diff-indent));
+    margin: 2px 0 4px var(--log-diff-indent);
+    padding: 4px 0;
+    border-left: 2px solid var(--border-lit);
+    font-size: 11px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .log-diff .diff-line { padding: 0 10px; }
+
+  .log-attrs {
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  /* ─── RESPONSIVE ─── */
+  /* Tablet/narrow desktop: not every read-out fits, so both views drop their
+     least essential one and keep Version/Change on the row's first line, in
+     front of the status — Deploys drops When's duration, Stacks drops Commit.
+     The version is the answer to "what moved / what runs", which is worth more
+     per pixel than a duration or a SHA; those stay reachable (the duration in
+     the row's own panel, the commit in the deploy history). Hiding a read-out,
+     rather than squeezing all of them, is what keeps the stack NAME — the
+     row's identity — whole. */
+  @media (min-width: 701px) and (max-width: 1000px) {
+    /* Last deploy drops its commit and keeps badge + `48s ago` (absolute mode
+       ellipsises, as it does on a phone), so the width goes to Stack and
+       Version. */
+    #stacks-view { --row-cols: minmax(0, 1.1fr) 104px minmax(0, 1fr) minmax(0, 1fr); }
+    .roster-row .roster-sha { display: none; }
+    /* Top-align once the stack cell can wrap: centred cells drop the version,
+       status and time to the middle of a two-line row, i.e. *below* the name
+       they belong to. Aligned to the top they stay on the name's line, which is
+       what the row reads as — identity first, then what runs. */
+    .roster-row { align-items: start; }
+
+    /* Deploys: When drops its duration, so Stack and Change take the width. */
+    #deploy-table { --row-cols: minmax(0, 1.15fr) 112px minmax(0, 1fr) minmax(0, 0.7fr); }
+    #deploy-table.no-version { --row-cols: minmax(0, 1.15fr) 112px minmax(0, 0.7fr); }
+    .event-row .cell-duration { display: none; }
+  }
+
+  /* Both narrow layouts, tablet and phone. */
+  @media (max-width: 1000px) {
+    /* The view labels go first: the glyphs and the buttons' aria-labels carry
+       the switch from here down, and the row needs the width for the read-outs
+       that change under the viewer. */
+    .vt-lbl { display: none; }
+    .view-toggle button { padding: 5px 8px; }
+    /* The brand text goes: below this the control cluster wants the width, and
+       what is left squeezes the wordmark and the version label down to a
+       character and an ellipsis — a sliver beside the logo that reads as
+       breakage, not as identity. The ship alone carries the brand here, and the
+       full `v<semver> · <commit>` string moves to its tooltip / tap-tip. */
+    .brand-text { display: none; }
+    /* The name ellipsises inside its own column instead of overflowing. */
+    .cell-stack .stack-name { flex-shrink: 1; }
+    /* Never to nothing: below the floor the chip and icon wrap instead. */
+    .cell-stack, .roster-stack { flex-wrap: wrap; }
+    .cell-stack .stack-name, .roster-stack .roster-name { min-width: 7ch; }
+    /* Only the action cluster is left to wrap, so it is what moves. */
+    .roster-ident { flex: 1 1 auto; }
+  }
+
+  @media (max-width: 700px) {
+    header { padding: 0 10px; height: 48px; }
+
+    /* A log line is a flex row of identity (time · level · [stack]) plus the
+       message plus the dim attrs blob. On a phone the last two share what is
+       left of ~380px, so both end up a few characters wide and readable text
+       becomes a vertical ribbon. The row wraps instead, and the *attrs* are
+       what moves: they are the secondary, dim part, so they take their own
+       full-width line and stop competing with the message, which keeps line 1
+       beside the stack it belongs to. A message that still does not fit wraps
+       onto its own line too (the min-width is what pushes it there) rather
+       than shrinking further. Same collapse-under-pressure rule the deploy
+       table follows (UI_SPEC §Responsive): nothing is dropped, the parts just
+       stop sharing one row. */
+    .log-line .log-msg { min-width: 14ch; }
+    .log-line .log-attrs { flex: 1 0 100%; padding-left: 12px; }
+    .log-diff { --log-diff-indent: 12px; }
+    /* The row is a fixed set of glyphs in a width that varies by phone, and it
+       must never scroll sideways — the header is how every other surface is
+       reached. Two things buy that room: a tighter gap, and dropping the
+       light/dark toggle. The toggle is the one control here whose job is done
+       once: the palette is a per-browser preference set once and then left
+       alone, unlike the beacon, the badges or the view switch, which report
+       state that changes under the viewer. It stays reachable from any wider
+       viewport, and the saved choice keeps applying on the phone. */
+    .status-area { gap: 6px; }
+    #theme-toggle { display: none; }
+    /* The Hosts control compacts to its glyph (plus the red dot when a peer is
+       unreachable — that is state, not decoration): the `n/m` count and the
+       chevron both restate what the drawer says the moment it opens, and the
+       drawer is one tap away. Same rule as the beacon and the incident badge
+       above — keep the identity token and the alarm, drop the read-out. */
+    .hosts-btn .hb-count, .hosts-btn .hb-chev { display: none; }
+    /* Attention chips compact to one identity token + count each, so the
+       beacon (pulsing dot — "broken now") and the incident badge (↺ —
+       "broken recently") fit the 48px row side by side in the worst case,
+       without the header ever scrolling horizontally. */
+    .health-beacon { padding: 3px 8px; gap: 5px; font-size: 11px; }
+    .health-beacon .hb-icon { display: none; }
+    .incident-badge { padding: 3px 8px; gap: 4px; font-size: 11px; }
+    .update-badge { padding: 3px 8px; gap: 4px; font-size: 11px; }
+    /* Filter toggles are glyph-only on every viewport now (see base rules).
+       Deploy-status and connection are already glyph-only via base rules; here
+       we drop the deploying stack name and the look-ahead trail (both remain in
+       the element's title/aria — see UI_SPEC §Responsive) and collapse the trail
+       to the compact +N count chip. */
+    .deploy-status.active .ds-active,
+    .deploy-status.active .ds-next { display: none; }
+    .deploy-status.active .ds-count:not(:empty) { display: inline-flex; align-items: center; }
+    /* Autosync is already icon-only on every viewport (see base rules). */
+    /* The theme picker doesn't fit the compact row and switching palettes is
+       rarely needed on a phone; the configured theme still applies as-is. */
+    .theme-picker { display: none; }
+    /* Nothing left on its right-hand side to separate from. */
+    .hdr-sep { display: none; }
+    main { margin: 16px auto; padding: 0 12px; }
+
+    .event-list-header { display: none; }
+
+    /* Touch has no keyboard to trigger type-to-search, so on mobile the
+       view-options popover carries a "Search" entry that reveals and focuses the
+       filter (hidden on desktop, where type-to-search covers it). */
+    .view-options .vo-search { display: flex; }
+    /* The always-visible header magnifier is a desktop affordance; on mobile the
+       popover "Search" row above is the entry point, so hide the glyph. (T3.11) */
+    .stack-search-btn { display: none; }
+
+    /* Two lines like the roster: name + time, then change + result. */
+    .event-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: auto auto;
+      gap: 4px 12px;
+      padding: 10px 14px;
+    }
+    .event-row .cell-who { grid-column: 1; grid-row: 1; }
+    .event-row .cell-when { grid-column: 2; grid-row: 1; justify-self: end; }
+    .event-row .col-version { grid-column: 1; grid-row: 2; padding-left: 26px; }
+    .event-list .event-row .status-cell { grid-column: 2; grid-row: 2; justify-self: end; }
+    .event-row .cell-time { font-size: 11px; }
+    .event-row .cell-duration, .event-row .cell-sha { display: none; }
+
+    /* Roster rows go to two lines: identity + health, then version + last
+       deploy, the latter right-aligned under the health. */
+    .roster-list-header { display: none; }
+    .roster-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: auto auto;
+      gap: 4px 12px;
+      padding: 10px 14px;
+    }
+    .roster-stack  { grid-column: 1; grid-row: 1; }
+    .roster-health { grid-column: 2; grid-row: 1; justify-self: end; }
+    .roster-row .col-version { grid-column: 1; grid-row: 2; }
+    .roster-last   { grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; }
+    .roster-when   { font-size: 11px; }
+    .roster-row .roster-sha { display: none; }
+
+    /* The panel's facts go two to a row and its actions drop their labels
+       (each keeps its title / aria-label). */
+    .dp-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dp-head { padding-left: 14px; padding-right: 14px; }
+    .dp-title { flex-wrap: wrap; row-gap: 4px; }
+    .dp-meta { flex-basis: 100%; }
+    .dp-verdict, .dp-facts, .dp-tabs { margin-left: 14px; margin-right: 14px; }
+    .dp-lbl { display: none; }
+
+    /* Containers panel: five cells on one line overflow a phone (the version chip
+       cannot ellipsize — a half-shown tag is worse than none), so the version
+       moves to a second line under its service while state/status/logs keep the
+       first, exactly as the no-version line already reads. */
+    .health-panel.has-versions .hp-svc {
+      grid-template-columns: minmax(0, 1fr) auto auto auto;
+      row-gap: 3px;
+    }
+    .health-panel.has-versions .hp-name   { grid-area: 1 / 1; }
+    .health-panel.has-versions .hp-state  { grid-area: 1 / 2; }
+    .health-panel.has-versions .hp-status { grid-area: 1 / 3; }
+    .health-panel.has-versions .clog-btn  { grid-area: 1 / 4; }
+    .health-panel.has-versions .hp-ver    { grid-area: 2 / 1 / auto / -1; }
+
+    /* Deploy-history rows on one line: the desktop's fixed columns overflow a
+       phone, so use content-width tracks and drop the file count (like the table). */
+    .audit-row {
+      grid-template-columns: auto auto auto 1fr;
+      gap: 10px;
+    }
+    .audit-row .ar-sha   { justify-self: end; text-align: right; }
+    .audit-row .ar-files { display: none; }
+    .audit-row .ar-err   { grid-column: 1 / -1; }
+
+    /* First-run tour: the compact phone header can't fit a caption under every
+       glyph, and a banner that names captions nobody can see is pointless — so
+       the whole tour is a desktop/tablet affordance. Reset the tour's column
+       layout + grown height and hide the banner (rules kept later than the base
+       tour rules so the cascade lands). A phone-only visitor never sets
+       headerTourSeen, so it still greets them the first time they open a wider
+       viewport. */
+    html:not(.header-tour-seen) .ht-cap { display: contents; }
+    html:not(.header-tour-seen) .ht-lbl { display: none; }
+    html:not(.header-tour-seen) header { height: 48px; min-height: 0; }
+    .header-tour { display: none; }
+  }
+
+  /* ── Container logs (ADR-0037): a live `docker compose logs` panel opened from
+     a logs icon in the deploys/stacks views — per stack (merged services) and
+     per container. One log open at a time. The existing skipper Logs view reuses
+     the wrap/search/fullscreen affordances below. ───────────────────────────── */
+  .clog-hide { display: none !important; }
+
+  .clog-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
+    border: 0; border-radius: var(--r-chip);
+    background: transparent; color: var(--text-muted); cursor: pointer;
+  }
+  .clog-btn:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .clog-btn.on { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .clog-btn svg { width: 12px; height: 12px; }
+
+  /* ── App-link icon (docs/dev/traefik-app-links-spec.md): opens a stack's
+     Traefik-routed hostname, discovered live from container labels. A single
+     host is a plain link; several open a small popover to choose. No host,
+     no icon — never a disabled/ghost state. ───────────────────────────── */
+  .link-wrap { position: relative; display: inline-flex; margin-left: 2px; }
+  .link-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 18px; padding: 0; flex: none;
+    border: 0; border-radius: var(--r-chip);
+    background: transparent; color: var(--text-muted); cursor: pointer;
+    text-decoration: none;
+  }
+  .link-btn:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .link-btn svg { width: 12px; height: 12px; }
+  .link-wrap.open .link-btn {
+    color: var(--accent); background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  .link-pop {
+    display: none;
+    position: absolute; top: 24px; left: 0; z-index: 5;
+    min-width: 190px;
+    background: var(--bg-base); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    padding: 6px;
+  }
+  .link-wrap.open .link-pop { display: block; }
+  .link-pop a {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 9px; border-radius: 6px;
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--text-primary); text-decoration: none;
+  }
+  .link-pop a:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .link-pop a svg { width: 11px; height: 11px; flex: none; color: var(--text-muted); }
+  .link-pop a:hover svg { color: var(--accent); }
+
+  /* ── Deploy hooks (ADR-0038) ── */
+  /* Hooks badge: a small accent chip in the stack cell for a stack with hooks. */
+  .hooks-badge {
+    appearance: none; display: inline-flex; align-items: center; gap: 3px;
+    margin-left: 2px; padding: 1px 6px 1px 4px; flex: none; cursor: pointer;
+    border-radius: 999px; font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    line-height: 1.4; color: var(--accent);
+    border: 0;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    transition: background 0.15s;
+  }
+  .hooks-badge:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+  .hooks-badge svg { width: 11px; height: 11px; }
+  .hooks-badge .hk-count { font-variant-numeric: tabular-nums; }
+  .hooks-badge[data-hook-active] { background: color-mix(in srgb, var(--accent) 22%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+  .hooks-badge[data-hook-active] { animation: hookpulse 1.4s ease-in-out infinite; }
+  @keyframes hookpulse {
+    0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); }
+  }
+  @media (prefers-reduced-motion: reduce) { .hooks-badge[data-hook-active] { animation: none; } }
+
+  /* Running-hook phase sub-label. :has() stacks the cell only when a phase is
+     present, so idle rows (the snapshot baselines) keep their layout; both
+     views stack the same, so a running hook looks identical. */
+  .status-cell:has(.hook-phase),
+  .roster-status:has(.hook-phase) { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+
+  /* Outcome strip: the roster row's mini-history — one dot per terminal audit
+     record, oldest → newest so it reads as a timeline into the badge. Colours
+     are the --st status map; dots are aria-hidden decoration (the
+     badge + incident line say the same in words). */
+  .outcome-strip { display: inline-flex; align-items: center; gap: 3px; }
+  .outcome-dot { width: 6px; height: 6px; border-radius: 50%; flex: none;
+    background: color-mix(in srgb, var(--st, var(--overlay1)) 75%, transparent); }
+
+  /* Last-incident line: names the newest bad outcome that later successes have
+     papered over (server-side rule — absent when the badge already says it). */
+  .last-incident {
+    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
+    color: var(--rollback);
+  }
+
+  /* Retry note: pairs a success with the rollback it supersedes (the deploy
+     table's status cell; same tier as the incident line). Rendered as a real
+     button — it jumps to the rollback row or opens the history panel. */
+  .retry-note {
+    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
+    color: var(--rollback); background: none; border: 0; padding: 0; cursor: pointer;
+  }
+  .retry-note:hover { text-decoration: underline; }
+
+  /* Repeat marker (ADR-0056): one row standing for a run of identical repeated
+     outcomes. Same shape as the retry note beside it, in the muted tier — the
+     count qualifies the outcome, it is not a second outcome — and carrying the
+     fold line's ↻ so both readings of "more than one occurrence" look alike. */
+  .repeat-note {
+    display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
+    color: var(--text-muted); font-variant-numeric: tabular-nums;
+  }
+  .repeat-note .hp-fold-glyph { font-size: 9.5px; }
+  /* In the deploy-history panel the marker leads the error text it qualifies. */
+  .audit-row .ar-err .repeat-note { margin-right: 6px; }
+  .hook-phase {
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
+    color: var(--accent);
+  }
+  .hook-phase .hk-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent);
+    animation: breathe 1.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .hook-phase .hk-dot { animation: none; } }
+  .hook-phase .clog-btn { width: 17px; height: 15px; }
+  .hook-phase .clog-btn svg { width: 10px; height: 10px; }
+
+  /* Bound hooks panel (variant A, accent bar) listing the configured commands. */
+  .hooks-panel {
+    margin: -2px 4px 8px; background: var(--bg-sunken);
+    border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius);
+    box-shadow: inset 3px 0 0 var(--accent); overflow: hidden;
+  }
+  .hooks-panel .hooks-head { display: flex; align-items: center; gap: 9px; padding: 9px 16px;
+    border-bottom: 1px solid var(--border); }
+  .hooks-panel .hk-stack { font-weight: 600; font-size: 12px; }
+  .hooks-panel .hk-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 1px; }
+  .hooks-group { padding: 10px 16px; }
+  .hooks-group + .hooks-group { border-top: 1px solid var(--border); }
+  .hooks-group .hk-title { display: flex; align-items: center; gap: 8px; margin: 0 0 7px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--accent); }
+  .hooks-group .hk-num { color: var(--text-muted); font-weight: 500; }
+  .hooks-cmd { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary);
+    background: color-mix(in srgb, var(--overlay2) 7%, transparent); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; overflow-x: auto; white-space: pre; }
+  .hooks-cmd + .hooks-cmd { margin-top: 6px; }
+  .hooks-cmd .hk-prompt { color: var(--accent); user-select: none; }
+
+  .clog-panel {
+    background: var(--crust); border: 1px solid var(--border-lit); border-radius: 10px;
+    overflow: hidden; margin: 2px 4px 8px;
+  }
+  .clog-panel.clog-fullscreen {
+    position: fixed; inset: 0; z-index: 300; margin: 0; border-radius: 0;
+    display: flex; flex-direction: column;
+  }
+  .clog-head {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 6px;
+    padding: 7px 10px 7px 12px; background: var(--mantle); border-bottom: 1px solid var(--border);
+  }
+  .clog-title { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--accent);
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .clog-title svg { width: 13px; height: 13px; }
+  .clog-title .clog-scope { color: var(--text-muted); font-weight: 500; }
+  .clog-grow { margin-left: auto; }
+  .clog-live { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin-left: 8px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--h-healthy);
+    padding: 2px 9px 2px 8px; border-radius: 20px;
+    border: 1px solid color-mix(in srgb, var(--h-healthy) 30%, transparent);
+    background: color-mix(in srgb, var(--h-healthy) 10%, transparent); }
+  .clog-live .clog-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--h-healthy);
+    animation: clogpulse 1.4s ease-in-out infinite; }
+  @keyframes clogpulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+  .clog-live.paused { color: var(--text-muted); border-color: var(--border-lit); background: transparent; }
+  .clog-live.paused .clog-dot { background: var(--text-muted); animation: none; }
+  /* The server closed the stream: the control is inert, so it must stop
+     claiming the stream is live. Danger dot to match the footer's message. */
+  .clog-live.dead { color: var(--text-muted); border-color: var(--border-lit); background: transparent; cursor: default; }
+  .clog-live.dead .clog-dot { background: var(--danger); animation: none; }
+
+  .clog-tool { display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent;
+    background: transparent; color: var(--text-muted); cursor: pointer; }
+  .clog-tool:hover { color: var(--accent); background: var(--accent-dim); }
+  .clog-tool.on { color: var(--accent); background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 34%, transparent); }
+  .clog-tool svg { width: 15px; height: 15px; }
+
+  .clog-tail { display: inline-flex; border: 1px solid var(--border-lit); border-radius: 7px; overflow: hidden; }
+  .clog-tail button { font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+    padding: 3px 8px; color: var(--text-muted); background: transparent; border: 0; cursor: pointer; }
+  .clog-tail button.active { background: var(--surface0); color: var(--text-primary); }
+
+  /* Per-service filter (ADR-0037): a collapsible chip row under the head. Chips
+     are multi-select toggles; "all" clears the set. Suppressed for a stack with
+     fewer than two services (nothing to filter). */
+  .clog-svcs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px 12px;
+    background: var(--base); border-bottom: 1px solid var(--border); }
+  .clog-svcs .clog-svcs-lbl { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-right: 2px; }
+  .clog-chip { font-family: var(--font-mono); font-size: 10px; font-weight: 500; padding: 3px 10px;
+    border-radius: 20px; border: 1px solid var(--border-lit); background: transparent; color: var(--text-muted);
+    cursor: pointer; white-space: nowrap; }
+  .clog-chip:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 34%, transparent); }
+  .clog-chip.active { color: var(--accent); background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+
+  .clog-search { display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+    background: var(--base); border-bottom: 1px solid var(--border); }
+  .clog-search .clog-sic { display: inline-flex; color: var(--text-muted); }
+  .clog-search .clog-sic svg { width: 14px; height: 14px; }
+  .clog-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none;
+    color: var(--text-primary); font-family: var(--font-mono); font-size: 12px; }
+  /* Restore a keyboard focus ring on the borderless search input (T2.6). */
+  .clog-search input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+  .clog-search input::placeholder { color: var(--text-muted); }
+  .clog-search .clog-hits { font-family: var(--font-mono); font-size: 10px; color: var(--accent); white-space: nowrap; }
+
+  .clog-body { font-family: var(--font-mono); font-size: 11px; line-height: 1.6; padding: 9px 12px;
+    max-height: 240px; overflow: auto; white-space: pre; scroll-behavior: smooth; }
+  .clog-panel.clog-fullscreen .clog-body { max-height: none; flex: 1; font-size: 12px; }
+  .clog-body.wrap { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+  .clog-ln { display: block; }
+  .clog-ln.clog-out { display: none; }
+  .clog-ln.clog-hit { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 4px; }
+  .clog-body mark, .log-line mark { background: color-mix(in srgb, var(--accent) 34%, transparent);
+    color: var(--text-primary); border-radius: 3px; padding: 0 1px; }
+  .clog-ts { color: var(--text-muted); }
+  .clog-svc { color: var(--accent); }
+  .clog-warn { color: var(--h-starting); }
+  .clog-err { color: var(--h-unhealthy); }
+  .clog-foot { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    padding: 5px 12px; border-top: 1px solid var(--border); background: var(--mantle); }
+  .clog-foot .clog-stat::before { content: "● "; color: var(--h-healthy); }
+  .clog-foot .clog-stat.paused::before { color: var(--text-muted); }
+  .clog-foot .clog-stat.err::before { color: var(--h-unhealthy); }
+  @media (prefers-reduced-motion: reduce) { .clog-live .clog-dot { animation: none; } .clog-body { scroll-behavior: auto; } }
+
+  /* Fullscreen fills the whole viewport, header included — that is the shared
+     .clog-panel.clog-fullscreen rule doing the work, nothing Logs-specific, so
+     there is no #log-view rule for the box itself. The way back out is the
+     panel's own fullscreen tool (still on screen, in the filter row) or Esc; the
+     header is deliberately not one of them, since keeping it visible is exactly
+     the strip of screen fullscreen exists to reclaim.
+
+     What *is* Logs-specific: the panel sits inside `main`, whose own z-index
+     opens a stacking context, so the panel's z-index is scoped to it and cannot
+     reach past the sticky header however high it goes. main is what has to
+     outrank the header, at the same layer the panel asks for. */
+  body.view-logs:has(#log-view.clog-fullscreen) main { z-index: 300; }
+  #log-pane.wrap .log-msg, #log-pane.wrap .log-attrs { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+  .log-line.clog-out { display: none; }
+  /* The quick filters' own hide class. Separate from .clog-out (the in-log
+     search) so the two narrow independently — a line stays hidden while
+     either excludes it. */
+  .log-line.log-out { display: none; }

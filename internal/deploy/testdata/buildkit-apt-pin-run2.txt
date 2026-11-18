@@ -1,0 +1,63 @@
+ Image nextcloud:34-ghostscript Building
+#1 [internal] load local bake definitions
+#1 reading from stdin 553B done
+#1 DONE 0.0s
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 240B done
+#2 DONE 0.0s
+#3 [internal] load metadata for docker.io/library/nextcloud:34.0.4@sha256:72f5cc3347042dd5dcad72edc376b19d0e042194af344a549820affd04804c8f
+#3 DONE 0.0s
+#4 [internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+#5 [1/2] FROM docker.io/library/nextcloud:34.0.4@sha256:72f5cc3347042dd5dcad72edc376b19d0e042194af344a549820affd04804c8f
+#5 CACHED
+#6 [2/2] RUN apt-get update && apt-get install -y ghostscript=10.05.1~dfsg-1+deb13u1 && rm -rf /var/lib/apt/lists/*
+#6 0.299 Hit:1 http://deb.debian.org/debian trixie InRelease
+#6 0.325 Get:2 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]
+#6 0.325 Get:3 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]
+#6 0.346 Get:4 http://deb.debian.org/debian trixie/main amd64 Packages [9678 kB]
+#6 1.499 Get:5 http://deb.debian.org/debian trixie-updates/main amd64 Packages [4412 B]
+#6 1.500 Get:6 http://deb.debian.org/debian-security trixie-security/main amd64 Packages [264 kB]
+#6 2.334 Fetched 10.0 MB in 2s (4795 kB/s)
+#6 2.334 Reading package lists...
+#6 3.007 Reading package lists...
+#6 3.710 Building dependency tree...
+#6 3.879 Reading state information...
+#6 4.183 Solving dependencies...
+#6 4.214 Some packages could not be installed. This may mean that you have
+#6 4.214 requested an impossible situation or if you are using the unstable
+#6 4.214 distribution that some required packages have not yet been created
+#6 4.214 or been moved out of Incoming.
+#6 4.214 The following information may help to resolve the situation:
+#6 4.214
+#6 4.214 The following packages have unmet dependencies:
+#6 4.214  ghostscript : Depends: libgs10 (= 10.05.1~dfsg-1+deb13u1) but 10.05.1~dfsg-1+deb13u2 is to be installed
+#6 4.220 E: Unable to correct problems, you have held broken packages.
+#6 4.220 E: The following information from --solver 3.0 may provide additional context:
+#6 4.220    Unable to satisfy dependencies. Reached two conflicting decisions:
+#6 4.220    1. libgs10:amd64=10.05.1~dfsg-1+deb13u1 is not selected for install
+#6 4.220    2. libgs10:amd64=10.05.1~dfsg-1+deb13u1 is selected for install because:
+#6 4.220       1. ghostscript:amd64=10.05.1~dfsg-1+deb13u1 is selected for install
+#6 4.220       2. ghostscript:amd64=10.05.1~dfsg-1+deb13u1 Depends libgs10 (= 10.05.1~dfsg-1+deb13u1)
+#6 ERROR: process "/bin/sh -c apt-get update && apt-get install -y ghostscript=10.05.1~dfsg-1+deb13u1 && rm -rf /var/lib/apt/lists/*" did not complete successfully: exit code: 100
+------
+ > [2/2] RUN apt-get update && apt-get install -y ghostscript=10.05.1~dfsg-1+deb13u1 && rm -rf /var/lib/apt/lists/*:
+4.214
+4.214 The following packages have unmet dependencies:
+4.214  ghostscript : Depends: libgs10 (= 10.05.1~dfsg-1+deb13u1) but 10.05.1~dfsg-1+deb13u2 is to be installed
+4.220 E: Unable to correct problems, you have held broken packages.
+4.220 E: The following information from --solver 3.0 may provide additional context:
+4.220    Unable to satisfy dependencies. Reached two conflicting decisions:
+4.220    1. libgs10:amd64=10.05.1~dfsg-1+deb13u1 is not selected for install
+4.220    2. libgs10:amd64=10.05.1~dfsg-1+deb13u1 is selected for install because:
+4.220       1. ghostscript:amd64=10.05.1~dfsg-1+deb13u1 is selected for install
+4.220       2. ghostscript:amd64=10.05.1~dfsg-1+deb13u1 Depends libgs10 (= 10.05.1~dfsg-1+deb13u1)
+------
+Dockerfile:2
+--------------------
+   1 |     FROM nextcloud:34.0.4@sha256:72f5cc3347042dd5dcad72edc376b19d0e042194af344a549820affd04804c8f
+   2 | >>> RUN apt-get update && apt-get install -y ghostscript=10.05.1~dfsg-1+deb13u1 && rm -rf /var/lib/apt/lists/*
+   3 |
+--------------------
+failed to solve: process "/bin/sh -c apt-get update && apt-get install -y ghostscript=10.05.1~dfsg-1+deb13u1 && rm -rf /var/lib/apt/lists/*" did not complete successfully: exit code: 100

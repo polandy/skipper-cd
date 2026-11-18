@@ -1,0 +1,456 @@
+package deploy
+
+import (
+	"bytes"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/events"
+)
+
+func mustParseCompose(t *testing.T, path string) *composeFile {
+	t.Helper()
+	cf, err := parseComposeFile(path)
+	if err != nil {
+		t.Fatalf("parse compose file %s: %v", path, err)
+	}
+	return cf
+}
+
+func TestParseComposeFile_ErrorOnMissingFile(t *testing.T) {
+	if _, err := parseComposeFile(filepath.Join(t.TempDir(), "missing.yml")); err == nil {
+		t.Fatal("expected error for missing compose file")
+	}
+}
+
+func TestParseComposeFile_ErrorOnInvalidYAML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "docker-compose.yml")
+	writeFile(t, path, "services: [broken")
+
+	if _, err := parseComposeFile(path); err == nil {
+		t.Fatal("expected error for invalid yaml")
+	}
+}
+
+// --- composeFile.dockerfilePaths tests ---
+
+func TestComposeFile_DockerfilePaths_StringForm(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build: "."
+`)
+	writeFile(t, filepath.Join(workDir, "Dockerfile"), "FROM nginx:1.25\n")
+
+	paths := mustParseCompose(t, filepath.Join(workDir, "docker-compose.yml")).dockerfilePaths(workDir)
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path, got %d: %v", len(paths), paths)
+	}
+	if paths[0] != filepath.Join(workDir, "Dockerfile") {
+		t.Errorf("unexpected path: %s", paths[0])
+	}
+}
+
+func TestComposeFile_DockerfilePaths_MapForm(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build:
+      context: "."
+      dockerfile: "Dockerfile.custom"
+`)
+	writeFile(t, filepath.Join(workDir, "Dockerfile.custom"), "FROM nginx:1.25\n")
+
+	paths := mustParseCompose(t, filepath.Join(workDir, "docker-compose.yml")).dockerfilePaths(workDir)
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path, got %d: %v", len(paths), paths)
+	}
+	if paths[0] != filepath.Join(workDir, "Dockerfile.custom") {
+		t.Errorf("unexpected path: %s", paths[0])
+	}
+}
+
+func TestComposeFile_DockerfilePaths_MapFormWithoutContext(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build:
+      dockerfile: "Dockerfile.custom"
+`)
+	writeFile(t, filepath.Join(workDir, "Dockerfile.custom"), "FROM nginx:1.25\n")
+
+	paths := mustParseCompose(t, filepath.Join(workDir, "docker-compose.yml")).dockerfilePaths(workDir)
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 path, got %d: %v", len(paths), paths)
+	}
+	// An omitted context defaults to "." — the same normalization the build
+	// override pins, so hashing and building read the same tree.
+	if paths[0] != filepath.Join(workDir, "Dockerfile.custom") {
+		t.Errorf("unexpected path: %s", paths[0])
+	}
+}
+
+func TestComposeFile_DockerfilePaths_MissingDockerfileSkipped(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), `services:
+  app:
+    build: "."
+`)
+	// No Dockerfile written — should return empty, not an error.
+
+	paths := mustParseCompose(t, filepath.Join(workDir, "docker-compose.yml")).dockerfilePaths(workDir)
+	if len(paths) != 0 {
+		t.Errorf("expected no paths, got %v", paths)
+	}
+}
+
+func TestComposeFile_DockerfilePaths_NoBuildServicesReturnsEmpty(t *testing.T) {
+	workDir := t.TempDir()
+	writeFile(t, filepath.Join(workDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	paths := mustParseCompose(t, filepath.Join(workDir, "docker-compose.yml")).dockerfilePaths(workDir)
+	if len(paths) != 0 {
+		t.Errorf("expected no paths, got %v", paths)
+	}
+}
+
+// --- images.go tests ---
+
+func TestComposeFile_Images_ParsesImages(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: gitea/gitea:1.21
+  db:
+    image: postgres:16-alpine
+  builder:
+    build: .
+`)
+
+	images := mustParseCompose(t, path).images()
+
+	if len(images) != 2 {
+		t.Fatalf("expected 2 images, got %d: %v", len(images), images)
+	}
+	if images["app"] != "gitea/gitea:1.21" {
+		t.Errorf("expected gitea/gitea:1.21, got %s", images["app"])
+	}
+	if images["db"] != "postgres:16-alpine" {
+		t.Errorf("expected postgres:16-alpine, got %s", images["db"])
+	}
+}
+
+func TestComposeFile_HasHealthcheck_TrueWhenAnyServiceDeclaresOne(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: gitea/gitea:1.21
+  db:
+    image: postgres:16-alpine
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+`)
+
+	if !mustParseCompose(t, path).hasHealthcheck() {
+		t.Error("expected hasHealthcheck to be true when a service declares one")
+	}
+}
+
+func TestComposeFile_HasHealthcheck_FalseWhenNoServiceDeclaresOne(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: gitea/gitea:1.21
+  db:
+    image: postgres:16-alpine
+`)
+
+	if mustParseCompose(t, path).hasHealthcheck() {
+		t.Error("expected hasHealthcheck to be false when no service declares one")
+	}
+}
+
+func TestImagesChanged_DetectsChange(t *testing.T) {
+	current := map[string]string{"app": "redis:7.4"}
+	previous := map[string]string{"app": "redis:7.2"}
+	if !hasAnyImageChanged(current, previous) {
+		t.Error("expected images to be detected as changed")
+	}
+}
+
+func TestImagesChanged_DetectsNoChange(t *testing.T) {
+	images := map[string]string{"app": "redis:7.2", "db": "postgres:16"}
+	if hasAnyImageChanged(images, images) {
+		t.Error("expected images to be detected as unchanged")
+	}
+}
+
+func TestImagesChanged_DetectsNewService(t *testing.T) {
+	current := map[string]string{"app": "redis:7.2", "cache": "memcached:1.6"}
+	previous := map[string]string{"app": "redis:7.2"}
+	if !hasAnyImageChanged(current, previous) {
+		t.Error("expected new service to be detected as change")
+	}
+}
+
+func TestImagesChanged_NilPreviousIsChanged(t *testing.T) {
+	current := map[string]string{"app": "redis:7.2"}
+	if !hasAnyImageChanged(current, nil) {
+		t.Error("expected nil previous to be detected as changed")
+	}
+}
+
+func TestImageChanges_ReportsChangedAddedRemovedSorted(t *testing.T) {
+	current := map[string]string{
+		"web": "nginx:1.27",  // changed
+		"api": "myapi:2.0",   // added (no previous)
+		"db":  "postgres:16", // unchanged — must be omitted
+	}
+	previous := map[string]string{
+		"web":   "nginx:1.25",
+		"db":    "postgres:16",
+		"cache": "redis:7.2", // removed (no current)
+	}
+
+	got := imageChanges(current, previous)
+	want := []events.ServiceImageChange{
+		{Service: "api", Old: "", New: "myapi:2.0"},
+		{Service: "cache", Old: "redis:7.2", New: ""},
+		{Service: "web", Old: "nginx:1.25", New: "nginx:1.27"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("imageChanges() = %+v, want %+v", got, want)
+	}
+}
+
+func TestImageChanges_NilWhenNothingChanged(t *testing.T) {
+	images := map[string]string{"app": "redis:7.2", "db": "postgres:16"}
+	if got := imageChanges(images, images); got != nil {
+		t.Errorf("expected no changes, got %+v", got)
+	}
+}
+
+func TestImageChanges_FirstDeployReportsAllAsAdded(t *testing.T) {
+	current := map[string]string{"app": "redis:7.2"}
+	got := imageChanges(current, nil)
+	want := []events.ServiceImageChange{{Service: "app", Old: "", New: "redis:7.2"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("imageChanges() = %+v, want %+v", got, want)
+	}
+}
+
+// --- composeFile.pullableServices tests ---
+
+func TestComposeFile_PullableServices_ExcludesBuildServices(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    build: "."
+    image: myapp:custom
+  db:
+    image: postgres:16-alpine
+  redis:
+    image: redis:7.2
+`)
+
+	pullable := mustParseCompose(t, path).pullableServices()
+
+	if len(pullable) != 2 {
+		t.Fatalf("expected 2 pullable services, got %d: %v", len(pullable), pullable)
+	}
+	if !slices.Contains(pullable, "db") {
+		t.Errorf("expected db in pullable services: %v", pullable)
+	}
+	if !slices.Contains(pullable, "redis") {
+		t.Errorf("expected redis in pullable services: %v", pullable)
+	}
+	if slices.Contains(pullable, "app") {
+		t.Errorf("build service app should not be pullable: %v", pullable)
+	}
+}
+
+func TestComposeFile_PullableServices_ExcludesLocalImageConsumers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    build: "."
+    image: nextcloud:34-ghostscript
+  cron:
+    image: nextcloud:34-ghostscript
+  db:
+    image: postgres:16-alpine
+`)
+
+	pullable := mustParseCompose(t, path).pullableServices()
+
+	if len(pullable) != 1 {
+		t.Fatalf("expected 1 pullable service, got %d: %v", len(pullable), pullable)
+	}
+	if pullable[0] != "db" {
+		t.Errorf("expected only db to be pullable, got %v", pullable)
+	}
+}
+
+func TestComposeFile_PullableServices_AllRemoteImages(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: nginx:1.25
+  db:
+    image: postgres:16-alpine
+`)
+
+	pullable := mustParseCompose(t, path).pullableServices()
+
+	if len(pullable) != 2 {
+		t.Fatalf("expected 2 pullable services, got %d: %v", len(pullable), pullable)
+	}
+}
+
+func TestComposeFile_PullableServices_AllBuildServices(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    build: "."
+    image: myapp:latest
+  worker:
+    image: myapp:latest
+`)
+
+	pullable := mustParseCompose(t, path).pullableServices()
+
+	if len(pullable) != 0 {
+		t.Errorf("expected no pullable services, got %v", pullable)
+	}
+}
+
+// --- composeFile.warnUnmatchedOnDemandContainers tests ---
+
+func captureWarnings(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	fn()
+	return buf.String()
+}
+
+func TestComposeFile_WarnUnmatchedOnDemandContainers_MatchingContainerNameIsSilent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: myapp:latest
+    container_name: karakeep-app
+`)
+	cf := mustParseCompose(t, path)
+
+	log := captureWarnings(t, func() {
+		cf.warnUnmatchedOnDemandContainers("karakeep", []string{"karakeep-app"})
+	})
+
+	if log != "" {
+		t.Errorf("expected no warning for a matching container_name, got %q", log)
+	}
+}
+
+func TestComposeFile_WarnUnmatchedOnDemandContainers_MismatchWarns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: myapp:latest
+    container_name: karakeep-app
+`)
+	cf := mustParseCompose(t, path)
+
+	log := captureWarnings(t, func() {
+		cf.warnUnmatchedOnDemandContainers("karakeep", []string{"karakeep-chrome"})
+	})
+
+	if !strings.Contains(log, "karakeep-chrome") || !strings.Contains(log, "container_name") {
+		t.Errorf("expected a container_name mismatch warning naming karakeep-chrome, got %q", log)
+	}
+}
+
+func TestComposeFile_WarnUnmatchedOnDemandContainers_NoContainerNameDeclaredWarns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: myapp:latest
+`)
+	cf := mustParseCompose(t, path)
+
+	log := captureWarnings(t, func() {
+		cf.warnUnmatchedOnDemandContainers("karakeep", []string{"karakeep-app"})
+	})
+
+	if !strings.Contains(log, "karakeep-app") {
+		t.Errorf("expected a warning when no service declares container_name, got %q", log)
+	}
+}
+
+func TestComposeFile_WarnUnmatchedOnDemandContainers_MultipleEntriesEachChecked(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	writeFile(t, path, `services:
+  app:
+    image: myapp:latest
+    container_name: karakeep-app
+  chrome:
+    image: chrome:latest
+`)
+	cf := mustParseCompose(t, path)
+
+	log := captureWarnings(t, func() {
+		cf.warnUnmatchedOnDemandContainers("karakeep", []string{"karakeep-app", "karakeep-chrome"})
+	})
+
+	if strings.Contains(log, "container=karakeep-app") {
+		t.Errorf("did not expect a warning for the matching entry karakeep-app, got %q", log)
+	}
+	if !strings.Contains(log, "container=karakeep-chrome") {
+		t.Errorf("expected a warning for the unmatched entry karakeep-chrome, got %q", log)
+	}
+}
+
+func TestPullIfImagesChanged_EndsOptionsBeforeServiceNames(t *testing.T) {
+	baseDir := t.TempDir()
+	path := filepath.Join(baseDir, "app", "docker-compose.yml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, path, "services:\n  --ignore-pull-failures:\n    image: redis:7.2\n")
+	runner := &recordingRunner{}
+	d := newDeployerWithRunner(runner)
+	run := newStackRun(config.Stack{Name: "app"}, baseDir, nil)
+
+	current := serviceImageByName{"--ignore-pull-failures": "redis:7.2"}
+	if err := d.pullIfImagesChanged(t.Context(), run, mustParseCompose(t, path), current, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	argv := dockerArgv(runner.calls)
+	if len(argv) != 1 {
+		t.Fatalf("want exactly one pull call, got %v", argv)
+	}
+	want := []string{"pull", "--quiet", "--", "--ignore-pull-failures"}
+	if !slices.Equal(argv[0][len(argv[0])-len(want):], want) {
+		t.Errorf("pull argv = %v, want suffix %v", argv[0], want)
+	}
+}

@@ -1,0 +1,402 @@
+package audit
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/polandy/skipper-cd/internal/events"
+)
+
+func at(minutes int) time.Time {
+	return time.Date(2026, 7, 18, 0, minutes, 0, 0, time.UTC)
+}
+
+func terminalEvent(stack string, status events.Status, ts time.Time) events.DeployEvent {
+	return events.DeployEvent{Stack: stack, Status: status, Timestamp: ts}
+}
+
+func TestLog_RecordsTerminalOutcomeWithMappedFields(t *testing.T) {
+	l := NewLog("")
+	l.Record(events.DeployEvent{
+		Stack:        "immich",
+		Status:       events.StatusSuccess,
+		Timestamp:    at(1),
+		DurationMs:   4200,
+		Error:        "",
+		ChangedFiles: []string{"docker-compose.yml", "app.env"},
+		Commits: []events.CommitInfo{
+			{SHA: "headsha"}, // newest first — deployed HEAD
+			{SHA: "oldersha"},
+		},
+	})
+
+	got := l.Stack("immich", 0)
+	if len(got) != 1 {
+		t.Fatalf("want 1 record, got %d", len(got))
+	}
+	r := got[0]
+	if r.Stack != "immich" || r.Status != events.StatusSuccess {
+		t.Errorf("stack/status wrong: %+v", r)
+	}
+	if r.DurationMs != 4200 {
+		t.Errorf("DurationMs = %d, want 4200", r.DurationMs)
+	}
+	if r.ChangedFiles != 2 {
+		t.Errorf("ChangedFiles = %d, want 2 (count, not list)", r.ChangedFiles)
+	}
+	if r.CommitSHA != "headsha" {
+		t.Errorf("CommitSHA = %q, want the newest (HEAD) commit %q", r.CommitSHA, "headsha")
+	}
+}
+
+func TestLog_IgnoresNonTerminalStatuses(t *testing.T) {
+	l := NewLog("")
+	for _, s := range []events.Status{
+		events.StatusDeploying,
+		events.StatusSkipped,
+		events.StatusQueued,
+		events.StatusBlocked,
+	} {
+		l.Record(terminalEvent("web", s, at(1)))
+	}
+	if got := l.Stack("web", 0); len(got) != 0 {
+		t.Fatalf("non-terminal statuses must not be recorded, got %d: %+v", len(got), got)
+	}
+}
+
+func TestLog_RecordsAllTerminalStatuses(t *testing.T) {
+	l := NewLog("")
+	terminals := []events.Status{
+		events.StatusSuccess,
+		events.StatusFailed,
+		events.StatusRolledBack,
+		events.StatusRolledBackUnhealthy,
+		events.StatusHealed,
+		events.StatusHealExhausted,
+		events.StatusRemoved,
+	}
+	for i, s := range terminals {
+		l.Record(terminalEvent("web", s, at(i+1)))
+	}
+	if got := l.Stack("web", 0); len(got) != len(terminals) {
+		t.Fatalf("want %d terminal records, got %d", len(terminals), len(got))
+	}
+}
+
+func TestLog_StackReturnsNewestFirstWithLimit(t *testing.T) {
+	l := NewLog("")
+	l.Record(terminalEvent("web", events.StatusSuccess, at(1)))
+	l.Record(terminalEvent("web", events.StatusFailed, at(2)))
+	l.Record(terminalEvent("web", events.StatusSuccess, at(3)))
+
+	got := l.Stack("web", 2)
+	if len(got) != 2 {
+		t.Fatalf("limit 2: got %d", len(got))
+	}
+	if !got[0].Timestamp.Equal(at(3)) || !got[1].Timestamp.Equal(at(2)) {
+		t.Errorf("want newest-first [at(3), at(2)], got [%v, %v]", got[0].Timestamp, got[1].Timestamp)
+	}
+}
+
+func TestLog_PerStackCapEvictsOldestOfSameStackOnly(t *testing.T) {
+	l := newLog("", 3)
+	// busy stack overflows its cap...
+	for i := 1; i <= 5; i++ {
+		l.Record(terminalEvent("busy", events.StatusSuccess, at(i)))
+	}
+	// ...a quiet stack recorded long ago must survive untouched.
+	l.Record(terminalEvent("quiet", events.StatusSuccess, at(0)))
+
+	busy := l.Stack("busy", 0)
+	if len(busy) != 3 {
+		t.Fatalf("busy capped at 3, got %d", len(busy))
+	}
+	if !busy[len(busy)-1].Timestamp.Equal(at(3)) {
+		t.Errorf("oldest kept should be at(3) (at(1),at(2) evicted), got %v", busy[len(busy)-1].Timestamp)
+	}
+	if got := l.Stack("quiet", 0); len(got) != 1 {
+		t.Fatalf("quiet stack must not be evicted by busy stack, got %d", len(got))
+	}
+}
+
+func TestLog_PersistsAndReloads(t *testing.T) {
+	dir := t.TempDir()
+	l := NewLog(dir)
+	l.Record(terminalEvent("web", events.StatusSuccess, at(1)))
+	l.Record(terminalEvent("db", events.StatusFailed, at(2)))
+
+	reloaded := NewLog(dir)
+	if got := reloaded.Stack("web", 0); len(got) != 1 || got[0].Status != events.StatusSuccess {
+		t.Errorf("web not reloaded: %+v", got)
+	}
+	if got := reloaded.Stack("db", 0); len(got) != 1 || got[0].Status != events.StatusFailed {
+		t.Errorf("db not reloaded: %+v", got)
+	}
+}
+
+func TestLog_LoadSkipsTornTrailingLine(t *testing.T) {
+	dir := t.TempDir()
+	l := NewLog(dir)
+	l.Record(terminalEvent("web", events.StatusSuccess, at(1)))
+
+	// Simulate a crash mid-append: a truncated JSON line at the end.
+	f, err := os.OpenFile(filepath.Join(dir, auditFileName), os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString(`{"stack":"web","status":"succ`)
+	f.Close()
+
+	reloaded := NewLog(dir)
+	if got := reloaded.Stack("web", 0); len(got) != 1 {
+		t.Fatalf("torn line must be skipped, good record kept: got %d", len(got))
+	}
+}
+
+func TestLog_RecentAcrossStacksNewestFirst(t *testing.T) {
+	l := NewLog("")
+	l.Record(terminalEvent("a", events.StatusSuccess, at(1)))
+	l.Record(terminalEvent("b", events.StatusSuccess, at(3)))
+	l.Record(terminalEvent("a", events.StatusSuccess, at(2)))
+
+	got := l.Recent(0)
+	if len(got) != 3 {
+		t.Fatalf("want 3, got %d", len(got))
+	}
+	if !got[0].Timestamp.Equal(at(3)) || !got[1].Timestamp.Equal(at(2)) || !got[2].Timestamp.Equal(at(1)) {
+		t.Errorf("want global newest-first at(3),at(2),at(1); got %v,%v,%v",
+			got[0].Timestamp, got[1].Timestamp, got[2].Timestamp)
+	}
+}
+
+func TestLog_EmptyStateDirIsInMemoryOnly(t *testing.T) {
+	l := NewLog("")
+	l.Record(terminalEvent("web", events.StatusSuccess, at(1)))
+	if got := l.Stack("web", 0); len(got) != 1 {
+		t.Fatalf("in-memory record lost: %d", len(got))
+	}
+	// Nothing to assert on disk — just that Record/query work with no file.
+}
+
+func TestLog_CompactsSoDiskStaysBounded(t *testing.T) {
+	dir := t.TempDir()
+	l := newLog(dir, 2)
+	for i := 1; i <= 40; i++ {
+		l.Record(terminalEvent("web", events.StatusSuccess, at(i)))
+	}
+	data, err := os.ReadFile(filepath.Join(dir, auditFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := 0
+	for _, ln := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if strings.TrimSpace(ln) != "" {
+			lines++
+		}
+	}
+	// cap is 2, so the file must stay bounded well below the 40 appends.
+	if lines > 2*2+compactionSlack {
+		t.Fatalf("file grew unbounded: %d lines for cap 2", lines)
+	}
+	// and the live view is still correct after compaction churn.
+	if got := l.Stack("web", 0); len(got) != 2 || !got[0].Timestamp.Equal(at(40)) {
+		t.Fatalf("post-compaction live state wrong: %+v", got)
+	}
+}
+
+// --- repeated-outcome collapse (ADR-0056) ---
+
+// failEvent builds a failing deploy event for stack at the given minute.
+func failEvent(stack, errText string, minute int) events.DeployEvent {
+	e := terminalEvent(stack, events.StatusFailed, at(minute))
+	e.Error = errText
+	return e
+}
+
+func TestLog_CollapsesRepeatedFailureIntoOneRecord(t *testing.T) {
+	l := NewLog("")
+	const boom = "no stack directory /repo/modules/ryot with a docker-compose.yml"
+
+	for i := range 199 {
+		l.Record(failEvent("ryot", boom, i))
+	}
+	l.Record(terminalEvent("ryot", events.StatusSuccess, at(300)))
+
+	got := l.Stack("ryot", 0)
+	if len(got) != 2 {
+		t.Fatalf("want the flood collapsed to 1 record + the success, got %d", len(got))
+	}
+	if got[0].Status != events.StatusSuccess {
+		t.Errorf("newest record should be the success, got %+v", got[0])
+	}
+	rep := got[1]
+	if rep.RepeatCount != 199 {
+		t.Errorf("RepeatCount = %d, want 199", rep.RepeatCount)
+	}
+	if !rep.FirstSeen.Equal(at(0)) {
+		t.Errorf("FirstSeen = %v, want %v", rep.FirstSeen, at(0))
+	}
+	if !rep.Timestamp.Equal(at(198)) {
+		t.Errorf("Timestamp = %v, want the newest occurrence %v", rep.Timestamp, at(198))
+	}
+}
+
+// The point of collapsing: a standing failure must stop evicting the stack's
+// own real deploy history.
+func TestLog_CollapseKeepsEarlierDeploysWithinCap(t *testing.T) {
+	l := newLog("", 10)
+
+	for i := range 5 {
+		e := terminalEvent("ryot", events.StatusSuccess, at(i))
+		e.Commits = []events.CommitInfo{{SHA: "sha" + string(rune('a'+i))}}
+		l.Record(e)
+	}
+	for i := range 500 {
+		l.Record(failEvent("ryot", "compose file missing", 100+i))
+	}
+
+	got := l.Stack("ryot", 0)
+	if len(got) != 6 {
+		t.Fatalf("want 5 deploys + 1 collapsed failure, got %d: %+v", len(got), got)
+	}
+	if got[5].CommitSHA != "shaa" {
+		t.Errorf("the oldest real deploy should have survived, got %+v", got[5])
+	}
+}
+
+func TestLog_DoesNotCollapseDifferentErrors(t *testing.T) {
+	l := NewLog("")
+
+	l.Record(failEvent("ryot", "compose file missing", 1))
+	l.Record(failEvent("ryot", "port 8080 already allocated", 2))
+
+	if got := l.Stack("ryot", 0); len(got) != 2 {
+		t.Fatalf("a different error is a different incident; want 2 records, got %d", len(got))
+	}
+}
+
+func TestLog_DoesNotCollapseSuccessiveDeploys(t *testing.T) {
+	l := NewLog("")
+
+	l.Record(terminalEvent("gitea", events.StatusSuccess, at(1)))
+	l.Record(terminalEvent("gitea", events.StatusSuccess, at(2)))
+
+	if got := l.Stack("gitea", 0); len(got) != 2 {
+		t.Fatalf("two deploys are two outcomes; want 2 records, got %d", len(got))
+	}
+}
+
+func TestLog_CollapseSurvivesReload(t *testing.T) {
+	dir := t.TempDir()
+	const boom = "compose file missing"
+
+	l := NewLog(dir)
+	for i := range 20 {
+		l.Record(failEvent("ryot", boom, i))
+	}
+
+	reloaded := NewLog(dir)
+	got := reloaded.Stack("ryot", 0)
+	if len(got) != 1 {
+		t.Fatalf("want 1 collapsed record after reload, got %d: %+v", len(got), got)
+	}
+	if got[0].RepeatCount != 20 {
+		t.Errorf("RepeatCount = %d, want 20", got[0].RepeatCount)
+	}
+}
+
+// An updated record must not leave the superseded ones behind on disk, or the
+// file grows exactly as fast as before the collapse.
+func TestLog_CollapseRewritesBackingFile(t *testing.T) {
+	dir := t.TempDir()
+	l := NewLog(dir)
+
+	for i := range 50 {
+		l.Record(failEvent("ryot", "compose file missing", i))
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, auditFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Count(strings.TrimSpace(string(data)), "\n") + 1
+	if lines != 1 {
+		t.Fatalf("want 1 line on disk for the collapsed run, got %d", lines)
+	}
+}
+
+// A log written by an older skipper holds the flood as separate lines; loading
+// it folds them down so a past incident stops crowding the per-stack cap.
+func TestLog_LoadCollapsesLegacyRepeats(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, auditFileName)
+
+	var b strings.Builder
+	for i := range 30 {
+		b.WriteString(`{"stack":"ryot","timestamp":"2026-07-18T00:` +
+			leftPad(i) + `:00Z","status":"failed","error":"compose file missing"}` + "\n")
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := NewLog(dir).Stack("ryot", 0)
+	if len(got) != 1 {
+		t.Fatalf("want the legacy flood collapsed to 1 record, got %d", len(got))
+	}
+	if got[0].RepeatCount != 30 {
+		t.Errorf("RepeatCount = %d, want 30", got[0].RepeatCount)
+	}
+}
+
+// leftPad renders 0..59 as a two-digit minute.
+func leftPad(n int) string {
+	if n < 10 {
+		return "0" + string(rune('0'+n))
+	}
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+// The audit allowlist and events.Terminal now classify the same thing from two
+// sides — what is worth recording, and what counts as an outcome. Keeping the
+// allowlist explicit is deliberate (a new status opts in, it is not swept in),
+// but the two must not drift apart unnoticed.
+func TestAuditableStatusesMatchTerminalStatuses(t *testing.T) {
+	all := []events.Status{
+		events.StatusDeploying, events.StatusSuccess, events.StatusFailed,
+		events.StatusSkipped, events.StatusRolledBack, events.StatusRolledBackUnhealthy,
+		events.StatusQueued, events.StatusHealed, events.StatusHealExhausted,
+		events.StatusBlocked, events.StatusHeld, events.StatusRemoved,
+	}
+	for _, s := range all {
+		if auditableStatuses[s] != events.Terminal(s) {
+			t.Errorf("%s: auditable = %t but events.Terminal = %t — the two classifications drifted",
+				s, auditableStatuses[s], events.Terminal(s))
+		}
+	}
+}
+
+// A zero FirstSeen must not reach the wire: omitempty does not drop a zero
+// time.Time, so every ordinary record would carry a meaningless "0001-01-01"
+// that a consumer has to know to ignore.
+func TestRecord_OmitsAnUnsetFirstSeen(t *testing.T) {
+	body, err := json.Marshal(Record{Stack: "web", Status: events.StatusSuccess, Timestamp: at(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "first_seen") {
+		t.Errorf("a one-off record must not serialise first_seen: %s", body)
+	}
+	rep := Record{Stack: "web", Status: events.StatusFailed, Timestamp: at(2), RepeatCount: 3, FirstSeen: at(1)}
+	body, err = json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "first_seen") {
+		t.Errorf("a collapsed record must carry first_seen: %s", body)
+	}
+}

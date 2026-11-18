@@ -1,0 +1,6 @@
+*.nix
+flake.lock
+result
+.git
+.gitignore
+README.md

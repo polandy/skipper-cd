@@ -1,0 +1,297 @@
+package deploy
+
+import (
+	"log/slog"
+	"os"
+	"path/filepath"
+	"sort"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/fsatomic"
+)
+
+const stateFileName = "state.yaml"
+
+// stackFileHashes maps each tracked file path to its SHA-256 hash.
+type stackFileHashes map[string]string
+
+// persistedState holds the full deploy state written to disk.
+type persistedState struct {
+	// LastDeployedCommit is the git commit SHA of the last successful deploy run.
+	// It is the diff base of the run phases that are not a stack (_nixos) and
+	// the fallback for a stack with no StackCommits entry yet.
+	LastDeployedCommit string `yaml:"last_deployed_commit,omitempty"`
+
+	// StackCommits maps each stack to the commit it was last known to run: the
+	// HEAD of the last run that deployed it or found it unchanged. It is the
+	// stack's own rollback and diff base (ADR-0061). Unlike LastDeployedCommit it
+	// does not move past a stack whose deploy failed, so a retry restores the
+	// version that last worked rather than the one that just broke.
+	StackCommits map[string]string `yaml:"stack_commits,omitempty"`
+
+	// Held maps each stack whose change failed after its new version started
+	// to that hold; the change is not retried until its inputs change or an
+	// operator asks for a retry (ADR-0062).
+	Held map[string]heldChange `yaml:"held,omitempty"`
+
+	// settled lists the stacks this run left at their desired state (deployed
+	// or unchanged); finishRun moves their StackCommits entry to HEAD. Run-local,
+	// never persisted.
+	settled []string
+
+	// Stacks maps stack names to their per-file hashes from the last deployment.
+	Stacks map[string]stackFileHashes `yaml:"stacks"`
+
+	// Images maps stack names to their service→image references from the last deployment.
+	// Used to determine whether docker compose pull is necessary.
+	Images map[string]serviceImageByName `yaml:"images,omitempty"`
+
+	// RunningImages maps stack names to the service→image identity their
+	// containers actually ran after the last successful deployment
+	// ("<repo>:<tag>@<short image id>"). It is the baseline the next deploy's
+	// reported version change is measured against — deliberately separate from
+	// Images, which holds the compose file's *desired* references and alone
+	// decides whether a pull is needed (Invariant 5). A floating tag keeps its
+	// reference across a re-pull, so only this map can see that version move.
+	RunningImages map[string]serviceImageByName `yaml:"running_images,omitempty"`
+
+	// ProjectDirs maps each stack to its last successful deploy's compose project
+	// directory (the working_dir label). Lets orphan detection (ADR-0036)
+	// recognize a removed stack's project even when its dir lay outside
+	// stacks_base_dir.
+	ProjectDirs map[string]string `yaml:"project_dirs,omitempty"`
+
+	// NixOSRebuildInFlight holds the changed nix files of a rebuild that was
+	// started but whose outcome was not yet recorded. It is set (and persisted)
+	// just before a rebuild whose switch may restart skipper-cd, and cleared once
+	// the rebuild's outcome is observed. If skipper is restarted mid-rebuild, the
+	// marker survives and the next startup reconciles it into a _nixos success
+	// event — the rebuild kept running in its transient unit and applied
+	// (ADR-0025). Empty means no rebuild is in flight.
+	NixOSRebuildInFlight []string `yaml:"nixos_rebuild_in_flight,omitempty"`
+}
+
+func newEmptyState() *persistedState {
+	return &persistedState{
+		Stacks:      map[string]stackFileHashes{},
+		Images:      map[string]serviceImageByName{},
+		ProjectDirs: map[string]string{},
+	}
+}
+
+// isEmpty reports whether nothing at all has been recorded yet: a first start,
+// a new host, or a lost/corrupt state file. It marks the run a bootstrap run
+// (ADR-0051), so it must be read before the nixos phase, which records its own
+// hashes into the state ahead of the stack phase.
+func (s *persistedState) isEmpty() bool {
+	return s.LastDeployedCommit == "" && len(s.Stacks) == 0
+}
+
+// hashesFor returns the per-file hashes recorded for a stack (nil when unknown).
+func (s *persistedState) hashesFor(stack string) stackFileHashes {
+	return s.Stacks[stack]
+}
+
+// baseCommitFor returns the commit a stack's rollback restores from and its
+// diffs are computed against: its own StackCommits entry, else the global
+// LastDeployedCommit (a stack recorded before per-stack bases existed).
+func (s *persistedState) baseCommitFor(stack string) string {
+	if sha, ok := s.StackCommits[stack]; ok {
+		return sha
+	}
+	return s.LastDeployedCommit
+}
+
+// markSettled records that this run left a stack at its desired state, so
+// advanceCommitBases moves the stack's base to the run's HEAD.
+func (s *persistedState) markSettled(stack string) {
+	s.settled = append(s.settled, stack)
+}
+
+// advanceCommitBases moves every settled stack's base to head. A stack with
+// recorded hashes but no base yet is first pinned to the current global base,
+// before the caller advances that past it: otherwise a stack failing in its
+// first run after an upgrade would fall back to a global base at the broken
+// commit on the next retry. Must run before LastDeployedCommit is advanced.
+func (s *persistedState) advanceCommitBases(head string) {
+	if s.StackCommits == nil {
+		s.StackCommits = map[string]string{}
+	}
+	if s.LastDeployedCommit != "" {
+		for name := range s.Stacks {
+			if config.IsReservedStackName(name) {
+				continue
+			}
+			if _, ok := s.StackCommits[name]; !ok {
+				s.StackCommits[name] = s.LastDeployedCommit
+			}
+		}
+	}
+	for _, name := range s.settled {
+		s.StackCommits[name] = head
+	}
+	s.settled = nil
+}
+
+// recordStack stores the per-file hashes of a successfully deployed stack.
+func (s *persistedState) recordStack(stack string, hashes stackFileHashes) {
+	s.Stacks[stack] = hashes
+}
+
+// revertStack restores a stack's hashes to an earlier snapshot, removing the
+// entry entirely when the snapshot is nil (the stack had no recorded state).
+// It undoes a recordStack whose deploy then failed, so the stack is retried.
+func (s *persistedState) revertStack(stack string, previous stackFileHashes) {
+	if previous == nil {
+		delete(s.Stacks, stack)
+		return
+	}
+	s.Stacks[stack] = previous
+}
+
+// forgetStack drops everything recorded about a stack that left the deploy set,
+// so it is announced removed once and deploys from scratch if it ever comes
+// back. ProjectDirs is deliberately kept: orphan detection matches the still
+// running project against it to class it as formerly managed (ADR-0036).
+func (s *persistedState) forgetStack(stack string) {
+	delete(s.Stacks, stack)
+	delete(s.Images, stack)
+	delete(s.RunningImages, stack)
+	delete(s.StackCommits, stack)
+	delete(s.Held, stack)
+}
+
+// markNixOSRebuildInFlight records that a nixos-rebuild is about to run for the
+// given changed files, so a self-restart that interrupts it can be reconciled
+// on the next startup.
+func (s *persistedState) markNixOSRebuildInFlight(changed []string) {
+	s.NixOSRebuildInFlight = changed
+}
+
+// clearNixOSRebuildInFlight clears the in-flight marker once the rebuild's
+// outcome has been observed (success or genuine failure).
+func (s *persistedState) clearNixOSRebuildInFlight() {
+	s.NixOSRebuildInFlight = nil
+}
+
+// imagesFor returns the service→image map recorded for a stack (nil when unknown).
+func (s *persistedState) imagesFor(stack string) serviceImageByName {
+	return s.Images[stack]
+}
+
+// recordImages stores the service→image map of a successfully deployed stack.
+func (s *persistedState) recordImages(stack string, images serviceImageByName) {
+	s.Images[stack] = images
+}
+
+// runningImagesFor returns the service→running-image map recorded for a stack
+// (nil when unknown — no deploy of it has recorded one yet).
+func (s *persistedState) runningImagesFor(stack string) serviceImageByName {
+	return s.RunningImages[stack]
+}
+
+// recordRunningImages stores what a successfully deployed stack's containers
+// now run, as the baseline for the next deploy's version delta. An empty map is
+// not recorded: it would claim "this stack runs nothing" where the read simply
+// failed, and silently reset the baseline.
+func (s *persistedState) recordRunningImages(stack string, images serviceImageByName) {
+	if len(images) == 0 {
+		return
+	}
+	if s.RunningImages == nil {
+		s.RunningImages = map[string]serviceImageByName{}
+	}
+	s.RunningImages[stack] = images
+}
+
+// runningImagesView returns a copy of the recorded stack→service→running-image
+// map, for out-of-run consumers (the update check, ADR-0054). Never nil.
+func (s *persistedState) runningImagesView() map[string]map[string]string {
+	out := make(map[string]map[string]string, len(s.RunningImages))
+	for stack, images := range s.RunningImages {
+		svc := make(map[string]string, len(images))
+		for name, ref := range images {
+			svc[name] = ref
+		}
+		out[stack] = svc
+	}
+	return out
+}
+
+// recordProjectDir stores the compose project directory of a successfully
+// deployed stack, so orphan detection can match its running project by
+// working_dir even after the stack is removed from the repo.
+func (s *persistedState) recordProjectDir(stack, projectDir string) {
+	if s.ProjectDirs == nil {
+		s.ProjectDirs = map[string]string{}
+	}
+	s.ProjectDirs[stack] = projectDir
+}
+
+// projectDirs returns a copy of the recorded stack→project-dir map, for
+// out-of-run consumers (orphan detection). Never nil.
+func (s *persistedState) projectDirs() map[string]string {
+	out := make(map[string]string, len(s.ProjectDirs))
+	for k, v := range s.ProjectDirs {
+		out[k] = v
+	}
+	return out
+}
+
+// trackedFiles returns a copy of the recorded stack→hashed-path map, each
+// stack's paths sorted, for out-of-run consumers (the roster's change-detection
+// panel). These are exactly the inputs whose hashes decide whether a stack
+// redeploys, so the UI can answer "what does skipper watch here" from the same
+// source the decision is made from. Never nil.
+func (s *persistedState) trackedFiles() map[string][]string {
+	out := make(map[string][]string, len(s.Stacks))
+	for stack, hashes := range s.Stacks {
+		paths := make([]string, 0, len(hashes))
+		for p := range hashes {
+			paths = append(paths, p)
+		}
+		sort.Strings(paths)
+		out[stack] = paths
+	}
+	return out
+}
+
+func loadPersistedDeployState(stateDir string) (*persistedState, error) {
+	data, err := os.ReadFile(filepath.Join(stateDir, stateFileName))
+	if os.IsNotExist(err) {
+		return newEmptyState(), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	state := &persistedState{}
+	if err := yaml.Unmarshal(data, state); err != nil {
+		// A corrupt state file means all stacks redeploy — by design.
+		slog.Warn("state file corrupt, all stacks will redeploy", "err", err)
+		return newEmptyState(), nil
+	}
+	if state.Stacks == nil {
+		state.Stacks = map[string]stackFileHashes{}
+	}
+	if state.Images == nil {
+		state.Images = map[string]serviceImageByName{}
+	}
+	if state.ProjectDirs == nil {
+		state.ProjectDirs = map[string]string{}
+	}
+	return state, nil
+}
+
+func saveDeployState(stateDir string, state *persistedState) error {
+	if err := os.MkdirAll(stateDir, fsatomic.PrivateDirMode); err != nil {
+		return err
+	}
+	data, err := yaml.Marshal(state)
+	if err != nil {
+		return err
+	}
+	return fsatomic.WriteFile(filepath.Join(stateDir, stateFileName), data, fsatomic.PrivateFileMode)
+}

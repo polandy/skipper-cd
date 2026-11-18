@@ -1,0 +1,3 @@
+# Documentation site toolchain (GitHub Pages via .github/workflows/docs.yml).
+# Pinned so local `mkdocs serve` matches CI. Bump deliberately.
+mkdocs-material==9.6.14

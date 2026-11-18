@@ -1,0 +1,342 @@
+package deploy
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/events"
+)
+
+// discoveryRepo lays out a fake deploy-repo clone with the given stacks under
+// <repo>/stacks and returns the config pointing at it in stack-discovery mode.
+// overrides are the host config's per-stack override entries (ADR-0043),
+// matched to discovered directories by name.
+func discoveryRepo(t *testing.T, stackNames []string, overrides []config.Stack) (repoDir string, cfg *config.Config) {
+	t.Helper()
+	repoDir = t.TempDir()
+	for _, name := range stackNames {
+		dir := filepath.Join(repoDir, "stacks", name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+		writeFile(t, filepath.Join(dir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+	}
+	return repoDir, &config.Config{
+		StacksBaseDir:  filepath.Join(repoDir, "stacks"),
+		StackDiscovery: true,
+		Stacks:         overrides,
+	}
+}
+
+// discoveryDeployer builds a deployer wired for discovery tests: fake runner,
+// repo dir, temp state dir, and an event recorder.
+func discoveryDeployer(t *testing.T, repoDir string) (*Deployer, *recordingRunner, *[]events.DeployEvent) {
+	t.Helper()
+	runner := &recordingRunner{}
+	var recorded []events.DeployEvent
+	d := New(Config{
+		Runner:    runner,
+		RepoDir:   repoDir,
+		StateDir:  t.TempDir(),
+		EventSink: func(e events.DeployEvent) { recorded = append(recorded, e) },
+	})
+	return d, runner, &recorded
+}
+
+func eventsWithStatus(recorded []events.DeployEvent, status events.Status) []string {
+	var stacks []string
+	for _, e := range recorded {
+		if e.Status == status {
+			stacks = append(stacks, e.Stack)
+		}
+	}
+	return stacks
+}
+
+func TestDeployAllStacks_DiscoveryDeploysDiscoveredStacks(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"alpha", "beta"}, nil)
+	d, runner, recorded := discoveryDeployer(t, repoDir)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	var upDirs []string
+	for _, c := range runner.calls {
+		if len(c.args) > 1 && c.args[1] == "up" {
+			upDirs = append(upDirs, c.dir)
+		}
+	}
+	if len(upDirs) != 2 {
+		t.Fatalf("expected 2 up calls, got %d (%v)", len(upDirs), runner.calls)
+	}
+	if got := eventsWithStatus(*recorded, events.StatusSuccess); len(got) != 2 {
+		t.Errorf("success events = %v, want [alpha beta]", got)
+	}
+	if got := d.CurrentStacks(); len(got) != 2 || got[0].Name != "alpha" || got[1].Name != "beta" {
+		t.Errorf("CurrentStacks = %v, want alpha,beta", got)
+	}
+}
+
+func TestDeployAllStacks_DiscoveryConfigEditRedeploysOnlyThatStack(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"alpha", "beta"}, nil)
+	stateDir := t.TempDir()
+	d := New(Config{Runner: &recordingRunner{}, RepoDir: repoDir, StateDir: stateDir})
+	d.DeployAllStacks(context.Background(), cfg)
+
+	// Edit alpha's config in the host config: a new watch_dirs entry changes its
+	// effective config (ConfigHash), so exactly alpha must redeploy.
+	if err := os.MkdirAll(filepath.Join(repoDir, "stacks", "alpha", "conf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	edited := &config.Config{
+		StacksBaseDir:  cfg.StacksBaseDir,
+		StackDiscovery: true,
+		Stacks:         []config.Stack{{Name: "alpha", WatchDirs: []string{"alpha/conf"}}},
+	}
+
+	secondRunner := &recordingRunner{}
+	var recorded []events.DeployEvent
+	d2 := New(Config{Runner: secondRunner, RepoDir: repoDir, StateDir: stateDir,
+		EventSink: func(e events.DeployEvent) { recorded = append(recorded, e) }})
+	d2.DeployAllStacks(context.Background(), edited)
+
+	if got := eventsWithStatus(recorded, events.StatusSuccess); len(got) != 1 || got[0] != "alpha" {
+		t.Errorf("success events = %v, want [alpha]", got)
+	}
+	if got := eventsWithStatus(recorded, events.StatusSkipped); len(got) != 1 || got[0] != "beta" {
+		t.Errorf("skipped events = %v, want [beta]", got)
+	}
+}
+
+func TestDeployAllStacks_DiscoveryLeftoverRepoFileEmitsConfigFailed(t *testing.T) {
+	// ADR-0043: a leftover in-repo skipper.yaml is no longer read and fails the
+	// whole stack phase loudly (file-level), so nothing deploys until migrated.
+	repoDir, cfg := discoveryRepo(t, []string{"alpha"}, nil)
+	writeFile(t, filepath.Join(repoDir, "stacks", "skipper.yaml"), "stacks:\n  alpha:\n    icon: nginx\n")
+	d, runner, recorded := discoveryDeployer(t, repoDir)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if len(runner.calls) != 0 {
+		t.Errorf("no docker command may run when a leftover repo config is present, got %v", runner.calls)
+	}
+	if got := eventsWithStatus(*recorded, events.StatusFailed); len(got) != 1 || got[0] != ConfigStateKey {
+		t.Errorf("failed events = %v, want [%s]", got, ConfigStateKey)
+	}
+}
+
+func TestDeployAllStacks_DiscoveryEntryErrorFailsOnlyThatStack(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"alpha"}, []config.Stack{{Name: "ghost", Icon: "casper"}})
+	d, _, recorded := discoveryDeployer(t, repoDir)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if got := eventsWithStatus(*recorded, events.StatusFailed); len(got) != 1 || got[0] != "ghost" {
+		t.Errorf("failed events = %v, want [ghost]", got)
+	}
+	if got := eventsWithStatus(*recorded, events.StatusSuccess); len(got) != 1 || got[0] != "alpha" {
+		t.Errorf("success events = %v, want [alpha]", got)
+	}
+}
+
+func TestDeployAllStacks_DiscoveryInvalidStackBlocksDependents(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"app", "bad"}, []config.Stack{
+		{Name: "bad", DeployHealthCheck: &config.HealthCheck{URL: "notaurl"}},
+		{Name: "app", DependsOn: []string{"bad"}},
+	})
+	d, runner, recorded := discoveryDeployer(t, repoDir)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	assertCommandNotCalled(t, runner.calls, "up")
+	if got := eventsWithStatus(*recorded, events.StatusFailed); len(got) != 1 || got[0] != "bad" {
+		t.Errorf("failed events = %v, want [bad]", got)
+	}
+	if got := eventsWithStatus(*recorded, events.StatusBlocked); len(got) != 1 || got[0] != "app" {
+		t.Errorf("blocked events = %v, want [app]", got)
+	}
+}
+
+func TestDeployAllStacks_DiscoveryDisabledStackNotDeployed(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"alpha", "wip"}, []config.Stack{{Name: "wip", Disabled: true}})
+	d, _, recorded := discoveryDeployer(t, repoDir)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if got := eventsWithStatus(*recorded, events.StatusSuccess); len(got) != 1 || got[0] != "alpha" {
+		t.Errorf("success events = %v, want [alpha]", got)
+	}
+	for _, e := range *recorded {
+		if e.Stack == "wip" {
+			t.Errorf("disabled stack must emit no events, got %v", e)
+		}
+	}
+	// The parked name is published so the UI's disabled line can show it.
+	if got := d.CurrentDisabledStacks(); len(got) != 1 || got[0] != "wip" {
+		t.Errorf("CurrentDisabledStacks = %v, want [wip]", got)
+	}
+}
+
+func TestHealStack_DiscoveryUsesDiscoveredStacks(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"alpha"}, nil)
+	d, runner, _ := discoveryDeployer(t, repoDir)
+	d.DeployAllStacks(context.Background(), cfg) // publishes the discovered set
+
+	runner.calls = nil
+	ran, err := d.HealStack(context.Background(), cfg, "alpha", nil)
+	if !ran || err != nil {
+		t.Fatalf("HealStack(alpha) = ran=%v err=%v, want ran with no error", ran, err)
+	}
+	assertCommandCalled(t, runner.calls, "up")
+
+	if _, err := d.HealStack(context.Background(), cfg, "ghost", nil); err == nil {
+		t.Error("HealStack(ghost) should fail for an undiscovered stack")
+	}
+}
+
+// The roster reads tracked files out of band, so they must be known as soon as
+// the deployer exists: a failed git sync returns before the deploy phase, and
+// an empty view would tell the operator that a long-running stack has never
+// deployed — the one wrong answer that surface exists to prevent.
+func TestNew_SeedsTrackedFilesFromPersistedState(t *testing.T) {
+	stateDir := t.TempDir()
+	writeFile(t, filepath.Join(stateDir, "state.yaml"), `
+last_deployed_commit: abc123
+stacks:
+  web:
+    /repo/web/docker-compose.yml: hash-a
+    /run/secrets/compose.env: hash-b
+`)
+
+	d := New(Config{Runner: &recordingRunner{}, StateDir: stateDir})
+
+	got := d.CurrentTrackedFiles()
+	if len(got["web"]) != 2 {
+		t.Fatalf("web tracked files = %v, want 2 entries before any run", got["web"])
+	}
+	// Sorted, so the UI renders a stable list across restarts.
+	if got["web"][0] != "/repo/web/docker-compose.yml" || got["web"][1] != "/run/secrets/compose.env" {
+		t.Errorf("tracked files not sorted: %v", got["web"])
+	}
+}
+
+// The accessors hand the snapshot to concurrent out-of-run consumers, so each
+// call must return its own copy — a mutating caller must never corrupt the
+// shared snapshot behind other readers.
+func TestCurrentProjectDirs_ReturnsAPerCallCopy(t *testing.T) {
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
+	dirs := map[string]string{"web": "/srv/web"}
+	d.projectDirs.Store(&dirs)
+
+	got := d.CurrentProjectDirs()
+	got["web"] = "/tampered"
+	got["rogue"] = "/rogue"
+
+	fresh := d.CurrentProjectDirs()
+	if fresh["web"] != "/srv/web" || len(fresh) != 1 {
+		t.Errorf("mutating a returned map leaked into the snapshot: %v", fresh)
+	}
+}
+
+func TestCurrentTrackedFiles_ReturnsAPerCallCopy(t *testing.T) {
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
+	tracked := map[string][]string{"web": {"/repo/web/docker-compose.yml"}}
+	d.trackedFiles.Store(&tracked)
+
+	got := d.CurrentTrackedFiles()
+	got["web"][0] = "/tampered"
+	delete(got, "web")
+
+	fresh := d.CurrentTrackedFiles()
+	if len(fresh) != 1 || len(fresh["web"]) != 1 || fresh["web"][0] != "/repo/web/docker-compose.yml" {
+		t.Errorf("mutating a returned map leaked into the snapshot: %v", fresh)
+	}
+}
+
+// A brand-new install has no state file; that is not an error and must not
+// leave the accessor nil.
+func TestNew_TrackedFilesEmptyWithoutState(t *testing.T) {
+	d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir()})
+	if got := d.CurrentTrackedFiles(); len(got) != 0 {
+		t.Errorf("tracked files = %v, want empty for a fresh install", got)
+	}
+}
+
+// The effective stack set is unknown until a run discovers it, so every
+// stack-derived UI surface (the roster, and with it each row's hooks badge)
+// stays empty until it is published. Publishing it only at the end of the run
+// leaves that gap open for as long as the run's deploys take.
+func TestDeployAllStacks_PublishesTheStackSetBeforeDeploying(t *testing.T) {
+	repoDir, cfg := discoveryRepo(t, []string{"alpha"}, nil)
+	runner := &recordingRunner{}
+
+	var d *Deployer
+	publishes := 0
+	var upsAtPublish int
+	var setAtPublish []config.Stack
+	d = New(Config{
+		Runner:   runner,
+		RepoDir:  repoDir,
+		StateDir: t.TempDir(),
+		StackSetSink: func() {
+			publishes++
+			upsAtPublish = countComposeUps(runner.calls)
+			setAtPublish = d.CurrentStacks()
+		},
+	})
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	if publishes != 1 {
+		t.Fatalf("stack-set publishes = %d, want exactly one per run", publishes)
+	}
+	if upsAtPublish != 0 {
+		t.Errorf("the stack set must be published before any stack deploys; %d up(s) had already run", upsAtPublish)
+	}
+	// Published means published *with* the set resolved — announcing an empty
+	// set would leave the roster just as blank as not announcing at all.
+	if len(setAtPublish) != 1 || setAtPublish[0].Name != "alpha" {
+		t.Errorf("CurrentStacks() at publish time = %+v, want the discovered set", setAtPublish)
+	}
+}
+
+// countComposeUps counts the `docker compose … up` invocations recorded so far.
+func countComposeUps(calls []runCall) int {
+	n := 0
+	for _, c := range calls {
+		if len(c.args) > 1 && c.args[1] == "up" {
+			n++
+		}
+	}
+	return n
+}
+
+// Without discovery the set comes from the host config and never changes, so
+// there is nothing to announce mid-run.
+func TestDeployAllStacks_NoStackSetPublishWithoutDiscovery(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "web")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+	published := 0
+	d := New(Config{
+		Runner:       &recordingRunner{},
+		RepoDir:      baseDir,
+		StateDir:     t.TempDir(),
+		StackSetSink: func() { published++ },
+	})
+
+	d.DeployAllStacks(context.Background(), &config.Config{
+		StacksBaseDir: baseDir,
+		Stacks:        []config.Stack{{Name: "web"}},
+	})
+
+	if published != 0 {
+		t.Errorf("stack-set publishes without discovery = %d, want 0", published)
+	}
+}

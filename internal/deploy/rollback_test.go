@@ -1,0 +1,550 @@
+package deploy
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/polandy/skipper-cd/internal/config"
+	"github.com/polandy/skipper-cd/internal/events"
+)
+
+// --- rollback tests ---
+
+// selectiveErrRunner fails only on specific compose subcommands.
+type selectiveErrRunner struct {
+	calls       []runCall
+	errCommands map[string]bool // compose subcommands that should fail (e.g. "up")
+}
+
+func (r *selectiveErrRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
+	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
+	for _, a := range args {
+		if r.errCommands[a] {
+			return fmt.Errorf("simulated error for command: %s", a)
+		}
+	}
+	return nil
+}
+
+func TestDeployStack_RollbackOnUpFailure(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	oldCompose := composeWithImage("nginx:1.25")
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{},
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(oldCompose),
+		},
+	}
+
+	// Fail on "up" but succeed on everything else (including rollback up).
+	runner := &selectiveErrRunner{errCommands: map[string]bool{"up": true}}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
+
+	stack := config.Stack{Name: "mystack"}
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
+	if err == nil {
+		t.Fatal("expected error from failed deploy")
+	}
+
+	// The rollback also calls "up", so it will also fail. Let's test the
+	// case where rollback succeeds instead — need a smarter runner.
+	// This test verifies the error message format when rollback also fails.
+	if !strings.Contains(err.Error(), "rollback also failed") {
+		t.Errorf("expected 'rollback also failed' in error, got: %s", err.Error())
+	}
+}
+
+var errSimulatedRollbackFailure = errors.New("simulated rollback failure")
+
+// failUpCallsRunner fails the Nth "up" call (1-indexed) with the mapped error.
+type failUpCallsRunner struct {
+	upCount int
+	errs    map[int]error
+}
+
+func (r *failUpCallsRunner) Run(_ context.Context, _ string, _ []string, _ string, args ...string) error {
+	for _, a := range args {
+		if a == "up" {
+			r.upCount++
+			if err, ok := r.errs[r.upCount]; ok {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func TestDeployStack_RollbackAlsoFailsPreservesUnderlyingError(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	oldCompose := composeWithImage("nginx:1.25")
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{},
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(oldCompose),
+		},
+	}
+
+	// 1st "up" is the failed deploy, 2nd is the rollback's own "up" — make it
+	// fail with a distinguishable sentinel so the test can prove the wrap
+	// chain is errors.Is-unwrappable end to end (this is what %v vs %w changes).
+	runner := &failUpCallsRunner{errs: map[int]error{
+		1: errors.New("initial deploy failed"),
+		2: errSimulatedRollbackFailure,
+	}}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
+
+	stack := config.Stack{Name: "mystack"}
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
+	if err == nil {
+		t.Fatal("expected error from failed deploy")
+	}
+	if !errors.Is(err, errSimulatedRollbackFailure) {
+		t.Errorf("expected errors.Is to unwrap the rollback's underlying error, got: %v", err)
+	}
+}
+
+func TestDeployStack_RollbackSucceeds(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	oldCompose := composeWithImage("nginx:1.25")
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{},
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(oldCompose),
+		},
+	}
+
+	// Use a runner that fails only the first "up" call (the deploy), not the rollback "up".
+	upCallCount := 0
+	runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
+
+	stack := config.Stack{Name: "mystack"}
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
+	if err == nil {
+		t.Fatal("expected error from failed deploy")
+	}
+	if !errors.Is(err, ErrRolledBack) {
+		t.Errorf("expected error wrapping ErrRolledBack, got: %s", err.Error())
+	}
+
+	// Without deploy_health_check the rollback up must stay a plain up -d.
+	for _, c := range runner.calls {
+		if strings.Contains(strings.Join(c.args, " "), "--wait") {
+			t.Errorf("expected no --wait on any call without deploy_health_check, got %v", c.args)
+		}
+	}
+
+	// State should NOT be updated (the deploy failed).
+	if state.Stacks["mystack"] != nil && state.Stacks["mystack"]["old"] != "oldhash" {
+		t.Error("state should not be updated after a rolled-back deploy")
+	}
+}
+
+func TestDeployStack_RollbackSkippedWithoutPreviousCommit(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+
+	runner := &recordingRunner{errOnCommand: "up"}
+	d := newDeployerWithRunner(runner)
+
+	stack := config.Stack{Name: "mystack"}
+	state := newEmptyState()
+
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
+	if err == nil {
+		t.Fatal("expected error from failed deploy")
+	}
+	// Without commitReader or LastDeployedCommit, rollback should fail with "no previous commit".
+	if !strings.Contains(err.Error(), "rollback also failed") {
+		t.Errorf("expected 'rollback also failed' in error, got: %s", err.Error())
+	}
+}
+
+// TestDeployStack_RollbackDisabled_NoRestoreOnUpFailure proves the opt-out
+// (ADR-0050): with rollback off, a failed `up` is not restored to the previous
+// compose version — no second `up` runs, the error stays a plain failure (never
+// wraps ErrRolledBack), and state is not advanced.
+func TestDeployStack_RollbackDisabled_NoRestoreOnUpFailure(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	// A commit reader with the old compose present: if the code wrongly rolled
+	// back it would find it and succeed, so ErrRolledBack would leak — the test
+	// would catch that regression.
+	cr := &fakeCommitReader{
+		diffs: map[string]string{},
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(composeWithImage("nginx:1.25")),
+		},
+	}
+
+	upCallCount := 0
+	runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
+
+	stack := config.Stack{Name: "mystack", Rollback: boolPtr(false)}
+	state := &persistedState{
+		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
+		Images:             map[string]serviceImageByName{},
+		LastDeployedCommit: "old-sha",
+	}
+
+	err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, state)
+	if err == nil {
+		t.Fatal("expected error from failed deploy")
+	}
+	if errors.Is(err, ErrRolledBack) || errors.Is(err, ErrRollbackUnhealthy) {
+		t.Errorf("rollback disabled: error must not wrap a rollback sentinel, got: %v", err)
+	}
+	if upCallCount != 1 {
+		t.Errorf("rollback disabled: expected exactly one up call (no restore up), got %d", upCallCount)
+	}
+	if state.Stacks["mystack"]["old"] != "oldhash" {
+		t.Error("state must not be updated after a failed, un-rolled-back deploy")
+	}
+}
+
+// TestDeployAllStacks_RollbackDisabled_EmitsFailedNotRolledBack proves the
+// global and per-stack opt-out flow through DeployAllStacks' resolution: a
+// failed up emits `failed`, never `rolled_back`, and no restore up runs.
+func TestDeployAllStacks_RollbackDisabled_EmitsFailedNotRolledBack(t *testing.T) {
+	tests := []struct {
+		name     string
+		global   *bool
+		perStack *bool
+	}{
+		{name: "global off, per-stack inherit", global: boolPtr(false), perStack: nil},
+		{name: "global on, per-stack opt-out", global: boolPtr(true), perStack: boolPtr(false)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			stackDir := filepath.Join(baseDir, "mystack")
+			if err := os.MkdirAll(stackDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+
+			composePath := filepath.Join(stackDir, "docker-compose.yml")
+			cr := &fakeCommitReader{
+				diffs: map[string]string{composePath: "@@ -1 +1 @@\n-    image: nginx:1.25\n+    image: nginx:1.26"},
+				files: map[string][]byte{"old-sha:" + composePath: []byte(composeWithImage("nginx:1.25"))},
+			}
+
+			upCallCount := 0
+			runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
+			var emitted []events.DeployEvent
+			d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir(),
+				EventSink: func(e events.DeployEvent) { emitted = append(emitted, e) }})
+
+			cfg := &config.Config{
+				RepoURL:       "ssh://git@example.com/repo.git",
+				StacksBaseDir: baseDir,
+				Rollback:      tt.global,
+				Stacks:        []config.Stack{{Name: "mystack", Rollback: tt.perStack}},
+			}
+
+			state, _ := loadPersistedDeployState(d.stateDir)
+			state.Stacks["mystack"] = stackFileHashes{"old": "oldhash"}
+			state.LastDeployedCommit = "old-sha"
+			_ = saveDeployState(d.stateDir, state)
+
+			d.DeployAllStacks(context.Background(), cfg)
+
+			for _, e := range emitted {
+				if e.Status == events.StatusRolledBack || e.Status == events.StatusRolledBackUnhealthy {
+					t.Fatalf("rollback disabled: got %s event, expected failed: %+v", e.Status, e)
+				}
+			}
+			var failed *events.DeployEvent
+			for i := range emitted {
+				if emitted[i].Status == events.StatusFailed {
+					failed = &emitted[i]
+					break
+				}
+			}
+			if failed == nil {
+				t.Fatal("expected a failed event")
+			}
+			if upCallCount != 1 {
+				t.Errorf("rollback disabled: expected exactly one up call (no restore up), got %d", upCallCount)
+			}
+		})
+	}
+}
+
+func TestDeployAllStacks_EmitsRolledBackEvent(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	oldCompose := composeWithImage("nginx:1.25")
+
+	cr := &fakeCommitReader{
+		diffs: map[string]string{
+			composePath: "@@ -1 +1 @@\n-    image: nginx:1.25\n+    image: nginx:1.26",
+		},
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(oldCompose),
+		},
+	}
+
+	upCallCount := 0
+	runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
+	var emitted []events.DeployEvent
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
+		emitted = append(emitted, e)
+	}})
+
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: baseDir,
+		Stacks:        []config.Stack{{Name: "mystack"}},
+	}
+
+	// Pre-seed state with old hashes and commit.
+	state, _ := loadPersistedDeployState(d.stateDir)
+	state.Stacks["mystack"] = stackFileHashes{"old": "oldhash"}
+	state.LastDeployedCommit = "old-sha"
+	_ = saveDeployState(d.stateDir, state)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	var rolledBack *events.DeployEvent
+	for i := range emitted {
+		if emitted[i].Status == events.StatusRolledBack {
+			rolledBack = &emitted[i]
+			break
+		}
+	}
+	if rolledBack == nil {
+		t.Fatal("expected a rolled_back event")
+	}
+	if rolledBack.Stack != "mystack" {
+		t.Errorf("expected stack 'mystack', got %q", rolledBack.Stack)
+	}
+	// A rolled-back deploy must carry the same change context a success does, so
+	// the UI can show what was being deployed (not just the file path retained
+	// from the deploying row) and render its diff.
+	if len(rolledBack.ChangedFiles) == 0 {
+		t.Error("rolled_back event should carry changed_files")
+	}
+	if len(rolledBack.Diffs) == 0 {
+		t.Error("rolled_back event should carry diffs so the diff panel works, not just the file path")
+	}
+}
+
+func TestDeployAllStacks_EmitsRolledBackUnhealthyEvent(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "mystack")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.26"))
+
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	cr := &fakeCommitReader{
+		diffs: map[string]string{
+			composePath: "@@ -1 +1 @@\n-    image: nginx:1.25\n+    image: nginx:1.26",
+		},
+		files: map[string][]byte{
+			"old-sha:" + composePath: []byte(composeWithImage("nginx:1.25")),
+		},
+	}
+
+	// Every up fails: the health-gated deploy up and the rollback up alike.
+	runner := &selectiveErrRunner{errCommands: map[string]bool{"up": true}}
+	var emitted []events.DeployEvent
+	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
+		emitted = append(emitted, e)
+	}})
+
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: baseDir,
+		Stacks:        []config.Stack{{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}},
+	}
+
+	state, _ := loadPersistedDeployState(d.stateDir)
+	state.Stacks["mystack"] = stackFileHashes{"old": "oldhash"}
+	state.LastDeployedCommit = "old-sha"
+	_ = saveDeployState(d.stateDir, state)
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	var unhealthy *events.DeployEvent
+	for i := range emitted {
+		if emitted[i].Status == events.StatusRolledBackUnhealthy {
+			unhealthy = &emitted[i]
+			break
+		}
+		if emitted[i].Status == events.StatusRolledBack {
+			t.Fatalf("expected rolled_back_unhealthy, got plain rolled_back: %+v", emitted[i])
+		}
+	}
+	if unhealthy == nil {
+		t.Fatal("expected a rolled_back_unhealthy event")
+	}
+	if unhealthy.Stack != "mystack" {
+		t.Errorf("expected stack 'mystack', got %q", unhealthy.Stack)
+	}
+	if len(unhealthy.ChangedFiles) == 0 {
+		t.Error("rolled_back_unhealthy event should carry changed_files")
+	}
+	if len(unhealthy.Diffs) == 0 {
+		t.Error("rolled_back_unhealthy event should carry diffs so the diff panel works")
+	}
+}
+
+// countingErrRunner fails only the Nth "up" call (1-indexed).
+type countingErrRunner struct {
+	calls       []runCall
+	failOnNthUp int
+	upCount     *int
+}
+
+func (r *countingErrRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
+	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args})
+	for _, a := range args {
+		if a == "up" {
+			*r.upCount++
+			if *r.upCount == r.failOnNthUp {
+				return fmt.Errorf("simulated error for command: up")
+			}
+		}
+	}
+	return nil
+}
+
+// failNewUpRunner fails the deploy's own `up` (the only one carrying
+// --remove-orphans) and lets the rollback's `up` succeed.
+type failNewUpRunner struct{}
+
+func (failNewUpRunner) Run(_ context.Context, _ string, _ []string, _ string, args ...string) error {
+	for _, a := range args {
+		if a == "--remove-orphans" {
+			return errors.New("new version failed to start")
+		}
+	}
+	return nil
+}
+
+// A retry of a change that rolled back must restore the stack's own last good
+// version. The run that failed still advances last_deployed_commit to HEAD, so
+// restoring from it would re-apply the broken compose file and report
+// "restored version did not come up healthy" on every later retry — the
+// signal-api loop seen in prod.
+func TestDeployAllStacks_RetryRollsBackToStacksLastGoodCommit(t *testing.T) {
+	baseDir := t.TempDir()
+	stackDir := filepath.Join(baseDir, "signal")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	composePath := filepath.Join(stackDir, "docker-compose.yml")
+	writeFile(t, composePath, composeWithImage("signal:0.101"))
+
+	stateDir := t.TempDir()
+	seed := newEmptyState()
+	seed.LastDeployedCommit = "old-sha"
+	seed.Stacks["signal"] = stackFileHashes{composePath: "hash-of-0.100"}
+	if err := saveDeployState(stateDir, seed); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only the last good commit holds a restorable compose file: a rollback
+	// from HEAD (abc123) fails outright and surfaces as `failed`.
+	cr := &fakeCommitReader{files: map[string][]byte{
+		"old-sha:" + composePath: []byte(composeWithImage("signal:0.100")),
+	}}
+	var emitted []events.DeployEvent
+	d := New(Config{
+		Runner:       failNewUpRunner{},
+		CommitReader: cr,
+		RepoDir:      baseDir,
+		StateDir:     stateDir,
+		EventSink:    func(e events.DeployEvent) { emitted = append(emitted, e) },
+	})
+	cfg := &config.Config{StacksBaseDir: baseDir, Stacks: []config.Stack{{Name: "signal"}}}
+
+	for run := 1; run <= 2; run++ {
+		if run == 2 && !d.RequestRetry("signal") {
+			// A rolled-back change is held until retried (ADR-0062).
+			t.Fatal("run 2: signal should be held after its rollback")
+		}
+		emitted = nil
+		d.DeployAllStacks(context.Background(), cfg)
+
+		var terminal *events.DeployEvent
+		for i := range emitted {
+			if emitted[i].Stack == "signal" && emitted[i].Status != events.StatusDeploying {
+				terminal = &emitted[i]
+			}
+		}
+		if terminal == nil {
+			t.Fatalf("run %d: no terminal event for signal, got %+v", run, emitted)
+		}
+		if terminal.Status != events.StatusRolledBack {
+			t.Errorf("run %d: status = %s (%s), want rolled_back to the last good commit", run, terminal.Status, terminal.Error)
+		}
+	}
+}

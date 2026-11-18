@@ -1,0 +1,137 @@
+// Package command provides a Runner abstraction over os/exec so that
+// callers can inject fake implementations in tests.
+package command
+
+import (
+	"context"
+	"io"
+	"os"
+	"os/exec"
+	"time"
+)
+
+// Runner executes shell commands. It is an interface so that tests can inject
+// a fake implementation instead of running real docker/git commands.
+type Runner interface {
+	Run(ctx context.Context, dir string, env []string, name string, args ...string) error
+}
+
+type stackContextKey struct{}
+
+// WithStack attributes a command's child-process output to the given deploy
+// stack in the log sink (deploy hooks; ADR-0038). docker/git leave it unset.
+func WithStack(ctx context.Context, stack string) context.Context {
+	return context.WithValue(ctx, stackContextKey{}, stack)
+}
+
+// stackFromContext returns the stack set by WithStack, or "" if none.
+func stackFromContext(ctx context.Context) string {
+	s, _ := ctx.Value(stackContextKey{}).(string)
+	return s
+}
+
+// defaultWaitDelay bounds how long cmd.Wait keeps blocking on a command's I/O
+// pipes after the process itself has exited or been killed. A grandchild that
+// inherits and holds the stdout pipe open (e.g. a backgrounded process a
+// command spawns) would otherwise keep the pipe from reaching EOF, so cmd.Wait
+// could block long after the command itself is gone. WaitDelay force-closes the
+// pipes once it elapses so Run returns promptly. It only starts counting after
+// exit or context cancellation, so a healthy long-running command is
+// unaffected. (The nixos-rebuild self-update no longer relies on this: it runs
+// fire-and-forget without --pipe, fully detached from this process — see
+// internal/nixos.Rebuild and ADR-0014.)
+const defaultWaitDelay = 10 * time.Second
+
+// ShellRunner is the real Runner that executes commands via os/exec.
+// A non-zero timeout limits each individual command; a command exceeding
+// it is killed and its call returns an error. An optional LineSink
+// additionally receives the child's output line by line; the output still
+// reaches the process stdout/stderr either way.
+type ShellRunner struct {
+	timeout   time.Duration
+	sink      LineSink
+	waitDelay time.Duration // bounds Wait's post-exit I/O drain; see defaultWaitDelay
+}
+
+// NewShellRunner returns a ShellRunner that kills any single command running
+// longer than timeout. A zero timeout disables the limit.
+func NewShellRunner(timeout time.Duration) ShellRunner {
+	return ShellRunner{timeout: timeout, waitDelay: defaultWaitDelay}
+}
+
+// NewShellRunnerWithSink is NewShellRunner with child output additionally
+// tee'd line by line into sink. A nil sink behaves like NewShellRunner.
+func NewShellRunnerWithSink(timeout time.Duration, sink LineSink) ShellRunner {
+	return ShellRunner{timeout: timeout, sink: sink, waitDelay: defaultWaitDelay}
+}
+
+// Run executes name with args in dir, with env layered onto the process
+// environment, bounded by the runner's timeout. Child output is tee'd into the
+// runner's sink when it has one. A failed command's error is an *ExitError
+// carrying the last lines it wrote to stderr.
+func (r ShellRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
+	ctx, cancel := r.commandContext(ctx)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = r.waitDelay
+	cmd.Dir = dir
+	cmd.Env = env
+	tail := newTailSink(stderrTailLines)
+	tw := &lineWriter{sink: tail, cmd: name, stream: "stderr"}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = io.MultiWriter(os.Stderr, tw)
+	if r.sink != nil {
+		stack := stackFromContext(ctx)
+		ow := &lineWriter{sink: r.sink, cmd: name, stream: "stdout", stack: stack}
+		ew := &lineWriter{sink: r.sink, cmd: name, stream: "stderr", stack: stack}
+		defer func() {
+			_ = ow.Close()
+			_ = ew.Close()
+		}()
+		cmd.Stdout = io.MultiWriter(os.Stdout, ow)
+		cmd.Stderr = io.MultiWriter(os.Stderr, ew, tw)
+	}
+	err := cmd.Run()
+	if err == nil {
+		return nil
+	}
+	_ = tw.Close() // flushes an unterminated last line into tail; never fails
+	return &ExitError{Err: err, Tail: tail.snapshot()}
+}
+
+// Output executes a command in the process environment and returns its
+// captured stdout. Stderr passes
+// through to the process stderr so failures remain visible in logs; with a
+// sink it is additionally captured line by line (stdout is not — it is
+// data for the caller, not log output). Like Run, a failed command's error is
+// an *ExitError carrying the last lines it wrote to stderr.
+func (r ShellRunner) Output(ctx context.Context, dir string, name string, args ...string) ([]byte, error) {
+	ctx, cancel := r.commandContext(ctx)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = r.waitDelay
+	cmd.Dir = dir
+	tail := newTailSink(stderrTailLines)
+	tw := &lineWriter{sink: tail, cmd: name, stream: "stderr"}
+	cmd.Stderr = io.MultiWriter(os.Stderr, tw)
+	if r.sink != nil {
+		ew := &lineWriter{sink: r.sink, cmd: name, stream: "stderr"}
+		defer func() { _ = ew.Close() }()
+		cmd.Stderr = io.MultiWriter(os.Stderr, ew, tw)
+	}
+	out, err := cmd.Output()
+	if err == nil {
+		return out, nil
+	}
+	_ = tw.Close() // flushes an unterminated last line into tail; never fails
+	return out, &ExitError{Err: err, Tail: tail.snapshot()}
+}
+
+func (r ShellRunner) commandContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if r.timeout <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, r.timeout)
+}

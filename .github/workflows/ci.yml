@@ -1,0 +1,218 @@
+name: CI
+
+on:
+  # Branch pushes are covered by their pull_request run; only main needs a push
+  # trigger. This stops every PR commit from running the whole suite twice (a
+  # push event + a pull_request event on the same SHA), where a flaky duplicate
+  # could show red on a PR whose other run was green.
+  push:
+    branches: [main]
+  pull_request:
+
+# One in-flight run per ref; a new push cancels the superseded one.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: test -z "$(gofmt -l cmd internal)"
+      - run: go test ./... -race -coverprofile=coverage.out
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1
+      # The nix flake builds with vendorHash = null, so vendor/ must stay
+      # committed and in sync with go.mod.
+      - name: check vendor is in sync
+        run: |
+          go mod tidy
+          go mod vendor
+          git diff --exit-code -- go.mod go.sum vendor/
+
+  # JS unit layer for the pure UI helpers and render layer
+  # (internal/ui/static/app-helpers.js, app-render.js),
+  # run with the Node built-in test runner — no build step, no npm deps for the
+  # shipped app (ADR-0035). Prettier/ESLint here are dev-only devDependencies
+  # (internal/ui/static/package.json), scoped to the plain-script JS files;
+  # app.css keeps its hand-tuned compact style and is deliberately excluded.
+  ui-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Install UI static tooling deps
+        working-directory: internal/ui/static
+        run: npm ci
+      - name: Prettier check
+        working-directory: internal/ui/static
+        run: npm run fmt:check
+      - name: ESLint
+        working-directory: internal/ui/static
+        run: npm run lint
+      - run: node --test internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js
+      # The --host-N palette in app.css is generated output pasted by hand;
+      # nothing else catches it drifting from its generator (`make check-host-colors`).
+      - run: make check-host-colors
+      # The container that renders the baselines and the npm package that
+      # compares against them must agree, or the only symptom is a pixel diff.
+      - run: make check-playwright-pin
+      # The suite has no fixed waits; keep it that way (see the script for why
+      # a timeout is never the fix).
+      - run: make check-no-sleeps
+      # Type-aware lint over the Playwright suite; catches a forgotten `await`
+      # on an assertion, which would otherwise pass as a green test.
+      - run: make e2e-ui-lint
+
+  # End-to-end tests: run the real skipper binary against a local git origin
+  # and a stub docker on PATH (no docker daemon needed). Guarded by the "e2e"
+  # build tag so they stay out of the fast `go test ./...` job above.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: test -z "$(gofmt -l e2e)"
+      - run: go vet -tags e2e ./e2e
+      - run: go test -tags e2e -v -count=1 ./e2e
+
+  # Skipper's startup smoke test: boot the binary with the richest config in the
+  # repo (discovery + peers + hooks + icons + health watch + self-heal together)
+  # and assert it serves and still produces its spread of deploy outcomes. No
+  # path filter on purpose — the last time this fixture broke it was a rename in
+  # internal/config, not an edit to the script, so anything narrower would have
+  # missed it.
+  ui-preview-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: make ui-preview-smoke
+
+  # The visual baselines are LFS-tracked (ADR-0052), and Playwright's pinned
+  # container ships no git-lfs — a checkout inside it would leave pointer text
+  # where the pixel compares expect PNGs. So they are fetched here, on a runner
+  # that has git-lfs, and handed to the e2e-ui job as an artifact. Keeping the
+  # container untouched matters: it is pinned precisely so font rasterisation
+  # matches how the baselines were generated.
+  baselines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          sparse-checkout: e2e/ui/__screenshots__
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ui-baselines
+          path: e2e/ui/__screenshots__
+          retention-days: 1
+
+  # UI end-to-end tests: Playwright drives the embedded web UI in a real browser
+  # against the same skipper binary (built in globalSetup). It runs inside
+  # Playwright's pinned container (matching @playwright/test in the lockfile) so
+  # the browser + font rasterisation are identical to how the visual-snapshot
+  # baselines were generated — RUN_SNAPSHOTS turns the pixel compares on
+  # (docs/dev/e2e-tests.md §5, §7). The image already ships Node + the browsers, so
+  # only Go (for globalSetup's build) is installed on top.
+  e2e-ui:
+    needs: baselines
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    steps:
+      - uses: actions/checkout@v7
+      # Overwrites the LFS pointer files this checkout wrote with the real PNGs.
+      - uses: actions/download-artifact@v8
+        with:
+          name: ui-baselines
+          path: e2e/ui/__screenshots__
+      # Fail here rather than inside a pixel compare if that overwrite did not
+      # land: comparing against a pointer file, or against nothing, is worse
+      # than a red step because it does not point at the hand-off. Called
+      # directly, not via make — this container ships no make.
+      - run: ./scripts/check-baselines.sh
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install UI E2E deps
+        working-directory: e2e/ui
+        run: npm ci
+      - name: Run UI E2E
+        working-directory: e2e/ui
+        env:
+          RUN_SNAPSHOTS: '1'
+        run: npx playwright test
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            e2e/ui/playwright-report/
+            e2e/ui/test-results/
+          retention-days: 7
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+
+  # Builds the flake checks — currently the eval-only module.nix check
+  # (nix/module-check.nix). The Go jobs above never evaluate the NixOS module.
+  nix-flake-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - run: nix flake check -L
+
+  # Reports known vulnerabilities in dependencies, filtered to those actually
+  # reachable from called code — low-noise, meaningful for a tool that runs
+  # deployments.
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: golang/govulncheck-action@v1.1.0
+        with:
+          go-version-file: go.mod
+
+  # Verifies the image still builds and scans it for known CVEs. Without the
+  # build check, base-image bumps from Dependabot would be untested on PRs —
+  # docker.yml only builds on release.
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t skipper-cd:ci .
+      # ignore-unfixed keeps CVEs without an available patch from failing CI —
+      # they are not actionable until upstream ships a fix.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: skipper-cd:ci
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"

@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="__UI_THEME__" data-server-theme="__UI_THEME__" data-theme-switcher="__THEME_SWITCHER__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>skipper-cd</title>
+<script src="/app-prepaint.js"></script>
+<link rel="icon" type="image/svg+xml" href="__FAVICON_URI__">
+<!-- PWA: installable app. See docs/user/pwa.md. theme-color follows the OS
+     light/dark preference (it cannot follow the in-page theme toggle),
+     matching the favicon above, and is baked per the configured ui_theme.
+     Apple needs a PNG touch icon + these metas. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="__THEME_COLOR_DARK__" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="__THEME_COLOR_LIGHT__" media="(prefers-color-scheme: light)">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="skipper-cd">
+<!-- Self-hosted fonts (DM Sans + JetBrains Mono, latin subset, woff2). Served
+     same-origin from the embedded FS under /fonts/ and preloaded here, so the UI
+     stays fully self-contained — no external Google Fonts request, works offline,
+     and keeps font-load timing out of the visual snapshots. See ADR-0035. -->
+<link rel="preload" href="/fonts/dm-sans-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/dm-sans-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/dm-sans-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/jetbrains-mono-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/jetbrains-mono-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<header data-taptip>
+  <div class="brand">
+    <div class="brand-icon">
+      <svg viewBox="0 5 64 64" fill="none" role="img" aria-label="skipper-cd">
+        <path d="M9 41 H55 L45 53 H19 Z" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/>
+        <rect x="19" y="30" width="12" height="9" rx="2" fill="var(--accent)"/>
+        <rect x="33" y="30" width="12" height="9" rx="2" stroke="currentColor" stroke-width="3"/>
+        <rect x="26" y="18" width="12" height="9" rx="2" fill="var(--success)"/>
+        <path d="M14 60 q5 -5 10 0 t10 0 t10 0 t10 0" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".5"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <span class="brand-name" data-testid="brand-name">skipper<span>-cd</span></span>
+      <span class="brand-version" id="brand-version" data-testid="brand-version"></span>
+    </div>
+  </div>
+  <div class="status-area">
+    <div class="deploy-status" id="deploy-status" data-testid="deploy-indicator" title="idle" aria-label="idle" role="button" tabindex="0" aria-expanded="false">
+      <div class="deploy-dot">
+        <svg class="ds-ico ds-anchor" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="2"/><path d="M12 7v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8.5 10h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 12.5a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 12.5 3 11m2 1.5 2-1.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 12.5 21 11m-2 1.5-2-1.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="ds-ico ds-ship" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h16l-2 4H6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="7.5" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><rect x="13" y="8" width="3.5" height="4" rx="0.5" stroke="currentColor" stroke-width="1.7"/><path d="M3 20q2-1.6 4 0t4 0 4 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <span class="ds-active">idle</span>
+      <span class="ds-next" id="deploy-next" data-testid="deploy-next"></span>
+      <span class="ds-count" id="deploy-count" data-testid="deploy-count"></span>
+    </div>
+    <div class="health-beacon-wrap" id="health-beacon-wrap" hidden>
+      <button class="health-beacon" id="health-beacon" data-testid="health-beacon" type="button" hidden aria-haspopup="true" aria-expanded="false">
+        <span class="hb-icon" aria-hidden="true"></span>
+        <span class="hb-dot"></span>
+        <span class="hb-count" id="health-beacon-count" data-testid="health-beacon-count"></span>
+      </button>
+      <div class="beacon-pop" id="beacon-pop" data-testid="health-beacon-pop" role="menu" aria-label="Unhealthy stacks"></div>
+    </div>
+    <button class="incident-badge" id="incident-badge" data-testid="incident-badge" type="button" hidden>
+      <span class="ib-icon" aria-hidden="true">↺</span>
+      <span class="ib-count" id="incident-badge-count" data-testid="incident-badge-count"></span>
+    </button>
+    <button class="update-badge" id="update-badge" data-testid="update-badge" type="button" hidden>
+      <span class="ub-icon" aria-hidden="true">&#8673;</span>
+      <span class="ub-count" id="update-badge-count" data-testid="update-badge-count"></span>
+    </button>
+    <span class="ht-cap ht-cap-search">
+    <button class="stack-search-btn" id="stack-search-btn" data-testid="stack-search-btn" type="button" title="Search stacks" aria-label="Search stacks" aria-expanded="false">
+      <svg class="ss-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+      <span class="ht-lbl" aria-hidden="true">Search</span>
+    </span>
+    <div class="view-switch" id="view-switch">
+      <div class="view-toggle" id="view-toggle" data-testid="view-toggle">
+        <button data-view="deploys" class="active" title="Deploys" aria-label="Deploys" aria-haspopup="true" aria-expanded="false">
+          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3.5 9.5h17M9 9.5V19" stroke="currentColor" stroke-width="2"/></svg>
+          <span class="vt-lbl">Deploys</span><span class="vt-caret" aria-hidden="true"></span>
+        </button>
+        <button data-view="stacks" title="Stacks" aria-label="Stacks" aria-haspopup="true" aria-expanded="false">
+          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l8 4-8 4-8-4 8-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 12l8 4 8-4M4 16.5l8 4 8-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="vt-lbl">Stacks</span><span class="vt-caret" aria-hidden="true"></span>
+        </button>
+        <button data-view="logs" title="Logs" aria-label="Logs" aria-haspopup="true" aria-expanded="false">
+          <svg class="vt-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12h4l2-6 3 12 2-8 2 4h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vt-lbl">Logs</span>
+        </button>
+      </div>
+      <div class="view-options" id="view-options" data-testid="view-options" role="menu" aria-label="View options">
+        <div class="vo-group" data-view="deploys">
+          <button class="filter-toggle vo-search" id="deploy-search-open" data-testid="deploy-search" type="button" title="Search stacks">
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Search stacks</span>
+          </button>
+          <button class="filter-toggle" id="time-mode" data-testid="time-mode" title="Switch to absolute time">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Absolute time</span>
+          </button>
+          <button class="filter-toggle" id="image-delta-toggle" data-testid="image-delta-toggle" title="Hide the Changes column">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13.5l6.5 6.5L20 10.5V4h-6.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="15" cy="9" r="1.5" fill="currentColor"/></svg>
+            <span>Changes column</span>
+          </button>
+        </div>
+        <div class="vo-group" data-view="stacks">
+          <button class="filter-toggle vo-search" id="roster-search-open" data-testid="roster-search" type="button" title="Search stacks">
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Search stacks</span>
+          </button>
+          <button class="filter-toggle" id="roster-time-mode" data-testid="roster-time-mode" title="Switch to absolute time">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Absolute time</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <span class="ht-cap ht-cap-hosts">
+    <button class="hosts-btn" id="hosts-btn" data-testid="hosts-btn" type="button" aria-expanded="false" aria-haspopup="dialog" title="Hosts">
+      <svg class="hb-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="4" width="16" height="6" rx="1.5" stroke="currentColor" stroke-width="2"/><rect x="4" y="14" width="16" height="6" rx="1.5" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="7" r="1" fill="currentColor"/><circle cx="8" cy="17" r="1" fill="currentColor"/></svg>
+      <span class="hb-warn" aria-hidden="true"></span>
+      <span class="hb-count"><span id="hosts-count">1/1</span></span>
+      <svg class="hb-chev" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+      <span class="ht-lbl" aria-hidden="true">Hosts</span>
+    </span>
+    <span class="ht-cap">
+    <div class="autosync-btn" id="autosync-btn" data-testid="autosync-btn" role="button" tabindex="0" aria-expanded="false" title="Autosync">
+      <svg class="as-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M17 3v4h-4M7 21v-4h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>autosync</span>
+      <span class="pending-count" data-testid="pending-pill"><span class="pc-dot"></span><span id="autosync-count">0</span></span>
+    </div>
+      <span class="ht-lbl" aria-hidden="true">Autosync</span>
+    </span>
+    <span class="hdr-sep" aria-hidden="true"></span>
+    <span class="ht-cap">
+    <div class="theme-picker" title="UI theme (this browser only — does not change the deployed environment's theme)">
+      <svg class="tp-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-3.9-4-6.6-9-6.6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="7.5" cy="12" r="1.1" fill="currentColor"/><circle cx="9.5" cy="7.8" r="1.1" fill="currentColor"/><circle cx="14" cy="7.3" r="1.1" fill="currentColor"/><circle cx="17" cy="10.5" r="1.1" fill="currentColor"/></svg>
+      <select class="theme-select" id="theme-select" data-testid="theme-select" title="UI theme (this browser only — does not change the deployed environment's theme)">
+        <option value="catppuccin">Catppuccin</option>
+        <option value="nord">Nord</option>
+        <option value="solarized">Solarized</option>
+        <option value="gruvbox">Gruvbox</option>
+        <option value="rose-pine">Rosé Pine</option>
+        <option value="flake">Flake</option>
+      </select>
+    </div>
+      <span class="ht-lbl" aria-hidden="true">Theme</span>
+    </span>
+    <span class="ht-cap">
+    <button class="filter-toggle" id="theme-toggle" data-testid="theme-toggle" title="Switch to light theme">
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="tg-moon" d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><g class="tg-sun"><circle cx="12" cy="12" r="4.3" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.4 19.6l1.6-1.6M18 6l1.6-1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g></svg>
+      <span>light</span>
+    </button>
+      <span class="ht-lbl" aria-hidden="true">Light / Dark</span>
+    </span>
+    <div class="indicator" data-testid="conn-indicator" data-state="connecting" role="status" aria-live="polite" aria-atomic="true">
+      <div class="indicator-dot warn" id="conn-dot">
+        <svg class="ci-ico ci-link" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="ci-ico ci-broken" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.17 11.75l-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 2v2M2 8h2M16 20v2M20 16h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <span id="conn-text">connecting</span>
+    </div>
+  </div>
+</header>
+
+<!-- First-run header tour (T3.15): shown once on a fresh browser to teach the
+     glyph-only header, then dismissed for good (localStorage headerTourSeen).
+     Hidden whenever <html> carries .header-tour-seen — set pre-paint above. -->
+<div class="header-tour" id="header-tour" data-testid="header-tour" role="region" aria-label="Getting started">
+  <svg class="ht-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 11v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/></svg>
+  <span class="ht-text">New here? The labels name each header control — they tuck away once you're set.</span>
+  <button class="header-tour-dismiss" id="header-tour-dismiss" data-testid="header-tour-dismiss" type="button">Got it</button>
+</div>
+
+<!-- Off-screen live region: announces terminal deploy outcomes (success/failed/
+     rolled_back/healed/…) to screen readers as SSE events land (T2.8). -->
+<div class="sr-only" id="a11y-announce" data-testid="a11y-announce" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<div class="theme-notice" id="theme-notice" data-testid="theme-notice" role="status" hidden>
+  <span id="theme-notice-text"></span>
+  <button class="theme-notice-close" id="theme-notice-close" data-testid="theme-notice-close" aria-label="Dismiss">&times;</button>
+</div>
+
+<div class="update-banner" id="update-banner" data-testid="update-banner" role="status" hidden>
+  <span class="update-banner-text">A new version of skipper-cd is available.</span>
+  <button class="update-banner-reload" id="update-banner-reload" data-testid="update-banner-reload">Reload</button>
+  <button class="update-banner-close" id="update-banner-close" data-testid="update-banner-close" aria-label="Dismiss">&times;</button>
+</div>
+
+<div class="drawer" id="hosts-drawer" data-testid="hosts-drawer" role="dialog" aria-modal="true" aria-label="Hosts" tabindex="-1">
+  <div class="drawer-inner">
+    <div class="drawer-title">Hosts</div>
+    <div class="drawer-sub" id="hosts-sub">Filter the merged view by host.</div>
+    <div class="qlist" id="hosts-list"></div>
+    <button class="hosts-all-btn" id="hosts-all-btn" data-testid="hosts-all-btn" type="button">Select all</button>
+  </div>
+</div>
+
+<!-- data-ready flips to "true" with the first `autosync` snapshot. Until then the
+     drawer knows no server state, so its global switch is inert rather than
+     claiming a state it is guessing at (see renderGlobal). -->
+<div class="drawer" id="autosync-drawer" data-testid="autosync-drawer" data-ready="false" role="dialog" aria-modal="true" aria-label="Autosync" tabindex="-1">
+  <div class="drawer-inner">
+    <div class="drawer-title">Autosync</div>
+    <div class="drawer-sub" id="autosync-sub">All stacks in sync.</div>
+
+    <div class="global-row">
+      <div>
+        <div class="gr-label">Global autosync</div>
+        <div class="gr-note" id="autosync-global-note">on · deploys apply automatically</div>
+      </div>
+      <div class="sw lg on" id="autosync-global-sw" data-testid="global-switch" data-taptip role="switch" aria-checked="true" aria-disabled="true" tabindex="0" title="Toggle global autosync"></div>
+    </div>
+
+    <div class="sec-label">Queued <span class="sec-count" id="autosync-qcount"></span> · drains in this order</div>
+    <div class="qlist" id="autosync-queue-list"></div>
+
+    <div class="sec-label">All stacks</div>
+    <div class="stack-filter-wrap" id="autosync-filter-wrap">
+      <svg class="fi" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input class="stack-filter" id="autosync-filter" data-testid="stack-filter" type="text" placeholder="Filter stacks…" autocomplete="off" spellcheck="false" aria-label="Filter stacks">
+      <button class="stack-filter-clear" id="autosync-filter-clear" data-testid="stack-filter-clear" type="button" aria-label="Clear filter">&times;</button>
+    </div>
+    <div class="qlist" id="autosync-stack-list"></div>
+  </div>
+</div>
+
+<div class="drawer" id="run-drawer" data-testid="run-drawer" role="dialog" aria-modal="true" aria-label="This deploy run" tabindex="-1">
+  <div class="drawer-inner">
+    <div class="drawer-title">This deploy run</div>
+    <div class="drawer-sub" id="run-sub">Nothing deploying.</div>
+    <div class="sec-label">In deploy order <span class="sec-count" id="run-count"></span></div>
+    <div class="qlist" id="run-list"></div>
+  </div>
+</div>
+
+<main>
+  <!-- Shown from load until the first snapshot settles (T4.17): a skeleton so
+       "still connecting" never reads as "no deployments". Decorative — the
+       header connection indicator carries the state for assistive tech. -->
+  <div class="deploy-skeleton" id="loading-state" data-testid="loading-state" aria-hidden="true">
+    <div class="sk-status"><span class="sk-spin"></span>Connecting to deployment stream…</div>
+    <div class="sk-row"><span class="sk-bar"></span><span class="sk-bar"></span><span class="sk-bar sk-pill"></span><span class="sk-bar"></span></div>
+    <div class="sk-row"><span class="sk-bar"></span><span class="sk-bar"></span><span class="sk-bar sk-pill"></span><span class="sk-bar"></span></div>
+    <div class="sk-row"><span class="sk-bar"></span><span class="sk-bar"></span><span class="sk-bar sk-pill"></span><span class="sk-bar"></span></div>
+  </div>
+
+  <!-- Genuine-empty (T4.17): shown only once a snapshot confirms zero deploys,
+       so it reads as a fact, not a guess. Hidden until then. -->
+  <div class="empty-state" id="empty-state" data-testid="empty-state" style="display:none">
+    <svg class="empty-icon" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="32" cy="32" r="24"/>
+      <circle cx="32" cy="32" r="4"/>
+      <line x1="32" y1="12" x2="32" y2="20"/>
+      <line x1="32" y1="44" x2="32" y2="52"/>
+      <line x1="12" y1="32" x2="20" y2="32"/>
+      <line x1="44" y1="32" x2="52" y2="32"/>
+    </svg>
+    <p>No deployments yet</p>
+    <p class="empty-sub">Deploys land here as you push.</p>
+  </div>
+
+  <div id="deploy-table" data-testid="deploys-table" style="display:none">
+    <div class="stack-filter-wrap deploy-filter" id="deploy-filter-wrap" data-testid="deploy-filter-wrap">
+      <svg class="fi" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input class="stack-filter" id="deploy-filter" data-testid="deploy-filter" type="text" placeholder="Filter stacks…" autocomplete="off" spellcheck="false" aria-label="Filter deploys by stack">
+      <span class="stack-filter-count" id="deploy-filter-count"></span>
+      <button class="stack-filter-clear" id="deploy-filter-clear" data-testid="deploy-filter-clear" type="button" aria-label="Clear filter">&times;</button>
+    </div>
+    <div class="status-filter" id="deploy-status-filter" data-testid="deploy-status-filter" role="group" aria-label="Filter deploys by status"></div>
+    <div class="host-stale-banner" id="host-stale-banner" data-testid="host-stale-banner" role="status">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.5" r="1.1" fill="currentColor"/><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      <span id="host-stale-text"></span>
+    </div>
+    <div class="attention-band" id="attention-band" data-testid="attention-band" hidden></div>
+    <div class="event-list-header sheet-head">
+      <span>Stack</span>
+      <span>Result</span>
+      <span class="col-version">Change</span>
+      <span>When</span>
+    </div>
+    <div class="event-list sheet-body" id="tbody"></div>
+    <div class="filter-empty" id="deploy-filter-empty" data-testid="deploy-filter-empty">No stack matches &ldquo;<span id="deploy-filter-empty-q"></span>&rdquo;.</div>
+  </div>
+
+  <div class="disabled-stacks" id="disabled-stacks" data-testid="disabled-stacks" title="Parked with disabled: true in the repo skipper.yaml — not deployed, not health-checked.">
+    <span class="dis-label">disabled</span>
+    <span class="dis-list" id="disabled-list" style="display:contents"></span>
+  </div>
+
+  <div id="stacks-view" data-testid="stacks-view">
+    <div class="stack-filter-wrap deploy-filter" id="roster-filter-wrap" data-testid="roster-filter-wrap">
+      <svg class="fi" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input class="stack-filter" id="roster-filter" data-testid="roster-filter" type="text" placeholder="Filter stacks…" autocomplete="off" spellcheck="false" aria-label="Filter stacks by name">
+      <span class="stack-filter-count" id="roster-filter-count" data-testid="roster-filter-count"></span>
+      <button class="stack-filter-clear" id="roster-filter-clear" data-testid="roster-filter-clear" type="button" aria-label="Clear filter">&times;</button>
+    </div>
+    <div class="status-filter" id="roster-update-filter" data-testid="roster-update-filter" role="group" aria-label="Filter stacks by available update"></div>
+    <div class="roster-list-header sheet-head">
+      <span>Stack</span>
+      <span>Health</span>
+      <span class="rh-ver">Version</span>
+      <span>Last deploy</span>
+    </div>
+    <div class="roster-list sheet-body" id="roster-list" data-testid="roster-list"></div>
+    <div class="filter-empty" id="roster-filter-empty" data-testid="roster-filter-empty">No stack matches &ldquo;<span id="roster-filter-empty-q"></span>&rdquo;.</div>
+    <div class="roster-empty" id="roster-empty" data-testid="roster-empty">No stacks to show.</div>
+  </div>
+
+  <div class="orphans" id="orphans" data-testid="orphans">
+    <button class="orphans-head" id="orphans-head" data-testid="orphans-head" data-taptip aria-expanded="false" title="Running compose projects the discovered stack set no longer accounts for.">
+      <span class="orphans-caret" aria-hidden="true">▶</span>
+      <span>Orphans</span>
+      <span class="orphans-count" id="orphans-count" data-testid="orphans-count">0</span>
+    </button>
+    <div class="orphans-body" id="orphans-body"></div>
+  </div>
+
+  <div id="log-view" class="clog-panel" data-testid="logs-panel">
+    <!-- The Logs view has no title bar: the view switch already names it, so the
+         filter row is the panel's only chrome — live/pause on the left, the
+         quick-filter chips in the middle, the pane tools on the right. -->
+    <div class="clog-quick" id="log-quick-bar" data-testid="log-quick-bar" data-taptip>
+      <span class="clog-live" id="logs-live" data-testid="logs-live" role="button" tabindex="0" title="Live — click to pause"><span class="clog-dot"></span><span class="clog-ltxt">live</span></span>
+      <span class="clog-quick-sep"></span>
+      <span class="clog-quick-lbl">show</span>
+      <button class="clog-chip" data-testid="log-sev-ALL" data-sev="ALL" type="button" aria-pressed="true">all</button>
+      <button class="clog-chip" data-testid="log-sev-WARN" data-sev="WARN" type="button" aria-pressed="false">warnings</button>
+      <button class="clog-chip" data-testid="log-sev-ERROR" data-sev="ERROR" type="button" aria-pressed="false">errors</button>
+      <span class="clog-quick-sep"></span>
+      <button class="clog-chip" data-testid="log-kind-deploy" data-kind="deploy" type="button" aria-pressed="false">deploys</button>
+      <button class="clog-chip" data-testid="log-kind-output" data-kind="output" type="button" aria-pressed="false">command output</button>
+      <span class="clog-quick-sep" id="log-stack-sep" hidden></span>
+      <span id="log-stack-chips" data-testid="log-stack-chips"></span>
+      <span class="clog-hits" id="log-quick-count" data-testid="log-quick-count"></span>
+      <span class="clog-tools">
+        <button class="clog-tool" id="log-search-open" data-testid="log-search" type="button" title="Search in log">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="clog-tool" id="log-wrap" data-testid="log-wrap" type="button" title="Wrap long lines">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 18h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 12h13a3 3 0 0 1 0 6h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 15l-3 3 3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="clog-tool on" id="follow-logs" data-testid="follow-logs" type="button" title="Auto-scroll to newest log lines">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="clog-tool" id="log-fs" data-testid="log-fs" type="button" title="Fullscreen">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </span>
+    </div>
+    <div class="clog-search" id="log-filter-wrap" data-testid="log-filter-wrap">
+      <span class="clog-sic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+      <input type="text" id="log-filter" data-testid="log-filter" placeholder="Search in log…" autocomplete="off" spellcheck="false" aria-label="Search in log">
+      <span class="clog-hits" id="log-filter-count" data-testid="log-filter-count"></span>
+    </div>
+    <div class="clog-body" id="log-pane" data-testid="log-pane">
+      <div class="log-empty" id="log-empty">Awaiting log output...</div>
+    </div>
+    <button class="clog-newpill" id="log-newpill" data-testid="log-newpill" type="button" hidden></button>
+    <div class="clog-foot"><span class="clog-stat" id="logs-stat" data-testid="logs-stat">live · streaming</span></div>
+  </div>
+</main>
+
+<!-- Pure, DOM-free helpers, extracted so a node --test unit layer can import
+     them without a build step (ADR-0035). Loaded first, so the app script below
+     calls them as globals by bare name. See internal/ui/static/app-helpers.js. -->
+<script src="/app-helpers.js"></script>
+<!-- Pure HTML-string renderers (commit links, version chips, diff header),
+     extracted so the node --test unit layer can exercise them (ADR-0035
+     amendment). Loaded after app-helpers.js, whose functions they call as
+     globals. See internal/ui/static/app-render.js. -->
+<script src="/app-render.js"></script>
+<!-- The App namespace and the shared snapshot store the views read, plus the
+     per-host resolvers over it (ADR-0035 amendment: the app is cut into plain
+     script files by view, sharing state through one namespace object). Loaded
+     after the pure layers it binds to, before every view file. See
+     internal/ui/static/app-state.js. -->
+<script src="/app-state.js"></script>
+<!-- The app chrome: announcements, the surface registry and focus management,
+     header controls, theme, view switching, badges and beacon, PWA prompt — cut
+     out of the app script (ADR-0035 amendment); attaches itself as App.chrome
+     and is wired by the app's first init call, so every view can register its
+     surfaces with it. See internal/ui/static/app-chrome.js. -->
+<script src="/app-chrome.js"></script>
+<!-- The per-stack detail panels every view opens (diff, files, heal, history,
+     health, hooks, watched) and the row affordances that open them (⋯ menu,
+     app-link popover, icons), cut out of the app script (ADR-0035 amendment);
+     attaches itself as App.panels, before every view that uses it. See
+     internal/ui/static/app-panels.js. -->
+<script src="/app-panels.js"></script>
+<!-- The row detail selection (App.detail): which row of a table view has its
+     detail open and on which pane, re-applied after a view rebuilds its rows.
+     Loaded after app-panels.js, whose shared panes it registers, and before
+     every view. See internal/ui/static/app-detail.js. -->
+<script src="/app-detail.js"></script>
+<!-- The multi-host surface (ADR-0048): peer rows, host chips and colours, the
+     Hosts drawer and filter, the peer detail panel — cut out of the app script
+     (ADR-0035 amendment); attaches itself as App.hosts and is wired by the app's
+     init call. See internal/ui/static/app-hosts.js. -->
+<script src="/app-hosts.js"></script>
+<!-- The Stacks view: roster, peer roster rows, disabled strip, row card and the
+     stack search — cut out of the app script (ADR-0035 amendment); attaches
+     itself as App.roster and is wired by the app's init call. See
+     internal/ui/static/app-roster.js. -->
+<script src="/app-roster.js"></script>
+<!-- The Deploys view: table and rows, run drawer, event ingest, filters and
+     the orphans section — cut out of the app script (ADR-0035 amendment);
+     attaches itself as App.deploys and is wired by the app's init call. See
+     internal/ui/static/app-deploys.js. -->
+<script src="/app-deploys.js"></script>
+<!-- The autosync control and drawer (ADR-0016), cut out of the app script by
+     view (ADR-0035 amendment); attaches itself as App.autosync and is wired by
+     the app's init call. See internal/ui/static/app-autosync.js. -->
+<script src="/app-autosync.js"></script>
+<!-- The Logs view (stream buffer, window, quick filters, follow, inline
+     controls), cut out of the app script by view (ADR-0035 amendment);
+     attaches itself as App.logs and is wired by the app's two init calls.
+     See internal/ui/static/app-logs.js. -->
+<script src="/app-logs.js"></script>
+<!-- The container-logs panel (ADR-0037), the first view file cut out of the app
+     script (ADR-0035 amendment); attaches itself as App.clog. Loaded after
+     app-state.js, before the stream. See internal/ui/static/app-clog.js. -->
+<script src="/app-clog.js"></script>
+<!-- The SSE stream dispatcher and the bootstrap, the last file of the app
+     script cut by view (ADR-0035 amendment); attaches itself as App.stream and
+     runs the ordered init() sequence that starts the app, so it loads last.
+     See internal/ui/static/app-stream.js. -->
+<script src="/app-stream.js"></script>
+</body>
+</html>
