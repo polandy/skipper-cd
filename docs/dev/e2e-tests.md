@@ -2002,6 +2002,26 @@ masked the pane's layout diffs run-to-run. UB2's value — the level-badge mappi
 
   Then review the changed PNGs before committing. (`.pw-bin/` is gitignored.)
 
+### 4.57 UI — Maske BD: day separators and the fold of routine deploys
+
+The Deploys list stays flat; a day separator opens each local day and three or
+more consecutive routine deploys of one stack fold behind one line
+([UI_SPEC](../../internal/ui/UI_SPEC.md#day-separators-and-folding)). Every
+webhook carries a new image tag, so each deploy is a `success` with an image
+change. The pure rules (threshold, breaks, filter-before-fold, midnight) are
+unit-tested in `app-helpers.test.js`. Behaviour-only (no snapshot); the
+separator is masked in the full-page baselines, since its word depends on the
+clock.
+
+- **UBD1 — Fold and unfold.** Six deploys show the newest row plus the
+  `deploy-fold` line (`↻ N more successful deploys of web`, `aria-expanded`
+  false) with the older rows hidden; a click shows them, a second click folds
+  them again.
+- **UBD2 — Day separator.** The rows sit under a `deploy-day` line reading
+  Today (Yesterday only if the run crosses midnight).
+- **UBD3 — Filter before fold.** A name filter that matches nothing leaves no
+  fold line on screen; the empty note is the positive signal that the filter ran.
+
 ### 4.40 UI — Maske AM: A refused autosync write is announced
 
 A failed toggle is invisible in the interface: the switch simply does not move,
@@ -2146,6 +2166,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Stacks roster: aligned inventory table (deployed/disabled rows + column header) | **UR1** |
 | Stacks roster: click a row for its detail panel; one stack at a time | **UR2** |
 | Stack detail panel: default tab per state, head action order, Logs/Hooks from the head, tabs, verdict + facts, close, phone two-column facts, read-only peer panel | **UBC1**–**UBC8** |
+| Deploys list: day separators, fold of routine deploys, filter before fold | **UBD1**–**UBD3** |
 | Stacks roster: search (type-to-reveal, filter, empty note, Esc fold) | **UR3** |
 | Stacks roster: mobile popover search entry | **UR4** |
 | Stacks roster: shared time-mode toggle (relative → absolute) | **UR5** |

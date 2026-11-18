@@ -8,6 +8,7 @@ import { visualSnapshot } from '../fixtures/snapshot';
 const deployMasks = (page: import('@playwright/test').Page) => [
   page.locator('[data-testid="time-cell"]'),
   page.locator('[data-testid="duration-cell"]'),
+  page.locator('[data-testid="deploy-day"]'),
 ];
 
 // UA1 — Row lifecycle. A stack that deploys (held in `deploying`, then released
