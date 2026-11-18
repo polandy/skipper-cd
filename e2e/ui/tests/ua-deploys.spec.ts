@@ -569,3 +569,38 @@ test.describe('UA13: deploy detail tabs by keyboard', () => {
     await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
   });
 });
+
+// UA14 — a deploy row opens by keyboard: its stack name is the row's toggle
+// (Enter opens, aria-expanded follows), Escape from inside the detail closes it
+// and hands the focus back to the toggle.
+test.describe('UA14: deploy row detail by keyboard', () => {
+  test.use({
+    startOptions: { stacks: ['web'], stubEnv: { STUB_DOCKER_FAIL_ON: 'up' }, readiness: 'listening' },
+  });
+
+  test('Enter opens the deploy detail and Escape closes it', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    const row = page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="failed"]');
+    const toggle = row.locator('.row-toggle');
+    const p = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
+    await expect(toggle).toHaveAttribute('role', 'button');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(p).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    await p.locator('[data-testid="detail-tab"]').first().focus();
+    await page.keyboard.press('Escape');
+    await expect(p).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(p).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(p).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+});

@@ -567,6 +567,11 @@ function tableRowHTML(kind, m) {
   return kind === ROW_KIND.roster ? rosterRowCellsHTML(m) : deployRowCellsHTML(m);
 }
 
+// ROW_TOGGLE_ATTRS make a row's stack name the keyboard way into its detail
+// (the row itself holds other controls, so it cannot be the button); App.detail
+// keeps aria-expanded in step.
+const ROW_TOGGLE_ATTRS = ' role="button" tabindex="0" aria-expanded="false"';
+
 function stackIconHTML() {
   return '<span class="stack-icon" data-testid="stack-icon"></span>';
 }
@@ -578,7 +583,7 @@ function deployRowCellsHTML(m) {
     ? `<span class="cell-cause" data-testid="cause-line" title="${escapeAttr(m.cause)}">${escapeHtml(m.cause)}</span>`
     : '';
   return (
-    `<span class="cell-who"><span class="cell-stack">${m.host}${stackIconHTML()}<span class="stack-name">${escapeHtml(m.stack)}</span></span>${cause}</span>` +
+    `<span class="cell-who"><span class="cell-stack">${m.host}${stackIconHTML()}<span class="stack-name row-toggle"${ROW_TOGGLE_ATTRS}>${escapeHtml(m.stack)}</span></span>${cause}</span>` +
     `<span class="status-cell">${m.state}</span>` +
     `<span class="col-version">${m.version}</span>` +
     deployWhenHTML(m)
@@ -606,7 +611,7 @@ function deployWhenHTML(m) {
 function rosterRowCellsHTML(m) {
   const t = timeLabelPair(m.lastAt, m.absolute);
   return (
-    `<span class="roster-stack"><span class="roster-ident">${m.host}${stackIconHTML()}<span class="roster-name" title="${escapeAttr(m.stack)}">${escapeHtml(m.stack)}</span></span></span>` +
+    `<span class="roster-stack"><span class="roster-ident">${m.host}${stackIconHTML()}<span class="roster-name row-toggle" title="${escapeAttr(m.stack)}"${ROW_TOGGLE_ATTRS}>${escapeHtml(m.stack)}</span></span></span>` +
     `<span class="roster-health" data-testid="roster-health">${m.health}</span>` +
     m.version +
     `<span class="roster-last"><span class="roster-status">${m.state}</span>` +

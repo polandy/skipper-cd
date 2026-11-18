@@ -325,6 +325,11 @@ UI suite reuses.
   follows the ARIA tabs pattern like UBC9: End selects and focuses the last tab
   and the `tabpanel` is `aria-labelledby` it; ArrowRight wraps to the first.
   Verified to fail without the deploy panel's keydown handler.
+- **UA14 — Deploy row by keyboard.** A failed row's `.row-toggle` (its stack
+  name, `role=button`) opens the deploy detail on Enter and flips
+  `aria-expanded`; Escape from a detail tab closes it, resets `aria-expanded`
+  and returns the focus to the toggle; reopened, Escape on the toggle itself
+  closes it too.
 
 ### 4.3 UI — Maske B: Logs-View
 
@@ -1945,6 +1950,10 @@ peer cases take their own. Behaviour-only (no snapshot).
 - **UBC10 — The Hooks pane is named.** With the head's Hooks pane open no tab is
   selected, so the pane carries `aria-label="Hooks"` and the first tab stays the
   strip's one Tab stop.
+- **UBC11 — A row by keyboard.** Space on `api`'s `.row-toggle` opens its
+  panel and sets `aria-expanded=true`; Escape from a tab closes it, resets
+  `aria-expanded` and focuses the toggle; Enter reopens it and the close button
+  (pressed by keyboard) hands the focus back to the toggle as well.
 
 ## 5. Visual snapshot strategy
 
@@ -2137,6 +2146,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Error detail panel | **UA9** |
 | Empty state | **UA10** |
 | Deploy detail tabs by keyboard | **UA13** |
+| Deploy row detail by keyboard (Enter opens, Escape closes) | **UA14** |
 | View toggle deploys/logs + persistence | **UB1** |
 | Log lines + level badges | **UB2** |
 | Sort toggle + persistence | **UB3** |
@@ -2179,7 +2189,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Deploys search: mobile popover entry (desktop-hidden) | **UG3** |
 | Stacks roster: aligned inventory table (deployed/disabled rows + column header) | **UR1** |
 | Stacks roster: click a row for its detail panel; one stack at a time | **UR2** |
-| Stack detail panel: default tab per state, head action order, Logs/Hooks from the head, tabs, verdict + facts, close, phone two-column facts, read-only peer panel, ARIA tabs pattern | **UBC1**–**UBC10** |
+| Stack detail panel: default tab per state, head action order, Logs/Hooks from the head, tabs, verdict + facts, close, phone two-column facts, read-only peer panel, ARIA tabs pattern, row by keyboard | **UBC1**–**UBC11** |
 | Deploys list: day separators, fold of routine deploys, filter before fold | **UBD1**–**UBD3** |
 | Stacks roster: search (type-to-reveal, filter, empty note, Esc fold) | **UR3** |
 | Stacks roster: mobile popover search entry | **UR4** |

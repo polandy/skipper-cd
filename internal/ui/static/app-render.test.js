@@ -1676,7 +1676,7 @@ test('tableRowHTML renders a deploy row: stack, result, change, when', () => {
   });
   assert.equal(
     html,
-    '<span class="cell-who"><span class="cell-stack"><HOST><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">a&lt;b</span></span></span>' +
+    '<span class="cell-who"><span class="cell-stack"><HOST><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name row-toggle" role="button" tabindex="0" aria-expanded="false">a&lt;b</span></span></span>' +
       '<span class="status-cell"><STATE></span>' +
       '<span class="col-version"><VER></span>' +
       '<span class="cell-when">' +
@@ -1707,7 +1707,7 @@ test('tableRowHTML puts a deploy row cause on one titled line under the name', (
   });
   assert.match(
     html,
-    /<span class="stack-name">web<\/span><\/span><span class="cell-cause" data-testid="cause-line" title="up failed: &lt;port&gt; in use">up failed: &lt;port&gt; in use<\/span><\/span>/,
+    /<span class="stack-name row-toggle" role="button" tabindex="0" aria-expanded="false">web<\/span><\/span><span class="cell-cause" data-testid="cause-line" title="up failed: &lt;port&gt; in use">up failed: &lt;port&gt; in use<\/span><\/span>/,
   );
   assert.match(html, /<span class="cell-duration" data-testid="duration-cell"><\/span>/);
   assert.doesNotMatch(html, /cell-sha/);
@@ -1744,7 +1744,7 @@ test('tableRowHTML renders a roster row: identity, health, version, last deploy 
   });
   assert.equal(
     html,
-    '<span class="roster-stack"><span class="roster-ident"><HOST><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name" title="web">web</span></span></span>' +
+    '<span class="roster-stack"><span class="roster-ident"><HOST><span class="stack-icon" data-testid="stack-icon"></span><span class="roster-name row-toggle" title="web" role="button" tabindex="0" aria-expanded="false">web</span></span></span>' +
       '<span class="roster-health" data-testid="roster-health"><HEALTH></span>' +
       '<VERCELL>' +
       '<span class="roster-last"><span class="roster-status"><STATE></span>' +
@@ -1768,6 +1768,16 @@ test('tableRowHTML leaves a roster row with no past deploy untitled and its cell
   });
   assert.match(html, /<span class="roster-when"><\/span>/);
   assert.match(html, /<span class="roster-health" data-testid="roster-health"><\/span>/);
+});
+
+test('tableRowHTML makes the stack name the one keyboard toggle of either row kind', () => {
+  for (const kind of [r.ROW_KIND.deploy, r.ROW_KIND.roster]) {
+    const html = r.tableRowHTML(kind, { host: '', stack: 'web', ts: '', lastAt: '', commit: '' });
+    const toggles = [...html.matchAll(/class="[^"]*\brow-toggle\b[^"]*"[^>]*>([^<]*)</g)];
+    assert.equal(toggles.length, 1, kind);
+    assert.equal(toggles[0][1], 'web', kind);
+    assert.match(toggles[0][0], /role="button" tabindex="0" aria-expanded="false"/, kind);
+  }
 });
 
 // ── Stacks detail panel (docs/dev/ui-redesign-plan.md §3.2) ──

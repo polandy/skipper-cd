@@ -536,6 +536,9 @@ App.roster = (function () {
   // everything the view ran at load.
   function init() {
     rosterList.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
+    rosterList.addEventListener('keydown', function (e) {
+      detail.rowKeydown(VIEW, e);
+    });
 
     rosterList.addEventListener('click', function (e) {
       if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
