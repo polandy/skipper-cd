@@ -1139,7 +1139,8 @@ The keyboard/AT-facing guarantees the a11y sweep added (see UI_SPEC.md
 "Accessibility"). Behaviour-only — the contrast retune (T2.5) and the
 transparent touch-target overlays (T2.9) have no behavioural surface, so they
 carry no assertion here (contrast is verified by construction against WCAG, the
-overlays leave the rendered pixels unchanged).
+overlays leave the rendered pixels unchanged); the 44px touch-screen targets do
+(UAA7).
 
 - **UAA1 — Keyboard focus ring.** The first keyboard `Tab` lands on a header
   control that must show a non-`none` outline with a positive width — the
@@ -1163,6 +1164,12 @@ overlays leave the rendered pixels unchanged).
 - **UAA5 — Host-mono chip keyboard (multi-host).** The per-row identity chip is a
   `role="button"` quick filter; `Enter` on a focused chip isolates the view to
   that host, like a click.
+- **UAA6 — Drawer close button.** The autosync drawer's `drawer-close` is named
+  `Close`; opening still focuses `global-switch` (not the close button), and
+  `Enter` on the close button closes the drawer and returns focus to `autosync-btn`.
+- **UAA7 — Touch targets.** Under `hasTouch` (so `pointer: coarse` matches — the
+  test asserts it), every `.dp-act` and `.dp-tab` of an open deploy detail and the
+  drawer close button measure at least 44px.
 
 ### 4.29 UI — Maske AB: Always-visible search trigger (T3.11)
 
@@ -2226,6 +2233,8 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Strict CSP: security headers on the shell, no violation across the views, an injected inline script is refused | **UBB1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: right-hand cells share one edge (both views), the version keeps its width beside the last deploy, version chip never split; a live row's entrance never replays | **UAS1**, **UAS2**, **UAS3**, **UAS4**, **UAS5** |
+| Drawers carry a named × close button; opening still focuses the first real control | **UAA6** |
+| Touch screens: detail actions/tabs and the drawer close are 44px targets | **UAA7** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |

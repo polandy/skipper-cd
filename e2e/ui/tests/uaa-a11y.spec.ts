@@ -9,7 +9,7 @@ import type { Page } from '@playwright/test';
 // host-row / host-mono keyboard operability + selection semantics (T2.10).
 // Behaviour-only (no snapshot). The contrast retune (T2.5) and the touch-target
 // overlays (T2.9) are pure CSS with no behavioural surface, so they are not
-// asserted here.
+// asserted here; the measurable 44px touch targets (UAA7) are.
 
 const autosyncBtn = (page: Page) => page.locator('[data-testid="autosync-btn"]');
 const autosyncDrawer = (page: Page) => page.locator('[data-testid="autosync-drawer"]');
@@ -96,6 +96,58 @@ test('UAA3: terminal deploy outcomes are announced live, not from history', asyn
   expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
 
   await expect(announce(page)).toHaveText('web deployed successfully');
+});
+
+// UAA6 — Drawer close button (UX-7). Each drawer names a visible close button,
+// so touch and screen-reader users have a target besides Escape/backdrop. Open
+// focus still lands on the first real control, and closing returns it.
+test('UAA6: a drawer closes from its close button and returns focus', async ({ page, skipper }) => {
+  await page.goto(`${skipper.baseURL}/`);
+  const close = autosyncDrawer(page).locator('[data-testid="drawer-close"]');
+  await expect(close).toHaveAttribute('aria-label', 'Close');
+
+  await autosyncBtn(page).focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => activeTestId(page)).toBe('global-switch');
+
+  await close.focus();
+  await page.keyboard.press('Enter');
+  await expect(autosyncDrawer(page)).toBeHidden();
+  await expect.poll(() => activeTestId(page)).toBe('autosync-btn');
+});
+
+// UAA7 — Touch targets (UX-6). On a touch screen the deploy detail's actions
+// and tabs and the drawer close button are full 44px targets.
+test.describe('UAA7: touch targets', () => {
+  test.use({ hasTouch: true });
+
+  const heights = (page: Page, sel: string) =>
+    page.locator(sel).evaluateAll((els) =>
+      els.map((e) => Math.round(e.getBoundingClientRect().height)),
+    );
+
+  test('UAA7: detail actions, tabs and the drawer close are 44px tall', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+
+    await page.locator('[data-testid="deploy-row"][data-stack="web"] .row-toggle').click();
+    const panel = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
+    await expect(panel.locator('.dp-act').first()).toBeVisible();
+    for (const h of await heights(page, '[data-testid="detail-panel"] .dp-act'))
+      expect(h).toBeGreaterThanOrEqual(44);
+    for (const h of await heights(page, '[data-testid="detail-panel"] .dp-tab'))
+      expect(h).toBeGreaterThanOrEqual(44);
+
+    await autosyncBtn(page).click();
+    const close = autosyncDrawer(page).locator('[data-testid="drawer-close"]');
+    await expect(close).toBeVisible();
+    const box = await close.boundingBox();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  });
 });
 
 // --- Multi-host host operability (T2.10) ---------------------------------
