@@ -2127,15 +2127,23 @@ test('deployPaneHTML: drift lists the drifted containers', () => {
 
 test('deployOutputHTML clamps beyond six lines with a Show all toggle', () => {
   const short = r.deployOutputHTML('one\ntwo', false);
-  assert.match(short, /<pre class="dp-output" data-testid="deploy-output">one\ntwo<\/pre>/);
+  assert.match(
+    short,
+    /<pre class="dp-output" id="deploy-detail-output" data-testid="deploy-output">one\ntwo<\/pre>/,
+  );
   assert.doesNotMatch(short, /output-more/);
   const long = 'l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8';
   const clamped = r.deployOutputHTML(long, false);
   assert.match(clamped, /class="dp-output clamped"/);
   assert.match(clamped, /data-action="output-more"[^>]*>Show all 8 lines</);
+  assert.match(clamped, /<pre class="dp-output clamped" id="deploy-detail-output"/);
+  assert.match(
+    clamped,
+    /data-action="output-more" aria-expanded="false" aria-controls="deploy-detail-output"/,
+  );
   const open = r.deployOutputHTML(long, true);
   assert.doesNotMatch(open, /clamped/);
-  assert.match(open, />Show less</);
+  assert.match(open, /aria-expanded="true"[^>]*>Show less</);
   assert.doesNotMatch(r.deployOutputHTML('<img src=x>', false), /<img/);
 });
 

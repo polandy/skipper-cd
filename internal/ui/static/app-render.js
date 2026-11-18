@@ -1764,10 +1764,11 @@ function deployOutputHTML(error, expanded) {
   const n = String(error || '').split('\n').length;
   const long = n > DEPLOY_OUTPUT_LINES;
   const cls = long && !expanded ? 'dp-output clamped' : 'dp-output';
+  const id = DEPLOY_DETAIL_ID + '-output';
   const toggle = long
-    ? `<button type="button" class="dp-more-btn" data-action="output-more">${expanded ? 'Show less' : 'Show all ' + n + ' lines'}</button>`
+    ? `<button type="button" class="dp-more-btn" data-action="output-more" aria-expanded="${!!expanded}" aria-controls="${id}">${expanded ? 'Show less' : 'Show all ' + n + ' lines'}</button>`
     : '';
-  return `<pre class="${cls}" data-testid="deploy-output">${escapeHtml(error)}</pre>${toggle}`;
+  return `<pre class="${cls}" id="${id}" data-testid="deploy-output">${escapeHtml(error)}</pre>${toggle}`;
 }
 
 // driftListHTML lists the containers a self-heal found drifted.

@@ -1139,7 +1139,8 @@ The keyboard/AT-facing guarantees the a11y sweep added (see UI_SPEC.md
 "Accessibility"). Behaviour-only — the contrast retune (T2.5) and the
 transparent touch-target overlays (T2.9) have no behavioural surface, so they
 carry no assertion here (contrast is verified by construction against WCAG, the
-overlays leave the rendered pixels unchanged).
+overlays leave the rendered pixels unchanged); the 44px touch-screen targets do
+(UAA7).
 
 - **UAA1 — Keyboard focus ring.** The first keyboard `Tab` lands on a header
   control that must show a non-`none` outline with a positive width — the
@@ -1163,6 +1164,12 @@ overlays leave the rendered pixels unchanged).
 - **UAA5 — Host-mono chip keyboard (multi-host).** The per-row identity chip is a
   `role="button"` quick filter; `Enter` on a focused chip isolates the view to
   that host, like a click.
+- **UAA6 — Drawer close button.** The autosync drawer's `drawer-close` is named
+  `Close`; opening still focuses `global-switch` (not the close button), and
+  `Enter` on the close button closes the drawer and returns focus to `autosync-btn`.
+- **UAA7 — Touch targets.** Under `hasTouch` (so `pointer: coarse` matches — the
+  test asserts it), every `.dp-act` and `.dp-tab` of an open deploy detail and the
+  drawer close button measure at least 44px.
 
 ### 4.29 UI — Maske AB: Always-visible search trigger (T3.11)
 

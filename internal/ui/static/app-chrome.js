@@ -108,6 +108,8 @@ App.chrome = (function () {
   // plus its trigger) whose clicks are internal and must not dismiss it.
   function registerSurface(opts) {
     surfaces.add({ surface: opts.surface, isOpen: opts.isOpen, close: opts.close });
+    const closeBtn = opts.surface.querySelector('.drawer-close');
+    if (closeBtn) closeBtn.addEventListener('click', opts.close);
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') opts.close();
     });
@@ -180,7 +182,11 @@ App.chrome = (function () {
       (function settle() {
         if (!surface.classList.contains('open')) return; // toggled off already
         if (focusRestsInside(surface)) return; // observer moved focus in — don't override
-        const target = focusablesIn(surface)[0] || surface;
+        // The close button is not what the viewer opened the surface for.
+        const target =
+          focusablesIn(surface).filter(function (n) {
+            return !n.classList.contains('drawer-close');
+          })[0] || surface;
         // preventScroll: the surface is mid-open, so its scroll box is still a
         // sliver — a scroll-into-view here leaves the drawer parked past its own
         // first rows, with the control the viewer came for cut off at the top.

@@ -209,7 +209,10 @@
 
 <div class="drawer" id="hosts-drawer" data-testid="hosts-drawer" role="dialog" aria-modal="true" aria-label="Hosts" tabindex="-1">
   <div class="drawer-inner">
-    <div class="drawer-title">Hosts</div>
+    <div class="drawer-head">
+      <div class="drawer-title">Hosts</div>
+      <button class="drawer-close" data-testid="drawer-close" type="button" aria-label="Close">&times;</button>
+    </div>
     <div class="drawer-sub" id="hosts-sub">Filter the merged view by host.</div>
     <div class="qlist" id="hosts-list"></div>
     <button class="hosts-all-btn" id="hosts-all-btn" data-testid="hosts-all-btn" type="button">Select all</button>
@@ -221,7 +224,10 @@
      claiming a state it is guessing at (see renderGlobal). -->
 <div class="drawer" id="autosync-drawer" data-testid="autosync-drawer" data-ready="false" role="dialog" aria-modal="true" aria-label="Autosync" tabindex="-1">
   <div class="drawer-inner">
-    <div class="drawer-title">Autosync</div>
+    <div class="drawer-head">
+      <div class="drawer-title">Autosync</div>
+      <button class="drawer-close" data-testid="drawer-close" type="button" aria-label="Close">&times;</button>
+    </div>
     <div class="drawer-sub" id="autosync-sub">All stacks in sync.</div>
 
     <div class="global-row">
@@ -247,7 +253,10 @@
 
 <div class="drawer" id="run-drawer" data-testid="run-drawer" role="dialog" aria-modal="true" aria-label="This deploy run" tabindex="-1">
   <div class="drawer-inner">
-    <div class="drawer-title">This deploy run</div>
+    <div class="drawer-head">
+      <div class="drawer-title">This deploy run</div>
+      <button class="drawer-close" data-testid="drawer-close" type="button" aria-label="Close">&times;</button>
+    </div>
     <div class="drawer-sub" id="run-sub">Nothing deploying.</div>
     <div class="sec-label">In deploy order <span class="sec-count" id="run-count"></span></div>
     <div class="qlist" id="run-list"></div>

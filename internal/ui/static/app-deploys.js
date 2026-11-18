@@ -1226,6 +1226,7 @@ App.deploys = (function () {
         if (e.target.closest('[data-action="output-more"]')) {
           d.expanded = !d.expanded;
           render();
+          panel.querySelector('[data-action="output-more"]').focus();
         }
       });
       panel.addEventListener('keydown', function (e) {
