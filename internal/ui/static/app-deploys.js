@@ -586,7 +586,7 @@ App.deploys = (function () {
     return cell ? cell.dataset.ts : '';
   }
 
-  function foldLineHTML(run, rows, nowMs) {
+  function foldLineInfo(run, rows, nowMs) {
     const lead = rows[run.lead];
     const oldest = rows[run.members[run.members.length - 1]];
     const label = deployFoldLabel(
@@ -626,7 +626,7 @@ App.deploys = (function () {
     });
     const runs = foldDeployRows(rows, expandedFolds);
     runs.forEach(function (run) {
-      const info = foldLineHTML(run, rows, nowMs);
+      const info = foldLineInfo(run, rows, nowMs);
       const line = document.createElement('button');
       line.type = 'button';
       line.className = 'fold-row';
