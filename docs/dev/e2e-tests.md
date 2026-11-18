@@ -321,6 +321,10 @@ UI suite reuses.
   detail: `detail-verdict` (`Failed at docker compose up`) comes before
   `detail-facts`, and the Output tab's `deploy-output` carries the error.
 - **UA10 — Empty state.** A fresh UI with no events shows `empty-state`.
+- **UA13 — Deploy detail tabs by keyboard.** A failed row's deploy detail
+  follows the ARIA tabs pattern like UBC9: End selects and focuses the last tab
+  and the `tabpanel` is `aria-labelledby` it; ArrowRight wraps to the first.
+  Verified to fail without the deploy panel's keydown handler.
 
 ### 4.3 UI — Maske B: Logs-View
 
@@ -2132,6 +2136,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Diff panel fetch + colouring | **UA8** |
 | Error detail panel | **UA9** |
 | Empty state | **UA10** |
+| Deploy detail tabs by keyboard | **UA13** |
 | View toggle deploys/logs + persistence | **UB1** |
 | Log lines + level badges | **UB2** |
 | Sort toggle + persistence | **UB3** |
