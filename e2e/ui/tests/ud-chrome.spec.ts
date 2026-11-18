@@ -209,6 +209,20 @@ test.describe('UD13: light/dark follows the OS until a choice is saved', () => {
   test('an unsaved choice follows the OS, a saved one wins', async ({ page, skipper }) => {
     const isLight = () => page.evaluate(() => document.documentElement.classList.contains('light'));
     const themeToggle = page.locator('[data-testid="theme-toggle"]');
+    // Resolves once a listener registered after the app's has seen the flip, so the app has too.
+    const flipOS = async (scheme: 'light' | 'dark') => {
+      const seen = page.evaluate(
+        (s) =>
+          new Promise<void>((resolve) => {
+            window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => resolve(), { once: true });
+            document.documentElement.dataset.osProbe = s;
+          }),
+        scheme,
+      );
+      await expect(page.locator('html')).toHaveAttribute('data-os-probe', scheme);
+      await page.emulateMedia({ colorScheme: scheme });
+      await seen;
+    };
 
     await page.goto(`${skipper.baseURL}/`);
     expect(await isLight()).toBe(true);
@@ -221,8 +235,9 @@ test.describe('UD13: light/dark follows the OS until a choice is saved', () => {
     // Saving light pins it: the OS flipping to dark no longer applies.
     await themeToggle.click();
     expect(await page.evaluate(() => localStorage.getItem('colorScheme'))).toBe('light');
-    await page.emulateMedia({ colorScheme: 'light' });
-    await page.emulateMedia({ colorScheme: 'dark' });
+    await flipOS('light');
+    await flipOS('dark');
+    expect(await isLight()).toBe(true);
     await page.reload();
     expect(await isLight()).toBe(true);
   });
