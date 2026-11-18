@@ -2652,3 +2652,21 @@ test('deployDayLabel names Today, Yesterday, then the date, in local time across
   assert.equal(h.deployDayLabel(new Date(2025, 11, 31, 10, 0).toISOString(), now), '31 Dec 2025');
   assert.notEqual(h.deployDayKey(at(17, 23, 59)), h.deployDayKey(at(18, 0, 1)));
 });
+
+test('retryRefusalText names why a retry was refused, the server reason first', () => {
+  const plain = 'text/plain; charset=utf-8';
+  assert.equal(
+    h.retryRefusalText(409, plain, 'stack web has no held change to retry\n'),
+    'Retry refused: stack web has no held change to retry.',
+  );
+  assert.equal(h.retryRefusalText(403, plain, '  '), 'Retry refused (HTTP 403).');
+  assert.equal(
+    h.retryRefusalText(502, 'text/html', '<html><body>Bad Gateway</body></html>'),
+    'Retry refused (HTTP 502).',
+    'an HTML error page is not a reason',
+  );
+  assert.equal(
+    h.retryRefusalText(0, '', ''),
+    "Retry didn't reach the server. Check the connection and try again.",
+  );
+});

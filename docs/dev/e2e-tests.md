@@ -1855,10 +1855,11 @@ Behaviour-only (no snapshot).
   detail panel's verdict line. A click deploys the change once more. The next
   roster snapshot drops both, the badge reads `success`, and the Deploys view
   gains a second success row.
-- **UAZ2 — A refused retry hands the button back.** With the POST intercepted
-  as `409`, the click is announced (`retry: refused for web … 409`). That
-  console line is the positive signal the assertions rest on: the button is
-  enabled again and reads `Retry once`, and the chip stays. The intent note
+- **UAZ2 — A refused retry shows why and hands the button back.** With the
+  POST intercepted as `409`, the click is announced (`retry: refused for web …
+  409`). That console line is the positive signal the assertions rest on: the
+  button is enabled again and reads `Retry once`, the line's `retry-msg`
+  (`role="status"`) reads the server's reason, and the chip stays. The intent note
   `retry: requesting web` proves the click reached the handler.
 
 ### 4.54 UI — Maske BA: a change that failed before it started backs off, then is held (ADR-0064)
@@ -2186,7 +2187,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | One open header pop-out at a time (drawers ↔ beacon/view-options popovers) | **UAW1**–**UAW3** |
 | Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
 | project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |
-| Held change: the Stacks chip explains the hold, the detail panel's retry deploys it once more, a refused retry hands the button back | **UAZ1**, **UAZ2** |
+| Held change: the Stacks chip explains the hold, the detail panel's retry deploys it once more, a refused retry shows why and hands the button back | **UAZ1**, **UAZ2** |
 | Live deploy event on a roster row: the open detail panel keeps its outcome strip and last-incident line while deploying | **UAQ7** |
 | A change that failed before it started: the Stacks chip reads `backoff` with its attempts and next try, and `held` after the third failure | **UBA1** |
 | Strict CSP: security headers on the shell, no violation across the views, an injected inline script is refused | **UBB1** |

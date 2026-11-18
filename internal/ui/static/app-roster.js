@@ -462,26 +462,39 @@ App.roster = (function () {
 
   // retryHeld asks the server to deploy a held stack's change once more. The
   // button disables itself until the next roster snapshot rebuilds the panel: the run
-  // it starts either clears the hold or records it again. A refusal is
-  // announced as a UI note and the button re-enabled, so a dead click is never
-  // mistaken for a pending one.
+  // it starts either clears the hold or records it again. A refusal is shown in
+  // the line's retry-msg (and left as a UI note) and the button re-enabled, so a
+  // dead click is never mistaken for a pending one.
   const RETRY_LABEL = 'Retry once';
   function retryHeld(btn) {
     const stack = btn.dataset.retryStack;
+    const line = btn.closest('.dp-v');
+    const msg = line && line.querySelector('[data-testid="retry-msg"]');
+    function refused(text) {
+      if (msg) msg.textContent = text;
+      btn.disabled = false;
+      btn.textContent = RETRY_LABEL;
+    }
     App.chrome.uiNote('debug', 'retry: requesting', stack);
+    if (msg) msg.textContent = '';
     btn.disabled = true;
     btn.textContent = 'retrying…';
     fetch('/api/stacks/' + encodeURIComponent(stack) + '/retry', { method: 'POST' })
       .then(function (r) {
         if (r.ok) return;
         App.chrome.uiNote('warn', 'retry: refused for', stack, '— HTTP', r.status);
-        btn.disabled = false;
-        btn.textContent = RETRY_LABEL;
+        return r
+          .text()
+          .catch(function () {
+            return '';
+          })
+          .then(function (body) {
+            refused(retryRefusalText(r.status, r.headers.get('Content-Type'), body));
+          });
       })
       .catch(function (err) {
         App.chrome.uiNote('warn', 'retry: request for', stack, 'did not reach the server —', err);
-        btn.disabled = false;
-        btn.textContent = RETRY_LABEL;
+        refused(retryRefusalText(0, '', ''));
       });
   }
 

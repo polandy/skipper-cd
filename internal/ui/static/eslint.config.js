@@ -187,6 +187,7 @@ module.exports = [
         stackFactsHTML: 'readonly',
         stackTabs: 'readonly',
         stackVerdict: 'readonly',
+        retryRefusalText: 'readonly',
         tabsHTML: 'readonly',
         verdictHTML: 'readonly',
         rosterVersionCellHTML: 'readonly',

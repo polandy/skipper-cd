@@ -25,6 +25,10 @@ const retryBtn = (page: Page) =>
   page.locator(
     '[data-testid="detail-panel"][data-stack="web"] [data-testid="retry-btn"]',
   );
+const retryMsg = (page: Page) =>
+  page.locator(
+    '[data-testid="detail-panel"][data-stack="web"] [data-testid="retry-msg"]',
+  );
 
 // Drives the rollback and opens the Stacks view on the held row.
 async function holdAChange(
@@ -78,10 +82,10 @@ test.describe("Maske AZ: held change", () => {
     await expect(deployRow(page, "success")).toHaveCount(2);
   });
 
-  // UAZ2 — a refused retry is announced and hands the button back, so a dead
+  // UAZ2 — a refused retry shows its reason and hands the button back, so a dead
   // click is never mistaken for a pending one. The announcement is the signal
   // the enabled-again assertion is checked against.
-  test("UAZ2: a refused retry re-enables the button and leaves a note", async ({
+  test("UAZ2: a refused retry shows why and re-enables the button", async ({
     page,
     skipper,
   }) => {
@@ -90,6 +94,7 @@ test.describe("Maske AZ: held change", () => {
     await page.route("**/api/stacks/web/retry", (route) =>
       route.fulfill({
         status: 409,
+        contentType: "text/plain; charset=utf-8",
         body: "stack web has no held change to retry",
       }),
     );
@@ -102,6 +107,10 @@ test.describe("Maske AZ: held change", () => {
 
     await expect(retryBtn(page)).toBeEnabled();
     await expect(retryBtn(page)).toHaveText("Retry once");
+    await expect(retryMsg(page)).toHaveText(
+      "Retry refused: stack web has no held change to retry.",
+    );
+    await expect(retryMsg(page)).toHaveAttribute("role", "status");
     await expect(heldChip(page)).toBeVisible();
     const notes = (
       await page.evaluate(

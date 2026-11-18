@@ -1538,15 +1538,18 @@ const VERDICT_GLYPH = Object.freeze({
 
 // verdictHTML renders the verdict lines (stackVerdict, app-helpers.js) with
 // their one action each: Retry once on a held change — only with
-// opts.canRetry, since a peer's panel is read-only — and Logs of the service
+// opts.canRetry, since a peer's panel is read-only, and with an empty live
+// region (retry-msg) that names a refusal — and Logs of the service
 // an unhealthy line names (through opts.logHost for a peer).
 function verdictHTML(lines, stack, opts) {
   const o = opts || {};
   const body = lines
     .map(function (l) {
       let action = '';
+      let msg = '';
       if (l.action && l.action.kind === 'retry' && o.canRetry) {
         action = `<button type="button" class="retry-btn" data-testid="retry-btn" data-retry-stack="${escapeAttr(stack)}">Retry once</button>`;
+        msg = '<div class="dp-v-msg" role="status" data-testid="retry-msg"></div>';
       } else if (l.action && l.action.kind === 'logs') {
         const host = o.logHost ? ` data-clog-host="${escapeAttr(o.logHost)}"` : '';
         action = detailActionHTML(
@@ -1562,7 +1565,7 @@ function verdictHTML(lines, stack, opts) {
       return (
         `<div class="dp-v" data-tone="${escapeAttr(l.tone)}" data-kind="${escapeAttr(l.kind)}">` +
         `<span class="dp-v-ico" aria-hidden="true">${VERDICT_GLYPH[l.tone] || ''}</span>` +
-        `<div class="dp-v-body"><div class="dp-v-text">${head}${escapeHtml(l.text || '')}</div>${sub}</div>` +
+        `<div class="dp-v-body"><div class="dp-v-text">${head}${escapeHtml(l.text || '')}</div>${sub}${msg}</div>` +
         action +
         '</div>'
       );

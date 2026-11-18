@@ -1849,6 +1849,11 @@ test('verdictHTML renders one toned line per verdict, with its action', () => {
   );
   assert.match(html, /<div class="dp-v-sub">A new push releases it\.<\/div>/);
   assert.match(html, /data-testid="retry-btn" data-retry-stack="web">Retry once<\/button>/);
+  assert.match(
+    html,
+    /<div class="dp-v-msg" role="status" data-testid="retry-msg"><\/div><\/div><button[^>]*retry-btn/,
+    'the retry line carries an empty live region for a refusal',
+  );
   assert.match(html, /data-tone="danger" data-kind="unhealthy"/);
   assert.match(
     html,
@@ -1863,6 +1868,7 @@ test('verdictHTML drops the retry action on a read-only (peer) panel', () => {
     { canRetry: false },
   );
   assert.doesNotMatch(html, /retry-btn/);
+  assert.doesNotMatch(html, /retry-msg/);
 });
 
 test('verdictHTML escapes head, text and sub', () => {
