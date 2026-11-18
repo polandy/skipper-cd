@@ -6,9 +6,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
@@ -50,6 +53,24 @@ func TestHandler_RejectsOversizedBody(t *testing.T) {
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("expected 413, got %d", rec.Code)
 	}
+}
+
+func TestHandler_RejectsBodyReadFailure(t *testing.T) {
+	// A body read failure that is not a size limit is a bad request, not a deploy.
+	trigger := newFakeTrigger()
+	handler := webhook.Handler(newTestConfig(t, testSecret), trigger)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook", iotest.ErrReader(errors.New("read error")))
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "failed to read request body") {
+		t.Errorf("expected 'failed to read request body' in response, got %q", body)
+	}
+	trigger.assertNotTriggered(t)
 }
 
 func TestHandler_RejectsRequestWithoutSecret(t *testing.T) {
