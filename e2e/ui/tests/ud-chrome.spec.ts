@@ -177,7 +177,7 @@ test('UD1: theme toggle switches dark<->light, persists, and applies before pain
   // The startup success row is present, so both theme snapshots have real content.
   await expect(page.locator('[data-testid="deploy-row"]')).toHaveCount(1);
 
-  // Default is dark: no `light` class.
+  // Default is dark (the config emulates a dark OS): no `light` class.
   expect(await isLight()).toBe(false);
   // Snapshot: the dark theme (§5 anchor).
   await visualSnapshot(page, 'theme-dark.png', { mask: pageMasks(page) });
@@ -198,6 +198,57 @@ test('UD1: theme toggle switches dark<->light, persists, and applies before pain
   await themeToggle.click();
   expect(await isLight()).toBe(false);
   expect(await storedColorScheme()).toBe('dark');
+});
+
+// UD13 — OS colour scheme. With no saved choice the pre-paint script follows
+// `prefers-color-scheme`, and the page tracks an OS change live; a saved
+// choice wins over the OS and stops the tracking.
+test.describe('UD13: light/dark follows the OS until a choice is saved', () => {
+  test.use({ colorScheme: 'light' });
+
+  test('an unsaved choice follows the OS, a saved one wins', async ({ page, skipper }) => {
+    const isLight = () => page.evaluate(() => document.documentElement.classList.contains('light'));
+    const themeToggle = page.locator('[data-testid="theme-toggle"]');
+
+    await page.goto(`${skipper.baseURL}/`);
+    expect(await isLight()).toBe(true);
+    await expect(themeToggle).toHaveClass(/\bactive\b/);
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).not.toHaveClass(/\blight\b/);
+    await expect(themeToggle).not.toHaveClass(/\bactive\b/);
+
+    // Saving light pins it: the OS flipping to dark no longer applies.
+    await themeToggle.click();
+    expect(await page.evaluate(() => localStorage.getItem('colorScheme'))).toBe('light');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.reload();
+    expect(await isLight()).toBe(true);
+  });
+});
+
+// UD14 — Mobile theme row. The header toggle is dropped at ≤700px; the
+// view-options popover carries a "Light theme" row there instead, in sync with it.
+test('UD14: on mobile the view-options popover carries the light/dark toggle', async ({ page, skipper }) => {
+  const isLight = () => page.evaluate(() => document.documentElement.classList.contains('light'));
+  const deploysBtn = page.locator('[data-testid="view-toggle"] button[data-view="deploys"]');
+  const row = page.locator('[data-testid="deploy-theme-toggle"]');
+
+  await page.goto(`${skipper.baseURL}/`);
+  await deploysBtn.click();
+  await expect(page.locator('[data-testid="view-options"]')).toBeVisible();
+  await expect(row).toBeHidden(); // desktop: the header toggle covers it
+  await page.keyboard.press('Escape');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('[data-testid="theme-toggle"]')).toBeHidden();
+  await deploysBtn.click();
+  await expect(row).toBeVisible();
+  await row.click();
+  expect(await isLight()).toBe(true);
+  await expect(row).toHaveClass(/\bactive\b/);
+  expect(await page.evaluate(() => localStorage.getItem('colorScheme'))).toBe('light');
 });
 
 // UD6 / UD6b exercise the opt-in theme picker, so the instance is started with

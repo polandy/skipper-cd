@@ -56,7 +56,7 @@ asserting **behaviour + visual snapshots**.
 > connected→reconnecting→connected, driven by a kill/relaunch of the binary on
 > the same port), **UD10** (recovery from a *fatal* stream error the browser
 > won't retry), **UD3** (deploy indicator names the active stack while held),
-> **UD4** (responsive ≤700px), **UD5** (build identity label), **UD8** (view-options popover), **UD9** (theme glyph), and **UD11** (tap-tip opt-in on non-header controls). All four masks' behaviour is landed, **and the visual-snapshot
+> **UD4** (responsive ≤700px), **UD5** (build identity label), **UD8** (view-options popover), **UD9** (theme glyph), **UD11** (tap-tip opt-in on non-header controls), **UD13** (OS colour scheme) and **UD14** (mobile theme row). All four masks' behaviour is landed, **and the visual-snapshot
 > baselines (§5) too**: a lean set of six baselines (deploys table, diff panel,
 > autosync drawer, both themes, mobile layout) generated and compared in
 > Playwright's pinned container, gated by `RUN_SNAPSHOTS`. The `e2e-ui` CI job now
@@ -525,6 +525,14 @@ UI suite reuses.
 - **UD9 — Theme glyph.** The header `theme-toggle` is glyph-only on every
   viewport; the `.tg-moon` / `.tg-sun` glyphs reflect the mode (moon in dark →
   sun in light) and flip on toggle.
+- **UD13 — OS colour scheme.** Run under an emulated light OS (the suite
+  itself emulates dark, which the baselines show): with no saved choice the
+  page opens light, follows an `emulateMedia` flip to dark live, and once the
+  toggle saves a choice that choice wins over the OS, across a reload too.
+- **UD14 — Mobile theme row.** At 390 px the header `theme-toggle` is hidden
+  and the `view-options` popover shows `deploy-theme-toggle` (hidden on
+  desktop); tapping it switches to light, marks it `.active` and saves
+  `colorScheme`.
 - **UD5 — Version label.** The header `brand-version` shows the deployed version
   as `v<semver>`. `globalSetup` injects the version via `-ldflags` from
   `.release-please-manifest.json` (the same source as the Docker/Nix builds), so
@@ -2181,6 +2189,8 @@ n/a. Pipeline invariants continue to map to §4.1.
 | State published while the stream connects is not lost | **UD12** |
 | Deploy indicator active/idle | **UD3** |
 | Tap-tip opt-in on non-header controls (touch flash / mouse silent / view-options excluded) | **UD11** |
+| Light/dark follows the OS until a choice is saved | **UD13** |
+| Mobile light/dark row in the view-options popover | **UD14** |
 | Upcoming look-ahead trail (active + next) | **UF1** |
 | Run panel (open on click, ordered run, close on end) | **UF2** |
 | Upcoming mobile `+N` count chip | **UF3** |

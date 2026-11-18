@@ -245,17 +245,23 @@ App.chrome = (function () {
 
   // ── Theme toggle ──
 
-  // Colour-scheme toggle (dark is the default; light is opt-in per browser).
+  // Colour-scheme toggle: follows the OS until the browser saves a choice.
   // Which palette (Catppuccin/Nord/Solarized/Gruvbox/Rosé Pine) is configured
   // server-side via ui_theme and baked into <html data-theme> — this toggle
-  // only ever flips dark/light within that palette.
-  const themeToggle = document.getElementById('theme-toggle');
-  let lightTheme = localStorage.getItem('colorScheme') === 'light';
+  // only ever flips dark/light within that palette. The header toggle and the
+  // mobile view-options rows (.vo-theme) are one control.
+  const themeToggles = [document.getElementById('theme-toggle')].concat(
+    Array.from(document.querySelectorAll('.vo-theme')),
+  );
+  // The pre-paint script already resolved saved choice vs. OS preference.
+  let lightTheme = document.documentElement.classList.contains('light');
 
   function applyTheme() {
     document.documentElement.classList.toggle('light', lightTheme);
-    themeToggle.classList.toggle('active', lightTheme);
-    themeToggle.title = lightTheme ? 'Switch to dark theme' : 'Switch to light theme';
+    themeToggles.forEach(function (btn) {
+      btn.classList.toggle('active', lightTheme);
+      btn.title = lightTheme ? 'Switch to dark theme' : 'Switch to light theme';
+    });
   }
 
   const viewButtons = document.querySelectorAll('#view-toggle button');
@@ -575,11 +581,20 @@ App.chrome = (function () {
       }
     });
 
-    themeToggle.addEventListener('click', function () {
-      lightTheme = !lightTheme;
-      localStorage.setItem('colorScheme', lightTheme ? 'light' : 'dark');
-      applyTheme();
+    themeToggles.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        lightTheme = !lightTheme;
+        localStorage.setItem('colorScheme', lightTheme ? 'light' : 'dark');
+        applyTheme();
+      });
     });
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function (e) {
+        if (localStorage.getItem('colorScheme')) return;
+        lightTheme = e.matches;
+        applyTheme();
+      });
+    }
 
     applyTheme();
 

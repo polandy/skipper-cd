@@ -2380,6 +2380,8 @@
   /* The "Search stacks" popover row is a mobile-only entry point (desktop uses
      type-to-search); shown via the media query in the responsive section. */
   .view-options .vo-search { display: none; }
+  /* Mobile-only light/dark row: the header toggle is dropped there (below). */
+  .view-options .vo-theme { display: none; }
 
   /* Always-visible search trigger (T3.11) — the deploys/stacks filter was
      desktop-invisible (type-to-search only, an easter egg); this quiet magnifier
@@ -3450,8 +3452,8 @@
        light/dark toggle. The toggle is the one control here whose job is done
        once: the palette is a per-browser preference set once and then left
        alone, unlike the beacon, the badges or the view switch, which report
-       state that changes under the viewer. It stays reachable from any wider
-       viewport, and the saved choice keeps applying on the phone. */
+       state that changes under the viewer. On the phone it moves into the
+       view-options popover (.vo-theme). */
     .status-area { gap: 6px; }
     #theme-toggle { display: none; }
     /* The Hosts control compacts to its glyph (plus the red dot when a peer is
@@ -3490,6 +3492,7 @@
        view-options popover carries a "Search" entry that reveals and focuses the
        filter (hidden on desktop, where type-to-search covers it). */
     .view-options .vo-search { display: flex; }
+    .view-options .vo-theme { display: flex; }
     /* The always-visible header magnifier is a desktop affordance; on mobile the
        popover "Search" row above is the entry point, so hide the glyph. (T3.11) */
     .stack-search-btn { display: none; }
