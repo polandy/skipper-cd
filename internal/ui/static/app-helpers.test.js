@@ -2544,3 +2544,111 @@ test('deployRowCause: every other outcome has no cause line', () => {
     assert.equal(h.deployRowCause(s, 'boom'), '', s);
   }
 });
+
+// ── foldDeployRows / day separators (Deploys list) ─────────────────────────
+function drow(stack, status, extra) {
+  return Object.assign(
+    { stack, host: 'h', status, kind: 'image', key: stack + status, open: false },
+    extra || {},
+  );
+}
+
+test('foldDeployRows folds six routine deploys of one stack into a lead plus one run', () => {
+  const rows = [];
+  for (let i = 0; i < 6; i++) rows.push(drow('gitea', 'success', { key: 'g' + i }));
+  const runs = h.foldDeployRows(rows);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].lead, 0);
+  assert.deepEqual(runs[0].members, [1, 2, 3, 4, 5]);
+  assert.equal(runs[0].key, 'g5'); // the oldest member keys the run
+  assert.equal(runs[0].expanded, false);
+});
+
+test('foldDeployRows leaves a run below the threshold alone', () => {
+  const rows = [];
+  for (let i = 0; i < h.AUDIT_FOLD_MIN - 1; i++) rows.push(drow('gitea', 'success'));
+  assert.deepEqual(h.foldDeployRows(rows), []);
+});
+
+test('foldDeployRows breaks the run at a failure, another stack, status, host or kind', () => {
+  for (const breaker of [
+    drow('gitea', 'failed'),
+    drow('other', 'success'),
+    drow('gitea', 'healed'),
+    drow('gitea', 'success', { host: 'peer' }),
+    drow('gitea', 'success', { kind: 'files' }),
+  ]) {
+    const rows = [
+      drow('gitea', 'success'),
+      drow('gitea', 'success'),
+      breaker,
+      drow('gitea', 'success'),
+    ];
+    assert.deepEqual(
+      h.foldDeployRows(rows),
+      [],
+      breaker.status + breaker.stack + breaker.host + breaker.kind,
+    );
+  }
+});
+
+test('foldDeployRows never folds failures, rollbacks, blocked or queued rows', () => {
+  for (const status of [
+    'failed',
+    'rolled_back',
+    'rolled_back_unhealthy',
+    'blocked',
+    'queued',
+    'deploying',
+  ]) {
+    const rows = [drow('s', status), drow('s', status), drow('s', status), drow('s', status)];
+    assert.deepEqual(h.foldDeployRows(rows), [], status);
+  }
+});
+
+test('foldDeployRows sees only the rows the caller kept, so a filter acts before the fold', () => {
+  // A failure between two successes breaks the run only while it is visible.
+  const all = [
+    drow('g', 'success'),
+    drow('g', 'success'),
+    drow('g', 'failed'),
+    drow('g', 'success'),
+  ];
+  assert.deepEqual(h.foldDeployRows(all), []);
+  const visible = all.filter((r) => r.status === 'success');
+  assert.equal(h.foldDeployRows(visible).length, 1);
+});
+
+test('foldDeployRows reports a run expanded for an open detail or a remembered key', () => {
+  const rows = [
+    drow('g', 'success', { key: 'a' }),
+    drow('g', 'success', { key: 'b' }),
+    drow('g', 'success', { key: 'c' }),
+  ];
+  assert.equal(h.foldDeployRows(rows, new Set(['c']))[0].expanded, true);
+  rows[1].open = true;
+  assert.equal(h.foldDeployRows(rows)[0].expanded, true);
+});
+
+test('deployFoldLabel names count, noun, stack and span', () => {
+  const now = new Date(2026, 10, 18, 12, 0).getTime();
+  const label = h.deployFoldLabel(
+    5,
+    'success',
+    'gitea',
+    new Date(2026, 10, 18, 9, 0).toISOString(),
+    new Date(2026, 10, 18, 11, 0).toISOString(),
+    now,
+  );
+  assert.match(label, /^↻ 5 more successful deploys of gitea · .+ – .+$/);
+});
+
+test('deployDayLabel names Today, Yesterday, then the date, in local time across midnight', () => {
+  const now = new Date(2026, 10, 18, 0, 5).getTime(); // just after midnight
+  const at = (d, hh, mm) => new Date(2026, 10, d, hh, mm).toISOString();
+  assert.equal(h.deployDayLabel(at(18, 0, 1), now), 'Today');
+  assert.equal(h.deployDayLabel(at(17, 23, 59), now), 'Yesterday');
+  assert.equal(h.deployDayLabel(at(16, 23, 59), now), '16 Nov');
+  assert.equal(h.deployDayLabel(new Date(2025, 11, 31, 10, 0).toISOString(), now), '31 Dec 2025');
+  assert.notEqual(h.deployDayKey(at(17, 23, 59)), h.deployDayKey(at(18, 0, 1)));
+});

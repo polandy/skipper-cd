@@ -465,6 +465,11 @@ App.deploys = (function () {
   }
 
   function handleEvent(evt, isHistory) {
+    handleEventRow(evt, isHistory);
+    scheduleRefold();
+  }
+
+  function handleEventRow(evt, isHistory) {
     // A skipped deploy means an unchanged stack — no signal worth showing, so
     // it is never rendered (skipped events are live-only, never in history).
     // A held one repeats the failure row already shown every tick; the roster
@@ -563,6 +568,111 @@ App.deploys = (function () {
       }
     }
     tbody.appendChild(row);
+  }
+
+  // ── Fold + day separators (computed per render, never stored) ──
+
+  // expandedFolds holds the keys of folds the user opened; a fold's key is its
+  // oldest member's event id, which new rows landing on top leave alone.
+  const expandedFolds = new Set();
+
+  function deployRowChangeKind(row) {
+    if (row.dataset.imageChanges) return 'image';
+    return row.dataset.fileChanges ? 'files' : 'none';
+  }
+
+  function rowTimestamp(row) {
+    const cell = row.querySelector('.cell-time');
+    return cell ? cell.dataset.ts : '';
+  }
+
+  function foldLineInfo(run, rows, nowMs) {
+    const lead = rows[run.lead];
+    const oldest = rows[run.members[run.members.length - 1]];
+    const label = deployFoldLabel(
+      run.members.length,
+      lead.status,
+      lead.stack,
+      rowTimestamp(oldest.el),
+      rowTimestamp(lead.el),
+      nowMs,
+    );
+    return { label: label, status: lead.status };
+  }
+
+  // refoldDeploys rebuilds the day separators and fold lines over the rows the
+  // filters left visible, so a filter acts before the fold.
+  function refoldDeploys() {
+    tbody.querySelectorAll('.day-sep, .fold-row').forEach(function (el) {
+      el.remove();
+    });
+    const nowMs = Date.now();
+    const all = tbody.querySelectorAll(':scope > [data-testid="deploy-row"]');
+    all.forEach(function (el) {
+      el.classList.remove('fold-hidden');
+    });
+    const rows = [];
+    all.forEach(function (el) {
+      if (el.classList.contains('filtered-out') || el.classList.contains('host-hidden')) return;
+      rows.push({
+        el: el,
+        stack: el.dataset.stack,
+        host: el.dataset.host,
+        status: el.dataset.status,
+        kind: deployRowChangeKind(el),
+        key: el.dataset.eventId || '',
+        open: detail.isOpen(VIEW, el),
+      });
+    });
+    const runs = foldDeployRows(rows, expandedFolds);
+    runs.forEach(function (run) {
+      const info = foldLineInfo(run, rows, nowMs);
+      const line = document.createElement('button');
+      line.type = 'button';
+      line.className = 'fold-row';
+      line.dataset.testid = 'deploy-fold';
+      line.dataset.status = info.status;
+      line.dataset.foldKey = run.key;
+      line.setAttribute('aria-expanded', run.expanded ? 'true' : 'false');
+      line.title = run.expanded ? 'Fold these deploys again' : 'Show these deploys';
+      line.textContent = info.label;
+      rows[run.members[0]].el.before(line);
+      if (!run.expanded) {
+        run.members.forEach(function (m) {
+          rows[m].el.classList.add('fold-hidden');
+        });
+      }
+    });
+    let day = '';
+    rows.forEach(function (r) {
+      if (r.el.classList.contains('fold-hidden')) return;
+      const ts = rowTimestamp(r.el);
+      if (!ts || deployDayKey(ts) === day) return;
+      day = deployDayKey(ts);
+      const sep = document.createElement('div');
+      sep.className = 'day-sep';
+      sep.dataset.testid = 'deploy-day';
+      sep.textContent = deployDayLabel(ts, nowMs);
+      r.el.before(sep);
+    });
+  }
+
+  // scheduleRefold coalesces the burst of rows a history replay adds into one pass.
+  let refoldQueued = false;
+  function scheduleRefold() {
+    if (refoldQueued) return;
+    refoldQueued = true;
+    queueMicrotask(function () {
+      refoldQueued = false;
+      refoldDeploys();
+    });
+  }
+
+  function toggleFold(line) {
+    const key = line.dataset.foldKey;
+    if (expandedFolds.has(key)) expandedFolds.delete(key);
+    else expandedFolds.add(key);
+    refoldDeploys();
   }
 
   // ── Deploys view controls: time mode, version column, stack filter ──
@@ -692,6 +802,7 @@ App.deploys = (function () {
       document.getElementById('deploy-filter-empty-q').textContent = q;
     }
     renderDeployStatusChips();
+    scheduleRefold();
   }
 
   // Re-run the filter after live/replayed rows land so new stacks obey it too
@@ -699,8 +810,9 @@ App.deploys = (function () {
   function refilterDeploys() {
     if (deployFilterWrap.classList.contains('has-value') || deployStatusFilter.length > 0) {
       applyDeployFilter();
-    } else if (deployFilterWrap.classList.contains('revealed')) {
-      renderDeployStatusChips();
+    } else {
+      if (deployFilterWrap.classList.contains('revealed')) renderDeployStatusChips();
+      scheduleRefold();
     }
   }
 
@@ -924,6 +1036,11 @@ App.deploys = (function () {
     tbody.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
 
     tbody.addEventListener('click', function (e) {
+      const fold = e.target.closest('.fold-row');
+      if (fold) {
+        toggleFold(fold);
+        return;
+      }
       if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
       // Host chip: quick-filter the merged view to this row's host (toggle). Before
       // any panel logic so a tap on the chip never also opens the row's diff panel.
@@ -1128,6 +1245,7 @@ App.deploys = (function () {
     handleEvent,
     insertRowByTime,
     refilterDeploys,
+    scheduleRefold,
     clearDeployFilter,
     presetDeployStatusFilter,
     filterRevealed,

@@ -10,6 +10,7 @@ import { openStackDetail } from '../fixtures/stack-detail';
 const pageMasks = (page: import('@playwright/test').Page) => [
   page.locator('[data-testid="time-cell"]'),
   page.locator('[data-testid="duration-cell"]'),
+  page.locator('[data-testid="deploy-day"]'),
 ];
 
 // Human-readable theme labels, mirroring THEME_LABELS in the UI. The mismatch

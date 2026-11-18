@@ -2714,6 +2714,20 @@
   }
   .filter-empty.show { display: block; }
   .event-list .filtered-out { display: none !important; }
+  .event-list .fold-hidden { display: none !important; }
+  /* Day separator and fold line: thin interstitial rows, not data rows. */
+  .event-list .day-sep {
+    padding: 5px 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--text-muted);
+    background: color-mix(in srgb, var(--overlay2) 5%, transparent);
+  }
+  .event-list .fold-row {
+    display: block; width: 100%; padding: 4px 20px; text-align: left; cursor: pointer;
+    font: 11px var(--font-mono); color: var(--text-muted);
+    background: none; border: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .event-list .fold-row:hover, .event-list .fold-row:focus-visible { color: var(--text-secondary); background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
+  .event-list .fold-row[aria-expanded="true"] { color: var(--text-secondary); }
 
   /* Orphans (ADR-0036): compose projects running on the host that the discovered
      stack set no longer accounts for — a collapsed inventory section below the
