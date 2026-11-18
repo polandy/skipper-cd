@@ -303,15 +303,18 @@ App.roster = (function () {
     }
   }
 
+  // STACK_DETAIL_ID prefixes the Stacks detail's tab and pane ids; the view
+  // keeps one detail open at a time.
+  const STACK_DETAIL_ID = 'stack-detail';
+
   // showTab points the panel's head, tab strip and pane at tab. Hooks is a
   // pseudo-tab the head's Hooks action toggles; it selects no strip tab.
   function showTab(panel, c, tabs, tab) {
     panel.dataset.tab = tab;
     renderHead(panel, c, tab);
-    panel.querySelector('.dp-tabs').outerHTML = tabsHTML(tabs, tab);
-    const pane = panel.querySelector('.dp-pane');
-    pane.textContent = '';
-    pane.appendChild(paneBody(c, tab));
+    panel.querySelector('.dp-tabs').outerHTML = tabsHTML(tabs, tab, STACK_DETAIL_ID);
+    panel.querySelector('.dp-pane').outerHTML = tabPaneHTML(tabs, tab, STACK_DETAIL_ID, 'Hooks');
+    panel.querySelector('.dp-pane').appendChild(paneBody(c, tab));
   }
 
   // The Stacks detail: a row's head, verdict, facts and one tab — local rows
@@ -339,7 +342,7 @@ App.roster = (function () {
           repoBase: c.peer ? c.peer.base : S.repoWebURL,
           nowMs: Date.now(),
         }) +
-        '<div class="dp-tabs"></div><div class="dp-pane" role="tabpanel"></div>';
+        '<div class="dp-tabs"></div><div class="dp-pane"></div>';
       opts.tab = resolveTab(c, tabs, opts.tab);
       showTab(panel, c, tabs, opts.tab);
       panel.addEventListener('click', function (e) {
@@ -354,6 +357,9 @@ App.roster = (function () {
         opts.tab = next;
         showTab(panel, c, tabs, next);
         App.stream.applyHookRun(); // the head was re-rendered — re-mark a running hook
+      });
+      panel.addEventListener('keydown', function (e) {
+        detail.tabKeydown(panel, e);
       });
       slot.set(panel);
       App.stream.applyHookRun(); // a panel opened mid-hook carries the pulse at once

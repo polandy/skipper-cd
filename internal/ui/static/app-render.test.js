@@ -1901,18 +1901,57 @@ test('tabsHTML marks the active tab and reds a count that holds a problem', () =
       { id: 'history', label: 'History', count: null, bad: false },
     ],
     'history',
+    'sd',
   );
   assert.match(html, /^<div class="dp-tabs" role="tablist">/);
   assert.match(
     html,
-    /data-tab="containers" aria-selected="false">Containers<span class="dp-n bad">2<\/span>/,
+    /data-tab="containers" aria-selected="false" tabindex="-1">Containers<span class="dp-n bad">2<\/span>/,
   );
-  assert.match(html, /data-tab="history" aria-selected="true">History<\/button>/);
+  assert.match(html, /data-tab="history" aria-selected="true" tabindex="0">History<\/button>/);
 });
 
 test('tabsHTML shows a red mark on a countless tab that holds a problem', () => {
-  const html = r.tabsHTML([{ id: 'history', label: 'History', count: null, bad: true }], 'x');
+  const html = r.tabsHTML([{ id: 'history', label: 'History', count: null, bad: true }], 'x', 'sd');
   assert.match(html, /History<span class="dp-n bad">!<\/span>/);
+});
+
+test('tabsHTML ties each tab to the pane it controls', () => {
+  const html = r.tabsHTML([{ id: 'history', label: 'History', count: null }], 'history', 'sd');
+  assert.match(html, /id="sd-tab-history" aria-controls="sd-pane"/);
+});
+
+test('tabsHTML keeps the first tab reachable when no strip tab is selected', () => {
+  const html = r.tabsHTML(
+    [
+      { id: 'history', label: 'History', count: null },
+      { id: 'triggers', label: 'Triggers', count: 0 },
+    ],
+    'hooks',
+    'sd',
+  );
+  assert.match(html, /data-tab="history" aria-selected="false" tabindex="0"/);
+  assert.match(html, /data-tab="triggers" aria-selected="false" tabindex="-1"/);
+});
+
+test('tabPaneHTML is labelled by the selected tab', () => {
+  const tabs = [{ id: 'history', label: 'History', count: null }];
+  assert.equal(
+    r.tabPaneHTML(tabs, 'history', 'sd', 'Hooks'),
+    '<div class="dp-pane" role="tabpanel" id="sd-pane" tabindex="0" aria-labelledby="sd-tab-history"></div>',
+  );
+});
+
+test('tabPaneHTML names a pane no strip tab selects by its label', () => {
+  const tabs = [{ id: 'history', label: 'History', count: null }];
+  assert.equal(
+    r.tabPaneHTML(tabs, 'hooks', 'sd', 'Hooks'),
+    '<div class="dp-pane" role="tabpanel" id="sd-pane" tabindex="0" aria-label="Hooks"></div>',
+  );
+});
+
+test('tabPaneHTML is a plain pane without a tab strip', () => {
+  assert.equal(r.tabPaneHTML([], null, 'dd'), '<div class="dp-pane"></div>');
 });
 
 test('stackFactsHTML gives a stack its running version, last deploy, health and hooks', () => {

@@ -70,6 +70,25 @@ const DETAIL_TAB = Object.freeze({
   overview: 'overview',
 });
 
+// tabKeyIndex is where a key moves the focus along a strip of count tabs from
+// index (the ARIA tabs pattern: arrows wrap, Home/End jump), or -1 when the
+// key is not a tab-strip key.
+function tabKeyIndex(key, index, count) {
+  if (index < 0 || index >= count) return -1;
+  switch (key) {
+    case 'ArrowRight':
+      return (index + 1) % count;
+    case 'ArrowLeft':
+      return (index - 1 + count) % count;
+    case 'Home':
+      return 0;
+    case 'End':
+      return count - 1;
+    default:
+      return -1;
+  }
+}
+
 // detailSelection is the App.detail record for a row (its dataset): the view,
 // the host ('' for local), the stack, the deploy event ('' on a roster row)
 // and the open pane.
@@ -2221,6 +2240,7 @@ if (typeof module !== 'undefined' && module.exports) {
     diffStat,
     retryRefusalText,
     stackTabs,
+    tabKeyIndex,
     detailSelection,
     detailMatchesRow,
     classifyDiffLine,

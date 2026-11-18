@@ -538,3 +538,34 @@ test.describe('UA12: queued row diff', () => {
     await expect(diffPanel(page).locator('.diff-line.diff-add')).toContainText('nginx:1.26');
   });
 });
+
+// UA13 — The deploy detail's tab strip follows the ARIA tabs pattern, like the
+// Stacks detail (UBC9): the arrow keys move selection and focus, and the pane
+// is labelled by the selected tab. A failed deploy offers Changes and Output.
+test.describe('UA13: deploy detail tabs by keyboard', () => {
+  test.use({
+    startOptions: { stacks: ['web'], stubEnv: { STUB_DOCKER_FAIL_ON: 'up' }, readiness: 'listening' },
+  });
+
+  test('the arrow keys switch the deploy detail tabs', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="failed"]').click();
+    const p = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
+    const tabs = p.locator('[data-testid="detail-tab"]');
+    await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+    const count = await tabs.count();
+    expect(count).toBeGreaterThan(1);
+    const last = tabs.nth(count - 1);
+    const lastId = (await last.getAttribute('data-tab'))!;
+
+    await tabs.first().focus();
+    await page.keyboard.press('End');
+    await expect(last).toBeFocused();
+    await expect(last).toHaveAttribute('aria-selected', 'true');
+    await expect(p).toHaveAttribute('data-tab', lastId);
+    await expect(p.locator('[role="tabpanel"]')).toHaveAttribute('aria-labelledby', `deploy-detail-tab-${lastId}`);
+    await page.keyboard.press('ArrowRight'); // wraps to the first tab
+    await expect(tabs.first()).toBeFocused();
+    await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+  });
+});

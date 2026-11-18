@@ -321,6 +321,10 @@ UI suite reuses.
   detail: `detail-verdict` (`Failed at docker compose up`) comes before
   `detail-facts`, and the Output tab's `deploy-output` carries the error.
 - **UA10 — Empty state.** A fresh UI with no events shows `empty-state`.
+- **UA13 — Deploy detail tabs by keyboard.** A failed row's deploy detail
+  follows the ARIA tabs pattern like UBC9: End selects and focuses the last tab
+  and the `tabpanel` is `aria-labelledby` it; ArrowRight wraps to the first.
+  Verified to fail without the deploy panel's keydown handler.
 
 ### 4.3 UI — Maske B: Logs-View
 
@@ -1933,6 +1937,14 @@ peer cases take their own. Behaviour-only (no snapshot).
 - **UBC8 — A peer's panel is read-only.** A held peer stack's
   `detail-panel.peer-panel` shows the `held` verdict (the positive signal) with
   no `retry-btn` and no `jump-btn`, and keeps its close button.
+- **UBC9 — The ARIA tabs pattern.** Each tab names the pane it controls
+  (`aria-controls`) and the pane is labelled by the selected tab
+  (`aria-labelledby`); only the selected tab has `tabindex=0`. ArrowRight,
+  End, ArrowLeft and Home move both selection and focus, wrapping at the ends,
+  and the pane follows. Verified to fail without the panel's keydown handler.
+- **UBC10 — The Hooks pane is named.** With the head's Hooks pane open no tab is
+  selected, so the pane carries `aria-label="Hooks"` and the first tab stays the
+  strip's one Tab stop.
 
 ## 5. Visual snapshot strategy
 
@@ -2124,6 +2136,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Diff panel fetch + colouring | **UA8** |
 | Error detail panel | **UA9** |
 | Empty state | **UA10** |
+| Deploy detail tabs by keyboard | **UA13** |
 | View toggle deploys/logs + persistence | **UB1** |
 | Log lines + level badges | **UB2** |
 | Sort toggle + persistence | **UB3** |
@@ -2166,7 +2179,7 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Deploys search: mobile popover entry (desktop-hidden) | **UG3** |
 | Stacks roster: aligned inventory table (deployed/disabled rows + column header) | **UR1** |
 | Stacks roster: click a row for its detail panel; one stack at a time | **UR2** |
-| Stack detail panel: default tab per state, head action order, Logs/Hooks from the head, tabs, verdict + facts, close, phone two-column facts, read-only peer panel | **UBC1**–**UBC8** |
+| Stack detail panel: default tab per state, head action order, Logs/Hooks from the head, tabs, verdict + facts, close, phone two-column facts, read-only peer panel, ARIA tabs pattern | **UBC1**–**UBC10** |
 | Deploys list: day separators, fold of routine deploys, filter before fold | **UBD1**–**UBD3** |
 | Stacks roster: search (type-to-reveal, filter, empty note, Esc fold) | **UR3** |
 | Stacks roster: mobile popover search entry | **UR4** |

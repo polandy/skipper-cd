@@ -10,8 +10,8 @@ import type { Page } from '@playwright/test';
 // (UBC1, UBC2); the head's actions keep one order (UBC3); Logs and the Hooks
 // pane work from the head (UBC4); the tabs switch and the verdict + facts read
 // the stack (UBC5); the close button closes it (UBC6); a phone lays the facts in
-// two columns (UBC7); and a peer's panel is read-only (UBC8). Behaviour-only
-// (no snapshot).
+// two columns (UBC7); a peer's panel is read-only (UBC8); and the tab strip
+// follows the ARIA tabs pattern (UBC9, UBC10). Behaviour-only (no snapshot).
 
 // web declares hooks and has an app link; api has neither; wip is parked.
 const HOOKS_CONFIG = `stacks:
@@ -179,6 +179,53 @@ test.describe('Maske BC: the Stacks detail panel', () => {
     await panel(page, 'web').locator('[data-testid="detail-close"]').click();
     await expect(page.locator('[data-testid="detail-panel"]')).toHaveCount(0);
     await expect(rosterRow(page, 'web')).not.toHaveClass(/audit-open/);
+  });
+
+  // UBC9 — the tab strip follows the ARIA tabs pattern: the arrows, Home and End
+  // move the selection and the focus, only the selected tab is a Tab stop, and
+  // the pane is labelled by the tab that shows it.
+  test('UBC9: the arrow keys switch tabs and the pane names its tab', async ({ page, skipper }) => {
+    await openStacks(page, skipper);
+    await rosterRow(page, 'api').click();
+    const p = panel(page, 'api');
+    const pane = p.locator('[role="tabpanel"]');
+    await expect(tab(page, 'api', 'containers')).toHaveAttribute('aria-selected', 'true');
+    await expect(tab(page, 'api', 'containers')).toHaveAttribute('aria-controls', 'stack-detail-pane');
+    await expect(pane).toHaveAttribute('id', 'stack-detail-pane');
+    await expect(pane).toHaveAttribute('aria-labelledby', 'stack-detail-tab-containers');
+    await expect(tab(page, 'api', 'history')).toHaveAttribute('tabindex', '-1');
+
+    await tab(page, 'api', 'containers').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(tab(page, 'api', 'history')).toBeFocused();
+    await expect(tab(page, 'api', 'history')).toHaveAttribute('aria-selected', 'true');
+    await expect(tab(page, 'api', 'history')).toHaveAttribute('tabindex', '0');
+    await expect(pane).toHaveAttribute('aria-labelledby', 'stack-detail-tab-history');
+    await expect(p.locator('[data-testid="audit-panel"]')).toBeVisible();
+
+    await page.keyboard.press('End');
+    await expect(tab(page, 'api', 'triggers')).toBeFocused();
+    await expect(p.locator('[data-testid="watched-panel"]')).toBeVisible();
+    await page.keyboard.press('ArrowRight'); // wraps to the first tab
+    await expect(tab(page, 'api', 'containers')).toBeFocused();
+    await page.keyboard.press('ArrowLeft'); // and back to the last
+    await expect(tab(page, 'api', 'triggers')).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(tab(page, 'api', 'containers')).toBeFocused();
+    await expect(p.locator('[data-testid="health-panel"]')).toBeVisible();
+  });
+
+  // UBC10 — the head's Hooks pane selects no strip tab, so the pane takes its
+  // own name and the first tab stays the strip's Tab stop.
+  test('UBC10: the Hooks pane is named and the strip stays reachable', async ({ page, skipper }) => {
+    await openStacks(page, skipper);
+    await rosterRow(page, 'web').click();
+    const p = panel(page, 'web');
+    await p.locator('[data-testid="hooks-badge"]').click();
+    await expect(p).toHaveAttribute('data-tab', 'hooks');
+    await expect(p.locator('[role="tabpanel"]')).toHaveAttribute('aria-label', 'Hooks');
+    await expect(p.locator('[data-testid="detail-tab"][tabindex="0"]')).toHaveCount(1);
+    await expect(p.locator('[data-testid="detail-tab"]').first()).toHaveAttribute('tabindex', '0');
   });
 });
 
