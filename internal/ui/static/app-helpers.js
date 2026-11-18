@@ -2177,6 +2177,15 @@ function diffStat(diff) {
   return stat;
 }
 
+// retryRefusalText is the visible reason a held-change retry did not start:
+// the server's own reason when it gave one, else the status; status 0 means
+// the request never reached the server.
+function retryRefusalText(status, body) {
+  if (!status) return "Retry didn't reach the server. Check the connection and try again.";
+  const reason = (body || '').trim().replace(/\.$/, '');
+  return reason ? 'Retry refused: ' + reason + '.' : 'Retry refused (HTTP ' + status + ').';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   // Some of these are internal to this file (parseImageRef, imageRepoName,
   // HOST_COLOR_COUNT, hostColorIndex — each used only by another helper here).
@@ -2208,6 +2217,7 @@ if (typeof module !== 'undefined' && module.exports) {
     changedFileCount,
     deployTabs,
     diffStat,
+    retryRefusalText,
     stackTabs,
     detailSelection,
     detailMatchesRow,

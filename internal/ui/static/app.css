@@ -3177,6 +3177,8 @@
   .dp-v-body { flex: 1; min-width: 0; }
   .dp-v-text b { font-weight: 600; }
   .dp-v-sub { color: var(--text-secondary); font-size: 12.5px; margin-top: 2px; overflow-wrap: anywhere; }
+  .dp-v-msg { color: var(--danger); font-size: 12.5px; font-weight: 600; margin-top: 4px; overflow-wrap: anywhere; }
+  .dp-v-msg:empty { display: none; }
   .dp-v > .dp-act, .dp-v > .retry-btn { flex: none; align-self: center; }
   .dp-v .retry-btn { font-size: 12.5px; padding: 4px 11px; border-radius: 7px; }
   .dp-v[data-tone="danger"]   { background: var(--danger-dim); }
