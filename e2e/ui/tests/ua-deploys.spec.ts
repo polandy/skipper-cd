@@ -596,5 +596,11 @@ test.describe('UA14: deploy row detail by keyboard', () => {
     await expect(p).toHaveCount(0);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(toggle).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(p).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(p).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 });

@@ -328,7 +328,8 @@ UI suite reuses.
 - **UA14 — Deploy row by keyboard.** A failed row's `.row-toggle` (its stack
   name, `role=button`) opens the deploy detail on Enter and flips
   `aria-expanded`; Escape from a detail tab closes it, resets `aria-expanded`
-  and returns the focus to the toggle.
+  and returns the focus to the toggle; reopened, Escape on the toggle itself
+  closes it too.
 
 ### 4.3 UI — Maske B: Logs-View
 
