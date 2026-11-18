@@ -489,12 +489,12 @@ App.roster = (function () {
             return '';
           })
           .then(function (body) {
-            refused(retryRefusalText(r.status, body));
+            refused(retryRefusalText(r.status, r.headers.get('Content-Type'), body));
           });
       })
       .catch(function (err) {
         App.chrome.uiNote('warn', 'retry: request for', stack, 'did not reach the server —', err);
-        refused(retryRefusalText(0, ''));
+        refused(retryRefusalText(0, '', ''));
       });
   }
 

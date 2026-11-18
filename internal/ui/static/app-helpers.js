@@ -2178,11 +2178,13 @@ function diffStat(diff) {
 }
 
 // retryRefusalText is the visible reason a held-change retry did not start:
-// the server's own reason when it gave one, else the status; status 0 means
-// the request never reached the server.
-function retryRefusalText(status, body) {
+// the server's own plain-text reason when it gave one (a proxy's HTML error
+// page is not one), else the status; status 0 means the request never reached
+// the server.
+function retryRefusalText(status, contentType, body) {
   if (!status) return "Retry didn't reach the server. Check the connection and try again.";
-  const reason = (body || '').trim().replace(/\.$/, '');
+  const plain = /^text\/plain\b/i.test(contentType || '');
+  const reason = plain ? (body || '').trim().replace(/\.$/, '') : '';
   return reason ? 'Retry refused: ' + reason + '.' : 'Retry refused (HTTP ' + status + ').';
 }
 

@@ -94,6 +94,7 @@ test.describe("Maske AZ: held change", () => {
     await page.route("**/api/stacks/web/retry", (route) =>
       route.fulfill({
         status: 409,
+        contentType: "text/plain; charset=utf-8",
         body: "stack web has no held change to retry",
       }),
     );
