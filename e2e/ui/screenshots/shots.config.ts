@@ -25,6 +25,8 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // The UI follows the OS scheme; dark is what the baselines show.
+        colorScheme: 'dark',
         // 2× for a crisp image on retina displays; the docs site renders these
         // ~1000 px wide, so the extra pixels are for zoom and HiDPI only.
         viewport: { width: 1320, height: 900 },

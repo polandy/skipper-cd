@@ -585,7 +585,7 @@ The `ntfy` format publishes the title as the `Title` header and the body as plai
 
 ## Web UI Theme
 
-`ui_theme` picks the web UI's colour palette. This is a per-instance, config-time choice — handy for telling several skipper-cd instances apart at a glance (e.g. one per host) — and is independent of the header's dark/light toggle, which stays a per-browser preference within whichever palette is configured.
+`ui_theme` picks the web UI's colour palette. This is a per-instance, config-time choice — handy for telling several skipper-cd instances apart at a glance (e.g. one per host) — and is independent of the header's dark/light toggle, which stays a per-browser preference within whichever palette is configured: it follows the operating system's light/dark setting until you pick one, and on a phone it sits in the view-options menu.
 
 ```yaml
 ui_theme: nord   # optional, default: catppuccin
