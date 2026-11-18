@@ -11,7 +11,8 @@ import type { Page } from '@playwright/test';
 // pane work from the head (UBC4); the tabs switch and the verdict + facts read
 // the stack (UBC5); the close button closes it (UBC6); a phone lays the facts in
 // two columns (UBC7); a peer's panel is read-only (UBC8); and the tab strip
-// follows the ARIA tabs pattern (UBC9, UBC10). Behaviour-only (no snapshot).
+// follows the ARIA tabs pattern (UBC9, UBC10); a row opens and closes by
+// keyboard (UBC11). Behaviour-only (no snapshot).
 
 // web declares hooks and has an app link; api has neither; wip is parked.
 const HOOKS_CONFIG = `stacks:
@@ -226,6 +227,32 @@ test.describe('Maske BC: the Stacks detail panel', () => {
     await expect(p.locator('[role="tabpanel"]')).toHaveAttribute('aria-label', 'Hooks');
     await expect(p.locator('[data-testid="detail-tab"][tabindex="0"]')).toHaveCount(1);
     await expect(p.locator('[data-testid="detail-tab"]').first()).toHaveAttribute('tabindex', '0');
+  });
+
+  // UBC11 — the row's stack name is its keyboard toggle: Space opens the panel
+  // and aria-expanded follows; Escape from inside the panel closes it and the
+  // close button too hands the focus back to the toggle.
+  test('UBC11: a row opens by keyboard and Escape closes it', async ({ page, skipper }) => {
+    await openStacks(page, skipper);
+    const toggle = rosterRow(page, 'api').locator('.row-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await toggle.focus();
+    await page.keyboard.press(' ');
+    await expect(panel(page, 'api')).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    await tab(page, 'api', 'containers').focus();
+    await page.keyboard.press('Escape');
+    await expect(panel(page, 'api')).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await panel(page, 'api').locator('[data-testid="detail-close"]').focus();
+    await page.keyboard.press('Enter');
+    await expect(panel(page, 'api')).toHaveCount(0);
+    await expect(toggle).toBeFocused();
   });
 });
 

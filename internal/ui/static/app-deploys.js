@@ -1034,6 +1034,9 @@ App.deploys = (function () {
     // Files panel — open/close as full-width sibling below the row.
     // When diffs are available, shows a diff panel; otherwise shows file list.
     tbody.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
+    tbody.addEventListener('keydown', function (e) {
+      detail.rowKeydown(VIEW, e);
+    });
 
     tbody.addEventListener('click', function (e) {
       const fold = e.target.closest('.fold-row');

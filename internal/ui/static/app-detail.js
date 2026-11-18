@@ -48,6 +48,7 @@ App.detail = (function () {
     open[view] = entry;
     const pane = panes[tab];
     row.classList.add(pane.openClass);
+    setExpanded(row, true);
     pane.build(row, slotFor(view, entry), entry.opts);
   }
 
@@ -78,17 +79,54 @@ App.detail = (function () {
     else show(view, row, tab, opts);
   }
 
-  // close closes view's open detail, if any.
+  // close closes view's open detail, if any. Focus inside the removed pane
+  // goes back to the row's toggle rather than being lost to the page.
   function close(view) {
     const e = open[view];
     if (!e) return;
     delete open[view];
+    const focusWasInPane = e.nodes.some(function (n) {
+      return n.contains(document.activeElement);
+    });
     e.nodes.forEach(function (n) {
       n.remove();
     });
     const pane = panes[e.sel.tab];
     e.row.classList.remove(pane.openClass);
+    setExpanded(e.row, false);
     if (pane.onClose) pane.onClose(e.row);
+    const toggle = e.row.querySelector('.row-toggle');
+    if (focusWasInPane && toggle) toggle.focus();
+  }
+
+  function setExpanded(row, expanded) {
+    const toggle = row.querySelector('.row-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', String(expanded));
+  }
+
+  // rowKeydown is a table view's keyboard path into its rows' detail: Enter or
+  // Space on a row's toggle acts as a click on it, and Escape from inside the
+  // open detail (or on its toggle) closes it. The container-logs panel keeps
+  // its own Escape.
+  function rowKeydown(view, e) {
+    if (e.defaultPrevented) return;
+    const toggle = e.target.closest('.row-toggle');
+    if (toggle && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      toggle.click();
+      return;
+    }
+    if (e.key !== 'Escape' || e.target.closest('.clog-panel')) return;
+    const entry = entryFor(view);
+    if (!entry) return;
+    const inside =
+      (toggle && entry.row.contains(toggle)) ||
+      entry.nodes.some(function (n) {
+        return n.contains(e.target);
+      });
+    if (!inside) return;
+    e.preventDefault();
+    close(view);
   }
 
   // closeIf closes view's detail when it is open on row (and on tab, when
@@ -134,5 +172,16 @@ App.detail = (function () {
     if (landed) landed.focus();
   }
 
-  return { registerPane, isOpen, show, toggle, close, closeIf, rebind, reapply, tabKeydown };
+  return {
+    registerPane,
+    isOpen,
+    show,
+    toggle,
+    close,
+    closeIf,
+    rebind,
+    reapply,
+    tabKeydown,
+    rowKeydown,
+  };
 })();
