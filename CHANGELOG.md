@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.32.0](https://github.com/polandy/skipper-cd/compare/v0.31.2...v0.32.0) (2026-11-18)
+
+
+### Features
+
+* **ui:** fold routine deploys and add day separators ([#400](https://github.com/polandy/skipper-cd/issues/400)) ([2f09911](https://github.com/polandy/skipper-cd/commit/2f09911433d29de5f7c42fcf7d6954a4301b1764))
+* **ui:** open a stack's detail panel from the Stacks view ([#394](https://github.com/polandy/skipper-cd/issues/394)) ([04c7dfb](https://github.com/polandy/skipper-cd/commit/04c7dfb7efb0854629ebbfa6fa385be5b6606d49))
+* **ui:** slim deploy rows to the Stacks row pattern ([#399](https://github.com/polandy/skipper-cd/issues/399)) ([ca1b41b](https://github.com/polandy/skipper-cd/commit/ca1b41b8886b113801dc700dc76a3858cecc3d19))
+
+
+### Bug Fixes
+
+* **ui:** make the deploy diff and error box readable ([#396](https://github.com/polandy/skipper-cd/issues/396)) ([5b5d4bf](https://github.com/polandy/skipper-cd/commit/5b5d4bf26a874d83bef339f42754cd697802dd52))
+
 ## [0.31.2](https://github.com/polandy/skipper-cd/compare/v0.31.1...v0.31.2) (2026-11-17)
 
 
