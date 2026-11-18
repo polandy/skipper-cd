@@ -107,7 +107,7 @@ test('UAL3: deploy-history and deploy-detail SHAs link to the same forge', async
 
   // Deploy detail: the Commit fact's SHA. Rows are newest first, so the pushed
   // deploy — the one with commit metadata — is the first.
-  await apiDeploys(page).first().locator('[data-testid="files-pill"]').click();
+  await apiDeploys(page).first().locator('.stack-name').click();
   const headSha = page.locator('[data-testid="detail-facts"] [data-testid="commit-sha"]');
   await expect(headSha).toBeVisible();
   expectForgeCommitHref(await headSha.getAttribute('href'));

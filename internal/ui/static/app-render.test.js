@@ -117,14 +117,24 @@ test('changeCellHTML renders a same-tag digest move as a rebuilt marker', () => 
   assert.match(html, /aria-label="web rebuilt, tag 1\.5 unchanged"/);
 });
 
-test('changeCellHTML lists every changed service, one chip each', () => {
+test('changeCellHTML shows one chip and counts the other changed services', () => {
   const html = r.changeCellHTML([
     { service: 'web', old: 'app:1', new: 'app:2' },
     { service: 'db', old: 'pg:15', new: 'pg:16' },
+    { service: 'cache', old: 'redis:7', new: 'redis:8' },
   ]);
-  assert.equal((html.match(/class="tag-delta"/g) || []).length, 2);
-  assert.match(html, /web/);
-  assert.match(html, /db/);
+  assert.equal((html.match(/class="tag-delta"/g) || []).length, 1);
+  assert.match(html, /<span class="td-svc">web<\/span>/);
+  assert.doesNotMatch(html, /td-svc">db/);
+  assert.match(
+    html,
+    /<span class="ver-count" data-testid="change-more" title="2 more changes — open the row for every change">\+2<\/span>/,
+  );
+});
+
+test('changeCellHTML prints no count for a single change', () => {
+  const html = r.changeCellHTML([{ service: 'web', old: 'app:1', new: 'app:2' }]);
+  assert.doesNotMatch(html, /ver-count/);
 });
 
 // --- change chips (which container a change without a new image reached) ---
@@ -185,13 +195,27 @@ test('changeChipsHTML renders nothing for a change that touched no service', () 
   assert.equal(r.changeChipsHTML([{ file: 'x/docker-compose.yml', kind: 'compose' }], null), '');
 });
 
-test('changeCellHTML puts the image chips before the change chips', () => {
+test('changeCellHTML leads with an image bump over a change attribution', () => {
   const html = r.changeCellHTML(
     [{ service: 'app', old: 'app:1', new: 'app:2' }],
-    [{ file: 'x/docker-compose.yml', kind: 'compose', services: ['sidecar'] }],
+    [
+      { file: 'x/docker-compose.yml', kind: 'compose', services: ['sidecar'] },
+      { file: 'x/.env', kind: 'env', wide: true },
+    ],
   );
-  assert.ok(html.indexOf('td-old') < html.indexOf('td-kind'));
-  assert.match(html, /<span class="td-svc">sidecar<\/span>/);
+  assert.match(html, /<span class="td-svc">app<\/span>/);
+  assert.doesNotMatch(html, /td-kind/);
+  assert.match(html, /title="2 more changes — open the row for every change">\+2</);
+});
+
+test('changeCellHTML falls back to the first change kind without an image bump', () => {
+  const html = r.changeCellHTML(null, [
+    { file: 'x/.env', kind: 'env', wide: true },
+    { file: 'x/docker-compose.yml', kind: 'compose', services: ['sidecar'] },
+  ]);
+  assert.match(html, /<span class="td-kind">compose<\/span><span class="td-svc">sidecar<\/span>/);
+  assert.doesNotMatch(html, /td-kind">env/);
+  assert.match(html, /title="1 more change — open the row for every change">\+1</);
 });
 
 test('changeAttributionHTML labels the three attribution states', () => {
@@ -320,27 +344,6 @@ test('serviceVersionHTML drops the visible label with labelled=false but keeps a
   const html = r.serviceVersionHTML('web', 'app:2', false);
   assert.doesNotMatch(html, /td-svc/);
   assert.match(html, /aria-label="web running 2"/);
-});
-
-test('filesHTML renders an em-dash placeholder for no files', () => {
-  assert.equal(r.filesHTML(null), '<span class="cell-duration">—</span>');
-  assert.equal(r.filesHTML([]), '<span class="cell-duration">—</span>');
-});
-
-test('filesHTML renders a pill with the count and the JSON stashed on the button', () => {
-  const one = r.filesHTML(['a.yml']);
-  assert.match(one, /^<button class="files-pill" data-testid="files-pill"/);
-  assert.match(one, /data-files="\[&quot;a\.yml&quot;\]"/);
-  assert.match(one, /1 file<\/button>$/);
-  assert.match(r.filesHTML(['a', 'b']), /2 files<\/button>$/);
-});
-
-test('healPillHTML stashes the drift JSON and defaults it to an empty list', () => {
-  const html = r.healPillHTML([{ name: 'web', status: 'exited' }]);
-  assert.match(html, /^<button class="heal-pill" data-testid="heal-pill"/);
-  assert.match(html, /data-drift="\[{&quot;name&quot;:&quot;web&quot;/);
-  assert.match(html, /self-heal<\/button>$/);
-  assert.match(r.healPillHTML(null), /data-drift="\[\]"/);
 });
 
 test('healthHistoryHTML returns empty without at least two phases', () => {
@@ -562,51 +565,10 @@ test('clogBtnHTML tags a peer host so the stream routes through the proxy', () =
   assert.match(r.clogBtnHTML('web', 'app', 'nuc'), /data-clog-host="nuc"/);
 });
 
-test('healthPillHTML carries the status in class hooks, label and title', () => {
-  const html = r.healthPillHTML('web', 'unhealthy');
-  assert.match(html, /^<button class="health-pill" type="button" data-testid="health-pill"/);
-  assert.match(html, /data-health="unhealthy"/);
-  assert.match(html, /data-stack="web"/);
-  assert.match(html, /<span class="hlabel">unhealthy<\/span>/);
-  assert.match(html, /title="web — unhealthy"/);
-});
-
 test('hookCount sums pre- and post-deploy commands, tolerating absent groups', () => {
   assert.equal(r.hookCount({ pre_deploy: ['a', 'b'], post_deploy: ['c'] }), 3);
   assert.equal(r.hookCount({ post_deploy: ['c'] }), 1);
   assert.equal(r.hookCount({}), 0);
-});
-
-test('hooksBadgeHTML shows the pre+post split, not the sum', () => {
-  const html = r.hooksBadgeHTML('web', { pre_deploy: ['a', 'b'], post_deploy: ['c'] });
-  assert.match(html, /^<button class="hooks-badge" type="button" data-testid="hooks-badge"/);
-  assert.match(html, /data-hooks-stack="web"/);
-  assert.match(html, /<span class="hk-count">2\+1<\/span>/);
-  assert.match(html, /aria-label="pre-deploy hook: 2\npost-deploy hook: 1"/);
-});
-
-test('jumpBtnHTML labels each target view and escapes the stack', () => {
-  const toStacks = r.jumpBtnHTML('stacks', 'web<x>');
-  assert.match(toStacks, /data-jump-view="stacks"/);
-  assert.match(toStacks, /data-jump-stack="web&lt;x&gt;"/);
-  assert.match(toStacks, /title="View in Stacks"/);
-  assert.match(r.jumpBtnHTML('deploys', 'web'), /title="View in Deploys"/);
-});
-
-test('pendingTagHTML renders a blocked reason as text, never markup', () => {
-  assert.equal(
-    r.pendingTagHTML('blocked', 'blocked by <db>'),
-    '<span class="paused-tag">blocked by &lt;db&gt;</span>',
-  );
-  assert.equal(r.pendingTagHTML('blocked', ''), '<span class="paused-tag">blocked</span>');
-});
-
-test('pendingTagHTML labels queued rows paused, with the reason when given', () => {
-  assert.equal(
-    r.pendingTagHTML('queued', 'window'),
-    '<span class="paused-tag">paused: window</span>',
-  );
-  assert.equal(r.pendingTagHTML('queued', undefined), '<span class="paused-tag">paused</span>');
 });
 
 test('hostChipHTML renders the monogram chip with the supplied colour slot', () => {
@@ -1698,28 +1660,73 @@ test('auditRowsHTML shows a repeat count on an incident that carries no error te
   assert.match(html, /×4/);
 });
 
-test('tableRowHTML renders a deploy row: time, identity, version, state, duration, files', () => {
+test('tableRowHTML renders a deploy row: stack, result, change, when', () => {
   const ts = '2020-01-02T03:04:05Z';
   const html = r.tableRowHTML(r.ROW_KIND.deploy, {
     host: '<HOST>',
     stack: 'a<b',
-    identExtras: '<JUMP>',
+    cause: '',
     ts,
     absolute: false,
     version: '<VER>',
     state: '<STATE>',
     durationMs: 65000,
-    files: '<FILES>',
+    commit: 'abc1234def',
+    repoBase: '',
   });
   assert.equal(
     html,
-    `<span class="cell-time" data-testid="time-cell" data-ts="${ts}" title="${globalThis.fullTime(ts)}">${globalThis.formatTime(ts)}</span>` +
-      '<span class="cell-stack"><HOST><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">a&lt;b</span><JUMP></span>' +
-      '<span class="col-version"><VER></span>' +
+    '<span class="cell-who"><span class="cell-stack"><HOST><span class="stack-icon" data-testid="stack-icon"></span><span class="stack-name">a&lt;b</span></span></span>' +
       '<span class="status-cell"><STATE></span>' +
+      '<span class="col-version"><VER></span>' +
+      '<span class="cell-when">' +
+      `<span class="cell-time" data-testid="time-cell" data-ts="${ts}" title="${globalThis.fullTime(ts)}">${globalThis.formatTime(ts)}</span>` +
       '<span class="cell-duration" data-testid="duration-cell">1m 5s</span>' +
-      '<span class="col-files"><FILES></span>',
+      r.commitLinkHTML('abc1234def', {
+        cls: 'cell-sha',
+        base: '',
+        title: 'abc1234def',
+        testid: 'row-sha',
+      }) +
+      '</span>',
   );
+});
+
+test('tableRowHTML puts a deploy row cause on one titled line under the name', () => {
+  const html = r.tableRowHTML(r.ROW_KIND.deploy, {
+    host: '',
+    stack: 'web',
+    cause: 'up failed: <port> in use',
+    ts: '2020-01-02T03:04:05Z',
+    absolute: false,
+    version: '',
+    state: '',
+    durationMs: 0,
+    commit: '',
+    repoBase: '',
+  });
+  assert.match(
+    html,
+    /<span class="stack-name">web<\/span><\/span><span class="cell-cause" data-testid="cause-line" title="up failed: &lt;port&gt; in use">up failed: &lt;port&gt; in use<\/span><\/span>/,
+  );
+  assert.match(html, /<span class="cell-duration" data-testid="duration-cell"><\/span>/);
+  assert.doesNotMatch(html, /cell-sha/);
+});
+
+test('tableRowHTML deploy rows carry no controls and no health pill', () => {
+  const html = r.tableRowHTML(r.ROW_KIND.deploy, {
+    host: '',
+    stack: 'web',
+    cause: 'blocked by db',
+    ts: '2020-01-02T03:04:05Z',
+    absolute: false,
+    version: r.changeCellHTML([{ service: 'web', old: 'app:1', new: 'app:2' }]),
+    state: r.badgeHTML('failed') + r.repeatNoteHTML({ repeat_count: 3 }),
+    durationMs: 1000,
+    commit: 'abc1234',
+    repoBase: '',
+  });
+  assert.doesNotMatch(html, /<button|health-pill|jump-btn|more-btn|paused-tag|files-pill/);
 });
 
 test('tableRowHTML renders a roster row: identity, health, version, last deploy with its commit', () => {
@@ -1761,12 +1768,6 @@ test('tableRowHTML leaves a roster row with no past deploy untitled and its cell
   });
   assert.match(html, /<span class="roster-when"><\/span>/);
   assert.match(html, /<span class="roster-health" data-testid="roster-health"><\/span>/);
-});
-
-test("peerFilesHTML counts a peer record's changed files and hides a zero", () => {
-  assert.equal(r.peerFilesHTML(0), '');
-  assert.equal(r.peerFilesHTML(1), '<span class="peer-files">1 file</span>');
-  assert.equal(r.peerFilesHTML(3), '<span class="peer-files">3 files</span>');
 });
 
 // ── Stacks detail panel (docs/dev/ui-redesign-plan.md §3.2) ──
@@ -2008,13 +2009,14 @@ test('deployPanelHTML: a success has no verdict', () => {
   assert.doesNotMatch(html, /data-tab="output"/);
 });
 
-test('deployFactsHTML: Commit waits for the diff, Change is the first chip plus a count', () => {
+test('deployFactsHTML: Commit waits for the diff, Change lists every chip', () => {
   const facts = r.deployFactsHTML(FAILED_EVT, { commits: null });
   const cells = [...facts.matchAll(/class="dp-k">([^<]*)</g)].map((m) => m[1]);
   assert.deepEqual(cells, ['Commit', 'Change', 'Duration', 'Files']);
   assert.match(facts, /class="dp-k">Commit<\/div><div class="dp-fv">—</);
   assert.match(facts, /app<\/span>[\s\S]*1\.25[\s\S]*1\.26/);
-  assert.match(facts, /<span class="dp-more">\+1<\/span>/);
+  assert.equal(facts.match(/class="tag-delta/g).length, 2);
+  assert.doesNotMatch(facts, /dp-more"/);
   assert.match(facts, /class="dp-k">Duration<\/div><div class="dp-fv">4s</);
   assert.match(facts, /class="dp-k">Files<\/div><div class="dp-fv">2 files</);
 });

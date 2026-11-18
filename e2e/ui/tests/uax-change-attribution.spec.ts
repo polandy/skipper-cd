@@ -84,8 +84,8 @@ test.describe('UAX1: a change with no new image', () => {
     const headBox = await page.locator('.event-list-header .col-version').boundingBox();
     expect(chipBox && headBox).toBeTruthy();
     expect(Math.abs(chipBox!.x - headBox!.x)).toBeLessThan(4);
-    // The row still counts its files: the chip answers "who", not "how much".
-    await expect(row.locator('[data-testid="files-pill"]')).toContainText('1 file');
+    // One change, one chip: no "+N" overflow count beside it.
+    await expect(row.locator('[data-testid="change-more"]')).toHaveCount(0);
   });
 });
 
@@ -144,7 +144,7 @@ test.describe('UAX4: the panel attributes each file', () => {
 
     const row = successRow(page, 'web');
     await expect(changes(page, 'web').locator('.td-svc')).toHaveText('web-restic');
-    await row.locator('[data-testid="files-pill"]').click();
+    await row.locator('.stack-name').click();
 
     const panel = page.locator('[data-testid="diff-panel"]');
     await expect(panel).toBeVisible();

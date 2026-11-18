@@ -48,9 +48,9 @@ const versionCell = (page: Page, stack: string) => row(page, stack).locator('[da
 // arrive with health).
 async function openStacks(page: Page, baseURL: string): Promise<void> {
   await page.goto(`${baseURL}/`);
-  await expect(page.locator('[data-testid="health-pill"]').first()).toBeVisible();
   await stacksBtn(page).click();
   await expect(page.locator('[data-testid="stacks-view"]')).toBeVisible();
+  await expect(page.locator('[data-testid="roster-row"] [data-testid="health-pill"]').first()).toBeVisible();
 }
 
 // UAK1 — the row leads with the service the stack is named after, its running

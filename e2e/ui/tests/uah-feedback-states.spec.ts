@@ -1,6 +1,6 @@
 import { test, expect } from '../fixtures/test';
 import type { Page, Locator } from '@playwright/test';
-import { openRowMenu } from '../fixtures/menu';
+import { openStackDetail } from '../fixtures/stack-detail';
 
 // Maske AH: feedback & error states (T4.16 / T4.17). See docs/dev/e2e-tests.md §4.35.
 //
@@ -100,9 +100,7 @@ test.describe('UAH3: audit history load-error + retry', () => {
     await failOnce(page, '**/api/audit**', 500);
     await page.goto(`${skipper.baseURL}/`);
 
-    const newest = page.locator('[data-testid="deploy-row"][data-stack="web"]').first();
-    await openRowMenu(newest);
-    await newest.locator('[data-testid="history-btn"]').click();
+    await openStackDetail(page, 'web', 'history');
 
     const panel = page.locator('[data-testid="audit-panel"]');
     const err = loadError(panel);
@@ -132,7 +130,7 @@ test.describe('UAH4: diff load-error + retry', () => {
     );
     await expect(diffRow).toHaveCount(1);
 
-    await diffRow.locator('[data-testid="files-pill"]').click();
+    await diffRow.locator('.stack-name').click();
     const err = loadError(page);
     await expect(err).toBeVisible();
     await expect(err).toContainText("Couldn't load the diff");

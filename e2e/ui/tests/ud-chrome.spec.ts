@@ -1,6 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import { buildCommit, buildVersion } from '../fixtures/harness';
 import { visualSnapshot } from '../fixtures/snapshot';
+import { openStackDetail } from '../fixtures/stack-detail';
 
 // Deploy rows carry a relative time and a duration that vary run-to-run; mask
 // them out of any full-page screenshot (docs/dev/e2e-tests.md §5). The header
@@ -37,31 +38,31 @@ test('UD5: header shows the deployed build identity', async ({ page, skipper }) 
   await expect(label).toHaveText(`v${buildVersion} · ${buildCommit}`);
 });
 
-// UD4 — Responsive ≤700px (compact header + table collapse). One test covering
+// UD4 — Responsive ≤700px (compact header + two-line rows). One test covering
 // the whole mobile contract (UI_SPEC §Responsive): the header fits a narrow
 // viewport without horizontal scroll and drops the `skipper-cd` wordmark, and
-// the deploy table collapses so the Files pill hides while tapping a row with
-// changed files still expands the panel. The 1280px pass is the control
-// (wordmark + pill visible, likewise no sideways scroll). The `web` startup
-// deploy already lands a success row with changed files, so no webhook is
-// needed (same fixture as UA7).
+// the deploy row folds to two lines, dropping the When cell's duration and SHA
+// while tapping the row still opens its detail directly below it. The 1280px
+// pass is the control (wordmark + duration visible, likewise no sideways
+// scroll). The `web` startup deploy already lands a success row with changed
+// files, so no webhook is needed (same fixture as UA7).
 test.describe('UD4: responsive ≤700px', () => {
   type Page = import('@playwright/test').Page;
   const wordmark = (page: Page) => page.locator('[data-testid="brand-name"]');
   const successRow = (page: Page) =>
     page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]');
-  const filesPill = (page: Page) => successRow(page).locator('[data-testid="files-pill"]');
+  const duration = (page: Page) => successRow(page).locator('.cell-duration');
   const filesPanel = (page: Page) => page.locator('[data-testid="files-panel"]');
   const fitsViewport = (page: Page) =>
     page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
-  test('compact header fits, wordmark drops, and tapping a row expands its files', async ({ page, skipper }) => {
-    // Desktop control: wordmark and Files pill visible, no sideways scroll.
+  test('compact header fits, wordmark drops, and tapping a row opens its detail', async ({ page, skipper }) => {
+    // Desktop control: wordmark and duration visible, no sideways scroll.
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`${skipper.baseURL}/`);
     await expect(successRow(page)).toHaveCount(1); // startup settled
     await expect(wordmark(page)).toBeVisible();
-    await expect(filesPill(page)).toBeVisible();
+    await expect(duration(page)).toBeVisible();
     expect(await fitsViewport(page)).toBe(true);
 
     // Mobile: the header stays within the viewport and the wordmark is gone.
@@ -72,17 +73,17 @@ test.describe('UD4: responsive ≤700px', () => {
     // Snapshot: the compact mobile layout (§5 anchor), dynamic cells masked.
     await visualSnapshot(page, 'mobile-layout.png', { mask: pageMasks(page) });
 
-    // Table collapses: the Files pill is hidden, yet tapping the row still
+    // The row folds: the duration is hidden, yet tapping the row still
     // toggles the deploy detail and its file list directly below it.
-    await expect(filesPill(page)).toBeHidden();
+    await expect(duration(page)).toBeHidden();
     await expect(filesPanel(page)).toHaveCount(0);
-    await successRow(page).click();
+    await successRow(page).locator('.stack-name').click();
     await expect(filesPanel(page)).toBeVisible();
     const siblingTestid = await successRow(page).evaluate(
       (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
     expect(siblingTestid).toBe('detail-panel');
-    await successRow(page).click();
+    await successRow(page).locator('.stack-name').click();
     await expect(filesPanel(page)).toHaveCount(0);
   });
 
@@ -449,14 +450,21 @@ test('UD3: deploy indicator names the active stack while held, idle otherwise', 
 
 // UD11 — Tap-tip opt-in on non-header controls. setupTapTips used to only
 // understand two hardcoded cases (inside <header>, or the hooks badge);
-// everything else with a title — the deploy row's container-logs icon here —
+// everything else with a title — a service's container-logs glyph here —
 // sat silently on touch. It now gates on a `data-taptip` opt-in instead (an
 // ancestor or the control itself), so this asserts the bubble on a leaf-level
 // opt-in, that mouse/pen still gets no bubble, and that a control inside
 // `.view-options` stays silent even though it sits under the opted-in
 // <header> (that popover's rows already show a visible label).
 test.describe('UD11: tap-tip opt-in on non-header controls', () => {
-  test.use({ startOptions: { stacks: ['web'] } });
+  // Seeded health: the Containers tab lists a service only once health landed.
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      healthPoll: 1,
+      initialHealth: { web: [{ Service: 'app', State: 'running', Health: 'healthy' }] },
+    },
+  });
 
   test('a non-header glyph flashes on touch, stays silent on mouse, and auto-hides', async ({
     page,
@@ -465,14 +473,14 @@ test.describe('UD11: tap-tip opt-in on non-header controls', () => {
     await page.clock.install(); // before navigation, so the bubble's own setTimeout is captured
     await page.goto(`${skipper.baseURL}/`);
 
-    // The cross-view jump glyph is a non-header, always-visible row control that
-    // opts into the tap-tip (the container-logs glyph now sits inside the ⋯ menu,
-    // labelled, so it no longer carries a tap-tip — T3.13).
-    const jumpBtn = page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="jump-btn"]');
+    // A service's container-logs glyph in the Containers tab is a non-header,
+    // icon-only control that opts into the tap-tip (deploy rows carry none).
+    await openStackDetail(page, 'web', 'containers');
+    const logBtn = page.locator('[data-testid="health-service"] [data-testid="clog-btn"]').first();
     const tip = page.locator('.tap-tip');
-    const title = await jumpBtn.getAttribute('title');
+    const title = await logBtn.getAttribute('title');
 
-    await jumpBtn.dispatchEvent('pointerdown', { pointerType: 'touch' });
+    await logBtn.dispatchEvent('pointerdown', { pointerType: 'touch' });
     await expect(tip).toHaveClass(/\bshow\b/);
     await expect(tip).toHaveText(title!);
 
@@ -480,7 +488,7 @@ test.describe('UD11: tap-tip opt-in on non-header controls', () => {
     await expect(tip).not.toHaveClass(/\bshow\b/);
 
     // Mouse/pen keep the native tooltip only — no bubble.
-    await jumpBtn.dispatchEvent('pointerdown', { pointerType: 'mouse' });
+    await logBtn.dispatchEvent('pointerdown', { pointerType: 'mouse' });
     await expect(tip).not.toHaveClass(/\bshow\b/);
   });
 

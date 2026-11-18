@@ -12,14 +12,17 @@ const nixRow = (page: Page) => page.locator('[data-testid="deploy-row"][data-sta
 const anyPanel = (page: Page) =>
   page.locator('.diff-panel, .files-list, [data-testid="files-panel"], [data-testid="audit-panel"]');
 
-// UW1 — the _nixos row appears and carries only affordances that apply to it:
-// no jump-to-Stacks (not in the roster) and no container-logs (not a compose
+// UW1 — the _nixos detail carries only the actions that apply to it: no
+// jump-to-Stacks (not in the roster) and no container logs (not a compose
 // project).
-test('UW1: the _nixos row has no jump or container-logs affordance', async ({ page, skipper }) => {
+test('UW1: the _nixos detail has no jump or container-logs action', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   await expect(nixRow(page)).toBeVisible();
-  await expect(nixRow(page).locator('[data-testid="jump-btn"]')).toHaveCount(0);
-  await expect(nixRow(page).locator('.clog-btn:not(.hook-log-btn)')).toHaveCount(0);
+  await nixRow(page).locator('.stack-name').click();
+  const detail = page.locator('[data-testid="detail-panel"][data-kind="deploy"][data-stack="_nixos"]');
+  await expect(detail.locator('[data-testid="detail-close"]')).toBeVisible();
+  await expect(detail.locator('[data-testid="jump-btn"]')).toHaveCount(0);
+  await expect(detail.locator('.dp-head [data-testid="clog-btn"]')).toHaveCount(0);
 });
 
 // UW2 — clicking a real diff-bearing _nixos row opens a panel (diff / file list
@@ -35,9 +38,8 @@ test('UW2: clicking the _nixos row opens a panel, never nothing', async ({ page,
   await expect(nixRow(page)).toHaveCount(2);
 
   const row = nixRow(page).first();
-  // The realistic row carries a real diff (has_diffs + a files pill).
+  // The realistic row carries a real diff.
   await expect(row).toHaveAttribute('data-has-diffs', '1');
-  await expect(row.locator('.files-pill')).toHaveCount(1);
   await expect(anyPanel(page)).toHaveCount(0);
 
   // Clicking the row body opens its diff/files panel — never nothing.

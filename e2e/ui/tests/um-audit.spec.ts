@@ -1,15 +1,12 @@
 import { test, expect } from '../fixtures/test';
-import { openRowMenu } from '../fixtures/menu';
+import { openStackDetail } from '../fixtures/stack-detail';
 
 // Maske M: per-stack deploy history (audit log, ADR-0033). See docs/dev/e2e-tests.md §4.14.
 //
-// The history button lives inside the newest row's ⋯ overflow menu (T3.13), so
-// each history-btn interaction opens that menu first (openRowMenu).
-//
-// The newest row per stack carries a history button; clicking it opens a panel
+// A stack's history lives in its Stacks detail, on the History tab: a panel
 // listing that stack's durable terminal deploy outcomes, fetched from
-// /api/audit. The panel joins the one-open-panel-per-row rule (Maske L). The
-// harness runs the real backend, so the records come from real deploys — the
+// /api/audit. Deploy rows carry no history control. The harness runs the real
+// backend, so the records come from real deploys — the
 // startup deploy plus a webhook image bump give two `success` records.
 // Behaviour-only (no snapshot).
 
@@ -30,19 +27,12 @@ async function twoDeploys(page: import('@playwright/test').Page, skipper: import
 
 // UM1 — the history panel lists the stack's terminal outcomes, newest first.
 test.describe('UM1: per-stack deploy history', () => {
-  test('opens from the newest row and lists past deploys', async ({ page, skipper }) => {
+  test('opens on the Stacks detail and lists past deploys', async ({ page, skipper }) => {
     await twoDeploys(page, skipper);
+    await openStackDetail(page, 'web', 'history');
 
-    const newest = webRows(page).first();
-    await openRowMenu(newest);
-    await newest.locator('[data-testid="history-btn"]').click();
-
-    const panel = page.locator('[data-testid="audit-panel"]');
+    const panel = page.locator('[data-testid="detail-panel"] [data-testid="audit-panel"]');
     await expect(panel).toHaveCount(1);
-    // Bound to its row (variant A: the row gains audit-open, panel is its sibling).
-    await expect(newest).toHaveClass(/audit-open/);
-    const sibling = await newest.evaluate((r) => r.nextElementSibling?.getAttribute('data-testid') ?? null);
-    expect(sibling).toBe('audit-panel');
 
     // Two success records, and each carries the deployed commit's short SHA.
     const rows = panel.locator('[data-testid="audit-row"]');
@@ -51,76 +41,9 @@ test.describe('UM1: per-stack deploy history', () => {
     await expect(rows.first().locator('.ar-sha')).not.toHaveText('—');
     await expect(rows.first().locator('.ar-status')).toContainText('success');
 
-    // Toggling the button again closes the panel (reopen the menu to reach it).
-    await openRowMenu(newest);
-    await newest.locator('[data-testid="history-btn"]').click();
+    // Closing the detail removes the panel.
+    await page.locator('[data-testid="detail-close"]').click();
     await expect(panel).toHaveCount(0);
-    await expect(newest).not.toHaveClass(/audit-open/);
-  });
-});
-
-// UM2 — the history button lives only on the newest row of a stack.
-test.describe('UM2: history button is per-stack, newest row only', () => {
-  test('older rows of the same stack carry no history button', async ({ page, skipper }) => {
-    await twoDeploys(page, skipper);
-    await expect(webRows(page).first().locator('[data-testid="history-btn"]')).toHaveCount(1);
-    await expect(webRows(page).nth(1).locator('[data-testid="history-btn"]')).toHaveCount(0);
-  });
-});
-
-// UM3 — the history panel obeys one-open-panel-per-row: opening it closes an
-// open deploy detail on the row, and opening the deploy detail closes it.
-test.describe('UM3: history panel and deploy detail are mutually exclusive', () => {
-  test('opening one panel closes the other', async ({ page, skipper }) => {
-    await twoDeploys(page, skipper);
-    const newest = webRows(page).first();
-    const auditPanel = page.locator('[data-testid="audit-panel"]');
-    const diffPanel = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
-
-    // History first, then diff: the deploy detail replaces the history panel. The
-    // files pill stays on the row itself, so only history needs the menu opened.
-    await openRowMenu(newest);
-    await newest.locator('[data-testid="history-btn"]').click();
-    await expect(auditPanel).toHaveCount(1);
-    await newest.locator('[data-testid="files-pill"]').click();
-    await expect(diffPanel).toHaveCount(1);
-    await expect(auditPanel).toHaveCount(0);
-
-    // Detail open, then history: the history panel replaces the deploy detail.
-    await openRowMenu(newest);
-    await newest.locator('[data-testid="history-btn"]').click();
-    await expect(auditPanel).toHaveCount(1);
-    await expect(diffPanel).toHaveCount(0);
-    await expect(newest).toHaveClass(/audit-open/);
-  });
-});
-
-// UM4 — a queued row is replaced when its stack deploys; an open history panel
-// must go with it instead of being left orphaned in the table (a queued row is
-// the newest row of its stack, so it carries the history button).
-test.describe('UM4: history panel does not outlive a queued row', () => {
-  test('draining a queued row removes its open history panel', async ({ page, skipper }) => {
-    await page.goto(`${skipper.baseURL}/`);
-
-    // Pause autosync, push a change → a queued row for web, newest of its stack.
-    expect(await skipper.postAutosync('', false)).toBe(200);
-    skipper.setStackImage('web', '1.26');
-    expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
-    const queuedRow = page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="queued"]');
-    await expect(queuedRow).toHaveCount(1);
-
-    await openRowMenu(queuedRow);
-    await queuedRow.locator('[data-testid="history-btn"]').click();
-    await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(1);
-
-    // Resume: the queued row is superseded by the real deploy — the panel it
-    // anchored must be removed with it, not survive as a sibling of the new row.
-    expect(await skipper.postAutosync('', true)).toBe(200);
-    await expect(queuedRow).toHaveCount(0);
-    await expect(
-      page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]').first(),
-    ).toBeVisible();
-    await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(0);
   });
 });
 
@@ -148,9 +71,7 @@ test.describe('UM5: routine outcomes fold, verbatim list behind the toggle', () 
     }
     await expect.poll(records).toBe(5);
 
-    const newest = webRows(page).first();
-    await openRowMenu(newest);
-    await newest.locator('[data-testid="history-btn"]').click();
+    await openStackDetail(page, 'web', 'history');
     const panel = page.locator('[data-testid="audit-panel"]');
 
     // The newest record keeps its own line; the four older ones fold into one.
@@ -186,9 +107,7 @@ test.describe('UM5: routine outcomes fold, verbatim list behind the toggle', () 
 test.describe('UM6: a short history keeps every row and offers no toggle', () => {
   test('two deploys render as two rows', async ({ page, skipper }) => {
     await twoDeploys(page, skipper);
-    const newest = webRows(page).first();
-    await openRowMenu(newest);
-    await newest.locator('[data-testid="history-btn"]').click();
+    await openStackDetail(page, 'web', 'history');
     const panel = page.locator('[data-testid="audit-panel"]');
     await expect(panel.locator('[data-testid="audit-row"]')).toHaveCount(2);
     await expect(panel.locator('[data-testid="audit-fold"]')).toHaveCount(0);
@@ -246,9 +165,7 @@ test.describe('UM7: a repeated failure is one counted record, split by cause', (
     expect(settled[1].error).toMatch(/no previous commit available for rollback/);
     expect(settled[1].repeat_count ?? 0).toBe(0);
 
-    const newest = webRows(page).first();
-    await openRowMenu(newest);
-    await newest.locator('[data-testid="history-btn"]').click();
+    await openStackDetail(page, 'web', 'history');
     const panel = page.locator('[data-testid="audit-panel"]');
 
     // Both records keep a full row with their error; the run's carries the

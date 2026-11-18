@@ -3,13 +3,11 @@ import type { Page, Locator } from '@playwright/test';
 
 // Maske S: cross-view stack jump. See docs/dev/e2e-tests.md §4.20.
 //
-// The compass jump-btn — beside the stack name on a deploy row, in the head of
-// a roster row's detail panel — switches between the Deploys and Stacks views and lands on that
-// stack's row there — Deploys -> Stacks always lands on the one roster row
-// (inventory); Stacks -> Deploys lands on the *newest* deploy row (the table
-// is an event log, newest first). Behaviour-only (no new snapshot — the
-// deploy-table/theme/mobile baselines already regenerated for the jump-btn's
-// footprint on every row).
+// The compass jump-btn — in the head of a row's detail panel, in both views —
+// switches between the Deploys and Stacks views and lands on that stack's row
+// there — Deploys -> Stacks always lands on the one roster row (inventory) and
+// opens its detail; Stacks -> Deploys lands on the *newest* deploy row (the
+// table is an event log, newest first). Behaviour-only (no snapshot).
 
 const deploysBtn = (page: Page) => page.locator('[data-testid="view-toggle"] button[data-view="deploys"]');
 const stacksBtn = (page: Page) => page.locator('[data-testid="view-toggle"] button[data-view="stacks"]');
@@ -19,23 +17,30 @@ const rosterRow = (page: Page, stack: string) =>
   page.locator(`[data-testid="roster-row"][data-stack="${stack}"]`);
 const jumpBtnIn = (row: Locator) => row.locator('[data-testid="jump-btn"]');
 const detailPanel = (page: Page, stack: string) =>
-  page.locator(`[data-testid="detail-panel"][data-stack="${stack}"]`);
-// A roster row carries no controls: its jump is in the head of its detail
-// panel, so opening the row comes first.
+  page.locator(`[data-testid="stacks-view"] [data-testid="detail-panel"][data-stack="${stack}"]`);
+const deployPanel = (page: Page, stack: string) =>
+  page.locator(`[data-testid="detail-panel"][data-kind="deploy"][data-stack="${stack}"]`);
+// Rows carry no controls: the jump is in the head of the row's detail panel,
+// so opening the row comes first.
 async function rosterJump(page: Page, stack: string): Promise<Locator> {
   await rosterRow(page, stack).click();
   return jumpBtnIn(detailPanel(page, stack));
+}
+async function deployJump(page: Page, stack: string): Promise<Locator> {
+  await deployRows(page, stack).first().locator('.stack-name').click();
+  return jumpBtnIn(deployPanel(page, stack));
 }
 
 test.describe('cross-view jump', () => {
   test.use({ startOptions: { stacks: ['api', 'web'] } });
 
-  // US1 — a deploy row's jump button switches to Stacks and lands on that
-  // stack's roster row (flashed via .jump-target, cleared again after).
+  // US1 — a deploy detail's jump button switches to Stacks and lands on that
+  // stack's roster row (flashed via .jump-target, cleared again after), its
+  // detail open.
   test('US1: Deploys -> Stacks jump lands on and flashes the roster row', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
-    await jumpBtnIn(deployRows(page, 'api').first()).click();
+    await (await deployJump(page, 'api')).click();
 
     await expect(page.locator('[data-testid="stacks-view"]')).toBeVisible();
     await expect(page.locator('[data-testid="deploys-table"]')).toBeHidden();
@@ -44,6 +49,7 @@ test.describe('cross-view jump', () => {
     const target = rosterRow(page, 'api');
     await expect(target).toBeVisible();
     await expect(target).toHaveClass(/jump-target/);
+    await expect(detailPanel(page, 'api')).toBeVisible();
     // The flash is temporary, not a persisted state like audit-open.
     await expect(target).not.toHaveClass(/jump-target/, { timeout: 3000 });
   });
@@ -73,22 +79,19 @@ test.describe('cross-view jump', () => {
     await expect(deployRows(page, 'api').nth(1)).not.toHaveClass(/jump-target/);
   });
 
-  // US3 — the jump button pre-empts the row's own click handler: it must
-  // switch view instead of also opening the deploy row's diff panel, or
-  // toggling the roster's detail panel it sits in (a regression guard: both
-  // listeners are on the same delegated element).
-  test('US3: the jump button does not also open the row/panel it sits on', async ({ page, skipper }) => {
+  // US3 — a jump only switches views: the detail panel it sits in is left as
+  // it was — not closed, its tab unchanged — so the way back still shows it.
+  test('US3: the jump leaves the panel it sits in open', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
-    await jumpBtnIn(deployRows(page, 'api').first()).click();
+    await (await deployJump(page, 'api')).click();
     await expect(page.locator('[data-testid="stacks-view"]')).toBeVisible();
-    // No deploy detail opened on the deploy row behind the jump.
-    await expect(deployRows(page, 'api').first()).not.toHaveClass(/audit-open/);
+    await expect(deployPanel(page, 'api')).toHaveCount(1);
 
-    await (await rosterJump(page, 'api')).click();
+    // The jump opened api's Stacks detail; its own jump leads back.
+    await jumpBtnIn(detailPanel(page, 'api')).click();
     await expect(page.locator('[data-testid="deploys-table"]')).toBeVisible();
-    // The detail panel the jump sits in is left as it was — not closed, its
-    // tab unchanged — so Stacks still shows it on the way back.
+    await expect(deployPanel(page, 'api')).toBeVisible();
     await expect(detailPanel(page, 'api')).toHaveCount(1);
     await expect(detailPanel(page, 'api')).toHaveAttribute('data-tab', 'triggers');
     await stacksBtn(page).click();
@@ -132,8 +135,8 @@ test.describe('cross-view jump', () => {
     await expect(rosterRow(page, 'api')).toBeHidden();
     await deploysBtn(page).click();
 
-    // Jumping from api's deploy row must clear that stale Stacks filter.
-    await jumpBtnIn(deployRows(page, 'api').first()).click();
+    // Jumping from api's deploy detail must clear that stale Stacks filter.
+    await (await deployJump(page, 'api')).click();
     await expect(rosterRow(page, 'api')).toBeVisible();
     await expect(rosterRow(page, 'api')).toHaveClass(/jump-target/);
     await expect(page.locator('[data-testid="roster-filter"]')).toHaveValue('');

@@ -14,7 +14,7 @@
 // has stored a peers snapshot.
 App.hosts = (function () {
   const S = App.state;
-  const { healthMapFor } = App.resolve;
+  const { repoWebURLFor } = App.resolve;
   const { CHECK_ICON, populateIcon } = App.panels;
   // Peer rows live in the deploys table, so the feed is addressed directly.
   const tbody = document.getElementById('tbody');
@@ -75,14 +75,8 @@ App.hosts = (function () {
   // peerRecords keeps each peer row's audit record for its deploy detail.
   const peerRecords = new WeakMap();
 
-  // createPeerRow builds one read-only deploy row from a peer's audit record.
-  // Peer rows carry no local drill-down (hooks, history); a click opens the
-  // same deploy detail as a local row, its diff fetched through the proxy.
-  //
-  // newest marks the newest deploy row for a (host, stack): only it carries the
-  // live health pill (health is a current per-stack value, not per-event — the
-  // same rule updateStackAffordances applies to local rows).
-  function createPeerRow(rec, hostName, stale, newest) {
+  // createPeerRow builds a read-only deploy row from a peer's audit record.
+  function createPeerRow(rec, hostName, stale) {
     const row = document.createElement('div');
     row.className = rowClass(true) + ' peer-row' + (stale ? ' peer-stale' : '');
     row.dataset.testid = 'deploy-row';
@@ -90,23 +84,21 @@ App.hosts = (function () {
     row.dataset.status = rec.status;
     row.dataset.host = hostName;
     if (rec.id) row.dataset.eventId = String(rec.id); // keys the open detail
-    const h = newest ? healthMapFor(hostName)[rec.stack] : null;
-    const pill = h && h.status ? healthPillHTML(rec.stack, h.status) : '';
     row.innerHTML = tableRowHTML(ROW_KIND.deploy, {
       host: hostChip(hostName),
       stack: rec.stack,
+      cause: deployRowCause(rec.status, rec.error),
       ts: rec.timestamp,
       absolute: S.absoluteTime,
-      // Empty Version cell: the fan-in's audit records carry no image_changes, but
-      // the peer row shares the deploy grid, so the cell must exist to stay aligned.
+      // Audit records carry no changes; the empty cell keeps the grid aligned.
       version: '',
       // A peer's record collapses repeats the same way ours does (ADR-0056), and
       // without the count its one row would read as a one-off incident.
-      state: badgeHTML(rec.status) + repeatNoteHTML(rec) + pill,
+      state: badgeHTML(rec.status) + repeatNoteHTML(rec),
       durationMs: rec.duration_ms,
-      files: peerFilesHTML(rec.changed_files || 0),
+      commit: rec.commit_sha || '',
+      repoBase: repoWebURLFor(hostName),
     });
-    if (rec.error) row.title = rec.stack + ' — ' + rec.error;
     populateIcon(row.querySelector('.stack-icon'), rec.stack);
     peerRecords.set(row, rec);
     return row;
@@ -138,17 +130,8 @@ App.hosts = (function () {
       return a.rec.timestamp < b.rec.timestamp ? 1 : a.rec.timestamp > b.rec.timestamp ? -1 : 0;
     });
     if (items.length) App.deploys.showTable();
-    // The first row seen per (host, stack) is the newest — it carries the live
-    // health pill (a current per-stack value), like the local newest row.
-    const seenNewest = {};
     items.forEach(function (it) {
-      const perHost = seenNewest[it.host] || (seenNewest[it.host] = {});
-      const newest = !perHost[it.rec.stack];
-      perHost[it.rec.stack] = true;
-      App.deploys.insertRowByTime(
-        createPeerRow(it.rec, it.host, it.stale, newest),
-        it.rec.timestamp,
-      );
+      App.deploys.insertRowByTime(createPeerRow(it.rec, it.host, it.stale), it.rec.timestamp);
     });
     if (peerOpen) App.detail.reapply(DETAIL_VIEW.deploys, tbody.querySelectorAll('.peer-row'));
   }

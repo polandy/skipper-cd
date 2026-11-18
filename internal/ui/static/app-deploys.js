@@ -14,19 +14,7 @@
 // between the panels' Escape handler and the stacks one.
 App.deploys = (function () {
   const S = App.state;
-  const {
-    ensureRowMore,
-    moreMenuItem,
-    toggleMoreMenu,
-    closeMoreMenu,
-    closeMoreMenuIf,
-    createLoadError,
-    fetchDiffs,
-    clogButton,
-    hooksFor,
-    hooksBadgeButton,
-    populateIcon,
-  } = App.panels;
+  const { createLoadError, fetchDiffs, populateIcon } = App.panels;
   const { hostChip, hostChipKeydown, toggleHostFilterTo, peerRecord } = App.hosts;
   const { healthMapFor, repoWebURLFor } = App.resolve;
   const detail = App.detail;
@@ -289,7 +277,7 @@ App.deploys = (function () {
   // ── Deploy rows: stack icons, row build, per-stack affordances ──
 
   // pendingReason draws a stack's pause/block reason from the queue snapshot
-  // for pendingTagHTML (app-render.js).
+  // for the row's cause line (deployRowCause).
   function pendingReason(stack) {
     const item = S.queueByStack[stack];
     return item && item.reason;
@@ -346,19 +334,7 @@ App.deploys = (function () {
     row.dataset.host = S.selfHost; // local rows belong to the primary host
     if (evt.has_diffs) row.dataset.hasDiffs = '1';
 
-    const pausedTag =
-      evt.status === 'queued' || evt.status === 'blocked'
-        ? pendingTagHTML(evt.status, pendingReason(evt.stack))
-        : '';
-    // A healed row has no changed files; its files cell instead carries the
-    // self-heal badge, which expands the corrective-redeploy detail (ADR-0029).
-    const filesCell =
-      evt.status === 'healed' ? healPillHTML(evt.heal_drift) : filesHTML(evt.changed_files);
-    // A healed row applied no change at all (self-heal re-applies the same
-    // version); every other row names which service(s) moved — to a new image,
-    // or through a file that carries none — in the Changes column. Stash both
-    // lists on the row so the view-options toggle can fill/empty the column live
-    // without a reload.
+    // A healed row applied no change; others stash theirs for the live view-options toggle.
     if (evt.status !== 'healed') {
       stashChanges(row, evt);
     }
@@ -368,112 +344,19 @@ App.deploys = (function () {
     row.innerHTML = tableRowHTML(ROW_KIND.deploy, {
       host: hostChip(S.selfHost),
       stack: evt.stack,
-      identExtras: (isPseudoStack(evt.stack) ? '' : jumpBtnHTML('stacks', evt.stack)) + pausedTag,
+      cause: deployRowCause(evt.status, evt.error, pendingReason(evt.stack)),
       ts: evt.timestamp,
       absolute: S.absoluteTime,
       version: delta,
       state: badgeHTML(evt.status) + retryNoteHTML(evt) + repeatNoteHTML(evt),
       durationMs: evt.duration_ms,
-      files: filesCell,
+      commit: '',
+      repoBase: S.repoWebURL,
     });
 
     populateIcon(row.querySelector('.stack-icon'), evt.stack);
     rowEvents.set(row, evt);
     return row;
-  }
-
-  // Place a health pill on the newest row of each stack that has a health
-  // status, and remove pills from older rows (health is a current per-stack
-  // value; the deploy table is an event log — see ADR-0027). Cheap to re-run on
-  // every deploy or health snapshot: a handful of rows.
-  // Manage the two per-stack affordances that belong on the newest row of each
-  // stack only: the live health pill (ADR-0027) and the deploy-history button
-  // (ADR-0033). Both are current per-stack values, not per-event, so an older
-  // row of the same stack carries neither. Cheap to re-run on every deploy or
-  // health snapshot — a handful of rows.
-  function updateStackAffordances() {
-    const seen = {};
-    // Peer rows are read-only mirrors — no health pill, history, logs or hooks
-    // affordances (those drive local actions the primary cannot perform on a
-    // peer), so they are excluded here.
-    tbody.querySelectorAll('.event-row[data-stack]:not(.peer-row)').forEach(function (row) {
-      const stack = row.dataset.stack;
-      const cell = row.querySelector('.cell-stack');
-      const statusCell = row.querySelector('.status-cell');
-      if (!cell || !statusCell) return;
-      const newest = !seen[stack];
-      seen[stack] = true;
-
-      // Health pill — only when a health status is known for the stack. Lives
-      // in .status-cell (stacked under the SUCCESS/FAILED badge) rather than
-      // .cell-stack, so it reads as row state next to the other state badge
-      // instead of competing with the stack-name icon cluster.
-      let pill = statusCell.querySelector('.health-pill');
-      const h = newest ? S.healthSnap[stack] : null;
-      if (h && h.status) {
-        if (!pill) {
-          // A real <button> (healthPillHTML) so the panel is keyboard-reachable
-          // (Tab + Enter/Space), and the pill markup has one source of truth.
-          statusCell.insertAdjacentHTML('beforeend', healthPillHTML(stack, h.status));
-        } else {
-          pill.dataset.health = h.status;
-          pill.dataset.stack = stack;
-          pill.querySelector('.hlabel').textContent = h.status;
-          pill.title = stack + ' — ' + h.status;
-        }
-      } else if (pill) {
-        pill.remove();
-        detail.closeIf(VIEW, row, DETAIL_TAB.health);
-      }
-
-      // Secondary per-stack actions (history, container logs, deploy hooks) live
-      // in a single ⋯ overflow menu on the newest row (T3.13), so the row rests
-      // calm. Non-newest rows carry no menu; drop it (and close its panels).
-      if (!newest) {
-        const staleWrap = cell.querySelector('.row-more');
-        if (staleWrap) {
-          closeMoreMenuIf(staleWrap);
-          staleWrap.remove();
-          detail.closeIf(VIEW, row, DETAIL_TAB.history);
-          detail.closeIf(VIEW, row, DETAIL_TAB.hooks);
-        }
-      } else {
-        const pop = ensureRowMore(cell, stack).querySelector('.more-pop');
-
-        // History — always present (independent of health).
-        if (!pop.querySelector('.history-btn')) {
-          const hist = document.createElement('button');
-          hist.className = 'history-btn';
-          hist.type = 'button';
-          hist.dataset.testid = 'history-btn';
-          hist.setAttribute('aria-label', 'deploy history for ' + stack);
-          hist.innerHTML =
-            '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.4 1.5"/></svg>';
-          pop.appendChild(moreMenuItem(hist, 'Deploy history'));
-        }
-
-        // Container logs — per stack (ADR-0037). Not for a pseudo-stack: it is
-        // a run phase, not a compose project, so it has no container App.logs.
-        const clogBtn = pop.querySelector('.clog-btn:not(.hook-log-btn)');
-        if (!clogBtn && !isPseudoStack(stack)) {
-          pop.appendChild(moreMenuItem(clogButton(stack, ''), 'Container logs'));
-        } else if (isPseudoStack(stack) && clogBtn) {
-          clogBtn.remove();
-        }
-
-        // Deploy hooks — only when the stack declares any (ADR-0038).
-        const hooks = hooksFor(stack);
-        const hbadge = pop.querySelector('.hooks-badge');
-        if (hooks && hookCount(hooks) > 0) {
-          if (!hbadge)
-            pop.appendChild(moreMenuItem(hooksBadgeButton(stack, hooks), 'Deploy hooks'));
-        } else if (hbadge) {
-          hbadge.remove();
-          detail.closeIf(VIEW, row, DETAIL_TAB.hooks);
-        }
-      }
-    });
-    App.stream.applyHookRun(); // re-paint a running hook's phase after rows/affordances changed
   }
 
   // ── Deploying indicator + run drawer ──
@@ -520,18 +403,37 @@ App.deploys = (function () {
 
   // ── Deploy-event ingest: queued rows + handleEvent ──
 
-  // refreshPendingTags re-renders the paused/blocked tag on every live pending
-  // row. The pending deploy event and the queue snapshot (which carries the
-  // authoritative reason) are not ordered — the snapshot is published after the
-  // run's events, and after the history replay on connect — so a row can render
-  // before its reason is known. This re-render makes the tag deterministic once
-  // the snapshot lands.
-  function refreshPendingTags() {
+  // refreshPendingCauses re-renders pending rows' causes once the (unordered) queue snapshot lands.
+  function refreshPendingCauses() {
     Object.keys(queuedRows).forEach(function (stack) {
       const row = queuedRows[stack];
-      const tag = row.querySelector('.paused-tag');
-      if (tag) tag.outerHTML = pendingTagHTML(row.dataset.status, pendingReason(stack));
+      const evt = rowEvents.get(row);
+      setCauseLine(row, deployRowCause(row.dataset.status, evt && evt.error, pendingReason(stack)));
     });
+  }
+
+  // setRowCommit writes the commit, known once the diff loaded, into the When cell.
+  function setRowCommit(row, sha) {
+    if (row.dataset.commit === sha) return;
+    row.dataset.commit = sha;
+    const when = row.querySelector('.cell-when');
+    const old = when.querySelector('.cell-sha');
+    if (old) old.remove();
+    when.insertAdjacentHTML('beforeend', deployShaHTML(sha, S.repoWebURL));
+  }
+
+  // setCauseLine replaces (or clears) a row's cause line in place.
+  function setCauseLine(row, text) {
+    const who = row.querySelector('.cell-who');
+    const old = who.querySelector('.cell-cause');
+    if (old) old.remove();
+    if (!text) return;
+    const line = document.createElement('span');
+    line.className = 'cell-cause';
+    line.dataset.testid = 'cause-line';
+    line.title = text;
+    line.textContent = text;
+    who.appendChild(line);
   }
 
   // removeQueuedRow drops a stack's pending (queued) row and its open detail,
@@ -619,13 +521,14 @@ App.deploys = (function () {
       // so the note lands as the row settles (like the Version column below).
       existing.querySelector('.status-cell').innerHTML =
         badgeHTML(evt.status) + retryNoteHTML(evt) + repeatNoteHTML(evt);
-      existing.querySelector('.cell-duration').textContent = formatDuration(evt.duration_ms);
-      const tc = existing.querySelector('.cell-time');
-      tc.dataset.ts = evt.timestamp;
-      setTimeCell(tc, evt.timestamp);
-      if (evt.changed_files && evt.changed_files.length > 0) {
-        existing.querySelector('.col-files').innerHTML = filesHTML(evt.changed_files);
-      }
+      existing.querySelector('.cell-when').outerHTML = deployWhenHTML({
+        ts: evt.timestamp,
+        absolute: S.absoluteTime,
+        durationMs: evt.duration_ms,
+        commit: existing.dataset.commit,
+        repoBase: S.repoWebURL,
+      });
+      setCauseLine(existing, deployRowCause(evt.status, evt.error));
       // The terminal event carries image_changes (the preceding deploying event
       // does not), so fill the Changes column as the row settles — otherwise a
       // live deploy would show it only after a reload.
@@ -829,8 +732,8 @@ App.deploys = (function () {
 
   // openRollbackFor is the retry note's target (UI_SPEC.md "Rollback
   // linkage"): flash the superseded rollback's own row while its event is
-  // still rendered, else open the note's row's deploy-history panel — the
-  // durable record the rollback always keeps.
+  // still rendered, else open the stack's history in Stacks — the durable
+  // record the rollback always keeps.
   function openRollbackFor(row, rollbackId) {
     if (rollbackId) {
       const escaped = window.CSS && CSS.escape ? CSS.escape(rollbackId) : rollbackId;
@@ -840,8 +743,7 @@ App.deploys = (function () {
         return;
       }
     }
-    if (!row || detail.isOpen(VIEW, row, DETAIL_TAB.history)) return;
-    detail.show(VIEW, row, DETAIL_TAB.history);
+    if (row) showInStacks(row.dataset.stack, row.dataset.host, STACK_TAB.history);
   }
 
   // ── Deploys table click delegation (row panels) ──
@@ -858,7 +760,7 @@ App.deploys = (function () {
     Object.keys(queuedRows).forEach(function (stack) {
       if (!S.queueByStack[stack]) removeQueuedRow(stack);
     });
-    refreshPendingTags();
+    refreshPendingCauses();
   }
   // applyOrphansSnapshot re-runs the filter under an active search so new data
   // obeys the query, otherwise renders plainly.
@@ -1023,16 +925,6 @@ App.deploys = (function () {
 
     tbody.addEventListener('click', function (e) {
       if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
-      // ⋯ overflow menu: toggle it open/closed. Picking an action inside closes the
-      // menu, then falls through to that action's own handler below (the relocated
-      // buttons still carry their .history-btn/.clog-btn/.hooks-badge classes).
-      const moreBtn = e.target.closest('.more-btn');
-      if (moreBtn) {
-        toggleMoreMenu(moreBtn.closest('.row-more'));
-        return;
-      }
-      if (e.target.closest('.more-item')) closeMoreMenu();
-
       // Host chip: quick-filter the merged view to this row's host (toggle). Before
       // any panel logic so a tap on the chip never also opens the row's diff panel.
       const hostChip = e.target.closest('.host-mono');
@@ -1053,13 +945,6 @@ App.deploys = (function () {
       }
       if (e.target.closest('.detail-panel')) return;
 
-      // Cross-view jump button: hand off to Stacks. Handled before the files
-      // logic so a tap never opens the row's diff panel.
-      const jumpBtn = e.target.closest('.jump-btn');
-      if (jumpBtn) {
-        App.chrome.jumpToStack(jumpBtn.dataset.jumpView, jumpBtn.dataset.jumpStack);
-        return;
-      }
       // Retry note: open the rollback this success supersedes. Before the files
       // logic so a tap never also opens the row's own diff panel.
       const retry = e.target.closest('.retry-note');
@@ -1074,58 +959,11 @@ App.deploys = (function () {
         return;
       }
 
-      // Hooks badge: toggle the panel; before the files logic so a tap never also
-      // opens the row's diff panel.
-      const hbadge = e.target.closest('.hooks-badge');
-      if (hbadge) {
-        const hrow = hbadge.closest('.event-row');
-        if (hrow) detail.toggle(VIEW, hrow, DETAIL_TAB.hooks);
-        return;
-      }
-
-      // Container-logs button (ADR-0037): toggle the live log panel. Handled first
-      // so a tap never also opens the row's diff/health/audit panel.
-      const clogB = e.target.closest('.clog-btn');
-      if (clogB) {
-        App.clog.toggle(clogB);
-        return;
-      }
-
-      // History button: toggle the per-stack deploy-history panel (ADR-0033).
-      // Handled before the files logic so a tap never opens the row's diff panel.
-      const histBtn = e.target.closest('.history-btn');
-      if (histBtn) {
-        const arow = histBtn.closest('.event-row');
-        if (arow) detail.toggle(VIEW, arow, DETAIL_TAB.history);
-        return;
-      }
-
-      // Stack-health pill: toggle its per-service panel. Handled before the files
-      // logic so a tap on the pill never opens the row's files/diff panel (mobile).
-      const hpill = e.target.closest('.health-pill');
-      if (hpill) {
-        const hrow = hpill.closest('.event-row');
-        // A peer's containers live in its Stacks detail, never the local health
-        // panel (which would key the peer's stack into the primary's own health).
-        if (hrow && hrow.classList.contains('peer-row')) {
-          showInStacks(hrow.dataset.stack, hrow.dataset.host, STACK_TAB.containers);
-          return;
-        }
-        if (hrow) detail.toggle(VIEW, hrow, DETAIL_TAB.health, { health: hpill.dataset.health });
-        return;
-      }
-
-      // Self-heal badge, files pill or anywhere else on the row: the deploy
-      // detail, on the tab the affordance names.
+      // Anywhere else on the row: the deploy detail.
       const row = e.target.closest('.event-row');
-      if (!row) return;
-      let tab = null;
-      if (e.target.closest('.heal-pill')) tab = DEPLOY_TAB.drift;
-      else if (e.target.closest('.files-pill')) tab = DEPLOY_TAB.changes;
-      detail.toggle(VIEW, row, DETAIL_TAB.deploy, { tab: tab });
+      if (row) detail.toggle(VIEW, row, DETAIL_TAB.deploy, { tab: null });
     });
   }
-
   // deployPanelAction runs a deploy detail's head or verdict action.
   function deployPanelAction(act) {
     const panel = act.closest('.detail-panel');
@@ -1252,6 +1090,7 @@ App.deploys = (function () {
               : "Couldn't load the diff.";
           d.diffs = diffs;
           d.commits = commits || [];
+          if (!peer && d.commits.length) setRowCommit(row, d.commits[0].sha);
           render();
         });
       };
@@ -1282,7 +1121,6 @@ App.deploys = (function () {
     showTable,
     settleInitialState,
     initialStateIsSettled,
-    updateStackAffordances,
     updateDeployingIndicator,
     setRunDrawer,
     applyQueueSnapshot,

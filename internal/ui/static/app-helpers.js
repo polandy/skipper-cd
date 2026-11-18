@@ -63,12 +63,9 @@ function rosterLastDeploy(entry, deploying) {
 const DETAIL_VIEW = Object.freeze({ deploys: 'deploys', stacks: 'stacks' });
 
 // DETAIL_TAB names the panes a row's detail can show: a deploy row's detail
-// (deploy), the stack's health, history or hooks, and the Stacks card
-// (overview).
+// (deploy) and the Stacks card (overview), whose hooks sub-pane rides it too.
 const DETAIL_TAB = Object.freeze({
   deploy: 'deploy',
-  health: 'health',
-  history: 'history',
   hooks: 'hooks',
   overview: 'overview',
 });
@@ -1903,6 +1900,30 @@ function failedAt(f) {
   return f.phase ? f.phase + ' failed: ' + f.cause : f.cause;
 }
 
+// DEPLOY_BLOCKED reads a blocked event's error: the dependency that failed.
+const DEPLOY_BLOCKED = /^dependency (.+) failed this run$/;
+
+// deployRowCause is the line under a deploy row's name; queueReason comes from the queue snapshot.
+function deployRowCause(status, error, queueReason) {
+  switch (status) {
+    case 'failed':
+    case 'rolled_back':
+    case 'rolled_back_unhealthy':
+      return error ? failedAt(deployFailure(error)) : '';
+    case 'blocked': {
+      if (queueReason) return queueReason;
+      const dep = (error || '').match(DEPLOY_BLOCKED);
+      return dep ? 'blocked by ' + dep[1] : error || 'blocked';
+    }
+    case 'queued': {
+      const scope = { stack: ' for this stack', global: ' for every stack' }[queueReason] || '';
+      return 'autosync paused' + scope;
+    }
+    default:
+      return '';
+  }
+}
+
 // DEPLOY_HELD is the sub of every verdict whose change is now held.
 const DEPLOY_HELD = 'The change is held. ' + HELD_RELEASE;
 
@@ -1946,7 +1967,7 @@ function deployOutcomeVerdict(evt, ctx) {
         (f.restored ? f.restored + '. ' : '') + DEPLOY_HELD,
       );
     case 'blocked': {
-      const dep = (evt.error || '').match(/^dependency (.+) failed this run$/);
+      const dep = (evt.error || '').match(DEPLOY_BLOCKED);
       if (!dep) return verdictLine('blocked', 'warn', 'Not deployed.', evt.error || '');
       return verdictLine(
         'blocked',
@@ -2082,6 +2103,7 @@ if (typeof module !== 'undefined' && module.exports) {
     stackVerdict,
     DEPLOY_TAB,
     deployFailure,
+    deployRowCause,
     deployVerdict,
     changedFileCount,
     deployTabs,

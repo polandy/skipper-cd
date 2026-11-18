@@ -50,13 +50,19 @@ test.use({
 const deployRow = (page: Page, host: string, stack: string) =>
   page.locator(`[data-testid="deploy-row"][data-host="${host}"][data-stack="${stack}"]`);
 
+// openPeerContainers opens the peer deploy's detail and follows its Show in
+// Stacks to the host-scoped containers (fanned-in health).
+async function openPeerContainers(page: Page, stack: string) {
+  await deployRow(page, 'host-b', stack).click();
+  await page.locator('[data-testid="detail-panel"][data-kind="deploy"][data-host="host-b"] [data-testid="jump-btn"]').click();
+}
+
 // UY1 — a peer container's log button streams that peer's logs through the
 // primary's proxy, into the same live panel a local container uses.
 test('UY1: a peer container log button streams the peer log through the proxy', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
 
-  // The peer row's health pill → its containers in Stacks (fanned-in health).
-  await deployRow(page, 'host-b', 'gitea').locator('[data-testid="health-pill"]').click();
+  await openPeerContainers(page, 'gitea');
   const svc = page
     .locator('[data-testid="stacks-view"] [data-testid="detail-panel"][data-host="host-b"] [data-testid="health-service"]')
     .first();
@@ -75,7 +81,7 @@ test('UY1: a peer container log button streams the peer log through the proxy', 
 test('UY2: clicking the peer container log button again closes the panel', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
 
-  await deployRow(page, 'host-b', 'gitea').locator('[data-testid="health-pill"]').click();
+  await openPeerContainers(page, 'gitea');
   const btn = page
     .locator('[data-testid="stacks-view"] [data-testid="detail-panel"][data-host="host-b"] [data-testid="health-service"]')
     .first()

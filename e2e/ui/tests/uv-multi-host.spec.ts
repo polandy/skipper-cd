@@ -73,11 +73,9 @@ test('UV1: merged deploy feed shows peer rows with host dots', async ({ page, sk
   await expect(rowsFor(page, 'host-b')).toHaveCount(2); // gitea, forgejo
   await expect(page.locator('[data-testid="deploy-row"][data-host="host-b"][data-stack="gitea"]')).toBeVisible();
 
-  // Peer rows are read-only mirrors: a colour dot but no drill-down affordances.
+  // Peer rows carry the host's colour dot.
   const gitea = page.locator('[data-testid="deploy-row"][data-host="host-b"][data-stack="gitea"]');
   await expect(gitea.locator('.host-mono')).toBeVisible();
-  await expect(gitea.locator('[data-testid="history-btn"]')).toHaveCount(0);
-  await expect(gitea.locator('[data-testid="jump-btn"]')).toHaveCount(0);
 
   // Local rows carry the dot too (dots are shown whenever peers are configured).
   await expect(rowsFor(page, 'host-a').first().locator('.host-mono')).toBeVisible();

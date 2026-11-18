@@ -11,7 +11,7 @@ import { test, expect } from '../fixtures/test';
 
 const diffRow = (page: import('@playwright/test').Page) =>
   page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"][data-has-diffs="1"]');
-const filesPill = (page: import('@playwright/test').Page) => diffRow(page).locator('[data-testid="files-pill"]');
+const rowOpener = (page: import('@playwright/test').Page) => diffRow(page).locator('.stack-name');
 const panel = (page: import('@playwright/test').Page) =>
   page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
 const facts = (page: import('@playwright/test').Page) => panel(page).locator('[data-testid="detail-facts"]');
@@ -26,7 +26,7 @@ test.describe('UI1: commit facts', () => {
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
     await expect(diffRow(page)).toHaveCount(1);
 
-    await filesPill(page).click();
+    await rowOpener(page).click();
     await expect(panel(page).locator('[data-testid="diff-panel"]')).toHaveCount(1);
 
     await expect(panel(page).locator('.dp-name')).toHaveText('web');
@@ -46,7 +46,7 @@ test.describe('UI2: row binding', () => {
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
     await expect(diffRow(page)).toHaveCount(1);
 
-    await filesPill(page).click();
+    await rowOpener(page).click();
     await expect(panel(page)).toHaveCount(1);
     await expect(panel(page)).toHaveAttribute('data-status', 'success');
     await expect(diffRow(page)).toHaveClass(/audit-open/);
@@ -75,7 +75,7 @@ test.describe('UI3: multi-commit range', () => {
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
     await expect(diffRow(page)).toHaveCount(1);
 
-    await filesPill(page).click();
+    await rowOpener(page).click();
     // Newest commit heads the Commit fact.
     await expect(facts(page).locator('.dp-subject')).toHaveText('bump web to 1.27');
 

@@ -2,13 +2,12 @@
 // (docs/dev/ui-design-concept.md, "one look and feel across every view"): the
 // bound row panels — diff, files, heal, deploy history (ADR-0033), containers/
 // health (ADR-0027/0031), deploy hooks (ADR-0038), watched files — plus the
-// row-cell affordances that open them: the ⋯ overflow menu, the app-link
-// popover, the container-logs and hooks buttons, and the stack icon. Cut out of
-// the app script by view (ADR-0035 amendment) and attached as App.panels.
+// row-cell affordances that open them: the app-link popover and the stack
+// icon. Cut out of the app script by view (ADR-0035 amendment) and attached as App.panels.
 //
 // Loads after app-state.js and before every view. Reads only the store and the
 // per-host resolvers; a view passes in the row or cell it wants a panel on.
-// The bootstrap calls init() at the spot the popover/menu/fold listeners used to
+// The bootstrap calls init() at the spot the popover/fold listeners used to
 // register, so document-level listener order is unchanged.
 App.panels = (function () {
   const S = App.state;
@@ -36,87 +35,6 @@ App.panels = (function () {
   function closeAppLinkPopover() {
     if (openLinkWrap) openLinkWrap.classList.remove('open');
     openLinkWrap = null;
-  }
-
-  // ── Row overflow menu (⋯) — T3.13 ──
-  // The newest deploy row folds its secondary actions (deploy history, container
-  // logs, deploy hooks) behind one ⋯ button, so the row rests at identity +
-  // status + the jump action instead of a cluster of look-alike glyphs. Same
-  // one-open-at-a-time behaviour as the app-link popover; the action buttons
-  // inside keep their own classes, testids and click handlers — they are only
-  // relocated, so nothing about opening the panels changes.
-  const MORE_ICON =
-    '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>';
-  let openMoreWrap = null;
-
-  // ensureRowMore returns the row's ⋯ wrapper, creating it (button + empty
-  // popover) on first use. The action buttons are appended into its .more-pop.
-  function ensureRowMore(cell, stack) {
-    let wrap = cell.querySelector('.row-more');
-    if (!wrap) {
-      wrap = document.createElement('span');
-      wrap.className = 'row-more';
-      wrap.innerHTML =
-        '<button class="more-btn" type="button" data-testid="more-btn" aria-haspopup="true" aria-expanded="false"' +
-        ' title="More actions" aria-label="' +
-        escapeAttr('more actions for ' + stack) +
-        '">' +
-        MORE_ICON +
-        '</button>' +
-        '<div class="more-pop" data-testid="more-pop"></div>';
-      cell.appendChild(wrap);
-    }
-    return wrap;
-  }
-
-  // moreMenuItem turns a relocated icon button into a labelled full-width menu
-  // row: the icon keeps its meaning, the text names the action (so the row no
-  // longer relies on look-alike glyphs), and any trailing count (hooks) stays put.
-  function moreMenuItem(btn, label) {
-    btn.classList.add('more-item');
-    btn.removeAttribute('data-taptip'); // the visible label replaces the tap-tip
-    const lbl = document.createElement('span');
-    lbl.className = 'mi-label';
-    lbl.textContent = label;
-    const count = btn.querySelector('.hk-count');
-    if (count) btn.insertBefore(lbl, count);
-    else btn.appendChild(lbl);
-    return btn;
-  }
-
-  // Keep the popover on-screen: it opens left-aligned under the ⋯, but flips to
-  // right-aligned when that would spill past the viewport edge — the portrait-
-  // phone case, where the stack cell sits close to the right edge.
-  function positionMorePop(wrap) {
-    const pop = wrap.querySelector('.more-pop');
-    pop.classList.remove('align-right');
-    const r = wrap.getBoundingClientRect();
-    if (r.left + pop.offsetWidth > window.innerWidth - 8) pop.classList.add('align-right');
-  }
-  function toggleMoreMenu(wrap) {
-    const wasOpen = wrap === openMoreWrap;
-    closeMoreMenu();
-    if (!wasOpen) {
-      wrap.classList.add('open');
-      const btn = wrap.querySelector('.more-btn');
-      if (btn) btn.setAttribute('aria-expanded', 'true');
-      positionMorePop(wrap); // measured after .open makes the popover laid-out
-      openMoreWrap = wrap;
-    }
-  }
-  function closeMoreMenu() {
-    if (openMoreWrap) {
-      openMoreWrap.classList.remove('open');
-      const btn = openMoreWrap.querySelector('.more-btn');
-      if (btn) btn.setAttribute('aria-expanded', 'false');
-    }
-    openMoreWrap = null;
-  }
-
-  // closeMoreMenuIf closes the ⋯ menu only if wrap is the one that is open — a
-  // row losing its menu asks this rather than comparing the module's state.
-  function closeMoreMenuIf(wrap) {
-    if (openMoreWrap === wrap) closeMoreMenu();
   }
 
   // renderDiffPanel wraps a log line's diff body in its element; the log
@@ -190,14 +108,6 @@ App.panels = (function () {
       });
   }
 
-  // clogButton is the DOM-node form of clogBtnHTML (app-render.js) for the
-  // deploy row's action cell.
-  function clogButton(stack, service) {
-    const tmp = document.createElement('template');
-    tmp.innerHTML = clogBtnHTML(stack, service);
-    return tmp.content.firstElementChild;
-  }
-
   // ─── Deploy hooks (ADR-0038) ───
 
   function hooksFor(stack) {
@@ -205,11 +115,6 @@ App.panels = (function () {
       return r.name === stack;
     });
     return e && e.hooks ? e.hooks : null;
-  }
-  function hooksBadgeButton(stack, hooks) {
-    const tmp = document.createElement('template');
-    tmp.innerHTML = hooksBadgeHTML(stack, hooks);
-    return tmp.content.firstElementChild;
   }
   // Bound panel (variant A) listing the configured commands, from the snapshot.
   // hooks is optional: a peer's panel passes the peer's roster entry hooks.
@@ -474,16 +379,14 @@ App.panels = (function () {
   }
 
   // init registers the document-level listeners the panels rely on: click-away
-  // and Escape for the app-link popover and the ⋯ menu, and the fold toggle.
+  // and Escape for the app-link popover, and the fold toggle.
   function init() {
     document.addEventListener('click', function (e) {
       if (openLinkWrap && !openLinkWrap.contains(e.target)) closeAppLinkPopover();
-      if (openMoreWrap && !openMoreWrap.contains(e.target)) closeMoreMenu();
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         closeAppLinkPopover();
-        closeMoreMenu();
       }
     });
 
@@ -511,17 +414,9 @@ App.panels = (function () {
     CHECK_ICON,
     toggleAppLinkPopover,
     closeAppLinkPopover,
-    ensureRowMore,
-    moreMenuItem,
-    toggleMoreMenu,
-    closeMoreMenu,
-    closeMoreMenuIf,
     renderDiffPanel,
     createLoadError,
     fetchDiffs,
-    clogButton,
-    hooksFor,
-    hooksBadgeButton,
     createHooksPanel,
     hookPhaseNode,
     populateIcon,

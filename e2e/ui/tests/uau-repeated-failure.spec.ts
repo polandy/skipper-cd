@@ -1,6 +1,6 @@
 import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
-import { openRowMenu } from "../fixtures/menu";
+import { openStackDetail } from "../fixtures/stack-detail";
 
 // Maske AU: a standing failure repeats without flooding the history (ADR-0056).
 // See docs/dev/e2e-tests.md §4.48.
@@ -113,8 +113,7 @@ test("UAU3: the deploy-history panel marks the repeat too", async ({
   expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
   await expect(repeatNote(page)).toHaveText(/×2/);
 
-  await openRowMenu(failedRow(page).first());
-  await failedRow(page).first().locator('[data-testid="history-btn"]').click();
+  await openStackDetail(page, "web", "history");
 
   const panel = page.locator('[data-testid="audit-panel"]');
   await expect(panel).toBeVisible();
