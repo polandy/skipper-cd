@@ -2233,6 +2233,8 @@ n/a. Pipeline invariants continue to map to §4.1.
 | Strict CSP: security headers on the shell, no violation across the views, an injected inline script is refused | **UBB1** |
 | Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
 | Responsive ≤700px: right-hand cells share one edge (both views), the version keeps its width beside the last deploy, version chip never split; a live row's entrance never replays | **UAS1**, **UAS2**, **UAS3**, **UAS4**, **UAS5** |
+| Drawers carry a named × close button; opening still focuses the first real control | **UAA6** |
+| Touch screens: detail actions/tabs and the drawer close are 44px targets | **UAA7** |
 | Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |
 | Header version label (`v<semver>` from `/api/version`) | **UD5** |
 | PWA update banner: prompt on a new version, reload onto it | **UE1** |
