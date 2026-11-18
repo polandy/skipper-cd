@@ -289,6 +289,7 @@ App.hosts = (function () {
 
     hostHideRows(tbody);
     hostHideRows(roster);
+    App.deploys.scheduleRefold();
     App.chrome.renderUpdateBadge(); // a host taken out of view takes its updates with it
 
     const staleSel = (S.peersSnap.peers || []).filter(function (p) {

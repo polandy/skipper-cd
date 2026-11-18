@@ -1556,6 +1556,106 @@ function foldAuditRecords(records) {
   return items;
 }
 
+// DEPLOY_FOLD_STATUSES are the outcomes the Deploys list may fold: routine
+// convergence only. Incidents, pending (queued/blocked) and live rows never
+// fold, so nothing that needs a look hides behind a fold line.
+const DEPLOY_FOLD_STATUSES = ['success', 'healed'];
+
+// foldDeployRows finds the runs of routine deploys the Deploys list folds.
+// rows are the visible rows newest first ({stack, host, status, kind, key,
+// open}); filtered-out rows are left out by the caller, so a filter acts before
+// the fold. A run is AUDIT_FOLD_MIN or more consecutive rows of one stack and
+// host with the same status and change kind; the newest stays as the run's lead
+// and the rest fold behind one line. A run holding an open detail, or whose key
+// (the oldest member's — it survives new rows landing on top) is in expanded,
+// is reported expanded. The fold is computed per render, never stored.
+// Returns [{lead, members, key, expanded}] with indexes into rows.
+function foldDeployRows(rows, expanded) {
+  const foldable = function (r) {
+    return DEPLOY_FOLD_STATUSES.indexOf(r.status) !== -1;
+  };
+  const same = function (a, b) {
+    return a.stack === b.stack && a.host === b.host && a.status === b.status && a.kind === b.kind;
+  };
+  const runs = [];
+  let i = 0;
+  while (i < rows.length) {
+    let j = i + 1;
+    if (foldable(rows[i])) {
+      while (j < rows.length && same(rows[i], rows[j])) j++;
+    }
+    if (j - i >= AUDIT_FOLD_MIN) {
+      const members = [];
+      for (let m = i + 1; m < j; m++) members.push(m);
+      const key = rows[j - 1].key;
+      const open = members.some(function (m) {
+        return rows[m].open;
+      });
+      runs.push({
+        lead: i,
+        members: members,
+        key: key,
+        expanded: open || !!(expanded && expanded.has(key)),
+      });
+    }
+    i = j;
+  }
+  return runs;
+}
+
+// deployFoldLabel is the fold line's text: how many deploys sit behind it, of
+// which stack, over which time span (oldest → newest, local time).
+function deployFoldLabel(count, status, stack, oldestTs, newestTs, nowMs) {
+  const noun = AUDIT_FOLD_NOUN[status] || 'deploys';
+  return (
+    '\u21bb ' +
+    count +
+    ' more ' +
+    noun +
+    ' of ' +
+    stack +
+    ' \u00b7 ' +
+    phaseSince(oldestTs, nowMs) +
+    ' \u2013 ' +
+    phaseSince(newestTs, nowMs)
+  );
+}
+
+// deployDayKey is the local calendar day of ts, the unit the day separators
+// change on.
+function deployDayKey(ts) {
+  const d = new Date(ts);
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+}
+
+const DAY_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+// deployDayLabel names the local day of ts for a separator: Today, Yesterday,
+// then the date (with the year once it is not the current one). Takes the clock
+// so midnight is testable.
+function deployDayLabel(ts, nowMs) {
+  const d = new Date(ts);
+  const now = new Date(nowMs);
+  if (deployDayKey(ts) === deployDayKey(now.getTime())) return 'Today';
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (deployDayKey(ts) === deployDayKey(yesterday.getTime())) return 'Yesterday';
+  const base = d.getDate() + ' ' + DAY_MONTHS[d.getMonth()];
+  return d.getFullYear() === now.getFullYear() ? base : base + ' ' + d.getFullYear();
+}
+
 // deployAnnouncement builds the screen-reader phrase for a terminal deploy
 // outcome, so the a11y-live region can voice what a sighted user reads off the
 // row (T2.8). Returns null for non-terminal statuses (deploying/queued/blocked/
@@ -2132,6 +2232,11 @@ if (typeof module !== 'undefined' && module.exports) {
     AUDIT_FOLD_MIN,
     AUDIT_FOLD_INCIDENT_MIN,
     foldAuditRecords,
+    foldDeployRows,
+    deployFoldLabel,
+    deployDayKey,
+    deployDayLabel,
+    DEPLOY_FOLD_STATUSES,
     AUDIT_FOLD_NOUN,
     repeatNote,
     healthClass,
