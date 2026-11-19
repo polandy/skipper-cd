@@ -50,7 +50,7 @@ func parseList(out []byte) ([]string, map[string]listed) {
 		if f[0] == "" {
 			continue
 		}
-		f = append(f, make([]string, 5-min(len(f), 5))...)
+		f = append(f, make([]string, max(len(listColumns)-len(f), 0))...)
 		ids = append(ids, f[0])
 		listing[f[0]] = listed{Image: f[1], WorkingDir: f[2], Service: f[3], Name: f[4]}
 	}

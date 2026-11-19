@@ -22,7 +22,17 @@ var listArgs = []string{
 	"ps", "--all", "--no-trunc",
 	"--filter", "label=" + workingDirLabel,
 	"--filter", "label=com.docker.compose.oneoff=False",
-	"--format", `{{.ID}}\t{{.Image}}\t{{.Label "` + workingDirLabel + `"}}\t{{.Label "` + serviceLabel + `"}}\t{{.Names}}`,
+	"--format", strings.Join(listColumns, "\t"),
+}
+
+// listColumns are the tab-separated fields listArgs emits per container, in
+// the order parseList reads them.
+var listColumns = []string{
+	"{{.ID}}",
+	"{{.Image}}",
+	`{{.Label "` + workingDirLabel + `"}}`,
+	`{{.Label "` + serviceLabel + `"}}`,
+	"{{.Names}}",
 }
 
 // Indexes into inspectColumns, as parseInspect reads them.
