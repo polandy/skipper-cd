@@ -925,7 +925,7 @@ if (SMOKE) {
   let updates = null;
   for (let i = 0; i < 100; i++) {
     updates = (await get('/api/v1/snapshot'))?.stacks?.updates?.stacks;
-    if (updates?.gitea && updates?.nextcloud) break;
+    if (updates?.gitea?.server?.latest && updates?.nextcloud?.app?.rebuilt) break;
     await sleep(200);
   }
   if (updates?.gitea?.server?.latest !== '1.22.6') fail(`gitea update marker missing (got ${JSON.stringify(updates?.gitea)})`);
