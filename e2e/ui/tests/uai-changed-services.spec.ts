@@ -20,10 +20,10 @@ const successRow = (page: Page, stack: string): Locator =>
 const delta = (page: Page, stack: string): Locator =>
   successRow(page, stack).locator('[data-testid="svc-delta"]');
 
-// UI1 — a tag bump shows the changed service with its old→new tags (old struck
+// UAI1 — a tag bump shows the changed service with its old→new tags (old struck
 // through, new in the add colour). The default compose service is `app`, so the
 // service is named (it differs from the stack).
-test.describe('UI1: tag bump', () => {
+test.describe('UAI1: tag bump', () => {
   test('the row names the service and its old→new tag', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
@@ -54,11 +54,11 @@ test.describe('UI1: tag bump', () => {
   });
 });
 
-// UI2 — the service is always named, even a lone service named after its own
+// UAI2 — the service is always named, even a lone service named after its own
 // stack: the chip identifies which service moved, not the stack. Two bumps land
 // it: the first renames the service to the stack, the second is a clean one-
 // service tag bump.
-test.describe('UI2: service always labelled', () => {
+test.describe('UAI2: service always labelled', () => {
   test('a lone stack-named service still shows its service label', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
@@ -80,9 +80,9 @@ test.describe('UI2: service always labelled', () => {
   });
 });
 
-// UI6 — the Deploys view-options carries a per-browser toggle that hides the
+// UAI6 — the Deploys view-options carries a per-browser toggle that hides the
 // delta; the choice (only the off state) persists in localStorage across reloads.
-test.describe('UI6: view-options toggle', () => {
+test.describe('UAI6: view-options toggle', () => {
   const openDeploysMenu = (page: Page) => page.locator('#view-toggle button[data-view="deploys"]').click();
   const anyDelta = (page: Page) => page.locator('[data-testid="svc-delta"]');
 
@@ -131,9 +131,9 @@ test.describe('UI6: view-options toggle', () => {
   });
 });
 
-// UI3 — a many-service deploy keeps the row to one chip plus a muted "+N",
+// UAI3 — a many-service deploy keeps the row to one chip plus a muted "+N",
 // like the Stacks Version column; the row's detail lists every changed service.
-test.describe('UI3: one chip plus a count', () => {
+test.describe('UAI3: one chip plus a count', () => {
   test('four changed services render one chip and +3; the detail lists all four', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
@@ -158,10 +158,10 @@ test.describe('UI3: one chip plus a count', () => {
   });
 });
 
-// UI4 — a same-tag rebuild (only the pinned digest moves) shows the shared tag
+// UAI4 — a same-tag rebuild (only the pinned digest moves) shows the shared tag
 // plus a ↻ rebuilt marker (not two unreadable hex digests); the full digests
 // are on the chip's title/aria.
-test.describe('UI4: digest-only rebuild', () => {
+test.describe('UAI4: digest-only rebuild', () => {
   test('a same-tag digest change shows a rebuilt marker, not raw digests', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
@@ -181,11 +181,11 @@ test.describe('UI4: digest-only rebuild', () => {
   });
 });
 
-// UI5 — a phone has no columns to spare, so the row is two lines: name and
+// UAI5 — a phone has no columns to spare, so the row is two lines: name and
 // time on the first, change and result on the second, the right-hand cells
 // right-aligned. The When cell drops its duration and SHA (both stay in the
 // detail) without ever squeezing the name, the row's identity.
-test.describe('UI5: responsive', () => {
+test.describe('UAI5: responsive', () => {
   test('the Change cell opens the phone row\'s second line, beside the result', async ({ page, skipper }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto(`${skipper.baseURL}/`);
@@ -226,10 +226,10 @@ test.describe('UI5: responsive', () => {
   });
 });
 
-// UI7 — a tablet keeps the four columns on one line: the When cell gives up
+// UAI7 — a tablet keeps the four columns on one line: the When cell gives up
 // its duration so Stack and Change keep their width, and the change still reads
 // between the result and the time, where a column of changes can be scanned.
-test.describe('UI7: tablet', () => {
+test.describe('UAI7: tablet', () => {
   test('Change keeps the first line while When drops its duration', async ({ page, skipper }) => {
     await page.setViewportSize({ width: 744, height: 1000 }); // iPad-mini portrait
     await page.goto(`${skipper.baseURL}/`);
@@ -245,7 +245,7 @@ test.describe('UI7: tablet', () => {
     await expect(page.locator('.event-list-header .col-version')).toBeVisible();
     await expect(row.locator('.cell-duration')).toBeHidden();
 
-    // One measurement pass over the settled row (see UI5).
+    // One measurement pass over the settled row (see UAI5).
     const { nameBox, statusBox, deltaBox, timeBox } = await row.evaluate((r) => {
       const box = (sel: string) => {
         const b = (r.querySelector(sel) as HTMLElement).getBoundingClientRect();
