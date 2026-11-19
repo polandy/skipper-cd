@@ -19,7 +19,16 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # A release image ships only from a commit the full CI passed on, rerun on
+  # the tag itself: main's own run can be cancelled by the next merge.
+  ci:
+    if: github.ref_type == 'tag'
+    uses: ./.github/workflows/ci.yml
+
   build-and-push:
+    needs: ci
+    # Branch builds skip the gate; a failed or cancelled gate stops a tag build.
+    if: ${{ !cancelled() && (needs.ci.result == 'success' || (needs.ci.result == 'skipped' && github.ref_type != 'tag')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
