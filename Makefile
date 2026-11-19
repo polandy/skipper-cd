@@ -159,9 +159,7 @@ check-baselines:
 	@scripts/check-baselines.sh
 
 ## --- check-action-pins (part of the test job) ----------------------------
-# Every workflow action pinned to a commit SHA and every Dockerfile base image
-# to a digest: a moved tag would otherwise inherit the release PAT and the
-# registry push rights.
+# Actions by commit SHA, Dockerfile base images by digest (a tag can be moved).
 check-action-pins:
 	@scripts/check-action-pins.sh
 
