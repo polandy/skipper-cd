@@ -60,16 +60,16 @@ Optionally lock the container down further:
 
 ### Verifying the image
 
-Every published image is signed with [cosign](https://docs.sigstore.dev/) keyless signing and carries an SBOM and a build provenance attestation. To check that an image was built by this repository's release workflow from a release tag:
+Images published after release 0.32.0 are signed with [cosign](https://docs.sigstore.dev/) keyless signing and carries an SBOM and a build provenance attestation. To check that an image was built by this repository's release workflow from a release tag:
 
 ```sh
-cosign verify ghcr.io/polandy/skipper-cd:0.33.0 \
+cosign verify ghcr.io/polandy/skipper-cd:<version> \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github\.com/polandy/skipper-cd/\.github/workflows/docker\.yml@refs/tags/v'
 ```
 
 - Branch images are signed too; their identity ends in `@refs/heads/<branch>` instead, so the command above rejects them.
-- The SBOM (SPDX) and provenance (SLSA) are attached to the image index: `docker buildx imagetools inspect ghcr.io/polandy/skipper-cd:0.33.0 --format '{{ json .SBOM }}'` (or `.Provenance`).
+- The SBOM (SPDX) and provenance (SLSA) are attached to the image index: `docker buildx imagetools inspect ghcr.io/polandy/skipper-cd:<version> --format '{{ json .SBOM }}'` (or `.Provenance`).
 - Pin the verified image by digest (`ghcr.io/polandy/skipper-cd@sha256:…`) so the running image cannot change under the same tag.
 
 ## Migrating from the NixOS module
