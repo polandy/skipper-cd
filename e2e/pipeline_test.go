@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -690,6 +691,50 @@ func TestE2E_RolloutCutoverDrainsOldAfterCanary(t *testing.T) {
 	}
 	if es.has("web", "rolled_back") {
 		t.Error("a healthy canary must not report rolled_back")
+	}
+}
+
+// TestE2E_RolloutUnhealthyCanaryKeepsOldContainer (P25): a canary that never
+// turns healthy is removed, the old container is never stopped, and the outcome
+// is `rolled_back` without the git-restore's second `up` (ADR-0040).
+func TestE2E_RolloutUnhealthyCanaryKeepsOldContainer(t *testing.T) {
+	s := newSkipper(t, nil, "", []string{"web"})
+	table := filepath.Join(s.base, "containers.jsonl")
+	s.stubEnv = map[string]string{"STUB_DOCKER_ROLLOUT_FILE": table, "STUB_DOCKER_CANARY_HEALTH": "unhealthy"}
+	s.stackCfg = map[string]string{"web": "    rollout:\n      services: [app]\n      health_timeout_seconds: 1\n"}
+	s.seedFiles = map[string]string{"web/docker-compose.yml": traefikCompose("1.25")}
+	s.bootstrap(t)
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+	startupCalls := len(s.dockerLogLines())
+
+	writeFile(t, filepath.Join(s.origin, "web", "docker-compose.yml"), traefikCompose("1.26"))
+	git(t, s.origin, "commit", "-am", "bump web to 1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "rolled_back")
+
+	var calls []string
+	for _, line := range s.dockerLogLines()[startupCalls:] {
+		_, args, _ := strings.Cut(line, "\t")
+		if _, up, ok := strings.Cut(args, " up "); ok {
+			calls = append(calls, "up "+up)
+		} else if strings.HasPrefix(args, "stop ") || strings.HasPrefix(args, "rm ") {
+			calls = append(calls, args)
+		}
+	}
+	want := []string{
+		"up -d --no-deps --no-recreate --scale app=2 -- app",
+		"stop -- canary",
+		"rm -- canary",
+	}
+	if !slices.Equal(calls, want) {
+		t.Errorf("calls =\n  %q\nwant\n  %q (old never stopped, no git-restore up)", calls, want)
+	}
+	if b, err := os.ReadFile(table); err != nil || !strings.Contains(string(b), `"ID":"old"`) || strings.Contains(string(b), `"ID":"canary"`) {
+		t.Errorf("container table = %q (err=%v), want only the old container", b, err)
 	}
 }
 

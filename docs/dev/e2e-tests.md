@@ -176,7 +176,7 @@ binary):
     captured child-process output reaches the log ring (drives the `cmd-prefix`).
   - `STUB_DOCKER_ROLLOUT_FILE=<path>` → a rollout service's container table,
     answered to `compose ps --format json`: the first plain `up` starts `old`, a
-    `--scale` up adds a healthy `canary`, `rm -- <id>` drops one (P24).
+    `--scale` up adds a `canary` (healthy, or `STUB_DOCKER_CANARY_HEALTH`), `rm -- <id>` drops one (P24, P25).
 - **Failure attachments.** A failed test attaches the instance's stdout/stderr
   (`skipper-output`) *and* the UI's own diagnostics (`ui-notes`, read from
   `window.__uiNotes`). Both are collected **after** the test finishes, never
@@ -341,6 +341,12 @@ UI suite reuses.
   with a plain `up`; a pushed image bump then runs exactly `up --no-recreate
   --scale app=2`, `stop -- old` and `rm -- old`, in that order, and reports
   `success` (never `rolled_back`).
+- **P25 — An unhealthy canary keeps the old container** (ADR-0040,
+  `STUB_DOCKER_CANARY_HEALTH=unhealthy`): the same stack with
+  `health_timeout_seconds: 1` runs `up --no-recreate --scale app=2`, then
+  `stop -- canary` and `rm -- canary` and nothing else — the old container is
+  never stopped, no git-restore `up` — emits `rolled_back`, and the container
+  table holds only `old`.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2268,6 +2274,7 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P22** | `TestE2E_RevertKeepsHoldWhenConvergeFails` | `pipeline_test.go` |
 | **P23** | `TestE2E_FailedPostDeployHookHoldsChange` | `pipeline_test.go` |
 | **P24** | `TestE2E_RolloutCutoverDrainsOldAfterCanary` | `pipeline_test.go` |
+| **P25** | `TestE2E_RolloutUnhealthyCanaryKeepsOldContainer` | `pipeline_test.go` |
 
 ### 6.2 UI (Playwright)
 
