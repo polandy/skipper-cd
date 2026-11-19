@@ -13,8 +13,9 @@ embedded assets — fonts and the extracted `app-helpers.js`, ADR-0035) whose
 contract is
 [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md).
 The pure, DOM-free helpers in `app-helpers.js` have their own fast unit layer —
-`node --test` (`make ui-unit`, its own CI job) — so E2E need not re-verify
-formatting/classification edge cases. A dependency/version bump
+`node --test` (`make ui-unit`, its own CI job, which also reports its line,
+branch and function coverage and fails below the floors set in the `Makefile`)
+— so E2E need not re-verify formatting/classification edge cases. A dependency/version bump
 or an edit to that file can silently break a control, an SSE→DOM render, a
 badge, or the drawer. The UI E2E layer exercises the **real rendered UI against
 the real backend** so those breaks fail CI. Coverage spans all four UI masks,
