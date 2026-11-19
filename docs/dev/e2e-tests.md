@@ -307,6 +307,15 @@ UI suite reuses.
   `"type": "health"` alert (deploy-correlated via the startup deploy), flipping
   back POSTs the recovery, and `healthwatch.yaml` records the phases. This is
   the config→wiring→watcher→alerter through-line the unit tests cannot see.
+- **P11 — Health watch alert cooldown** (ADR-0031 amendment): with
+  `alert_cooldown_seconds: 3600`, the first unhealthy alert and its recovery are
+  both POSTed; a repeat failure inside the cooldown is persisted in
+  `healthwatch.yaml` as `suppressed: true` while the recorder still counts
+  exactly two alerts.
+- **P12 — Dependency ordering** (ADR-0032): with `app` depending on `db`, a push
+  changing both fails `db`'s `up` (`STUB_DOCKER_FAIL_NTH_UP=3`); `app` gets a
+  `blocked` event and no `up`, `/api/queue` lists it, and
+  `skipper_deploys_blocked_total{stack="app"}` is at least 1.
 
 ### 4.2 UI — Maske A: Deploys-View (Playwright)
 
@@ -339,6 +348,14 @@ UI suite reuses.
   detail: `detail-verdict` (`Failed at docker compose up`) comes before
   `detail-facts`, and the Output tab's `deploy-output` carries the error.
 - **UA10 — Empty state.** A fresh UI with no events shows `empty-state`.
+- **UA11 — Queued row replaced on resume.** With autosync paused globally, a
+  pushed image bump leaves a `queued` row beside the startup success; resuming
+  drains the queue and the stack deploys, so `web` shows two `success` rows and
+  no `queued` one — the stale row is replaced, not left standing.
+- **UA12 — Queued row diff.** The paused stack's `queued` row is flagged
+  `data-has-diffs`; clicking it fetches `/api/events/{id}/diffs` and opens the
+  `diff-panel` (not the plain `files-panel`) with `nginx:1.25` as the deleted
+  and `nginx:1.26` as the added line.
 - **UA13 — Deploy detail tabs by keyboard.** A failed row's deploy detail
   follows the ARIA tabs pattern like UBC9: End selects and focuses the last tab
   and the `tabpanel` is `aria-labelledby` it; ArrowRight wraps to the first.
@@ -492,6 +509,11 @@ UI suite reuses.
   `api`'s switch has visibly flipped, proving the repaint ran — `web`'s node must
   still be `isConnected` and still toggle. This is what makes UC5/UC10/UC11's
   clicks land under load.
+- **UC16 — The drawer opens at its top.** In the Logs view on a 744×620
+  viewport with ten stacks and the open transition slowed to 3s, opening the
+  drawer lands focus on `global-switch` with the drawer's `scrollTop` still 0;
+  once `data-settled`, the global row lies inside the drawer, not clipped above
+  its edge.
 
 ### 4.5 UI — Maske D: Global chrome
 
@@ -1504,6 +1526,52 @@ building itself (trailing slashes, a missing base or SHA, a non-http(s) base
 that must never reach an `href`) is covered by the `app-helpers` unit layer
 (`commitURL`) and, server-side, by `git.WebURL`.
 
+### 4.40 UI — Maske AM: A refused autosync write is announced
+
+A failed toggle is invisible in the interface: the switch simply does not move,
+which looks exactly like a click that never landed. That ambiguity cost real
+time chasing a UC11 flake, so the write path now reports its failure on the
+console — the same treatment a dropped stale snapshot gets (UC13). See
+[Autosync](../../internal/ui/UI_SPEC.md#autosync).
+
+- **UAM1 — A refusing server.** The `POST /api/autosync` is fulfilled with 503.
+  The console announcement names the scope and the status; the switch keeps
+  showing *server* state, because the write did not happen and rendering it as
+  though it had would be the worse lie.
+- **UAM2 — A request that never arrives.** The same POST is aborted
+  (`connectionfailed`), covering the transport failure rather than the refusal.
+
+Both wait on the announcement rather than on the DOM: it is emitted in the same
+step the switch would otherwise have been repainted in, so "the switch did not
+move" cannot pass early. Counter-probed against the pre-fix build, where both
+cases fail.
+
+### 4.41 UI — Maske AN: the web-font swap causes no layout shift
+
+The self-hosted webfonts use `font-display: swap`, so on a slow connection the
+page first renders in a local fallback font. Historically that render occupied
+*different* space — the container's Ubuntu Mono (0.5em advance) kept the queue
+empty-note on one line where JetBrains Mono (0.6em) wraps it to two — so the
+swap dropped everything below it ~19px: the UC11 flake for the suite, a
+one-time CLS for real users. `app.css` now declares metric-compatible local
+fallback faces (`size-adjust` + `ascent/descent/line-gap-override`, computed
+from the real font metrics) for the common Ubuntu/DejaVu/Liberation candidates,
+so the pre-swap render already occupies the loaded face's exact space. See
+[Fonts](../../internal/ui/UI_SPEC.md).
+
+- **UAN1 — Blocked vs loaded geometry.** The autosync drawer is rendered twice:
+  once with every `/fonts/**` request aborted (the slow-connection render — the
+  spec asserts via `document.fonts.check` that the webfont really is absent,
+  the positive signal that the fallback was measured), once normally. The
+  empty-note's box and the first stack switch's height must match within 1px;
+  the regression it guards was a ~19px hop. Counter-probed against the pre-fix
+  CSS, where the note's height differs by a full line.
+
+Deterministic by construction: both measurements happen after
+`document.fonts.ready` (the fixture's navigation wrapper) and the drawer's
+`data-settled` — settled states, no waiting on a swap to *probably* have
+happened.
+
 ### 4.42 UI — Maske AO: registry update check
 
 The read-only update check (ADR-0054) annotates the Stacks view's version
@@ -2079,52 +2147,6 @@ clock.
 - **UBD3 — Filter before fold.** A name filter that matches nothing leaves no
   fold line on screen; the empty note is the positive signal that the filter ran.
 
-### 4.40 UI — Maske AM: A refused autosync write is announced
-
-A failed toggle is invisible in the interface: the switch simply does not move,
-which looks exactly like a click that never landed. That ambiguity cost real
-time chasing a UC11 flake, so the write path now reports its failure on the
-console — the same treatment a dropped stale snapshot gets (UC13). See
-[Autosync](../../internal/ui/UI_SPEC.md#autosync).
-
-- **UAM1 — A refusing server.** The `POST /api/autosync` is fulfilled with 503.
-  The console announcement names the scope and the status; the switch keeps
-  showing *server* state, because the write did not happen and rendering it as
-  though it had would be the worse lie.
-- **UAM2 — A request that never arrives.** The same POST is aborted
-  (`connectionfailed`), covering the transport failure rather than the refusal.
-
-Both wait on the announcement rather than on the DOM: it is emitted in the same
-step the switch would otherwise have been repainted in, so "the switch did not
-move" cannot pass early. Counter-probed against the pre-fix build, where both
-cases fail.
-
-### 4.41 UI — Maske AN: the web-font swap causes no layout shift
-
-The self-hosted webfonts use `font-display: swap`, so on a slow connection the
-page first renders in a local fallback font. Historically that render occupied
-*different* space — the container's Ubuntu Mono (0.5em advance) kept the queue
-empty-note on one line where JetBrains Mono (0.6em) wraps it to two — so the
-swap dropped everything below it ~19px: the UC11 flake for the suite, a
-one-time CLS for real users. `app.css` now declares metric-compatible local
-fallback faces (`size-adjust` + `ascent/descent/line-gap-override`, computed
-from the real font metrics) for the common Ubuntu/DejaVu/Liberation candidates,
-so the pre-swap render already occupies the loaded face's exact space. See
-[Fonts](../../internal/ui/UI_SPEC.md).
-
-- **UAN1 — Blocked vs loaded geometry.** The autosync drawer is rendered twice:
-  once with every `/fonts/**` request aborted (the slow-connection render — the
-  spec asserts via `document.fonts.check` that the webfont really is absent,
-  the positive signal that the fallback was measured), once normally. The
-  empty-note's box and the first stack switch's height must match within 1px;
-  the regression it guards was a ~19px hop. Counter-probed against the pre-fix
-  CSS, where the note's height differs by a full line.
-
-Deterministic by construction: both measurements happen after
-`document.fonts.ready` (the fixture's navigation wrapper) and the drawer's
-`data-settled` — settled states, no waiting on a swap to *probably* have
-happened.
-
 ### 5.1 Docs screenshots — rendered, never committed
 
 The two images the docs landing page embeds
@@ -2446,7 +2468,7 @@ The title is the case's test or `describe` title; the spec files sit in
 
 ### 6.3 Known gaps
 
-- **In the suite, not in §4:** UA11, UA12, UC16, P11, P12.
+- **In the suite, not in §4:** none.
 - **In §4, not in the suite:** UH6, UL1, UM2–UM4, UN2, UX1 (retired, noted in §4)
   and UT5, UT6 (moved to UB8–UB10). UB3 (sort toggle) is also gone from the
   suite although §4 and the Logs-view intro still name it.
