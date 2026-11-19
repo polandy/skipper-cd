@@ -22,7 +22,7 @@ the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
 > Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
-> pipeline harness and P1–P22 (§4.1) exist under `e2e/` behind the `e2e` build tag,
+> pipeline harness and P1–P28 (§4.1) exist under `e2e/` behind the `e2e` build tag,
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
@@ -347,6 +347,15 @@ UI suite reuses.
   `stop -- canary` and `rm -- canary` and nothing else — the old container is
   never stopped, no git-restore `up` — emits `rolled_back`, and the container
   table holds only `old`.
+- **P26 — A success is notified** (ADR-0020): with a `generic` notification
+  target at a local recorder, the startup deploy and a pushed image bump each
+  POST a `success` payload for `web`.
+- **P27 — A failure is notified** (ADR-0020, `STUB_DOCKER_FAIL_NTH_UP=2`): with
+  `rollback: false`, the failed deploy POSTs one `failed` payload carrying the
+  error and no `rolled_back`.
+- **P28 — A rollback is notified** (ADR-0020, `STUB_DOCKER_FAIL_NTH_UP=2`): the
+  failed deploy POSTs one `rolled_back` payload, no `failed`, and no second
+  `success` beyond the startup one.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2275,6 +2284,9 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P23** | `TestE2E_FailedPostDeployHookHoldsChange` | `pipeline_test.go` |
 | **P24** | `TestE2E_RolloutCutoverDrainsOldAfterCanary` | `pipeline_test.go` |
 | **P25** | `TestE2E_RolloutUnhealthyCanaryKeepsOldContainer` | `pipeline_test.go` |
+| **P26** | `TestE2E_NotifiesSuccessToGenericTarget` | `notifications_test.go` |
+| **P27** | `TestE2E_NotifiesFailureToGenericTarget` | `notifications_test.go` |
+| **P28** | `TestE2E_NotifiesRollbackToGenericTarget` | `notifications_test.go` |
 
 ### 6.2 UI (Playwright)
 
