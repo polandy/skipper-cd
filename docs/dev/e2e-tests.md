@@ -22,7 +22,7 @@ the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
 > Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
-> pipeline harness and P1–P18 (§4.1) exist under `e2e/` behind the `e2e` build tag,
+> pipeline harness and P1–P19 (§4.1) exist under `e2e/` behind the `e2e` build tag,
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
@@ -313,6 +313,10 @@ UI suite reuses.
 - **P18 — `deploy_health_check: false` suppresses the inferred gate** (ADR-0049):
   with that key on a stack, a pushed compose that gains a `healthcheck:` still
   deploys with a plain `up -d` (no `--wait`), unlike P17.
+- **P19 — `rollback: false` leaves the failure held** (ADR-0050,
+  `STUB_DOCKER_FAIL_NTH_UP=2`): with that key on a stack, a pushed change whose
+  `up` fails emits SSE `failed` (never `rolled_back`), runs exactly two `up -d`
+  (startup, deploy) and no `down`, and `skipper_stack_held{stack}` = 1.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2223,6 +2227,7 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P13** | `TestE2E_HeldChangeWaitsForRetry` | `pipeline_test.go` |
 | **P14** | `TestE2E_FailedBuildNamesItsCause` | `pipeline_test.go` |
 | **P15** | `TestE2E_FailedBuildBacksOffThenHolds` | `pipeline_test.go` |
+| **P19** | `TestE2E_RollbackDisabledLeavesFailureHeld` | `pipeline_test.go` |
 
 ### 6.2 UI (Playwright)
 

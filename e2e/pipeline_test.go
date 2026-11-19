@@ -160,6 +160,38 @@ func TestE2E_RollbackOnFailedUp(t *testing.T) {
 	}
 }
 
+// TestE2E_RollbackDisabledLeavesFailureHeld (P19): with `rollback: false` a
+// failed `up` is not restored (ADR-0050): the stack reports `failed`, never
+// `rolled_back`, runs no further `up` or `down`, and the change is held.
+func TestE2E_RollbackDisabledLeavesFailureHeld(t *testing.T) {
+	s := newSkipper(t, map[string]string{"STUB_DOCKER_FAIL_NTH_UP": "2"}, "", []string{"web"})
+	s.stackCfg = map[string]string{"web": "    rollback: false\n"}
+	s.bootstrap(t)
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	s.setStackImage("web", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "failed")
+	s.waitFor("the change to be held", func() bool {
+		v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return ok && v == 1
+	})
+
+	if got := s.dockerUps("web"); got != 2 {
+		t.Errorf("ups = %d, want startup + failed deploy = 2 (no rollback up)", got)
+	}
+	if got := s.dockerCalls("web", "down"); got != 0 {
+		t.Errorf("down calls = %d, want 0: the failed containers stay running", got)
+	}
+	if es.has("web", "rolled_back") {
+		t.Error("rollback: false must not report rolled_back")
+	}
+}
+
 // TestE2E_HealthProbeFailureRollsBackUnhealthy (P16): a stack whose
 // deploy_health_check URL stops answering 2xx fails the gate, is rolled back,
 // and the rollback's rerun of the same gate fails too → `rolled_back_unhealthy`.
