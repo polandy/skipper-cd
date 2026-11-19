@@ -454,6 +454,44 @@ func TestE2E_RevertKeepsHoldWhenConvergeFails(t *testing.T) {
 	}
 }
 
+// TestE2E_FailedPostDeployHookHoldsChange (P23): a failing `post_deploy` hook
+// rolls the deploy back and holds the change, though every `up` succeeds
+// (ADR-0062). The hook passes until the flag file exists; hooks never run on a
+// rollback. Stub ups: startup #1, the deploy #2, its rollback #3.
+func TestE2E_FailedPostDeployHookHoldsChange(t *testing.T) {
+	s := newSkipper(t, nil, "", []string{"web"})
+	flag := filepath.Join(s.base, "hook-fails")
+	s.stackCfg = map[string]string{
+		"web": fmt.Sprintf("    hooks:\n      post_deploy:\n        - %q\n", "test ! -e "+flag),
+	}
+	s.bootstrap(t)
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	writeFile(t, flag, "")
+	s.setStackImage("web", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "rolled_back")
+	s.waitFor("the change to be held", func() bool {
+		v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return ok && v == 1
+	})
+	if got := s.dockerUps("web"); got != 3 {
+		t.Fatalf("ups = %d, want startup + deploy + rollback = 3", got)
+	}
+
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("second webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "held")
+	if got := s.dockerUps("web"); got != 3 {
+		t.Errorf("ups after the held run = %d, want 3: a held change touches no container", got)
+	}
+}
+
 // TestE2E_FailedBuildNamesItsCause (P14): a failed build's event carries the
 // cause from BuildKit's stderr, not only the exit status (ADR-0063). The stub
 // fails the first two builds with an elapsed stamp that differs per call; both
