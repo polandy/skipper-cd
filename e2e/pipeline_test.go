@@ -225,6 +225,34 @@ func TestE2E_InferredHealthGateWaitsForCompose(t *testing.T) {
 	}
 }
 
+// TestE2E_DisabledHealthGateSkipsWait (P18): `deploy_health_check: false`
+// keeps the deploy `up` ungated even though the compose declares a
+// `healthcheck:` (ADR-0049); the counter-check is P17, where the same compose
+// change without the key is gated.
+func TestE2E_DisabledHealthGateSkipsWait(t *testing.T) {
+	s := newSkipper(t, nil, "", []string{"web"})
+	s.stackCfg = map[string]string{"web": "    deploy_health_check: false\n"}
+	s.bootstrap(t)
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	healthy := "services:\n  app:\n    image: nginx:1.26\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n"
+	writeFile(t, filepath.Join(s.origin, "web", "docker-compose.yml"), healthy)
+	git(t, s.origin, "commit", "-am", "web gains a healthcheck")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	s.waitFor("web redeployed", func() bool { return s.dockerUps("web") >= 2 })
+
+	if got := s.dockerUps("web"); got != 2 {
+		t.Fatalf("ups = %d, want startup + deploy = 2", got)
+	}
+	if got := s.upsWithWait("web"); got != 0 {
+		t.Errorf("`up --wait` calls = %d, want 0 with deploy_health_check: false", got)
+	}
+}
+
 // upsWithWait counts the stub's recorded `up` invocations for a stack that
 // carry `--wait`.
 func (s *skipper) upsWithWait(stack string) int {

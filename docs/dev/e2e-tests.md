@@ -22,7 +22,7 @@ the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
 > Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
-> pipeline harness and P1–P15 (§4.1) exist under `e2e/` behind the `e2e` build tag,
+> pipeline harness and P1–P18 (§4.1) exist under `e2e/` behind the `e2e` build tag,
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
@@ -310,6 +310,9 @@ UI suite reuses.
   with no `deploy_health_check`, a pushed compose that gains a `healthcheck:`
   deploys with `up --wait` (the startup `up` has none), while a sibling stack
   without one never gets `--wait`.
+- **P18 — `deploy_health_check: false` suppresses the inferred gate** (ADR-0049):
+  with that key on a stack, a pushed compose that gains a `healthcheck:` still
+  deploys with a plain `up -d` (no `--wait`), unlike P17.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
