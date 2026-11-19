@@ -23,6 +23,10 @@ type fakeUnitRunner struct {
 	unitFailed  bool // is-failed result once the unit is inactive
 	activeSeen  int
 	onCall      func(name string, args []string)
+
+	unitShow    string // `systemctl show` stdout for the ended unit
+	journal     string // `journalctl` stdout for the unit's invocation
+	outputCalls []runCall
 }
 
 type runCall struct {
@@ -56,6 +60,19 @@ func (r *fakeUnitRunner) Run(_ context.Context, dir string, _ []string, name str
 	default: // reset-failed and anything else succeed silently
 		return nil
 	}
+}
+
+// Output serves the post-mortem reads of a failed unit: its properties and
+// its journal.
+func (r *fakeUnitRunner) Output(_ context.Context, dir string, name string, args ...string) ([]byte, error) {
+	r.outputCalls = append(r.outputCalls, runCall{dir: dir, name: name, args: args})
+	switch name {
+	case "systemctl":
+		return []byte(r.unitShow), nil
+	case "journalctl":
+		return []byte(r.journal), nil
+	}
+	return nil, errors.New("unexpected output command " + name)
 }
 
 // callNames returns the command names in call order, for asserting sequence.
@@ -153,7 +170,7 @@ func findCall(t *testing.T, r *fakeUnitRunner, name string) runCall {
 func TestRebuild_StartsFireAndForgetTransientUnitThenReportsSuccess(t *testing.T) {
 	dir := t.TempDir()
 	runner := &fakeUnitRunner{activePolls: 2} // active for two probes, then success
-	r := New(runner)
+	r := New(runner, runner)
 	r.pollInterval = 0 // no real sleeping in tests
 
 	if err := r.Rebuild(context.Background(), dir, ".#host-a", time.Hour); err != nil {
@@ -199,7 +216,7 @@ func TestRebuild_StartsFireAndForgetTransientUnitThenReportsSuccess(t *testing.T
 
 func TestRebuild_ReturnsErrorWhenUnitFails(t *testing.T) {
 	runner := &fakeUnitRunner{activePolls: 1, unitFailed: true}
-	r := New(runner)
+	r := New(runner, runner)
 	r.pollInterval = 0
 
 	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour)
@@ -213,7 +230,7 @@ func TestRebuild_ReturnsErrorWhenUnitFails(t *testing.T) {
 
 func TestRebuild_ReturnsErrorWhenStartFails(t *testing.T) {
 	runner := &fakeUnitRunner{failStart: true}
-	r := New(runner)
+	r := New(runner, runner)
 	r.pollInterval = 0
 
 	if err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour); err == nil {
@@ -225,7 +242,7 @@ func TestRebuild_ReturnsErrorWhenStartFails(t *testing.T) {
 // the unit itself, so it holds even while skipper restarts during the switch.
 func TestRebuild_BoundsTheUnitRuntime(t *testing.T) {
 	runner := &fakeUnitRunner{}
-	r := New(runner)
+	r := New(runner, runner)
 	r.pollInterval = 0
 
 	if err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", 90*time.Minute); err != nil {
@@ -242,7 +259,7 @@ func TestRebuild_BoundsTheUnitRuntime(t *testing.T) {
 
 func TestRebuild_FailureNamesTheTimeoutKey(t *testing.T) {
 	runner := &fakeUnitRunner{activePolls: 1, unitFailed: true}
-	r := New(runner)
+	r := New(runner, runner)
 	r.pollInterval = 0
 
 	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour)
@@ -253,6 +270,98 @@ func TestRebuild_FailureNamesTheTimeoutKey(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should name %s", err, want)
 		}
+	}
+}
+
+// switchJournal is the tail switch-to-configuration leaves when the new
+// configuration activated but units failed to start (exit status 4).
+const switchJournal = `restarting the following units: nginx.service
+warning: the following units failed: docker-compose-nextcloud.service, nextcloud-oidc-provider.service
+× nextcloud-oidc-provider.service - OIDC provider
+switching to system configuration /nix/store/abc-nixos-system failed (status 4)
+`
+
+func TestRebuild_ExitStatusFourReportsTheFailedUnits(t *testing.T) {
+	runner := &fakeUnitRunner{
+		activePolls: 1, unitFailed: true,
+		unitShow: "ExecMainStatus=4\nInvocationID=0f3e\n",
+		journal:  switchJournal,
+	}
+	r := New(runner, runner)
+	r.pollInterval = 0
+
+	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour)
+
+	var unitsFailed *UnitsFailedError
+	if !errors.As(err, &unitsFailed) || !errors.Is(err, ErrActivatedUnitsFailed) {
+		t.Fatalf("expected ErrActivatedUnitsFailed, got %v", err)
+	}
+	wantUnits := []string{"docker-compose-nextcloud.service", "nextcloud-oidc-provider.service"}
+	if !slices.Equal(unitsFailed.Units, wantUnits) {
+		t.Errorf("units = %v, want %v", unitsFailed.Units, wantUnits)
+	}
+	for _, want := range append(wantUnits, "activated", "journalctl -u skipper-nixos-rebuild.service") {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should name %s", err, want)
+		}
+	}
+	// The journal read is scoped to this run's invocation, not older runs of the reused unit name.
+	if !slices.ContainsFunc(runner.outputCalls, func(c runCall) bool {
+		return c.name == "journalctl" && slices.Contains(c.args, "_SYSTEMD_INVOCATION_ID=0f3e")
+	}) {
+		t.Errorf("expected a journalctl read of invocation 0f3e, got %v", runner.outputCalls)
+	}
+}
+
+func TestRebuild_ExitStatusFourWithoutAUnitListStillMeansActivated(t *testing.T) {
+	runner := &fakeUnitRunner{activePolls: 1, unitFailed: true, unitShow: "ExecMainStatus=4\nInvocationID=\n"}
+	r := New(runner, runner)
+	r.pollInterval = 0
+
+	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour)
+
+	if !errors.Is(err, ErrActivatedUnitsFailed) {
+		t.Fatalf("expected ErrActivatedUnitsFailed, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "some units failed") {
+		t.Errorf("error %q should say that some units failed", err)
+	}
+}
+
+func TestRebuild_OtherExitStatusesStayARebuildFailure(t *testing.T) {
+	for name, show := range map[string]string{
+		"activation script failed": "ExecMainStatus=2\nInvocationID=0f3e\n",
+		"build failed":             "ExecMainStatus=1\nInvocationID=0f3e\n",
+		"killed by the timeout":    "ExecMainStatus=15\nInvocationID=0f3e\n",
+		"status unreadable":        "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			runner := &fakeUnitRunner{activePolls: 1, unitFailed: true, unitShow: show, journal: switchJournal}
+			r := New(runner, runner)
+			r.pollInterval = 0
+
+			err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour)
+
+			if err == nil || errors.Is(err, ErrActivatedUnitsFailed) {
+				t.Fatalf("expected a plain rebuild failure, got %v", err)
+			}
+			// Positive signal: the status was read before it was ruled out.
+			if !slices.ContainsFunc(runner.outputCalls, func(c runCall) bool { return c.name == "systemctl" && slices.Contains(c.args, "show") }) {
+				t.Errorf("expected a systemctl show read, got %v", runner.outputCalls)
+			}
+		})
+	}
+}
+
+func TestRebuild_WithoutAnOutputterAFailedUnitStaysARebuildFailure(t *testing.T) {
+	runner := &fakeUnitRunner{activePolls: 1, unitFailed: true, unitShow: "ExecMainStatus=4\n"}
+	r := New(runner, nil)
+	r.pollInterval = 0
+
+	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour)
+
+	if err == nil || errors.Is(err, ErrActivatedUnitsFailed) {
+		t.Fatalf("expected a plain rebuild failure, got %v", err)
 	}
 }
 
@@ -268,7 +377,7 @@ func TestRebuild_AbandonsWaitOnContextCancel(t *testing.T) {
 			cancel() // simulate shutdown arriving during the rebuild
 		}
 	}
-	r := New(runner)
+	r := New(runner, runner)
 	r.pollInterval = 0
 
 	err := r.Rebuild(ctx, t.TempDir(), ".#host-a", time.Hour)
