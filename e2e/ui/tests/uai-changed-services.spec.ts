@@ -20,10 +20,10 @@ const successRow = (page: Page, stack: string): Locator =>
 const delta = (page: Page, stack: string): Locator =>
   successRow(page, stack).locator('[data-testid="svc-delta"]');
 
-// UI1 — a tag bump shows the changed service with its old→new tags (old struck
+// UAI1 — a tag bump shows the changed service with its old→new tags (old struck
 // through, new in the add colour). The default compose service is `app`, so the
 // service is named (it differs from the stack).
-test.describe('UI1: tag bump', () => {
+test.describe('UAI1: tag bump', () => {
   test('the row names the service and its old→new tag', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
@@ -54,11 +54,11 @@ test.describe('UI1: tag bump', () => {
   });
 });
 
-// UI2 — the service is always named, even a lone service named after its own
+// UAI2 — the service is always named, even a lone service named after its own
 // stack: the chip identifies which service moved, not the stack. Two bumps land
 // it: the first renames the service to the stack, the second is a clean one-
 // service tag bump.
-test.describe('UI2: service always labelled', () => {
+test.describe('UAI2: service always labelled', () => {
   test('a lone stack-named service still shows its service label', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
@@ -80,9 +80,9 @@ test.describe('UI2: service always labelled', () => {
   });
 });
 
-// UI6 — the Deploys view-options carries a per-browser toggle that hides the
+// UAI6 — the Deploys view-options carries a per-browser toggle that hides the
 // delta; the choice (only the off state) persists in localStorage across reloads.
-test.describe('UI6: view-options toggle', () => {
+test.describe('UAI6: view-options toggle', () => {
   const openDeploysMenu = (page: Page) => page.locator('#view-toggle button[data-view="deploys"]').click();
   const anyDelta = (page: Page) => page.locator('[data-testid="svc-delta"]');
 
@@ -131,9 +131,9 @@ test.describe('UI6: view-options toggle', () => {
   });
 });
 
-// UI3 — a many-service deploy lists every changed service, one chip per line: the
+// UAI3 — a many-service deploy lists every changed service, one chip per line: the
 // column is the answer to "what moved", so nothing is hidden behind a count.
-test.describe('UI3: every changed service listed', () => {
+test.describe('UAI3: every changed service listed', () => {
   test('four changed services render four chips, stacked one per line', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
@@ -160,10 +160,10 @@ test.describe('UI3: every changed service listed', () => {
   });
 });
 
-// UI4 — a same-tag rebuild (only the pinned digest moves) shows the shared tag
+// UAI4 — a same-tag rebuild (only the pinned digest moves) shows the shared tag
 // plus a ↻ rebuilt marker (not two unreadable hex digests); the full digests
 // are on the chip's title/aria.
-test.describe('UI4: digest-only rebuild', () => {
+test.describe('UAI4: digest-only rebuild', () => {
   test('a same-tag digest change shows a rebuilt marker, not raw digests', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
@@ -183,11 +183,11 @@ test.describe('UI4: digest-only rebuild', () => {
   });
 });
 
-// UI5 — a phone has no columns to spare, so the row is two lines: name and
+// UAI5 — a phone has no columns to spare, so the row is two lines: name and
 // status on the first, time · version on the second. The version rides as high
 // as the width allows (Duration and Files are dropped for it, as on a tablet)
 // without ever squeezing the name, the row's identity.
-test.describe('UI5: responsive', () => {
+test.describe('UAI5: responsive', () => {
   test('the Version cell shares the phone row\'s second line with the time', async ({ page, skipper }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto(`${skipper.baseURL}/`);
@@ -226,12 +226,12 @@ test.describe('UI5: responsive', () => {
   });
 });
 
-// UI7 — a tablet has columns, just not six of them. Squeezing all six left the
+// UAI7 — a tablet has columns, just not six of them. Squeezing all six left the
 // Version track ~80px, which wrapped every chip over three lines and let the
 // stack cell print straight over them; so Duration and Files give up their
 // tracks instead and Version keeps its place on the first line, in front of the
 // status, where a column of versions can still be scanned down the page.
-test.describe('UI7: tablet', () => {
+test.describe('UAI7: tablet', () => {
   // Seeded health gives the status cell its second line, the widest state the
   // row reaches — the layout has to hold with it.
   test.use({

@@ -292,6 +292,10 @@ UI suite reuses.
   `"type": "health"` alert (deploy-correlated via the startup deploy), flipping
   back POSTs the recovery, and `healthwatch.yaml` records the phases. This is
   the config→wiring→watcher→alerter through-line the unit tests cannot see.
+- **P11 — Health watch alert cooldown.** With `alert_cooldown_seconds` set, the
+  first failure + recovery pair is delivered; a repeat failure within the
+  cooldown is recorded and persisted (with the pending catch-up marker) but no
+  third alert is POSTed.
 
 ### 4.2 UI — Maske A: Deploys-View (Playwright)
 
@@ -320,6 +324,12 @@ UI suite reuses.
   hunk colouring. *Snapshot: diff panel.*
 - **UA9 — Error detail.** A `failed` event shows `error-panel` with the message.
 - **UA10 — Empty state.** A fresh UI with no events shows `empty-state`.
+- **UA11 — Queued row replaced on resume.** Pausing autosync and pushing a change
+  defers the stack to a `queued` row. Re-enabling autosync deploys it, and the
+  queued row is replaced by the deploy row rather than lingering beside it.
+- **UA12 — Queued row shows the pending diff.** A `queued` row is flagged
+  `has_diffs`, and clicking its files pill expands the coloured `diff-panel`, not
+  the plain file-path list.
 
 ### 4.3 UI — Maske B: Logs-View
 
@@ -464,6 +474,10 @@ UI suite reuses.
   `api`'s switch has visibly flipped, proving the repaint ran — `web`'s node must
   still be `isConnected` and still toggle. This is what makes UC5/UC10/UC11's
   clicks land under load.
+- **UC16 — The drawer opens at its top.** Opening the drawer moves focus to the
+  global switch without scrolling it out of view: with the open transition slowed
+  so the drawer is still a sliver, the global row stays at the drawer's top edge
+  once focus lands (`focus({ preventScroll: true })`).
 
 ### 4.5 UI — Maske D: Global chrome
 
@@ -2216,6 +2230,10 @@ already pins actions:
 - **baselines**: fetches the LFS-tracked visual baselines on a runner that has
   git-lfs and uploads them as an artifact, which `e2e-ui` unpacks over the pointer
   files its in-container checkout wrote (ADR-0052).
+
+`make check-e2e-trace` (the `ui-unit` job) fails when a test-title ID (`UA1:` in
+Playwright, `TestP1_` in Go) has no `- **ID — …` case in this document or is used
+by two tests.
 
 A third job lives in `.github/workflows/docs.yml`, not here:
 

@@ -2,11 +2,11 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps e2e-ui-lint ui-icons
+.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps check-e2e-trace e2e-ui-lint ui-icons
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
-ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps e2e-ui-lint lint govulncheck e2e docs e2e-ui ui-preview-smoke
+ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps check-e2e-trace e2e-ui-lint lint govulncheck e2e docs e2e-ui ui-preview-smoke
 
 ## --- test job -------------------------------------------------------------
 # The Go packages of this module. `./...` also descends into the gitignored npm
@@ -160,6 +160,11 @@ check-baselines:
 # UI publishes no state to assert on.
 check-no-sleeps:
 	@scripts/check-no-sleeps.sh
+
+## --- check-e2e-trace (part of the ui-unit job) -----------------------------
+# Every test ID in the suite is specified in docs/dev/e2e-tests.md and used once.
+check-e2e-trace:
+	@node scripts/check-e2e-trace.mjs
 
 ## --- e2e-ui-lint (part of the ui-unit job) ---------------------------------
 # Type-aware ESLint over the Playwright suite. The rule that earns it is

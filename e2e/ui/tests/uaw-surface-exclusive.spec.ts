@@ -35,7 +35,7 @@ test.describe("UAW1: the beacon popover and a drawer never sit open together", (
     },
   });
 
-  test("UAW1: opening the beacon popover closes an open drawer", async ({
+  test("opening the beacon popover closes an open drawer", async ({
     page,
     skipper,
   }) => {
@@ -106,7 +106,7 @@ test.describe("UAW3: the hosts and autosync drawers never sit open together", ()
     },
   });
 
-  test("UAW3: whichever drawer opens second replaces the first", async ({
+  test("whichever drawer opens second replaces the first", async ({
     page,
     skipper,
   }) => {
