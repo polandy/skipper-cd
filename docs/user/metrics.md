@@ -15,6 +15,8 @@ skipper-cd exposes the following metrics on the `/metrics` endpoint (port config
 | `skipper_deploy_rollbacks_total` | counter | Total number of successful rollbacks after failed deploys, labelled by `stack`. |
 | `skipper_nixos_evaluation_seconds` | gauge | Duration in seconds of the last successful system derivation evaluation (not set in [`change_detection: files`](nixos.md#change-detection) mode). |
 | `skipper_last_deploy_timestamp_seconds` | gauge | Unix timestamp of the last successful deploy, labelled by `stack`. |
+| `skipper_run_started_timestamp_seconds` | gauge | Unix timestamp the deploy run in progress started; `0` while no run is in progress. |
+| `skipper_state_save_errors_total` | counter | Failed writes of `state.yaml` (see [State](state.md)). |
 | `skipper_deploy_lock_waits_total` | counter | Deploy runs that had to wait for a running deploy to finish (queueing indicator). |
 | `skipper_deploys_queued_total` | counter | Deploys deferred because autosync was paused, labelled by `stack` (see [Autosync](autosync.md)). |
 | `skipper_deploys_blocked_total` | counter | Deploys held back because a `depends_on` dependency failed in the same run, labelled by `stack` (see [Deploy ordering](configuration.md#deploy-ordering)). |
@@ -46,6 +48,14 @@ These alerts cover the failure modes that matter in practice:
   on, this stands while the checkout the stacks bind-mount from cannot be
   fast-forwarded — so the content behind those mounts may be older than the
   compose files that mount it. Reported once as a row for the same reason.
+- **Deploy run stuck** — `skipper_run_started_timestamp_seconds > 0 and time() - skipper_run_started_timestamp_seconds > 3600`.
+  Only one run happens at a time, so a run that hangs (a `nixos-rebuild`
+  stuck on a download) holds back every later push. Pick a threshold above your slowest normal run,
+  `nixos-rebuild` included.
+- **State not saved** — `increase(skipper_state_save_errors_total[15m]) > 0`.
+  A failed save does not stop the run, but the next start redeploys every
+  stack whose result was not recorded, hooks included. Usually a full disk
+  or a state directory skipper-cd cannot write to.
 - **skipper-cd down** — `up{job="<your skipper job>"} == 0` for a few
   minutes. Without this, a dead skipper-cd drops webhooks silently and
   deployments stall with no signal: the error counter only moves when a

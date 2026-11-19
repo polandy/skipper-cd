@@ -427,6 +427,8 @@ func BaseEnv(varsFile string) ([]string, error) {
 // syncAndDeployLocked syncs the repository and deploys all stacks. The caller
 // must hold d.mu.
 func (d *Deployer) syncAndDeployLocked(ctx context.Context, cfg *config.Config) {
+	metrics.RunStartedTimestamp.Set(float64(time.Now().Unix()))
+	defer metrics.RunStartedTimestamp.Set(0)
 	if d.syncer != nil {
 		if err := d.syncRepository(ctx); err != nil {
 			slog.Error("git sync failed, aborting deploy", "err", err)

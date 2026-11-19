@@ -88,11 +88,15 @@ func (r *recordingRunner) Output(_ context.Context, dir string, name string, arg
 // fakeRepoSyncer implements RepoSyncer for tests.
 type fakeRepoSyncer struct {
 	called atomic.Int32
-	err    error // returned from every Sync call
+	err    error  // returned from every Sync call
+	onSync func() // called inside every Sync, i.e. while the run holds the lock
 }
 
 func (f *fakeRepoSyncer) Sync(_ context.Context) error {
 	f.called.Add(1)
+	if f.onSync != nil {
+		f.onSync()
+	}
 	return f.err
 }
 

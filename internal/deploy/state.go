@@ -11,6 +11,7 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/fsatomic"
+	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
 const stateFileName = "state.yaml"
@@ -295,10 +296,14 @@ func saveDeployState(stateDir string, state *persistedState) error {
 }
 
 func writeDeployState(stateDir string, data []byte) error {
-	if err := os.MkdirAll(stateDir, fsatomic.PrivateDirMode); err != nil {
-		return err
+	err := os.MkdirAll(stateDir, fsatomic.PrivateDirMode)
+	if err == nil {
+		err = fsatomic.WriteFile(filepath.Join(stateDir, stateFileName), data, fsatomic.PrivateFileMode)
 	}
-	return fsatomic.WriteFile(filepath.Join(stateDir, stateFileName), data, fsatomic.PrivateFileMode)
+	if err != nil {
+		metrics.StateSaveErrors.Inc()
+	}
+	return err
 }
 
 // stateCheckpoint saves the state after each stack of a run, so a run killed
