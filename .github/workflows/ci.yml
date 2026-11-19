@@ -180,8 +180,8 @@ jobs:
         with:
           version: v2.12
 
-  # Builds the flake checks — currently the eval-only module.nix check
-  # (nix/module-check.nix). The Go jobs above never evaluate the NixOS module.
+  # Builds the flake checks: the eval-only module checks plus the sandbox VM
+  # test (nix/sandbox-vm-test.nix). The Go jobs above never evaluate the module.
   nix-flake-check:
     runs-on: ubuntu-latest
     steps:

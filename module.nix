@@ -4,6 +4,25 @@ let
   cfg = config.services.skipper-cd;
   systemctl = "${config.systemd.package}/bin/systemctl";
   dockerUnits = lib.optionals cfg.docker.enable [ "docker.service" ];
+  stateDirUnderVarLib = lib.hasPrefix "/var/lib/" cfg.stateDir;
+
+  # Only without nixosRebuild: nix then runs as root against the local store, needing namespaces and /nix.
+  strictSandbox = {
+    PrivateDevices = true;
+    ProtectKernelTunables = true;
+    ProtectKernelModules = true;
+    ProtectKernelLogs = true;
+    ProtectControlGroups = true;
+    ProtectClock = true;
+    ProtectHostname = true;
+    RestrictNamespaces = true;
+    RestrictSUIDSGID = true;
+    RestrictRealtime = true;
+    LockPersonality = true;
+    SystemCallArchitectures = "native";
+    SystemCallFilter = [ "@system-service" ];
+    RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK" ];
+  };
 
   # Restart the service only when it has entered a *failed* state — e.g. after a
   # self-update whose stop was force-killed at TimeoutStopSec (see ADR-0014,
@@ -36,7 +55,11 @@ in
     stateDir = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/skipper";
-      description = "Directory for storing deploy state.";
+      description = ''
+        Directory the service may write: deploy state and the repository
+        clone. skipper keeps its state next to `repo_dir`, so a non-default
+        value must match `repo_dir` in skipper.yml (e.g. `<stateDir>/repo`).
+      '';
     };
 
     docker.enable = lib.mkOption {
@@ -91,6 +114,14 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [{
+      assertion = lib.hasPrefix "/" cfg.stateDir;
+      message = "services.skipper-cd.stateDir: \"${cfg.stateDir}\" is relative; give an absolute path such as /var/lib/skipper.";
+    }];
+
+    # StateDirectory= only manages paths under /var/lib.
+    systemd.tmpfiles.rules = lib.optionals (!stateDirUnderVarLib) [ "d ${cfg.stateDir} 0700 root root -" ];
+
     systemd.services.skipper-cd = {
       description = "skipper-cd Docker Compose CD";
       wantedBy = [ "multi-user.target" ];
@@ -116,7 +147,7 @@ in
         Restart = "always";
         RestartSec = "5s";
         TimeoutStopSec = cfg.stopTimeout;
-        StateDirectory = "skipper";
+        StateDirectory = lib.mkIf stateDirUnderVarLib (lib.removePrefix "/var/lib/" cfg.stateDir);
 
         # Use the state directory as HOME so docker compose can write
         # CLI config (e.g. buildx state) under ProtectSystem=strict.
@@ -136,7 +167,7 @@ in
         # hosts using sops-nix; a hard reference fails namespace setup
         # (status=226/NAMESPACE) everywhere else.
         ReadOnlyPaths = [ "-/run/secrets" ];
-      };
+      } // lib.optionalAttrs (!cfg.nixosRebuild) strictSandbox;
     };
 
     # Self-heal a failed self-update (ADR-0017): a oneshot that restarts the

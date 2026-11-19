@@ -44,6 +44,11 @@
           package = self.packages.${system}.default;
         };
         system-drv = import ./nix/system-drv-check.nix { inherit nixpkgs system; };
+        sandbox = import ./nix/sandbox-vm-test.nix {
+          inherit nixpkgs system;
+          module = self.nixosModules.default;
+          package = self.packages.${system}.default;
+        };
       });
 
       # Dev shell carrying the full CI toolchain so the whole pipeline
