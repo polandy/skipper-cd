@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -643,4 +644,62 @@ func TestE2E_PausedStackQueued(t *testing.T) {
 	if q := s.queueBody(); !strings.Contains(q, "web") {
 		t.Fatalf("queue does not list web: %s", q)
 	}
+}
+
+// TestE2E_RolloutCutoverDrainsOldAfterCanary (P24): a stack with `rollout`
+// cuts a pushed change over without a serving gap (ADR-0040): the canary starts
+// beside the running container, and only once it is healthy is the old one
+// stopped and removed. The service is routed by Traefik labels with no host
+// port, as rollout requires; the stub's container table stands in for Traefik's
+// backends (STUB_DOCKER_ROLLOUT_FILE).
+func TestE2E_RolloutCutoverDrainsOldAfterCanary(t *testing.T) {
+	s := newSkipper(t, nil, "", []string{"web"})
+	s.stubEnv = map[string]string{"STUB_DOCKER_ROLLOUT_FILE": filepath.Join(s.base, "containers.jsonl")}
+	s.stackCfg = map[string]string{"web": "    rollout:\n      services: [app]\n"}
+	s.seedFiles = map[string]string{"web/docker-compose.yml": traefikCompose("1.25")}
+	s.bootstrap(t)
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+	startupCalls := len(s.dockerLogLines())
+
+	successes := es.count("web", "success")
+	writeFile(t, filepath.Join(s.origin, "web", "docker-compose.yml"), traefikCompose("1.26"))
+	git(t, s.origin, "commit", "-am", "bump web to 1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEventCount("web", "success", successes+1)
+
+	var cutover []string
+	for _, line := range s.dockerLogLines()[startupCalls:] {
+		_, args, _ := strings.Cut(line, "\t")
+		if _, up, ok := strings.Cut(args, " up "); ok {
+			cutover = append(cutover, "up "+up)
+		} else if strings.HasPrefix(args, "stop ") || strings.HasPrefix(args, "rm ") {
+			cutover = append(cutover, args)
+		}
+	}
+	want := []string{
+		"up -d --no-deps --no-recreate --scale app=2 -- app",
+		"stop -- old",
+		"rm -- old",
+	}
+	if !slices.Equal(cutover, want) {
+		t.Errorf("cutover calls =\n  %q\nwant\n  %q", cutover, want)
+	}
+	if es.has("web", "rolled_back") {
+		t.Error("a healthy canary must not report rolled_back")
+	}
+}
+
+// traefikCompose is a rollout-eligible compose file: routed by Traefik labels,
+// no host port, no container_name, and a healthcheck as the readiness signal.
+func traefikCompose(tag string) string {
+	return "services:\n  app:\n    image: nginx:" + tag + "\n" +
+		"    labels:\n" +
+		"      traefik.enable: \"true\"\n" +
+		"      traefik.http.routers.web.rule: Host(`web.test`)\n" +
+		"      traefik.http.services.web.loadbalancer.server.port: \"80\"\n" +
+		"    healthcheck:\n      test: [\"CMD\", \"true\"]\n"
 }
