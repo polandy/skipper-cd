@@ -117,7 +117,7 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 		slog.Error("could not save deploy state", "err", err)
 	}
 
-	if err := d.runNixOSRebuild(ctx, cfg.NixOSRebuild.Flake); err != nil {
+	if err := d.runNixOSRebuild(ctx, cfg.NixOSRebuild); err != nil {
 		if d.shutdownRequested() {
 			// The switch is restarting skipper; the rebuild keeps running in its
 			// transient unit and will apply. Keep the pre-saved hashes AND the
@@ -179,14 +179,14 @@ func (d *Deployer) recordUnchangedSystem(cfg *config.Config, state *persistedSta
 // runNixOSRebuild waits for the rebuild with a context that additionally
 // cancels on shutdown: the switch may be restarting this very service, and
 // blocking on the rebuild would deadlock the stop (ADR-0014).
-func (d *Deployer) runNixOSRebuild(ctx context.Context, flake string) error {
+func (d *Deployer) runNixOSRebuild(ctx context.Context, rebuild *config.NixOSRebuild) error {
 	if d.shutdownCtx != nil {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithCancel(ctx)
 		defer cancel()
 		defer context.AfterFunc(d.shutdownCtx, cancel)()
 	}
-	return nixos.New(d.runner).Rebuild(ctx, d.repoDir, flake)
+	return nixos.New(d.runner).Rebuild(ctx, d.repoDir, rebuild.Flake, rebuild.Timeout())
 }
 
 func (d *Deployer) shutdownRequested() bool {

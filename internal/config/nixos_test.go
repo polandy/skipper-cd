@@ -3,6 +3,7 @@ package config_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 )
@@ -83,5 +84,35 @@ func TestLoad_NixOSRebuild_FilesModeAcceptsAnyFlake(t *testing.T) {
   change_detection: files`))
 	if cfg.NixOSRebuild.Flake != "#host-a" {
 		t.Errorf("flake = %q", cfg.NixOSRebuild.Flake)
+	}
+}
+
+func TestLoad_NixOSRebuild_TimeoutDefaultsToAnHour(t *testing.T) {
+	cfg := loadFromString(t, nixosRebuildConfig(`  flake: ".#host-a"`))
+
+	if got := cfg.NixOSRebuild.Timeout(); got != time.Hour {
+		t.Errorf("Timeout() = %v, want 1h", got)
+	}
+}
+
+func TestLoad_NixOSRebuild_TimeoutExplicit(t *testing.T) {
+	cfg := loadFromString(t, nixosRebuildConfig(`  flake: ".#host-a"
+  timeout_seconds: 7200`))
+
+	if got := cfg.NixOSRebuild.Timeout(); got != 2*time.Hour {
+		t.Errorf("Timeout() = %v, want 2h", got)
+	}
+}
+
+func TestLoad_NixOSRebuild_RejectsNegativeTimeout(t *testing.T) {
+	_, err := loadStringToConfig(t, nixosRebuildConfig(`  flake: ".#host-a"
+  timeout_seconds: -1`))
+	if err == nil {
+		t.Fatal("expected a negative timeout_seconds to be rejected")
+	}
+	for _, want := range []string{"nixos_rebuild.timeout_seconds", "-1"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should name %s", err, want)
+		}
 	}
 }

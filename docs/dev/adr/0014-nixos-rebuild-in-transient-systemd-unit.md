@@ -113,3 +113,23 @@ the pipes to drain, then force-closes them and returns. Shutdown proceeds, the
 switch completes, and the restarted service's startup sync deploys the stacks.
 `WaitDelay` only starts counting after exit/cancellation, so a healthy
 long-running rebuild is unaffected.
+
+## Amendment (2026-11-19): the unit's runtime is bounded by systemd
+
+The poll in `waitForUnit` had no deadline: a hung rebuild (a stalled
+download, a blocked activation) held the run mutex until skipper was
+restarted, so no stack deployed in the meantime. `command_timeout_seconds`
+never covered it, since `systemd-run` returns at once and each status probe
+is short.
+
+The unit now starts with `--property=RuntimeMaxSec=<nixos_rebuild.timeout_seconds>`
+(default 3600). systemd stops it on expiry, and it ends `failed`, which the
+existing failure path already handles: hashes reverted, `_nixos` failed,
+stacks aborted, retried on the next sync (ADR-0015).
+
+Rejected: a skipper-side deadline in the poll loop. It would end when
+skipper restarts mid-switch, which is exactly when the unit is meant to
+outlive skipper, and it would need its own stop of the unit. systemd already
+owns the unit's lifecycle. The cost: a rebuild killed while skipper is down
+is still reconciled into a success on the next startup (ADR-0025), just like
+any other failure that happens during that window.
