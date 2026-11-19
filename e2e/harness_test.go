@@ -51,6 +51,7 @@ type skipper struct {
 	stackCfg   map[string]string   // raw extra YAML lines per stack override (e.g. deploy_health_check); optional
 	stubEnv    map[string]string   // extra env for the stub docker (fail/hold scripting)
 	extraCfg   string              // raw top-level YAML appended to skipper.yml
+	seedFiles  map[string]string   // origin-relative files written (over the default compose) into the initial commit; optional
 
 	proc   *exec.Cmd
 	stderr *syncBuffer
@@ -149,6 +150,9 @@ func (s *skipper) initOrigin() {
 			s.t.Fatalf("mkdir origin stack %q: %v", name, err)
 		}
 		writeFile(s.t, filepath.Join(dir, "docker-compose.yml"), defaultCompose)
+	}
+	for rel, content := range s.seedFiles {
+		writeFile(s.t, filepath.Join(s.origin, rel), content)
 	}
 	git(s.t, s.origin, "add", ".")
 	git(s.t, s.origin, "commit", "-m", "initial")

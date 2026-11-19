@@ -285,6 +285,47 @@ func TestE2E_DisabledHealthGateSkipsWait(t *testing.T) {
 	}
 }
 
+// TestE2E_BootstrapRunSkipsPull (P20): the first run against an empty state
+// converges every stack without `pull` and builds without `--pull`, so no
+// floating tag moves unattended (ADR-0051); the next real change pulls again.
+func TestE2E_BootstrapRunSkipsPull(t *testing.T) {
+	s := newSkipper(t, nil, "", []string{"web", "app"})
+	s.seedFiles = map[string]string{
+		"app/docker-compose.yml": "services:\n  app:\n    build: .\n    image: app:local\n",
+		"app/Dockerfile":         "FROM nginx:1.27\n",
+	}
+	s.bootstrap(t)
+
+	if got := s.dockerCalls("web", "pull") + s.dockerCalls("app", "pull"); got != 0 {
+		t.Errorf("bootstrap run pulled %d times, want 0", got)
+	}
+	if got := s.dockerBuilds("app"); got != 1 {
+		t.Fatalf("bootstrap builds of app = %d, want 1", got)
+	}
+	if got := s.dockerCalls("app", "--pull"); got != 0 {
+		t.Errorf("bootstrap build carried --pull %d times, want 0", got)
+	}
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+	s.setStackImage("web", "1.26")
+	writeFile(t, filepath.Join(s.origin, "app", "Dockerfile"), "FROM nginx:1.28\n")
+	git(t, s.origin, "commit", "-am", "app base image bump")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	s.waitFor("both stacks redeployed", func() bool {
+		return s.dockerUps("web") >= 2 && s.dockerUps("app") >= 2
+	})
+
+	if got := s.dockerCalls("web", "pull"); got != 1 {
+		t.Errorf("web pulls after a real change = %d, want 1", got)
+	}
+	if got := s.dockerCalls("app", "--pull"); got != 1 {
+		t.Errorf("app build --pull after a real change = %d, want 1", got)
+	}
+}
+
 // upsWithWait counts the stub's recorded `up` invocations for a stack that
 // carry `--wait`.
 func (s *skipper) upsWithWait(stack string) int {
