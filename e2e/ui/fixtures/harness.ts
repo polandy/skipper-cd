@@ -1029,6 +1029,11 @@ export class Skipper {
     gitAs(this.author, this.origin, "commit", "-am", `bump ${stack} to ${tag}`);
   }
 
+  /** revertLastCommit reverts the origin's newest commit, simulating a pushed revert. */
+  revertLastCommit(): void {
+    gitAs(this.author, this.origin, "revert", "--no-edit", "HEAD");
+  }
+
   /** setStackServices rewrites a stack's compose to an explicit service→image map
    *  and commits it, simulating a pushed change. Unlike setStackImage (one `app`
    *  service on an nginx tag), this drives multi-service and digest-pinned image

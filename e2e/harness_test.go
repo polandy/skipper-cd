@@ -167,6 +167,12 @@ func (s *skipper) setStackImage(stack, tag string) {
 	git(s.t, s.origin, "commit", "-am", "bump "+stack+" to "+tag)
 }
 
+// revertLastCommit reverts the origin's newest commit, simulating a pushed revert.
+func (s *skipper) revertLastCommit() {
+	s.t.Helper()
+	git(s.t, s.origin, "revert", "--no-edit", "HEAD")
+}
+
 // setStackBuild rewrites a stack to build its image from the given Dockerfile
 // and commits both to the origin, simulating a pushed change.
 func (s *skipper) setStackBuild(stack, dockerfile string) {

@@ -22,7 +22,7 @@ the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
 > Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
-> pipeline harness and P1–P20 (§4.1) exist under `e2e/` behind the `e2e` build tag,
+> pipeline harness and P1–P22 (§4.1) exist under `e2e/` behind the `e2e` build tag,
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
@@ -321,6 +321,12 @@ UI suite reuses.
   empty state, a fresh instance with an image stack and a `build:` stack starts
   with no `pull` and a `build` that carries no `--pull`; a pushed image bump and
   a pushed base-image change then deploy with `pull` and `build --pull`.
+- **P21 — A revert releases a held change** (ADR-0068, `STUB_DOCKER_FAIL_NTH_UP=2`):
+  after a rollback holds the change, a pushed revert converges `web` with exactly
+  one more `up -d --remove-orphans` and `skipper_stack_held{stack}` is deleted.
+- **P22 — A failed converge keeps the hold** (ADR-0068,
+  `STUB_DOCKER_FAIL_NTH_UP=2,4`): the revert's converge `up` fails, SSE `failed`
+  is emitted and `skipper_stack_held{stack}` stays 1.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -1993,6 +1999,12 @@ Behaviour-only (no snapshot).
   button is enabled again and reads `Retry once`, the line's `retry-msg`
   (`role="status"`) reads the server's reason, and the chip stays. The intent note
   `retry: requesting web` proves the click reached the handler.
+- **UAZ3 — A pushed revert releases the hold.** After the rollback, a revert
+  commit and webhook converge the stack (up#4); the chip and the retry button
+  disappear without a retry click.
+- **UAZ4 — A failed converge keeps the hold.** With `STUB_DOCKER_FAIL_NTH_UP:
+  '2,4'` the revert's converge fails: the Deploys view shows a `failed` row (the
+  positive signal) and the Stacks row keeps `held-chip`.
 
 ### 4.54 UI — Maske BA: a change that failed before it started backs off, then is held (ADR-0064)
 
@@ -2233,6 +2245,8 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P15** | `TestE2E_FailedBuildBacksOffThenHolds` | `pipeline_test.go` |
 | **P19** | `TestE2E_RollbackDisabledLeavesFailureHeld` | `pipeline_test.go` |
 | **P20** | `TestE2E_BootstrapRunSkipsPull` | `pipeline_test.go` |
+| **P21** | `TestE2E_RevertReleasesHeldChange` | `pipeline_test.go` |
+| **P22** | `TestE2E_RevertKeepsHoldWhenConvergeFails` | `pipeline_test.go` |
 
 ### 6.2 UI (Playwright)
 
@@ -2471,6 +2485,8 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UAY4** | the phase row detail carries no container-logs or jump action | `uay-project-dir-sync.spec.ts` |
 | **UAZ1** | the held chip names the failure and retry releases it | `uaz-held-change.spec.ts` |
 | **UAZ2** | a refused retry shows why and re-enables the button | `uaz-held-change.spec.ts` |
+| **UAZ3** | a pushed revert releases the held chip | `uaz-held-change.spec.ts` |
+| **UAZ4** | a failed converge keeps the held chip | `uaz-held-change.spec.ts` |
 | **UBA1** | backoff names the attempts and the next try, then turns into held | `uba-backoff-change.spec.ts` |
 | **UBB1** | headers are set and no view trips the policy | `ubb-csp.spec.ts` |
 | **UBC1** | a healthy stack opens on Containers, a parked one on Triggers | `ubc-stack-detail.spec.ts` |
