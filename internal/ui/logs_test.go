@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -154,4 +155,24 @@ func TestWriteLogSSE_Format(t *testing.T) {
 	if !strings.HasSuffix(body, "\n\n") {
 		t.Error("expected SSE double newline terminator")
 	}
+}
+
+func TestLogsSSEHandler_EndsStreamWhenSubscriptionLags(t *testing.T) {
+	log := logbuf.New(1000)
+	log.Append(time.Now(), "INFO", "seed", nil)
+	handler := LogsSSEHandler(log)
+	req := httptest.NewRequest(http.MethodGet, "/api/logs", nil)
+
+	w := newSSEWriter()
+	var once sync.Once
+	w.onWrite = func(chunk string) {
+		if strings.Contains(chunk, `"msg":"seed"`) {
+			once.Do(func() {
+				for range logOverflow {
+					log.Append(time.Now(), "INFO", "burst", nil)
+				}
+			})
+		}
+	}
+	serveUntilReturn(t, handler, w, req)
 }

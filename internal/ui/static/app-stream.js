@@ -27,7 +27,6 @@ App.stream = (function () {
     isDeploying,
     settleInitialState,
     initialStateIsSettled,
-    updateStackAffordances,
     updateDeployingIndicator,
     applyQueueSnapshot,
     applyOrphansSnapshot,
@@ -48,17 +47,13 @@ App.stream = (function () {
     document.querySelectorAll('.hook-phase').forEach(function (n) {
       n.remove();
     });
-    document
-      .querySelectorAll('.hooks-badge[data-hook-active], .more-btn[data-hook-active]')
-      .forEach(function (b) {
-        b.removeAttribute('data-hook-active');
-      });
+    document.querySelectorAll('[data-hook-active]').forEach(function (b) {
+      b.removeAttribute('data-hook-active');
+    });
     const hr = S.hookRunSnap;
     if (!hr || !hr.stack) return;
 
-    // Deploys view: the stack's newest row while deploying. The hooks badge now
-    // lives inside the collapsed ⋯ menu, so the running-hook pulse rides the
-    // visible ⋯ button instead (the badge itself is still marked for when it opens).
+    // Deploys view: the stack's newest row while deploying.
     const drow = Array.from(
       document.getElementById('tbody').querySelectorAll('.event-row[data-stack]'),
     ).find(function (r) {
@@ -67,14 +62,6 @@ App.stream = (function () {
     if (drow && drow.dataset.status === 'deploying') {
       const cell = drow.querySelector('.status-cell');
       if (cell) cell.appendChild(hookPhaseNode(hr));
-      // Marked independently: a running hook is reported by the hookrun stream,
-      // while the badge only exists once the roster snapshot has carried the
-      // stack's hooks. Gating the ⋯ pulse on the badge would drop it whenever
-      // the roster lags the hook.
-      const b = drow.querySelector('.hooks-badge');
-      if (b) b.dataset.hookActive = '1';
-      const mb = drow.querySelector('.more-btn');
-      if (mb) mb.dataset.hookActive = '1';
     }
 
     // Stacks view: the roster row while it shows the live deploying state.
@@ -88,11 +75,15 @@ App.stream = (function () {
       if (rrow) {
         const rcell = rrow.querySelector('.roster-status');
         if (rcell) rcell.appendChild(hookPhaseNode(hr));
-        // The hooks badge sits inline on the roster row, so the running-hook
-        // pulse rides the badge itself.
-        const rb = rrow.querySelector('.hooks-badge');
-        if (rb) rb.dataset.hookActive = '1';
       }
+      // The roster row has no hooks control; the pulse rides the open detail
+      // panel's Hooks action.
+      const rb = Array.from(
+        rlist.querySelectorAll('.detail-panel:not(.peer-panel) [data-action="hooks"]'),
+      ).find(function (x) {
+        return x.dataset.hooksStack === hr.stack;
+      });
+      if (rb) rb.dataset.hookActive = '1';
     }
   }
 
@@ -146,7 +137,6 @@ App.stream = (function () {
         break;
       case 'health':
         S.healthSnap = (d && d.stacks) || {};
-        updateStackAffordances();
         updateRosterHealth();
         renderHealthAttention(); // beacon + band read the same snapshot
         break;
@@ -161,7 +151,6 @@ App.stream = (function () {
         S.incidentsSnap = (d && d.incidents_24h) || [];
         renderDisabledStacks();
         renderRoster();
-        updateStackAffordances(); // roster carries the hooks — (de)show the badge
         renderIncidentBadge();
         break;
       case 'app_links':
@@ -252,7 +241,7 @@ App.stream = (function () {
       const evt = JSON.parse(e.data);
       handleEvent(evt, false);
       refilterDeploys();
-      updateStackAffordances(); // a new/mutated row may change which row is newest
+      applyHookRun(); // a settled row's status cell was re-rendered
       schedulePeerReflow(); // re-slot peer rows below/among the just-inserted local row
       if (chrome.activeView() === 'stacks') refreshRosterRow(evt.stack); // reflect in-flight/settled state live
     });

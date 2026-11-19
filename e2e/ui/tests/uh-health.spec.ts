@@ -1,14 +1,22 @@
 import { test, expect } from '../fixtures/test';
+import { openStackDetail } from '../fixtures/stack-detail';
 
 // Maske H: Stack health (ADR-0027). See docs/dev/e2e-tests.md §4.9.
 //
 // The health poller is enabled with `healthPoll: 1` (poll every second) and each
 // stack's `docker compose ps --format json` output is scripted via the stub
 // (skipper.setStackHealth), so these are deterministic and offline: no real
-// docker, no real containers.
+// docker, no real containers. Health is a current per-stack value, so it lives
+// on the Stacks view: the roster row's pill and the detail's Containers tab.
 
 const pill = (page: import('@playwright/test').Page, stack: string) =>
-  page.locator(`[data-testid="deploy-row"][data-stack="${stack}"] [data-testid="health-pill"]`);
+  page.locator(`[data-testid="roster-row"][data-stack="${stack}"] [data-testid="health-pill"]`);
+const gotoStacks = (page: import('@playwright/test').Page) =>
+  page.locator('[data-testid="view-toggle"] button[data-view="stacks"]').click();
+const openContainers = (page: import('@playwright/test').Page) =>
+  openStackDetail(page, 'web', 'containers');
+const closeDetail = (page: import('@playwright/test').Page) =>
+  page.locator('[data-testid="detail-close"]').click();
 
 // UH1 — a health snapshot renders a pill per stack with the rolled-up status:
 // running/healthy → healthy, any unhealthy → unhealthy, exited(0) → stopped.
@@ -20,6 +28,7 @@ test.describe('UH1: health pill per stack', () => {
     skipper.setStackHealth('db', [{ Service: 'app', State: 'running', Health: 'unhealthy' }]);
     skipper.setStackHealth('cache', [{ Service: 'app', State: 'exited', ExitCode: 0 }]);
     await page.goto(`${skipper.baseURL}/`);
+    await gotoStacks(page);
 
     await expect(pill(page, 'web')).toHaveAttribute('data-health', 'healthy');
     await expect(pill(page, 'db')).toHaveAttribute('data-health', 'unhealthy');
@@ -27,60 +36,50 @@ test.describe('UH1: health pill per stack', () => {
   });
 });
 
-// UH2 — clicking the pill toggles a per-service breakdown panel below the row.
-// The stack rolls up to unhealthy (one service unhealthy) while the panel lists
-// every service.
+// UH2 — the Containers tab of the stack's detail breaks the roll-up down per
+// service: the stack rolls up to unhealthy (one service unhealthy) while the
+// panel lists every service.
 test.describe('UH2: per-service panel', () => {
   test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
 
-  test('clicking the pill opens the per-service panel and closes it again', async ({ page, skipper }) => {
+  test('the Containers tab lists every service and closes with the detail', async ({ page, skipper }) => {
     skipper.setStackHealth('web', [
       { Service: 'app', State: 'running', Health: 'healthy' },
       { Service: 'db', State: 'running', Health: 'unhealthy' },
     ]);
     await page.goto(`${skipper.baseURL}/`);
+    await gotoStacks(page);
+    await expect(pill(page, 'web')).toHaveAttribute('data-health', 'unhealthy');
 
-    const p = pill(page, 'web');
-    const row = page.locator('[data-testid="deploy-row"][data-stack="web"]');
-    await expect(p).toHaveAttribute('data-health', 'unhealthy');
-
-    await p.click();
-    const panel = page.locator('[data-testid="health-panel"]');
+    await openContainers(page);
+    const panel = page.locator('[data-testid="detail-panel"] [data-testid="health-panel"]');
     await expect(panel).toBeVisible();
     await expect(panel.locator('[data-testid="health-service"]')).toHaveCount(2);
-    // The panel is bound to its row (variant A): the row is marked open + coloured.
-    await expect(row).toHaveClass(/health-open/);
-    await expect(row).toHaveAttribute('data-health', 'unhealthy');
 
-    await p.click();
+    await closeDetail(page);
     await expect(panel).toHaveCount(0);
-    await expect(row).not.toHaveClass(/health-open/);
   });
 });
 
-// UH3 — health is a current per-stack value, so the pill sits only on the newest
-// row of each stack and moves to a freshly-deployed row.
-test.describe('UH3: newest row per stack', () => {
+// UH3 — a deploy row is history, not current state: it carries no health pill,
+// however many rows a stack has, while the Stacks row shows the live roll-up.
+test.describe('UH3: deploy rows carry no health pill', () => {
   test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
 
-  test('the pill stays on the newest row when a new deploy prepends a row', async ({ page, skipper }) => {
+  test('the pill stays on the Stacks row when a deploy prepends a row', async ({ page, skipper }) => {
     skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
     await page.goto(`${skipper.baseURL}/`);
 
     const rows = page.locator('[data-testid="deploy-row"][data-stack="web"]');
-    const pills = page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="health-pill"]');
-    await expect(rows).toHaveCount(1);
-    await expect(pills).toHaveCount(1);
-
-    // A pushed change prepends a second row for the same stack.
     skipper.setStackImage('web', '1.26');
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
     await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toHaveAttribute('data-status', 'success');
 
-    // Exactly one pill, on the newest (first) row — not the older one.
-    await expect(pills).toHaveCount(1);
-    await expect(rows.first().locator('[data-testid="health-pill"]')).toHaveCount(1);
-    await expect(rows.nth(1).locator('[data-testid="health-pill"]')).toHaveCount(0);
+    // The roll-up arrived (positive signal), yet no deploy row renders it.
+    await gotoStacks(page);
+    await expect(pill(page, 'web')).toHaveAttribute('data-health', 'healthy');
+    await expect(page.locator('[data-testid="deploy-row"] [data-testid="health-pill"]')).toHaveCount(0);
   });
 });
 
@@ -107,10 +106,10 @@ test.describe('UH5: on-demand container reads stopped, not unhealthy', () => {
     await page.goto(`${skipper.baseURL}/`);
 
     // The killed-but-intended-idle app must not degrade the stack.
-    const p = pill(page, 'web');
-    await expect(p).toHaveAttribute('data-health', 'healthy');
+    await gotoStacks(page);
+    await expect(pill(page, 'web')).toHaveAttribute('data-health', 'healthy');
 
-    await p.click();
+    await openContainers(page);
     const services = page.locator('[data-testid="health-service"]');
     await expect(services).toHaveCount(2);
     const app = services.filter({ hasText: 'app' }).first();
@@ -138,16 +137,17 @@ test.describe('UH4: status history (health watch)', () => {
 
   test('a transition grows a timeline with a deploy-correlated commit chip', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
+    await gotoStacks(page);
     const p = pill(page, 'web');
     await expect(p).toHaveAttribute('data-health', 'healthy');
 
     // Baseline only: the service line carries the inline age, but no timeline —
     // a single phase would just repeat it.
-    await p.click();
+    await openContainers(page);
     const panel = page.locator('[data-testid="health-panel"]');
     await expect(panel.locator('.hp-for')).toHaveCount(1);
     await expect(panel.locator('[data-testid="health-history"]')).toHaveCount(0);
-    await p.click();
+    await closeDetail(page);
 
     // A deploy records the commit context, then the service turns unhealthy
     // within the attribution window: the accepted phase is deploy-correlated.
@@ -158,12 +158,11 @@ test.describe('UH4: status history (health watch)', () => {
     await expect(rows.first().locator('[data-testid="status-badge"]')).toHaveText('success');
 
     skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'unhealthy' }]);
-    const newestPill = rows.first().locator('[data-testid="health-pill"]');
-    await expect(newestPill).toHaveAttribute('data-health', 'unhealthy');
+    await expect(p).toHaveAttribute('data-health', 'unhealthy');
 
     // Reopen: two accepted phases now — the timeline appears, newest first,
     // with the commit chip on the correlated unhealthy phase only.
-    await newestPill.click();
+    await openContainers(page);
     const history = panel.locator('[data-testid="health-history"]');
     await expect(history).toHaveCount(1);
     const phases = history.locator('[data-testid="health-phase"]');
@@ -173,30 +172,6 @@ test.describe('UH4: status history (health watch)', () => {
     const chip = phases.first().locator('[data-testid="health-phase-commit"]');
     await expect(chip).toHaveText(/^[0-9a-f]{7}$/);
     await expect(phases.nth(1).locator('[data-testid="health-phase-commit"]')).toHaveCount(0);
-  });
-});
-
-// UH6 — the pill is a real button: keyboard users can reach it with Tab and
-// toggle the per-service panel with Enter/Space, like the files pill and the
-// history button (which are native <button>s too).
-test.describe('UH6: health pill is keyboard-operable', () => {
-  test.use({ startOptions: { stacks: ['web'], healthPoll: 1 } });
-
-  test('the pill takes focus and Enter toggles the panel', async ({ page, skipper }) => {
-    skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
-    await page.goto(`${skipper.baseURL}/`);
-
-    const p = pill(page, 'web');
-    await expect(p).toHaveAttribute('data-health', 'healthy');
-
-    await p.focus();
-    await expect(p).toBeFocused(); // a plain <span> would refuse focus
-
-    await page.keyboard.press('Enter');
-    await expect(page.locator('[data-testid="health-panel"]')).toHaveCount(1);
-
-    await page.keyboard.press('Enter'); // still focused: toggles closed again
-    await expect(page.locator('[data-testid="health-panel"]')).toHaveCount(0);
   });
 });
 
@@ -216,6 +191,7 @@ test.describe('UH7: routine start folds away, raw list behind the toggle', () =>
 
   test('a restart cycle folds into "up in"; the toggle swaps in all phases', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
+    await gotoStacks(page);
     const p = pill(page, 'web');
     await expect(p).toHaveAttribute('data-health', 'healthy');
 
@@ -227,7 +203,7 @@ test.describe('UH7: routine start folds away, raw list behind the toggle', () =>
     skipper.setStackHealth('web', [{ Service: 'app', State: 'running', Health: 'healthy' }]);
     await expect(p).toHaveAttribute('data-health', 'healthy');
 
-    await p.click();
+    await openContainers(page);
     const panel = page.locator('[data-testid="health-panel"]');
     const history = panel.locator('[data-testid="health-history"]');
     await expect(history).toBeVisible();

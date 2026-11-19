@@ -16,7 +16,7 @@ function expectForgeCommitHref(href: string | null, forge = FORGE_URL): void {
 // the diff panel's commit header, a peer's detail — is a link to that commit on
 // the forge (`repo_web_url`, or one derived from `repo_url`). Covers the roster
 // link and its full-SHA target (UAL1), that following it never also toggles the
-// row's panel (UAL2), the panel/diff-header links (UAL3), a peer linking to its
+// row's panel (UAL2), the panel/deploy-detail links (UAL3), a peer linking to its
 // OWN forge rather than the primary's (UAL4) and the degradation to plain text
 // when no forge is known (UAL5).
 
@@ -71,7 +71,7 @@ test('UAL1: the roster Commit cell links to the commit on the forge', async ({ p
   await expect(sha).toHaveAttribute('rel', /noopener/);
 });
 
-// UAL2 — the SHA sits inside a row whose body toggles the expand panel. Clicking
+// UAL2 — the SHA sits inside a row whose body toggles the detail panel. Clicking
 // the link must do one thing only: the panel must not open behind the new tab.
 test('UAL2: following the commit link does not also expand the row', async ({ page, skipper }) => {
   await deployAndOpenStacks(page, skipper);
@@ -91,30 +91,31 @@ test('UAL2: following the commit link does not also expand the row', async ({ pa
   });
 
   await rosterSha(page, 'api').click();
-  await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="detail-panel"]')).toHaveCount(0);
 
-  // The row itself still expands — the guard is scoped to the link, not the row.
+  // The row itself still opens — the guard is scoped to the link, not the row.
   await row(page, 'api').locator('.roster-name').click();
-  await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="detail-panel"]')).toHaveCount(1);
 });
 
 // UAL3 — the same treatment reaches the SHAs inside panels: the deploy-history
-// rows and the diff panel's commit header. One helper renders them all, so they
+// rows and the deploy detail's Commit fact. One helper renders them all, so they
 // either all link or all do not.
-test('UAL3: deploy-history and diff-header SHAs link to the same forge', async ({ page, skipper }) => {
+test('UAL3: deploy-history and deploy-detail SHAs link to the same forge', async ({ page, skipper }) => {
   await page.goto(`${skipper.baseURL}/`);
   await pushApi(page, skipper);
 
-  // Diff panel: the commit header's SHA chip. Rows are newest first, so the
-  // pushed deploy — the one with commit metadata — is the first.
-  await apiDeploys(page).first().locator('[data-testid="files-pill"]').click();
-  const headSha = page.locator('[data-testid="commit-sha"]');
+  // Deploy detail: the Commit fact's SHA. Rows are newest first, so the pushed
+  // deploy — the one with commit metadata — is the first.
+  await apiDeploys(page).first().locator('.stack-name').click();
+  const headSha = page.locator('[data-testid="detail-facts"] [data-testid="commit-sha"]');
   await expect(headSha).toBeVisible();
   expectForgeCommitHref(await headSha.getAttribute('href'));
 
   // Deploy history: every recorded outcome's SHA.
   await stacksBtn(page).click();
   await row(page, 'api').locator('.roster-name').click();
+  await page.locator('[data-testid="detail-tab"][data-tab="history"]').click();
   const auditSha = page.locator('[data-testid="audit-row"] .ar-sha').first();
   await expect(auditSha).toBeVisible();
   expectForgeCommitHref(await auditSha.getAttribute('href'));
@@ -122,6 +123,7 @@ test('UAL3: deploy-history and diff-header SHAs link to the same forge', async (
   // Change detection: the commit the lead prose names ("Unchanged since <sha>")
   // is a SHA on screen like any other, so it links too — and the sentence around
   // it is untouched.
+  await page.locator('[data-testid="detail-tab"][data-tab="triggers"]').click();
   const lead = page.locator('[data-testid="watched-lead"]');
   await expect(lead).toContainText(/^Unchanged since [0-9a-f]{7}\./);
   const leadSha = lead.locator('a.sha-link');

@@ -289,12 +289,13 @@ func buildHealthLayer(cfg *config.Config, views stackViews, stateB *events.Broad
 		hpCfg.Publish = func(s health.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateHealth, Data: s}) }
 		hpCfg.HasSubscribers = stateB.HasSubscribers
 	}
-	var snapshotSinks []func(health.Snapshot)
+	var snapshotSinks []func(context.Context, health.Snapshot)
 	if selfHealEngine != nil {
-		snapshotSinks = append(snapshotSinks, func(s health.Snapshot) { selfHealEngine.Observe(context.Background(), s) })
+		// A heal is a deploy: like the webhook's, it must not be cut short by shutdown.
+		snapshotSinks = append(snapshotSinks, func(_ context.Context, s health.Snapshot) { selfHealEngine.Observe(context.Background(), s) })
 	}
 	if healthWatcher != nil {
-		snapshotSinks = append(snapshotSinks, healthWatcher.Observe)
+		snapshotSinks = append(snapshotSinks, func(_ context.Context, s health.Snapshot) { healthWatcher.Observe(s) })
 	}
 	// Orphan detection (ADR-0036) rides the health-poll cadence (no second
 	// timer) and is UI-gated: HasSubscribers skips the headless AlwaysPoll ticks
@@ -306,9 +307,9 @@ func buildHealthLayer(cfg *config.Config, views stackViews, stateB *events.Broad
 			Publish:   func(s orphans.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateOrphans, Data: s}) },
 		})
 		orphanDetector := hl.orphans
-		snapshotSinks = append(snapshotSinks, func(health.Snapshot) {
+		snapshotSinks = append(snapshotSinks, func(ctx context.Context, _ health.Snapshot) {
 			if stateB.HasSubscribers() {
-				orphanDetector.Detect(context.Background())
+				orphanDetector.Detect(ctx)
 			}
 		})
 		// App-link detection (docs/dev/traefik-app-links-spec.md) rides the
@@ -320,16 +321,16 @@ func buildHealthLayer(cfg *config.Config, views stackViews, stateB *events.Broad
 			Publish:   func(s applink.Snapshot) { stateB.Publish(events.StateEvent{Name: events.StateAppLinks, Data: s}) },
 		})
 		appLinkDetector := hl.appLinks
-		snapshotSinks = append(snapshotSinks, func(health.Snapshot) {
+		snapshotSinks = append(snapshotSinks, func(ctx context.Context, _ health.Snapshot) {
 			if stateB.HasSubscribers() {
-				appLinkDetector.Detect(context.Background())
+				appLinkDetector.Detect(ctx)
 			}
 		})
 	}
 	if len(snapshotSinks) > 0 {
-		hpCfg.OnSnapshot = func(s health.Snapshot) {
+		hpCfg.OnSnapshot = func(ctx context.Context, s health.Snapshot) {
 			for _, sink := range snapshotSinks {
-				sink(s)
+				sink(ctx, s)
 			}
 		}
 	}

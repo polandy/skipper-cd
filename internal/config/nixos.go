@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/polandy/skipper-cd/internal/nixos"
 )
@@ -24,6 +25,20 @@ type NixOSRebuild struct {
 	// ChangeDetection is NixOSChangeDetectionDerivation (also when empty) or
 	// NixOSChangeDetectionFiles.
 	ChangeDetection string `yaml:"change_detection"`
+	// TimeoutSeconds bounds the rebuild unit's runtime; 0 means
+	// DefaultNixOSRebuildTimeoutSeconds.
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+}
+
+// DefaultNixOSRebuildTimeoutSeconds bounds a rebuild whose timeout_seconds is unset.
+const DefaultNixOSRebuildTimeoutSeconds = 3600
+
+// Timeout returns the effective rebuild timeout.
+func (n *NixOSRebuild) Timeout() time.Duration {
+	if n == nil || n.TimeoutSeconds == 0 {
+		return DefaultNixOSRebuildTimeoutSeconds * time.Second
+	}
+	return time.Duration(n.TimeoutSeconds) * time.Second
 }
 
 // IsEnabled returns whether NixOS rebuild is enabled.
@@ -52,6 +67,9 @@ func validateNixOSRebuild(n *NixOSRebuild) error {
 	}
 	if n.Flake == "" {
 		return fmt.Errorf("nixos_rebuild.flake is required when nixos_rebuild is enabled")
+	}
+	if n.TimeoutSeconds < 0 {
+		return fmt.Errorf("nixos_rebuild.timeout_seconds must not be negative, got %d; omit it for the default of %d", n.TimeoutSeconds, DefaultNixOSRebuildTimeoutSeconds)
 	}
 	switch n.ChangeDetection {
 	case "", NixOSChangeDetectionFiles, NixOSChangeDetectionDerivation:

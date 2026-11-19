@@ -20,7 +20,7 @@ async function openDrawer(page: Page) {
 }
 
 test.describe('UAM: a refused autosync write is announced', () => {
-  test('a 5xx leaves the switch on server state and says why', async ({ page, skipper }) => {
+  test('UAM1: a 5xx leaves the switch on server state and says why', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     await openDrawer(page);
 
@@ -61,7 +61,7 @@ test.describe('UAM: a refused autosync write is announced', () => {
     expect(notes).toContain('autosync: toggling stack web -> false');
   });
 
-  test('a request that never arrives is announced too', async ({ page, skipper }) => {
+  test('UAM2: a request that never arrives is announced too', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     await openDrawer(page);
 

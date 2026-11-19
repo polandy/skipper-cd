@@ -8,6 +8,7 @@ import { visualSnapshot } from '../fixtures/snapshot';
 const deployMasks = (page: import('@playwright/test').Page) => [
   page.locator('[data-testid="time-cell"]'),
   page.locator('[data-testid="duration-cell"]'),
+  page.locator('[data-testid="deploy-day"]'),
 ];
 
 // UA1 — Row lifecycle. A stack that deploys (held in `deploying`, then released
@@ -147,8 +148,10 @@ test.describe('UA2: status badges', () => {
       const row = webRow(page, 'failed');
       await expect(row).toHaveCount(1);
       await expect(row.locator('[data-testid="status-badge"]')).toHaveText('failed');
-      // A failed deploy expands an error panel below the row.
-      await expect(page.locator('[data-testid="error-panel"]')).toBeVisible();
+      // Nothing opens by itself; a click opens the detail with the verdict.
+      await expect(page.locator('[data-testid="detail-panel"][data-kind="deploy"]')).toHaveCount(0);
+      await row.click();
+      await expect(page.locator('[data-testid="detail-verdict"]')).toBeVisible();
     });
   });
 });
@@ -290,30 +293,29 @@ test.describe('UA5: stack icon + monogram fallback', () => {
   });
 });
 
-// UA7 — Files pill. A deploy that changed files renders a `files-pill` in its row;
-// clicking it inserts a `files-panel` (the changed file paths) right below the row,
-// and clicking again removes it. The startup deploy is a stack's first deploy, so it
+// UA7 — Row opens its detail. Clicking a deploy row that changed files opens the
+// row's deploy detail right below it, on the Changes tab listing the changed file
+// paths (`files-panel`), and clicking again closes it. The startup deploy is a stack's first deploy, so it
 // has no previous commit to diff against (no `has_diffs`) — clicking yields the plain
 // files-panel, not the diff-panel (that path is UA8). The startup success row already
 // carries changed files, so no webhook is needed.
-test.describe('UA7: files pill', () => {
+test.describe('UA7: row detail', () => {
   const successRow = (page: import('@playwright/test').Page) =>
     page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"]');
-  const filesPill = (page: import('@playwright/test').Page) =>
-    successRow(page).locator('[data-testid="files-pill"]');
+  const rowOpener = (page: import('@playwright/test').Page) =>
+    successRow(page).locator('.stack-name');
   const filesPanel = (page: import('@playwright/test').Page) =>
     page.locator('[data-testid="files-panel"]');
 
-  test('clicking the files pill toggles the files panel below the row', async ({ page, skipper }) => {
+  test('clicking the row toggles the deploy detail on its Changes tab', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     await expect(successRow(page)).toHaveCount(1); // startup settled
 
-    // The row carries a files pill; no panel is shown until it is clicked.
-    await expect(filesPill(page)).toHaveCount(1);
+    // No panel is shown until the row is clicked.
     await expect(filesPanel(page)).toHaveCount(0);
 
-    // First click inserts the panel directly after the row.
-    await filesPill(page).click();
+    // First click opens the deploy detail directly after the row.
+    await rowOpener(page).click();
     await expect(filesPanel(page)).toHaveCount(1);
     await expect(filesPanel(page)).toBeVisible();
     // It lists at least one changed file path and sits immediately below the row.
@@ -321,17 +323,19 @@ test.describe('UA7: files pill', () => {
     const siblingTestid = await successRow(page).evaluate(
       (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
-    expect(siblingTestid).toBe('files-panel');
+    expect(siblingTestid).toBe('detail-panel');
+    await expect(page.locator('[data-testid="detail-tab"][aria-selected="true"]')).toHaveAttribute('data-tab', 'changes');
 
     // Second click removes it again.
-    await filesPill(page).click();
+    await rowOpener(page).click();
     await expect(filesPanel(page)).toHaveCount(0);
   });
 });
 
 // UA8 — Diff panel. When a deploy has a previous commit to diff against, its event
-// carries `has_diffs` and clicking the files-pill fetches `/api/events/{id}/diffs`
-// and renders a `diff-panel` (not the plain files-panel) with per-line add/delete/
+// carries `has_diffs` and clicking its row fetches `/api/events/{id}/diffs`
+// and renders a `diff-panel` (not the plain files-panel) in the deploy detail's
+// Changes tab with per-line add/delete/
 // hunk colouring. The startup deploy is a stack's first (no prior commit, no diffs);
 // a second deploy driven by a webhook that bumps the compose image is the first with
 // a real diff, so its success row is the one carrying `has_diffs`.
@@ -340,12 +344,12 @@ test.describe('UA8: diff panel', () => {
     page.locator(
       '[data-testid="deploy-row"][data-stack="web"][data-status="success"][data-has-diffs="1"]',
     );
-  const filesPill = (page: import('@playwright/test').Page) =>
-    diffRow(page).locator('[data-testid="files-pill"]');
+  const rowOpener = (page: import('@playwright/test').Page) =>
+    diffRow(page).locator('.stack-name');
   const diffPanel = (page: import('@playwright/test').Page) =>
     page.locator('[data-testid="diff-panel"]');
 
-  test('clicking the pill fetches diffs and renders a coloured diff panel', async ({ page, skipper }) => {
+  test('clicking the row fetches diffs and renders a coloured diff panel', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
     // The startup deploy settled but has no prior commit, so no diffs yet.
     await expect(diffRow(page)).toHaveCount(0);
@@ -354,16 +358,16 @@ test.describe('UA8: diff panel', () => {
     skipper.setStackImage('web', '1.26');
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
 
-    // Its success row is flagged has_diffs and carries a files pill; nothing is
-    // expanded until the pill is clicked.
+    // Its success row is flagged has_diffs; nothing is expanded until the row
+    // is clicked.
     await expect(diffRow(page)).toHaveCount(1);
-    await expect(filesPill(page)).toHaveCount(1);
+    await expect(rowOpener(page)).toHaveCount(1);
     await expect(diffPanel(page)).toHaveCount(0);
 
-    // Clicking the pill issues the diffs fetch and expands a diff-panel — not the
-    // plain files-panel — directly below the row.
+    // Clicking the row issues the diffs fetch and opens the deploy detail below
+    // the row, its Changes tab holding a diff-panel — not the plain files-panel.
     const diffsReq = page.waitForRequest((r) => /\/api\/events\/[^/]+\/diffs$/.test(r.url()));
-    await filesPill(page).click();
+    await rowOpener(page).click();
     await diffsReq;
 
     await expect(diffPanel(page)).toHaveCount(1);
@@ -372,36 +376,32 @@ test.describe('UA8: diff panel', () => {
     const siblingTestid = await diffRow(page).evaluate(
       (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
-    expect(siblingTestid).toBe('diff-panel');
+    expect(siblingTestid).toBe('detail-panel');
+    await expect(page.locator('[data-testid="detail-panel"] [data-testid="diff-panel"]')).toHaveCount(1);
 
     // The image bump renders as a deleted and an added line (colour-classified),
     // plus a hunk header — the diff colouring the panel exists to show.
     await expect(diffPanel(page).locator('.diff-line.diff-del')).toContainText('nginx:1.25');
     await expect(diffPanel(page).locator('.diff-line.diff-add')).toContainText('nginx:1.26');
     await expect(diffPanel(page).locator('.diff-line.diff-hunk').first()).toBeVisible();
-
-    // Snapshot: the coloured diff panel (§5 anchor). Its content is the static
-    // nginx image bump, so nothing needs masking.
-    // Mask the commit header's volatile bits: the real git short SHA and the
-    // relative commit time both vary per run (the harness makes real commits).
-    await visualSnapshot(diffPanel(page), 'diff-panel.png', {
-      mask: [
-        page.locator('[data-testid="commit-sha"]'),
-        page.locator('[data-testid="commit-time"]'),
-      ],
-    });
+    // No git header lines, and lines are single-height (no blank line between).
+    await expect(diffPanel(page).locator('.diff-line.diff-meta')).toHaveCount(0);
+    const lineHeights = await diffPanel(page)
+      .locator('.diff-line')
+      .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
+    for (const h of lineHeights) expect(h).toBeLessThan(24);
 
     // Clicking again collapses it.
-    await filesPill(page).click();
+    await rowOpener(page).click();
     await expect(diffPanel(page)).toHaveCount(0);
   });
 });
 
-// UA9 — Error detail. A `failed` deploy carries the backend error string, and the
-// UI renders it as an `error-panel` tied to that row: the panel is the row's direct
-// sibling, is tagged `data-error-for` with the stack, and shows the real message
-// (not an empty or placeholder box). The startup `up` fails with no prior commit to
-// roll back to, so the stack's first row is `failed`.
+// UA9 — Error detail. A `failed` deploy's detail leads with the cause: its
+// verdict sits above the facts and tabs, and the Output tab carries the real
+// backend error. Nothing opens by itself — no error box rides the list. The
+// startup `up` fails with no prior commit to roll back to, so the stack's first
+// row is `failed`.
 test.describe('UA9: error detail', () => {
   test.use({
     startOptions: { stacks: ['web'], stubEnv: { STUB_DOCKER_FAIL_ON: 'up' }, readiness: 'listening' },
@@ -409,27 +409,33 @@ test.describe('UA9: error detail', () => {
 
   const failedRow = (page: import('@playwright/test').Page) =>
     page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="failed"]');
-  const errorPanel = (page: import('@playwright/test').Page) =>
-    page.locator('[data-testid="error-panel"]');
+  const panel = (page: import('@playwright/test').Page) =>
+    page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
 
-  test('a failed deploy renders an error panel tied to its row with the message', async ({ page, skipper }) => {
+  test('a failed deploy’s detail shows the cause before the diff and the output', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
     await expect(failedRow(page)).toHaveCount(1);
-    await expect(errorPanel(page)).toHaveCount(1);
-    await expect(errorPanel(page)).toBeVisible();
+    await expect(panel(page)).toHaveCount(0);
+    await failedRow(page).click();
 
-    // The panel belongs to the failed row: it is the row's direct next sibling and
-    // is tagged with the stack it reports on.
+    // The detail belongs to the failed row: it is the row's next sibling.
     const siblingTestid = await failedRow(page).evaluate(
       (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
-    expect(siblingTestid).toBe('error-panel');
-    await expect(errorPanel(page)).toHaveAttribute('data-error-for', 'web');
+    expect(siblingTestid).toBe('detail-panel');
+    await expect(panel(page)).toHaveAttribute('data-stack', 'web');
 
-    // It carries the real backend error, not an empty placeholder.
-    await expect(errorPanel(page)).toContainText('docker compose up');
-    await expect(errorPanel(page)).not.toBeEmpty();
+    // The verdict names the failed phase and comes before the facts and tabs.
+    const order = await panel(page).evaluate((p) =>
+      Array.from(p.children).map((c) => c.getAttribute('data-testid') ?? c.className),
+    );
+    expect(order.indexOf('detail-verdict')).toBeLessThan(order.indexOf('detail-facts'));
+    await expect(panel(page).locator('[data-testid="detail-verdict"]')).toContainText('Failed at docker compose up');
+
+    // The Output tab carries the real backend error.
+    await panel(page).locator('[data-testid="detail-tab"][data-tab="output"]').click();
+    await expect(panel(page).locator('[data-testid="deploy-output"]')).toContainText('docker compose up');
   });
 });
 
@@ -488,15 +494,15 @@ test('UA11: the queued row is replaced when autosync resumes', async ({ page, sk
 
 // UA12 — Queued row shows the pending diff. A change deferred while autosync is
 // paused emits a `queued` event that must still carry the diff of what is
-// waiting: its paused row is flagged `has_diffs` and clicking the files pill
+// waiting: its paused row is flagged `has_diffs` and clicking the row
 // expands the coloured diff-panel — not the plain file-path list. (Regression:
 // queued events were emitted with nil diffs, so the pending row could only show
 // file paths, never the effective diff.)
 test.describe('UA12: queued row diff', () => {
   const queuedRow = (page: import('@playwright/test').Page) =>
     page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="queued"]');
-  const filesPill = (page: import('@playwright/test').Page) =>
-    queuedRow(page).locator('[data-testid="files-pill"]');
+  const rowOpener = (page: import('@playwright/test').Page) =>
+    queuedRow(page).locator('.stack-name');
   const diffPanel = (page: import('@playwright/test').Page) =>
     page.locator('[data-testid="diff-panel"]');
 
@@ -516,13 +522,13 @@ test.describe('UA12: queued row diff', () => {
 
     await expect(queuedRow(page)).toHaveCount(1);
     await expect(queuedRow(page)).toHaveAttribute('data-has-diffs', '1');
-    await expect(filesPill(page)).toHaveCount(1);
+    await expect(rowOpener(page)).toHaveCount(1);
     await expect(diffPanel(page)).toHaveCount(0);
 
-    // Clicking the pill fetches diffs and expands a diff-panel (not the plain
-    // files-panel) with the image change colour-classified.
+    // Clicking the row fetches diffs and opens the detail's Changes tab: a
+    // diff-panel (not the plain files-panel), the image change colour-classified.
     const diffsReq = page.waitForRequest((r) => /\/api\/events\/[^/]+\/diffs$/.test(r.url()));
-    await filesPill(page).click();
+    await rowOpener(page).click();
     await diffsReq;
 
     await expect(diffPanel(page)).toHaveCount(1);
@@ -530,5 +536,71 @@ test.describe('UA12: queued row diff', () => {
     await expect(page.locator('[data-testid="files-panel"]')).toHaveCount(0);
     await expect(diffPanel(page).locator('.diff-line.diff-del')).toContainText('nginx:1.25');
     await expect(diffPanel(page).locator('.diff-line.diff-add')).toContainText('nginx:1.26');
+  });
+});
+
+// UA13 — The deploy detail's tab strip follows the ARIA tabs pattern, like the
+// Stacks detail (UBC9): the arrow keys move selection and focus, and the pane
+// is labelled by the selected tab. A failed deploy offers Changes and Output.
+test.describe('UA13: deploy detail tabs by keyboard', () => {
+  test.use({
+    startOptions: { stacks: ['web'], stubEnv: { STUB_DOCKER_FAIL_ON: 'up' }, readiness: 'listening' },
+  });
+
+  test('the arrow keys switch the deploy detail tabs', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="failed"]').click();
+    const p = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
+    const tabs = p.locator('[data-testid="detail-tab"]');
+    await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+    const count = await tabs.count();
+    expect(count).toBeGreaterThan(1);
+    const last = tabs.nth(count - 1);
+    const lastId = (await last.getAttribute('data-tab'))!;
+
+    await tabs.first().focus();
+    await page.keyboard.press('End');
+    await expect(last).toBeFocused();
+    await expect(last).toHaveAttribute('aria-selected', 'true');
+    await expect(p).toHaveAttribute('data-tab', lastId);
+    await expect(p.locator('[role="tabpanel"]')).toHaveAttribute('aria-labelledby', `deploy-detail-tab-${lastId}`);
+    await page.keyboard.press('ArrowRight'); // wraps to the first tab
+    await expect(tabs.first()).toBeFocused();
+    await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+// UA14 — a deploy row opens by keyboard: its stack name is the row's toggle
+// (Enter opens, aria-expanded follows), Escape from inside the detail closes it
+// and hands the focus back to the toggle.
+test.describe('UA14: deploy row detail by keyboard', () => {
+  test.use({
+    startOptions: { stacks: ['web'], stubEnv: { STUB_DOCKER_FAIL_ON: 'up' }, readiness: 'listening' },
+  });
+
+  test('Enter opens the deploy detail and Escape closes it', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    const row = page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="failed"]');
+    const toggle = row.locator('.row-toggle');
+    const p = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
+    await expect(toggle).toHaveAttribute('role', 'button');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(p).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    await p.locator('[data-testid="detail-tab"]').first().focus();
+    await page.keyboard.press('Escape');
+    await expect(p).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(p).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(p).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 });

@@ -11,6 +11,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/deploy"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/health"
+	"github.com/polandy/skipper-cd/internal/redact"
 	"github.com/polandy/skipper-cd/internal/selfheal"
 )
 
@@ -157,7 +158,7 @@ func TestSetupLogging_UIDisabledYieldsNoRingAndNilSink(t *testing.T) {
 	t.Cleanup(func(l *slog.Logger) func() { return func() { slog.SetDefault(l) } }(slog.Default()))
 	cfg := &config.Config{UIEnabled: ptr(false)}
 
-	ring, sink := setupLogging(cfg, &bytes.Buffer{})
+	ring, sink := setupLogging(cfg, &bytes.Buffer{}, redact.New())
 
 	if ring != nil {
 		t.Error("expected no log ring with the UI disabled")
@@ -174,7 +175,7 @@ func TestSetupLogging_UIEnabledTeesSlogIntoTheRing(t *testing.T) {
 	var out bytes.Buffer
 	cfg := &config.Config{UIEnabled: ptr(true), LogFormat: config.LogFormatText}
 
-	ring, sink := setupLogging(cfg, &out)
+	ring, sink := setupLogging(cfg, &out, redact.New())
 
 	if ring == nil || sink == nil {
 		t.Fatal("expected a log ring and a child-output sink with the UI enabled")
@@ -189,6 +190,30 @@ func TestSetupLogging_UIEnabledTeesSlogIntoTheRing(t *testing.T) {
 	}
 }
 
+func TestSetupLogging_RingMasksSecretsTheConsoleKeeps(t *testing.T) {
+	t.Cleanup(func(l *slog.Logger) func() { return func() { slog.SetDefault(l) } }(slog.Default()))
+	var out bytes.Buffer
+	cfg := &config.Config{UIEnabled: ptr(true), LogFormat: config.LogFormatText}
+	secrets := redact.New()
+	secrets.AddEnv([]string{"API_TOKEN=tok-123456"})
+
+	ring, sink := setupLogging(cfg, &out, secrets)
+	slog.Error("deploy failed", "err", "rejected tok-123456")
+	sink.ChildLine("git", "stderr", "fatal: https://tok-abc@git.example/r.git not found", "")
+
+	entries := ring.Entries()
+	slogEntry, child := entries[len(entries)-2], entries[len(entries)-1]
+	if slogEntry.Attrs["err"] != "rejected ***" {
+		t.Errorf("slog attr in the ring = %q, want the token masked", slogEntry.Attrs["err"])
+	}
+	if child.Msg != "fatal: https://xxxxx@git.example/r.git not found" {
+		t.Errorf("child line in the ring = %q, want the URL credential masked", child.Msg)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("tok-123456")) {
+		t.Errorf("expected the console to keep the full text, got %q", out.String())
+	}
+}
+
 func TestSetupLogging_LogsConfigWarningsFirst(t *testing.T) {
 	t.Cleanup(func(l *slog.Logger) func() { return func() { slog.SetDefault(l) } }(slog.Default()))
 	var out bytes.Buffer
@@ -198,7 +223,7 @@ func TestSetupLogging_LogsConfigWarningsFirst(t *testing.T) {
 		Warnings:  []string{"suspicious but valid setup"},
 	}
 
-	setupLogging(cfg, &out)
+	setupLogging(cfg, &out, redact.New())
 
 	if !bytes.Contains(out.Bytes(), []byte("suspicious but valid setup")) {
 		t.Errorf("expected the config warning logged, got %q", out.String())

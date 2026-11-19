@@ -71,7 +71,7 @@ function versionChipHTML(service, body, aria, title) {
   return `<span class="tag-delta" role="img" aria-label="${escapeAttr(aria)}" title="${escapeAttr(title)}">${label}<span class="td-val">${body}</span></span>`;
 }
 
-// imageDeltaChipsHTML renders the per-service image change(s) a deploy carried
+// imageDeltaChips renders the per-service image change(s) a deploy carried
 // as `service old→new` chips for the row's Changes column — one per line, so the
 // versions line up down the table and which service updated (and to what) reads
 // at a glance without opening the diff. The data rides the event
@@ -81,41 +81,43 @@ function versionChipHTML(service, body, aria, title) {
 // service removed from the stack. Every changed service is listed — a deploy
 // that touched five services says so, rather than hiding the rest behind a
 // count the reader would have to open the diff to resolve.
-function imageDeltaChipsHTML(changes) {
-  if (!changes || changes.length === 0) return '';
-  return changes
-    .map(function (c) {
-      // Each chip carries a role=img + aria-label so a screen reader announces
-      // the change as one phrase ("web updated from 1.25 to 1.26"), and a title
-      // with the full old→new reference (registry + repo + digest are dropped
-      // from the visible chip but kept here — progressive disclosure).
-      let body, aria;
-      if (!c.old) {
-        // First image for this service — nothing to compare against.
-        body = `<span class="td-new">${escapeHtml(shortImageTag(c.new))}</span>`;
-        aria = `${c.service} set to ${c.new}`;
-      } else if (!c.new) {
-        // Service removed from the stack.
-        body = `<span class="td-old">${escapeHtml(shortImageTag(c.old))}</span><span class="td-arr" aria-hidden="true">→</span><span class="td-gone">removed</span>`;
-        aria = `${c.service} removed (was ${c.old})`;
+function imageDeltaChips(changes) {
+  return (changes || []).map(function (c) {
+    // Each chip carries a role=img + aria-label so a screen reader announces
+    // the change as one phrase ("web updated from 1.25 to 1.26"), and a title
+    // with the full old→new reference (registry + repo + digest are dropped
+    // from the visible chip but kept here — progressive disclosure).
+    let body, aria;
+    if (!c.old) {
+      // First image for this service — nothing to compare against.
+      body = `<span class="td-new">${escapeHtml(shortImageTag(c.new))}</span>`;
+      aria = `${c.service} set to ${c.new}`;
+    } else if (!c.new) {
+      // Service removed from the stack.
+      body = `<span class="td-old">${escapeHtml(shortImageTag(c.old))}</span><span class="td-arr" aria-hidden="true">→</span><span class="td-gone">removed</span>`;
+      aria = `${c.service} removed (was ${c.old})`;
+    } else {
+      const d = imageDelta(c.old, c.new);
+      if (d.tag) {
+        // Same tag, only the pinned digest moved: a rebuild. Two hex digests
+        // are near-impossible to eyeball, so show a ↻ rebuilt marker with the
+        // shared tag; the full digests live in the title/aria.
+        body = `<span class="td-ctx">${escapeHtml(d.tag)}</span><span class="td-rebuilt" aria-hidden="true">↻</span>`;
+        aria = `${c.service} rebuilt, tag ${d.tag} unchanged`;
       } else {
-        const d = imageDelta(c.old, c.new);
-        if (d.tag) {
-          // Same tag, only the pinned digest moved: a rebuild. Two hex digests
-          // are near-impossible to eyeball, so show a ↻ rebuilt marker with the
-          // shared tag; the full digests live in the title/aria.
-          body = `<span class="td-ctx">${escapeHtml(d.tag)}</span><span class="td-rebuilt" aria-hidden="true">↻</span>`;
-          aria = `${c.service} rebuilt, tag ${d.tag} unchanged`;
-        } else {
-          // A tag bump: show the tags that differ.
-          body = `<span class="td-old">${escapeHtml(d.from)}</span><span class="td-arr" aria-hidden="true">→</span><span class="td-new">${escapeHtml(d.to)}</span>`;
-          aria = `${c.service} updated from ${d.from} to ${d.to}`;
-        }
+        // A tag bump: show the tags that differ.
+        body = `<span class="td-old">${escapeHtml(d.from)}</span><span class="td-arr" aria-hidden="true">→</span><span class="td-new">${escapeHtml(d.to)}</span>`;
+        aria = `${c.service} updated from ${d.from} to ${d.to}`;
       }
-      const title = `${c.service}: ${c.old || '(first image)'} → ${c.new || '(removed)'}`;
-      return versionChipHTML(c.service, body, aria, title);
-    })
-    .join('');
+    }
+    const title = `${c.service}: ${c.old || '(first image)'} → ${c.new || '(removed)'}`;
+    return versionChipHTML(c.service, body, aria, title);
+  });
+}
+
+// imageDeltaChipsHTML is imageDeltaChips as one string.
+function imageDeltaChipsHTML(changes) {
+  return imageDeltaChips(changes).join('');
 }
 
 // The change kinds a file_changes entry carries, in the order their chips are
@@ -173,51 +175,56 @@ function groupChangesByKind(fileChanges, imageChanges) {
     });
 }
 
-// changeChipsHTML renders the per-kind change chips: which containers of the
+// changeChips renders the per-kind change chips: which containers of the
 // stack a deploy's changed files reached, for changes that carry no new image
 // (a sidecar gaining an environment variable is the case this exists for). One
 // chip per kind rather than per service, so a file every service reads costs a
 // counter instead of a row-height line. A kind with no attributable service
 // reads `stack-wide` — the honest answer for a project-wide input, never a
 // guess.
-function changeChipsHTML(fileChanges, imageChanges) {
-  return groupChangesByKind(fileChanges, imageChanges)
-    .map(function (g) {
-      const shown = g.services.slice(0, CHANGE_SERVICE_NAMES);
-      const extra = g.services.length - shown.length;
-      let body =
-        `<span class="td-kind">${escapeHtml(g.kind)}</span>` +
-        shown
-          .map(function (svc) {
-            return `<span class="td-svc">${escapeHtml(svc)}</span>`;
-          })
-          .join('');
-      let who = shown.join(', ');
-      if (extra > 0) {
-        body += `<span class="td-count">+${extra} more</span>`;
-        who += ' and ' + extra + ' more service' + (extra === 1 ? '' : 's');
-      }
-      if (g.wide) {
-        body += `<span class="td-wide">stack-wide</span>`;
-        who = who ? who + ', and stack-wide' : 'every service';
-      }
-      const aria = `${g.kind} changed for ${who}`;
-      return (
-        `<span class="tag-delta tag-change" role="img" aria-label="${escapeAttr(aria)}"` +
-        ` title="${escapeAttr(aria)}"><span class="td-val">${body}</span></span>`
-      );
-    })
-    .join('');
+function changeChips(fileChanges, imageChanges) {
+  return groupChangesByKind(fileChanges, imageChanges).map(function (g) {
+    const shown = g.services.slice(0, CHANGE_SERVICE_NAMES);
+    const extra = g.services.length - shown.length;
+    let body =
+      `<span class="td-kind">${escapeHtml(g.kind)}</span>` +
+      shown
+        .map(function (svc) {
+          return `<span class="td-svc">${escapeHtml(svc)}</span>`;
+        })
+        .join('');
+    let who = shown.join(', ');
+    if (extra > 0) {
+      body += `<span class="td-count">+${extra} more</span>`;
+      who += ' and ' + extra + ' more service' + (extra === 1 ? '' : 's');
+    }
+    if (g.wide) {
+      body += `<span class="td-wide">stack-wide</span>`;
+      who = who ? who + ', and stack-wide' : 'every service';
+    }
+    const aria = `${g.kind} changed for ${who}`;
+    return (
+      `<span class="tag-delta tag-change" role="img" aria-label="${escapeAttr(aria)}"` +
+      ` title="${escapeAttr(aria)}"><span class="td-val">${body}</span></span>`
+    );
+  });
 }
 
-// changeCellHTML renders the Changes column of a deploy row: the image delta
-// chips first (which service moved, and to what), then the change chips for
-// what moved without a new image. Empty when the deploy carried neither, so the
-// cell collapses instead of holding a frame around nothing.
+// changeChipsHTML is changeChips as one string.
+function changeChipsHTML(fileChanges, imageChanges) {
+  return changeChips(fileChanges, imageChanges).join('');
+}
+
+// changeCellHTML is a deploy row's Change cell: the first chip (image bump first) plus "+N".
 function changeCellHTML(imageChanges, fileChanges) {
-  const chips = imageDeltaChipsHTML(imageChanges) + changeChipsHTML(fileChanges, imageChanges);
-  if (!chips) return '';
-  return `<span class="svc-delta" data-testid="svc-delta">${chips}</span>`;
+  const chips = imageDeltaChips(imageChanges).concat(changeChips(fileChanges, imageChanges));
+  if (!chips.length) return '';
+  const extra = chips.length - 1;
+  const more =
+    extra > 0
+      ? `<span class="ver-count" data-testid="change-more" title="${extra} more change${extra === 1 ? '' : 's'} — open the row for every change">+${extra}</span>`
+      : '';
+  return `<span class="svc-delta" data-testid="svc-delta">${chips[0]}${more}</span>`;
 }
 
 // changeAttributionHTML renders one file's attribution for a panel line: the
@@ -250,71 +257,42 @@ const personGlyph =
 const clockGlyph =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
 
-// renderCommitHead builds the diff panel's header: an optional row-echo
-// (stack + status, present only when opened from a deploy row — meta set) and,
-// when commit metadata is available, the newest commit's message/author/time
-// plus a collapsible list for a multi-commit range. Returns '' when there is
-// nothing to show. repoBase is the forge browse URL the SHA chips link
-// through; '' renders them inert.
-function renderCommitHead(commits, meta, repoBase) {
+// renderCommitHead builds the diff panel's header: the newest commit's
+// message/author/time plus a collapsible list for a multi-commit range.
+// Returns '' without commits. repoBase is the forge browse URL the SHA chips
+// link through; '' renders them inert.
+function renderCommitHead(commits, repoBase) {
   // shaHTML renders one `.m-sha` chip of this header.
   function shaHTML(sha, testid) {
     return commitLinkHTML(sha, { cls: 'm-sha', base: repoBase, title: sha, testid: testid });
   }
-  const hasEcho = !!(meta && meta.stack);
-  const hasCommits = !!(commits && commits.length);
-  if (!hasEcho && !hasCommits) return '';
-  let html = '<div class="diff-head" data-testid="diff-head">';
-  if (hasEcho) {
-    html +=
-      `<div class="diff-head-echo">` +
-      `<span class="dh-who">${escapeHtml(meta.stack)}</span>` +
-      `<span class="dh-label">Deploy diff</span>` +
-      `<span class="dh-pill"><span class="hdot"></span>${escapeHtml(statusText(meta.status))}</span>` +
-      `</div>`;
+  if (!commits || !commits.length) return '';
+  const head = commits[0];
+  const multi = commits.length > 1;
+  let html =
+    '<div class="diff-head" data-testid="diff-head">' +
+    `<div class="diff-commit">` +
+    `<svg class="commit-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21"/></svg>` +
+    `<span class="dh-subject">${escapeHtml(head.subject || '')}</span></div>`;
+  let line = '<div class="diff-meta-line">';
+  if (multi) {
+    const oldest = commits[commits.length - 1];
+    line +=
+      `<span class="m-range">${shaHTML(oldest.sha)}<span class="m-arr">→</span>${shaHTML(head.sha)}</span>` +
+      `<span class="m-sep">·</span>` +
+      `<button class="commits-pill" data-testid="commits-pill">${commits.length} commits</button>` +
+      `<span class="m-sep">·</span>`;
   }
-  if (hasCommits) {
-    const head = commits[0];
-    const multi = commits.length > 1;
-    html +=
-      `<div class="diff-commit">` +
-      `<svg class="commit-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v5.8M12 15.2V21"/></svg>` +
-      `<span class="dh-subject">${escapeHtml(head.subject || '')}</span></div>`;
-    let line = '<div class="diff-meta-line">';
-    if (multi) {
-      const oldest = commits[commits.length - 1];
-      line +=
-        `<span class="m-range">${shaHTML(oldest.sha)}<span class="m-arr">→</span>${shaHTML(head.sha)}</span>` +
-        `<span class="m-sep">·</span>` +
-        `<button class="commits-pill" data-testid="commits-pill">${commits.length} commits</button>` +
-        `<span class="m-sep">·</span>`;
-    }
-    line += `<span class="m-item">${personGlyph}${escapeHtml(head.author || '')}</span>`;
-    if (head.date) {
-      line += `<span class="m-sep">·</span><span class="m-item" data-testid="commit-time" title="${escapeAttr(fullTime(head.date))}">${clockGlyph}${escapeHtml(formatTime(head.date))}</span>`;
-    }
-    if (!multi) {
-      line += `<span class="m-sep">·</span>` + shaHTML(head.sha, 'commit-sha');
-    }
-    line += '</div>';
-    html += line;
-    if (multi) {
-      html +=
-        `<ul class="diff-commit-list" data-testid="diff-commit-list">` +
-        commits
-          .map(function (c) {
-            return (
-              `<li>${shaHTML(c.sha)}<span>` +
-              `<span class="cl-subject">${escapeHtml(c.subject || '')}</span> ` +
-              `<span class="cl-meta">— ${escapeHtml(c.author || '')}${c.date ? ', ' + escapeHtml(formatTime(c.date)) : ''}</span></span></li>`
-            );
-          })
-          .join('') +
-        `</ul>`;
-    }
+  line += `<span class="m-item">${personGlyph}${escapeHtml(head.author || '')}</span>`;
+  if (head.date) {
+    line += `<span class="m-sep">·</span><span class="m-item" data-testid="commit-time" title="${escapeAttr(fullTime(head.date))}">${clockGlyph}${escapeHtml(formatTime(head.date))}</span>`;
   }
-  html += '</div>';
-  return html;
+  if (!multi) {
+    line += `<span class="m-sep">·</span>` + shaHTML(head.sha, 'commit-sha');
+  }
+  html += line + '</div>';
+  if (multi) html += commitListHTML(commits, repoBase, false);
+  return html + '</div>';
 }
 
 // BADGE_STATUSES are the deploy statuses skipper emits (internal/events). A
@@ -400,31 +378,6 @@ function updateCheckMetaHTML(count, checkedAt, nowMs) {
     `<span class="hp-head-check" data-testid="update-check-meta" ` +
     `title="read-only registry check \u2014 applying an update stays a git commit">` +
     `<span class="hc-count">\u21e1 ${count} update${count === 1 ? '' : 's'}</span>${escapeHtml(freshness)}</span>`
-  );
-}
-
-function filesHTML(files) {
-  if (!files || files.length === 0) return '<span class="cell-duration">\u2014</span>';
-  // escapeAttr also encodes quotes - JSON is full of them and this lands
-  // inside a double-quoted attribute.
-  const encoded = escapeAttr(JSON.stringify(files));
-  return (
-    `<button class="files-pill" data-testid="files-pill" data-files="${encoded}">` +
-    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h5l2 2h5v7H2z"/></svg>` +
-    `${files.length} file${files.length > 1 ? 's' : ''}</button>`
-  );
-}
-
-// healPillHTML renders the self-heal "badge" that stands in for the files pill
-// on a healed row (a heal has no changed files). Clicking it expands a panel
-// explaining the corrective redeploy and listing the services that had
-// drifted (ADR-0029). The drift rides the event, so it is stashed on the pill.
-function healPillHTML(drift) {
-  const encoded = escapeAttr(JSON.stringify(drift || []));
-  return (
-    `<button class="heal-pill" data-testid="heal-pill" data-drift="${encoded}">` +
-    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>` +
-    `self-heal</button>`
   );
 }
 
@@ -570,9 +523,8 @@ function healthHistoryHTML(phases, repoBase, nowMs, opts) {
 }
 
 // ── Row-affordance widgets ──
-// The small per-row buttons and chips shared by the Deploys feed, the roster
-// and peer rows. Pure string builders; the DOM-node wrappers (clogButton,
-// hooksBadgeButton) and all click handling stay in app-panels.js.
+// The small per-row buttons and chips shared by the roster and the detail
+// panels. Pure string builders; all click handling stays in the views.
 
 // clogBtnHTML builds the logs icon that opens a container log (ADR-0037), used
 // from templates (health-panel lines, roster rows). host is optional: a peer's
@@ -588,65 +540,12 @@ function clogBtnHTML(stack, service, host) {
   return `<button class="clog-btn" type="button" data-testid="clog-btn" data-taptip data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(service || '')}"${hostAttr} title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${CLOG_ICON}</button>`;
 }
 
-// healthPillHTML is the string form of the live-health pill (ADR-0027) — the
-// same markup updateStackAffordances builds imperatively for a local Deploys
-// row, so peer rows and roster rows show an identical at-a-glance pill. A click
-// opens the row's containers panel (routed per row type in the click handlers).
-function healthPillHTML(stack, status) {
-  return (
-    '<button class="health-pill" type="button" data-testid="health-pill" data-health="' +
-    escapeAttr(status) +
-    '" data-stack="' +
-    escapeAttr(stack) +
-    '" title="' +
-    escapeAttr(stack + ' — ' + status) +
-    '"><span class="hdot"></span><span class="hlabel">' +
-    escapeHtml(status) +
-    '</span></button>'
-  );
-}
-
 // Fishing hook — distinct from the container-logs icon it sits beside.
 const HOOK_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5v7a4 4 0 0 1-8 0"/><path d="M4.5 10.5 7 13l2.5-2.5"/></svg>';
 function hookCount(hooks) {
   return (hooks.pre_deploy || []).length + (hooks.post_deploy || []).length;
 }
-// hooksBadgeHTML is the deploy-hooks affordance (ADR-0038) on a stack's row.
-function hooksBadgeHTML(stack, hooks) {
-  const pre = (hooks.pre_deploy || []).length,
-    post = (hooks.post_deploy || []).length;
-  const label = `pre-deploy hook: ${pre}\npost-deploy hook: ${post}`;
-  // "2+1" rather than the sum, so the split is visible.
-  return `<button class="hooks-badge" type="button" data-testid="hooks-badge" data-taptip data-hooks-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${HOOK_ICON}<span class="hk-count">${pre}+${post}</span></button>`;
-}
-
-// jumpBtnHTML renders the cross-view navigation affordance next to a stack
-// name: a small button that switches to targetView and scrolls to that
-// stack's row there (see jumpToStack). Always rendered — whether a landing
-// row actually exists depends on live data (e.g. a stack with no deploy
-// history yet has no Deploys-view row), so jumpToStack degrades to a plain
-// view switch when it finds nothing to land on.
-function jumpBtnHTML(targetView, stack) {
-  const label = targetView === 'stacks' ? 'View in Stacks' : 'View in Deploys';
-  return (
-    `<button type="button" class="jump-btn" data-testid="jump-btn" data-taptip data-jump-view="${targetView}" data-jump-stack="${escapeAttr(stack)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label + ': ' + stack)}">` +
-    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>' +
-    '</button>'
-  );
-}
-
-// rowActionClusterHTML groups a stack cell's affordance glyphs (jump, app
-// link, container logs, hooks) into one non-wrapping box. The cell itself
-// wraps on a narrow screen, and without the box each glyph is its own flex
-// item: the row broke *between* icons, leaving one stranded on a second line.
-// As a cluster the affordances move to the next line whole. Empty when the row
-// has none, so the cell's gap adds no phantom space after the name.
-function rowActionClusterHTML(...parts) {
-  const inner = parts.filter(Boolean).join('');
-  return inner ? `<span class="row-actions">${inner}</span>` : '';
-}
-
 // ── Table rows ──
 // One renderer for every row of both tables — local and peer, Deploys and
 // Stacks. The caller resolves the state-bound parts (host chip, per-host
@@ -656,60 +555,70 @@ const ROW_KIND = Object.freeze({ deploy: 'deploy', roster: 'roster' });
 
 // tableRowHTML renders the cells of one row of the given kind.
 //
-// deploy model: host (chip HTML), stack, identExtras (HTML after the name),
-// ts, absolute, version (inner HTML), state (inner HTML), durationMs, files
-// (inner HTML).
+// deploy model: host (chip HTML), stack, cause (the line under the name, or
+// ''), ts, absolute, version (inner HTML), state (inner HTML), durationMs,
+// commit, repoBase. Like a roster row it carries no controls.
 //
-// roster model: host, stack, actions (glyph HTML parts, empty ones dropped),
-// version (the whole cell, rosterVersionCellHTML), state (inner HTML), lastAt,
-// absolute, commit, repoBase.
+// roster model: host, stack, health (inner HTML, rosterHealthHTML), version
+// (the whole cell, rosterVersionCellHTML), state (the last-deploy status,
+// rosterStatusHTML), lastAt, absolute, commit, repoBase. The row carries no
+// controls: a click anywhere opens its detail panel, where the actions live.
 function tableRowHTML(kind, m) {
   return kind === ROW_KIND.roster ? rosterRowCellsHTML(m) : deployRowCellsHTML(m);
 }
+
+// ROW_TOGGLE_ATTRS make a row's stack name the keyboard way into its detail
+// (the row itself holds other controls, so it cannot be the button); App.detail
+// keeps aria-expanded in step.
+const ROW_TOGGLE_ATTRS = ' role="button" tabindex="0" aria-expanded="false"';
 
 function stackIconHTML() {
   return '<span class="stack-icon" data-testid="stack-icon"></span>';
 }
 
+// deployRowCellsHTML lays out Stack · Result · Change · When — the positions of
+// the Stacks row's Stack · Health · Version · Last deploy.
 function deployRowCellsHTML(m) {
-  const t = timeLabelPair(m.ts, m.absolute);
+  const cause = m.cause
+    ? `<span class="cell-cause" data-testid="cause-line" title="${escapeAttr(m.cause)}">${escapeHtml(m.cause)}</span>`
+    : '';
   return (
-    `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(m.ts)}" title="${escapeAttr(t.title)}">${escapeHtml(t.text)}</span>` +
-    `<span class="cell-stack">${m.host}${stackIconHTML()}<span class="stack-name">${escapeHtml(m.stack)}</span>${m.identExtras || ''}</span>` +
-    `<span class="col-version">${m.version}</span>` +
+    `<span class="cell-who"><span class="cell-stack">${m.host}${stackIconHTML()}<span class="stack-name row-toggle"${ROW_TOGGLE_ATTRS}>${escapeHtml(m.stack)}</span></span>${cause}</span>` +
     `<span class="status-cell">${m.state}</span>` +
-    `<span class="cell-duration" data-testid="duration-cell">${formatDuration(m.durationMs)}</span>` +
-    `<span class="col-files">${m.files}</span>`
+    `<span class="col-version">${m.version}</span>` +
+    deployWhenHTML(m)
+  );
+}
+
+// deployShaHTML is the short commit in a deploy row's When cell.
+function deployShaHTML(sha, repoBase) {
+  return commitLinkHTML(sha, { cls: 'cell-sha', base: repoBase, title: sha, testid: 'row-sha' });
+}
+
+// deployWhenHTML is a deploy row's When cell: relative time, muted duration, short commit.
+function deployWhenHTML(m) {
+  const t = timeLabelPair(m.ts, m.absolute);
+  const sha = m.commit ? deployShaHTML(m.commit, m.repoBase) : '';
+  return (
+    '<span class="cell-when">' +
+    `<span class="cell-time" data-testid="time-cell" data-ts="${escapeAttr(m.ts)}" title="${escapeAttr(t.title)}">${escapeHtml(t.text)}</span>` +
+    `<span class="cell-duration" data-testid="duration-cell">${m.durationMs > 0 ? formatDuration(m.durationMs) : ''}</span>` +
+    sha +
+    '</span>'
   );
 }
 
 function rosterRowCellsHTML(m) {
   const t = timeLabelPair(m.lastAt, m.absolute);
   return (
-    `<span class="roster-stack"><span class="roster-ident">${m.host}${stackIconHTML()}<span class="roster-name" title="${escapeAttr(m.stack)}">${escapeHtml(m.stack)}</span></span>${rowActionClusterHTML(...m.actions)}</span>` +
+    `<span class="roster-stack"><span class="roster-ident">${m.host}${stackIconHTML()}<span class="roster-name row-toggle" title="${escapeAttr(m.stack)}"${ROW_TOGGLE_ATTRS}>${escapeHtml(m.stack)}</span></span></span>` +
+    `<span class="roster-health" data-testid="roster-health">${m.health}</span>` +
     m.version +
-    `<span class="roster-status">${m.state}</span>` +
+    `<span class="roster-last"><span class="roster-status">${m.state}</span>` +
     `<span class="roster-when"${t.title ? ` title="${escapeAttr(t.title)}"` : ''}>${escapeHtml(t.text)}</span>` +
-    commitLinkHTML(m.commit, { cls: 'roster-sha', base: m.repoBase, title: m.commit })
+    commitLinkHTML(m.commit, { cls: 'roster-sha', base: m.repoBase, title: m.commit }) +
+    '</span>'
   );
-}
-
-// peerFilesHTML is a peer deploy row's files cell: the fan-in carries only a
-// changed-file count, not the list. Empty for none.
-function peerFilesHTML(n) {
-  return n > 0 ? `<span class="peer-files">${n} file${n === 1 ? '' : 's'}</span>` : '';
-}
-
-// pendingTagHTML renders the tag on a pending deploy row. Queued rows show
-// "paused[: reason]"; blocked rows (ADR-0032) show the dependency reason
-// ("blocked by <dep>") directly. The caller draws reason from the queue
-// snapshot; it embeds a stack name — repo-controlled in stack-discovery mode
-// (ADR-0034) — so it must render as text, never as markup.
-function pendingTagHTML(status, reason) {
-  if (status === 'blocked') {
-    return `<span class="paused-tag">${escapeHtml(reason || 'blocked')}</span>`;
-  }
-  return `<span class="paused-tag">${reason ? 'paused: ' + escapeHtml(reason) : 'paused'}</span>`;
 }
 
 // hostChipHTML renders a row's leading host-identity chip inside the stack
@@ -746,39 +655,6 @@ function hostChipHTML(hostName, slot) {
 
 const LINK_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M10 14L20 4M18 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>';
-
-// linkCellHTML renders the app-link icon for a stack: nothing when no host
-// was discovered, a plain external link for exactly one, or a button that
-// opens a popover listing each when there are several. hosts is the stack's
-// discovered hostnames (app-panels.js linkCell wraps the per-host lookup).
-function linkCellHTML(hosts) {
-  if (!hosts || !hosts.length) return '';
-  if (hosts.length === 1) {
-    const url = 'https://' + hosts[0];
-    return `<span class="link-wrap"><a class="link-btn" data-testid="app-link-btn" data-taptip href="${escapeAttr(url)}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + hosts[0])}">${LINK_ICON}</a></span>`;
-  }
-  const items = hosts
-    .map(function (h) {
-      return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
-    })
-    .join('');
-  const label = hosts.length + ' app links';
-  return `<span class="link-wrap"><button class="link-btn" type="button" data-testid="app-link-btn" data-taptip title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}">${LINK_ICON}</button><div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
-}
-
-// rosterRowActionsHTML surfaces an enabled roster row's secondary actions
-// inline in the stack cell, beside the jump + app-link icons: the container-
-// logs icon (ADR-0037) always, the deploy-hooks badge (ADR-0038) only when the
-// stack declares hooks. Formerly folded behind the same ⋯ overflow menu the
-// Deploys row uses (T3.13b), but on the roster the row-body click already opens
-// the health + history panel, so the menu usually wrapped a single action
-// (logs) — an extra click for no density gain. Disabled stacks carry neither.
-function rosterRowActionsHTML(entry) {
-  if (entry.disabled) return '';
-  let html = clogBtnHTML(entry.name, ''); // container logs
-  if (entry.hooks && hookCount(entry.hooks) > 0) html += hooksBadgeHTML(entry.name, entry.hooks);
-  return html;
-}
 
 // rosterVersionInnerHTML fills a Stacks row's Version cell from the live health
 // snapshot: the running version of the service the stack is named after, plus a
@@ -818,16 +694,16 @@ function rosterVersionCellHTML(stack, health, disabled, updates) {
   return `<span class="col-version" data-testid="roster-version">${inner}</span>`;
 }
 
-// rosterStatusHTML picks the row's status: a live in-flight deploy wins
-// (deploying — a peer row always passes false, since the in-flight set is the
-// primary's own), then the parked/never-deployed synthetic flags, else the
+// rosterStatusHTML picks the row's last-deploy status: a live in-flight deploy
+// wins (deploying — a peer row always passes false, since the in-flight set is
+// the primary's own), then the parked/never-deployed synthetic flags, else the
 // last terminal badge, followed by the held chip when the stack's change is
-// held. canRetry adds the chip's retry button (the primary's own rows only).
-function rosterStatusHTML(entry, deploying, canRetry) {
+// held. Retrying a held change is the detail verdict's action, not the row's.
+function rosterStatusHTML(entry, deploying) {
   if (deploying) return badgeHTML('deploying');
   if (entry.disabled) return `<span class="roster-flag">disabled</span>`;
   if (!entry.last_status) return `<span class="roster-flag">never deployed</span>`;
-  return badgeHTML(entry.last_status) + heldChipHTML(entry.name, entry.held, !!canRetry);
+  return badgeHTML(entry.last_status) + heldChipHTML(entry.name, entry.held);
 }
 
 // heldChipHTML marks a stack whose change is held (ADR-0062): its new version
@@ -835,10 +711,8 @@ function rosterStatusHTML(entry, deploying, canRetry) {
 // re-failing it every reconcile tick. A change that failed before it started
 // and is still retried on its own carries retry_at and reads "backoff"
 // (ADR-0064). The tooltip says when and how it failed, and for a backoff when
-// the next attempt is due. canRetry adds the button that attempts it once
-// more; a peer's roster is read-only, so its rows never get one. Empty when
-// nothing is held.
-function heldChipHTML(stack, held, canRetry) {
+// the next attempt is due. Empty when nothing is held.
+function heldChipHTML(stack, held) {
   if (!held) return '';
   const backoff = !!held.retry_at;
   const when = held.since ? ' ' + formatTime(held.since) + ' (' + fullTime(held.since) + ')' : '';
@@ -855,8 +729,7 @@ function heldChipHTML(stack, held, canRetry) {
       when +
       '. Next attempt ' +
       fullTime(held.retry_at) +
-      '; if it keeps failing, it is held.' +
-      (canRetry ? ' Retry attempts it now.' : '');
+      '; if it keeps failing, it is held.';
   } else {
     const how = held.attempts
       ? 'failed ' + held.attempts + ' times before it started, last'
@@ -869,23 +742,19 @@ function heldChipHTML(stack, held, canRetry) {
       when +
       '. It is not retried until a new commit changes ' +
       stack +
-      '.' +
-      (canRetry ? ' Retry deploys it once more.' : '');
+      '.';
   }
   const label = backoff ? 'backoff' : 'held';
-  let html = `<span class="held-chip" data-testid="held-chip" title="${escapeAttr(title)}">${statusIcon('held')}${label}</span>`;
-  if (canRetry) {
-    html += `<button type="button" class="retry-btn" data-testid="retry-btn" data-retry-stack="${escapeAttr(stack)}" aria-label="${escapeAttr('Retry the held change of ' + stack)}">retry</button>`;
-  }
-  return `<span class="held-line">${html}</span>`;
+  return `<span class="held-line"><span class="held-chip" data-testid="held-chip" title="${escapeAttr(title)}">${statusIcon('held')}${label}</span></span>`;
 }
 
-// rosterHealthPillHTML is the live-health pill shown inline in a roster row's
-// status cell (under the deploy badge), so the Stacks overview surfaces current
-// container health without expanding — for local stacks and, host-scoped, for
-// peers alike. Empty when the host reports no health for the stack.
-function rosterHealthPillHTML(stack, health) {
-  return health && health.status ? healthPillHTML(stack, health.status) : '';
+// rosterHealthHTML is a Stacks row's Health cell: the stack's live health as
+// a dot and a word — what it is now, beside the Last deploy cell saying what
+// happened then. Not a control (the row's click opens the panel). Empty while
+// the host reports no health for the stack.
+function rosterHealthHTML(health) {
+  if (!health || !health.status) return '';
+  return `<span class="health-pill" data-testid="health-pill" data-health="${escapeAttr(health.status)}"><span class="hdot"></span><span class="hlabel">${escapeHtml(health.status)}</span></span>`;
 }
 
 // outcomeLabel says a terminal status in words for the strip tooltips and the
@@ -897,7 +766,7 @@ function outcomeLabel(status) {
   return status;
 }
 
-// outcomeStripHTML is the roster status cell's mini-history: the stack's last
+// outcomeStripHTML is the detail panel's Last deploy mini-history: the stack's last
 // terminal outcomes as small status-coloured dots, oldest → newest left →
 // right, so the strip reads as a timeline running into the badge — a success
 // can no longer paper over the rollback right behind it. recent arrives
@@ -937,21 +806,6 @@ function lastIncidentHTML(incident, nowMs) {
   const glyph = incident.status.indexOf('rolled_back') === 0 ? '↺' : '✗';
   const age = phaseDuration(nowMs - new Date(incident.at).getTime());
   return `<span class="last-incident" data-testid="last-incident" title="${escapeAttr(fullTime(incident.at))}">${glyph} ${escapeHtml(outcomeLabel(incident.status))} · ${escapeHtml(age)} ago</span>`;
-}
-
-// rosterStatusInnerHTML is the whole roster status cell — badge (+ held chip),
-// live-health pill, outcome strip, last-incident line — so the full render and
-// the live per-row refresh cannot drift apart. A disabled stack shows only its
-// flag. health is the row's host-scoped health record; nowMs keeps it pure.
-function rosterStatusInnerHTML(entry, deploying, canRetry, health, nowMs) {
-  const status = rosterStatusHTML(entry, deploying, canRetry);
-  if (entry.disabled) return status;
-  return (
-    status +
-    rosterHealthPillHTML(entry.name, health) +
-    outcomeStripHTML(entry.recent, nowMs) +
-    lastIncidentHTML(entry.last_incident, nowMs)
-  );
 }
 
 // DEPLOY_STATUS_ORDER fixes the Deploys status-filter chip order — worst
@@ -1273,29 +1127,6 @@ function watchedPanelHTML(entry, repoBase) {
   );
 }
 
-// healPanelHTML renders the healed row's detail body: a fixed explanation (no
-// git change → no diff) and, when known, the drifted services the corrective
-// redeploy reacted to.
-function healPanelHTML(drift) {
-  let html =
-    '<div class="heal-summary">Self-heal restored this stack to its deployed running state — a corrective <code>docker compose up -d</code>. Nothing in git changed, so there is no diff.</div>';
-  if (drift && drift.length > 0) {
-    html +=
-      '<div class="heal-drift-label">Drifted when it ran</div>' +
-      `<ul class="heal-drift-list">` +
-      drift
-        .map(function (d) {
-          return (
-            `<li><span class="hd-name">${escapeHtml(d.name)}</span>` +
-            `<span class="hd-status hd-${escapeAttr(d.status)}">${escapeHtml(d.status)}</span></li>`
-          );
-        })
-        .join('') +
-      `</ul>`;
-  }
-  return html;
-}
-
 // filesPanelHTML renders the changed-file list of a deploy, one path per line,
 // each with the services that file reaches when the event attributed it.
 function filesPanelHTML(files, fileChanges) {
@@ -1309,15 +1140,27 @@ function filesPanelHTML(files, fileChanges) {
 }
 
 // diffContentHTML renders one file's unified diff, each line tagged with the
-// CSS class classifyDiffLine derives from it.
+// CSS class classifyDiffLine derives from it. The leading git header block
+// (diff --git, index, ---, +++) is dropped: the section header names the file.
+// Lines are joined without a separator — they are block elements, and a '\n'
+// between them would add a blank line under `white-space: pre`.
 function diffContentHTML(diff) {
-  return diff
-    .split('\n')
+  const lines = diff.split('\n');
+  let start = 0;
+  while (start < lines.length && classifyDiffLine(lines[start]) === 'diff-meta') start++;
+  return lines
+    .slice(start)
     .map(function (line) {
       const cls = classifyDiffLine(line);
       return `<span class="diff-line${cls ? ' ' + cls : ''}">${escapeHtml(line)}</span>`;
     })
-    .join('\n');
+    .join('');
+}
+
+// diffStatHTML is a file's added/removed line counts.
+function diffStatHTML(diff) {
+  const st = diffStat(diff);
+  return `<span class="df-stat"><span class="df-add">+${st.add}</span><span class="df-del">−${st.del}</span></span>`;
 }
 
 // diffPanelHTML renders the diff panel's body: the commit header plus one
@@ -1328,7 +1171,7 @@ function diffPanelHTML(diffs, commits, meta, repoBase) {
   const singleFile = files.length === 1;
   const fileChanges = meta && meta.fileChanges;
   return (
-    renderCommitHead(commits, meta, repoBase) +
+    renderCommitHead(commits, repoBase) +
     files
       .map(function (f) {
         const name = f.split('/').pop() || f;
@@ -1336,7 +1179,7 @@ function diffPanelHTML(diffs, commits, meta, repoBase) {
           `<div class="diff-file-section">` +
           `<div class="diff-file-header${singleFile ? ' expanded' : ''}">` +
           `<svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>` +
-          `<span>${escapeHtml(name)}</span>${changeAttributionHTML(fileChanges, f)}</div>` +
+          `<span>${escapeHtml(name)}</span>${diffStatHTML(diffs[f])}${changeAttributionHTML(fileChanges, f)}</div>` +
           `<div class="diff-content">${diffContentHTML(diffs[f])}</div>` +
           `</div>`
         );
@@ -1540,7 +1383,7 @@ function auditRowsHTML(records, repoBase, absolute, opts) {
         return (
           `<div class="audit-row"${withTestid ? ' data-testid="audit-row"' : ''} data-status="${escapeAttr(r.status)}">` +
           `<span class="ar-time" data-ts="${escapeAttr(r.timestamp)}" title="${escapeAttr(absolute ? rel : abs)}">${escapeHtml(absolute ? abs : rel)}</span>` +
-          `<span class="ar-status"><span class="adot"></span>${escapeHtml(auditStatusLabel(r.status))}</span>` +
+          `<span class="ar-status">${badgeHTML(r.status)}</span>` +
           `<span class="ar-dur">${escapeHtml(formatDuration(r.duration_ms))}</span>` +
           sha +
           `<span class="ar-files">${files}</span>` +
@@ -1601,14 +1444,409 @@ function clogSvcsHTML(services, selected) {
   );
 }
 
+// ── Detail panel (docs/dev/ui-redesign-plan.md §3.2) ──
+// The panel a selected row opens: a head naming the stack with its labelled
+// actions, the verdict, a facts strip and a tab strip over one pane. Pure
+// string builders; app-roster.js resolves the state and wires the clicks
+// (every control carries data-action, or is a tab).
+
+const CLOSE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const JUMP_ICON =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>';
+
+// detailActionHTML is one labelled head button. attrs is the raw attribute
+// string the action's handler reads (already escaped by the caller).
+function detailActionHTML(action, testid, attrs, icon, label, extra) {
+  return `<button class="dp-act" type="button" data-action="${action}" data-testid="${testid}"${attrs}>${icon}<span class="dp-lbl">${label}</span>${extra || ''}</button>`;
+}
+
+// detailAppLinkHTML is the head's Open app action: a plain link for one
+// discovered hostname, a button over the app-link popover for several.
+function detailAppLinkHTML(links) {
+  if (!links || !links.length) return '';
+  if (links.length === 1) {
+    return `<span class="link-wrap"><a class="dp-act" data-action="app" data-testid="app-link-btn" href="${escapeAttr('https://' + links[0])}" target="_blank" rel="noopener" title="${escapeAttr('Open ' + links[0])}">${LINK_ICON}<span class="dp-lbl">Open app</span></a></span>`;
+  }
+  const items = links
+    .map(function (h) {
+      return `<a href="${escapeAttr('https://' + h)}" target="_blank" rel="noopener">${LINK_ICON}${escapeHtml(h)}</a>`;
+    })
+    .join('');
+  return `<span class="link-wrap">${detailActionHTML('app', 'app-link-btn', ` title="${links.length} app links"`, LINK_ICON, links.length + ' apps')}<div class="link-pop" data-testid="app-link-pop">${items}</div></span>`;
+}
+
+// JUMP_LABEL names the head's jump action by the view it leads to.
+const JUMP_LABEL = Object.freeze({ deploys: 'Show in Deploys', stacks: 'Show in Stacks' });
+
+// detailHeadHTML is the panel head: icon, name, host chip, badge and meta,
+// then the actions that apply, always in the order Open app · Logs · Hooks ·
+// Show in … · close. m: stack, host (chip HTML), badge (status badge HTML),
+// meta (age · duration text), links (app-link hostnames), logs (the stack runs
+// containers), logHost (a peer's name, so the logs stream through the
+// primary's proxy), hooks ({pre_deploy, post_deploy} or null), hooksOpen (the
+// Hooks pane is showing), jump (offer the jump), jumpView (its target view,
+// default deploys).
+function detailHeadHTML(m) {
+  const stack = escapeAttr(m.stack);
+  let actions = detailAppLinkHTML(m.links);
+  if (m.logs) {
+    const host = m.logHost ? ` data-clog-host="${escapeAttr(m.logHost)}"` : '';
+    actions += detailActionHTML(
+      'logs',
+      'clog-btn',
+      ` data-clog-stack="${stack}" data-clog-service=""${host} title="Container logs of every service"`,
+      CLOG_ICON,
+      'Logs',
+    );
+  }
+  if (m.hooks && hookCount(m.hooks) > 0) {
+    const pre = (m.hooks.pre_deploy || []).length,
+      post = (m.hooks.post_deploy || []).length;
+    actions += detailActionHTML(
+      'hooks',
+      'hooks-badge',
+      ` data-hooks-stack="${stack}" aria-pressed="${m.hooksOpen ? 'true' : 'false'}" title="${escapeAttr(`pre-deploy hooks: ${pre}, post-deploy hooks: ${post}`)}"`,
+      HOOK_ICON,
+      'Hooks',
+      `<span class="dp-n">${pre}+${post}</span>`,
+    );
+  }
+  if (m.jump) {
+    const view = m.jumpView || 'deploys';
+    actions += detailActionHTML(
+      'jump',
+      'jump-btn',
+      ` data-jump-view="${escapeAttr(view)}" data-jump-stack="${stack}"`,
+      JUMP_ICON,
+      JUMP_LABEL[view],
+    );
+  }
+  actions += `<button class="dp-act dp-close" type="button" data-action="close" data-testid="detail-close" title="Close" aria-label="${escapeAttr('Close ' + m.stack)}">${CLOSE_ICON}</button>`;
+  return (
+    '<div class="dp-head">' +
+    `<div class="dp-title">${stackIconHTML()}<span class="dp-name" title="${stack}">${escapeHtml(m.stack)}</span>${m.host || ''}${m.badge || ''}${m.meta ? `<span class="dp-meta">${escapeHtml(m.meta)}</span>` : ''}</div>` +
+    `<div class="dp-actions">${actions}</div>` +
+    '</div>'
+  );
+}
+
+// VERDICT_GLYPH leads each verdict line by tone, so the line reads before its
+// words do.
+const VERDICT_GLYPH = Object.freeze({
+  danger: '✗',
+  rollback: '↺',
+  warn: '!',
+  ok: '✓',
+  muted: '·',
+});
+
+// verdictHTML renders the verdict lines (stackVerdict, app-helpers.js) with
+// their one action each: Retry once on a held change — only with
+// opts.canRetry, since a peer's panel is read-only, and with an empty live
+// region (retry-msg) that names a refusal — and Logs of the service
+// an unhealthy line names (through opts.logHost for a peer).
+function verdictHTML(lines, stack, opts) {
+  const o = opts || {};
+  const body = lines
+    .map(function (l) {
+      let action = '';
+      let msg = '';
+      if (l.action && l.action.kind === 'retry' && o.canRetry) {
+        action = `<button type="button" class="retry-btn" data-testid="retry-btn" data-retry-stack="${escapeAttr(stack)}">Retry once</button>`;
+        msg = '<div class="dp-v-msg" role="status" data-testid="retry-msg"></div>';
+      } else if (l.action && l.action.kind === 'logs') {
+        const host = o.logHost ? ` data-clog-host="${escapeAttr(o.logHost)}"` : '';
+        action = detailActionHTML(
+          'logs',
+          'clog-btn',
+          ` data-clog-stack="${escapeAttr(stack)}" data-clog-service="${escapeAttr(l.action.service)}"${host}`,
+          CLOG_ICON,
+          'Logs',
+        );
+      }
+      const head = l.head ? `<b>${escapeHtml(l.head)}</b>${l.text ? ' ' : ''}` : '';
+      const sub = l.sub ? `<div class="dp-v-sub">${escapeHtml(l.sub)}</div>` : '';
+      return (
+        `<div class="dp-v" data-tone="${escapeAttr(l.tone)}" data-kind="${escapeAttr(l.kind)}">` +
+        `<span class="dp-v-ico" aria-hidden="true">${VERDICT_GLYPH[l.tone] || ''}</span>` +
+        `<div class="dp-v-body"><div class="dp-v-text">${head}${escapeHtml(l.text || '')}</div>${sub}${msg}</div>` +
+        action +
+        '</div>'
+      );
+    })
+    .join('');
+  return `<div class="dp-verdict" data-testid="detail-verdict">${body}</div>`;
+}
+
+// factsHTML is the panel's facts strip; each fact's html is the caller's
+// markup (escaped where it carries data).
+function factsHTML(facts) {
+  const cells = facts
+    .map(function (f) {
+      return `<div class="dp-fact"><div class="dp-k">${escapeHtml(f.label)}</div><div class="dp-fv">${f.html}</div></div>`;
+    })
+    .join('');
+  return `<div class="dp-facts" data-testid="detail-facts">${cells}</div>`;
+}
+
+// stackFactsHTML is a stack's facts: its running version, its last deploy
+// (age, commit, the outcome dots and the incident they paper over), its
+// health as a count, and its hooks. o: repoBase, nowMs (kept pure).
+function stackFactsHTML(entry, health, updates, o) {
+  const running = rosterVersionInnerHTML(entry.name, health, updates) || '—';
+  let last = 'never';
+  if (entry.last_at) {
+    last =
+      escapeHtml(phaseDuration(o.nowMs - new Date(entry.last_at).getTime()) + ' ago') +
+      (entry.last_commit
+        ? ' · ' +
+          commitLinkHTML(entry.last_commit, {
+            cls: 'dp-sha',
+            base: o.repoBase,
+            title: entry.last_commit,
+          })
+        : '') +
+      outcomeStripHTML(entry.recent, o.nowMs) +
+      lastIncidentHTML(entry.last_incident, o.nowMs);
+  }
+  // On-demand services are stopped on purpose; they are counted apart so
+  // the healthy count is out of the services meant to run.
+  const services = (health && health.services) || [];
+  const onDemand = services.filter(function (s) {
+    return s.on_demand;
+  }).length;
+  const healthy = services.filter(function (s) {
+    return !s.on_demand && healthClass(s) === HEALTH.HEALTHY;
+  }).length;
+  const healthText = services.length
+    ? healthy +
+      ' of ' +
+      (services.length - onDemand) +
+      ' healthy' +
+      (onDemand ? ' · ' + onDemand + ' on-demand' : '')
+    : '—';
+  const hooks = entry.hooks || {};
+  const hooksText = hookCount(hooks)
+    ? (hooks.pre_deploy || []).length + ' pre · ' + (hooks.post_deploy || []).length + ' post'
+    : 'none';
+  return factsHTML([
+    { label: 'Running', html: running },
+    { label: 'Last deploy', html: last },
+    { label: 'Health', html: escapeHtml(healthText) },
+    { label: 'Hooks', html: escapeHtml(hooksText) },
+  ]);
+}
+
+// tabsHTML is the panel's tab strip (stackTabs, app-helpers.js). A count turns
+// red when the tab holds a problem; a tab without a count shows a red "!"
+// instead, so the problem still shows. idBase names the panel's tab and pane
+// ids; only the selected tab (else the first) is in the Tab order.
+function tabsHTML(tabs, active, idBase) {
+  const stop = tabs.some(function (t) {
+    return t.id === active;
+  })
+    ? active
+    : tabs.length && tabs[0].id;
+  const btns = tabs
+    .map(function (t) {
+      let n = '';
+      if (t.count !== null && t.count !== undefined) {
+        n = `<span class="dp-n${t.bad ? ' bad' : ''}">${t.count}</span>`;
+      } else if (t.bad) {
+        n = '<span class="dp-n bad">!</span>';
+      }
+      const id = escapeAttr(idBase + '-tab-' + t.id);
+      const sel = t.id === active ? 'true' : 'false';
+      const tabindex = t.id === stop ? '0' : '-1';
+      return `<button class="dp-tab" type="button" role="tab" id="${id}" aria-controls="${escapeAttr(idBase)}-pane" data-testid="detail-tab" data-tab="${escapeAttr(t.id)}" aria-selected="${sel}" tabindex="${tabindex}">${escapeHtml(t.label)}${n}</button>`;
+    })
+    .join('');
+  return `<div class="dp-tabs" role="tablist">${btns}</div>`;
+}
+
+// tabPaneHTML is the empty pane under tabsHTML's strip, labelled by the
+// selected tab, or by label when the head selects it instead (Hooks).
+function tabPaneHTML(tabs, active, idBase, label) {
+  if (!tabs.length) return '<div class="dp-pane"></div>';
+  const inStrip = tabs.some(function (t) {
+    return t.id === active;
+  });
+  const name = inStrip
+    ? `aria-labelledby="${escapeAttr(idBase + '-tab-' + active)}"`
+    : `aria-label="${escapeAttr(label || '')}"`;
+  return `<div class="dp-pane" role="tabpanel" id="${escapeAttr(idBase)}-pane" tabindex="0" ${name}></div>`;
+}
+
+// ── Deploys detail panel: one deploy event in the Stacks detail's anatomy ──
+
+// DEPLOY_OUTPUT_LINES is how many lines of a deploy's error the Output tab
+// shows before it clamps.
+const DEPLOY_OUTPUT_LINES = 6;
+
+// DEPLOY_DETAIL_ID prefixes the deploy detail's tab and pane ids; the view
+// keeps one detail open at a time.
+const DEPLOY_DETAIL_ID = 'deploy-detail';
+
+// deployFactsHTML is a deploy's facts: its commit (from the lazily loaded
+// diff, else the peer record's SHA, else —), the first change chip plus how
+// many more, its duration and its changed-file count. o: commits, repoBase.
+function deployFactsHTML(evt, o) {
+  const opts = o || {};
+  const head = opts.commits && opts.commits[0];
+  let commit = '—';
+  if (head) {
+    commit =
+      commitLinkHTML(head.sha, {
+        cls: 'dp-sha',
+        testid: 'commit-sha',
+        base: opts.repoBase,
+        title: head.sha,
+      }) + (head.subject ? `<span class="dp-subject">${escapeHtml(head.subject)}</span>` : '');
+  } else if (evt.commit_sha) {
+    commit = commitLinkHTML(evt.commit_sha, {
+      cls: 'dp-sha',
+      testid: 'commit-sha',
+      base: opts.repoBase,
+      title: evt.commit_sha,
+    });
+  }
+  const chips = imageDeltaChips(evt.image_changes).concat(
+    changeChips(evt.file_changes, evt.image_changes),
+  );
+  // Every chip: the row shows one plus "+N" and points here for the rest.
+  const change = chips.length ? chips.join('') : 'none';
+  const files = changedFileCount(evt);
+  return factsHTML([
+    { label: 'Commit', html: commit },
+    { label: 'Change', html: change },
+    { label: 'Duration', html: escapeHtml(formatDuration(evt.duration_ms)) },
+    { label: 'Files', html: files ? files + (files === 1 ? ' file' : ' files') : 'none' },
+  ]);
+}
+
+// deployPanelHTML is the inside of a deploy row's detail panel: the head
+// (badge, age · duration, Logs · Show in Stacks · close), the verdict when the
+// outcome needs one, the facts, the tab strip and an empty pane the caller
+// fills (deployPaneHTML). o: host (chip HTML), logs, logHost, jump, nowMs,
+// repoBase, commits (the loaded diff's), queueReason, tab (the open one).
+function deployPanelHTML(evt, o) {
+  const opts = o || {};
+  const ago = evt.timestamp
+    ? phaseDuration(opts.nowMs - new Date(evt.timestamp).getTime()) + ' ago'
+    : '';
+  const meta = [ago, evt.duration_ms > 0 ? formatDuration(evt.duration_ms) : '']
+    .filter(Boolean)
+    .join(' · ');
+  const lines = deployVerdict(evt, { queueReason: opts.queueReason });
+  const tabs = deployTabs(evt, { commits: (opts.commits || []).length });
+  return (
+    detailHeadHTML({
+      stack: evt.stack,
+      host: opts.host,
+      badge: badgeHTML(evt.status),
+      meta: meta,
+      logs: opts.logs,
+      logHost: opts.logHost,
+      jump: opts.jump,
+      jumpView: 'stacks',
+    }) +
+    (lines.length ? verdictHTML(lines, evt.stack, { logHost: opts.logHost }) : '') +
+    deployFactsHTML(evt, opts) +
+    (tabs.length ? tabsHTML(tabs, opts.tab, DEPLOY_DETAIL_ID) : '') +
+    tabPaneHTML(tabs, opts.tab, DEPLOY_DETAIL_ID)
+  );
+}
+
+// deployOutputHTML is the Output tab: the deploy's full error text, clamped
+// beyond DEPLOY_OUTPUT_LINES lines behind a Show all / Show less toggle.
+function deployOutputHTML(error, expanded) {
+  const n = String(error || '').split('\n').length;
+  const long = n > DEPLOY_OUTPUT_LINES;
+  const cls = long && !expanded ? 'dp-output clamped' : 'dp-output';
+  const id = DEPLOY_DETAIL_ID + '-output';
+  const toggle = long
+    ? `<button type="button" class="dp-more-btn" data-action="output-more" aria-expanded="${!!expanded}" aria-controls="${id}">${expanded ? 'Show less' : 'Show all ' + n + ' lines'}</button>`
+    : '';
+  return `<pre class="${cls}" id="${id}" data-testid="deploy-output">${escapeHtml(error)}</pre>${toggle}`;
+}
+
+// driftListHTML lists the containers a self-heal found drifted.
+function driftListHTML(drift) {
+  return (
+    '<ul class="heal-drift-list" data-testid="heal-drift">' +
+    (drift || [])
+      .map(function (d) {
+        return (
+          `<li><span class="hd-name">${escapeHtml(d.name)}</span>` +
+          `<span class="hd-status hd-${escapeAttr(d.status)}">${escapeHtml(d.status)}</span></li>`
+        );
+      })
+      .join('') +
+    '</ul>'
+  );
+}
+
+// commitListHTML lists a push's commits, newest first, each with its SHA;
+// expanded shows it at once rather than behind the diff head's pill.
+function commitListHTML(commits, repoBase, expanded) {
+  return (
+    `<ul class="diff-commit-list${expanded ? ' expanded' : ''}" data-testid="diff-commit-list">` +
+    (commits || [])
+      .map(function (c) {
+        return (
+          `<li>${commitLinkHTML(c.sha, { cls: 'm-sha', base: repoBase, title: c.sha })}<span>` +
+          `<span class="cl-subject">${escapeHtml(c.subject || '')}</span> ` +
+          `<span class="cl-meta">— ${escapeHtml(c.author || '')}${c.date ? ', ' + escapeHtml(formatTime(c.date)) : ''}</span></span></li>`
+        );
+      })
+      .join('') +
+    '</ul>'
+  );
+}
+
+// deployPaneHTML is one tab's content. d: diffs and commits (the loaded
+// diff), loading (the fetch is still running), repoBase, expanded (Output
+// shows every line). A load error is the caller's: it carries a Retry.
+function deployPaneHTML(tab, evt, d) {
+  const data = d || {};
+  switch (tab) {
+    case DEPLOY_TAB.changes: {
+      if (data.loading) return '<div class="diff-loading">Loading diffs…</div>';
+      if (data.diffs && Object.keys(data.diffs).length) {
+        return `<div class="diff-panel" data-testid="diff-panel">${diffPanelHTML(data.diffs, null, { fileChanges: evt.file_changes }, data.repoBase)}</div>`;
+      }
+      if (Array.isArray(evt.changed_files) && evt.changed_files.length) {
+        return `<div class="files-list" data-testid="files-panel">${filesPanelHTML(evt.changed_files, evt.file_changes)}</div>`;
+      }
+      return '<div class="diff-loading">No diff recorded.</div>';
+    }
+    case DEPLOY_TAB.drift:
+      return driftListHTML(evt.heal_drift);
+    case DEPLOY_TAB.output:
+      return deployOutputHTML(evt.error, data.expanded);
+    case DEPLOY_TAB.commits:
+      return commitListHTML(data.commits, data.repoBase, true);
+    default:
+      return '';
+  }
+}
+
 // Dual-use export, same pattern as app-helpers.js: skipped in the browser
 // (the functions are already globals), used by `node --test`.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     escapeHtml,
+    deployFactsHTML,
+    deployPanelHTML,
+    deployOutputHTML,
+    deployPaneHTML,
+    driftListHTML,
+    commitListHTML,
     ROW_KIND,
     tableRowHTML,
-    peerFilesHTML,
+    deployWhenHTML,
+    deployShaHTML,
     escapeAttr,
     commitLinkHTML,
     versionChipHTML,
@@ -1620,30 +1858,20 @@ if (typeof module !== 'undefined' && module.exports) {
     badgeHTML,
     serviceVersionHTML,
     updateCheckMetaHTML,
-    filesHTML,
-    healPillHTML,
     healthHistoryHTML,
     healthStripHTML,
     clogBtnHTML,
-    healthPillHTML,
     hookCount,
-    hooksBadgeHTML,
-    jumpBtnHTML,
-    rowActionClusterHTML,
-    pendingTagHTML,
     hostChipHTML,
-    linkCellHTML,
-    rosterRowActionsHTML,
     rosterVersionInnerHTML,
     rosterVersionCellHTML,
     rosterUpdateChipHTML,
     rosterStatusHTML,
     heldChipHTML,
-    rosterHealthPillHTML,
+    rosterHealthHTML,
     outcomeLabel,
     outcomeStripHTML,
     lastIncidentHTML,
-    rosterStatusInnerHTML,
     retryNoteHTML,
     repeatNoteHTML,
     DEPLOY_STATUS_ORDER,
@@ -1663,7 +1891,6 @@ if (typeof module !== 'undefined' && module.exports) {
     WARN_ICON,
     watchedLeadHTML,
     watchedPanelHTML,
-    healPanelHTML,
     filesPanelHTML,
     diffContentHTML,
     diffPanelHTML,
@@ -1672,5 +1899,11 @@ if (typeof module !== 'undefined' && module.exports) {
     logDiffBlockHTML,
     auditRowsHTML,
     clogSvcsHTML,
+    detailHeadHTML,
+    verdictHTML,
+    factsHTML,
+    tabsHTML,
+    tabPaneHTML,
+    stackFactsHTML,
   };
 }

@@ -15,6 +15,8 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
+	"github.com/polandy/skipper-cd/internal/metrics"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // The UI has no notion of the repo clone dir, so events must carry repo-relative
@@ -633,6 +635,47 @@ func TestTrySyncAndDeployAll_SkipsWhenDeployInProgress(t *testing.T) {
 	}
 	if syncer.called.Load() != 0 {
 		t.Errorf("expected no sync while skipped, got %d", syncer.called.Load())
+	}
+}
+
+func runStartedValue(t *testing.T) float64 {
+	t.Helper()
+	var m dto.Metric
+	if err := metrics.RunStartedTimestamp.Write(&m); err != nil {
+		t.Fatalf("read gauge: %v", err)
+	}
+	return m.GetGauge().GetValue()
+}
+
+func TestSyncAndDeployAll_ExportsRunStartWhileRunning(t *testing.T) {
+	var during float64
+	syncer := &fakeRepoSyncer{}
+	syncer.onSync = func() { during = runStartedValue(t) }
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir()})
+	cfg := &config.Config{StacksBaseDir: t.TempDir()}
+
+	before := float64(time.Now().Unix())
+	d.SyncAndDeployAll(context.Background(), cfg)
+	after := float64(time.Now().Unix())
+
+	if during < before || during > after {
+		t.Errorf("run start during the run = %v, want within [%v, %v]", during, before, after)
+	}
+	if got := runStartedValue(t); got != 0 {
+		t.Errorf("run start after the run = %v, want 0 (idle)", got)
+	}
+}
+
+func TestSyncAndDeployAll_ClearsRunStartWhenSyncFails(t *testing.T) {
+	syncer := &fakeRepoSyncer{err: errors.New("unreachable")}
+	d := New(Config{Runner: &recordingRunner{}, Syncer: syncer, StateDir: t.TempDir(), SyncRetryDelay: time.Nanosecond})
+	d.SyncAndDeployAll(context.Background(), &config.Config{StacksBaseDir: t.TempDir()})
+
+	if syncer.called.Load() == 0 {
+		t.Fatal("the run never reached the sync")
+	}
+	if got := runStartedValue(t); got != 0 {
+		t.Errorf("run start after a failed sync = %v, want 0 (idle)", got)
 	}
 }
 

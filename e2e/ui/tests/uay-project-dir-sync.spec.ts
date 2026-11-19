@@ -1,6 +1,5 @@
 import { test, expect } from "../fixtures/test";
 import type { Page } from "@playwright/test";
-import { openRowMenu } from "../fixtures/menu";
 
 // Maske AY: the project_directory checkout is fast-forwarded before the stack
 // phase, and a refusal is visible (ADR-0060). See docs/dev/e2e-tests.md §4.52.
@@ -72,9 +71,9 @@ test("UAY2: a dirty checkout is reported without blocking the deploys", async ({
   await expect(stackRow(page)).toHaveCount(2);
   expect(skipper.projectDirHead()).toBe(before);
 
-  // The reason is on the row's error panel, naming what to do about it.
+  // The reason is the verdict of the row's detail, naming what to do about it.
   await row.click();
-  await expect(page.locator('[data-testid="error-panel"]')).toContainText(
+  await expect(page.locator('[data-testid="detail-verdict"]')).toContainText(
     /uncommitted changes/,
   );
 });
@@ -112,7 +111,7 @@ test("UAY3: a standing refusal is reported once", async ({ page, skipper }) => {
 // UAY4 — the row is a run phase, not a Compose project: no jump to a Stacks
 // roster it has no entry in, and no container logs. Same treatment _nixos and
 // _config get (isPseudoStack).
-test("UAY4: the phase row carries no container-logs or jump affordance", async ({
+test("UAY4: the phase row detail carries no container-logs or jump action", async ({
   page,
   skipper,
 }) => {
@@ -126,15 +125,16 @@ test("UAY4: the phase row carries no container-logs or jump affordance", async (
 
   const row = phaseRow(page).first();
   await expect(row).toHaveAttribute("data-status", "failed");
-  await expect(row.locator('[data-testid="jump-btn"]')).toHaveCount(0);
 
-  await openRowMenu(row);
-  const menu = row.locator('[data-testid="more-pop"]');
-  // The menu still opens and still offers the history — the positive signal
-  // that the absent container-logs entry is an omission, not a dead menu.
-  await expect(menu.locator('[data-testid="history-btn"]')).toHaveCount(1);
-  await expect(menu.locator('[data-testid="clog-btn"]')).toHaveCount(0);
+  // The row's detail opens — the positive signal that the absent actions are
+  // an omission, not a dead panel.
+  const detail = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
+  await row.locator(".stack-name").click();
+  await expect(detail.locator('[data-testid="detail-close"]')).toBeVisible();
+  await expect(detail.locator('[data-testid="jump-btn"]')).toHaveCount(0);
+  await expect(detail.locator('[data-testid="clog-btn"]')).toHaveCount(0);
 
-  // The stack's own row keeps both, so the omission is about this row.
-  await expect(stackRow(page).first().locator('[data-testid="jump-btn"]')).toHaveCount(1);
+  // The stack's own row keeps the jump, so the omission is about this row.
+  await stackRow(page).first().locator(".stack-name").click();
+  await expect(detail.locator('[data-testid="jump-btn"]')).toHaveCount(1);
 });

@@ -109,6 +109,11 @@
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13.5l6.5 6.5L20 10.5V4h-6.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="15" cy="9" r="1.5" fill="currentColor"/></svg>
             <span>Changes column</span>
           </button>
+          <button class="filter-toggle vo-theme" data-testid="deploy-theme-toggle" type="button" title="Switch to light theme">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g><circle cx="12" cy="12" r="4.3" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.4 19.6l1.6-1.6M18 6l1.6-1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g></svg>
+            <span>Light theme</span>
+          </button>
         </div>
         <div class="vo-group" data-view="stacks">
           <button class="filter-toggle vo-search" id="roster-search-open" data-testid="roster-search" type="button" title="Search stacks">
@@ -119,6 +124,11 @@
             <div class="toggle-track"><div class="toggle-thumb"></div></div>
             <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>Absolute time</span>
+          </button>
+          <button class="filter-toggle vo-theme" data-testid="roster-theme-toggle" type="button" title="Switch to light theme">
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <svg class="tg-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g><circle cx="12" cy="12" r="4.3" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.4 19.6l1.6-1.6M18 6l1.6-1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g></svg>
+            <span>Light theme</span>
           </button>
         </div>
       </div>
@@ -199,7 +209,10 @@
 
 <div class="drawer" id="hosts-drawer" data-testid="hosts-drawer" role="dialog" aria-modal="true" aria-label="Hosts" tabindex="-1">
   <div class="drawer-inner">
-    <div class="drawer-title">Hosts</div>
+    <div class="drawer-head">
+      <div class="drawer-title">Hosts</div>
+      <button class="drawer-close" data-testid="drawer-close" type="button" aria-label="Close">&times;</button>
+    </div>
     <div class="drawer-sub" id="hosts-sub">Filter the merged view by host.</div>
     <div class="qlist" id="hosts-list"></div>
     <button class="hosts-all-btn" id="hosts-all-btn" data-testid="hosts-all-btn" type="button">Select all</button>
@@ -211,7 +224,10 @@
      claiming a state it is guessing at (see renderGlobal). -->
 <div class="drawer" id="autosync-drawer" data-testid="autosync-drawer" data-ready="false" role="dialog" aria-modal="true" aria-label="Autosync" tabindex="-1">
   <div class="drawer-inner">
-    <div class="drawer-title">Autosync</div>
+    <div class="drawer-head">
+      <div class="drawer-title">Autosync</div>
+      <button class="drawer-close" data-testid="drawer-close" type="button" aria-label="Close">&times;</button>
+    </div>
     <div class="drawer-sub" id="autosync-sub">All stacks in sync.</div>
 
     <div class="global-row">
@@ -237,7 +253,10 @@
 
 <div class="drawer" id="run-drawer" data-testid="run-drawer" role="dialog" aria-modal="true" aria-label="This deploy run" tabindex="-1">
   <div class="drawer-inner">
-    <div class="drawer-title">This deploy run</div>
+    <div class="drawer-head">
+      <div class="drawer-title">This deploy run</div>
+      <button class="drawer-close" data-testid="drawer-close" type="button" aria-label="Close">&times;</button>
+    </div>
     <div class="drawer-sub" id="run-sub">Nothing deploying.</div>
     <div class="sec-label">In deploy order <span class="sec-count" id="run-count"></span></div>
     <div class="qlist" id="run-list"></div>
@@ -284,12 +303,10 @@
     </div>
     <div class="attention-band" id="attention-band" data-testid="attention-band" hidden></div>
     <div class="event-list-header sheet-head">
-      <span>Time</span>
       <span>Stack</span>
-      <span class="col-version">Changes</span>
-      <span>Status</span>
-      <span class="eh-dur">Duration</span>
-      <span class="eh-files">Files</span>
+      <span>Result</span>
+      <span class="col-version">Change</span>
+      <span>When</span>
     </div>
     <div class="event-list sheet-body" id="tbody"></div>
     <div class="filter-empty" id="deploy-filter-empty" data-testid="deploy-filter-empty">No stack matches &ldquo;<span id="deploy-filter-empty-q"></span>&rdquo;.</div>
@@ -310,10 +327,9 @@
     <div class="status-filter" id="roster-update-filter" data-testid="roster-update-filter" role="group" aria-label="Filter stacks by available update"></div>
     <div class="roster-list-header sheet-head">
       <span>Stack</span>
+      <span>Health</span>
       <span class="rh-ver">Version</span>
-      <span>Status</span>
       <span>Last deploy</span>
-      <span class="rh-sha">Commit</span>
     </div>
     <div class="roster-list sheet-body" id="roster-list" data-testid="roster-list"></div>
     <div class="filter-empty" id="roster-filter-empty" data-testid="roster-filter-empty">No stack matches &ldquo;<span id="roster-filter-empty-q"></span>&rdquo;.</div>

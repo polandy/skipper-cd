@@ -317,19 +317,19 @@ test.describe('UC8: enable drains, disable does not', () => {
   });
 });
 
-// UC9 — Queued row + tag. A `queued` event renders a `deploy-row` with the
-// `queued` status badge and a `paused:` reason tag; resuming autosync deploys the
-// stack and the queued row is superseded by a fresh success row (the Mask C twin
-// of UA11, here asserting the badge + tag).
-test.describe('UC9: queued row + tag', () => {
-  test('a paused change renders a queued badge + paused tag, superseded on resume', async ({
+// UC9 — Queued row + cause. A `queued` event renders a `deploy-row` with the
+// `queued` status badge and an `autosync paused …` cause line; resuming autosync
+// deploys the stack and the queued row is superseded by a fresh success row (the
+// Mask C twin of UA11, here asserting the badge + cause).
+test.describe('UC9: queued row + cause', () => {
+  test('a paused change renders a queued badge + cause line, superseded on resume', async ({
     page,
     skipper,
   }) => {
     await page.goto(`${skipper.baseURL}/`);
     await expect(webDeployRow(page, 'success')).toHaveCount(1); // startup settled
 
-    // Pause, then push a change → a queued row with the badge and the tag.
+    // Pause, then push a change → a queued row with the badge and the cause.
     expect(await skipper.postAutosync('', false)).toBe(200);
     skipper.setStackImage('web', '1.26');
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
@@ -338,11 +338,13 @@ test.describe('UC9: queued row + tag', () => {
     await expect(webDeployRow(page, 'queued').locator('[data-testid="status-badge"]')).toHaveText(
       'queued',
     );
-    // The row carries the `paused: global` tag. The reason arrives with the
+    // The row's cause line names the global pause. The reason arrives with the
     // `queue` snapshot, which is not ordered against the `queued` deploy event —
-    // the UI refreshes the tag when the snapshot lands, so the full wording is
+    // the UI refreshes the line when the snapshot lands, so the full wording is
     // deterministic (the web-first assertion polls through the refresh).
-    await expect(webDeployRow(page, 'queued').locator('.paused-tag')).toHaveText('paused: global');
+    await expect(webDeployRow(page, 'queued').locator('[data-testid="cause-line"]')).toHaveText(
+      'autosync paused for every stack',
+    );
 
     // Resume → the stack deploys and the queued row is superseded by success.
     expect(await skipper.postAutosync('', true)).toBe(200);

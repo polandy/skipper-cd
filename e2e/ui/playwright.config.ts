@@ -39,6 +39,8 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // The UI follows the OS scheme; dark is what the baselines show.
+        colorScheme: 'dark',
         // Local escape hatch: on hosts where Playwright's bundled Chromium
         // cannot run (e.g. NixOS), point at a system Chromium. Unset in CI,
         // which uses the pinned browser from Playwright's container.

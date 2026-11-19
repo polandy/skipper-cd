@@ -41,6 +41,16 @@ the SSE baseline built from the same collector), and the audit fetch needs
 mixed-version pairs the fan-in falls back to the legacy route when — and only
 when — the versioned one answers 404 (an older peer without the route); the
 legacy `/api/audit` stays, unversioned as before, as the UI's route.
+**Amended 2026-11-19 — a lagging subscriber is closed, never handed a gap.**
+The broadcasters (deploy and state events, and the `/api/logs` buffer) used to
+drop a value for a subscriber whose channel buffer was full, and the ID dedup
+then hid the hole: the UI kept a wrong picture until the next reload. Publish
+now closes and removes such a subscriber after its buffered values, and the
+SSE handler ends the response when its channel closes, so EventSource
+reconnects — the deploy and log streams resume through Last-Event-ID, the
+state stream gets a fresh baseline. Blocking the publisher was rejected (one
+stuck browser would stall a deploy run), and a larger buffer only moves the
+threshold.
 Date: 2026-07-19
 
 ## Context

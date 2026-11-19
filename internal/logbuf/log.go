@@ -97,6 +97,7 @@ type Log struct {
 	subs     map[uint64]chan Entry
 	nextSub  uint64
 	nextID   int64
+	redact   func(string) string // nil: entries are kept verbatim
 }
 
 // New returns a Log holding at most capacity entries. IDs are seeded from
@@ -111,13 +112,29 @@ func New(capacity int) *Log {
 	}
 }
 
+// RedactWith passes every later entry's message and attr values through redact before storing it.
+func (l *Log) RedactWith(redact func(string) string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.redact = redact
+}
+
 // Append stores an entry (assigning the next ID), evicts the oldest entry
 // beyond capacity, and publishes to all subscribers. Publishing is
-// non-blocking: slow subscribers have entries dropped.
+// non-blocking: a subscriber whose buffer is full is closed and removed, so
+// its reader reconnects and resyncs instead of missing entries.
 func (l *Log) Append(t time.Time, level, msg string, attrs map[string]string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	if l.redact != nil {
+		msg = l.redact(msg)
+		redacted := make(map[string]string, len(attrs))
+		for k, v := range attrs {
+			redacted[k] = l.redact(v)
+		}
+		attrs = redacted
+	}
 	e := Entry{ID: l.nextID, Time: t, Level: level, Msg: msg, Attrs: attrs}
 	l.nextID++
 
@@ -132,10 +149,12 @@ func (l *Log) Append(t time.Time, level, msg string, attrs map[string]string) {
 		}
 	}
 
-	for _, ch := range l.subs {
+	for id, ch := range l.subs {
 		select {
 		case ch <- e:
 		default:
+			close(ch)
+			delete(l.subs, id)
 		}
 	}
 }
@@ -185,7 +204,8 @@ func (l *Log) EntriesAfter(afterID int64) []Entry {
 
 // Subscribe returns a buffered channel of live entries and an unsubscribe
 // function. Subscribing and then snapshotting via Entries sees every entry
-// at least once; consumers dedupe overlap by ID.
+// at least once; consumers dedupe overlap by ID. A reader that lets the
+// buffer fill has the channel closed and must resubscribe.
 func (l *Log) Subscribe() (<-chan Entry, func()) {
 	ch := make(chan Entry, subscriberBuffer)
 	l.mu.Lock()

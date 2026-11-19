@@ -228,6 +228,9 @@ function cleanup() {
   } catch {}
   rmSync(base, { recursive: true, force: true });
 }
+// 'exit' also covers an uncaught error or a crash before any explicit cleanup.
+process.on('exit', cleanup);
+process.on('SIGHUP', () => process.exit(0));
 process.on('SIGINT', () => {
   cleanup();
   process.exit(0);

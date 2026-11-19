@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"bytes"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/fsatomic"
+	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
 const stateFileName = "state.yaml"
@@ -37,8 +39,8 @@ type persistedState struct {
 	Held map[string]heldChange `yaml:"held,omitempty"`
 
 	// settled lists the stacks this run left at their desired state (deployed
-	// or unchanged); finishRun moves their StackCommits entry to HEAD. Run-local,
-	// never persisted.
+	// or unchanged); each checkpoint moves their StackCommits entry to HEAD.
+	// Run-local, never persisted.
 	settled []string
 
 	// Stacks maps stack names to their per-file hashes from the last deployment.
@@ -286,12 +288,51 @@ func loadPersistedDeployState(stateDir string) (*persistedState, error) {
 }
 
 func saveDeployState(stateDir string, state *persistedState) error {
-	if err := os.MkdirAll(stateDir, fsatomic.PrivateDirMode); err != nil {
-		return err
-	}
 	data, err := yaml.Marshal(state)
 	if err != nil {
 		return err
 	}
-	return fsatomic.WriteFile(filepath.Join(stateDir, stateFileName), data, fsatomic.PrivateFileMode)
+	return writeDeployState(stateDir, data)
+}
+
+func writeDeployState(stateDir string, data []byte) error {
+	err := os.MkdirAll(stateDir, fsatomic.PrivateDirMode)
+	if err == nil {
+		err = fsatomic.WriteFile(filepath.Join(stateDir, stateFileName), data, fsatomic.PrivateFileMode)
+	}
+	if err != nil {
+		metrics.StateSaveErrors.Inc()
+	}
+	return err
+}
+
+// stateCheckpoint saves the state after each stack of a run, so a run killed
+// midway does not redeploy (and rerun the hooks of) the stacks it finished.
+type stateCheckpoint struct {
+	stateDir string
+	last     []byte
+}
+
+// newStateCheckpoint starts from the state as the run found it; a marshal
+// failure leaves no baseline, so the first save writes.
+func newStateCheckpoint(stateDir string, state *persistedState) *stateCheckpoint {
+	last, _ := yaml.Marshal(state)
+	return &stateCheckpoint{stateDir: stateDir, last: last}
+}
+
+// save writes the state only when it differs from the last one seen, so an
+// unchanged reconcile tick does not rewrite state.yaml once per stack.
+func (c *stateCheckpoint) save(state *persistedState) error {
+	data, err := yaml.Marshal(state)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(data, c.last) {
+		return nil
+	}
+	if err := writeDeployState(c.stateDir, data); err != nil {
+		return err
+	}
+	c.last = data
+	return nil
 }

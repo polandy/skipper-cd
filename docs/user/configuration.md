@@ -83,6 +83,7 @@ stacks:
 nixos_rebuild:
   flake: ".#myhost"
   change_detection: derivation   # optional, default: derivation (only when this host's system changed); "files" for any .nix file or flake.lock
+  timeout_seconds: 3600          # optional, default: 3600; systemd stops a longer rebuild
 ```
 
 ## Top-level Fields
@@ -94,7 +95,7 @@ nixos_rebuild:
 | `repo_web_url` | string | no | derived from `repo_url` | The repository's page on the forge, e.g. `https://forge.example.com/owner/repo`. Every commit SHA in the web UI links to `<repo_web_url>/commit/<sha>` (Gitea and GitHub path shape). Left empty it is derived from `repo_url` — credentials, `.git` and any SSH port are dropped, and SSH forms become `https://`. Set it when the clone URL is not the web address (a mirror, a clone from a local path); when neither yields a URL, SHAs render as plain text. Must be `http(s)`. |
 | `branch` | string | no | `main` | Git branch to track. Used for `git clone --branch` and `git reset --hard origin/<branch>`. |
 | `vars_file` | string | no | — | Path to a `KEY=VALUE` env file containing non-secret values available during every `docker compose` invocation (see [vars_file](#vars_file)). Changes to this file trigger redeployment of all stacks. When set, it must exist and be readable. |
-| `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, `nixos-rebuild`) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. Must be ≥ 0. |
+| `command_timeout_seconds` | int | no | `300` | Maximum number of seconds a single shell command (`docker compose pull/up`, `git clone/fetch`, the `nixos-rebuild` evaluation) is allowed to run before being killed. Applies per command; a deploy run has no overall deadline. The rebuild itself is bounded by [`nixos_rebuild.timeout_seconds`](nixos.md#nixos-rebuild) instead. Must be ≥ 0. |
 | `log_format` | string | no | `pretty` | Log output format: `pretty` (colored, icon-led console narration — see [Pretty console output](#pretty-console-output)), `text` (logfmt), or `json` (structured logs, e.g. for Loki ingestion). |
 | `stacks_base_dir` | string | no | repo root | Base directory holding one subdirectory per stack (`<stacks_base_dir>/<name>/docker-compose.yml`); always the source of the compose file and change detection. Relative to `repo_dir` (the clone) — e.g. `stacks`, not `/var/lib/skipper/repo/stacks`. Omit it for the repo root itself. An absolute value, or one escaping the clone via `../`, is rejected at startup. |
 | `project_directory_base` | string | no | — | Base directory a stack's `project_directory` is derived from as `<project_directory_base>/<name>` when the stack does not set its own `project_directory` (see [project_directory and Docker Compose project identity](nixos.md#project_directory-and-docker-compose-project-identity)). Avoids repeating a common prefix (e.g. a NixOS modules directory) across stacks. Must be absolute — checked at startup. |
@@ -333,7 +334,7 @@ The rollback itself is verified through the same gate: its `up` also runs with `
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
+| `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. Keep it below `command_timeout_seconds`: the gated `up` runs under that ceiling and is killed before a longer wait ends (a startup warning flags it). |
 | `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
 
 > **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Stacks with `on_demand_containers` are excluded from the automatic gate for this reason; for a deliberate one-shot container on a non-on-demand stack, set `deploy_health_check: false` to opt out (even if the compose file has a `healthcheck:`), or model the one-shot as a [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependency.
@@ -452,6 +453,7 @@ The `vars_file` and every `env_files` entry use the same format, and a file that
 - Keys that change how skipper runs `docker compose` and hooks are reserved and rejected: `PATH`, `HOME`, `BASH_ENV`, `ENV`, `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH` and any `LD_*`. Set those in the service's own environment instead.
 - At most 1 MB per file.
 - In a deploy's diff — the web UI, the deploy history and the log — these files show their keys only: every value is replaced by `***`, so a rotated secret is not displayed. A removed stack's diff masks every file but its compose file the same way.
+- A value whose key names a secret is also masked as `***` wherever a command prints it: in a deploy's error, its notifications and history, and the web UI's log. Credentials in a URL (`https://user:xxxxx@…`, `https://xxxxx@…`) are masked the same way. The console log keeps the full text. A key names a secret when one of its `_`-separated words contains `PASS`, `SECRET`, `TOKEN`, `CRED`, `PRIVATE`, `SALT` or `DSN`, or ends in `KEY` or `AUTH` (any case): `DB_PASSWORD` and `API_KEY` count, `KEYCLOAK_URL` and `GIT_AUTHOR_NAME` do not. Values shorter than 6 characters, numbers and switches (`true`, `off`, `enabled`, …) are never masked.
 
 ### File limits
 
@@ -585,7 +587,7 @@ The `ntfy` format publishes the title as the `Title` header and the body as plai
 
 ## Web UI Theme
 
-`ui_theme` picks the web UI's colour palette. This is a per-instance, config-time choice — handy for telling several skipper-cd instances apart at a glance (e.g. one per host) — and is independent of the header's dark/light toggle, which stays a per-browser preference within whichever palette is configured.
+`ui_theme` picks the web UI's colour palette. This is a per-instance, config-time choice — handy for telling several skipper-cd instances apart at a glance (e.g. one per host) — and is independent of the header's dark/light toggle, which stays a per-browser preference within whichever palette is configured: it follows the operating system's light/dark setting until you pick one, and on a phone it sits in the view-options menu.
 
 ```yaml
 ui_theme: nord   # optional, default: catppuccin

@@ -154,16 +154,16 @@ shot('render the docs landing-page screenshots', async ({ page, skipper }) => {
   mkdirSync(OUT, { recursive: true });
   await page.goto(`${skipper.baseURL}/`);
 
-  // Startup deploys: one row per stack, then the first health poll lands.
+  // Startup deploys: one row per stack, then the first health poll lands (in the hidden roster).
   for (const s of STACKS) await expect(rowsFor(page, s)).toHaveCount(1);
-  await expect(page.locator('[data-testid="health-pill"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="health-pill"]').first()).toBeAttached();
   await logosResolved(page);
 
   // A single version bump — its row's diff is the focal point of the shot.
   skipper.setStackImage('immich', IMMICH_BUMP);
   expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
   await expect(rowsFor(page, 'immich')).toHaveCount(2);
-  await rowsFor(page, 'immich').first().locator('[data-testid="files-pill"]').click();
+  await rowsFor(page, 'immich').first().locator('.stack-name').click();
   await expect(page.locator('[data-testid="diff-panel"]')).toBeVisible();
 
   // A second push, held at `compose up`, so the top row stays `deploying` for the

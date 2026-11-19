@@ -1,5 +1,5 @@
 import { test, expect } from '../fixtures/test';
-import { openRowMenu } from '../fixtures/menu';
+import { openStackDetail } from '../fixtures/stack-detail';
 import type { Page } from '@playwright/test';
 
 // Maske T: Container logs (ADR-0037). See docs/dev/e2e-tests.md §4.21.
@@ -25,20 +25,20 @@ const APP_ONLY = [{ Service: 'app', State: 'running', Health: 'healthy' }];
 
 const deployRow = (page: Page, stack: string) =>
   page.locator(`[data-testid="deploy-row"][data-stack="${stack}"]`);
-// The per-stack log icon lives inside the newest row's ⋯ overflow menu (T3.13),
-// so opening a row log means: open the menu, then click its Container-logs item.
-const rowLogBtn = (page: Page, stack: string) =>
-  deployRow(page, stack).locator('[data-testid="clog-btn"]');
+// The per-stack log action lives in the head of a deploy row's detail, so
+// opening a stack's log means: open the newest row's detail, then click Logs.
+const detailLogBtn = (page: Page, stack: string) =>
+  page.locator(`[data-testid="detail-panel"][data-kind="deploy"][data-stack="${stack}"] [data-testid="clog-btn"]`);
 const openRowLog = async (page: Page, stack: string) => {
-  await openRowMenu(deployRow(page, stack));
-  await rowLogBtn(page, stack).click();
+  await deployRow(page, stack).first().locator('.stack-name').click();
+  await detailLogBtn(page, stack).click();
 };
 
-// UT1 — the row icon streams the whole stack's logs (services merged, prefixed).
+// UT1 — the detail's Logs action streams the whole stack's logs (services merged, prefixed).
 test.describe('UT1: per-stack log panel', () => {
   test.use({ startOptions: { stacks: ['web'], healthPoll: 1, initialHealth: { web: APP_ONLY } } });
 
-  test('opens a live panel from the row icon and streams the backlog', async ({ page, skipper }) => {
+  test('opens a live panel from the detail and streams the backlog', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
     await openRowLog(page, 'web');
@@ -53,8 +53,8 @@ test.describe('UT1: per-stack log panel', () => {
     // A single-service stack has nothing to filter → no filter tool.
     await expect(panel.locator('[data-clog="svcfilter"]')).toHaveCount(0);
 
-    // Clicking the same icon closes it (reopen the menu to reach it again).
-    await openRowLog(page, 'web');
+    // Clicking the same action again closes it.
+    await detailLogBtn(page, 'web').click();
     await expect(panel).toHaveCount(0);
   });
 });
@@ -66,7 +66,7 @@ test.describe('UT2: per-container log panel', () => {
   test('a service line opens its single-service log', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
-    await page.locator('[data-testid="deploy-row"][data-stack="web"] [data-testid="health-pill"]').click();
+    await openStackDetail(page, 'web', 'containers');
     const svc = page.locator('[data-testid="health-panel"] [data-testid="health-service"]').first();
     await svc.locator('[data-testid="clog-btn"]').click();
 
@@ -172,6 +172,8 @@ test.describe('UT7: per-service filter', () => {
 // request in the browser (the 429 the stream cap returns), which needs no seam
 // in the server and no waiting on the clock.
 test.describe('UT8: a refused stream', () => {
+  test.use({ startOptions: { stacks: ['web'], healthPoll: 1, initialHealth: { web: APP_ONLY } } });
+
   test('reads as closed, and the live pill stops claiming otherwise', async ({ page, skipper }) => {
     await page.route('**/api/container-logs/**', (route) =>
       route.fulfill({ status: 429, headers: { 'Retry-After': '5' }, body: 'too many streams' }),

@@ -354,7 +354,7 @@ func (d *Deployer) pullIfImagesChanged(ctx context.Context, run stackRun, compos
 // uses it for project identity (container labels) and .env loading; when
 // empty, docker compose runs from the directory containing the compose file.
 func (d *Deployer) runDockerCompose(ctx context.Context, run stackRun, args ...string) error {
-	env, err := run.resolveEnv()
+	env, err := d.resolveEnv(run)
 	if err != nil {
 		return err
 	}

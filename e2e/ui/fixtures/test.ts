@@ -1,5 +1,6 @@
 import { test as base, type Page } from '@playwright/test';
 import { Skipper, type StartOptions } from './harness';
+import { workspaces } from './tempdirs';
 
 // The `skipper` fixture starts a fresh skipper binary for each test (its own
 // origin, stub docker, and free ports) and tears it down afterwards. On failure
@@ -55,12 +56,19 @@ export const test = base.extend<{
 
   skipper: async ({ startOptions, page }, use, testInfo) => {
     const s = await Skipper.start(startOptions);
-    await use(s);
-    if (testInfo.status !== testInfo.expectedStatus) {
-      await testInfo.attach('skipper-output', { body: s.output(), contentType: 'text/plain' });
-      await attachUINotes(page, testInfo);
+    try {
+      await use(s);
+      if (testInfo.status !== testInfo.expectedStatus) {
+        await testInfo.attach('skipper-output', { body: s.output(), contentType: 'text/plain' });
+        await attachUINotes(page, testInfo);
+      }
+    } finally {
+      await s.dispose();
     }
-    await s.stop();
+    // Positive signal: the workspace is gone on pass and on fail alike.
+    if (workspaces.leaked().length > 0) {
+      throw new Error(`temp dirs leaked: ${workspaces.leaked().join(', ')}`);
+    }
   },
 });
 

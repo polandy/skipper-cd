@@ -1,79 +1,72 @@
 import { test, expect } from '../fixtures/test';
 
-// Maske I: Diff-panel commit metadata + variant-A row binding. See
+// Maske I: deploy detail commit facts + row binding. See
 // docs/dev/e2e-tests.md §4.10.
 //
 // A webhook that bumps a stack's image commits against the startup commit, so
-// the deploy's diff panel carries both a real diff and commit metadata. The
-// harness commits as author `e2e` with the message `bump <stack> to <tag>`, so
-// the rendered header is deterministic — no real docker, no real containers.
-// Behaviour-only (no snapshot; UA8 already snapshots the diff colouring).
+// the deploy's detail carries both a real diff and commit metadata. The harness
+// commits as author `e2e` with the message `bump <stack> to <tag>`, so the
+// rendered facts are deterministic — no real docker, no real containers.
+// Behaviour-only (no snapshot).
 
 const diffRow = (page: import('@playwright/test').Page) =>
   page.locator('[data-testid="deploy-row"][data-stack="web"][data-status="success"][data-has-diffs="1"]');
-const filesPill = (page: import('@playwright/test').Page) => diffRow(page).locator('[data-testid="files-pill"]');
-const diffPanel = (page: import('@playwright/test').Page) => page.locator('[data-testid="diff-panel"]');
-const diffHead = (page: import('@playwright/test').Page) => page.locator('[data-testid="diff-head"]');
+const rowOpener = (page: import('@playwright/test').Page) => diffRow(page).locator('.stack-name');
+const panel = (page: import('@playwright/test').Page) =>
+  page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
+const facts = (page: import('@playwright/test').Page) => panel(page).locator('[data-testid="detail-facts"]');
 
-// UI1 — the diff panel's commit header echoes the row (stack + status) and shows
-// the deployed commit's message, author and short SHA.
-test.describe('UI1: commit metadata header', () => {
-  test('the header echoes the row and shows the commit message + author', async ({ page, skipper }) => {
+// UI1 — the Commit fact fills in from the lazy diff fetch: the deployed
+// commit's short SHA and subject. The head names the row's stack and status.
+test.describe('UI1: commit facts', () => {
+  test('the Commit fact shows the short SHA and subject', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
     skipper.setStackImage('web', '1.26');
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
     await expect(diffRow(page)).toHaveCount(1);
 
-    await filesPill(page).click();
-    await expect(diffPanel(page)).toHaveCount(1);
+    await rowOpener(page).click();
+    await expect(panel(page).locator('[data-testid="diff-panel"]')).toHaveCount(1);
 
-    const head = diffHead(page);
-    await expect(head).toBeVisible();
-    // Row echo: the panel names its own row (stack + "Deploy diff" + status pill).
-    await expect(head.locator('.dh-who')).toHaveText('web');
-    await expect(head.locator('.dh-label')).toHaveText('Deploy diff');
-    await expect(head.locator('.dh-pill')).toContainText('success');
-    // Commit metadata: subject, author, and a 7-char short SHA.
-    await expect(head.locator('.dh-subject')).toHaveText('bump web to 1.26');
-    await expect(head.locator('.diff-meta-line')).toContainText('e2e');
-    const sha = await head.locator('.m-sha').first().innerText();
+    await expect(panel(page).locator('.dp-name')).toHaveText('web');
+    await expect(panel(page).locator('.dp-head [data-testid="status-badge"]')).toContainText('success');
+    await expect(facts(page).locator('.dp-subject')).toHaveText('bump web to 1.26');
+    const sha = await facts(page).locator('.dp-sha').first().innerText();
     expect(sha).toMatch(/^[0-9a-f]{7}$/);
   });
 });
 
-// UI2 — opening the diff panel binds it to its row (variant A): the row is marked
-// open and the panel is bound + status-tagged, both cleared when it closes.
-test.describe('UI2: variant-A row binding', () => {
-  test('the row and panel share the open/bound state and it clears on close', async ({ page, skipper }) => {
+// UI2 — opening the detail marks its row open; both clear when it closes.
+test.describe('UI2: row binding', () => {
+  test('the row is marked open while its detail shows and it clears on close', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
     skipper.setStackImage('web', '1.26');
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
     await expect(diffRow(page)).toHaveCount(1);
 
-    await filesPill(page).click();
-    const panel = diffPanel(page);
-    await expect(panel).toHaveCount(1);
-    await expect(panel).toHaveClass(/bound/);
-    await expect(panel).toHaveAttribute('data-status', 'success');
-    await expect(diffRow(page)).toHaveClass(/diff-open/);
-    // The panel is the row's direct sibling, so the shared left bar is unbroken.
+    await rowOpener(page).click();
+    await expect(panel(page)).toHaveCount(1);
+    await expect(panel(page)).toHaveAttribute('data-status', 'success');
+    await expect(diffRow(page)).toHaveClass(/audit-open/);
+    // The panel is the row's direct sibling, so the left bar is unbroken.
     const siblingTestid = await diffRow(page).evaluate(
       (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
     );
-    expect(siblingTestid).toBe('diff-panel');
+    expect(siblingTestid).toBe('detail-panel');
 
-    await filesPill(page).click();
-    await expect(panel).toHaveCount(0);
-    await expect(diffRow(page)).not.toHaveClass(/diff-open/);
+    // The head's close button closes it like a second click would.
+    await panel(page).locator('[data-testid="detail-close"]').click();
+    await expect(panel(page)).toHaveCount(0);
+    await expect(diffRow(page)).not.toHaveClass(/audit-open/);
   });
 });
 
-// UI3 — a deploy spanning several commits shows the newest as the headline and an
-// `N commits` pill that toggles the full per-commit list.
+// UI3 — a deploy spanning several commits shows the newest in its Commit fact
+// and a Commits tab listing every commit.
 test.describe('UI3: multi-commit range', () => {
-  test('the pill toggles the commit list; the newest commit heads the panel', async ({ page, skipper }) => {
+  test('a Commits tab lists the range; the newest commit heads the facts', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
     // Two commits land before a single deploy: the range carries both.
@@ -82,19 +75,15 @@ test.describe('UI3: multi-commit range', () => {
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
     await expect(diffRow(page)).toHaveCount(1);
 
-    await filesPill(page).click();
-    const head = diffHead(page);
-    await expect(head).toBeVisible();
-    // Newest commit heads the panel.
-    await expect(head.locator('.dh-subject')).toHaveText('bump web to 1.27');
+    await rowOpener(page).click();
+    // Newest commit heads the Commit fact.
+    await expect(facts(page).locator('.dp-subject')).toHaveText('bump web to 1.27');
 
-    const pill = head.locator('[data-testid="commits-pill"]');
-    await expect(pill).toContainText('2 commits');
-
-    // The list is collapsed until the pill is clicked, then lists both commits.
-    const list = head.locator('[data-testid="diff-commit-list"]');
-    await expect(list).toBeHidden();
-    await pill.click();
+    // A Commits tab appears only for a multi-commit range, and lists both.
+    const tab = panel(page).locator('[data-testid="detail-tab"][data-tab="commits"]');
+    await expect(tab).toContainText('2');
+    await tab.click();
+    const list = panel(page).locator('[data-testid="diff-commit-list"]');
     await expect(list).toBeVisible();
     await expect(list.locator('li')).toHaveCount(2);
     await expect(list).toContainText('bump web to 1.27');

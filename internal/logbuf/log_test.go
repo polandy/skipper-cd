@@ -1,6 +1,7 @@
 package logbuf
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -120,26 +121,29 @@ func TestLog_UnsubscribeStopsDelivery(t *testing.T) {
 	}
 }
 
-func TestLog_SlowSubscriberDropsInsteadOfBlocking(t *testing.T) {
+// A subscriber a full buffer behind is closed instead of silently missing
+// entries; Append never blocks on it, and the buffered entries drain first.
+func TestLog_ClosesLaggingSubscriber(t *testing.T) {
 	l := New(600)
 	ch, unsub := l.Subscribe()
 	defer unsub()
 
-	// Overfill the subscriber buffer (size 256); Append must not block.
-	appendN(l, 300)
+	appendN(l, subscriberBuffer+1)
 
-	count := 0
-	for {
-		select {
-		case <-ch:
-			count++
-		default:
-			if count != 256 {
-				t.Errorf("expected 256 buffered entries, got %d", count)
-			}
-			return
+	for i := range subscriberBuffer {
+		if _, ok := <-ch; !ok {
+			t.Fatalf("channel closed after %d entries, want %d buffered first", i, subscriberBuffer)
 		}
 	}
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Fatal("channel delivered an entry beyond its buffer, want closed")
+		}
+	default:
+		t.Fatal("lagging subscriber's channel is still open, want closed")
+	}
+	unsub() // must not panic after the close
 }
 
 func TestLog_ChildLineRecordsCmdAndStreamAttrs(t *testing.T) {
@@ -321,5 +325,20 @@ func TestLog_RunSummaryWithOutcomeIsPinned(t *testing.T) {
 	}
 	if !found {
 		t.Error("a run summary carrying a rollback must survive eviction")
+	}
+}
+
+func TestLog_RedactsMessageAndAttrs(t *testing.T) {
+	l := New(10)
+	l.RedactWith(func(s string) string { return strings.ReplaceAll(s, "hunter2", "***") })
+	l.Append(time.Now(), "ERROR", "login hunter2 failed", map[string]string{"err": "bad hunter2"})
+	l.ChildLine("docker", "stderr", "echo hunter2", "web")
+
+	got := l.Entries()
+	if got[0].Msg != "login *** failed" || got[0].Attrs["err"] != "bad ***" {
+		t.Errorf("slog entry not redacted: %+v", got[0])
+	}
+	if got[1].Msg != "echo ***" || got[1].Attrs["stack"] != "web" {
+		t.Errorf("child line not redacted: %+v", got[1])
 	}
 }

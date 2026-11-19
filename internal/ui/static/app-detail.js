@@ -9,13 +9,10 @@
 // A pane is registered once per DETAIL_TAB: openClass marks the row open (it
 // drives the bound status bar), build(row, slot, opts) fills the pane through
 // slot.set(nodes) — now or after a fetch, while slot.live() — and the optional
-// onClose(row) undoes what build put on the row. The shared panes (health,
-// history, hooks) are registered here; a view registers its own.
+// onClose(row) undoes what build put on the row. Each view registers its own.
 //
 // Loads after app-panels.js and before every view. Attached as App.detail.
 App.detail = (function () {
-  const { createHealthPanel, createAuditPanel, createHooksPanel } = App.panels;
-
   const panes = {};
   // view → { sel, row, opts, nodes }; nodes are the pane's elements after row.
   const open = {};
@@ -51,6 +48,7 @@ App.detail = (function () {
     open[view] = entry;
     const pane = panes[tab];
     row.classList.add(pane.openClass);
+    setExpanded(row, true);
     pane.build(row, slotFor(view, entry), entry.opts);
   }
 
@@ -81,23 +79,69 @@ App.detail = (function () {
     else show(view, row, tab, opts);
   }
 
-  // close closes view's open detail, if any.
+  // close closes view's open detail, if any. Focus inside the removed pane
+  // goes back to the row's toggle rather than being lost to the page.
   function close(view) {
     const e = open[view];
     if (!e) return;
     delete open[view];
+    const focusWasInPane = e.nodes.some(function (n) {
+      return n.contains(document.activeElement);
+    });
     e.nodes.forEach(function (n) {
       n.remove();
     });
     const pane = panes[e.sel.tab];
     e.row.classList.remove(pane.openClass);
+    setExpanded(e.row, false);
     if (pane.onClose) pane.onClose(e.row);
+    const toggle = e.row.querySelector('.row-toggle');
+    if (focusWasInPane && toggle) toggle.focus();
+  }
+
+  function setExpanded(row, expanded) {
+    const toggle = row.querySelector('.row-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', String(expanded));
+  }
+
+  // rowKeydown is a table view's keyboard path into its rows' detail: Enter or
+  // Space on a row's toggle acts as a click on it, and Escape from inside the
+  // open detail (or on its toggle) closes it. The container-logs panel keeps
+  // its own Escape.
+  function rowKeydown(view, e) {
+    if (e.defaultPrevented) return;
+    const toggle = e.target.closest('.row-toggle');
+    if (toggle && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      toggle.click();
+      return;
+    }
+    if (e.key !== 'Escape' || e.target.closest('.clog-panel')) return;
+    const entry = entryFor(view);
+    if (!entry) return;
+    const inside =
+      (toggle && entry.row.contains(toggle)) ||
+      entry.nodes.some(function (n) {
+        return n.contains(e.target);
+      });
+    if (!inside) return;
+    e.preventDefault();
+    close(view);
   }
 
   // closeIf closes view's detail when it is open on row (and on tab, when
   // given) — for a row about to leave, or an affordance that went away.
   function closeIf(view, row, tab) {
     if (isOpen(view, row, tab)) close(view);
+  }
+
+  // rebind moves view's detail, when it is open on from, onto to and rebuilds
+  // it there — a row a repeat supersedes, or one that settled in place.
+  function rebind(view, from, to) {
+    const e = entryFor(view);
+    if (!e || e.row !== from) return;
+    close(view);
+    show(view, to, e.sel.tab, e.opts);
   }
 
   // reapply re-opens view's selection on its row among rows, after the view
@@ -112,28 +156,32 @@ App.detail = (function () {
     if (row) show(view, row, e.sel.tab, e.opts);
   }
 
-  registerPane(DETAIL_TAB.health, {
-    openClass: 'health-open',
-    build: function (row, slot, opts) {
-      row.dataset.health = opts.health || 'unknown'; // tints the row (variant A)
-      slot.set(createHealthPanel(row.dataset.stack));
-    },
-    onClose: function (row) {
-      row.removeAttribute('data-health');
-    },
-  });
-  registerPane(DETAIL_TAB.history, {
-    openClass: 'audit-open',
-    build: function (row, slot) {
-      slot.set(createAuditPanel(row.dataset.stack));
-    },
-  });
-  registerPane(DETAIL_TAB.hooks, {
-    openClass: 'hooks-open',
-    build: function (row, slot) {
-      slot.set(createHooksPanel(row.dataset.stack));
-    },
-  });
+  // tabKeydown moves a detail panel's tab selection by keyboard (tabKeyIndex):
+  // it clicks the tab the key lands on — the view's own click path re-renders
+  // the strip — then focuses that tab in the new strip.
+  function tabKeydown(panel, e) {
+    const tab = e.target.closest('.dp-tab');
+    if (!tab) return;
+    const strip = Array.prototype.slice.call(panel.querySelectorAll('.dp-tab'));
+    const next = tabKeyIndex(e.key, strip.indexOf(tab), strip.length);
+    if (next < 0) return;
+    e.preventDefault();
+    const id = strip[next].dataset.tab;
+    strip[next].click();
+    const landed = panel.querySelector('.dp-tab[data-tab="' + id + '"]');
+    if (landed) landed.focus();
+  }
 
-  return { registerPane, isOpen, show, toggle, close, closeIf, reapply };
+  return {
+    registerPane,
+    isOpen,
+    show,
+    toggle,
+    close,
+    closeIf,
+    rebind,
+    reapply,
+    tabKeydown,
+    rowKeydown,
+  };
 })();

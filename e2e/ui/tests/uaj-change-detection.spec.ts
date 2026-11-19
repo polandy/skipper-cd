@@ -6,7 +6,7 @@ import type { Page } from '@playwright/test';
 // skipper redeploys a stack only when one of its hashed inputs changes, so the
 // most common operator question is not "what happened" but "why did nothing
 // happen". Every other surface leaves that to state.yaml on the host; the
-// roster's third expand panel answers it in place — which inputs are watched,
+// Triggers tab of a roster row's detail panel answers it in place — which inputs are watched,
 // and the commit nothing has changed since. Behaviour-only (no snapshot): the
 // panel is structural text, and the lead-line phrasing is exhaustively covered
 // by the app-helpers unit layer (`watchedSummary`).
@@ -30,7 +30,8 @@ test.use({
 });
 
 // UAJ1 — a deployed stack names its watched inputs and the commit nothing has
-// changed since, in a panel that closes the expand card below the history.
+// changed since, on the Triggers tab of the stack's detail panel. Without
+// health data there is no Containers tab, so a clean stack opens on Triggers.
 test('UAJ1: a deployed stack shows what is watched and since which commit', async ({
   page,
   skipper,
@@ -39,15 +40,12 @@ test('UAJ1: a deployed stack shows what is watched and since which commit', asyn
   await stacksBtn(page).click();
 
   await row(page, 'api').click();
-  await expect(watched(page)).toHaveCount(1);
+  const panel = page.locator('[data-testid="detail-panel"][data-stack="api"]');
+  await expect(panel).toHaveAttribute('data-tab', 'triggers');
+  await expect(panel.locator('[data-testid="watched-panel"]')).toHaveCount(1);
   await expect(watched(page)).toHaveAttribute('data-watched-for', 'api');
-
-  // The panel is the last card of the stack: history above it, nothing below.
-  const audit = page.locator('[data-testid="audit-panel"]');
-  await expect(audit).toHaveCount(1);
-  const auditBox = (await audit.boundingBox())!;
-  const watchedBox = (await watched(page).boundingBox())!;
-  expect(watchedBox.y).toBeGreaterThan(auditBox.y);
+  // One tab at a time: the history is behind its own tab, not stacked above.
+  await expect(page.locator('[data-testid="audit-panel"]')).toHaveCount(0);
 
   // The stack deployed cleanly at startup — the first deploy has no prior
   // commit to diff against, so the reference point is the deploy itself.
@@ -67,7 +65,7 @@ test('UAJ1: a deployed stack shows what is watched and since which commit', asyn
     expect(text).not.toContain('skipper.yaml');
   }
 
-  // Closing the row takes the panel with it — no card left behind.
+  // Closing the row takes the panel with it — nothing left behind.
   await row(page, 'api').click();
   await expect(watched(page)).toHaveCount(0);
 });

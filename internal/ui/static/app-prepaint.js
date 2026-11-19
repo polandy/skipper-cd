@@ -1,7 +1,8 @@
 // Pre-paint: the configured theme's dark variant is the stylesheet default
 // (baked server-side into data-theme/data-server-theme), so only a saved
-// per-browser theme override and/or an explicit light-mode preference must be
-// applied before first paint to avoid a flash. Loaded as a blocking <script>
+// per-browser theme override and/or light mode must be applied before first
+// paint to avoid a flash. Light mode is a saved colorScheme, or the OS
+// preference while none is saved. Loaded as a blocking <script>
 // in <head> — its own file rather than inline so the CSP can forbid inline
 // script (ADR-0067).
 //
@@ -18,7 +19,9 @@
     const override = localStorage.getItem('themeOverride');
     if (override) el.setAttribute('data-theme', override);
   }
-  if (localStorage.getItem('colorScheme') === 'light') el.classList.add('light');
+  const scheme = localStorage.getItem('colorScheme');
+  const osLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  if (scheme === 'light' || (!scheme && osLight)) el.classList.add('light');
   // First-run header tour (T3.15): the glyph-only header teaches its controls
   // once via captions + a banner, then tucks them away for good. Applying the
   // "seen" class here — before paint — keeps returning browsers from flashing

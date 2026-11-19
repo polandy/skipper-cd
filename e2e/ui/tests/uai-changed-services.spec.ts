@@ -5,8 +5,8 @@ import type { Page, Locator } from '@playwright/test';
 // §4.36.
 //
 // A deploy carries `image_changes` (service, old, new) on its SSE payload; the
-// row surfaces which service updated — and to what — inline after the stack name
-// (its own line on a phone), without opening the diff. A webhook that rewrites a
+// row's Change column surfaces which service updated — and to what — as one
+// chip plus "+N" (its own line on a phone), without opening the diff. A webhook that rewrites a
 // stack's compose commits against the startup commit, so the deploy runs for
 // real (stub docker) and the delta renders from the actual image_changes.
 
@@ -42,7 +42,7 @@ test.describe('UAI1: tag bump', () => {
     // carries the full old→new reference (progressive disclosure).
     await expect(chip).toHaveAttribute('aria-label', 'app updated from 1.25 to 1.26');
     await expect(chip).toHaveAttribute('title', 'app: nginx:1.25 → nginx:1.26');
-    // It lives in the row's own Version column — right of the Stack cell, and
+    // It lives in the row's own Change column — right of the Stack cell, and
     // aligned with the column header, which is what makes versions line up.
     await expect(row.locator('.col-version')).toContainText('1.26');
     const nameBox = await row.locator('.stack-name').boundingBox();
@@ -50,7 +50,7 @@ test.describe('UAI1: tag bump', () => {
     const headBox = await page.locator('.event-list-header .col-version').boundingBox();
     expect(nameBox && deltaBox && headBox).toBeTruthy();
     expect(deltaBox!.x).toBeGreaterThan(nameBox!.x + nameBox!.width); // its own column
-    expect(Math.abs(deltaBox!.x - headBox!.x)).toBeLessThan(4); // flush with the Version header
+    expect(Math.abs(deltaBox!.x - headBox!.x)).toBeLessThan(4); // flush with the Change header
   });
 });
 
@@ -95,7 +95,7 @@ test.describe('UAI6: view-options toggle', () => {
     const header = page.locator('.event-list-header .col-version');
     await expect(header).toBeVisible();
     // Rows sit flush on one sheet, so the hairline between them is structural:
-    // it is what says where a row ends, with or without the Version column.
+    // it is what says where a row ends, with or without the Change column.
     const separated = () =>
       page
         .locator('[data-testid="deploy-row"]')
@@ -104,7 +104,7 @@ test.describe('UAI6: view-options toggle', () => {
     expect(await separated()).toBe(true);
 
     // Flip it off from the popover: the whole column collapses — no chips left
-    // and the Version header goes with it (an empty column would keep its
+    // and the Change header goes with it (an empty column would keep its
     // width) — while the row hairlines stay, since they are the sheet's, not
     // the column's.
     await openDeploysMenu(page);
@@ -131,10 +131,10 @@ test.describe('UAI6: view-options toggle', () => {
   });
 });
 
-// UAI3 — a many-service deploy lists every changed service, one chip per line: the
-// column is the answer to "what moved", so nothing is hidden behind a count.
-test.describe('UAI3: every changed service listed', () => {
-  test('four changed services render four chips, stacked one per line', async ({ page, skipper }) => {
+// UAI3 — a many-service deploy keeps the row to one chip plus a muted "+N",
+// like the Stacks Version column; the row's detail lists every changed service.
+test.describe('UAI3: one chip plus a count', () => {
+  test('four changed services render one chip and +3; the detail lists all four', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
     // app: tag bump; cache/queue/proxy: first image — four image changes.
@@ -148,15 +148,13 @@ test.describe('UAI3: every changed service listed', () => {
 
     const d = delta(page, 'api');
     await expect(d).toBeVisible();
-    const chips = d.locator('.tag-delta');
-    await expect(chips).toHaveCount(4);
-    await expect(chips.locator('.td-svc')).toHaveText(['app', 'cache', 'proxy', 'queue']);
-    // Stacked: each chip sits below the previous one, sharing a left edge.
-    const boxes = await chips.evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ x: r.x, y: r.y })));
-    for (let i = 1; i < boxes.length; i++) {
-      expect(boxes[i].y).toBeGreaterThan(boxes[i - 1].y);
-      expect(Math.abs(boxes[i].x - boxes[0].x)).toBeLessThan(2);
-    }
+    await expect(d.locator('.tag-delta')).toHaveCount(1);
+    await expect(d.locator('.td-svc')).toHaveText('app');
+    await expect(d.locator('[data-testid="change-more"]')).toHaveText('+3');
+
+    await successRow(page, 'api').locator('.stack-name').click();
+    const facts = page.locator('[data-testid="detail-panel"][data-kind="deploy"] [data-testid="detail-facts"]');
+    await expect(facts.locator('.tag-delta .td-svc')).toHaveText(['app', 'cache', 'proxy', 'queue']);
   });
 });
 
@@ -184,11 +182,11 @@ test.describe('UAI4: digest-only rebuild', () => {
 });
 
 // UAI5 — a phone has no columns to spare, so the row is two lines: name and
-// status on the first, time · version on the second. The version rides as high
-// as the width allows (Duration and Files are dropped for it, as on a tablet)
-// without ever squeezing the name, the row's identity.
+// time on the first, change and result on the second, the right-hand cells
+// right-aligned. The When cell drops its duration and SHA (both stay in the
+// detail) without ever squeezing the name, the row's identity.
 test.describe('UAI5: responsive', () => {
-  test('the Version cell shares the phone row\'s second line with the time', async ({ page, skipper }) => {
+  test('the Change cell opens the phone row\'s second line, beside the result', async ({ page, skipper }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto(`${skipper.baseURL}/`);
 
@@ -201,7 +199,7 @@ test.describe('UAI5: responsive', () => {
     // One measurement pass over the settled row: reading each box through its
     // own locator re-resolves `.first()` every time, and a row prepended between
     // two reads would have them describe different rows.
-    const { nameBox, timeBox, deltaBox } = await row.evaluate((r) => {
+    const { nameBox, timeBox, deltaBox, statusBox } = await row.evaluate((r) => {
       const box = (sel: string) => {
         const el = r.querySelector(sel) as HTMLElement;
         const b = el.getBoundingClientRect();
@@ -211,89 +209,61 @@ test.describe('UAI5: responsive', () => {
         nameBox: box('.stack-name'),
         timeBox: box('[data-testid="time-cell"]'),
         deltaBox: box('[data-testid="svc-delta"]'),
+        statusBox: box('.status-cell'),
       };
     });
-    // Second line: below the name, beside the time rather than under it.
+    // First line: name, then the time on the right.
+    expect(Math.abs(timeBox.y - nameBox.y)).toBeLessThan(6);
+    expect(timeBox.x).toBeGreaterThan(nameBox.x + nameBox.width - 2);
+    // Second line: the change below the name, the result to its right.
     expect(deltaBox.y).toBeGreaterThan(nameBox.y + nameBox.height - 2);
-    expect(Math.abs(deltaBox.y - timeBox.y)).toBeLessThan(6);
-    expect(deltaBox.x).toBeGreaterThan(timeBox.x + timeBox.width - 2);
-    // Duration and Files give up their space for it (both stay in the panel).
+    expect(statusBox.y).toBeGreaterThan(timeBox.y + timeBox.height - 2);
+    expect(statusBox.x).toBeGreaterThan(deltaBox.x + deltaBox.width - 2);
     await expect(row.locator('.cell-duration')).toBeHidden();
-    await expect(row.locator('.col-files')).toBeHidden();
     // The name still renders in full (nothing was squeezed to make room).
     const clipped = await row.locator('.stack-name').evaluate((el) => el.scrollWidth > el.clientWidth + 1);
     expect(clipped).toBe(false);
   });
 });
 
-// UAI7 — a tablet has columns, just not six of them. Squeezing all six left the
-// Version track ~80px, which wrapped every chip over three lines and let the
-// stack cell print straight over them; so Duration and Files give up their
-// tracks instead and Version keeps its place on the first line, in front of the
-// status, where a column of versions can still be scanned down the page.
+// UAI7 — a tablet keeps the four columns on one line: the When cell gives up
+// its duration so Stack and Change keep their width, and the change still reads
+// between the result and the time, where a column of changes can be scanned.
 test.describe('UAI7: tablet', () => {
-  // Seeded health gives the status cell its second line, the widest state the
-  // row reaches — the layout has to hold with it.
-  test.use({
-    startOptions: {
-      stacks: ['web', 'api', 'worker', 'database'],
-      healthPoll: 1,
-      initialHealth: { api: [{ Service: 'app', State: 'running', Health: 'healthy' }] },
-    },
-  });
-
-  test('Version keeps the first line while Duration and Files give up theirs', async ({ page, skipper }) => {
+  test('Change keeps the first line while When drops its duration', async ({ page, skipper }) => {
     await page.setViewportSize({ width: 744, height: 1000 }); // iPad-mini portrait
     await page.goto(`${skipper.baseURL}/`);
 
-    // Two services so the column's own stacking is observable.
     skipper.setStackServices('api', { app: 'nginx:1.26', cache: 'redis:7' });
     expect(await skipper.sendWebhook('refs/heads/main')).toBe(202);
 
     const row = successRow(page, 'api');
     const d = delta(page, 'api');
     await expect(d).toBeVisible();
+    await expect(d.locator('[data-testid="change-more"]')).toHaveText('+1');
 
-    // Version stays a real column, header included; Duration and Files are the
-    // two that go — from the rows and from the header, so the four that remain
-    // stay in lockstep.
     await expect(page.locator('.event-list-header .col-version')).toBeVisible();
-    await expect(page.locator('.event-list-header .eh-dur')).toBeHidden();
-    await expect(page.locator('.event-list-header .eh-files')).toBeHidden();
     await expect(row.locator('.cell-duration')).toBeHidden();
-    await expect(row.locator('.col-files')).toBeHidden();
 
-    // On the first line, between the name and the status. One measurement pass
-    // over the settled row: reading each box through its own locator re-resolves
-    // `.first()` every time, and a row prepended between two reads would have
-    // them describe different rows.
-    const chips = d.locator('.tag-delta');
-    await expect(chips).toHaveCount(2);
-    const { nameBox, stackBox, statusBox, deltaBox, chipBoxes } = await row.evaluate((r) => {
-      const rect = (el: Element) => {
-        const b = el.getBoundingClientRect();
+    // One measurement pass over the settled row (see UAI5).
+    const { nameBox, statusBox, deltaBox, timeBox } = await row.evaluate((r) => {
+      const box = (sel: string) => {
+        const b = (r.querySelector(sel) as HTMLElement).getBoundingClientRect();
         return { x: b.x, y: b.y, width: b.width, height: b.height };
       };
-      const box = (sel: string) => rect(r.querySelector(sel) as HTMLElement);
       return {
         nameBox: box('.stack-name'),
-        stackBox: box('.cell-stack'),
         statusBox: box('.status-cell'),
         deltaBox: box('[data-testid="svc-delta"]'),
-        chipBoxes: [...r.querySelectorAll('.tag-delta')].map(rect),
+        timeBox: box('[data-testid="time-cell"]'),
       };
     });
-    expect(Math.abs(deltaBox.y - nameBox.y)).toBeLessThan(6);
-    expect(deltaBox.x).toBeGreaterThan(stackBox.x + stackBox.width - 2);
-    expect(deltaBox.x + deltaBox.width).toBeLessThanOrEqual(statusBox.x + 1);
+    // One line, in column order: name · result · change · time.
+    for (const b of [statusBox, deltaBox, timeBox]) expect(Math.abs(b.y - nameBox.y)).toBeLessThan(8);
+    expect(deltaBox.x).toBeGreaterThan(statusBox.x + statusBox.width - 2);
+    expect(deltaBox.x + deltaBox.width).toBeLessThanOrEqual(timeBox.x + 1);
 
-    // Still a column: the chips stack one per line, as they do on a desktop.
-    expect(chipBoxes[1].y).toBeGreaterThan(chipBoxes[0].y);
-    expect(Math.abs(chipBoxes[1].x - chipBoxes[0].x)).toBeLessThan(2);
-
-    // The name keeps its floor rather than being squeezed away by the cell's
-    // own affordances — the row must never render an icon cluster with no stack
-    // behind it.
+    // The name keeps its floor rather than being squeezed away.
     await expect(row.locator('.stack-name')).toHaveText('api');
     expect(nameBox.width).toBeGreaterThan(0);
   });

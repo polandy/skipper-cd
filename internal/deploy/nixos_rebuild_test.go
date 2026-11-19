@@ -490,3 +490,31 @@ func TestDeployAllStacks_UnhashableNixFilesFailsInsteadOfSkipping(t *testing.T) 
 		t.Error("no rebuild must be dispatched when the nix files could not be hashed")
 	}
 }
+
+func TestDeployAllStacks_PassesNixOSRebuildTimeoutToTheUnit(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "flake.nix"), "{ }")
+
+	runner := &recordingRunner{}
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir()})
+	enabled := true
+	cfg := &config.Config{
+		RepoURL:       "ssh://git@example.com/repo.git",
+		StacksBaseDir: filepath.Join(baseDir, "modules"),
+		NixOSRebuild: &config.NixOSRebuild{
+			Enabled: &enabled, Flake: ".#host-a", ChangeDetection: config.NixOSChangeDetectionFiles, TimeoutSeconds: 1200,
+		},
+	}
+
+	d.DeployAllStacks(context.Background(), cfg)
+
+	for _, c := range runner.calls {
+		if c.name == "systemd-run" && slices.Contains(c.args, "nixos-rebuild") {
+			if !slices.Contains(c.args, "--property=RuntimeMaxSec=1200") {
+				t.Errorf("expected the configured timeout as RuntimeMaxSec, got %v", c.args)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected a nixos-rebuild unit to start, got calls=%v", runner.calls)
+}

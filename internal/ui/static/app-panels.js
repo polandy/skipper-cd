@@ -2,24 +2,17 @@
 // (docs/dev/ui-design-concept.md, "one look and feel across every view"): the
 // bound row panels — diff, files, heal, deploy history (ADR-0033), containers/
 // health (ADR-0027/0031), deploy hooks (ADR-0038), watched files — plus the
-// row-cell affordances that open them: the ⋯ overflow menu, the app-link
-// popover, the container-logs and hooks buttons, and the stack icon. Cut out of
-// the app script by view (ADR-0035 amendment) and attached as App.panels.
+// row-cell affordances that open them: the app-link popover and the stack
+// icon. Cut out of the app script by view (ADR-0035 amendment) and attached as App.panels.
 //
 // Loads after app-state.js and before every view. Reads only the store and the
 // per-host resolvers; a view passes in the row or cell it wants a panel on.
-// The bootstrap calls init() at the spot the popover/menu/fold listeners used to
+// The bootstrap calls init() at the spot the popover/fold listeners used to
 // register, so document-level listener order is unchanged.
 App.panels = (function () {
   const S = App.state;
-  const {
-    healthMapFor,
-    healthwatchMapFor,
-    appLinksMapFor,
-    repoWebURLFor,
-    updatesFor,
-    stackUpdatesFor,
-  } = App.resolve;
+  const { healthMapFor, healthwatchMapFor, repoWebURLFor, updatesFor, stackUpdatesFor } =
+    App.resolve;
 
   // The currently open app-link popover's wrapping element (multi-host case),
   // or null. One open at a time; a stale reference (its row was replaced by a
@@ -28,12 +21,6 @@ App.panels = (function () {
 
   const CHECK_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
-
-  // linkCell resolves a stack's discovered app-link hostnames on a host and
-  // renders the cell (linkCellHTML in app-render.js owns the markup).
-  function linkCell(stack, host) {
-    return linkCellHTML(appLinksMapFor(host)[stack]);
-  }
 
   // toggleAppLinkPopover opens wrap's popover, closing whichever was open
   // before (including wrap itself, so a second click closes it again).
@@ -50,137 +37,19 @@ App.panels = (function () {
     openLinkWrap = null;
   }
 
-  // ── Row overflow menu (⋯) — T3.13 ──
-  // The newest deploy row folds its secondary actions (deploy history, container
-  // logs, deploy hooks) behind one ⋯ button, so the row rests at identity +
-  // status + the jump action instead of a cluster of look-alike glyphs. Same
-  // one-open-at-a-time behaviour as the app-link popover; the action buttons
-  // inside keep their own classes, testids and click handlers — they are only
-  // relocated, so nothing about opening the panels changes.
-  const MORE_ICON =
-    '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>';
-  let openMoreWrap = null;
-
-  // ensureRowMore returns the row's ⋯ wrapper, creating it (button + empty
-  // popover) on first use. The action buttons are appended into its .more-pop.
-  function ensureRowMore(cell, stack) {
-    let wrap = cell.querySelector('.row-more');
-    if (!wrap) {
-      wrap = document.createElement('span');
-      wrap.className = 'row-more';
-      wrap.innerHTML =
-        '<button class="more-btn" type="button" data-testid="more-btn" aria-haspopup="true" aria-expanded="false"' +
-        ' title="More actions" aria-label="' +
-        escapeAttr('more actions for ' + stack) +
-        '">' +
-        MORE_ICON +
-        '</button>' +
-        '<div class="more-pop" data-testid="more-pop"></div>';
-      cell.appendChild(wrap);
-    }
-    return wrap;
-  }
-
-  // moreMenuItem turns a relocated icon button into a labelled full-width menu
-  // row: the icon keeps its meaning, the text names the action (so the row no
-  // longer relies on look-alike glyphs), and any trailing count (hooks) stays put.
-  function moreMenuItem(btn, label) {
-    btn.classList.add('more-item');
-    btn.removeAttribute('data-taptip'); // the visible label replaces the tap-tip
-    const lbl = document.createElement('span');
-    lbl.className = 'mi-label';
-    lbl.textContent = label;
-    const count = btn.querySelector('.hk-count');
-    if (count) btn.insertBefore(lbl, count);
-    else btn.appendChild(lbl);
-    return btn;
-  }
-
-  // Keep the popover on-screen: it opens left-aligned under the ⋯, but flips to
-  // right-aligned when that would spill past the viewport edge — the portrait-
-  // phone case, where the stack cell sits close to the right edge.
-  function positionMorePop(wrap) {
-    const pop = wrap.querySelector('.more-pop');
-    pop.classList.remove('align-right');
-    const r = wrap.getBoundingClientRect();
-    if (r.left + pop.offsetWidth > window.innerWidth - 8) pop.classList.add('align-right');
-  }
-  function toggleMoreMenu(wrap) {
-    const wasOpen = wrap === openMoreWrap;
-    closeMoreMenu();
-    if (!wasOpen) {
-      wrap.classList.add('open');
-      const btn = wrap.querySelector('.more-btn');
-      if (btn) btn.setAttribute('aria-expanded', 'true');
-      positionMorePop(wrap); // measured after .open makes the popover laid-out
-      openMoreWrap = wrap;
-    }
-  }
-  function closeMoreMenu() {
-    if (openMoreWrap) {
-      openMoreWrap.classList.remove('open');
-      const btn = openMoreWrap.querySelector('.more-btn');
-      if (btn) btn.setAttribute('aria-expanded', 'false');
-    }
-    openMoreWrap = null;
-  }
-
-  // closeMoreMenuIf closes the ⋯ menu only if wrap is the one that is open — a
-  // row losing its menu asks this rather than comparing the module's state.
-  function closeMoreMenuIf(wrap) {
-    if (openMoreWrap === wrap) closeMoreMenu();
-  }
-
-  // createHealPanel wraps the healed row's detail body in its element, bound to
-  // the row (variant A) so it shares the teal status bar.
-  function createHealPanel(drift, meta) {
-    const el = document.createElement('div');
-    el.className = 'heal-panel';
-    el.dataset.testid = 'heal-panel';
-    if (meta) {
-      el.classList.add('bound');
-      el.dataset.status = meta.status;
-    }
-    el.innerHTML = healPanelHTML(drift);
-    return el;
-  }
-
-  function createFilesPanel(files, meta) {
-    const el = document.createElement('div');
-    el.className = 'files-list';
-    el.dataset.testid = 'files-panel';
-    // Bound to its row (variant A) when opened from a deploy row, so it carries
-    // the same status left bar as the diff panel — keeps the bar continuous when
-    // an error detail is stacked below it. Unbound in the log view (no meta).
-    if (meta) {
-      el.classList.add('bound');
-      el.dataset.status = meta.status;
-    }
-    el.innerHTML = filesPanelHTML(files, meta && meta.fileChanges);
-    return el;
-  }
-
-  // renderDiffPanel wraps the diff body in its element. meta (optional) carries
-  // the deploy row's stack + status: when set, the panel binds to its row
-  // (variant A — shared status bar/tint). Opened from a log line, meta is
-  // absent and the panel stays unbound.
-  function renderDiffPanel(diffs, commits, meta) {
+  // renderDiffPanel wraps a log line's diff body in its element; the log
+  // view shows only the local repo's deploys.
+  function renderDiffPanel(diffs, commits) {
     const el = document.createElement('div');
     el.className = 'diff-panel';
     el.dataset.testid = 'diff-panel';
-    if (meta && meta.status) {
-      el.classList.add('bound');
-      el.dataset.status = meta.status;
-    }
-    // The diff panel only ever shows the local repo's commits — a peer's diff
-    // arrives without commit metadata — so the local forge base is right here.
-    el.innerHTML = diffPanelHTML(diffs, commits, meta, S.repoWebURL);
+    el.innerHTML = diffPanelHTML(diffs, commits, null, S.repoWebURL);
     return el;
   }
 
   // createLoadError builds the shared amber "couldn't load" line (T4.16) that
   // the lazy detail fetches (deploy history, diff, peer diff) show when a fetch
-  // fails or answers 5xx. It is deliberately NOT the red .error-detail: the
+  // fails or answers 5xx. It is deliberately not red: the
   // deploy itself is fine — only the panel fetch failed — and it is distinct
   // from the muted genuine-empty line. onRetry runs when the user clicks Retry;
   // the caller re-runs its fetch and replaces this element with the result (or a
@@ -239,14 +108,6 @@ App.panels = (function () {
       });
   }
 
-  // clogButton is the DOM-node form of clogBtnHTML (app-render.js) for the
-  // deploy row's action cell.
-  function clogButton(stack, service) {
-    const tmp = document.createElement('template');
-    tmp.innerHTML = clogBtnHTML(stack, service);
-    return tmp.content.firstElementChild;
-  }
-
   // ─── Deploy hooks (ADR-0038) ───
 
   function hooksFor(stack) {
@@ -255,14 +116,10 @@ App.panels = (function () {
     });
     return e && e.hooks ? e.hooks : null;
   }
-  function hooksBadgeButton(stack, hooks) {
-    const tmp = document.createElement('template');
-    tmp.innerHTML = hooksBadgeHTML(stack, hooks);
-    return tmp.content.firstElementChild;
-  }
   // Bound panel (variant A) listing the configured commands, from the snapshot.
-  function createHooksPanel(stack) {
-    const hooks = hooksFor(stack) || {};
+  // hooks is optional: a peer's panel passes the peer's roster entry hooks.
+  function createHooksPanel(stack, hooks) {
+    hooks = hooks || hooksFor(stack) || {};
     const group = function (title, cmds) {
       if (!cmds || !cmds.length) return '';
       const lines = cmds
@@ -346,7 +203,9 @@ App.panels = (function () {
   // createAuditPanel returns the panel immediately with a loading line and fills
   // it once the fetch resolves — the same lazy pattern the diff panel uses. The
   // panel is removed-if-closed guard keeps a slow fetch from resurrecting it.
-  function createAuditPanel(stack) {
+  // A peer's panel passes peer ({records, base}): the fanned-in records, which
+  // need no fetch, and the peer's own forge for the commit links.
+  function createAuditPanel(stack, peer) {
     const el = document.createElement('div');
     el.className = 'audit-panel';
     el.dataset.testid = 'audit-panel';
@@ -355,6 +214,10 @@ App.panels = (function () {
     el.innerHTML =
       `<div class="ap-head"><span class="ap-count"></span></div>` +
       `<div class="ap-empty">Loading history…</div>`;
+    if (peer) {
+      renderAuditRecords(el, stack, peer.records, false, peer.base);
+      return el;
+    }
     fetchAudit(stack, function (records, err) {
       if (!el.parentNode) return; // closed (or replaced) while loading
       renderAuditRecords(el, stack, records, err);
@@ -367,21 +230,23 @@ App.panels = (function () {
   // commit nothing has changed since. It answers "I pushed and this stack did
   // nothing, why?", which every other surface leaves to state.yaml on the host.
   // The data rides the `stacks` snapshot, so unlike the history panel beside it
-  // there is no fetch and no loading state.
-  function createWatchedPanel(stack) {
-    const entry =
-      S.rosterSnap.find(function (r) {
-        return r.name === stack;
-      }) || {};
+  // there is no fetch and no loading state. A peer's panel passes peer
+  // ({entry, base}): its roster entry and its own forge.
+  function createWatchedPanel(stack, peer) {
+    const entry = peer
+      ? peer.entry
+      : S.rosterSnap.find(function (r) {
+          return r.name === stack;
+        }) || {};
     const el = document.createElement('div');
     el.className = 'watched-panel';
     el.dataset.testid = 'watched-panel';
     el.dataset.watchedFor = stack;
-    el.innerHTML = watchedPanelHTML(entry, S.repoWebURL);
+    el.innerHTML = watchedPanelHTML(entry, peer ? peer.base : S.repoWebURL);
     return el;
   }
 
-  function renderAuditRecords(el, stack, records, err) {
+  function renderAuditRecords(el, stack, records, err, base) {
     // Fetch failed (network / 5xx): an amber load-error with a retry that
     // re-runs the same fetch, distinct from a stack that genuinely has no
     // history (T4.16). The :has(> .load-error) rule flattens the panel bar.
@@ -408,7 +273,7 @@ App.panels = (function () {
     }
     // The fold toggle's aria-controls needs a document-unique id: several rows
     // can hold an open history at once, so the stack name would not do.
-    const body = auditRowsHTML(records, S.repoWebURL, S.absoluteTime, {
+    const body = auditRowsHTML(records, base === undefined ? S.repoWebURL : base, S.absoluteTime, {
       id: 'a' + ++auditHistorySeq,
     });
     // Replace the loading line with the rows (keep the head).
@@ -514,16 +379,14 @@ App.panels = (function () {
   }
 
   // init registers the document-level listeners the panels rely on: click-away
-  // and Escape for the app-link popover and the ⋯ menu, and the fold toggle.
+  // and Escape for the app-link popover, and the fold toggle.
   function init() {
     document.addEventListener('click', function (e) {
       if (openLinkWrap && !openLinkWrap.contains(e.target)) closeAppLinkPopover();
-      if (openMoreWrap && !openMoreWrap.contains(e.target)) closeMoreMenu();
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         closeAppLinkPopover();
-        closeMoreMenu();
       }
     });
 
@@ -549,22 +412,11 @@ App.panels = (function () {
 
   return {
     CHECK_ICON,
-    linkCell,
     toggleAppLinkPopover,
     closeAppLinkPopover,
-    ensureRowMore,
-    moreMenuItem,
-    toggleMoreMenu,
-    closeMoreMenu,
-    closeMoreMenuIf,
-    createHealPanel,
-    createFilesPanel,
     renderDiffPanel,
     createLoadError,
     fetchDiffs,
-    clogButton,
-    hooksFor,
-    hooksBadgeButton,
     createHooksPanel,
     hookPhaseNode,
     populateIcon,

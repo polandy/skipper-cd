@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,6 +32,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/peers"
 	"github.com/polandy/skipper-cd/internal/prettylog"
 	"github.com/polandy/skipper-cd/internal/reconcile"
+	"github.com/polandy/skipper-cd/internal/redact"
 	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/safego"
 	"github.com/polandy/skipper-cd/internal/ui"
@@ -135,7 +137,8 @@ func main() {
 		slog.Error("failed to load config", "path", *configPath, "err", err)
 		os.Exit(1)
 	}
-	logRing, sink := setupLogging(cfg, os.Stderr)
+	secrets := redact.New()
+	logRing, sink := setupLogging(cfg, os.Stderr, secrets)
 
 	timeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 
@@ -166,6 +169,7 @@ func main() {
 	// nixos-rebuild wait when it fires (ADR-0014).
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	var loops bgLoops // the signalCtx-bound loops, joined at shutdown
 
 	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch, timeout, sink)
 	repoReader := git.NewRepoReader(repoSync.RepoDir(), timeout, sink)
@@ -199,7 +203,7 @@ func main() {
 	}
 	var notifierSink func(events.DeployEvent)
 	if notifier.Enabled() {
-		safego.Go("notifier", func() { notifier.Run(signalCtx) })
+		loops.Go("notifier", func() { notifier.Run(signalCtx) })
 		notifierSink = notifier.Notify
 		slog.Info("notifications enabled", "targets", len(cfg.Notifications))
 	}
@@ -255,7 +259,8 @@ func main() {
 		os.Exit(1) //nolint:gocritic // exitAfterDefer: as above — only stop() is pending, nothing is serving yet
 	}
 	deployer := deploy.New(deploy.Config{
-		Runner: command.NewShellRunnerWithSink(timeout, sink),
+		Runner:  command.NewShellRunnerWithSink(timeout, sink),
+		Secrets: secrets,
 		// Rollout reads container state via `docker compose ps`; a plain
 		// (non-sink) runner captures its stdout (ADR-0040).
 		Outputter:    command.NewShellRunner(timeout),
@@ -304,7 +309,7 @@ func main() {
 			// update's marker clears now, not at the next 6h tick (ADR-0054).
 			// No-op runs (the 5-minute reconcile) skip without registry traffic.
 			if updChecker != nil {
-				safego.Go("update-check-nudge", func() { updChecker.RunOnceIfChanged(signalCtx) })
+				loops.Go("update-check-nudge", func() { updChecker.RunOnceIfChanged(signalCtx) })
 			}
 		},
 		StackSetSink: asPublisher.publishStacks,
@@ -316,11 +321,11 @@ func main() {
 	// Start the health poller only now that the deployer exists: its snapshot
 	// feed may drive a self-heal, which redeploys through the deployer.
 	if hl.poller != nil {
-		safego.Go("health-poller", func() { hl.poller.Run(signalCtx) })
+		loops.Go("health-poller", func() { hl.poller.Run(signalCtx) })
 	}
 	// Same for the update checker: it reads the deployer's running images.
 	if updChecker != nil {
-		safego.Go("update-check", func() { updChecker.Run(signalCtx) })
+		loops.Go("update-check", func() { updChecker.Run(signalCtx) })
 	}
 	asPublisher.publish() // initialize the gauges
 
@@ -333,7 +338,7 @@ func main() {
 	// headless. A tick is skipped while a deploy is already in flight.
 	if interval := *cfg.ReconcileIntervalSeconds; interval > 0 {
 		loop := reconcile.New(time.Duration(interval)*time.Second, deployReconciler{deployer, cfg})
-		safego.Go("reconcile", func() { loop.Run(signalCtx) })
+		loops.Go("reconcile", func() { loop.Run(signalCtx) })
 		slog.Info("periodic reconcile enabled", "interval_seconds", interval)
 	}
 
@@ -345,7 +350,7 @@ func main() {
 		loop := peers.NewLoop(uiw.peerRegistry,
 			time.Duration(*cfg.RuntimeHealthPollIntervalSeconds)*time.Second,
 			func(s peers.State) { stateB.Publish(events.StateEvent{Name: events.StatePeers, Data: s}) })
-		safego.Go("peers-fanin", func() { loop.Run(signalCtx) })
+		loops.Go("peers-fanin", func() { loop.Run(signalCtx) })
 		slog.Info("multi-host fan-in enabled", "peers", len(cfg.Peers), "poll_interval_seconds", int(loop.Interval()/time.Second))
 	}
 
@@ -421,11 +426,13 @@ func main() {
 		slog.Warn("metrics server shutdown", "err", err)
 	}
 
-	// The ctx-bound background loops (notifier, health poller, reconciler,
-	// peer fan-in) are cancelled by signalCtx but deliberately not joined:
-	// deploys are the only work that must not be cut short and WaitIdle above
-	// covers those, and every state write goes through fsatomic, so a loop
-	// killed mid-write leaves the previous file rather than a truncated one.
+	// The ctx-bound loops are already cancelled by signalCtx; joining them reaps
+	// their in-flight commands so no `docker` child outlives skipper.
+	loopsCtx, cancelLoops := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancelLoops()
+	if err := loops.Wait(loopsCtx); err != nil {
+		slog.Warn("background loops did not stop in time", "err", err)
+	}
 	slog.Info("skipper-cd stopped")
 	if failed {
 		os.Exit(1)
@@ -488,9 +495,10 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-// startServer runs an HTTP server in a goroutine and returns it so the caller
-// can shut it down. A listen failure (a port already in use, most often) is
-// reported on fail rather than exiting here: an os.Exit from this goroutine
+// startServer binds addr, then serves it in a goroutine, and returns the server
+// so the caller can shut it down. The bind is synchronous, so the "listening"
+// line is only logged once the port is ours. A listen failure (a port already
+// in use, most often) is reported on fail rather than exiting here: an os.Exit
 // would skip main's shutdown, and the startup sync may already be running
 // `docker compose up` by the time a port turns out to be taken. fail must be
 // buffered so a second server's failure cannot block on an unread channel.
@@ -502,9 +510,14 @@ func startServer(name, addr string, h http.Handler, fail chan<- error) *http.Ser
 		ReadTimeout:       readTimeout,
 		IdleTimeout:       idleTimeout,
 	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		fail <- fmt.Errorf("%s server: %w", name, err)
+		return srv
+	}
+	slog.Info(name+" server listening", "addr", srv.Addr)
 	go func() {
-		slog.Info(name+" server listening", "addr", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fail <- fmt.Errorf("%s server: %w", name, err)
 		}
 	}()

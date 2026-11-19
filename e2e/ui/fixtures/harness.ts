@@ -3,7 +3,6 @@ import { createServer, type AddressInfo } from "node:net";
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createHmac } from "node:crypto";
 import {
-  mkdtempSync,
   mkdirSync,
   writeFileSync,
   appendFileSync,
@@ -11,9 +10,9 @@ import {
   existsSync,
   readFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, basename, dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { workspaces } from "./tempdirs";
 
 // This is the Node twin of the Go E2E harness (e2e/harness_test.go): it runs the
 // real skipper binary against a local git origin and a stub docker on PATH, so
@@ -97,12 +96,12 @@ export function repoRoot(): string {
   return join(__dirname, "..", "..", "..");
 }
 
-/** skipperBinPath is where globalSetup builds (and the harness launches) the binary. */
+/** skipperBinPath is the binary the harness launches: SKIPPER_E2E_BIN, which
+ *  globalSetup points at a per-run temp dir unless the caller supplied one. */
 export function skipperBinPath(): string {
-  return (
-    process.env.SKIPPER_E2E_BIN ||
-    join(tmpdir(), "skipper-ui-e2e-bin", "skipper")
-  );
+  const bin = process.env.SKIPPER_E2E_BIN;
+  if (!bin) throw new Error("SKIPPER_E2E_BIN is unset: globalSetup did not run");
+  return bin;
 }
 
 /** buildVersion is the semver globalSetup injects via -ldflags, mirroring
@@ -147,6 +146,10 @@ async function freePorts(n: number): Promise<number[]> {
  *  (see start()). Two retries cover the observed ~once-per-thousand collision
  *  with a wide margin while a systematic bind failure still surfaces fast. */
 const MAX_LAUNCH_ATTEMPTS = 3;
+
+/** WEBHOOK_BOUND_LOG is what skipper logs once its webhook/UI port is bound
+ *  (startServer, cmd/skipper/main.go). */
+const WEBHOOK_BOUND_LOG = "webhook server listening";
 
 /** isStolenPort matches the two shapes a stolen reserved port fails with:
  *  skipper's own bind error (captured in the wait failure's output) and a
@@ -430,7 +433,7 @@ async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
   const stackIcons = opts.stackIcons ?? {};
   const initialCompose = opts.initialCompose ?? {};
   const author = opts.commitAuthor ?? defaultIdentity;
-  const base = mkdtempSync(join(tmpdir(), "skipper-ui-e2e-"));
+  const base = workspaces.create("skipper-ui-e2e-");
   const origin = join(base, "origin");
   const repoDir = join(base, "state", "repo");
   const stateDir = join(base, "state");
@@ -797,6 +800,8 @@ export class Skipper {
   private readonly spawnEnv: NodeJS.ProcessEnv;
   private readonly peerServers: Server[];
   private readonly registryServer: Server | null;
+  /** base is the temp tree dispose() removes. */
+  readonly base: string;
   private proc: ChildProcess;
   private out = "";
 
@@ -818,8 +823,10 @@ export class Skipper {
     spawnEnv: NodeJS.ProcessEnv;
     peerServers: Server[];
     registryServer: Server | null;
+    base: string;
     proc: ChildProcess;
   }) {
+    this.base = init.base;
     this.baseURL = init.baseURL;
     this.metricsURL = init.metricsURL;
     this.stacksBaseDir = init.stacksBaseDir;
@@ -861,12 +868,18 @@ export class Skipper {
    *  the first throw. */
   static async start(opts: StartOptions = {}): Promise<Skipper> {
     const ws = await scaffoldWorkspace(opts);
-    for (let attempt = 1; ; attempt++) {
-      try {
-        return await Skipper.launch(opts, ws);
-      } catch (err) {
-        if (attempt >= MAX_LAUNCH_ATTEMPTS || !isStolenPort(err)) throw err;
+    try {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          return await Skipper.launch(opts, ws);
+        } catch (err) {
+          if (attempt >= MAX_LAUNCH_ATTEMPTS || !isStolenPort(err)) throw err;
+        }
       }
+    } catch (err) {
+      ws.registryServer?.close();
+      workspaces.remove(ws.base);
+      throw err;
     }
   }
 
@@ -943,6 +956,7 @@ export class Skipper {
       spawnEnv,
       peerServers,
       registryServer: ws.registryServer,
+      base,
       proc,
     });
     try {
@@ -1188,7 +1202,17 @@ export class Skipper {
     }
   }
 
+  /** waitBound waits for this process's own bind: skipper logs the line only
+   *  once its port is bound, so a /healthz answer after it cannot come from
+   *  another worker's instance that took the reserved port first. */
+  private async waitBound(): Promise<void> {
+    await this.waitFor("webhook port bound", () =>
+      this.out.includes(WEBHOOK_BOUND_LOG),
+    );
+  }
+
   private async waitHealthy(): Promise<void> {
+    await this.waitBound();
     await this.waitFor("healthz 200", async () => {
       try {
         return (await fetch(`${this.baseURL}/healthz`)).status === 200;
@@ -1201,6 +1225,7 @@ export class Skipper {
   /** waitListening waits until the HTTP server responds at all (any status),
    *  used when the startup deploy is expected to fail so /healthz stays 503. */
   private async waitListening(): Promise<void> {
+    await this.waitBound();
     await this.waitFor("server listening", async () => {
       try {
         await fetch(`${this.baseURL}/healthz`);
@@ -1265,6 +1290,16 @@ export class Skipper {
     );
     this.proc.kill("SIGKILL");
     await exited;
+  }
+
+  /** dispose stops the process and removes the temp tree; stop() alone keeps it
+   *  because relaunch() reuses the config. */
+  async dispose(): Promise<void> {
+    try {
+      await this.stop();
+    } finally {
+      workspaces.remove(this.base);
+    }
   }
 
   /** relaunch respawns skipper on the same config and ports (after stop()), so

@@ -108,6 +108,8 @@ App.chrome = (function () {
   // plus its trigger) whose clicks are internal and must not dismiss it.
   function registerSurface(opts) {
     surfaces.add({ surface: opts.surface, isOpen: opts.isOpen, close: opts.close });
+    const closeBtn = opts.surface.querySelector('.drawer-close');
+    if (closeBtn) closeBtn.addEventListener('click', opts.close);
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') opts.close();
     });
@@ -180,7 +182,11 @@ App.chrome = (function () {
       (function settle() {
         if (!surface.classList.contains('open')) return; // toggled off already
         if (focusRestsInside(surface)) return; // observer moved focus in — don't override
-        const target = focusablesIn(surface)[0] || surface;
+        // The close button is not what the viewer opened the surface for.
+        const target =
+          focusablesIn(surface).filter(function (n) {
+            return !n.classList.contains('drawer-close');
+          })[0] || surface;
         // preventScroll: the surface is mid-open, so its scroll box is still a
         // sliver — a scroll-into-view here leaves the drawer parked past its own
         // first rows, with the control the viewer came for cut off at the top.
@@ -245,17 +251,23 @@ App.chrome = (function () {
 
   // ── Theme toggle ──
 
-  // Colour-scheme toggle (dark is the default; light is opt-in per browser).
+  // Colour-scheme toggle: follows the OS until the browser saves a choice.
   // Which palette (Catppuccin/Nord/Solarized/Gruvbox/Rosé Pine) is configured
   // server-side via ui_theme and baked into <html data-theme> — this toggle
-  // only ever flips dark/light within that palette.
-  const themeToggle = document.getElementById('theme-toggle');
-  let lightTheme = localStorage.getItem('colorScheme') === 'light';
+  // only ever flips dark/light within that palette. The header toggle and the
+  // mobile view-options rows (.vo-theme) are one control.
+  const themeToggles = [document.getElementById('theme-toggle')].concat(
+    Array.from(document.querySelectorAll('.vo-theme')),
+  );
+  // The pre-paint script already resolved saved choice vs. OS preference.
+  let lightTheme = document.documentElement.classList.contains('light');
 
   function applyTheme() {
     document.documentElement.classList.toggle('light', lightTheme);
-    themeToggle.classList.toggle('active', lightTheme);
-    themeToggle.title = lightTheme ? 'Switch to dark theme' : 'Switch to light theme';
+    themeToggles.forEach(function (btn) {
+      btn.classList.toggle('active', lightTheme);
+      btn.title = lightTheme ? 'Switch to dark theme' : 'Switch to light theme';
+    });
   }
 
   const viewButtons = document.querySelectorAll('#view-toggle button');
@@ -305,7 +317,7 @@ App.chrome = (function () {
     manageSurfaceFocus(viewOptions, activeBtn, open);
   }
 
-  // jumpToStack drives the cross-view jump-btn (deploys <-> stacks): switch to
+  // jumpToStack drives the cross-view jumps (deploys <-> stacks): switch to
   // targetView, then scroll to and briefly flash that stack's row there. In
   // the deploys view a stack can have many rows (it's an event log), so the
   // newest one — first in DOM order — is the landing target; the stacks view
@@ -349,12 +361,12 @@ App.chrome = (function () {
 
   // ─── Live-health attention surface (ADR-0027 extension) ───
   // Two always-consistent affordances that lift a currently-unhealthy stack out
-  // of the chronological deploy log — where its row-bound health pill can sit far
+  // of the chronological deploy log — where its row can sit far
   // down, or vanish once the row ages out of the bounded log: a header BEACON
   // (present in every view) and, in the Deploys view, an attention BAND pinned
   // above the log. Both render from attentionStacks(S.healthSnap) and jump to the
   // stack's newest row on activate (degrading to a plain view switch when the
-  // stack has no row, exactly like jumpBtn).
+  // stack has no row, exactly like jumpToStack).
   // ─── Incident badge (UI_SPEC.md "Incident badge") ───
   // The beacon answers "what is unhealthy NOW"; this badge answers "what went
   // wrong RECENTLY" — the axis a recovered rollback disappears on. Counts
@@ -575,11 +587,20 @@ App.chrome = (function () {
       }
     });
 
-    themeToggle.addEventListener('click', function () {
-      lightTheme = !lightTheme;
-      localStorage.setItem('colorScheme', lightTheme ? 'light' : 'dark');
-      applyTheme();
+    themeToggles.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        lightTheme = !lightTheme;
+        localStorage.setItem('colorScheme', lightTheme ? 'light' : 'dark');
+        applyTheme();
+      });
     });
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function (e) {
+        if (localStorage.getItem('colorScheme')) return;
+        lightTheme = e.matches;
+        applyTheme();
+      });
+    }
 
     applyTheme();
 

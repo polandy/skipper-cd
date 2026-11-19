@@ -62,18 +62,32 @@ function rosterLastDeploy(entry, deploying) {
 // own selection (App.detail, docs/dev/ui-redesign-plan.md §3.6).
 const DETAIL_VIEW = Object.freeze({ deploys: 'deploys', stacks: 'stacks' });
 
-// DETAIL_TAB names the panes a row's detail can show: a deploy's changes or
-// self-heal drift, the stack's health, history or hooks, the Stacks card
-// (overview) and a peer row's read-only detail.
+// DETAIL_TAB names the panes a row's detail can show: a deploy row's detail
+// (deploy) and the Stacks card (overview), whose hooks sub-pane rides it too.
 const DETAIL_TAB = Object.freeze({
-  changes: 'changes',
-  heal: 'heal',
-  health: 'health',
-  history: 'history',
+  deploy: 'deploy',
   hooks: 'hooks',
   overview: 'overview',
-  peer: 'peer',
 });
+
+// tabKeyIndex is where a key moves the focus along a strip of count tabs from
+// index (the ARIA tabs pattern: arrows wrap, Home/End jump), or -1 when the
+// key is not a tab-strip key.
+function tabKeyIndex(key, index, count) {
+  if (index < 0 || index >= count) return -1;
+  switch (key) {
+    case 'ArrowRight':
+      return (index + 1) % count;
+    case 'ArrowLeft':
+      return (index - 1 + count) % count;
+    case 'Home':
+      return 0;
+    case 'End':
+      return count - 1;
+    default:
+      return -1;
+  }
+}
 
 // detailSelection is the App.detail record for a row (its dataset): the view,
 // the host ('' for local), the stack, the deploy event ('' on a roster row)
@@ -1286,6 +1300,17 @@ function hostFilterActive(selectedCount, totalCount) {
   return totalCount > 0 && selectedCount > 0 && selectedCount < totalCount;
 }
 
+// hostReachability is a Hosts-drawer row's reachability: the dot class, the
+// visible label (only when unreachable, so touch and screen readers get it too)
+// and the dot's hover title.
+function hostReachability(host) {
+  if (host.self) return { dot: 'up', label: '', title: 'this host' };
+  if (host.reachable) return { dot: 'up', label: '', title: 'reachable' };
+  if (host.stale)
+    return { dot: 'stale', label: 'last-known', title: 'unreachable — showing last-known' };
+  return { dot: 'down', label: 'unreachable', title: 'unreachable' };
+}
+
 // reconcileHostFilter resolves a saved Hosts-filter selection (loaded from
 // localStorage) against the current host set, returning null ("all hosts")
 // or the array of names to select. A saved host no longer present is
@@ -1561,6 +1586,106 @@ function foldAuditRecords(records) {
   return items;
 }
 
+// DEPLOY_FOLD_STATUSES are the outcomes the Deploys list may fold: routine
+// convergence only. Incidents, pending (queued/blocked) and live rows never
+// fold, so nothing that needs a look hides behind a fold line.
+const DEPLOY_FOLD_STATUSES = ['success', 'healed'];
+
+// foldDeployRows finds the runs of routine deploys the Deploys list folds.
+// rows are the visible rows newest first ({stack, host, status, kind, key,
+// open}); filtered-out rows are left out by the caller, so a filter acts before
+// the fold. A run is AUDIT_FOLD_MIN or more consecutive rows of one stack and
+// host with the same status and change kind; the newest stays as the run's lead
+// and the rest fold behind one line. A run holding an open detail, or whose key
+// (the oldest member's — it survives new rows landing on top) is in expanded,
+// is reported expanded. The fold is computed per render, never stored.
+// Returns [{lead, members, key, expanded}] with indexes into rows.
+function foldDeployRows(rows, expanded) {
+  const foldable = function (r) {
+    return DEPLOY_FOLD_STATUSES.indexOf(r.status) !== -1;
+  };
+  const same = function (a, b) {
+    return a.stack === b.stack && a.host === b.host && a.status === b.status && a.kind === b.kind;
+  };
+  const runs = [];
+  let i = 0;
+  while (i < rows.length) {
+    let j = i + 1;
+    if (foldable(rows[i])) {
+      while (j < rows.length && same(rows[i], rows[j])) j++;
+    }
+    if (j - i >= AUDIT_FOLD_MIN) {
+      const members = [];
+      for (let m = i + 1; m < j; m++) members.push(m);
+      const key = rows[j - 1].key;
+      const open = members.some(function (m) {
+        return rows[m].open;
+      });
+      runs.push({
+        lead: i,
+        members: members,
+        key: key,
+        expanded: open || !!(expanded && expanded.has(key)),
+      });
+    }
+    i = j;
+  }
+  return runs;
+}
+
+// deployFoldLabel is the fold line's text: how many deploys sit behind it, of
+// which stack, over which time span (oldest → newest, local time).
+function deployFoldLabel(count, status, stack, oldestTs, newestTs, nowMs) {
+  const noun = AUDIT_FOLD_NOUN[status] || 'deploys';
+  return (
+    '\u21bb ' +
+    count +
+    ' more ' +
+    noun +
+    ' of ' +
+    stack +
+    ' \u00b7 ' +
+    phaseSince(oldestTs, nowMs) +
+    ' \u2013 ' +
+    phaseSince(newestTs, nowMs)
+  );
+}
+
+// deployDayKey is the local calendar day of ts, the unit the day separators
+// change on.
+function deployDayKey(ts) {
+  const d = new Date(ts);
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+}
+
+const DAY_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+// deployDayLabel names the local day of ts for a separator: Today, Yesterday,
+// then the date (with the year once it is not the current one). Takes the clock
+// so midnight is testable.
+function deployDayLabel(ts, nowMs) {
+  const d = new Date(ts);
+  const now = new Date(nowMs);
+  if (deployDayKey(ts) === deployDayKey(now.getTime())) return 'Today';
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (deployDayKey(ts) === deployDayKey(yesterday.getTime())) return 'Yesterday';
+  const base = d.getDate() + ' ' + DAY_MONTHS[d.getMonth()];
+  return d.getFullYear() === now.getFullYear() ? base : base + ' ' + d.getFullYear();
+}
+
 // deployAnnouncement builds the screen-reader phrase for a terminal deploy
 // outcome, so the a11y-live region can voice what a sighted user reads off the
 // row (T2.8). Returns null for non-terminal statuses (deploying/queued/blocked/
@@ -1629,6 +1754,470 @@ function makeSurfaceRegistry() {
   };
 }
 
+// STACK_TAB names the tabs of a Stacks row's detail panel: the running
+// containers, the deploy history and what triggers a deploy.
+const STACK_TAB = Object.freeze({
+  containers: 'containers',
+  history: 'history',
+  triggers: 'triggers',
+});
+
+// stackDefaultTab is the tab a Stacks row's detail opens on: the one that
+// explains the row's state — triggers for a parked or never-deployed stack,
+// history after a held, failed or healed outcome, the containers otherwise.
+function stackDefaultTab(entry) {
+  if (entry.disabled) return STACK_TAB.triggers;
+  if (entry.held) return STACK_TAB.history;
+  if (!entry.last_status) return STACK_TAB.triggers;
+  if (AUDIT_BAD_STATUSES.indexOf(entry.last_status) !== -1 || entry.last_status === 'healed') {
+    return STACK_TAB.history;
+  }
+  return STACK_TAB.containers;
+}
+
+// stackTabs is the tab strip of a Stacks row's detail: each tab's count and
+// whether it holds a problem (a red count). Containers only when the host
+// reports health for the stack; History has no count, since the full history
+// is fetched on open, but turns red for a held or failed stack.
+function stackTabs(entry, health) {
+  const services = (health && health.services) || [];
+  const tabs = [];
+  if (services.length) {
+    tabs.push({
+      id: STACK_TAB.containers,
+      label: 'Containers',
+      count: services.length,
+      bad: services.some(function (s) {
+        return healthClass(s) === HEALTH.UNHEALTHY;
+      }),
+    });
+  }
+  tabs.push({
+    id: STACK_TAB.history,
+    label: 'History',
+    count: null,
+    bad: !!entry.held || AUDIT_BAD_STATUSES.indexOf(entry.last_status) !== -1,
+  });
+  tabs.push({
+    id: STACK_TAB.triggers,
+    label: 'Triggers',
+    count: (entry.watched || []).length,
+    bad: false,
+  });
+  return tabs;
+}
+
+// HELD_RELEASE is how a held change is released (ADR-0062), stated on every
+// held verdict line.
+const HELD_RELEASE = 'A new push, a revert or one retry releases it.';
+
+// verdictLine is one line of a stack's verdict: kind says what it is about,
+// tone how it reads (danger, rollback, warn, ok, muted), head the bold lead,
+// text and sub the explanation, action the one control it offers or null.
+function verdictLine(kind, tone, head, text, sub, action) {
+  return { kind, tone, head, text, sub: sub || '', action: action || null };
+}
+
+// stackVerdict answers, in plain sentences, what is going on with a stack: its
+// held or failed change first, then each unhealthy, stopped or starting
+// service, then an available update — or, with none of those, that it is fine.
+// health is the stack's health snapshot ({services}), updates its update map.
+function stackVerdict(entry, health, updates) {
+  if (entry.disabled) {
+    return [
+      verdictLine(
+        'parked',
+        'muted',
+        'Parked.',
+        'disabled: true in the host config — skipper neither watches nor deploys this stack.',
+      ),
+    ];
+  }
+  const lines = [];
+  const outcome = entry.held ? heldVerdict(entry.held) : outcomeVerdict(entry);
+  if (outcome) lines.push(outcome);
+  const services = ((health && health.services) || []).filter(function (s) {
+    return s && s.name;
+  });
+  const byClass = function (cls) {
+    return services.filter(function (s) {
+      return healthClass(s) === cls && !(cls === HEALTH.STOPPED && s.on_demand);
+    });
+  };
+  byClass(HEALTH.UNHEALTHY).forEach(function (s) {
+    lines.push(
+      verdictLine(
+        'unhealthy',
+        'danger',
+        s.name + ' is unhealthy.',
+        'Its container reports ' +
+          (s.health === HEALTH.UNHEALTHY ? 'a failing healthcheck' : s.state) +
+          '.',
+        '',
+        { kind: 'logs', service: s.name },
+      ),
+    );
+  });
+  const stopped = byClass(HEALTH.STOPPED);
+  if (stopped.length) {
+    lines.push(verdictLine('stopped', 'muted', 'Stopped:', serviceNames(stopped) + '.'));
+  }
+  const starting = byClass(HEALTH.STARTING);
+  if (starting.length) {
+    lines.push(verdictLine('starting', 'muted', 'Starting:', serviceNames(starting) + '.'));
+  }
+  const updated = Object.keys(updates || {}).sort();
+  if (updated.length) {
+    lines.push(
+      verdictLine('update', 'warn', 'Update available', 'for ' + updated.join(', ') + '.'),
+    );
+  }
+  if (!lines.length) lines.push(settledVerdict(entry, byClass(HEALTH.HEALTHY).length));
+  return lines;
+}
+
+// serviceNames lists services by name, sorted, for a verdict sentence.
+function serviceNames(services) {
+  return services
+    .map(function (s) {
+      return s.name;
+    })
+    .sort()
+    .join(', ');
+}
+
+// heldVerdict is the verdict line of a held change (ADR-0062/0064): one in
+// backoff warns with its next attempt, a held one says how it failed.
+function heldVerdict(held) {
+  const commit = held.commit ? 'Commit ' + shortSHA(held.commit) : 'The change';
+  const retry = { kind: 'retry' };
+  if (held.retry_at) {
+    const tries = held.attempts === 1 ? '1 attempt' : held.attempts + ' attempts';
+    return verdictLine(
+      'backoff',
+      'warn',
+      commit + ' failed before it started',
+      '(' + tries + ' so far).',
+      'Next attempt ' + fullTime(held.retry_at) + '; if it keeps failing, it is held.',
+      retry,
+    );
+  }
+  let tone = 'danger';
+  let text;
+  if (held.attempts) {
+    text = 'failed ' + held.attempts + ' times before it started and is held.';
+  } else if (held.status === 'rolled_back') {
+    tone = 'rollback';
+    text = 'failed and was rolled back; the previous version is running.';
+  } else if (held.status === 'rolled_back_unhealthy') {
+    text = 'failed and was rolled back, but the restored version is unhealthy too.';
+  } else {
+    text = 'failed after it started and was not rolled back.';
+  }
+  return verdictLine('held', tone, commit, text, HELD_RELEASE, retry);
+}
+
+// outcomeVerdict is the verdict line of a stack's last outcome when it needs
+// one — never deployed, or a bad outcome that is not held — else null.
+function outcomeVerdict(entry) {
+  const status = entry.last_status;
+  if (!status) {
+    return verdictLine('never', 'muted', 'Never deployed.', 'The next sync deploys it.');
+  }
+  if (AUDIT_BAD_STATUSES.indexOf(status) === -1) return null;
+  const commit = entry.last_commit ? ' at ' + shortSHA(entry.last_commit) : '';
+  const text = {
+    failed: 'The last deploy' + commit + ' failed.',
+    rolled_back: 'The last deploy' + commit + ' failed and was rolled back.',
+    rolled_back_unhealthy:
+      'The last deploy' + commit + ' was rolled back, but the restored version is unhealthy.',
+    heal_exhausted: 'Self-heal gave up: the containers kept drifting.',
+  }[status];
+  return verdictLine('failed', status === 'rolled_back' ? 'rollback' : 'danger', '', text);
+}
+
+// settledVerdict is the all-clear line: healthy (or healed) and unchanged
+// since the last deploy's commit. healthy counts the running services.
+function settledVerdict(entry, healthy) {
+  const since =
+    UNCHANGED_SINCE + (entry.last_commit ? shortSHA(entry.last_commit) : 'the last deploy') + '.';
+  if (entry.last_status === 'healed') {
+    return verdictLine(
+      'healed',
+      'ok',
+      'Self-healed.',
+      'skipper brought drifted containers back to the deployed version.',
+      since,
+    );
+  }
+  let head = 'Last deploy succeeded.';
+  if (healthy === 1) head = 'Its service is healthy.';
+  else if (healthy) head = 'All ' + healthy + ' services healthy.';
+  return verdictLine('ok', 'ok', head, '', since);
+}
+
+// DEPLOY_TAB names the tabs of a deploy row's detail panel.
+const DEPLOY_TAB = Object.freeze({
+  changes: 'changes',
+  drift: 'drift',
+  output: 'output',
+  commits: 'commits',
+});
+
+// DEPLOY_STAGE matches the stage a deploy error leads with (ADR-0063); the
+// before-start ones touched no container, so the running version stays.
+const DEPLOY_STAGE =
+  /^(docker compose (?:up|pull|build)|health check|post_deploy hook|pre_deploy hook \d+ \(".*?"\)|rollout(?: \S+)?): /;
+const BEFORE_START_STAGE = /^(docker compose (?:pull|build)|pre_deploy hook|rollout$)/;
+const ROLLED_BACK_SUFFIX = ' (rolled back to previous version)';
+const ROLLBACK_UNHEALTHY = / \((restored version .*) \(rolled back but still unhealthy\)\)$/;
+const ROLLBACK_FAILED = / \(rollback also failed: (.*)\)$/;
+const EXIT_STATUS_PREFIX = /^exit status \d+: /;
+
+// deployFailure splits a deploy error into the stage that failed, its
+// condensed cause and how the rollback went ('' none, ok, unhealthy, failed;
+// restored carries the rollback's own error). An unknown shape is all cause.
+function deployFailure(error) {
+  let rest = error || '';
+  let rollback = '';
+  let restored = '';
+  let m;
+  if (rest.endsWith(ROLLED_BACK_SUFFIX)) {
+    rollback = 'ok';
+    rest = rest.slice(0, -ROLLED_BACK_SUFFIX.length);
+  } else if ((m = rest.match(ROLLBACK_UNHEALTHY))) {
+    rollback = 'unhealthy';
+    restored = m[1];
+    rest = rest.slice(0, m.index);
+  } else if ((m = rest.match(ROLLBACK_FAILED))) {
+    rollback = 'failed';
+    restored = m[1];
+    rest = rest.slice(0, m.index);
+  }
+  const stage = rest.match(DEPLOY_STAGE);
+  const phase = stage ? stage[1] : '';
+  const cause = (stage ? rest.slice(stage[0].length) : rest).replace(EXIT_STATUS_PREFIX, '');
+  return {
+    phase: phase,
+    cause: cause,
+    beforeStart: BEFORE_START_STAGE.test(phase),
+    rollback: rollback,
+    restored: restored,
+  };
+}
+
+// driftNames lists a heal's drifted containers with their state.
+function driftNames(drift) {
+  return (drift || [])
+    .map(function (d) {
+      return d.name + (d.status ? ' (' + d.status + ')' : '');
+    })
+    .join(', ');
+}
+
+// rollbackTarget names what a rollback restored: the one service's previous
+// tag when the deploy moved exactly one image, else the previous version.
+function rollbackTarget(evt) {
+  const images = evt.image_changes || [];
+  if (images.length === 1 && images[0].old) {
+    return images[0].service + ' ' + shortImageTag(images[0].old);
+  }
+  return 'the previous version';
+}
+
+// failedAt phrases a failure's stage and cause as one clause.
+function failedAt(f) {
+  return f.phase ? f.phase + ' failed: ' + f.cause : f.cause;
+}
+
+// DEPLOY_BLOCKED reads a blocked event's error: the dependency that failed.
+const DEPLOY_BLOCKED = /^dependency (.+) failed this run$/;
+
+// deployRowCause is the line under a deploy row's name; queueReason comes from the queue snapshot.
+function deployRowCause(status, error, queueReason) {
+  switch (status) {
+    case 'failed':
+    case 'rolled_back':
+    case 'rolled_back_unhealthy':
+      return error ? failedAt(deployFailure(error)) : '';
+    case 'blocked': {
+      if (queueReason) return queueReason;
+      const dep = (error || '').match(DEPLOY_BLOCKED);
+      return dep ? 'blocked by ' + dep[1] : error || 'blocked';
+    }
+    case 'queued': {
+      const scope = { stack: ' for this stack', global: ' for every stack' }[queueReason] || '';
+      return 'autosync paused' + scope;
+    }
+    default:
+      return '';
+  }
+}
+
+// DEPLOY_HELD is the sub of every verdict whose change is now held.
+const DEPLOY_HELD = 'The change is held. ' + HELD_RELEASE;
+
+// deployOutcomeVerdict is the one line that says how a deploy ended, or null
+// for an outcome that needs none (success, skipped, still running).
+function deployOutcomeVerdict(evt, ctx) {
+  const f = deployFailure(evt.error);
+  switch (evt.status) {
+    case 'failed': {
+      const head = f.phase ? 'Failed at ' + f.phase + '.' : 'Failed.';
+      let sub = '';
+      if (!f.phase) {
+        // Config, project-dir or hashing failure: no container step, no hold.
+      } else if (f.beforeStart) {
+        sub =
+          'Nothing was touched; the running version stays. skipper retries after a backoff and holds the change after the third failure.';
+      } else if (f.rollback === 'failed') {
+        sub = 'The rollback failed too: ' + f.restored + '. ' + DEPLOY_HELD;
+      } else {
+        sub = 'The new containers are left running. ' + DEPLOY_HELD;
+      }
+      return verdictLine('failed', 'danger', head, f.cause, sub);
+    }
+    case 'rolled_back':
+      return verdictLine(
+        'rolled_back',
+        'rollback',
+        'Rolled back to ' + rollbackTarget(evt) + '.',
+        failedAt(f),
+        'The previous version is running' +
+          (evt.health_gated ? ' and healthy' : '') +
+          '. ' +
+          DEPLOY_HELD,
+      );
+    case 'rolled_back_unhealthy':
+      return verdictLine(
+        'rolled_back',
+        'danger',
+        'Rolled back, but the restored version is unhealthy too.',
+        failedAt(f),
+        (f.restored ? f.restored + '. ' : '') + DEPLOY_HELD,
+      );
+    case 'blocked': {
+      const dep = (evt.error || '').match(DEPLOY_BLOCKED);
+      if (!dep) return verdictLine('blocked', 'warn', 'Not deployed.', evt.error || '');
+      return verdictLine(
+        'blocked',
+        'warn',
+        'Not deployed.',
+        'It depends on ' + dep[1] + ', which failed in this run.',
+        'It deploys with the next run once ' + dep[1] + ' succeeds.',
+      );
+    }
+    case 'queued': {
+      const scope = { stack: ' for this stack', global: ' for every stack' }[ctx.queueReason] || '';
+      return verdictLine(
+        'queued',
+        'muted',
+        'Waiting.',
+        'Autosync is paused' + scope + '.',
+        'Resume autosync to apply this change.',
+      );
+    }
+    case 'healed': {
+      const names = driftNames(evt.heal_drift);
+      return verdictLine(
+        'healed',
+        'muted',
+        names ? 'Self-heal restarted ' + names + '.' : 'Self-heal restored drifted containers.',
+        'No git change, so there is no diff.',
+      );
+    }
+    case 'heal_exhausted': {
+      const names = driftNames(evt.heal_drift);
+      return verdictLine(
+        'healed',
+        'danger',
+        'Self-heal gave up.',
+        names
+          ? names + ' kept drifting after repeated restarts.'
+          : 'The containers kept drifting after repeated restarts.',
+      );
+    }
+    case 'held':
+      return verdictLine('held', 'danger', 'Held.', evt.error || '', HELD_RELEASE);
+    default:
+      return null;
+  }
+}
+
+// deployVerdict answers, in plain sentences, how one deploy ended: its phase
+// and cause, whether the change is held, what blocks or queues it — and, for
+// a repeated outcome, since when. A success needs no verdict. ctx carries
+// what the event does not: queueReason (stack|global) of a queued change.
+function deployVerdict(evt, ctx) {
+  const lines = [];
+  const outcome = deployOutcomeVerdict(evt, ctx || {});
+  if (outcome) lines.push(outcome);
+  if ((evt.repeat_count || 0) >= 2) {
+    lines.push(
+      verdictLine(
+        'repeat',
+        'muted',
+        '×' + evt.repeat_count,
+        evt.first_seen ? 'since ' + fullTime(evt.first_seen) + '.' : '',
+      ),
+    );
+  }
+  return lines;
+}
+
+// changedFileCount is how many files a deploy changed: a peer's audit record
+// carries the count where a local event carries the list.
+function changedFileCount(evt) {
+  const f = evt.changed_files;
+  return typeof f === 'number' ? f : (f || []).length;
+}
+
+// deployTabs lists a deploy panel's tabs: Changes (Drift for a heal), Output
+// for a failure that left an error, Commits only when the push carried more
+// than one. o.commits is the commit count of the lazily loaded diff.
+function deployTabs(evt, o) {
+  const tabs = [];
+  const drift = evt.heal_drift || [];
+  if (evt.status === 'healed' || evt.status === 'heal_exhausted') {
+    if (drift.length) {
+      tabs.push({ id: DEPLOY_TAB.drift, label: 'Drift', count: drift.length, bad: false });
+    }
+  } else if (evt.has_diffs || changedFileCount(evt)) {
+    const files = changedFileCount(evt);
+    tabs.push({ id: DEPLOY_TAB.changes, label: 'Changes', count: files || null, bad: false });
+  }
+  if (evt.error && AUDIT_BAD_STATUSES.indexOf(evt.status) !== -1) {
+    tabs.push({ id: DEPLOY_TAB.output, label: 'Output', count: null, bad: true });
+  }
+  const commits = (o && o.commits) || 0;
+  if (commits > 1) {
+    tabs.push({ id: DEPLOY_TAB.commits, label: 'Commits', count: commits, bad: false });
+  }
+  return tabs;
+}
+
+// diffStat counts a unified diff's added and removed lines.
+function diffStat(diff) {
+  const stat = { add: 0, del: 0 };
+  (diff || '').split('\n').forEach(function (line) {
+    const cls = classifyDiffLine(line);
+    if (cls === 'diff-add') stat.add++;
+    else if (cls === 'diff-del') stat.del++;
+  });
+  return stat;
+}
+
+// retryRefusalText is the visible reason a held-change retry did not start:
+// the server's own plain-text reason when it gave one (a proxy's HTML error
+// page is not one), else the status; status 0 means the request never reached
+// the server.
+function retryRefusalText(status, contentType, body) {
+  if (!status) return "Retry didn't reach the server. Check the connection and try again.";
+  const plain = /^text\/plain\b/i.test(contentType || '');
+  const reason = plain ? (body || '').trim().replace(/\.$/, '') : '';
+  return reason ? 'Retry refused: ' + reason + '.' : 'Retry refused (HTTP ' + status + ').';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   // Some of these are internal to this file (parseImageRef, imageRepoName,
   // HOST_COLOR_COUNT, hostColorIndex — each used only by another helper here).
@@ -1650,6 +2239,19 @@ if (typeof module !== 'undefined' && module.exports) {
     rosterLastDeploy,
     DETAIL_VIEW,
     DETAIL_TAB,
+    STACK_TAB,
+    stackDefaultTab,
+    stackVerdict,
+    DEPLOY_TAB,
+    deployFailure,
+    deployRowCause,
+    deployVerdict,
+    changedFileCount,
+    deployTabs,
+    diffStat,
+    retryRefusalText,
+    stackTabs,
+    tabKeyIndex,
     detailSelection,
     detailMatchesRow,
     classifyDiffLine,
@@ -1673,6 +2275,11 @@ if (typeof module !== 'undefined' && module.exports) {
     AUDIT_FOLD_MIN,
     AUDIT_FOLD_INCIDENT_MIN,
     foldAuditRecords,
+    foldDeployRows,
+    deployFoldLabel,
+    deployDayKey,
+    deployDayLabel,
+    DEPLOY_FOLD_STATUSES,
     AUDIT_FOLD_NOUN,
     repeatNote,
     healthClass,
@@ -1709,6 +2316,7 @@ if (typeof module !== 'undefined' && module.exports) {
     hostMonogram,
     assignHostColors,
     hostFilterActive,
+    hostReachability,
     reconcileHostFilter,
     LOG_SEVERITY_FILTERS,
     DEFAULT_LOG_FILTERS,

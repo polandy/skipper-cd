@@ -205,14 +205,3 @@ func TestWriteFile_DirectorySyncFailureIsReported(t *testing.T) {
 		t.Errorf("expected only the renamed state.yaml in dir, got %v", entries)
 	}
 }
-
-// Four error branches in WriteFile stay uncovered on purpose: the failures of
-// tmp.Write, tmp.Chmod, tmp.Sync and tmp.Close. All four do the same thing —
-// close the temp file and return, leaving the deferred Remove to clean up — and
-// none is reachable from an unprivileged test: they need ENOSPC, a filesystem
-// that rejects chmod, or a delayed-writeback error, not something a temp
-// directory can be made to produce. Reaching them would mean threading a fake
-// file handle through a small package, which buys a coverage number rather than
-// a guarantee. The guarantee they protect — a failed write leaves the existing
-// file untouched, and no temp file behind — is asserted above through the
-// CreateTemp and rename doors, which are reachable.

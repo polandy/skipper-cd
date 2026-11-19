@@ -23,7 +23,7 @@ func (d *Deployer) runHooks(ctx context.Context, run stackRun, phase string, cmd
 	if len(cmds) == 0 {
 		return nil
 	}
-	env, err := run.resolveEnv()
+	env, err := d.resolveEnv(run)
 	if err != nil {
 		return err
 	}

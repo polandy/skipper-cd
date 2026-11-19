@@ -36,11 +36,12 @@ test.describe('UP1: blocked row renders the dependency reason as text', () => {
     const blocked = page.locator('[data-testid="deploy-row"][data-stack="app"][data-status="blocked"]');
     await expect(blocked).toHaveCount(1);
 
-    // The tag names the failed dependency — as text. An unescaped name would
-    // inject a real <img> element and swallow the markup from the label.
-    const tag = blocked.locator('.paused-tag');
-    await expect(tag).toHaveText(`blocked by ${DEP}`);
-    await expect(tag.locator('img')).toHaveCount(0);
+    // The cause line names the failed dependency — as text. An unescaped name
+    // would inject a real <img> element and swallow the markup from the label.
+    const cause = blocked.locator('[data-testid="cause-line"]');
+    await expect(cause).toHaveText(`blocked by ${DEP}`);
+    await expect(cause).toHaveAttribute('title', `blocked by ${DEP}`);
+    await expect(cause.locator('img')).toHaveCount(0);
 
     // The dependency's own row renders the hostile name literally too.
     const depRow = page.locator(`[data-testid="deploy-row"][data-stack="${DEP}"]`).first();
@@ -48,14 +49,10 @@ test.describe('UP1: blocked row renders the dependency reason as text', () => {
   });
 });
 
-// UP2 — the tag must not cost the row its identity. `.stack-name` carries
-// overflow:hidden, which resolves its automatic flex minimum to zero, so before
-// the min-width floor it was the *only* item in the cell that could shrink while
-// the nowrap tag refused to give way at all — a long dependency name clipped the
-// stack name past its own ellipsis. The name now stays whole at every width; the
-// tag ellipsises and is dropped below 1000px, where it had nothing useful left
-// to say (the badge still reads BLOCKED, the reason stays in the drawer).
-test.describe('UP2: the pending tag yields before the stack name', () => {
+// UP2 — the cause must not cost the row its identity. It sits on its own line
+// under the stack name rather than beside it, so the name stays whole at every
+// width and the cause ellipsises inside its own line.
+test.describe('UP2: the cause line sits under the stack name', () => {
   test.use({
     startOptions: {
       stacks: [DEP, 'app'],
@@ -64,7 +61,7 @@ test.describe('UP2: the pending tag yields before the stack name', () => {
     },
   });
 
-  test('the name stays whole while the tag gives way', async ({ page, skipper }) => {
+  test('the name stays whole above its cause at every width', async ({ page, skipper }) => {
     await page.goto(`${skipper.baseURL}/`);
 
     // Same trigger as UP1: change both stacks so the dependency's `up` fails
@@ -78,24 +75,18 @@ test.describe('UP2: the pending tag yields before the stack name', () => {
     await expect(blocked).toHaveCount(1);
 
     const name = blocked.locator('.stack-name');
-    const tag = blocked.locator('.paused-tag');
+    const cause = blocked.locator('[data-testid="cause-line"]');
     const clipped = () =>
       name.evaluate((el) => el.scrollWidth > Math.ceil(el.getBoundingClientRect().width));
 
-    // Wide: both fit.
-    await page.setViewportSize({ width: 1400, height: 900 });
-    await expect(tag).toBeVisible();
-    expect(await clipped()).toBe(false);
-
-    // Narrow enough that something has to give — the tag does, not the name.
-    await page.setViewportSize({ width: 1100, height: 900 });
-    expect(await clipped()).toBe(false);
-
-    // Below the 1000px breakpoint the tag is gone rather than a one-letter stub,
-    // and the name is still whole.
-    await page.setViewportSize({ width: 900, height: 900 });
-    await expect(tag).toBeHidden();
-    expect(await clipped()).toBe(false);
+    for (const width of [1400, 900, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(cause).toBeVisible();
+      expect(await clipped()).toBe(false);
+      const n = (await name.boundingBox())!;
+      const c = (await cause.boundingBox())!;
+      expect(c.y).toBeGreaterThanOrEqual(n.y + n.height - 1);
+    }
     await expect(name).toHaveText('app');
   });
 });

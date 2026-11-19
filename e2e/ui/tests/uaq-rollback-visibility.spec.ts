@@ -10,8 +10,8 @@ import type { Page } from "@playwright/test";
 // up#1 startup ok, up#2 fails, up#3 rollback ok), then a successful retry
 // (up#4) — and asserts each surface keeps the rollback readable:
 // the retry note pairing (UAQ1), the Deploys status filter (UAQ2), the header
-// incident badge landing on the pre-filtered view (UAQ3), the roster's outcome
-// strip + last-incident line (UAQ4) — kept while a deploy is in flight
+// incident badge landing on the pre-filtered view (UAQ3), the detail panel's
+// outcome strip + last-incident line (UAQ4) — kept while a deploy is in flight
 // (UAQ7) — and the Logs severity threshold that
 // keeps the WARN-level rollback outcome under the errors chip (UAQ5). UAQ6
 // takes its own clean instance: with nothing to report the badge must take
@@ -173,10 +173,10 @@ test.describe("Maske AQ: rollback visibility after the fact", () => {
     await expect(deployRow(page, "rolled_back")).toBeVisible();
   });
 
-  // UAQ4 — the roster keeps the incident readable without opening anything:
-  // the outcome strip shows the last outcomes as a timeline into the badge,
-  // and the last-incident line names the rollback the retry papered over.
-  test("UAQ4: outcome strip and last-incident line on the roster row", async ({
+  // UAQ4 — the stack's detail panel keeps the incident readable in its Last
+  // deploy fact: the outcome strip shows the last outcomes as a timeline, and
+  // the last-incident line names the rollback the retry papered over.
+  test("UAQ4: outcome strip and last-incident line in the detail panel", async ({
     page,
     skipper,
   }) => {
@@ -185,26 +185,29 @@ test.describe("Maske AQ: rollback visibility after the fact", () => {
     await page
       .locator('[data-testid="view-toggle"] button[data-view="stacks"]')
       .click();
-    const row = page.locator('[data-testid="roster-row"][data-stack="web"]');
-    await expect(row).toBeVisible();
+    await page.locator('[data-testid="roster-row"][data-stack="web"]').click();
+    const facts = page.locator(
+      '[data-testid="detail-panel"][data-stack="web"] [data-testid="detail-facts"]',
+    );
+    await expect(facts).toBeVisible();
 
     // Oldest → newest, reading into the badge: success, rolled_back, success.
-    const dots = row.locator('[data-testid="outcome-dot"]');
+    const dots = facts.locator('[data-testid="outcome-dot"]');
     await expect(dots).toHaveCount(3);
     await expect(dots.nth(0)).toHaveAttribute("data-status", "success");
     await expect(dots.nth(1)).toHaveAttribute("data-status", "rolled_back");
     await expect(dots.nth(2)).toHaveAttribute("data-status", "success");
 
-    const incident = row.locator('[data-testid="last-incident"]');
+    const incident = facts.locator('[data-testid="last-incident"]');
     await expect(incident).toBeVisible();
     await expect(incident).toContainText("rolled back");
   });
 
-  // UAQ7 — a live deploy event repaints only the roster row's status cell; it
-  // must keep the strip and the incident line, not just swap the badge. The
+  // UAQ7 — a live deploy event repaints only the roster row's status cell; the
+  // open detail panel must survive it with its strip and incident line. The
   // held `up` keeps the row in `deploying` with no `stacks` snapshot to rebuild
-  // it, so the cell the assertions read is the one the live refresh wrote.
-  test("UAQ7: a deploying roster row keeps its outcome strip", async ({
+  // it, so the badge the assertions read is the one the live refresh wrote.
+  test("UAQ7: a deploying stack keeps its open panel and outcome strip", async ({
     page,
     skipper,
   }) => {
@@ -214,7 +217,9 @@ test.describe("Maske AQ: rollback visibility after the fact", () => {
       .locator('[data-testid="view-toggle"] button[data-view="stacks"]')
       .click();
     const row = page.locator('[data-testid="roster-row"][data-stack="web"]');
-    await expect(row.locator('[data-testid="outcome-dot"]')).toHaveCount(3);
+    await row.click();
+    const panel = page.locator('[data-testid="detail-panel"][data-stack="web"]');
+    await expect(panel.locator('[data-testid="outcome-dot"]')).toHaveCount(3);
 
     skipper.hold();
     skipper.setStackImage("web", "1.28");
@@ -222,8 +227,8 @@ test.describe("Maske AQ: rollback visibility after the fact", () => {
     await expect(row.locator('[data-testid="status-badge"]')).toHaveClass(
       /badge-deploying/,
     );
-    await expect(row.locator('[data-testid="outcome-dot"]')).toHaveCount(3);
-    await expect(row.locator('[data-testid="last-incident"]')).toBeVisible();
+    await expect(panel.locator('[data-testid="outcome-dot"]')).toHaveCount(3);
+    await expect(panel.locator('[data-testid="last-incident"]')).toBeVisible();
     skipper.release();
   });
 

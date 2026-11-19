@@ -1593,3 +1593,66 @@ func TestAppChromeJSHandler_ServesGzipWhenAccepted(t *testing.T) {
 		t.Error("gzip body does not attach the chrome module to the App namespace")
 	}
 }
+
+// Publishes that overflow one subscription: the broadcasters' buffer plus one.
+const (
+	broadcastOverflow = 16 + 1
+	logOverflow       = 256 + 1
+)
+
+// serveUntilReturn runs the handler with a context that is never cancelled
+// and reports whether it returned on its own — the signal that a lagging
+// subscription ended the stream so the client reconnects and resyncs.
+func serveUntilReturn(t *testing.T, handler http.Handler, w *sseWriter, req *http.Request) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		handler.ServeHTTP(w, req)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(sseTestTimeout):
+		t.Fatalf("SSE handler kept streaming after its subscription lagged:\n%s", w.Body())
+	}
+}
+
+// Publishing a buffer and one more while the handler is mid-write overflows
+// its subscription deterministically; the stream must end (so EventSource
+// reconnects with Last-Event-ID) instead of silently skipping the overflow.
+func TestSSEHandler_EndsStreamWhenDeploySubscriptionLags(t *testing.T) {
+	broadcaster := events.NewBroadcaster()
+	handler := SSEHandler(broadcaster, nil, events.NewHistory(""), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+
+	w := newSSEWriter()
+	var once sync.Once
+	w.onWrite = func(chunk string) {
+		if strings.Contains(chunk, "event: synced") {
+			once.Do(func() {
+				for i := range broadcastOverflow {
+					broadcaster.Publish(events.DeployEvent{ID: int64(i + 1), Stack: "burst"})
+				}
+			})
+		}
+	}
+	serveUntilReturn(t, handler, w, req)
+
+	if !strings.Contains(w.Body(), "id: 16\n") {
+		t.Errorf("the buffered events must be sent before the stream ends:\n%s", w.Body())
+	}
+}
+
+func TestSSEHandler_EndsStreamWhenStateSubscriptionLags(t *testing.T) {
+	stateB := events.NewStateBroadcaster()
+	collect := func() []events.StateEvent {
+		for i := range broadcastOverflow {
+			stateB.Publish(events.StateEvent{Name: events.StateQueue, Data: map[string]any{"count": i}})
+		}
+		return nil
+	}
+	handler := SSEHandler(events.NewBroadcaster(), stateB, events.NewHistory(""), collect)
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+
+	serveUntilReturn(t, handler, newSSEWriter(), req)
+}

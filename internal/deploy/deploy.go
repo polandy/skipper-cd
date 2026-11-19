@@ -18,6 +18,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/metrics"
+	"github.com/polandy/skipper-cd/internal/redact"
 )
 
 // CommitReader retrieves git commit information from the repository.
@@ -83,6 +84,9 @@ type Config struct {
 	// graceful shutdown (ADR-0014). nil means rebuild waits are never
 	// abandoned.
 	ShutdownCtx context.Context
+
+	// Secrets collects the run's secret env values and masks them out of every event (ADR-0070).
+	Secrets *redact.Secrets
 
 	// EventSink is invoked on every deploy status change; nil disables event
 	// tracking.
@@ -173,6 +177,7 @@ type Deployer struct {
 	stateDir         string
 	shutdownCtx      context.Context
 	eventSink        func(events.DeployEvent)
+	secrets          *redact.Secrets
 	autosync         *autosync.Controller
 	queue            *autosync.Queue
 	postRunHook      func()
@@ -245,6 +250,7 @@ func New(cfg Config) *Deployer {
 		stateDir:               stateDir,
 		shutdownCtx:            cfg.ShutdownCtx,
 		eventSink:              cfg.EventSink,
+		secrets:                cfg.Secrets,
 		autosync:               cfg.Autosync,
 		queue:                  cfg.Queue,
 		postRunHook:            cfg.PostRunHook,
@@ -353,6 +359,15 @@ func (r stackRun) resolveEnv() ([]string, error) {
 	return env, nil
 }
 
+// resolveEnv is run.resolveEnv that also registers the env's secret values for masking.
+func (d *Deployer) resolveEnv(run stackRun) ([]string, error) {
+	env, err := run.resolveEnv()
+	if err == nil && d.secrets != nil {
+		d.secrets.AddEnv(env)
+	}
+	return env, err
+}
+
 // isPaused reports whether autosync is currently not effective for the stack.
 // With no controller installed, autosync is always on.
 func (d *Deployer) isPaused(stack string) bool {
@@ -427,6 +442,8 @@ func BaseEnv(varsFile string) ([]string, error) {
 // syncAndDeployLocked syncs the repository and deploys all stacks. The caller
 // must hold d.mu.
 func (d *Deployer) syncAndDeployLocked(ctx context.Context, cfg *config.Config) {
+	metrics.RunStartedTimestamp.Set(float64(time.Now().Unix()))
+	defer metrics.RunStartedTimestamp.Set(0)
 	if d.syncer != nil {
 		if err := d.syncRepository(ctx); err != nil {
 			slog.Error("git sync failed, aborting deploy", "err", err)
@@ -557,8 +574,23 @@ func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
 	// outcome is the summary line the caller logs at the end (ADR-0042
 	// amendment).
 	slog.Debug("starting deploy run", "stacks", len(cfg.Stacks))
-	d.deployStacksGated(ctx, cfg, baseEnv, state, stackErrs)
-	d.finishRun(ctx, state)
+	head := d.headCommit(ctx)
+	d.deployStacksGated(ctx, cfg, baseEnv, state, stackErrs, head)
+	d.finishRun(state, head)
+}
+
+// headCommit returns the clone's HEAD the run deploys, or "" when there is no
+// commit reader or it cannot be read.
+func (d *Deployer) headCommit(ctx context.Context) string {
+	if d.commitReader == nil {
+		return ""
+	}
+	sha, err := d.commitReader.HeadCommitSHA(ctx)
+	if err != nil {
+		slog.Warn("could not read HEAD commit SHA", "err", err)
+		return ""
+	}
+	return sha
 }
 
 // resolveStackSet returns the effective config for this run. With stack
@@ -592,7 +624,7 @@ func (d *Deployer) resolveStackSet(cfg *config.Config) (*config.Config, []config
 // stable topological sort that keeps config order among stacks not otherwise
 // constrained) behind the dependency gate, and maintains the UI's run-plan
 // look-ahead while doing so.
-func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, baseEnv []string, state *persistedState, stackErrs []config.StackError) {
+func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, baseEnv []string, state *persistedState, stackErrs []config.StackError, head string) {
 	// Look-ahead for the UI: hash every stack upfront to learn which will deploy
 	// this run, so the header can show what is coming next. Skipped when the UI
 	// is off (no sink). The loop below re-evaluates each stack independently and
@@ -613,6 +645,7 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 	for _, se := range stackErrs {
 		gate.record(se.Stack, depBlocked)
 	}
+	checkpoint := newStateCheckpoint(d.stateDir, state)
 	for _, stack := range orderStacks(cfg.Stacks) {
 		// Resolve the effective rollback policy here, where the global default is
 		// in scope, so the deploy path (rollBackFailedDeploy) can honor an opt-out
@@ -621,14 +654,29 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 		stack.Rollback = &rollback
 		outcome := d.deployStackGated(ctx, stack, cfg.StacksBaseDir, cfg.VarsFile, baseEnv, state, gate.decide(stack.DependsOn))
 		gate.record(stack.Name, outcome)
+		// A killed bootstrap run must leave the state empty, so its resume is a bootstrap run too (ADR-0051).
+		if !d.bootstrapRun {
+			d.checkpointState(checkpoint, state, head)
+		}
 	}
 
 	// Run finished: clear the look-ahead so the header returns to idle.
 	d.publishRunPlan(nil)
 }
 
+// checkpointState saves the state between two stacks, with the settled
+// stacks' bases already at head; last_deployed_commit waits for finishRun.
+func (d *Deployer) checkpointState(checkpoint *stateCheckpoint, state *persistedState, head string) {
+	if head != "" {
+		state.advanceCommitBases(head)
+	}
+	if err := checkpoint.save(state); err != nil {
+		slog.Error("could not save deploy state", "err", err)
+	}
+}
+
 // finishRun persists the run's results and publishes the post-run views.
-func (d *Deployer) finishRun(ctx context.Context, state *persistedState) {
+func (d *Deployer) finishRun(state *persistedState, head string) {
 	// Record the current HEAD commit so future deploys can diff against it — but
 	// only when nothing is still queued. A change deferred by paused autosync has
 	// not deployed yet; advancing the base past it would make its eventual deploy
@@ -638,14 +686,10 @@ func (d *Deployer) finishRun(ctx context.Context, state *persistedState) {
 	//
 	// A stack's own base (ADR-0061) advances regardless of the queue: it only
 	// moves for the stacks this run left at their desired state.
-	if d.commitReader != nil {
-		if sha, err := d.commitReader.HeadCommitSHA(ctx); err != nil {
-			slog.Warn("could not read HEAD commit SHA", "err", err)
-		} else {
-			state.advanceCommitBases(sha)
-			if d.queue == nil || d.queue.Count() == 0 {
-				state.LastDeployedCommit = sha
-			}
+	if head != "" {
+		state.advanceCommitBases(head)
+		if d.queue == nil || d.queue.Count() == 0 {
+			state.LastDeployedCommit = head
 		}
 	}
 

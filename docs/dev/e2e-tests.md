@@ -13,8 +13,9 @@ embedded assets — fonts and the extracted `app-helpers.js`, ADR-0035) whose
 contract is
 [`internal/ui/UI_SPEC.md`](https://github.com/polandy/skipper-cd/blob/main/internal/ui/UI_SPEC.md).
 The pure, DOM-free helpers in `app-helpers.js` have their own fast unit layer —
-`node --test` (`make ui-unit`, its own CI job) — so E2E need not re-verify
-formatting/classification edge cases. A dependency/version bump
+`node --test` (`make ui-unit`, its own CI job, which also reports its line,
+branch and function coverage and fails below the floors set in the `Makefile`)
+— so E2E need not re-verify formatting/classification edge cases. A dependency/version bump
 or an edit to that file can silently break a control, an SSE→DOM render, a
 badge, or the drawer. The UI E2E layer exercises the **real rendered UI against
 the real backend** so those breaks fail CI. Coverage spans all four UI masks,
@@ -27,9 +28,9 @@ asserting **behaviour + visual snapshots**.
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
 > Go harness drives the real binary — with **UA1** (row lifecycle), **UA2** (all
 > six rendered status badges), **UA3** (skipped deploys never render a row), **UA4** (time-mode
-> toggle + persistence), **UA5** (stack icon + monogram fallback), **UA7** (files-pill panel toggle),
-> **UA8** (diff-panel fetch + colouring), **UA9** (error-panel tied to the
-> failed row with its message), **UA10** (empty-state placeholder for a
+> toggle + persistence), **UA5** (stack icon + monogram fallback), **UA7** (row click toggles the deploy detail),
+> **UA8** (diff fetch + colouring in the deploy detail), **UA9** (a failed
+> row's deploy detail: verdict before facts, the error in the Output tab), **UA10** (empty-state placeholder for a
 > stack-free, event-free instance), **UD5** (header version label from
 > `/api/version`), **UB1** (deploys↔logs view toggle + persistence), **UB2**
 > (log lines + INFO/WARN/ERROR level badges), **UB3** (sort toggle
@@ -44,7 +45,7 @@ asserting **behaviour + visual snapshots**.
 > **UC5** (per-stack switch → POST, reflected on reopen), **UC6** (queued list in
 > deploy order with position/reason/count/wait), **UC7** (stack filter:
 > substring/clear/Esc), **UC8** (enable drains the queue, disable runs no deploy),
-> **UC9** (queued row + `paused:` tag, superseded on resume), the
+> **UC9** (queued row + `autosync paused` cause line, superseded on resume), the
 > override-collapse cases **UC10**/**UC11**/**UC12**, **UC13** (a late
 > snapshot never overwrites a newer one), **UC14** (the drawer is inert until it
 > has server state) and **UC15** (a re-render keeps the switch nodes).
@@ -56,7 +57,7 @@ asserting **behaviour + visual snapshots**.
 > connected→reconnecting→connected, driven by a kill/relaunch of the binary on
 > the same port), **UD10** (recovery from a *fatal* stream error the browser
 > won't retry), **UD3** (deploy indicator names the active stack while held),
-> **UD4** (responsive ≤700px), **UD5** (build identity label), **UD8** (view-options popover), **UD9** (theme glyph), and **UD11** (tap-tip opt-in on non-header controls). All four masks' behaviour is landed, **and the visual-snapshot
+> **UD4** (responsive ≤700px), **UD5** (build identity label), **UD8** (view-options popover), **UD9** (theme glyph), **UD11** (tap-tip opt-in on non-header controls), **UD13** (OS colour scheme) and **UD14** (mobile theme row). All four masks' behaviour is landed, **and the visual-snapshot
 > baselines (§5) too**: a lean set of six baselines (deploys table, diff panel,
 > autosync drawer, both themes, mobile layout) generated and compared in
 > Playwright's pinned container, gated by `RUN_SNAPSHOTS`. The `e2e-ui` CI job now
@@ -69,32 +70,29 @@ asserting **behaviour + visual snapshots**.
 > G** (§4.8) covers the deploys stack search — **UG1** (type-to-reveal + filter +
 > Esc fold), **UG2** (no-match note), **UG3** (mobile popover entry) — a
 > client-side filter over the startup deploy rows. **Mask H** (§4.9) covers the
-> stack-health pill — **UH1** (pill per stack), **UH2** (per-service panel),
-> **UH3** (newest row per stack), **UH4** (health-watch status history:
+> stack-health pill — **UH1** (pill per stack), **UH2** (the Containers tab lists
+> every service), **UH3** (deploy rows carry no health pill), **UH4** (health-watch status history:
 > age + phase timeline + deploy-correlated commit chip, ADR-0031), **UH5**
 > (an exited on-demand container reads stopped + labelled, ADR-0027 amendment),
 > **UH7** (routine restart folds into `up in Xs` + strip + raw-list toggle) —
 > driven by a health poller scripted through the stub docker's `ps` output. **Mask I** (§4.10) covers the diff panel's commit
-> metadata + variant-A row binding — **UI1** (commit header), **UI2** (row/panel
-> binding), **UI3** (multi-commit range) — driven by webhook image bumps. **Mask
-> J** (§4.11) covers the rolled-back error panel — **UJ1** (error box bound to its
-> row), **UJ2** (diff carried on the rolled-back event, bar continuous through
-> row → panel → error) — driven by a failing `up` that rolls back. **Mask K**
+> metadata in the deploy detail — **UI1** (Commit fact), **UI2** (row/panel
+> binding), **UI3** (Commits tab for a multi-commit range) — driven by webhook image bumps. **Mask
+> J** (§4.11) covers the rolled-back deploy detail — **UJ1** (opens on click as
+> the row's sibling), **UJ2** (diff carried on the rolled-back event, the
+> rollback verdict before it) — driven by a failing `up` that rolls back. **Mask K**
 > (§4.12) covers self-heal — **UK1** (a degraded stack is restored, `healed`
 > row), **UK2** (a stack that stays unhealthy exhausts into `heal_exhausted`) —
 > driving the real self-heal loop off the scripted health poller. **Mask L**
-> (§4.13) covers the one-open-detail-per-table rule — **UL1** (the health panel and
-> the files/diff panel swap each other out, in both click orders), **UL2** (a
-> panel on another row closes the open one). **Mask M**
+> (§4.13) covers the one-open-detail-per-table rule — **UL2** (a panel on another
+> row closes the open one). **Mask M**
 > (§4.14) covers the per-stack deploy-history panel (audit log, ADR-0033) —
-> **UM1** (the history button opens a panel of the stack's terminal outcomes
-> from `/api/audit`), **UM2** (the button is on the newest row per stack only),
-> **UM3** (the panel is mutually exclusive with the diff panel) — driven by real
+> **UM1** (the Stacks detail's History tab lists the stack's terminal outcomes
+> from `/api/audit`) — driven by real
 > deploys (startup + a webhook bump). **Mask N** (§4.15) covers the self-heal row
-> detail (ADR-0029 amendment) — **UN1** (a `healed` row carries a self-heal badge,
-> not a files pill; clicking it opens a panel that notes there is no diff and
-> lists the drifted service but not the healthy one), **UN2** (the heal panel
-> obeys the one-open-panel-per-row rule against the health panel) — driving the
+> detail (ADR-0029 amendment) — **UN1** (a `healed` row has an empty Change cell;
+> clicking it opens the deploy detail on its Drift tab, which lists the drifted
+> service but not the healthy one) — driving the
 > real self-heal loop with a mixed healthy/unhealthy service snapshot.
 
 ## 1. Scope & boundaries
@@ -235,7 +233,7 @@ real backend):
 these, never on text/CSS. Minimum set:
 
 - Deploys: `deploy-row` (+ `data-stack`, `data-status`), `status-badge`,
-  `files-pill`, `files-panel`, `diff-panel`, `error-panel`, `empty-state`,
+  `cause-line`, `change-more`, `row-sha`, `detail-panel`, `files-panel`, `diff-panel`, `empty-state`,
   `stack-icon`, and a `time-cell`/`duration-cell` marker for snapshot masking.
 - Logs: `logs-panel`, `logs-live`, `logs-stat`, `log-line` (+ `data-level`),
   `level-badge`, `stack-prefix`, `cmd-prefix`, `diff-pill`, `log-search`,
@@ -245,6 +243,23 @@ these, never on text/CSS. Minimum set:
   `stack-filter`.
 - Chrome: `view-toggle`, `view-options` (+ `time-mode`), `theme-toggle`,
   `conn-indicator` (+ `data-state`), `deploy-indicator`.
+
+### Temp dirs never outlive the run
+
+Anything a test, script or CI helper creates under the OS temp dir is removed on
+success, failure and interrupt — a leak exhausts `/tmp`'s inodes for every other
+job on the host.
+
+- Go tests use `t.TempDir()`; `e2e`'s `TestMain` builds the binary into a dir its
+  deferred removal clears on every exit path.
+- Playwright: `fixtures/tempdirs.ts` (`TempDirs`) records every dir it creates.
+  The `skipper` fixture calls `dispose()` in a `finally` and then fails the test
+  if `workspaces.leaked()` is non-empty; `globalSetup` builds the binary into a
+  per-run dir that its returned teardown removes; `ue-pwa` removes its updated
+  binary in `afterAll`. `fixtures/tempdirs.test.ts` (run by `make ui-unit`)
+  proves removal after a success and after a forced failure.
+- `scripts/ui-preview.mjs` removes its tree on `exit` and on SIGINT/SIGTERM/SIGHUP;
+  `make ui-preview-smoke` runs it with a fresh `TMPDIR` and fails if anything is left.
 
 ## 4. Test cases (Given/When/Then)
 
@@ -292,10 +307,15 @@ UI suite reuses.
   `"type": "health"` alert (deploy-correlated via the startup deploy), flipping
   back POSTs the recovery, and `healthwatch.yaml` records the phases. This is
   the config→wiring→watcher→alerter through-line the unit tests cannot see.
-- **P11 — Health watch alert cooldown.** With `alert_cooldown_seconds` set, the
-  first failure + recovery pair is delivered; a repeat failure within the
-  cooldown is recorded and persisted (with the pending catch-up marker) but no
-  third alert is POSTed.
+- **P11 — Health watch alert cooldown** (ADR-0031 amendment): with
+  `alert_cooldown_seconds: 3600`, the first unhealthy alert and its recovery are
+  both POSTed; a repeat failure inside the cooldown is persisted in
+  `healthwatch.yaml` as `suppressed: true` while the recorder still counts
+  exactly two alerts.
+- **P12 — Dependency ordering** (ADR-0032): with `app` depending on `db`, a push
+  changing both fails `db`'s `up` (`STUB_DOCKER_FAIL_NTH_UP=3`); `app` gets a
+  `blocked` event and no `up`, `/api/queue` lists it, and
+  `skipper_deploys_blocked_total{stack="app"}` is at least 1.
 
 ### 4.2 UI — Maske A: Deploys-View (Playwright)
 
@@ -317,19 +337,34 @@ UI suite reuses.
 - **UA5 — Stack icon + monogram fallback.** A resolvable icon renders in
   `stack-icon`; a stack whose icon 404s falls back to the monogram chip (no
   broken image).
-- **UA7 — Files pill.** For an event with `changed_files`, clicking `files-pill`
-  inserts `files-panel` below the row; clicking again removes it.
-- **UA8 — Diff panel.** For a `has_diffs` event, clicking the pill fetches
-  `/api/events/{id}/diffs` and renders `diff-panel` with additions/deletions/
-  hunk colouring. *Snapshot: diff panel.*
-- **UA9 — Error detail.** A `failed` event shows `error-panel` with the message.
+- **UA7 — Row detail.** For an event with `changed_files`, clicking the row
+  opens its deploy detail (`detail-panel`, the row's direct sibling) on its
+  Changes tab with the `files-panel`; clicking again closes it.
+- **UA8 — Diff panel.** For a `has_diffs` event, clicking the row fetches
+  `/api/events/{id}/diffs` and renders `diff-panel` inside the deploy detail with
+  additions/deletions/hunk colouring. *Snapshot pending the owner's look at the
+  new panel.*
+- **UA9 — Failed deploy detail.** Clicking a `failed` row opens its deploy
+  detail: `detail-verdict` (`Failed at docker compose up`) comes before
+  `detail-facts`, and the Output tab's `deploy-output` carries the error.
 - **UA10 — Empty state.** A fresh UI with no events shows `empty-state`.
-- **UA11 — Queued row replaced on resume.** Pausing autosync and pushing a change
-  defers the stack to a `queued` row. Re-enabling autosync deploys it, and the
-  queued row is replaced by the deploy row rather than lingering beside it.
-- **UA12 — Queued row shows the pending diff.** A `queued` row is flagged
-  `has_diffs`, and clicking its files pill expands the coloured `diff-panel`, not
-  the plain file-path list.
+- **UA11 — Queued row replaced on resume.** With autosync paused globally, a
+  pushed image bump leaves a `queued` row beside the startup success; resuming
+  drains the queue and the stack deploys, so `web` shows two `success` rows and
+  no `queued` one — the stale row is replaced, not left standing.
+- **UA12 — Queued row diff.** The paused stack's `queued` row is flagged
+  `data-has-diffs`; clicking it fetches `/api/events/{id}/diffs` and opens the
+  `diff-panel` (not the plain `files-panel`) with `nginx:1.25` as the deleted
+  and `nginx:1.26` as the added line.
+- **UA13 — Deploy detail tabs by keyboard.** A failed row's deploy detail
+  follows the ARIA tabs pattern like UBC9: End selects and focuses the last tab
+  and the `tabpanel` is `aria-labelledby` it; ArrowRight wraps to the first.
+  Verified to fail without the deploy panel's keydown handler.
+- **UA14 — Deploy row by keyboard.** A failed row's `.row-toggle` (its stack
+  name, `role=button`) opens the deploy detail on Enter and flips
+  `aria-expanded`; Escape from a detail tab closes it, resets `aria-expanded`
+  and returns the focus to the toggle; reopened, Escape on the toggle itself
+  closes it too.
 
 ### 4.3 UI — Maske B: Logs-View
 
@@ -419,8 +454,8 @@ UI suite reuses.
 - **UC8 — Enable drains, disable does not.** Enabling (global or stack) triggers
   a deploy run that drains the queue (stub `up` runs, pending→0); disabling only
   updates state (no `up`).
-- **UC9 — Queued row + tag.** A `queued` event yields a `deploy-row` with the
-  `queued` badge and a `paused:` tag; a later real deploy supersedes it.
+- **UC9 — Queued row + cause.** A `queued` event yields a `deploy-row` with the
+  `queued` badge and an `autosync paused for every stack` cause line; a later real deploy supersedes it.
 - **UC10 — Re-enable does not pin (override collapse).** Global on. Pausing a
   stack via its `stack-switch` and then resuming it must leave **no** sticky
   override: a subsequent global-off pauses that stack along with the rest,
@@ -474,10 +509,11 @@ UI suite reuses.
   `api`'s switch has visibly flipped, proving the repaint ran — `web`'s node must
   still be `isConnected` and still toggle. This is what makes UC5/UC10/UC11's
   clicks land under load.
-- **UC16 — The drawer opens at its top.** Opening the drawer moves focus to the
-  global switch without scrolling it out of view: with the open transition slowed
-  so the drawer is still a sliver, the global row stays at the drawer's top edge
-  once focus lands (`focus({ preventScroll: true })`).
+- **UC16 — The drawer opens at its top.** In the Logs view on a 744×620
+  viewport with ten stacks and the open transition slowed to 3s, opening the
+  drawer lands focus on `global-switch` with the drawer's `scrollTop` still 0;
+  once `data-settled`, the global row lies inside the drawer, not clipped above
+  its edge.
 
 ### 4.5 UI — Maske D: Global chrome
 
@@ -514,9 +550,9 @@ UI suite reuses.
 - **UD4 — Responsive ≤700px.** At a 390px viewport the **compact header**
   (UI_SPEC §Responsive) does not overflow the viewport width
   (`documentElement.scrollWidth ≤ clientWidth`) and the `brand-name` wordmark is
-  hidden; the **table** collapses to its two-line layout (name/status over
-  time/version), the Duration and Files columns hide, and tapping a row with
-  changed files expands the panel. The 1280px control asserts
+  hidden; the **table** collapses to its two-line layout (name/time over
+  change/result), the When cell's duration hides, and tapping a row with
+  changed files opens its deploy detail directly below it. The 1280px control asserts
   the wordmark is visible with likewise no sideways scroll. *Snapshot: mobile
   layout.*
 - **UD8 — View-options popover.** The view-specific toggle (`time-mode`, shared
@@ -529,13 +565,21 @@ UI suite reuses.
 - **UD9 — Theme glyph.** The header `theme-toggle` is glyph-only on every
   viewport; the `.tg-moon` / `.tg-sun` glyphs reflect the mode (moon in dark →
   sun in light) and flip on toggle.
+- **UD13 — OS colour scheme.** Run under an emulated light OS (the suite
+  itself emulates dark, which the baselines show): with no saved choice the
+  page opens light, follows an `emulateMedia` flip to dark live, and once the
+  toggle saves a choice that choice wins over the OS, across a reload too.
+- **UD14 — Mobile theme row.** At 390 px the header `theme-toggle` is hidden
+  and the `view-options` popover shows `deploy-theme-toggle` (hidden on
+  desktop); tapping it switches to light, marks it `.active` and saves
+  `colorScheme`.
 - **UD5 — Version label.** The header `brand-version` shows the deployed version
   as `v<semver>`. `globalSetup` injects the version via `-ldflags` from
   `.release-please-manifest.json` (the same source as the Docker/Nix builds), so
   the case asserts the ldflags → `GET /api/version` → header render through-line
   against the exact shipped version (release-proof: both sides read the manifest).
 - **UD11 — Tap-tip opt-in on non-header controls.** A leaf-level `data-taptip`
-  control (the deploy row's `clog-btn`) flashes `.tap-tip` on a synthetic touch
+  control (a service's `clog-btn` in the Stacks detail's Containers tab) flashes `.tap-tip` on a synthetic touch
   `pointerdown` and auto-hides after its 1600ms timer (`page.clock`); the same
   dispatch with `pointerType: 'mouse'` shows nothing. A second case opens the
   `view-options` popover and confirms `time-mode` still stays silent even
@@ -625,14 +669,15 @@ real docker, no real containers. Behaviour-only (no snapshot).
 
 - **UH1 — Health pill per stack.** Three stacks (`web`, `db`, `cache`) get
   scripted `ps` output — running/healthy, running/unhealthy, exited(0) — and each
-  stack's newest row shows a `health-pill` whose `data-health` is the rolled-up
+  stack's Stacks `roster-row` shows a `health-pill` whose `data-health` is the rolled-up
   status (`healthy` / `unhealthy` / `stopped`).
 - **UH2 — Per-service panel.** A stack with a healthy and an unhealthy service
-  rolls up to `unhealthy`; clicking the pill opens the `health-panel` listing
-  every `health-service`, and clicking again removes it.
-- **UH3 — Newest row per stack.** Health is a current value, so with the pill on
-  a stack's row, a pushed change that prepends a second row leaves exactly one
-  pill — on the newest (first) row, not the older one.
+  rolls up to `unhealthy`; the Containers tab of the stack's Stacks detail shows
+  the `health-panel` listing every `health-service`, and closing the detail
+  removes it.
+- **UH3 — Deploy rows carry no health pill.** Health is a current value and a
+  deploy row is history: a pushed change that prepends a second deploy row
+  leaves no `health-pill` on either, while the Stacks row keeps its pill.
 - **UH4 — Status history (ADR-0031).** With the health watch on (`healthWatch:
   true`, debounce 1, riding `healthPoll: 1`): a service with only its baseline
   phase shows the inline age but **no** `health-history`; after a webhook deploy
@@ -647,9 +692,8 @@ real docker, no real containers. Behaviour-only (no snapshot).
   panel shows the service as `stopped` with `exited · on-demand` in its state
   cell while the sibling's state stays plain. Covers the
   config→StackRef→probe→snapshot→label through-line the unit tests cannot see.
-- **UH6 — Keyboard operability.** The pill is a real `<button>`: it takes focus
-  (`Tab`-reachable) and `Enter` toggles the per-service panel open and closed —
-  the keyboard twin of UH2's clicks.
+- **UH6 — retired.** The pill is no longer a control (the roster row opens the
+  detail), so there is no keyboard path of its own to pin.
 - **UH7 — Folded timeline.** A routine restart cycle (`ps` flips healthy →
   starting → healthy, each accepted phase awaited via the pill) does **not**
   grow a `starting` line: the timeline folds it into the current healthy line
@@ -660,37 +704,36 @@ real docker, no real containers. Behaviour-only (no snapshot).
 
 ### 4.10 UI — Maske I: Diff-panel commit metadata + row binding
 
-The diff panel's commit header and its variant-A binding to the deploy row. A
+The deploy detail's commit metadata and its binding to the deploy row. A
 webhook that bumps a stack's image commits against the startup commit, so the
 deploy carries a real diff **and** commit metadata; the harness commits as author
-`e2e` with message `bump <stack> to <tag>`, making the header deterministic.
-Behaviour-only (no snapshot — UA8 already snapshots the diff colouring).
+`e2e` with message `bump <stack> to <tag>`, making the facts deterministic.
+Behaviour-only (no snapshot).
 
-- **UI1 — Commit header.** After a bump deploy, opening the diff panel shows a
-  `diff-head` that echoes the row (`web` + `deploy diff` + a `success` pill) and
-  the deployed commit's subject (`bump web to 1.26`), author (`e2e`) and 7-char
-  short SHA.
-- **UI2 — Variant-A binding.** Opening the panel marks the row `diff-open` and the
-  panel `bound` with `data-status="success"`, and the panel is the row's direct
-  sibling (shared, unbroken left bar); clicking again clears both.
-- **UI3 — Multi-commit range.** Two commits before a single deploy render the
-  newest as the headline (`bump web to 1.27`) and a `commits-pill` reading
-  `2 commits` that toggles the collapsed `diff-commit-list` (both commits listed).
+- **UI1 — Commit fact.** After a bump deploy, the deploy detail's head names
+  `web` with a `success` badge, and its Commit fact shows the 7-char short SHA
+  and the subject (`bump web to 1.26`), loaded lazily with the diff.
+- **UI2 — Row binding.** Opening the detail marks the row `audit-open`, the panel
+  carries `data-status="success"` and is the row's direct sibling; the head's
+  `detail-close` closes it and clears the row.
+- **UI3 — Multi-commit range.** Two commits before a single deploy put the
+  newest (`bump web to 1.27`) in the Commit fact and add a Commits tab counting
+  `2`, whose `diff-commit-list` lists both commits.
 
-### 4.11 UI — Maske J: rolled-back error panel binding + diff
+### 4.11 UI — Maske J: rolled-back deploy detail
 
-The rolled-back error box's variant-A binding and the diff now carried on the
-terminal event. Startup up#1 succeeds (sets `LastDeployedCommit`); the deploy's
+The rolled-back deploy detail: the rollback verdict first, then the diff now
+carried on the terminal event. Startup up#1 succeeds (sets `LastDeployedCommit`); the deploy's
 up#2 fails and the rollback up#3 succeeds → `rolled_back` (`STUB_DOCKER_FAIL_NTH_UP=2`).
 Behaviour-only (no snapshot).
 
-- **UJ1 — Error box binding.** The rolled-back row's error panel carries
-  `data-status="rolled_back"` and is the row's direct sibling, so the shared left
-  bar is unbroken (the message reads as attached to its row, not a floating card).
-- **UJ2 — Diff carried + continuous bar.** The rolled-back event now reports its
-  diff, so the row is `data-has-diffs="1"`; opening the files pill inserts a
-  `bound` `diff-panel` (`data-status="rolled_back"`) between the row and the error
-  panel, so the DOM order is row → `diff-panel` → `error-panel` — one unbroken bar.
+- **UJ1 — Opens on click.** No error box rides the list: the rolled-back row
+  stays closed until clicked, then its deploy detail (`data-status="rolled_back"`)
+  is the row's direct sibling and the row is `audit-open`.
+- **UJ2 — Verdict before diff.** The rolled-back event reports its diff, so the
+  row is `data-has-diffs="1"`; clicking it opens one deploy detail whose
+  verdict (`Rolled back to app 1.25`, naming `docker compose up`) precedes the
+  `diff-panel` in document order.
 
 ### 4.12 UI — Maske K: Self-heal (ADR-0029)
 
@@ -710,51 +753,39 @@ snapshots badge colouring, and the two new badges are covered there in spirit).
   5` so it never exhausts.
 - **UK2 — Give up.** A stack that stays unhealthy after its one allowed heal
   (`max_attempts: 1`) trips the circuit breaker: a single `heal_exhausted` row
-  with the give-up error in its `error-panel`, emitted once (not per poll), and
+  whose deploy detail reads `Self-heal gave up` with the give-up error in its
+  Output tab, emitted once (not per poll), and
   no `healed` row — the redeploy that did not restore it is no heal.
 
 ### 4.13 UI — Maske L: one open detail per deploy table
 
-The health panel and the files/diff panel are mutually exclusive on a row,
-and a panel opened on another row closes the open one (UI_SPEC "Expandable
-panels", detail selection): opening one closes the other, so the layout never depends on click order and the
-variant-A row binding is never split across two panels. A webhook image bump
-puts a diff on the newest row while the health poller (scripted stub) puts the
-health pill on the same row. Behaviour-only (no snapshot).
+A deploy row opens exactly one panel, its deploy detail (the health panel moved
+to the Stacks detail), and a detail opened on another row closes the open one
+(UI_SPEC "Expandable panels", detail selection), so the variant-A row binding is
+never split across two panels. Behaviour-only (no snapshot).
 
-- **UL1 — Mutual exclusion, both orders.** With the health panel open, clicking
-  the files pill swaps in the diff panel (row `diff-open`, not `health-open`);
-  clicking the health pill swaps the health panel back (row `health-open`, not
-  `diff-open`). The surviving panel is always the row's direct sibling.
-- **UL2 — Across rows.** With two stacks bumped in one run, opening the files
-  pill on `api`'s row while `web`'s diff panel is open closes it: `web` loses
-  `diff-open`, one diff panel remains, and it is `api`'s direct sibling.
+- **UL1 — retired.** It pinned the health panel against the deploy detail on one
+  row; deploy rows no longer carry a health pill.
+- **UL2 — Across rows.** With two stacks bumped in one run, opening `api`'s row
+  while `web`'s deploy detail is open closes it: `web` loses
+  `audit-open`, one deploy detail remains, and it is `api`'s direct sibling.
 
 ### 4.14 UI — Maske M: per-stack deploy history (ADR-0033)
 
-The newest row per stack carries a history button that opens a panel of the
-stack's durable terminal deploy outcomes, fetched from `/api/audit`. The panel
-joins the one-open-panel-per-row rule (Maske L). The harness runs the real
+The History tab of a stack's Stacks detail lists the stack's durable terminal
+deploy outcomes, fetched from `/api/audit`. The harness runs the real
 backend, so the records come from real deploys: the startup deploy plus a
 webhook image bump give two `success` records. Behaviour-only (no snapshot).
 UM5/UM6 cover the panel's fold — runs of routine outcomes collapse into one
 summary line, with the verbatim list behind a toggle (UI_SPEC "Deploy history").
 
-- **UM1 — History panel content.** Clicking the newest row's `history-btn` opens
-  the `audit-panel` (row gains `audit-open`, panel is its direct sibling) with
-  two `audit-row`s, newest first, each `data-status="success"` and carrying the
-  deployed commit's short SHA. A second click closes it.
-- **UM2 — Newest row only.** With two `web` rows, only the newest carries the
-  `history-btn`; the older row has none (the button is a current per-stack value,
-  like the health pill).
-- **UM3 — Mutual exclusion with the diff panel.** Opening the history panel then
-  the files/diff panel swaps in the diff panel (row `diff-open`, not
-  `audit-open`); opening the history button again swaps it back.
-- **UM4 — No orphaned panel on a queued row.** With autosync paused, a pushed
-  change renders a queued `web` row (the stack's newest, so it carries the
-  history button); the panel is opened on it, and resuming autosync drains the
-  queue — the queued row is superseded by the real deploy and the open
-  `audit-panel` is removed with it instead of stranding in the table.
+- **UM1 — History tab content.** The History tab of `web`'s Stacks detail shows
+  the `audit-panel` with two `audit-row`s, newest first, each
+  `data-status="success"` and carrying the deployed commit's short SHA; closing
+  the detail removes it.
+- **UM2–UM4 — retired.** They pinned the deploy-row `history-btn` (newest row
+  only, exclusion with the deploy detail, a queued row's orphaned panel); the
+  history lives only in the Stacks detail now.
 - **UM5 — Routine outcomes fold.** Five deploys of `web` (startup plus four
   image bumps, awaited through `/api/audit`): the panel shows the newest record
   as one `audit-row` and the four older ones as a single `audit-fold` line
@@ -779,9 +810,8 @@ summary line, with the verbatim list behind a toggle (UI_SPEC "Deploy history").
 
 ### 4.15 UI — Maske N: self-heal row detail (ADR-0029 amendment)
 
-A `healed` row is not a git deploy, so it has no changed files and no diff. Its
-files cell instead carries a teal **self-heal badge** (`heal-pill`) that expands a
-detail panel explaining the corrective redeploy and listing the services that had
+A `healed` row is not a git deploy, so it has no changed files and no diff: its
+Change cell stays empty, and clicking the row opens a deploy detail explaining the corrective redeploy and listing the services that had
 drifted when it ran (from the `heal_drift` carried on the event). Builds on the
 real self-heal loop of Maske K: `initialHealth` seeds two services healthy before
 boot, then one service (`app`) is turned unhealthy while the other (`db`) stays
@@ -790,13 +820,12 @@ service is listed. Once the corrective `up` is seen in `dockerUps`, the stack is
 turned healthy again — the healed row appears only on that recovery (ADR-0029
 amendment of 2026-09-29). Behaviour-only (no snapshot).
 
-- **UN1 — Badge + drift panel.** The healed row carries a `heal-pill` (not a
-  `files-pill`); clicking it opens the bound `heal-panel` (`data-status="healed"`)
-  whose text notes there is no diff and lists the drifted service `app`
-  (`unhealthy`) but not the healthy `db`. A second click toggles it closed.
-- **UN2 — One panel per row.** With the health panel open on the healed row,
-  clicking the self-heal badge swaps in the heal panel — the health panel is
-  gone, never two panels under one row (the rule of Maske L).
+- **UN1 — Drift detail.** The healed row's Change cell is empty; clicking the
+  row opens the deploy detail on its Drift tab, whose verdict notes there is no
+  diff and whose `heal-drift` lists the drifted service `app` (`unhealthy`) but
+  not the healthy `db`. A second click toggles it closed.
+- **UN2 — retired.** It pinned the health panel against the deploy detail on
+  the healed row; deploy rows no longer carry a health pill.
 
 ### 4.16 UI — Maske O: stack discovery surface (ADR-0034)
 
@@ -812,7 +841,7 @@ untouched.
   the line is hidden in the logs view and returns with the deploys view.
 - **UO2 — Leftover repo config.** Pushing a leftover in-repo `skipper.yaml`
   (`setRepoConfig`) — no longer read as of ADR-0043 — produces a `failed` row
-  for the reserved `_config` stack whose error panel explains the file is no
+  for the reserved `_config` stack whose deploy detail explains the file is no
   longer read, so un-migrated config never silently reverts to defaults.
 
 ### 4.17 UI — Maske P: blocked rows + hostile-name escaping (ADR-0032)
@@ -826,19 +855,14 @@ fails the dependency's redeploy after the two startup deploys. Behaviour-only
 (no snapshot).
 
 - **UP1 — Blocked row renders the reason as text.** A webhook run that changes
-  both stacks fails the dependency and blocks `app`: the blocked row's tag reads
-  the literal `blocked by dep<img>x` and contains no injected `<img>` element,
-  and the dependency's own row shows the hostile name verbatim in its stack
-  cell.
-- **UP2 — The tag yields before the stack name.** `.stack-name` carries
-  `overflow: hidden`, which resolves its automatic flex minimum to zero, so it
-  used to be the *only* shrinkable item in the cell while the `nowrap` tag
-  refused to give way — a long dependency name clipped the stack name past its
-  own ellipsis (measured: 20px against a 47px need, still clipped at a 1400px
-  viewport). The name now stays whole at 1400, 1100 and 900px; the tag
-  ellipsises instead and is dropped below the 1000px breakpoint, where it had
-  nothing useful left to say — it shrank to a one-letter stub, which reads worse
-  than absent.
+  both stacks fails the dependency and blocks `app`: the blocked row's
+  `cause-line` (text and `title`) reads the literal `blocked by dep<img>x` and
+  contains no injected `<img>` element, and the dependency's own row shows the
+  hostile name verbatim in its stack cell.
+- **UP2 — The cause sits under the stack name.** The cause is its own line below
+  the name rather than a tag beside it, so at 1400, 900 and 390px the name stays
+  whole (`.stack-name` is not clipped) and the cause stays visible beneath it,
+  ellipsising inside its own line.
 
 ### 4.18 UI — Maske Q: orphan detection (ADR-0036)
 
@@ -884,15 +908,16 @@ the first sync deploys every stack, so it is not deterministically seedable in
 e2e — and shares its `.roster-flag` rendering with the disabled row.
 
 - **UR1 — Aligned inventory table.** The stacks view shows an aligned column
-  header (`Stack · Status · Last deploy · Commit`, no count/title line) and one
+  header (`Stack · Health · Version · Last deploy`, no count/title line) and one
   row per declared stack (api, web deployed → success badge; wip parked →
   `.disabled` row with the `disabled` flag and no badge), enabled sorted before
   disabled; the deploy table is hidden and restored on switching back.
-- **UR2 — Click a row for containers + history.** Clicking a row expands the
-  stack into its containers panel (`health-panel` with a `health-service`, from
-  the health snapshot) above its deploy-history panel (`data-audit-for` = stack);
-  clicking again closes both, and opening another row closes the first (one stack
-  at a time).
+- **UR2 — Click a row for its detail panel.** Clicking a row opens its
+  `detail-panel` on the Containers tab (`health-panel` with a `health-service`,
+  from the health snapshot); the History tab swaps in the deploy-history panel
+  (`data-audit-for` = stack) in place of the containers. Clicking the row again
+  closes the panel, and opening another row moves it there (one stack at a
+  time). The panel itself is Maske BC (§4.56).
 - **UR3 — Search.** A printable key reveals the filter and seeds it; a substring
   match narrows the rows with a `shown/total` count; a no-match query shows the
   empty note; first `Esc` clears, second folds the bar away.
@@ -902,8 +927,9 @@ e2e — and shares its `.roster-flag` rendering with the disabled row.
 - **UR5 — Shared time mode.** The stacks popover's `Absolute time` toggle (the
   shared `timeMode`) switches the roster's relative times to absolute.
 - **UR6 — An open panel survives a republish.** A `stacks` snapshot lands after
-  every run and rebuilds the roster. With a row expanded, the panels come back
-  on the same row carrying the **new** snapshot — asserted end to end: the
+  every run and rebuilds the roster. With a row's panel open on its Triggers tab,
+  the panel comes back on the same row and tab carrying the **new** snapshot —
+  asserted end to end: the
   change-detection lead reads `Unchanged since the last deploy.` before a push
   and `Unchanged since <sha>.` after the pushed change deployed, with no click
   in between. Without the re-open the panel is simply gone (the assertion fails
@@ -911,31 +937,28 @@ e2e — and shares its `.roster-flag` rendering with the disabled row.
 
 ### 4.20 UI — Maske S: cross-view stack jump
 
-The compass jump button beside every stack name — deploy row and roster row
-alike — that switches between the Deploys and Stacks views and lands on that
+The compass jump button — in the head of a row's detail panel, in both views
+(§4.56) — that switches between the Deploys and Stacks views and lands on that
 stack's row there (`internal/ui/UI_SPEC.md#cross-view-stack-jump`). Two
 `test.describe` blocks: the default two-stack boot (`api`, `web`) for the
 landing/regression cases, and a discovery+disabled boot (mirroring Maske O/R's
-`wip` fixture) for the no-landing-target case. Behaviour-only — no new
-snapshot, but the jump-btn's footprint on every row required regenerating
-`deploys-table.png` and the full-page `theme-dark`/`theme-light`/
-`mobile-layout` baselines (§5).
+`wip` fixture) for the no-landing-target case. Behaviour-only (no snapshot).
 
-- **US1 — Deploys → Stacks.** Clicking a deploy row's jump button switches to
-  the Stacks view and its (sole) roster row for that stack is visible and
-  briefly carries `.jump-target`, which clears again on its own.
+- **US1 — Deploys → Stacks.** Clicking the jump button in a deploy row's detail
+  switches to the Stacks view; the (sole) roster row for that stack is visible,
+  briefly carries `.jump-target`, which clears again on its own, and has its
+  detail open.
 - **US2 — Stacks → Deploys lands on the newest row.** With two deploys of the
   same stack (two rows, newest first), jumping from the roster flashes
   `.jump-target` on the first (newest) row only — never the older one.
   Where the roster view is *inventory* (one row per stack), the deploy table
   is a *log*, so "the stack's row" is ambiguous there and the newest wins.
-- **US3 — The jump doesn't also open the row it sits on.** A regression guard:
-  the jump button and the row's own click-to-open-panel handler are on the
-  same delegated listener, so the jump must pre-empt it. Neither `diff-open`
-  (deploy row) nor `audit-open` + a rendered `audit-panel` (roster row) appear
-  after a jump click.
+- **US3 — The jump leaves the panel it sits in open.** A jump only switches
+  views: the deploy detail it was clicked in is still there, and the roster
+  detail panel stays open on its tab (`data-tab=triggers`) on the way back to
+  Stacks.
 - **US4 — No landing target.** A parked (`disabled: true`) stack has a roster
-  row and a jump button, but no deploy row (it has never deployed). Jumping
+  row and a jump button in its detail panel, but no deploy row (it has never deployed). Jumping
   from it still switches to the Deploys view; there is simply nothing to land
   on or flash.
 - **US5 — A leftover filter in the target view doesn't hide the landing row.**
@@ -948,20 +971,20 @@ snapshot, but the jump-btn's footprint on every row required regenerating
 
 A live `docker compose logs` panel opened from a logs icon, per stack (merged)
 and per container. Boots with `healthPoll: 1` and `setStackHealth` so the
-per-container icons appear on the health-panel service lines and the `?services=`
+per-container icons appear on the Containers tab's service lines and the `?services=`
 selection validates; the stub `docker` answers `compose … logs` with a fixed
 backlog (a single service drops the compose prefix, the whole stack and a
-multi-service subset keep `<stack>-1  | `). Behaviour-only (no new snapshot
-beyond the shared deploy-table baselines the row icon already shifts).
+multi-service subset keep `<stack>-1  | `). Behaviour-only (no snapshot).
 
-- **UT1 — Per-stack panel.** The row's `clog-btn` opens a `clog-panel` that
-  streams the backlog (the merged view keeps the `web-1` service prefix) and
-  shows the `clog-live` pill; clicking the icon again closes it.
-- **UT2 — Per-container panel.** Opening the `health-panel` (health pill) and
-  clicking a `health-service` line's `clog-btn` opens that one service's log
-  (scope `web / app`, no compose prefix).
-- **UT3 — Single log open.** Opening a second log (another stack's row icon)
-  closes the first — at most one `clog-panel` exists at a time.
+- **UT1 — Per-stack panel.** The Logs action (`clog-btn`) in the head of the
+  newest row's deploy detail opens a `clog-panel` that streams the backlog (the
+  merged view keeps the `web-1` service prefix) and shows the `clog-live` pill;
+  clicking the action again closes it.
+- **UT2 — Per-container panel.** On the Containers tab of the stack's Stacks
+  detail, clicking a `health-service` line's `clog-btn` opens that one service's
+  log (scope `web / app`, no compose prefix).
+- **UT3 — Single log open.** Opening a second log (another stack's detail
+  action) closes the first — at most one `clog-panel` exists at a time.
 - **UT4 — In-log type-to-search.** With a log open, typing routes into its search
   (the `deploy-filter` is *not* revealed): the matching line highlights
   (`.clog-hit`), the rest hide, and the hit count shows.
@@ -999,22 +1022,26 @@ Behaviour-only: the visual-snapshot masks configure no hooks, so the badge/phase
 never appear in a baseline (and the status cell only stacks `:has(.hook-phase)`),
 so no baseline shifts and no new snapshot is added.
 
-- **UU1 — Badge + panel.** `web`'s `hooks-badge` shows the split `2+1` count and
-  a `pre-deploy hook: 2` title; `api` (no hooks) has none. Clicking opens the
+- **UU1 — Badge + panel.** The `hooks-badge` is an action in the head of a
+  stack's Stacks detail: `api` (no hooks) has none; `web`'s shows the split
+  `2+1` count and a `pre-deploy hooks: 2` title. Clicking opens the
   `hooks-panel` listing the three `hooks-cmd` lines verbatim; clicking again
   closes it.
 - **UU2 — Log attribution.** In the Logs view, filtering to `web` shows the
   hook's `echo` output as a `log-line` with a `[web]` `stack-prefix` — the
   attribution that lets the hook log filter by stack.
 - **UU3 — Running phase + inline log.** With the held hook in flight, the
-  deploying `web` row shows the `hook-phase` (`pre_deploy hook …`) and a pulsing
-  `hooks-badge` (`data-hook-active`). The phase's logs icon opens the
+  deploying `web` row shows the `hook-phase` (`pre_deploy hook …`) and no
+  `hooks-badge` (the pulse rides the Stacks detail, UU4). The phase's logs icon opens the
   container-logs panel **in skipper mode** inline (the `deploys-table` stays
   visible — no page jump), streaming the stack-filtered `/api/logs` (the
   `clog-body` shows the hook output). The test calls `releaseHook()` once done
   so the deploy settles before teardown.
 - **UU4 — Phase in the roster.** The same running-hook phase renders on the
-  Stacks `roster-row` for `web`, identical to the Deploys view.
+  Stacks `roster-row` for `web`, identical to the Deploys view. The row carries
+  no hooks control; once its detail panel opens, the panel's `hooks-badge`
+  action carries the pulse (`data-hook-active`) at once — a panel opened
+  mid-hook must not wait for the next hookrun frame.
 
 ### 4.23 UI — Maske V: Multi-host federated UI (ADR-0048)
 
@@ -1030,8 +1057,7 @@ unit-tested (`app-helpers.test.js`).
 
 - **UV1 — Merged feed + host chips.** The `hosts-btn` is enabled and reports
   `3/3`; the feed interleaves local (`host-a`) and peer (`host-b`) rows, each
-  tagged with a `host-mono` chip. Peer rows are read-only mirrors — a chip but no
-  `history-btn` / `jump-btn`. The two hosts' dots render distinct palette slots
+  tagged with a `host-mono` chip. The two hosts' dots render distinct palette slots
   (`data-host-color`) and distinct computed colours (the merged view's point;
   the per-theme adjacent-slot distinctness is unit-tested in `app-helpers.test.js`).
 - **UV2 — Chip = click-to-filter toggle.** Clicking a `host-b` chip isolates the
@@ -1042,15 +1068,18 @@ unit-tested (`app-helpers.test.js`).
   `hosts-all-btn` ("Select all") restores every host.
 - **UV4 — Offline peer flagged, not blanked.** The unreachable `host-c` gives the
   control the `has-offline` state and shows the `host-stale-banner` naming it; in
-  the drawer `host-c`'s reachability dot reads `down` and `host-b`'s reads `up`, a
+  the drawer `host-c`'s reachability dot reads `down` beside the visible
+  `host-reach` label `unreachable` (also in the row's `aria-label`) and `host-b`'s
+  dot reads `up` with no label, a
   peer carries an "open its own UI" `host-link` and `self` does not.
 - **UV5 — Merged roster.** The Stacks view lists local and peer stacks together,
   host-tagged; a peer `roster-row` shows its status badge and host chip but no
   `jump-btn` / `clog-btn`, and the same chip-filter isolates the roster to one host.
 
 - **UV6 — Peer row never dead-ends.** A peer row is a read-only mirror, but
-  clicking it opens a `peer-detail` panel (commit + file count + status) and
-  loads the peer's diff inline through the
+  clicking it opens the same deploy detail as a local row (`data-host` = the
+  peer; Commit and Files facts from the audit record) and loads the peer's diff
+  into its Changes tab through the
   primary's proxy (`GET /api/peers/{name}/events/{id}/diffs`, stub-served by the
   harness `diffs`), rendered as a normal `diff-panel`. This is the case behind
   the "clicking the peer `_nixos` row does nothing" report.
@@ -1069,11 +1098,11 @@ the startup sync runs a (fake) `nixos-rebuild` and emits a real `_nixos` row;
 `setNixConfig` + a webhook then pushes a second rebuild carrying a real git diff.
 No real switch. Behaviour-only.
 
-- **UW1 — Affordances.** The `_nixos` row has **no** `jump-btn` (it is not in the
-  Stacks roster) and **no** container-logs `clog-btn` (it is not a compose
-  project) — only its git diff and deploy history apply.
-- **UW2 — Click never dead-ends.** A diff-bearing `_nixos` row (`data-has-diffs=1`
-  + a `files-pill`) opens its diff/files panel on a row-body click. (A row with
+- **UW1 — Affordances.** The `_nixos` row's deploy detail has a close button but
+  **no** `jump-btn` (it is not in the Stacks roster) and **no** container-logs
+  `clog-btn` (it is not a compose project).
+- **UW2 — Click never dead-ends.** A diff-bearing `_nixos` row (`data-has-diffs=1`)
+  opens its diff/files panel on a row-body click. (A row with
   nothing hashed falls back to the history panel — the general never-dead-end
   rule, unit-covered by the click handler; here the realistic diff case is
   asserted.)
@@ -1087,21 +1116,22 @@ snapshot; local health is enabled with `healthPoll` so the parity shows on both
 sides. Behaviour-only (peer rows appear only when peers are configured, so no
 snapshot shifts).
 
-- **UX1 — Inline health pill on peer deploy rows.** A peer `deploy-row` carries a
-  `health-pill` with the fanned-in status (`gitea` healthy, `postgres` unhealthy)
-  without expanding — the same pill local rows carry.
-- **UX2 — Inline pill + app-link on peer roster rows.** In the Stacks view a peer
-  `roster-row` shows the `health-pill` and an `app-link-btn` inline; local roster
-  rows now carry the pill too (the roster surfaced no live health for anyone
+- **UX1 — retired.** It pinned the health pill on peer deploy rows; deploy rows
+  no longer carry one, so the fanned-in health shows on the roster (UX2).
+- **UX2 — Inline pill on peer roster rows, app-link in the panel.** In the
+  Stacks view a peer `roster-row` shows the `health-pill` inline and no
+  `app-link-btn`; the link rides the head of its `detail-panel.peer-panel`. Local
+  roster rows carry the pill too (the roster surfaced no live health for anyone
   before).
-- **UX3 — Peer expand → containers.** Clicking a peer row opens the `peer-detail`
-  with the peer's `health-panel` inline (its `health-service` lines from the
-  fanned-in health), each carrying a per-service `clog-btn` (its streaming
-  behaviour is Maske Y).
-- **UX4 — Healthwatch timeline + pill routing.** Clicking a peer row's
-  `health-pill` opens its containers detail (never the primary's own local health
-  panel); the fanned-in `healthwatch` renders the `health-history` /
-  `health-phase` status timeline.
+- **UX3 — Peer deploy → containers.** A peer row's deploy detail carries **Show
+  in Stacks** (`jump-btn`), which lands on the peer stack's Stacks
+  `detail-panel` (`data-host="host-b"`) with its `health-panel` (`health-service`
+  lines from the fanned-in health), each carrying a per-service `clog-btn` (its
+  streaming behaviour is Maske Y).
+- **UX4 — Healthwatch timeline.** **Show in Stacks** from the failed peer
+  `postgres` row's deploy detail opens the peer stack's Stacks detail (never the
+  primary's own local health panel); its Containers tab renders the fanned-in
+  `healthwatch` as the `health-history` / `health-phase` status timeline.
 
 ### 4.26 UI — Maske Y: Peer container logs (ADR-0048)
 
@@ -1113,8 +1143,8 @@ the same per-service log button local stacks have. The harness stub peer
 (`host-b`) streams canned SSE frames for `gitea` so the proxy has something to
 forward. Behaviour-only.
 
-- **UY1 — Peer container log streams through the proxy.** Expanding a peer row and
-  clicking a container's `clog-btn` opens the live `clog-panel`; its `clog-body`
+- **UY1 — Peer container log streams through the proxy.** Opening a peer row's
+  containers (**Show in Stacks** from its deploy detail) and clicking a container's `clog-btn` opens the live `clog-panel`; its `clog-body`
   fills with the peer's log lines, forwarded frame-by-frame through the proxy.
 - **UY2 — Toggle closed.** A second click on the same peer `clog-btn` closes the
   panel, like a local container log.
@@ -1122,8 +1152,8 @@ forward. Behaviour-only.
 ### 4.27 UI — Maske Z: Unhealthy-stack visibility (ADR-0027 extension)
 
 The header **health beacon** and the Deploys **attention band** lift a currently-
-`unhealthy` stack out of the chronological log (where its row-bound pill can sit
-far down or age out). Both read the same live `health` snapshot via the pure
+`unhealthy` stack out of the chronological log (where its newest row can sit far
+down or age out). Both read the same live `health` snapshot via the pure
 `attentionStacks()` helper; the harness enables the poller (`healthPoll`) and
 scripts each stack's container state. Behaviour-only: both surfaces
 are hidden whenever nothing is unhealthy, so no snapshot baseline shifts.
@@ -1151,7 +1181,8 @@ The keyboard/AT-facing guarantees the a11y sweep added (see UI_SPEC.md
 "Accessibility"). Behaviour-only — the contrast retune (T2.5) and the
 transparent touch-target overlays (T2.9) have no behavioural surface, so they
 carry no assertion here (contrast is verified by construction against WCAG, the
-overlays leave the rendered pixels unchanged).
+overlays leave the rendered pixels unchanged); the 44px touch-screen targets do
+(UAA7).
 
 - **UAA1 — Keyboard focus ring.** The first keyboard `Tab` lands on a header
   control that must show a non-`none` outline with a positive width — the
@@ -1175,6 +1206,12 @@ overlays leave the rendered pixels unchanged).
 - **UAA5 — Host-mono chip keyboard (multi-host).** The per-row identity chip is a
   `role="button"` quick filter; `Enter` on a focused chip isolates the view to
   that host, like a click.
+- **UAA6 — Drawer close button.** The autosync drawer's `drawer-close` is named
+  `Close`; opening still focuses `global-switch` (not the close button), and
+  `Enter` on the close button closes the drawer and returns focus to `autosync-btn`.
+- **UAA7 — Touch targets.** Under `hasTouch` (so `pointer: coarse` matches — the
+  test asserts it), every `.dp-act` and `.dp-tab` of an open deploy detail and the
+  drawer close button measure at least 44px.
 
 ### 4.29 UI — Maske AB: Always-visible search trigger (T3.11)
 
@@ -1220,66 +1257,22 @@ Behaviour + computed-style only (no snapshot).
   closes the popover and leaves both buttons `aria-expanded="false"` (no stale
   `true`, so the caret never reads open on a non-active button).
 
-### 4.31 UI — Maske AD: deploy-row ⋯ overflow menu (T3.13)
+### 4.31 UI — Maske AD: deploy-row ⋯ overflow menu (retired)
 
-The newest row per stack collapses its secondary actions — deploy history
-(§4.14), container logs (§4.21) and deploy hooks (§4.22) — behind a single `⋯`
-button (`more-btn`), so the resting row is identity + status + the still-visible
-cross-view jump action instead of a cluster of look-alike glyphs. The relocated
-action buttons keep their own testids and handlers inside the menu, so Maskes
-M/T/U open it (`openRowMenu`) before reaching them. Boots in discovery mode with
-a hooks-declaring `web` stack so all three actions appear. Behaviour-only.
+UAD1–UAD5 covered the `⋯` menu (`more-btn`) that collapsed the newest deploy
+row's history, container-logs and hooks actions. Deploy rows no longer carry
+controls: history and hooks live in the Stacks detail, the Logs and Show in
+Stacks actions in the head of the deploy detail. The mask is retired with the
+menu and its IDs are not reused.
 
-- **UAD1 — Collapsed + labelled.** The row shows a `more-btn` and the jump
-  button, with no history/clog/hooks glyph loose in the stack cell; the menu is
-  hidden (`aria-expanded="false"`) until clicked, then lists the three actions as
-  labelled rows (Deploy history / Container logs / Deploy hooks).
-- **UAD2 — Select runs + closes.** Picking Deploy history opens its `audit-panel`
-  (the row gains `audit-open`) and closes the menu.
-- **UAD3 — Container logs.** Picking Container logs opens the `clog-panel` and
-  closes the menu — the relocated clog button keeps its handler.
-- **UAD4 — Dismissal.** The menu closes on an outside click and on `Esc`, like
-  the app-link popover.
-- **UAD5 — Portrait safety.** On a 400px portrait viewport the open popover stays
-  within the viewport bounds (it flips right-aligned near the edge) — the density
-  fix never reintroduces an off-screen/overlapping menu.
+### 4.32 UI — Maske AE: the Stacks row's identity cell
 
-### 4.32 UI — Maske AE: Stacks/roster row inline actions
+UAE1–UAE6 covered the roster row's inline action cluster (jump, app link,
+logs, hooks). The row no longer carries controls — they are the head of the
+stack's detail panel, Maske BC (§4.56) — so those cases are retired with it
+and their IDs are not reused. What remains is the row's identity on a tablet.
+Behaviour-only.
 
-The Stacks/roster row (§4.19) surfaces its secondary actions inline in the stack
-cell, beside the cross-view jump and the app-link: the container-logs icon
-(§4.21) always, the deploy-hooks badge (§4.22) only for a hooks-declaring stack.
-Earlier these were folded behind a `⋯` overflow menu (as the deploy row still is,
-§4.31), but on the roster the row-body click already opens the health + history
-panel, so the menu usually wrapped a single action (logs) — an extra click for no
-density gain. No `more-btn` on the roster. Boots in discovery mode with a
-hooks-declaring `web` stack and a plain `api` stack. Behaviour-only.
-
-- **UAE1 — Inline, no menu.** The `web` row shows the jump button, the
-  container-logs icon and the hooks badge all directly in the stack cell, and no
-  `more-btn`. The hooks-less `api` row shows the logs icon but no hooks badge.
-- **UAE2 — Container logs.** Clicking the inline logs icon opens the `clog-panel`
-  directly (one click, no menu step).
-- **UAE3 — Deploy hooks.** Clicking the inline hooks badge opens the bound
-  `hooks-panel` (the row gains `hooks-open`); a second click toggles it closed.
-- **UAE4 — Portrait safety.** On a 400px portrait viewport the inline action
-  cluster stays within the row bounds and the log panel opens below it.
-- **UAE5 — Wraps as one cluster, version stays put.** On an iPad-mini-width
-  viewport (744px) a stack carrying the full glyph set (jump, app link, logs,
-  hooks) cannot fit them behind its name: they move to a second line
-  *together* (the positive signal that a wrap really happened is asserted
-  first), every glyph shares one line, and the **version chip stays on the
-  name's line** rather than sliding to the middle of the now taller row. Before
-  `.row-actions` each glyph was its own flex item and the row broke between two
-  icons; before the top-aligned cells the version dropped below the name it
-  describes. The fixture also asserts its own shape — the name shares the first
-  line with the host chip — since a name long enough to take a line of its own
-  is a different case the alignment check would not describe.
-- **UAE6 — A re-polled app link stays in the cluster.** With an app link seeded
-  (`appLinks` start option, detection rides the health poll) the icon is rebuilt
-  on every poll long after the row rendered: it must land back inside the
-  cluster ahead of the logs icon, leaving no glyph as a direct child of the
-  stack cell. Appending it to the cell would strand it on its own line again.
 - **UAE7 — An over-long name clips instead of moving.** At the same width a
   29-character stack name stays on the host chip's line, ellipsised, with the
   version beside it and the full name in the element's `title`. Ungrouped, the
@@ -1361,11 +1354,11 @@ exercises both the failure line and the Retry recovery in one flow.
   amber `load-error` (`Couldn't load deploy history`, not `No recorded deploys`);
   Retry re-fetches and lists the record.
 - **UAH4 — Diff load-error + retry.** A `500` on `/api/events/*/diffs` shows the
-  `load-error` instead of a silent drop to the file list; Retry loads the real
-  diff panel.
+  `load-error` inside the deploy detail's Changes tab (its facts stay visible)
+  instead of a silent drop to the file list; Retry loads the real diff panel.
 - **UAH5 — Peer-diff load-error + retry.** A `502` on the peer-diff proxy keeps
-  the peer detail's read-only facts and shows `Couldn't reach <host> for the
-  diff.`; Retry loads the peer diff inline.
+  the peer deploy detail's facts and shows `Couldn't reach <host> for the
+  diff.` in its Changes tab; Retry loads the peer diff there.
 
 Behaviour-only (no snapshot): the states are structural (`data-testid` + text),
 and the skeleton shimmer / spinner are animations a visual baseline would have to
@@ -1374,8 +1367,8 @@ freeze anyway.
 ### 4.36 UI — Maske AI: Per-service image delta
 
 A deploy carries `image_changes` (service, old, new) on its SSE payload; the row
-surfaces which service updated — and to what — in its **Version column** (a
-full-width row on a phone), without opening the diff. See
+surfaces which service updated — and to what — in its **Change column** (its own
+line on a phone), without opening the diff. See
 [Image delta](../../internal/ui/UI_SPEC.md#image-delta). Each case rewrites a stack's
 compose (`setStackImage` / `setStackServices`) and fires a signed webhook, so the
 deploy runs for real against stub docker and the delta renders from the actual
@@ -1383,33 +1376,30 @@ image change — no hand-fed events.
 
 - **UAI1 — Tag bump.** A one-service `nginx:1.25 → 1.26` bump shows the service
   name (`app`) with the old tag struck through and the new tag in the add colour,
-  in the Version column — right of the Stack cell and flush with the `Version`
-  header (the alignment that makes a column worth it) — plus the `aria-label`
+  in the Change column — right of the Stack cell and flush with its header (the
+  alignment that makes a column worth it) — plus the `aria-label`
   (`app updated from 1.25 to 1.26`) and the full-reference `title`.
 - **UAI2 — Service always labelled.** A lone service named after its own stack
   (`worker` in stack `worker`) still shows its service label — the chip names
   which service moved, not the stack — rendering `worker 2.0 → 2.1`.
-- **UAI3 — Every changed service listed.** Four changed services render four
-  chips, stacked one per line (asserted by bounding box: each below the previous,
-  sharing a left edge) — nothing is hidden behind a count.
+- **UAI3 — One chip plus a count.** Four changed services render one chip (`app`)
+  and a muted `change-more` `+3`, like the Stacks Version column; the row's
+  deploy detail lists all four in its Change fact.
 - **UAI4 — Digest-only rebuild.** A same-tag digest change (`nginx:1.25@sha256:…`)
   shows the shared tag `1.25` plus a `↻` rebuilt marker (no raw digest pair); the
   full digest is on the chip's `title`.
-- **UAI5 — Responsive.** On a 390 px viewport the row is two lines and the
-  Version cell shares the second one with the time — below the name, beside the
-  time (asserted by bounding box, all boxes read in **one** measurement pass so
-  a prepended row cannot have two reads describe different rows). Duration and
-  Files are hidden; the name still renders in full (no ellipsis).
-- **UAI7 — Tablet.** On a 744 px viewport (iPad-mini portrait) **Duration and
-  Files give up their tracks** — hidden in the rows *and* in the header — so
-  Version keeps the first line: level with the name, right of the stack cell,
-  ending before the status cell begins, chips still stacked one per line. Seeded
-  health (`healthPoll: 1` + `initialHealth`) gives the status cell its second
-  line, the widest state the row reaches. The stack name is asserted present:
-  squeezing all six columns rendered an icon cluster with no stack behind it.
-- **UAI6 — View-options toggle.** The Deploys popover's **Version changes** toggle
+- **UAI5 — Responsive.** On a 390 px viewport the row is two lines: name and time
+  on the first, the Change cell below the name and the result to its right on
+  the second (asserted by bounding box, all boxes read in **one** measurement
+  pass so a prepended row cannot have two reads describe different rows). The
+  duration and SHA are hidden; the name still renders in full (no ellipsis).
+- **UAI7 — Tablet.** On a 744 px viewport (iPad-mini portrait) the four columns
+  stay on one line in column order — name · result · change · time — with
+  `+1` beside the chip; the When cell drops its duration so the name keeps its
+  floor rather than being squeezed away.
+- **UAI6 — View-options toggle.** The Deploys popover's **Changes column** toggle
   (on by default) collapses the whole column when flipped off — no chips and no
-  `Version` header; the off choice persists across a reload (`localStorage`), and
+  `Change` header; the off choice persists across a reload (`localStorage`), and
   toggling back on restores both. The row hairline is asserted present in **both**
   states: rows sit flush on one sheet, so the line is the sheet's structure, not
   the column's — the assertion is what keeps it from being tied back to the
@@ -1448,12 +1438,10 @@ versions render from a real snapshot.
 - **UAK5 — Patched in place.** A later poll carrying a new image updates the cell
   (`v1.120.0`, count gone) while the row's open panel survives — the versions
   arrive with health, not with the roster snapshot.
-- **UAK6 — Tablet.** On an 820 px viewport **Commit** gives up its column —
-  header label and cells — so Version keeps the row's first line beside the
-  name (asserted by bounding box, read in one measurement pass). The stack name
-  is asserted present and non-zero: `immich`'s cell also carries a change chip,
-  an app link and the log/jump glyphs, which wrap to a second line inside the
-  cell rather than squeezing the row's identity away.
+- **UAK6 — Tablet.** On an 820 px viewport the Last deploy cell gives up its
+  SHA, so Version keeps the row's first line beside the name (asserted by
+  bounding box, read in one measurement pass); the header keeps its Version
+  label. The stack name is asserted present and non-zero.
 
 Behaviour-only (no snapshot): the cell is structural, and the lead-service and
 token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
@@ -1463,17 +1451,18 @@ token logic are covered by the `app-helpers` unit layer (`rosterVersion` /
 
 skipper redeploys a stack only when one of its hashed inputs changes
 (Invariant 2), so the most common operator question is not "what happened" but
-**"why did nothing happen"**. The roster's third expand panel answers it in
-place: which inputs are watched, and the commit nothing has changed since. See
+**"why did nothing happen"**. The Triggers tab of a roster row's detail panel
+(§4.56) answers it in place: which inputs are watched, and the commit nothing has changed since. See
 [Change detection](../../internal/ui/UI_SPEC.md#change-detection). Data rides the
 `stacks` snapshot, so there is no fetch and no loading state.
 
-- **UAJ1 — Watched inputs + since-commit.** Expanding a cleanly deployed stack
-  adds `watched-panel` as the **last** card of the expand stack (asserted by
-  bounding box: below `audit-panel`), leads with `Unchanged since <7-char sha>.`,
+- **UAJ1 — Watched inputs + since-commit.** Opening a cleanly deployed stack
+  with no health data opens its panel on the Triggers tab (`data-tab=triggers`,
+  no `audit-panel` beside it — one tab at a time); `watched-panel` leads with
+  `Unchanged since <7-char sha>.`,
   and lists the stack's compose file **repo-relative** (the path the operator
   edits and commits, not the clone's absolute location). Closing the row removes
-  it with the rest of the card. The stack's hashed *config* renders as its own
+  it with the panel. The stack's hashed *config* renders as its own
   non-path entry (`watched-config`), never as a file. The lead's reference point
   is the deploy itself on a stack's *first* deploy (no prior commit to diff
   against).
@@ -1506,8 +1495,8 @@ explicitly (`FORGE_URL`); the degradation case opts back out with
 `repoWebURL: null`.
 
 The roster cases run at the default desktop viewport on purpose: below the
-tablet breakpoint the Commit column is dropped entirely (Maske AK, UAK6), so
-there is no cell to link there.
+tablet breakpoint the row's SHA is dropped (Maske AK, UAK6), so there is no
+cell to link there.
 
 - **UAL1 — The roster Commit cell links.** The cell is an `<a>` whose `href` is
   `<forge>/commit/<full sha>` — the **full** 40-char SHA, though the cell prints
@@ -1515,12 +1504,13 @@ there is no cell to link there.
   resolve). It opens in a new tab (`target="_blank"`, `rel` carrying `noopener`),
   since the UI is a live SSE stream that navigating away would cost.
 - **UAL2 — The link does one thing.** The SHA sits in a row whose body toggles
-  the expand panel; clicking the link must not also open it. The navigation is
+  the detail panel; clicking the link must not also open it. The navigation is
   cancelled in the capture phase, so what is asserted is purely the row
-  handler's guard — and the row still expands when clicked anywhere else.
+  handler's guard — and the row still opens its panel when clicked anywhere
+  else.
 - **UAL3 — Panels, prose and the diff header too.** The deploy-history rows
-  (`.ar-sha`), the diff panel's commit header (`commit-sha`) and the
-  change-detection lead's `Unchanged since <sha>` link the same way: one helper
+  (`.ar-sha`, History tab), the diff panel's commit header (`commit-sha`) and the
+  change-detection lead's (Triggers tab) `Unchanged since <sha>` link the same way: one helper
   renders every SHA, so they either all link or none do. The lead is prose, so
   the assertion also pins the sentence around the link.
 - **UAL4 — A peer links to its own forge.** A peer's roster row uses the
@@ -1535,6 +1525,52 @@ Behaviour-only (no snapshot): the link is an attribute change, and the URL
 building itself (trailing slashes, a missing base or SHA, a non-http(s) base
 that must never reach an `href`) is covered by the `app-helpers` unit layer
 (`commitURL`) and, server-side, by `git.WebURL`.
+
+### 4.40 UI — Maske AM: A refused autosync write is announced
+
+A failed toggle is invisible in the interface: the switch simply does not move,
+which looks exactly like a click that never landed. That ambiguity cost real
+time chasing a UC11 flake, so the write path now reports its failure on the
+console — the same treatment a dropped stale snapshot gets (UC13). See
+[Autosync](../../internal/ui/UI_SPEC.md#autosync).
+
+- **UAM1 — A refusing server.** The `POST /api/autosync` is fulfilled with 503.
+  The console announcement names the scope and the status; the switch keeps
+  showing *server* state, because the write did not happen and rendering it as
+  though it had would be the worse lie.
+- **UAM2 — A request that never arrives.** The same POST is aborted
+  (`connectionfailed`), covering the transport failure rather than the refusal.
+
+Both wait on the announcement rather than on the DOM: it is emitted in the same
+step the switch would otherwise have been repainted in, so "the switch did not
+move" cannot pass early. Counter-probed against the pre-fix build, where both
+cases fail.
+
+### 4.41 UI — Maske AN: the web-font swap causes no layout shift
+
+The self-hosted webfonts use `font-display: swap`, so on a slow connection the
+page first renders in a local fallback font. Historically that render occupied
+*different* space — the container's Ubuntu Mono (0.5em advance) kept the queue
+empty-note on one line where JetBrains Mono (0.6em) wraps it to two — so the
+swap dropped everything below it ~19px: the UC11 flake for the suite, a
+one-time CLS for real users. `app.css` now declares metric-compatible local
+fallback faces (`size-adjust` + `ascent/descent/line-gap-override`, computed
+from the real font metrics) for the common Ubuntu/DejaVu/Liberation candidates,
+so the pre-swap render already occupies the loaded face's exact space. See
+[Fonts](../../internal/ui/UI_SPEC.md).
+
+- **UAN1 — Blocked vs loaded geometry.** The autosync drawer is rendered twice:
+  once with every `/fonts/**` request aborted (the slow-connection render — the
+  spec asserts via `document.fonts.check` that the webfont really is absent,
+  the positive signal that the fallback was measured), once normally. The
+  empty-note's box and the first stack switch's height must match within 1px;
+  the regression it guards was a ~19px hop. Counter-probed against the pre-fix
+  CSS, where the note's height differs by a full line.
+
+Deterministic by construction: both measurements happen after
+`document.fonts.ready` (the fixture's navigation wrapper) and the drawer's
+`data-settled` — settled states, no waiting on a swap to *probably* have
+happened.
 
 ### 4.42 UI — Maske AO: registry update check
 
@@ -1632,9 +1668,10 @@ surface keeps the rollback readable
   exactly the rows the count promised. A click from another view re-applies
   that preset; a second click on the Deploys view clears it and folds the bar
   away — the badge is the way out as well as the way in.
-- **UAQ4 — Roster.** The stack's roster row shows the outcome strip
-  (oldest → newest: success, rolled_back, success) and the last-incident line
-  naming the rollback the retry papered over.
+- **UAQ4 — Detail panel.** The Last deploy fact of the stack's detail panel
+  (`detail-facts`) shows the outcome strip (oldest → newest: success,
+  rolled_back, success) and the last-incident line naming the rollback the
+  retry papered over.
 - **UAQ5 — Logs.** The severity chips are thresholds and narrated outcome
   lines classify by outcome: the WARN-level `rolled back` outcome line stays
   visible under the `errors` chip (hiding it there is the incident's exact
@@ -1649,11 +1686,11 @@ not pinned) is covered at the unit layer on both sides (`internal/logbuf`,
   zero has to be said explicitly in CSS — without that line an empty
   rollback-tinted pill sits in the header of every instance with a clean 24 h.
   Verified to fail against the unfixed CSS.
-- **UAQ7 — A live deploy keeps the roster cell whole.** With the next `up`
-  held, a push turns the roster row `deploying` through the per-row live
-  refresh (no `stacks` snapshot rebuilds it while the deploy is in flight); the
-  row still shows its outcome strip and last-incident line. Verified to fail
-  against the unfixed refresh, which rewrote the cell with the badge only.
+- **UAQ7 — A live deploy keeps the open panel whole.** With the stack's detail
+  panel open and the next `up` held, a push turns the roster row `deploying`
+  through the per-row live refresh (no `stacks` snapshot rebuilds it while the
+  deploy is in flight); the panel stays open with its outcome strip and
+  last-incident line. The refresh rewrites only the row's status cell.
 
 ### 4.45 UI — Maske AR: the Logs view fits the display
 
@@ -1700,24 +1737,26 @@ cell can hold: measured at 448 px it grew the track from 92 px to 231 px, which
 left the version cell 0 px and cut the version chip off mid-glyph. The mask
 drives a real rollback-then-retry — the sequence that leaves a papered-over
 incident behind — at Pixel-9-Pro width and asserts the row's geometry
-([UI_SPEC](../../internal/ui/UI_SPEC.md#responsive--700-px)):
+([UI_SPEC](../../internal/ui/UI_SPEC.md#responsive--700-px)). The incident line
+has since moved into the detail panel (§4.56), so the row is two lines — name
+and health pill, then version and last deploy — and UAS1/UAS2 assert that shape:
 
-- **UAS1 — One right edge.** Badge, health pill and outcome strip end at the
-  same x (±1 px). Left-aligned they only agreed when the badge happened to be
-  the widest of the three.
-- **UAS2 — The incident line has its own line.** It sits below the version line
-  and inside the row's own box (the row's extra bottom padding is what contains
-  an out-of-flow line), and the version cell keeps a real width — the assertion
-  that fails against the unfixed build, where it was 0.
-- **UAS3 — A wrapping chip keeps its change on one line.** In the Deploys
-  column (where a chip may wrap) a long service name plus long tags at the same
-  width: the chip is really in the wrapped case (its box is taller than the
-  token group — a positive signal, so the assertion cannot hold trivially), the
-  label sits above, and every token of the change shares one line. Split across
-  lines, `1.5 → 1.6` reads as two versions.
+- **UAS1 — One right edge.** The health pill (first line) and the Last deploy
+  cell — badge and time — (second line) end at the same x (±1 px). Left-aligned
+  they only agreed when one happened to be as wide as the other.
+- **UAS2 — The version keeps its width.** The version cell sits on the second
+  line beside the last deploy (the badge's centre falls inside it, the cell
+  ends before the badge), inside the row's box, with a real width — it was 0
+  when the incident line sized the status column. The row's SHA is hidden.
+- **UAS3 — A long chip keeps its change whole.** In the Deploys Change column
+  (the narrow one) a long service name plus long tags at the same width: the
+  label is really clipped (`scrollWidth > clientWidth` — a positive signal, so
+  the assertion cannot hold trivially), the chip stays one line, and the change
+  tokens end inside it. Split or cut, `1.5 → 1.6` reads as two versions.
 
 - **UAS4 — The Deploys row shares the edge.** The same assertion on a deploy
-  row: the two views are one look, so repairing the roster alone would have left
+  row, whose time sits on the first line and status cell (badge plus any note)
+  on the second: the two views are one look, so repairing the roster alone would have left
   the sibling view ragged in exactly the way the report was about. It reads the
   edges only once the row has no `new-row` class: the entrance scales the row,
   so two reads during it land on different frames (the 1.7 px flake).
@@ -1867,8 +1906,8 @@ both stacks list under `env_files`.
 - **UAX1 — The row names the container the change reached.** The sidecar gains
   two environment variables and nothing else: the row shows one `compose
   web-restic` chip, in the Changes column aligned with its header, and does not
-  name `app`. The files pill still counts its file — the chip answers *who*, not
-  *how much*.
+  name `app`. One change gives one chip, so no `change-more` count rides beside
+  it.
 - **UAX2 — A project-wide input reads stack-wide.** A change to the shared env
   file compose passes for the whole project renders `env stack-wide` with no
   service name and the matching screen-reader phrasing: naming two of the
@@ -1902,17 +1941,17 @@ it and `projectDirHead()` reads the commit it sits on.
   clone sync at the top of every run. The stack's own second row is the
   positive signal that the run really ran.
 - **UAY2 — A dirty checkout is reported without blocking the deploys.** The
-  refusal renders as a `failed` `_project_dir` row whose error panel names the
+  refusal renders as a `failed` `_project_dir` row whose deploy detail names the
   uncommitted changes, the stack still deploys in the same run, and
   `projectDirHead()` proves the checkout did not move.
 - **UAY3 — A standing refusal is reported once.** Two more pushes over a
   still-dirty tree add two stack rows and no second phase row (ADR-0055). The
   climbing stack-row count is the positive signal that the extra runs happened.
-- **UAY4 — The phase row carries no container-logs or jump affordance.**
-  `_project_dir` names a run phase, not a Compose project, so its `⋯` menu holds
-  only the deploy history — the same treatment `_nixos` and `_config` get
-  (`isPseudoStack`). The menu's history entry and the stack row's own jump
-  button are the positive signals that the omissions are omissions.
+- **UAY4 — The phase row detail carries no container-logs or jump action.**
+  `_project_dir` names a run phase, not a Compose project, so its deploy detail
+  has neither `clog-btn` nor `jump-btn` — the same treatment `_nixos` and
+  `_config` get (`isPseudoStack`). The stack row's detail, which does carry a
+  `jump-btn`, is the positive signal that the omissions are omissions.
 
 ### 4.53 UI — Maske AZ: a held change and its retry (ADR-0062)
 
@@ -1924,14 +1963,15 @@ Behaviour-only (no snapshot).
 
 - **UAZ1 — The chip explains the hold, retry releases it.** After the rollback
   the Stacks row carries `held-chip`. Its `title` names the failure and says a
-  new commit or a retry releases it. The row also carries an enabled
-  `retry-btn`. A click deploys the change once more. The next roster snapshot
-  drops both, the badge reads `success`, and the Deploys view gains a second
-  success row.
-- **UAZ2 — A refused retry hands the button back.** With the POST intercepted
-  as `409`, the click is announced (`retry: refused for web … 409`). That
-  console line is the positive signal the assertions rest on: the button is
-  enabled again and reads `retry`, and the chip stays. The intent note
+  new commit releases it. Opening the row puts an enabled `retry-btn` in its
+  detail panel's verdict line. A click deploys the change once more. The next
+  roster snapshot drops both, the badge reads `success`, and the Deploys view
+  gains a second success row.
+- **UAZ2 — A refused retry shows why and hands the button back.** With the
+  POST intercepted as `409`, the click is announced (`retry: refused for web …
+  409`). That console line is the positive signal the assertions rest on: the
+  button is enabled again and reads `Retry once`, the line's `retry-msg`
+  (`role="status"`) reads the server's reason, and the chip stays. The intent note
   `retry: requesting web` proves the click reached the handler.
 
 ### 4.54 UI — Maske BA: a change that failed before it started backs off, then is held (ADR-0064)
@@ -1946,7 +1986,8 @@ clock. Behaviour-only (no snapshot).
 - **UBA1 — The chip reads `backoff`, then `held`.** After the first failure the
   Stacks row's `held-chip` reads `backoff`; its `title` says the change failed
   before it started (`1 attempt so far`), when the next attempt is due, and that
-  retry attempts it now. A retry click is the second failure (`2 attempts so
+  it is held if it keeps failing. A retry click (in the row's detail panel) is
+  the second failure (`2 attempts so
   far`, still `backoff`); a second click is the third, and the chip reads
   `held` with a `title` counting the 3 failures and the usual release text.
 
@@ -1965,6 +2006,57 @@ script. Behaviour-only (no snapshot).
   recorded. The test then injects one inline script: exactly one
   `script-src-elem` violation is recorded and the script does not run, which
   proves the recorder works.
+
+### 4.56 UI — Maske BC: the Stacks detail panel
+
+A roster row carries no controls: clicking it opens one `detail-panel` under it
+— head (name and actions), verdict, facts, and one tab of Containers · History ·
+Triggers ([UI_SPEC](../../internal/ui/UI_SPEC.md#stack-detail-panel)). The main
+instance boots discovery mode with a hooks-declaring `web` (with an app link),
+a plain `api` (both with seeded health) and a parked `wip`; the held, phone and
+peer cases take their own. Behaviour-only (no snapshot).
+
+- **UBC1 — The default tab answers the state.** A healthy stack opens on
+  Containers (`aria-selected`, `health-panel`), a parked one on Triggers
+  (`watched-panel`, the `parked` verdict). Verified to fail with
+  `stackDefaultTab` returning History for a healthy stack.
+- **UBC2 — A held stack opens on History.** After a rollback holds `web`
+  (`STUB_DOCKER_FAIL_NTH_UP: '2'`), its panel opens on History with the
+  `audit-panel`, and the `held` verdict line (tone `rollback`) carries
+  `Retry once`.
+- **UBC3 — One order for the head.** `web`'s actions read app link · Logs ·
+  Hooks (`1+1`) · Show in Deploys · close, in DOM order, once the app-link
+  poll has landed (the positive signal the comparison waits on); `api`'s read
+  Logs · Show in Deploys · close — an action that does not apply is absent.
+- **UBC4 — Logs and Hooks from the head.** Logs opens the `clog-panel`. Hooks
+  swaps the pane for the `hooks-panel` (`data-tab=hooks`, `aria-pressed=true`,
+  no tab selected); a second click hands back the tab it came from, and
+  choosing a tab while the pane is open leaves it.
+- **UBC5 — Tabs, verdict and facts.** A healthy `api` reads the `ok` verdict
+  (`Its service is healthy.`) and the facts `Running · Last deploy · Health ·
+  Hooks` with `1 of 1 healthy`. History and Triggers each replace the one pane.
+- **UBC6 — Close, and one at a time.** Opening a second row replaces the open
+  panel (one `detail-panel`); `detail-close` removes it and the row's
+  `audit-open`.
+- **UBC7 — Phone.** At 448 px the four facts sit in two columns of two
+  (asserted by bounding box: equal tops per pair, aligned left edges), the head
+  actions drop their labels, and every action and fact stays inside the
+  viewport.
+- **UBC8 — A peer's panel is read-only.** A held peer stack's
+  `detail-panel.peer-panel` shows the `held` verdict (the positive signal) with
+  no `retry-btn` and no `jump-btn`, and keeps its close button.
+- **UBC9 — The ARIA tabs pattern.** Each tab names the pane it controls
+  (`aria-controls`) and the pane is labelled by the selected tab
+  (`aria-labelledby`); only the selected tab has `tabindex=0`. ArrowRight,
+  End, ArrowLeft and Home move both selection and focus, wrapping at the ends,
+  and the pane follows. Verified to fail without the panel's keydown handler.
+- **UBC10 — The Hooks pane is named.** With the head's Hooks pane open no tab is
+  selected, so the pane carries `aria-label="Hooks"` and the first tab stays the
+  strip's one Tab stop.
+- **UBC11 — A row by keyboard.** Space on `api`'s `.row-toggle` opens its
+  panel and sets `aria-expanded=true`; Escape from a tab closes it, resets
+  `aria-expanded` and focuses the toggle; Enter reopens it and the close button
+  (pressed by keyboard) hands the focus back to the toggle as well.
 
 ## 5. Visual snapshot strategy
 
@@ -1988,7 +2080,6 @@ The landed baselines:
 | Baseline | Anchor case | Target | Masked |
 | --- | --- | --- | --- |
 | `deploys-table.png` | UA1 | `deploys-table` | `time-cell`, `duration-cell` |
-| `diff-panel.png` | UA8 | `diff-panel` | — (static diff) |
 | `autosync-drawer.png` | UC6 | `autosync-drawer` | `wait-cell` |
 | `theme-dark.png` / `theme-light.png` | UD1 | full page | `time-cell`, `duration-cell` |
 | `mobile-layout.png` | UD4 | full page (390px) | `time-cell` (the duration is hidden at this width) |
@@ -2036,51 +2127,25 @@ masked the pane's layout diffs run-to-run. UB2's value — the level-badge mappi
 
   Then review the changed PNGs before committing. (`.pw-bin/` is gitignored.)
 
-### 4.40 UI — Maske AM: A refused autosync write is announced
+### 4.57 UI — Maske BD: day separators and the fold of routine deploys
 
-A failed toggle is invisible in the interface: the switch simply does not move,
-which looks exactly like a click that never landed. That ambiguity cost real
-time chasing a UC11 flake, so the write path now reports its failure on the
-console — the same treatment a dropped stale snapshot gets (UC13). See
-[Autosync](../../internal/ui/UI_SPEC.md#autosync).
+The Deploys list stays flat; a day separator opens each local day and three or
+more consecutive routine deploys of one stack fold behind one line
+([UI_SPEC](../../internal/ui/UI_SPEC.md#day-separators-and-folding)). Every
+webhook carries a new image tag, so each deploy is a `success` with an image
+change. The pure rules (threshold, breaks, filter-before-fold, midnight) are
+unit-tested in `app-helpers.test.js`. Behaviour-only (no snapshot); the
+separator is masked in the full-page baselines, since its word depends on the
+clock.
 
-- **UAM1 — A refusing server.** The `POST /api/autosync` is fulfilled with 503.
-  The console announcement names the scope and the status; the switch keeps
-  showing *server* state, because the write did not happen and rendering it as
-  though it had would be the worse lie.
-- **UAM2 — A request that never arrives.** The same POST is aborted
-  (`connectionfailed`), covering the transport failure rather than the refusal.
-
-Both wait on the announcement rather than on the DOM: it is emitted in the same
-step the switch would otherwise have been repainted in, so "the switch did not
-move" cannot pass early. Counter-probed against the pre-fix build, where both
-cases fail.
-
-### 4.41 UI — Maske AN: the web-font swap causes no layout shift
-
-The self-hosted webfonts use `font-display: swap`, so on a slow connection the
-page first renders in a local fallback font. Historically that render occupied
-*different* space — the container's Ubuntu Mono (0.5em advance) kept the queue
-empty-note on one line where JetBrains Mono (0.6em) wraps it to two — so the
-swap dropped everything below it ~19px: the UC11 flake for the suite, a
-one-time CLS for real users. `app.css` now declares metric-compatible local
-fallback faces (`size-adjust` + `ascent/descent/line-gap-override`, computed
-from the real font metrics) for the common Ubuntu/DejaVu/Liberation candidates,
-so the pre-swap render already occupies the loaded face's exact space. See
-[Fonts](../../internal/ui/UI_SPEC.md).
-
-- **UAN1 — Blocked vs loaded geometry.** The autosync drawer is rendered twice:
-  once with every `/fonts/**` request aborted (the slow-connection render — the
-  spec asserts via `document.fonts.check` that the webfont really is absent,
-  the positive signal that the fallback was measured), once normally. The
-  empty-note's box and the first stack switch's height must match within 1px;
-  the regression it guards was a ~19px hop. Counter-probed against the pre-fix
-  CSS, where the note's height differs by a full line.
-
-Deterministic by construction: both measurements happen after
-`document.fonts.ready` (the fixture's navigation wrapper) and the drawer's
-`data-settled` — settled states, no waiting on a swap to *probably* have
-happened.
+- **UBD1 — Fold and unfold.** Six deploys show the newest row plus the
+  `deploy-fold` line (`↻ N more successful deploys of web`, `aria-expanded`
+  false) with the older rows hidden; a click shows them, a second click folds
+  them again.
+- **UBD2 — Day separator.** The rows sit under a `deploy-day` line reading
+  Today (Yesterday only if the run crosses midnight).
+- **UBD3 — Filter before fold.** A name filter that matches nothing leaves no
+  fold line on screen; the empty note is the positive signal that the filter ran.
 
 ### 5.1 Docs screenshots — rendered, never committed
 
@@ -2123,95 +2188,298 @@ missing files until `make docs-screenshots` has run once.
 
 ## 6. Traceability
 
-Every UI_SPEC requirement maps to a case, or is marked already-unit-tested /
-n/a. Pipeline invariants continue to map to §4.1.
+Rebuilt from the suite, not from UI_SPEC: every case ID that appears in a test
+title under `e2e/ui/tests/` or in a Go test's doc comment under `e2e/` has one
+row, naming the file that runs it. §4 holds the Given/When/Then for each.
 
-| UI_SPEC requirement | Case |
+### 6.1 Pipeline (Go)
+
+| Case | Test | File |
+| --- | --- | --- |
+| **P1** | `TestE2E_WebhookTriggersDeploy` | `pipeline_test.go` |
+| **P2** | `TestE2E_UnchangedStackSkipped` | `pipeline_test.go` |
+| **P3** | `TestE2E_StartupSyncDeploys` | `pipeline_test.go` |
+| **P4** | `TestE2E_InvalidSignatureRejected` | `pipeline_test.go` |
+| **P5** | `TestE2E_WrongBranchIgnored` | `pipeline_test.go` |
+| **P6** | `TestE2E_HealthzReflectsSync` | `pipeline_test.go` |
+| **P7** | `TestE2E_MetricsExposeCounters` | `pipeline_test.go` |
+| **P8** | `TestE2E_RollbackOnFailedUp` | `pipeline_test.go` |
+| **P9** | `TestE2E_PausedStackQueued` | `pipeline_test.go` |
+| **P10** | `TestP10_HealthWatchAlertsOnUnhealthyAndRecovery` | `healthwatch_test.go` |
+| **P11** | `TestP11_HealthWatchCooldownSuppressesRepeatFlap` | `healthwatch_test.go` |
+| **P12** | `TestE2E_DependencyOrdering` | `pipeline_test.go` |
+| **P13** | `TestE2E_HeldChangeWaitsForRetry` | `pipeline_test.go` |
+| **P14** | `TestE2E_FailedBuildNamesItsCause` | `pipeline_test.go` |
+| **P15** | `TestE2E_FailedBuildBacksOffThenHolds` | `pipeline_test.go` |
+
+### 6.2 UI (Playwright)
+
+The title is the case's test or `describe` title; the spec files sit in
+`e2e/ui/tests/`.
+
+| Case | Title | Spec |
+| --- | --- | --- |
+| **UA1** | deploy row transitions deploying → success in place | `ua-deploys.spec.ts` |
+| **UA2** | status badges | `ua-deploys.spec.ts` |
+| **UA3** | skipped deploys never render a row | `ua-deploys.spec.ts` |
+| **UA4** | time mode | `ua-deploys.spec.ts` |
+| **UA5** | stack icon + monogram fallback | `ua-deploys.spec.ts` |
+| **UA7** | row detail | `ua-deploys.spec.ts` |
+| **UA8** | diff panel | `ua-deploys.spec.ts` |
+| **UA9** | error detail | `ua-deploys.spec.ts` |
+| **UA10** | empty state | `ua-deploys.spec.ts` |
+| **UA11** | the queued row is replaced when autosync resumes | `ua-deploys.spec.ts` |
+| **UA12** | queued row diff | `ua-deploys.spec.ts` |
+| **UA13** | deploy detail tabs by keyboard | `ua-deploys.spec.ts` |
+| **UA14** | deploy row detail by keyboard | `ua-deploys.spec.ts` |
+| **UB1** | view toggle | `ub-logs.spec.ts` |
+| **UB2** | log lines + level badges | `ub-logs.spec.ts` |
+| **UB4** | follow toggle | `ub-logs.spec.ts` |
+| **UB5** | log-line prefixes | `ub-logs.spec.ts` |
+| **UB6** | diff pill in logs | `ub-logs.spec.ts` |
+| **UB7** | log stream reconnects after a fatal error and resumes live lines | `ub-logs.spec.ts` |
+| **UB8** | Logs view panel controls (no popover) | `ub-logs.spec.ts` |
+| **UB9** | Logs view live/pause pill | `ub-logs.spec.ts` |
+| **UB10** | Logs view live/pause pill — keyboard | `ub-logs.spec.ts` |
+| **UC1** | header state | `uc-autosync.spec.ts` |
+| **UC2** | pending pill | `uc-autosync.spec.ts` |
+| **UC3** | drawer open/close | `uc-autosync.spec.ts` |
+| **UC4** | global switch | `uc-autosync.spec.ts` |
+| **UC5** | per-stack switch | `uc-autosync.spec.ts` |
+| **UC6** | queued list | `uc-autosync.spec.ts` |
+| **UC7** | stack filter | `uc-autosync.spec.ts` |
+| **UC8** | enable drains, disable does not | `uc-autosync.spec.ts` |
+| **UC9** | queued row + cause | `uc-autosync.spec.ts` |
+| **UC10** | re-enable does not pin | `uc-autosync.spec.ts` |
+| **UC11** | UI pause does not survive a global cycle | `uc-autosync.spec.ts` |
+| **UC12** | collapse through the stack filter | `uc-autosync.spec.ts` |
+| **UC13** | a late snapshot never overwrites a newer one | `uc-autosync.spec.ts` |
+| **UC14** | the drawer waits for server state | `uc-autosync.spec.ts` |
+| **UC15** | a re-render keeps the switch nodes | `uc-autosync.spec.ts` |
+| **UC16** | the drawer opens at its top | `uc-autosync.spec.ts` |
+| **UD1** | theme toggle switches dark<->light, persists, and applies before paint | `ud-chrome.spec.ts` |
+| **UD2** | connection indicator tracks connected→reconnecting→connected | `ud-chrome.spec.ts` |
+| **UD3** | deploy indicator names the active stack while held, idle otherwise | `ud-chrome.spec.ts` |
+| **UD4** | responsive ≤700px | `ud-chrome.spec.ts` |
+| **UD5** | header shows the deployed build identity | `ud-chrome.spec.ts` |
+| **UD6** | theme picker switches live, persists a local override, and surfaces a mismatch notice | `ud-chrome.spec.ts` |
+| **UD6b** | theme mismatch notice auto-hides a few seconds after it appears | `ud-chrome.spec.ts` |
+| **UD7** | with the switcher off, the picker is hidden and a saved override is ignored | `ud-chrome.spec.ts` |
+| **UD8** | view-specific options live in a popover opened from the active view button | `ud-chrome.spec.ts` |
+| **UD9** | the theme toggle glyph shows a moon in dark and a sun in light | `ud-chrome.spec.ts` |
+| **UD10** | indicator recovers after a fatal (non-200) stream error the browser will not retry | `ud-chrome.spec.ts` |
+| **UD11** | tap-tip opt-in on non-header controls | `ud-chrome.spec.ts` |
+| **UD12** | a state change published while the stream connects still reaches the UI | `ud-chrome.spec.ts` |
+| **UD13** | light/dark follows the OS until a choice is saved | `ud-chrome.spec.ts` |
+| **UD14** | on mobile the view-options popover carries the light/dark toggle | `ud-chrome.spec.ts` |
+| **UE1** | the update banner reloads onto the new version | `ue-pwa.spec.ts` |
+| **UE2** | dismissing the banner keeps the current version | `ue-pwa.spec.ts` |
+| **UF1** | the indicator shows the active stack and the upcoming trail | `uf-upcoming.spec.ts` |
+| **UF2** | clicking the indicator opens the run panel with the ordered run | `uf-upcoming.spec.ts` |
+| **UF3** | the trail collapses to a +N count chip on mobile | `uf-upcoming.spec.ts` |
+| **UG1** | typing reveals the filter, narrows the rows, and Esc folds it away | `ug-search.spec.ts` |
+| **UG2** | a non-matching query shows the empty note | `ug-search.spec.ts` |
+| **UG3** | the mobile popover "Search stacks" row reveals and focuses the filter | `ug-search.spec.ts` |
+| **UH1** | health pill per stack | `uh-health.spec.ts` |
+| **UH2** | per-service panel | `uh-health.spec.ts` |
+| **UH3** | deploy rows carry no health pill | `uh-health.spec.ts` |
+| **UH4** | status history (health watch) | `uh-health.spec.ts` |
+| **UH5** | on-demand container reads stopped, not unhealthy | `uh-health.spec.ts` |
+| **UH7** | routine start folds away, raw list behind the toggle | `uh-health.spec.ts` |
+| **UI1** | commit facts | `ui-diff-commit.spec.ts` |
+| **UI2** | row binding | `ui-diff-commit.spec.ts` |
+| **UI3** | multi-commit range | `ui-diff-commit.spec.ts` |
+| **UJ1** | the detail opens on click as the row’s direct sibling | `uj-rollback-error.spec.ts` |
+| **UJ2** | the rollback verdict comes before the diff, in one panel | `uj-rollback-error.spec.ts` |
+| **UK1** | self-heal restores a degraded stack | `uk-selfheal.spec.ts` |
+| **UK2** | self-heal gives up after repeated failures | `uk-selfheal.spec.ts` |
+| **UL2** | a panel on another row closes the open one | `ul-panel-exclusive.spec.ts` |
+| **UM1** | per-stack deploy history | `um-audit.spec.ts` |
+| **UM5** | routine outcomes fold, verbatim list behind the toggle | `um-audit.spec.ts` |
+| **UM6** | a short history keeps every row and offers no toggle | `um-audit.spec.ts` |
+| **UM7** | a repeated failure is one counted record, split by cause | `um-audit.spec.ts` |
+| **UN1** | a healed row opens the drift detail | `un-heal-detail.spec.ts` |
+| **UO1** | disabled-stacks line | `uo-discovery.spec.ts` |
+| **UO2** | leftover repo config | `uo-discovery.spec.ts` |
+| **UP1** | blocked row renders the dependency reason as text | `up-blocked.spec.ts` |
+| **UP2** | the cause line sits under the stack name | `up-blocked.spec.ts` |
+| **UQ1** | lists orphaned + unmanaged projects, expandable to containers and data-safety facts | `uq-orphans.spec.ts` |
+| **UQ2** | the deploy search scans orphans — matches auto-expand, non-matches hide, counts follow | `uq-orphans.spec.ts` |
+| **UQ3** | a manually expanded orphan stays open across an orphan-data refresh | `uq-orphans.spec.ts` |
+| **UR1** | lists the full set as an aligned table and replaces the deploy table | `ur-roster.spec.ts` |
+| **UR2** | clicking a row shows the stack containers and deploy history | `ur-roster.spec.ts` |
+| **UR3** | typing filters the roster and shows the empty note on no match | `ur-roster.spec.ts` |
+| **UR4** | the mobile popover "Search stacks" row reveals and focuses the filter | `ur-roster.spec.ts` |
+| **UR5** | the time-mode toggle switches roster times to absolute | `ur-roster.spec.ts` |
+| **UR6** | an open panel survives a roster republish and carries the new data | `ur-roster.spec.ts` |
+| **US1** | Deploys -> Stacks jump lands on and flashes the roster row | `us-jump.spec.ts` |
+| **US2** | Stacks -> Deploys jump lands on the newest row, not an older one | `us-jump.spec.ts` |
+| **US3** | the jump leaves the panel it sits in open | `us-jump.spec.ts` |
+| **US4** | jump with no landing target | `us-jump.spec.ts` |
+| **US5** | a leftover filter in the target view does not hide the landing row | `us-jump.spec.ts` |
+| **UT1** | per-stack log panel | `ut-container-logs.spec.ts` |
+| **UT2** | per-container log panel | `ut-container-logs.spec.ts` |
+| **UT3** | single log open | `ut-container-logs.spec.ts` |
+| **UT4** | in-log type-to-search | `ut-container-logs.spec.ts` |
+| **UT7** | per-service filter | `ut-container-logs.spec.ts` |
+| **UT8** | a refused stream | `ut-container-logs.spec.ts` |
+| **UU1** | hooks badge + panel | `uu-hooks.spec.ts` |
+| **UU2** | hook output attributed in the log | `uu-hooks.spec.ts` |
+| **UU3** | running-hook phase + inline log | `uu-hooks.spec.ts` |
+| **UU4** | running phase in the Stacks roster | `uu-hooks.spec.ts` |
+| **UV1** | merged deploy feed shows peer rows with host dots | `uv-multi-host.spec.ts` |
+| **UV2** | clicking a host dot filters to that host and toggles back | `uv-multi-host.spec.ts` |
+| **UV3** | the Hosts drawer multi-select filters the feed | `uv-multi-host.spec.ts` |
+| **UV4** | an unreachable peer shows the offline banner and a down dot | `uv-multi-host.spec.ts` |
+| **UV5** | the merged roster shows peer stacks, read-only | `uv-multi-host.spec.ts` |
+| **UV6** | clicking a peer row opens a read-only detail with the peer diff inline | `uv-multi-host.spec.ts` |
+| **UV7** | the host filter persists across a reload | `uv-multi-host.spec.ts` |
+| **UW1** | the _nixos detail has no jump or container-logs action | `uw-nixos.spec.ts` |
+| **UW2** | clicking the _nixos row opens a panel, never nothing | `uw-nixos.spec.ts` |
+| **UX2** | peer roster rows show an inline health pill; the panel carries the app-link | `ux-peer-health.spec.ts` |
+| **UX3** | a peer deploy detail shows its containers in Stacks | `ux-peer-health.spec.ts` |
+| **UX4** | peer containers show the healthwatch timeline | `ux-peer-health.spec.ts` |
+| **UY1** | a peer container log button streams the peer log through the proxy | `uy-peer-logs.spec.ts` |
+| **UY2** | clicking the peer container log button again closes the panel | `uy-peer-logs.spec.ts` |
+| **UZ1** | header beacon counts unhealthy stacks | `uz-unhealthy-visibility.spec.ts` |
+| **UZ2** | attention band jumps to the stack | `uz-unhealthy-visibility.spec.ts` |
+| **UZ3** | cross-view presence and recovery | `uz-unhealthy-visibility.spec.ts` |
+| **UZ4** | Stacks roster floats unhealthy first | `uz-unhealthy-visibility.spec.ts` |
+| **UAA1** | keyboard focus paints a visible ring on the focused control | `uaa-a11y.spec.ts` |
+| **UAA2** | opening a drawer moves focus in and Escape returns it to the opener | `uaa-a11y.spec.ts` |
+| **UAA3** | terminal deploy outcomes are announced live, not from history | `uaa-a11y.spec.ts` |
+| **UAA4** | host rows are keyboard-operable checkboxes with aria-checked | `uaa-a11y.spec.ts` |
+| **UAA5** | the host-mono chip filters from the keyboard | `uaa-a11y.spec.ts` |
+| **UAA6** | a drawer closes from its close button and returns focus | `uaa-a11y.spec.ts` |
+| **UAA7** | touch targets | `uaa-a11y.spec.ts` |
+| **UAB1** | the header magnifier opens and closes the deploys filter | `uab-search-trigger.spec.ts` |
+| **UAB2** | the magnifier opens the stacks (roster) filter | `uab-search-trigger.spec.ts` |
+| **UAB3** | the magnifier opens the in-log search on the Logs view | `uab-search-trigger.spec.ts` |
+| **UAB4** | type-to-search still reveals the bar and the magnifier shows open | `uab-search-trigger.spec.ts` |
+| **UAC1** | the active view shows the bar and the caret; inactive views show neither | `uac-view-caret.spec.ts` |
+| **UAC2** | Logs shows the bar but no caret; Stacks shows both | `uac-view-caret.spec.ts` |
+| **UAC3** | the caret flips while the popover is open | `uac-view-caret.spec.ts` |
+| **UAC4** | switching views leaves no button stuck aria-expanded | `uac-view-caret.spec.ts` |
+| **UAE7** | tablet — an over-long name ellipsises instead of taking a line | `uae-roster-identity.spec.ts` |
+| **UAF1** | success badge carries an icon | `uaf-status-icons.spec.ts` |
+| **UAF2** | healed badge carries an icon | `uaf-status-icons.spec.ts` |
+| **UAF3** | heal_exhausted is a two-line chip with a warning icon | `uaf-status-icons.spec.ts` |
+| **UAF4** | heal_exhausted is opaque, a dim badge translucent | `uaf-status-icons.spec.ts` |
+| **UAG1** | a fresh browser shows the banner and control captions | `uag-header-tour.spec.ts` |
+| **UAG2** | Got it dismisses the tour and it stays gone after reload | `uag-header-tour.spec.ts` |
+| **UAG3** | Esc dismisses the tour and returns focus to the header | `uag-header-tour.spec.ts` |
+| **UAG4** | a returning browser never shows the tour | `uag-header-tour.spec.ts` |
+| **UAG5** | the tour is suppressed on the compact mobile header | `uag-header-tour.spec.ts` |
+| **UAH1** | loading skeleton yields to the empty state | `uah-feedback-states.spec.ts` |
+| **UAH2** | loading skeleton yields to the deploy table | `uah-feedback-states.spec.ts` |
+| **UAH3** | audit history load-error + retry | `uah-feedback-states.spec.ts` |
+| **UAH4** | diff load-error + retry | `uah-feedback-states.spec.ts` |
+| **UAH5** | peer-diff load-error + retry | `uah-feedback-states.spec.ts` |
+| **UAI1** | tag bump | `uai-changed-services.spec.ts` |
+| **UAI2** | service always labelled | `uai-changed-services.spec.ts` |
+| **UAI3** | one chip plus a count | `uai-changed-services.spec.ts` |
+| **UAI4** | digest-only rebuild | `uai-changed-services.spec.ts` |
+| **UAI5** | responsive | `uai-changed-services.spec.ts` |
+| **UAI6** | view-options toggle | `uai-changed-services.spec.ts` |
+| **UAI7** | tablet | `uai-changed-services.spec.ts` |
+| **UAJ1** | a deployed stack shows what is watched and since which commit | `uaj-change-detection.spec.ts` |
+| **UAJ1b** | after a deployed change the lead names the commit | `uaj-change-detection.spec.ts` |
+| **UAJ2** | a parked stack reports that nothing is watched | `uaj-change-detection.spec.ts` |
+| **UAJ3** | the panel hides with its row under an active filter | `uaj-change-detection.spec.ts` |
+| **UAK1** | a roster row shows its lead service version and a count for the rest | `uak-service-versions.spec.ts` |
+| **UAK2** | a stack with no lead service shows only its service count | `uak-service-versions.spec.ts` |
+| **UAK3** | the containers panel shows every service version | `uak-service-versions.spec.ts` |
+| **UAK4** | a snapshot carrying no images shows no version at all | `uak-service-versions.spec.ts` |
+| **UAK5** | a new image on the next poll updates the cell without dropping a panel | `uak-service-versions.spec.ts` |
+| **UAK6** | the SHA gives up its place so Version keeps the first line | `uak-service-versions.spec.ts` |
+| **UAL1** | the roster Commit cell links to the commit on the forge | `ual-commit-links.spec.ts` |
+| **UAL2** | following the commit link does not also expand the row | `ual-commit-links.spec.ts` |
+| **UAL3** | deploy-history and deploy-detail SHAs link to the same forge | `ual-commit-links.spec.ts` |
+| **UAL4** | a peer row links its commit to the peer own forge | `ual-commit-links.spec.ts` |
+| **UAL5** | without a forge the SHA stays plain text | `ual-commit-links.spec.ts` |
+| **UAM1** | a refusing server is announced, switch keeps server state | `uam-autosync-write-failure.spec.ts` |
+| **UAM2** | a request that never arrives is announced | `uam-autosync-write-failure.spec.ts` |
+| **UAN1** | font-swap layout stability | `uan-font-fallback.spec.ts` |
+| **UAO1** | a roster row chip carries the amber marker for a newer tag | `uao-update-check.spec.ts` |
+| **UAO2** | the containers panel carries per-service markers and the head summary | `uao-update-check.spec.ts` |
+| **UAO3** | a republished tag reads as ⇡ rebuilt | `uao-update-check.spec.ts` |
+| **UAO4** | an up-to-date stack shows no marker and no head summary | `uao-update-check.spec.ts` |
+| **UAP1** | stops promising a connection and offers a retry | `uap-stream-offline.spec.ts` |
+| **UAP2** | the retry reconnects in place, with no reload | `uap-stream-offline.spec.ts` |
+| **UAP3** | a reachable server never shows the notice | `uap-stream-offline.spec.ts` |
+| **UAQ1** | the retry note pairs the success with its rollback | `uaq-rollback-visibility.spec.ts` |
+| **UAQ2** | status chips narrow the deploy log and Esc clears them | `uaq-rollback-visibility.spec.ts` |
+| **UAQ3** | the incident badge toggles the pre-filtered Deploys view | `uaq-rollback-visibility.spec.ts` |
+| **UAQ4** | outcome strip and last-incident line in the detail panel | `uaq-rollback-visibility.spec.ts` |
+| **UAQ5** | the errors chip keeps the rollback outcome line | `uaq-rollback-visibility.spec.ts` |
+| **UAQ6** | the incident badge occupies no space with nothing to report | `uaq-rollback-visibility.spec.ts` |
+| **UAQ7** | a deploying stack keeps its open panel and outcome strip | `uaq-rollback-visibility.spec.ts` |
+| **UAR1** | tablet | `uar-logs-fit.spec.ts` |
+| **UAR2** | phone | `uar-logs-fit.spec.ts` |
+| **UAR3** | one chrome row | `uar-logs-fit.spec.ts` |
+| **UAR4** | fullscreen covers the header | `uar-logs-fit.spec.ts` |
+| **UAR5** | the header never scrolls sideways | `uar-logs-fit.spec.ts` |
+| **UAS1** | health pill and last deploy share the row right edge | `uas-roster-phone-align.spec.ts` |
+| **UAS2** | the version cell keeps its width beside the last deploy | `uas-roster-phone-align.spec.ts` |
+| **UAS3** | the label gives way and the change tokens stay on one line | `uas-roster-phone-align.spec.ts` |
+| **UAS4** | the deploy row status cell shares the same right edge | `uas-roster-phone-align.spec.ts` |
+| **UAS5** | returning to the Deploys view does not replay a row's entrance | `uas-roster-phone-align.spec.ts` |
+| **UAT1** | a removed stack lands in the deploy history and opens the Orphans section | `uat-removed-stack.spec.ts` |
+| **UAT2** | the removal is recorded once, not on every later sync | `uat-removed-stack.spec.ts` |
+| **UAU1** | a repeated failure collapses into one row that counts it | `uau-repeated-failure.spec.ts` |
+| **UAU2** | the collapsed count survives a reload | `uau-repeated-failure.spec.ts` |
+| **UAU3** | the deploy-history panel marks the repeat too | `uau-repeated-failure.spec.ts` |
+| **UAV1** | the header badge counts the stacks an update is waiting on | `uav-updates-filter.spec.ts` |
+| **UAV2** | the badge opens the Stacks view filtered to the stacks with updates | `uav-updates-filter.spec.ts` |
+| **UAV3** | a second activation clears the filter and folds the bar away | `uav-updates-filter.spec.ts` |
+| **UAV4** | every row the filter leaves standing carries a visible update marker | `uav-updates-filter.spec.ts` |
+| **UAV5** | the toggle combines with the name query, and Esc clears both | `uav-updates-filter.spec.ts` |
+| **UAV6** | the chip works from the search trigger, and the badge follows its state | `uav-updates-filter.spec.ts` |
+| **UAV7** | the badge occupies no space when nothing has an update | `uav-updates-filter.spec.ts` |
+| **UAW1** | the beacon popover and a drawer never sit open together | `uaw-surface-exclusive.spec.ts` |
+| **UAW2** | opening a drawer closes the beacon popover | `uaw-surface-exclusive.spec.ts` |
+| **UAW3** | the hosts and autosync drawers never sit open together | `uaw-surface-exclusive.spec.ts` |
+| **UAX1** | a change with no new image | `uax-change-attribution.spec.ts` |
+| **UAX2** | a project-wide input | `uax-change-attribution.spec.ts` |
+| **UAX3** | an image bump grows no second chip | `uax-change-attribution.spec.ts` |
+| **UAX4** | the panel attributes each file | `uax-change-attribution.spec.ts` |
+| **UAY1** | a working fast-forward reports nothing | `uay-project-dir-sync.spec.ts` |
+| **UAY2** | a dirty checkout is reported without blocking the deploys | `uay-project-dir-sync.spec.ts` |
+| **UAY3** | a standing refusal is reported once | `uay-project-dir-sync.spec.ts` |
+| **UAY4** | the phase row detail carries no container-logs or jump action | `uay-project-dir-sync.spec.ts` |
+| **UAZ1** | the held chip names the failure and retry releases it | `uaz-held-change.spec.ts` |
+| **UAZ2** | a refused retry shows why and re-enables the button | `uaz-held-change.spec.ts` |
+| **UBA1** | backoff names the attempts and the next try, then turns into held | `uba-backoff-change.spec.ts` |
+| **UBB1** | headers are set and no view trips the policy | `ubb-csp.spec.ts` |
+| **UBC1** | a healthy stack opens on Containers, a parked one on Triggers | `ubc-stack-detail.spec.ts` |
+| **UBC2** | a held stack opens on History with its retry | `ubc-stack-detail.spec.ts` |
+| **UBC3** | the head actions keep their order, absent when they do not apply | `ubc-stack-detail.spec.ts` |
+| **UBC4** | Logs opens the log panel; Hooks toggles the hooks pane | `ubc-stack-detail.spec.ts` |
+| **UBC5** | the tabs switch the pane; verdict and facts read the stack | `ubc-stack-detail.spec.ts` |
+| **UBC6** | the close button closes; one panel at a time | `ubc-stack-detail.spec.ts` |
+| **UBC7** | the facts sit in two columns and the actions drop their labels | `ubc-stack-detail.spec.ts` |
+| **UBC8** | a peer panel shows the hold without retry or jump | `ubc-stack-detail.spec.ts` |
+| **UBC9** | the arrow keys switch tabs and the pane names its tab | `ubc-stack-detail.spec.ts` |
+| **UBC10** | the Hooks pane is named and the strip stays reachable | `ubc-stack-detail.spec.ts` |
+| **UBC11** | a row opens by keyboard and Escape closes it | `ubc-stack-detail.spec.ts` |
+| **UBD1** | six routine deploys fold into the newest row plus a fold line | `ubd-deploy-fold.spec.ts` |
+| **UBD2** | rows sit under a Today separator | `ubd-deploy-fold.spec.ts` |
+| **UBD3** | a name filter that hides the rows takes the fold line with them | `ubd-deploy-fold.spec.ts` |
+
+### 6.3 Known gaps
+
+- **In the suite, not in §4:** none.
+- **In §4, not in the suite:** UH6, UL1, UM2–UM4, UN2, UX1 (retired, noted in §4)
+  and UT5, UT6 (moved to UB8–UB10). UB3 (sort toggle) is also gone from the
+  suite although §4 and the Logs-view intro still name it.
+- **Not e2e, by decision:**
+
+| Requirement | Where it is covered |
 | --- | --- |
-| SSE row lifecycle: deploying→success in place, newest-first | **UA1** |
-| Status badges (success/failed/rolled_back/queued/deploying) | **UA2**, UC9 |
-| Skipped deploys never render a row | **UA3** |
-| Time mode toggle + persistence | **UA4** |
-| Stack icon chip + monogram fallback | **UA5** |
-| Files pill expandable panel | **UA7** |
-| Diff panel fetch + colouring | **UA8** |
-| Error detail panel | **UA9** |
-| Empty state | **UA10** |
-| View toggle deploys/logs + persistence | **UB1** |
-| Log lines + level badges | **UB2** |
-| Sort toggle + persistence | **UB3** |
-| Follow toggle + persistence | **UB4** |
-| Stack prefix / child `[docker]` prefix | **UB5** |
-| Diff pill on `deploy complete` line | **UB6** |
-| Log stream recovers from a fatal error | **UB7** |
-| Logs view panel controls, no popover | **UB8** |
-| Live/pause pill freezes without dropping | **UB9** |
-| Live/pause pill keyboard-operable (Enter/Space) | **UB10** |
-| Header autosync control reflects server state | **UC1** |
-| Pending count pill appears/hides | **UC2** |
-| Drawer open/close (click/Esc/outside) | **UC3** |
-| Global autosync switch → POST, live mirror | **UC4** |
-| Per-stack switches → POST | **UC5** |
-| Queued list in deploy order (reason/count/wait) | **UC6** |
-| Stack filter (substring/clear/Esc) | **UC7** |
-| Per-stack switch is an exception, not a pin (override collapse) | **UC10**, UC11 |
-| Global switch is a true master (collapse on global toggle) | **UC11** |
-| Override collapse through the stack filter | **UC12** |
-| A late autosync snapshot never overwrites a newer one | **UC13** |
-| The drawer is inert until it has server state | **UC14** |
-| A re-render never swaps a switch out from under a click | **UC15** |
-| Enable drains, disable does not | **UC8** |
-| Queued row + `paused:` tag | **UC9** |
-| Theme toggle + persistence + no-flash | **UD1** |
-| Theme picker override (switch/persist/notice/clear), switcher on | **UD6** |
-| Mismatch notice auto-hide (virtual clock) | **UD6b** |
-| Theme switcher off (default): picker hidden, override ignored | **UD7** |
-| Connection indicator states | **UD2** |
-| Connection indicator recovers from a fatal stream error | **UD10** |
-| State published while the stream connects is not lost | **UD12** |
-| Deploy indicator active/idle | **UD3** |
-| Tap-tip opt-in on non-header controls (touch flash / mouse silent / view-options excluded) | **UD11** |
-| Upcoming look-ahead trail (active + next) | **UF1** |
-| Run panel (open on click, ordered run, close on end) | **UF2** |
-| Upcoming mobile `+N` count chip | **UF3** |
-| Deploys search: type-to-reveal + filter + Esc fold | **UG1** |
-| Deploys search: no-match empty note | **UG2** |
-| Deploys search: mobile popover entry (desktop-hidden) | **UG3** |
-| Stacks roster: aligned inventory table (deployed/disabled rows + column header) | **UR1** |
-| Stacks roster: click a row for its containers + deploy-history panels | **UR2** |
-| Stacks roster: search (type-to-reveal, filter, empty note, Esc fold) | **UR3** |
-| Stacks roster: mobile popover search entry | **UR4** |
-| Stacks roster: shared time-mode toggle (relative → absolute) | **UR5** |
 | Stacks roster: never-deployed synthetic state | Unit `roster` — not e2e-seedable |
-| Cross-view jump: Deploys → Stacks lands on the roster row | **US1** |
-| Cross-view jump: Stacks → Deploys lands on the newest row | **US2** |
-| Cross-view jump: pre-empts the row's own panel-open click | **US3** |
-| Cross-view jump: no landing target (never-deployed stack) | **US4** |
-| Cross-view jump: clears a leftover filter that would hide the landing row | **US5** |
-| Stack health: rolled-up pill per stack (healthy/unhealthy/stopped) | **UH1** |
-| Stack health: per-service panel toggle | **UH2** |
-| Stack health: pill on the newest row per stack | **UH3** |
-| Stack health: status history — age, ≥2-phase timeline, deploy-correlated commit chip | **UH4** |
-| Stack health: exited on-demand container reads stopped + on-demand label | **UH5** |
-| Stack health: folded timeline — routine start absorbed, strip, raw-list toggle | **UH7** |
-| One open panel per row (health ↔ files/diff mutually exclusive) | **UL1** |
-| One open detail per table (a panel on another row closes the open one) | **UL2** |
-| One open header pop-out at a time (drawers ↔ beacon/view-options popovers) | **UAW1**–**UAW3** |
-| Change attribution: which containers a change with no new image reached; project-wide inputs stay stack-wide; no chip where the version chip already names the service; the panel repeats it per file | **UAX1**–**UAX4** |
-| project_directory fast-forward: silent on success, a dirty tree reported once without blocking the deploys, and the phase row carries no compose-project affordances | **UAY1**–**UAY4** |
-| Held change: the Stacks chip explains the hold, retry deploys it once more, a refused retry hands the button back | **UAZ1**, **UAZ2** |
-| Live deploy event on a roster row: the status cell keeps its outcome strip and last-incident line while deploying | **UAQ7** |
-| A change that failed before it started: the Stacks chip reads `backoff` with its attempts and next try, and `held` after the third failure | **UBA1** |
-| Strict CSP: security headers on the shell, no violation across the views, an injected inline script is refused | **UBB1** |
-| Responsive ≤700px: header no-overflow + wordmark hidden + table collapse + tap-to-expand | **UD4** |
-| Responsive ≤700px: status cells right-aligned (both views), incident line on its own line, version chip never split; a live row's entrance never replays | **UAS1**, **UAS2**, **UAS3**, **UAS4**, **UAS5** |
-| Updates filter: header badge counts stacks, presets + clears the Stacks updates-only toggle; the marked service outranks the lead so the count is countable | **UAV1**–**UAV6** |
-| Header version label (`v<semver>` from `/api/version`) | **UD5** |
-| PWA update banner: prompt on a new version, reload onto it | **UE1** |
-| PWA update banner: dismiss keeps the current version | **UE2** |
-| Diff API 404 / truncation limits | Unit `ui`/`deploy` — **n/a** for E2E |
-| Log windowing (500 +500), buffer trim | **n/a** in v1 (fiddly; low bump-risk) |
-| Favicon `prefers-color-scheme` | **n/a** (browser chrome, not page DOM) |
+| Diff API 404 / truncation limits | Unit `ui`/`deploy` |
+| Log windowing (500 +500), buffer trim | n/a in v1 (fiddly; low bump-risk) |
+| Favicon `prefers-color-scheme` | n/a (browser chrome, not page DOM) |
 
 ## 7. CI
 

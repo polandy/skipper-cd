@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.33.0](https://github.com/polandy/skipper-cd/compare/v0.32.0...v0.33.0) (2026-11-19)
+
+
+### Features
+
+* **metrics:** export the running run's start and failed state saves (OPS-12) ([#413](https://github.com/polandy/skipper-cd/issues/413)) ([cc58028](https://github.com/polandy/skipper-cd/commit/cc580281b3f5c3935a563221715f746f7cc61de2))
+
+
+### Bug Fixes
+
+* **config:** warn when a deploy_health_check timeout reaches command_timeout_seconds (OPS-2) ([#409](https://github.com/polandy/skipper-cd/issues/409)) ([1cf30f7](https://github.com/polandy/skipper-cd/commit/1cf30f7a62dc8b354e00359bf2aa4266843a8909))
+* **deploy:** save state after each stack (OPS-1) ([#404](https://github.com/polandy/skipper-cd/issues/404)) ([e562fea](https://github.com/polandy/skipper-cd/commit/e562feaa0963e41197d8dc8d0d989d1e0d366a3b))
+* **e2e:** remove every temp dir the tests and scripts create ([#410](https://github.com/polandy/skipper-cd/issues/410)) ([9ade92c](https://github.com/polandy/skipper-cd/commit/9ade92c9764692351e5b28fe515a72b25bad9a1e))
+* **events:** close a lagging SSE subscriber instead of dropping its events (ARC-5) ([#414](https://github.com/polandy/skipper-cd/issues/414)) ([4be61ed](https://github.com/polandy/skipper-cd/commit/4be61ed28dbfeb297b8010538e50fa95061993a2))
+* **nixos:** bound the rebuild unit's runtime with nixos_rebuild.timeout_seconds (OPS-3) ([#418](https://github.com/polandy/skipper-cd/issues/418)) ([21d542b](https://github.com/polandy/skipper-cd/commit/21d542b81e2e6d7083413a74fa75ebf6d0f26a04))
+* **nix:** tighten the service sandbox without nixos_rebuild and honour stateDir (OPS-9, OPS-10) ([#412](https://github.com/polandy/skipper-cd/issues/412)) ([c8e24bf](https://github.com/polandy/skipper-cd/commit/c8e24bfc06b5f38b52ea299aa0631b2b52adb431))
+* **security:** mask secrets in deploy errors, diffs and the UI log (OPS-5, E28) ([#420](https://github.com/polandy/skipper-cd/issues/420)) ([eecdd85](https://github.com/polandy/skipper-cd/commit/eecdd85cfc6d174d48b82036ecc98f95c84c9a80))
+* **ui:** 44px touch targets, drawer close buttons, Show-all state (UX-6, UX-7, UX-17) ([#407](https://github.com/polandy/skipper-cd/issues/407)) ([03dd893](https://github.com/polandy/skipper-cd/commit/03dd893c7258b14fc1b2fb8cc21f6ec63ff051d0))
+* **ui:** follow the OS light/dark preference and keep the toggle on mobile (UX-4, UX-5) ([#406](https://github.com/polandy/skipper-cd/issues/406)) ([ead9e77](https://github.com/polandy/skipper-cd/commit/ead9e77173f55bab39781a40edea4af8065edd89))
+* **ui:** give the detail tab strips the ARIA tabs pattern (UX-2, UX-15) ([#403](https://github.com/polandy/skipper-cd/issues/403)) ([42f082e](https://github.com/polandy/skipper-cd/commit/42f082e0c1b535a3550a24542ca3589524b8ebfb))
+* **ui:** open and close the row detail by keyboard (UX-1, UX-3) ([#405](https://github.com/polandy/skipper-cd/issues/405)) ([ff9cfc8](https://github.com/polandy/skipper-cd/commit/ff9cfc8a7692c131de9ebb864eeb5f2dac74bb0f))
+* **ui:** show why a held-change retry was refused (UX-8) ([#401](https://github.com/polandy/skipper-cd/issues/401)) ([b3da120](https://github.com/polandy/skipper-cd/commit/b3da1200df9b4dea0cea227543d34ee08b53b047))
+* **ui:** spell out an unreachable host's state in the Hosts drawer (UX-9) ([#408](https://github.com/polandy/skipper-cd/issues/408)) ([05362be](https://github.com/polandy/skipper-cd/commit/05362be9a551bd085eb3c4924e89916ebe3d47d7))
+
+## [0.32.0](https://github.com/polandy/skipper-cd/compare/v0.31.2...v0.32.0) (2026-11-18)
+
+
+### Features
+
+* **ui:** fold routine deploys and add day separators ([#400](https://github.com/polandy/skipper-cd/issues/400)) ([2f09911](https://github.com/polandy/skipper-cd/commit/2f09911433d29de5f7c42fcf7d6954a4301b1764))
+* **ui:** open a stack's detail panel from the Stacks view ([#394](https://github.com/polandy/skipper-cd/issues/394)) ([04c7dfb](https://github.com/polandy/skipper-cd/commit/04c7dfb7efb0854629ebbfa6fa385be5b6606d49))
+* **ui:** slim deploy rows to the Stacks row pattern ([#399](https://github.com/polandy/skipper-cd/issues/399)) ([ca1b41b](https://github.com/polandy/skipper-cd/commit/ca1b41b8886b113801dc700dc76a3858cecc3d19))
+
+
+### Bug Fixes
+
+* **ui:** make the deploy diff and error box readable ([#396](https://github.com/polandy/skipper-cd/issues/396)) ([5b5d4bf](https://github.com/polandy/skipper-cd/commit/5b5d4bf26a874d83bef339f42754cd697802dd52))
+
 ## [0.31.2](https://github.com/polandy/skipper-cd/compare/v0.31.1...v0.31.2) (2026-11-17)
 
 

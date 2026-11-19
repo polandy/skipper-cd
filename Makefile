@@ -2,11 +2,11 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps check-e2e-trace e2e-ui-lint ui-icons
+.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps check-action-pins check-e2e-trace e2e-ui-lint ui-icons
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
-ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps check-e2e-trace e2e-ui-lint lint govulncheck e2e docs e2e-ui ui-preview-smoke
+ci: test vendor-check check-action-pins ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps check-e2e-trace e2e-ui-lint lint govulncheck e2e docs e2e-ui ui-preview-smoke
 
 ## --- test job -------------------------------------------------------------
 # The Go packages of this module. `./...` also descends into the gitignored npm
@@ -43,8 +43,11 @@ vendor-check:
 # JS unit tests for the pure UI helpers and render layer
 # (internal/ui/static/app-helpers.js, app-render.js) via
 # the Node built-in runner — no build step, no deps.
+# Coverage floors sit just under the measured totals; raise them as coverage grows.
+UI_UNIT_TESTS := internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js e2e/ui/fixtures/tempdirs.test.ts
+UI_COVERAGE_FLOORS := --test-coverage-lines=98 --test-coverage-branches=92 --test-coverage-functions=99
 ui-unit:
-	node --test internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js
+	node --test --experimental-test-coverage --test-coverage-exclude='**/*.test.*' $(UI_COVERAGE_FLOORS) $(UI_UNIT_TESTS)
 
 # Prettier/ESLint for the embedded UI's plain-script JS (app-stream.js, app-state.js, app-chrome.js, app-panels.js, app-detail.js, app-hosts.js, app-roster.js, app-deploys.js, app-autosync.js, app-logs.js, app-clog.js,
 # app-render.js, app-helpers.js, app-prepaint.js, the .test.js files, sw.js). Dev-only npm devDependencies, scoped to
@@ -109,8 +112,12 @@ ui-preview:
 
 # Boot the seeded preview, assert it serves and still produces its spread of
 # deploy outcomes, then clean up. Run in CI as skipper's startup smoke test.
+# TMPDIR points at a fresh dir that must be empty again afterwards: a leaked
+# temp dir fails the run instead of filling /tmp.
 ui-preview-smoke:
-	node scripts/ui-preview.mjs --smoke
+	@d=$$(mktemp -d) && trap 'rm -rf "$$d"' EXIT; \
+	TMPDIR=$$d node scripts/ui-preview.mjs --smoke || exit 1; \
+	test -z "$$(ls -A "$$d")" || { echo "ui-preview left temp files:"; ls -A "$$d"; exit 1; }
 
 ## --- ui-icons (not a CI job) ----------------------------------------------
 # Rasterise the PWA icon PNGs from their SVG sources after redrawing the mark.
@@ -153,6 +160,11 @@ check-playwright-pin:
 # The CI job calls the script directly: the Playwright container ships no make.
 check-baselines:
 	@scripts/check-baselines.sh
+
+## --- check-action-pins (part of the test job) ----------------------------
+# Actions by commit SHA, Dockerfile base images by digest (a tag can be moved).
+check-action-pins:
+	@scripts/check-action-pins.sh
 
 ## --- check-no-sleeps (part of the ui-unit job) ----------------------------
 # Keeps the Playwright suite free of fixed waits: a waitForTimeout passes on a

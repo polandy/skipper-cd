@@ -651,30 +651,17 @@
   }
 
 
-  /* Deploy-table columns: Time · Stack · Version · Status · Duration · Files.
-     Held in --row-cols, the one grid variable each table (this one, #stacks-view)
-     sets for its header and rows, so the two stay in lockstep, and
-     the Version column collapses away when its view-option is off (.no-version) —
-     an empty column would otherwise keep taking width. Stack and Version share
-     the free width (minmax(0,…) so both can shrink instead of overflowing). */
-  /* Stack keeps the larger share: the name must stay readable, while a too-narrow
-     Version chip degrades gracefully by wrapping (see .col-version .tag-delta).
-     The other columns are trimmed slightly to buy the Version column its width. */
-  #deploy-table { --row-cols: 150px minmax(0, 1.15fr) minmax(0, 1fr) 110px 76px 96px; }
-  #deploy-table.no-version { --row-cols: 160px minmax(0, 1fr) 110px 80px 100px; }
+  /* Stack · Result · Change · When, the Stacks row's positions; .no-version drops Change. */
+  #deploy-table { --row-cols: minmax(0, 1.25fr) 120px minmax(0, 1fr) minmax(0, 0.9fr); }
+  #deploy-table.no-version { --row-cols: minmax(0, 1.25fr) 120px minmax(0, 0.9fr); }
   #deploy-table.no-version .col-version { display: none; }
 
   .event-row {
     display: grid;
     grid-template-columns: var(--row-cols);
     gap: 12px;
-    /* Top-aligned, not centred: the Version column is routinely taller than one
-       line, and centring would let it drag Time/Stack/Status to its middle — the
-       row would lose a common starting line and the eye would have to re-find it
-       on every row. Aligned to the top, one row reads as a single horizontal run
-       (time → stack → first version → status) with the extra service chips
-       hanging beneath it. */
-    align-items: start;
+    /* Every cell is one line; a cause line under the name centres the rest. */
+    align-items: center;
     padding: 12px 20px;
     transition: background 0.2s, transform 0.2s;
     position: relative;
@@ -781,31 +768,6 @@
      like the local files pill's resting state. */
   .peer-files { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
 
-  /* Peer-row read-only detail (multi-host fan-in). A peer row cannot drill down
-     locally (the primary has no peer diffs), so a click opens this compact card:
-     what the fan-in knows (commit, file count, error) + a link to the peer's own
-     UI for the full diff. Sits below its row like the other expand panels. */
-  .peer-detail {
-    background: var(--bg-sunken);
-    border-radius: 8px;
-    padding: 12px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .peer-detail .host-mono { display: inline-flex; }
-  .peer-detail .pd-head { display: flex; align-items: center; gap: 10px; }
-  .peer-detail .pd-note { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.5px; }
-  .peer-detail .pd-facts { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--text-secondary); }
-  .peer-detail .pd-sha { font-family: var(--font-mono); color: var(--text-primary); }
-  .peer-detail .pd-error { font-family: var(--font-mono); font-size: 12px; color: var(--danger); white-space: pre-wrap; }
-  /* The proxied peer diff renders as a normal diff panel; flatten it into the
-     peer-detail card (no second background/padding/margin) and hide its status
-     bar (the peer-detail already carries the context). */
-  .peer-detail .pd-diff .diff-panel { margin: 0; padding: 0; background: transparent; }
-  .peer-detail .pd-diff .diff-panel::before { display: none; }
-  .peer-detail .diff-loading { font-size: 12px; color: var(--text-muted); }
-
   .event-row.new-row {
     animation: rowEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -840,15 +802,15 @@
      container, so nothing inherits a status that is not its own; each consumer
      names its own fallback for a status the map leaves unset. `removed` colours
      only the row bar: in the history a stack leaving is not an outcome to rate. */
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="success"], [data-status="healed"])
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="success"], [data-status="healed"])
     { --st: var(--success); }
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="failed"], [data-status="rolled_back_unhealthy"], [data-status="heal_exhausted"])
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="failed"], [data-status="rolled_back_unhealthy"], [data-status="heal_exhausted"])
     { --st: var(--danger); }
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="rolled_back"]
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="rolled_back"]
     { --st: var(--rollback); }
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="queued"], [data-status="blocked"])
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot):is([data-status="queued"], [data-status="blocked"])
     { --st: var(--queued); }
-  :is(.event-row, .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="deploying"]
+  :is(.event-row, .audit-row, .audit-panel .ar-fold, .outcome-dot)[data-status="deploying"]
     { --st: var(--accent); }
   .event-row[data-status="removed"] { --st: color-mix(in srgb, var(--rollback) 55%, transparent); }
   .event-row::before {
@@ -874,30 +836,6 @@
   }
   .event-row[data-status="deploying"]::before {
     box-shadow: 0 0 12px var(--accent-glow);
-  }
-
-  .paused-tag {
-    font-family: var(--font-display);
-    font-size: 11.5px;
-    font-weight: 500;
-    color: var(--queued-text);
-    background: var(--queued-dim);
-    padding: 2px 7px;
-    border-radius: var(--r-chip);
-    margin-left: 8px;
-    white-space: nowrap;
-    /* Yields before the stack name does: the badge already says blocked or
-       queued, and the full reason stays in the autosync drawer. */
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  /* Narrower than this the tag has no room to say anything useful — it shrank
-     to a one-letter stub, which reads worse than absent. The status badge still
-     says blocked or queued and the full reason stays in the autosync drawer. */
-  @media (max-width: 1000px) {
-    .paused-tag { display: none; }
   }
 
   /* ─── CELLS ─── */
@@ -980,8 +918,36 @@
     font-family: var(--font-display);
     font-size: 13px;
     font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
+    color: var(--text-muted);
+    white-space: nowrap;
   }
+
+  /* Stack cell: the name, plus the cause line indented under it. */
+  .cell-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .cell-cause {
+    padding-left: 26px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Past the host chip too, when one leads the name (min-width + gap). */
+  .show-hosts .cell-cause { padding-left: 57px; }
+  .event-row:is([data-status="failed"], [data-status="rolled_back_unhealthy"]) .cell-cause { color: var(--danger); }
+  .event-row[data-status="rolled_back"] .cell-cause { color: var(--rollback); }
+  .event-row:is([data-status="queued"], [data-status="blocked"]) .cell-cause { color: var(--queued-text); }
+
+  /* When: relative time, the duration muted, the short SHA once known. */
+  .cell-when { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .cell-when .cell-time { min-width: 0; }
+  .cell-sha {
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--text-secondary); white-space: nowrap;
+  }
+  /* The status cell is one line in a deploy row: badge, then "↻ ×N". */
+  .event-row .status-cell { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 
   /* ─── STATUS BADGES ─── */
   /* A status is a word with an icon, not a box. Every outcome used to be an
@@ -1248,16 +1214,12 @@
   /* Variant A: the open row and its panel share a health-coloured left bar and a
      tint, and the panel repeats the stack + status — so it always reads as tied
      to its row, whatever its position. --hc is the row/stack's health colour. */
-  .event-row.health-open[data-health="healthy"],   .health-panel[data-health="healthy"]   { --hc: var(--h-healthy); }
-  .event-row.health-open[data-health="unhealthy"], .health-panel[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
-  .event-row.health-open[data-health="starting"],  .health-panel[data-health="starting"]  { --hc: var(--h-starting); }
-  .event-row.health-open[data-health="stopped"],   .health-panel[data-health="stopped"]   { --hc: var(--h-stopped); }
-  .event-row.health-open[data-health="unknown"],   .health-panel[data-health="unknown"]   { --hc: var(--h-unknown); }
+  .health-panel[data-health="healthy"] { --hc: var(--h-healthy); }
+  .health-panel[data-health="unhealthy"] { --hc: var(--h-unhealthy); }
+  .health-panel[data-health="starting"] { --hc: var(--h-starting); }
+  .health-panel[data-health="stopped"] { --hc: var(--h-stopped); }
+  .health-panel[data-health="unknown"] { --hc: var(--h-unknown); }
 
-  .event-row.health-open {
-    background: color-mix(in srgb, var(--hc) 8%, transparent);
-    box-shadow: inset 3px 0 0 var(--hc);
-  }
   .health-panel {
     padding: 9px 14px 12px;
     background: color-mix(in srgb, var(--hc) 6%, var(--bg-sunken));
@@ -1391,54 +1353,6 @@
   .hp-fold-toggle:hover { color: var(--text-primary); border-color: var(--border-lit); }
 
   /* ─── AUDIT (per-stack deploy history, ADR-0033) ─── */
-  /* A small clock button on the newest row per stack, next to the health pill.
-     Opens the durable per-stack deploy history — a distinct axis from the live
-     health pill and the row's own diff, so it gets its own affordance. */
-  .history-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
-    border: 0; border-radius: var(--r-chip);
-    background: transparent; color: var(--text-muted); cursor: pointer;
-  }
-  .history-btn:hover {
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  .history-btn svg { width: 12px; height: 12px; }
-
-  /* ─── CROSS-VIEW JUMP (Deploys <-> Stacks) ─── */
-  /* A compass button beside every stack name, in both the deploy row and the
-     roster row: switches to the other view and lands on that stack's row
-     there (jumpToStack). Same frame as .history-btn so the two read as a
-     family of small per-stack affordances. */
-  .jump-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 20px; height: 18px; margin-left: 2px; padding: 0; flex: none;
-    border: 0; border-radius: var(--r-chip);
-    background: transparent; color: var(--text-muted); cursor: pointer;
-  }
-  .jump-btn:hover {
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  .jump-btn svg { width: 12px; height: 12px; }
-
-  /* The row's affordance glyphs rest at a low weight and lift on hover, focus,
-     or while their own surface is open. On touch there is no hover, so the
-     resting state stays legible rather than invisible (0.62, measured against
-     --text-muted, not a dimming of the colour itself). */
-  .event-row .row-actions, .roster-row .row-actions,
-  .event-row .link-wrap, .roster-row .link-wrap { opacity: 0.62; transition: opacity 0.15s; }
-  .event-row:hover .row-actions, .roster-row:hover .row-actions,
-  .event-row:hover .link-wrap, .roster-row:hover .link-wrap,
-  .event-row:focus-within .row-actions, .roster-row:focus-within .row-actions,
-  .event-row:focus-within .link-wrap, .roster-row:focus-within .link-wrap,
-  .event-row[class*="-open"] .row-actions, .roster-row[class*="-open"] .row-actions {
-    opacity: 1;
-  }
-
   /* ─── TOUCH TARGETS (T2.9) ───
      The row-cluster glyph buttons and status pills render small by design, but
      their *tappable* area is enlarged with a transparent ::after overlay so a
@@ -1446,11 +1360,11 @@
      surrounding whitespace/gaps — a full 44px (AAA) would overlap neighbours in
      this dense cluster (that needs the row redesign, T3.13), so this lifts them
      from ~18px to ≥24px (WCAG 2.5.8 AA) with nothing visible changing. */
-  .history-btn, .jump-btn, .clog-btn, .link-btn, .more-btn,
-  .health-pill, .hooks-badge, .files-pill, .heal-pill, .commits-pill { position: relative; }
-  .history-btn::after, .jump-btn::after, .clog-btn::after, .link-btn::after, .more-btn::after,
+  .clog-btn, .link-btn,
+  .health-pill, .hooks-badge, .files-pill, .commits-pill { position: relative; }
+  .clog-btn::after, .link-btn::after,
   .health-pill::after, .hooks-badge::after, .files-pill::after,
-  .heal-pill::after, .commits-pill::after {
+  .commits-pill::after {
     content: ''; position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     width: 100%; height: 100%; min-width: 24px; min-height: 24px;
@@ -1465,10 +1379,16 @@
     transform: translate(-50%, -50%);
     width: 100%; height: 100%; min-width: 30px; min-height: 40px;
   }
+  /* A touch screen gets full 44px (AAA) targets wherever the row has the room:
+     the detail panel's actions and tabs (and the drawer close, beside its rule). */
+  @media (pointer: coarse) {
+    .dp-act, .dp-tab { min-height: 44px; }
+    .dp-act { min-width: 44px; justify-content: center; }
+  }
 
   /* Landing flash: a temporary accent pulse on the row a jump lands on, so the
      eye finds it immediately without leaving a permanent state change behind
-     (unlike diff-open/health-open/audit-open, which persist until closed). */
+     (unlike health-open/audit-open, which persist until closed). */
   .event-row.jump-target, .roster-row.jump-target {
     animation: jumpLand 1.8s ease-out;
   }
@@ -1486,9 +1406,9 @@
     .event-row.jump-target, .roster-row.jump-target { animation: none; background: var(--accent-dim); }
   }
 
-  /* History lists many statuses, so the open row uses the neutral accent bar,
-     not a status colour. Shared with the roster's open row. */
-  .event-row.audit-open, .roster-row.audit-open, .roster-row.hooks-open {
+  /* The open row of a detail uses the neutral accent bar its panel continues,
+     not a status colour. Shared by both views. */
+  .event-row.audit-open, .roster-row.audit-open {
     background: color-mix(in srgb, var(--accent) 7%, transparent);
     box-shadow: inset 3px 0 0 var(--accent);
   }
@@ -1591,31 +1511,6 @@
     height: 12px;
     opacity: 0.5;
   }
-
-  /* ─── SELF-HEAL BADGE + PANEL ─── */
-  /* The heal-pill stands in for the files-pill on a healed row (a heal has no
-     changed files). Tinted teal to match the healed status, it expands the
-     self-heal detail panel below the row. */
-  .heal-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 8px;
-    margin-left: -8px;
-    border: 0;
-    border-radius: var(--r-chip);
-    background: transparent;
-    color: var(--success);
-    font-family: var(--font-display);
-    font-size: 13px;
-    font-weight: 400;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  .heal-pill:hover {
-    background: color-mix(in srgb, var(--success) 14%, transparent);
-  }
-  .heal-pill svg { width: 12px; height: 12px; opacity: 0.8; }
 
   /* ─── PER-SERVICE IMAGE DELTA (Version column) ─── */
   /* A `service old→new` chip per changed service, in the deploy table's own
@@ -1722,34 +1617,6 @@
     color: var(--text-muted); white-space: nowrap;
   }
 
-  .heal-panel {
-    padding: 11px 14px 12px 16px;
-    background: var(--bg-sunken);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    animation: expand 0.2s ease-out;
-  }
-  .heal-summary {
-    font-size: 12px;
-    line-height: 1.5;
-    color: var(--text-secondary);
-  }
-  .heal-summary code {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 1px 5px;
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--overlay2) 12%, transparent);
-    color: var(--text-primary);
-  }
-  .heal-drift-label {
-    margin-top: 10px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-    font-weight: 600;
-    color: var(--text-muted);
-  }
   .heal-drift-list {
     list-style: none;
     margin: 6px 0 0;
@@ -1812,8 +1679,6 @@
     .files-list,
     .audit-panel,
     .watched-panel,
-    .heal-panel,
-    .error-detail,
     .load-error,
     .sk-spin,
     .sk-bar,
@@ -1832,42 +1697,9 @@
     margin: 1px 0;
   }
 
-  /* ─── ERROR ─── */
-  /* Bound to its deploy row like the diff/health panels (variant A), and part of
-     the sheet the same way they are: no frame and no radius of its own, and the
-     row above drops its hairline so the two read as one card. --ec is the row's
-     status colour (set below). */
-  .error-detail {
-    padding: 10px 14px;
-    background: color-mix(in srgb, var(--ec, var(--danger)) 6%, transparent);
-    border: none;
-    box-shadow: inset 3px 0 0 var(--ec, var(--danger));
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--danger);
-    white-space: pre-wrap;
-    word-break: break-all;
-    line-height: 1.6;
-    animation: expand 0.2s ease-out;
-  }
-
-  /* --ec: the deploy-status colour shared by the row's left bar and its error
-     box, so the two read as one unit. The row keeps a continuous full-height bar
-     (via box-shadow) and squares its bottom corners only while an error box
-     trails it. Rolled-back uses the rollback tint; failed / rolled_back_unhealthy
-     use danger. */
-  .event-row[data-status="failed"]:has(+ .error-detail),                .error-detail[data-status="failed"]                { --ec: var(--danger); }
-  .event-row[data-status="rolled_back"]:has(+ .error-detail),           .error-detail[data-status="rolled_back"]           { --ec: var(--rollback); }
-  .event-row[data-status="rolled_back_unhealthy"]:has(+ .error-detail), .error-detail[data-status="rolled_back_unhealthy"] { --ec: var(--danger); }
-  .event-row[data-status="heal_exhausted"]:has(+ .error-detail),        .error-detail[data-status="heal_exhausted"]        { --ec: var(--danger); }
-  .event-row:has(+ .error-detail) {
-    box-shadow: inset 3px 0 0 var(--ec, var(--danger));
-    border-bottom: 0; /* the strip is this row's own, not the next row's neighbour */
-  }
-
   /* ─── LOAD ERROR (T4.16) ─── */
   /* A lazy detail fetch (deploy history, diff, peer diff) failed or returned
-     non-OK. Amber caution — deliberately NOT the red of .error-detail: the
+     non-OK. Amber caution — deliberately not danger red: the
      *deploy* is fine, the UI just couldn't load a panel. Distinct from the
      muted genuine-empty line, and retryable in place via .le-retry. */
   .load-error {
@@ -1899,9 +1731,8 @@
 
   /* The load-error carries the whole visual when it stands in for a panel's
      body: strip the host panel's own bar/tint/padding so the two bars don't
-     stack. Covers the audit panel and the peer-detail diff slot. */
+     stack. Covers the audit panel. */
   .audit-panel:has(> .load-error) { padding: 0; background: transparent; border: none; box-shadow: none; }
-  .pd-diff > .load-error { margin-top: 6px; }
 
   /* ─── DIFF PANEL ─── */
   .diff-panel {
@@ -1997,28 +1828,12 @@
     font-style: italic;
   }
 
-  /* Variant-A binding (as for the health panel): the open row and its trailing
-     panels — diff, files, peer-detail, and the error detail — share a status-coloured
-     left bar + tint so they always read as tied to the row, in the row's --st
-     status colour; a diff panel opened from a log line is unbound (no row to
-     tie to) and keeps the plain background. */
-  .event-row.diff-open {
-    background: color-mix(in srgb, var(--st, var(--accent)) 8%, transparent);
-    box-shadow: inset 3px 0 0 var(--st, var(--accent));
-  }
-  .diff-panel.bound, .files-list.bound, .heal-panel.bound, .peer-detail.bound {
-    background: color-mix(in srgb, var(--st, var(--accent)) 5%, var(--bg-sunken));
-    border-color: color-mix(in srgb, var(--st, var(--accent)) 22%, var(--border));
-    box-shadow: inset 3px 0 0 var(--st, var(--accent));
-  }
-
   /* A bound panel is part of the sheet, not a card resting on it: it sits flush
      under its row inside the same border, so the only edges it draws are the
      shared 3px status bar on the left and the hairline the list puts between
      every child. The sheet's own :last-child rule rounds whichever panel ends
      the card, so no panel carries a radius of its own. */
-  .health-panel, .diff-panel.bound, .files-list.bound, .audit-panel,
-  .heal-panel.bound, .peer-detail.bound, .watched-panel {
+  .health-panel, .audit-panel, .watched-panel {
     border-radius: 0;
     border-top: none;
     border-left: none;
@@ -2035,29 +1850,6 @@
     flex-direction: column;
     gap: 8px;
   }
-  .diff-head-echo {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-  }
-  .diff-head-echo .dh-who { color: var(--text-primary); font-size: 12.5px; font-weight: 700; }
-  .diff-head-echo .dh-label { color: var(--text-muted); font-family: var(--font-display); font-size: 12px; font-weight: 500; }
-  .diff-head-echo .dh-pill {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 2px 8px 2px 6px;
-    border-radius: 999px;
-    font-size: 10.5px;
-    font-weight: 600;
-    color: var(--st, var(--accent));
-    border: 1px solid color-mix(in srgb, var(--st, var(--accent)) 32%, transparent);
-    background: color-mix(in srgb, var(--st, var(--accent)) 13%, transparent);
-  }
-  .diff-head-echo .dh-pill .hdot { width: 6px; height: 6px; border-radius: 50%; background: var(--st, var(--accent)); }
   .diff-commit { display: flex; align-items: flex-start; gap: 9px; }
   .diff-commit .commit-glyph { width: 14px; height: 14px; margin-top: 1px; color: var(--text-muted); flex-shrink: 0; }
   .diff-commit .dh-subject {
@@ -2594,6 +2386,8 @@
   /* The "Search stacks" popover row is a mobile-only entry point (desktop uses
      type-to-search); shown via the media query in the responsive section. */
   .view-options .vo-search { display: none; }
+  /* Mobile-only light/dark row: the header toggle is dropped there (below). */
+  .view-options .vo-theme { display: none; }
 
   /* Always-visible search trigger (T3.11) — the deploys/stacks filter was
      desktop-invisible (type-to-search only, an easter egg); this quiet magnifier
@@ -2740,6 +2534,9 @@
   .host-dot.up { background: var(--h-healthy); }
   .host-dot.stale { background: var(--queued); }
   .host-dot.down { background: var(--danger); }
+  .hr-reach { font-size: 11px; white-space: nowrap; }
+  .hr-reach.stale { color: var(--queued); }
+  .hr-reach.down { color: var(--danger); }
   .host-link { color: var(--text-muted); display: inline-flex; }
   .host-link:hover { color: var(--accent); }
   .host-link svg { width: 15px; height: 15px; }
@@ -2797,6 +2594,14 @@
   }
   .drawer.open { max-height: min(72vh, 640px); opacity: 1; visibility: visible; overflow-y: auto; }
   .drawer-inner { padding: 14px 16px 16px; }
+  .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .drawer-close {
+    flex: none; margin: -6px -8px -6px 0; padding: 4px 8px; min-width: 28px; min-height: 28px;
+    background: none; border: none; border-radius: 6px; cursor: pointer;
+    font: inherit; font-size: 18px; line-height: 1; color: var(--text-muted);
+  }
+  .drawer-close:hover { color: var(--text-primary); background: var(--bg-raised); }
+  @media (pointer: coarse) { .drawer-close { min-width: 44px; min-height: 44px; } }
   .drawer-title { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.3px; color: var(--text-primary); text-transform: uppercase; }
   .drawer-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
   .drawer-sub b { color: var(--queued-text); font-weight: 600; }
@@ -2928,6 +2733,20 @@
   }
   .filter-empty.show { display: block; }
   .event-list .filtered-out { display: none !important; }
+  .event-list .fold-hidden { display: none !important; }
+  /* Day separator and fold line: thin interstitial rows, not data rows. */
+  .event-list .day-sep {
+    padding: 5px 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--text-muted);
+    background: color-mix(in srgb, var(--overlay2) 5%, transparent);
+  }
+  .event-list .fold-row {
+    display: block; width: 100%; padding: 4px 20px; text-align: left; cursor: pointer;
+    font: 11px var(--font-mono); color: var(--text-muted);
+    background: none; border: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .event-list .fold-row:hover, .event-list .fold-row:focus-visible { color: var(--text-secondary); background: color-mix(in srgb, var(--overlay2) 6%, transparent); }
+  .event-list .fold-row[aria-expanded="true"] { color: var(--text-secondary); }
 
   /* Orphans (ADR-0036): compose projects running on the host that the discovered
      stack set no longer accounts for — a collapsed inventory section below the
@@ -3215,11 +3034,11 @@
      the badge); open-state + panel binding are shared with .event-row.audit-open.
      Header + rows share one fixed grid so columns align, like the deploy table. */
   .roster-list { display: flex; flex-direction: column; }
-  /* Stack · Version · Status · Last deploy · Commit. The Version column stays a
-     single line (one lead version + a "+N" pointer, not the Deploys column's full
+  /* Stack · Health · Version · Last deploy. The Version column stays a single
+     line (one lead version + a "+N" pointer, not the Deploys column's full
      per-service stack), so the roster keeps its one-line-per-stack inventory
      rhythm; a shared track lets the versions align down the page. */
-  #stacks-view { --row-cols: minmax(0, 1.2fr) minmax(0, 1fr) 130px 150px 84px; }
+  #stacks-view { --row-cols: minmax(0, 1.2fr) 112px minmax(0, 1fr) minmax(0, 1.1fr); }
   .roster-list-header, .roster-row {
     display: grid;
     grid-template-columns: var(--row-cols);
@@ -3233,6 +3052,12 @@
      version is what the cell is for. */
   .roster-row .col-version .tag-delta { flex-wrap: nowrap; }
   .roster-row .col-version .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* Deploys' Change cell follows the same rule: one chip plus "+N", one line. */
+  .event-row .col-version { align-items: center; overflow: hidden; }
+  .event-row .svc-delta { flex-direction: row; align-items: center; gap: 5px; min-width: 0; }
+  .event-row .col-version .tag-delta { flex-wrap: nowrap; min-width: 0; }
+  .event-row .col-version .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .event-row .col-version .ver-count { flex: none; }
 
   /* Empty set: drop the lone column header. */
   .roster-list-header:has(+ .roster-list:empty) { display: none; }
@@ -3274,11 +3099,11 @@
      version always share the first line. min-width: 0 is what lets it shrink;
      the full name stays in the title. */
   .roster-ident { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  /* The row's affordance glyphs are one cluster (rowActionClusterHTML): the
-     same 8px rhythm as the cell around them, but a single flex item, so a
-     narrow cell wraps them to the next line together instead of breaking
-     between two icons. flex: none keeps the name the part that yields. */
-  .row-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+  .roster-health { display: flex; align-items: center; min-width: 0; }
+  /* Last deploy: badges, age and commit as one wrapping group — gap, not
+     margins, so a wrapped line keeps the row's own spacing. */
+  .roster-last { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 4px 8px; min-width: 0; }
+  .roster-last .roster-status { display: inline-flex; align-items: center; gap: 6px; }
   .roster-when {
     font-family: var(--font-display); font-size: 13px;
     font-variant-numeric: tabular-nums;
@@ -3295,7 +3120,7 @@
     padding: 2px 9px; border: 1px dashed var(--border); border-radius: 999px;
     white-space: nowrap;
   }
-  /* A held change (ADR-0062): the paused-tag's queued tint, since it is a
+  /* A held change (ADR-0062): the queued tint, since it is a
      standing wait, plus the one control that lifts it. */
   .held-line { display: inline-flex; align-items: center; gap: 6px; }
   .held-chip {
@@ -3317,14 +3142,137 @@
   .retry-btn:disabled { cursor: default; opacity: .6; }
   .roster-empty { display: none; color: var(--text-muted); text-align: center; padding: 28px 12px; }
   .roster-list:empty ~ .roster-empty { display: block; }
-  /* Containers panel stacks above history: force its frame to the accent (not
-     its health colour) so the expanded stack is one card; per-service dots keep
-     the real colours. Head drops the redundant stack name (the row names it). */
-  .roster-list .health-panel {
-    background: color-mix(in srgb, var(--accent) 5%, var(--bg-sunken));
+  /* ── Stacks detail panel (docs/dev/ui-redesign-plan.md §3.2) ──
+     The selected row's card: head with labelled actions, the verdict, a facts
+     strip, then a tab strip over one pane. Bound to its row by the open row's
+     accent bar, which the panel continues down its left edge. */
+  .detail-panel {
+    position: relative; padding-bottom: 6px;
+    background: var(--bg-sunken);
     box-shadow: inset 3px 0 0 var(--accent);
+    animation: expand 0.2s ease-out;
   }
-  .roster-list .health-panel .hp-head-who { display: none; }
+  .dp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 20px 12px; }
+  .dp-title { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .dp-title .host-mono { display: inline-flex; }
+  .dp-name {
+    font-family: var(--font-display); font-size: 18px; font-weight: 600; letter-spacing: -0.01em;
+    color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .dp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .dp-act {
+    display: inline-flex; align-items: center; gap: 6px;
+    font: inherit; font-size: 12.5px; padding: 5px 10px; cursor: pointer;
+    border: 1px solid var(--border-lit); border-radius: 7px;
+    background: var(--bg-base); color: var(--text-secondary); text-decoration: none; white-space: nowrap;
+  }
+  .dp-act:hover { color: var(--text-primary); border-color: var(--overlay2); }
+  .dp-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .dp-act svg { width: 14px; height: 14px; flex: none; }
+  .dp-act[aria-pressed="true"], .link-wrap.open > .dp-act {
+    color: var(--accent); background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .dp-act[data-hook-active] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    animation: hookpulse 1.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .dp-act[data-hook-active] { animation: none; } }
+  .dp-close { padding: 5px 8px; }
+  .dp-actions .link-wrap { margin-left: 0; }
+  .dp-actions .link-pop { top: 34px; left: auto; right: 0; }
+  /* The count chip inside an action and a tab. */
+  .dp-n {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums;
+    color: var(--text-muted); background: var(--bg-raised); border-radius: 999px; padding: 0 6px;
+  }
+  .dp-n.bad { color: var(--danger); background: var(--danger-dim); }
+
+  /* Verdict: one line per thing worth knowing, the tone leading with its glyph. */
+  .dp-verdict { display: grid; gap: 6px; margin: 0 20px; }
+  .dp-v {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 9px 12px; border-radius: var(--radius); font-size: 13.5px; color: var(--text-primary);
+  }
+  .dp-v-ico { flex: none; width: 18px; text-align: center; font-weight: 600; }
+  .dp-v-body { flex: 1; min-width: 0; }
+  .dp-v-text b { font-weight: 600; }
+  .dp-v-sub { color: var(--text-secondary); font-size: 12.5px; margin-top: 2px; overflow-wrap: anywhere; }
+  .dp-v-msg { color: var(--danger); font-size: 12.5px; font-weight: 600; margin-top: 4px; overflow-wrap: anywhere; }
+  .dp-v-msg:empty { display: none; }
+  .dp-v > .dp-act, .dp-v > .retry-btn { flex: none; align-self: center; }
+  .dp-v .retry-btn { font-size: 12.5px; padding: 4px 11px; border-radius: 7px; }
+  .dp-v[data-tone="danger"]   { background: var(--danger-dim); }
+  .dp-v[data-tone="danger"]   .dp-v-ico { color: var(--danger); }
+  .dp-v[data-tone="rollback"] { background: var(--rollback-dim); }
+  .dp-v[data-tone="rollback"] .dp-v-ico { color: var(--rollback); }
+  .dp-v[data-tone="warn"]     { background: var(--queued-dim); }
+  .dp-v[data-tone="warn"]     .dp-v-ico { color: var(--queued-text); }
+  .dp-v[data-tone="ok"]       { background: var(--success-dim); }
+  .dp-v[data-tone="ok"]       .dp-v-ico { color: var(--success); }
+  .dp-v[data-tone="muted"]    { background: color-mix(in srgb, var(--bg-raised) 50%, transparent); color: var(--text-secondary); }
+
+  /* Facts: four labelled cells sharing hairlines. */
+  .dp-facts {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
+    margin: 12px 20px 0; background: var(--border);
+    border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  }
+  .dp-fact { background: var(--bg-base); padding: 8px 12px; min-width: 0; }
+  .dp-k {
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px;
+  }
+  .dp-fv {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0;
+    font-size: 13px; color: var(--text-primary);
+  }
+  .dp-fv .tag-delta, .dp-fv .tag-delta .td-val { flex-wrap: wrap; max-width: 100%; }
+  .dp-fv .td-svc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .dp-sha { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+  .dp-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .dp-meta { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+  /* Tabs over one pane. */
+  .dp-tabs {
+    display: flex; gap: 2px; margin: 14px 20px 0; overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .dp-tab {
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+    font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer;
+    padding: 8px 12px; margin-bottom: -1px; background: none;
+    border: 0; border-bottom: 2px solid transparent;
+  }
+  .dp-tab:hover { color: var(--text-primary); }
+  .dp-tab[aria-selected="true"] { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--accent); }
+  .dp-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .dp-pane { padding: 4px 6px 8px; }
+  /* The shared panel builders draw their own bound frame; inside the pane they
+     are content, not cards. The Containers head drops the stack name — the
+     panel head already names it. */
+  .dp-pane > .health-panel, .dp-pane > .audit-panel, .dp-pane > .watched-panel, .dp-pane > .hooks-panel,
+  .dp-pane > .diff-panel, .dp-pane > .files-list {
+    background: none; box-shadow: none; border: 0; border-radius: 0; animation: none;
+  }
+  .dp-pane .health-panel .hp-head-who { display: none; }
+  .dp-pane > .heal-drift-list, .dp-pane > .diff-commit-list, .dp-pane > .load-error { margin: 8px 14px; }
+  .dp-pane > .diff-loading { padding: 10px 14px; }
+  /* A diff file's added/removed counts, in its header. */
+  .df-stat { display: inline-flex; gap: 6px; font-family: var(--font-mono); font-size: 11px; }
+  .df-add { color: var(--success); }
+  .df-del { color: var(--danger); }
+  /* Output: the deploy's error text, clamped to six lines until expanded. */
+  .dp-output {
+    margin: 8px 14px 0; padding: 10px 12px; border-radius: var(--radius);
+    background: var(--bg-base); border: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6;
+    color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .dp-output.clamped { max-height: calc(6 * 1.6em + 20px); overflow: hidden; }
+  .dp-more-btn {
+    margin: 6px 14px 0; padding: 2px 4px; font: inherit; font-size: 12px; cursor: pointer;
+    background: none; border: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+  }
+  .dp-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   /* #log-pane is the panel's .clog-body (chrome comes from the .clog-panel
      wrapper); override the small popup panel's capped height so it fills the
@@ -3450,32 +3398,30 @@
   }
 
   /* ─── RESPONSIVE ─── */
-  /* Tablet/narrow desktop: not every column fits, so both views drop their two
-     least essential ones and keep Version on the row's first line, in front of
-     the status — Deploys drops Duration and Files, Stacks drops Commit. The
-     version is the answer to "what moved / what runs", which is worth more per
-     pixel than a duration, a file count or a SHA; those stay reachable (the
-     duration and files in the row's own panel, the commit in the deploy
-     history). Hiding a column, rather than squeezing all of them, is what keeps
-     the stack NAME — the row's identity — whole. */
+  /* Tablet/narrow desktop: not every read-out fits, so both views drop their
+     least essential one and keep Version/Change on the row's first line, in
+     front of the status — Deploys drops When's duration, Stacks drops Commit.
+     The version is the answer to "what moved / what runs", which is worth more
+     per pixel than a duration or a SHA; those stay reachable (the duration in
+     the row's own panel, the commit in the deploy history). Hiding a read-out,
+     rather than squeezing all of them, is what keeps the stack NAME — the
+     row's identity — whole. */
   @media (min-width: 701px) and (max-width: 1000px) {
-    /* Commit goes; Last deploy is trimmed to what `48s ago` needs (absolute
-       mode ellipsises, as it does on a phone) so the width goes to Stack and
+    /* Last deploy drops its commit and keeps badge + `48s ago` (absolute mode
+       ellipsises, as it does on a phone), so the width goes to Stack and
        Version. */
-    #stacks-view { --row-cols: minmax(0, 1.1fr) minmax(0, 1fr) 130px 104px; }
-    .roster-list-header .rh-sha, .roster-row .roster-sha { display: none; }
+    #stacks-view { --row-cols: minmax(0, 1.1fr) 104px minmax(0, 1fr) minmax(0, 1fr); }
+    .roster-row .roster-sha { display: none; }
     /* Top-align once the stack cell can wrap: centred cells drop the version,
        status and time to the middle of a two-line row, i.e. *below* the name
        they belong to. Aligned to the top they stay on the name's line, which is
        what the row reads as — identity first, then what runs. */
     .roster-row { align-items: start; }
 
-    /* Deploys: Duration and Files go, Time is trimmed to `22h ago`, and the two
-       that carry the row's meaning — Stack and Version — take what is freed. */
-    #deploy-table { --row-cols: 92px minmax(0, 1.05fr) minmax(0, 1fr) 124px; }
-    #deploy-table.no-version { --row-cols: 92px minmax(0, 1fr) 124px; }
-    .event-list-header .eh-dur, .event-list-header .eh-files,
-    .event-row .cell-duration, .event-row .col-files { display: none; }
+    /* Deploys: When drops its duration, so Stack and Change take the width. */
+    #deploy-table { --row-cols: minmax(0, 1.15fr) 112px minmax(0, 1fr) minmax(0, 0.7fr); }
+    #deploy-table.no-version { --row-cols: minmax(0, 1.15fr) 112px minmax(0, 0.7fr); }
+    .event-row .cell-duration { display: none; }
   }
 
   /* Both narrow layouts, tablet and phone. */
@@ -3491,19 +3437,9 @@
        breakage, not as identity. The ship alone carries the brand here, and the
        full `v<semver> · <commit>` string moves to its tooltip / tap-tip. */
     .brand-text { display: none; }
-    /* With the files pill gone the row itself is the way into the diff — the
-       click handler already falls back to the row's own pill. */
-    .event-row:has(.files-pill), .event-row[data-status="healed"] { cursor: pointer; }
-    /* The pending tag is dropped at this width (see .paused-tag), so nothing is
-       left for the name to yield to — it shrinks and ellipsises inside its own
-       column again instead of overflowing into the next one. */
+    /* The name ellipsises inside its own column instead of overflowing. */
     .cell-stack .stack-name { flex-shrink: 1; }
-    /* But never to nothing: a row carrying a change chip, an app link and the
-       log/jump glyphs ran the name out of width entirely, leaving an icon
-       cluster with no stack behind it. The floor is the row's identity — below
-       it the affordances wrap to a second line inside the cell instead, since
-       they are the part that can move. Only here: the desktop grid has the
-       width, and a floor there would pad short names out and shift every row. */
+    /* Never to nothing: below the floor the chip and icon wrap instead. */
     .cell-stack, .roster-stack { flex-wrap: wrap; }
     .cell-stack .stack-name, .roster-stack .roster-name { min-width: 7ch; }
     /* Only the action cluster is left to wrap, so it is what moves. */
@@ -3533,8 +3469,8 @@
        light/dark toggle. The toggle is the one control here whose job is done
        once: the palette is a per-browser preference set once and then left
        alone, unlike the beacon, the badges or the view switch, which report
-       state that changes under the viewer. It stays reachable from any wider
-       viewport, and the saved choice keeps applying on the phone. */
+       state that changes under the viewer. On the phone it moves into the
+       view-options popover (.vo-theme). */
     .status-area { gap: 6px; }
     #theme-toggle { display: none; }
     /* The Hosts control compacts to its glyph (plus the red dot when a peer is
@@ -3573,72 +3509,49 @@
        view-options popover carries a "Search" entry that reveals and focuses the
        filter (hidden on desktop, where type-to-search covers it). */
     .view-options .vo-search { display: flex; }
+    .view-options .vo-theme { display: flex; }
     /* The always-visible header magnifier is a desktop affordance; on mobile the
        popover "Search" row above is the entry point, so hide the glyph. (T3.11) */
     .stack-search-btn { display: none; }
 
-    /* Name and status on the first line, time and version on the second. The
-       tablet's three-cell first line does not fit here: at 390px the name — the
-       row's identity — is squeezed to nothing between version and status. */
+    /* Two lines like the roster: name + time, then change + result. */
     .event-row {
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       grid-template-rows: auto auto;
       gap: 4px 12px;
       padding: 10px 14px;
     }
+    .event-row .cell-who { grid-column: 1; grid-row: 1; }
+    .event-row .cell-when { grid-column: 2; grid-row: 1; justify-self: end; }
+    .event-row .col-version { grid-column: 1; grid-row: 2; padding-left: 26px; }
+    .event-list .event-row .status-cell { grid-column: 2; grid-row: 2; justify-self: end; }
+    .event-row .cell-time { font-size: 11px; }
+    .event-row .cell-duration, .event-row .cell-sha { display: none; }
 
-    .cell-time { grid-column: 1; grid-row: 2; font-size: 11px; }
-    .cell-stack { grid-column: 1 / 3; grid-row: 1; }
-    .event-row .col-version { grid-column: 2; grid-row: 2; }
-    /* Spanning both lines, so the cell's second line — the health pill — sits
-       level with the version line rather than above it (same reason as the
-       tablet layout, where Stack is one line and Status two). Right-aligned for
-       the same reason the roster's cell is (below): badge, health pill and
-       retry note share one edge instead of agreeing only where the badge
-       happens to be the widest. The extra `.event-list` beats the `:has()`
-       stacking rules further down (equal specificity, later in the file). */
-    .event-list .event-row .status-cell {
-      grid-column: 3; grid-row: 1 / span 2;
-      justify-self: end; align-items: flex-end;
-    }
-    /* Duration and Files go, exactly as they do on a tablet: the version is
-       worth more on a narrow row than a `0s` and a file count, and the status
-       cell now owns the right-hand column across both lines. Both stay in the
-       row's own panel. */
-    .cell-duration, .col-files { display: none; }
-
-    /* Roster takes the same shape as the deploy row: name/version/status on the
-       first line, time and commit on the second. */
+    /* Roster rows go to two lines: identity + health, then version + last
+       deploy, the latter right-aligned under the health. */
     .roster-list-header { display: none; }
     .roster-row {
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       grid-template-rows: auto auto;
       gap: 4px 12px;
       padding: 10px 14px;
     }
-    .roster-stack  { grid-column: 1 / 3; grid-row: 1; }
-    .roster-row .col-version { grid-column: 2; grid-row: 2; }
-    /* Right-aligned inside the cell so badge, health pill and outcome strip
-       share one edge — left-aligned they only agreed where the badge happened
-       to be the widest. The extra `.roster-list` beats the `:has()` stacking
-       rules further down (equal specificity, later in the file). */
-    .roster-list .roster-row .roster-status {
-      grid-column: 3; grid-row: 1 / span 2;
-      justify-self: end; align-items: flex-end;
-    }
-    /* The incident line is the widest thing a status cell can hold (nowrap,
-       ~230px): inside the cell it sized the whole status track and squeezed
-       the version chip to nothing. Out of flow it keeps its full wording on a
-       line of its own along the row's bottom edge, and only the rows that have
-       one pay the height. */
-    .roster-row:has(.last-incident) { padding-bottom: 30px; }
-    /* right: the row's own side padding, so the line ends on the status cell's
-       edge; bottom + the padding above are one pair — both change together. */
-    .roster-row .last-incident { position: absolute; right: 14px; bottom: 9px; }
-    .roster-when   { grid-column: 1; grid-row: 2; font-size: 11px; }
-    /* Commit goes, as on a tablet — the status column now spans both lines, and
-       the SHA is in the row's deploy history. */
-    .roster-sha    { display: none; }
+    .roster-stack  { grid-column: 1; grid-row: 1; }
+    .roster-health { grid-column: 2; grid-row: 1; justify-self: end; }
+    .roster-row .col-version { grid-column: 1; grid-row: 2; }
+    .roster-last   { grid-column: 2; grid-row: 2; justify-self: end; justify-content: flex-end; }
+    .roster-when   { font-size: 11px; }
+    .roster-row .roster-sha { display: none; }
+
+    /* The panel's facts go two to a row and its actions drop their labels
+       (each keeps its title / aria-label). */
+    .dp-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dp-head { padding-left: 14px; padding-right: 14px; }
+    .dp-title { flex-wrap: wrap; row-gap: 4px; }
+    .dp-meta { flex-basis: 100%; }
+    .dp-verdict, .dp-facts, .dp-tabs { margin-left: 14px; margin-right: 14px; }
+    .dp-lbl { display: none; }
 
     /* Containers panel: five cells on one line overflow a phone (the version chip
        cannot ellipsize — a half-shown tag is worse than none), so the version
@@ -3698,7 +3611,6 @@
      host is a plain link; several open a small popover to choose. No host,
      no icon — never a disabled/ghost state. ───────────────────────────── */
   .link-wrap { position: relative; display: inline-flex; margin-left: 2px; }
-  .roster-stack .link-wrap { margin-left: 7px; vertical-align: middle; }
   .link-btn {
     display: inline-flex; align-items: center; justify-content: center;
     width: 20px; height: 18px; padding: 0; flex: none;
@@ -3746,8 +3658,6 @@
   .hooks-badge:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
   .hooks-badge svg { width: 11px; height: 11px; }
   .hooks-badge .hk-count { font-variant-numeric: tabular-nums; }
-  .event-row.hooks-open .hooks-badge,
-  .roster-row.hooks-open .hooks-badge,
   .hooks-badge[data-hook-active] { background: color-mix(in srgb, var(--accent) 22%, transparent);
     border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
   .hooks-badge[data-hook-active] { animation: hookpulse 1.4s ease-in-out infinite; }
@@ -3757,84 +3667,11 @@
   }
   @media (prefers-reduced-motion: reduce) { .hooks-badge[data-hook-active] { animation: none; } }
 
-  /* ── Row overflow menu (⋯) — T3.13 ──
-     The newest deploy row's secondary actions (deploy history, container logs,
-     deploy hooks) collapse behind one ⋯, so the resting row is identity + status
-     + jump instead of a cluster of look-alike glyphs. Reuses the app-link popover
-     language; the relocated action buttons keep their handlers and render as
-     uniform labelled rows inside the menu. */
-  .row-more { position: relative; display: inline-flex; margin-left: 2px; }
-  .more-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 22px; height: 20px; padding: 0; flex: none;
-    border: 0; border-radius: var(--r-chip);
-    background: transparent; color: var(--text-muted); cursor: pointer;
-    transition: color .15s, border-color .15s, background .15s;
-  }
-  .more-btn svg { width: 15px; height: 15px; }
-  .more-btn:hover { color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent); }
-  .row-more.open .more-btn { color: var(--accent); background: var(--accent-dim);
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-  /* A running hook pulses the ⋯ itself, since the hooks badge it contains is
-     hidden while the menu is closed — the live signal stays on screen. */
-  .more-btn[data-hook-active] { color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-    animation: hookpulse 1.4s ease-in-out infinite; }
-  @media (prefers-reduced-motion: reduce) { .more-btn[data-hook-active] { animation: none; } }
-
-  .more-pop {
-    display: none; position: absolute; top: 26px; left: 0; z-index: 6;
-    min-width: 208px; max-width: min(240px, 82vw);
-    background: var(--bg-base); border: 1px solid var(--border); border-radius: 10px;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4); padding: 6px;
-  }
-  .more-pop.align-right { left: auto; right: 0; } /* flip near the viewport edge (portrait) */
-  .row-more.open .more-pop { display: block; }
-
-  /* The relocated icon buttons become uniform, full-width labelled menu rows —
-     these selectors outrank the buttons' own .history-btn/.clog-btn/.hooks-badge
-     rules (two classes vs one). */
-  .more-pop .more-item {
-    appearance: none; box-sizing: border-box;
-    width: 100%; height: auto; min-height: 34px; margin: 0; padding: 8px 10px;
-    display: flex; align-items: center; gap: 10px; justify-content: flex-start;
-    border: 0; border-radius: 7px; background: transparent; cursor: pointer;
-    font-family: var(--font-mono); font-size: 12px; font-weight: 500; line-height: 1.3;
-    letter-spacing: -0.2px; color: var(--text-primary); text-align: left;
-  }
-  .more-pop .more-item:hover,
-  .more-pop .more-item.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-  .more-pop .more-item svg { width: 14px; height: 14px; flex: none; color: var(--text-muted); }
-  .more-pop .more-item:hover svg,
-  .more-pop .more-item.on svg { color: var(--accent); }
-  .more-pop .mi-label { flex: 1 1 auto; }
-  /* Deploy-hooks row: keep the pre+post count as a trailing chip; drop the pill's
-     own rounding/tint/pulse now that it is a flat menu row. */
-  .more-pop .hooks-badge { border-radius: 7px; }
-  .more-pop .hooks-badge[data-hook-active] { animation: none; }
-  .more-pop .hooks-badge .hk-count {
-    flex: none; margin-left: auto; padding: 1px 7px; border-radius: 999px;
-    font-size: 10px; font-weight: 700; color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
-  }
-
   /* Running-hook phase sub-label. :has() stacks the cell only when a phase is
      present, so idle rows (the snapshot baselines) keep their layout; both
-     views stack the same, so a running hook looks identical. Health pill
-     (ADR-0027) reuses the same stacking: it lives in .status-cell, under the
-     SUCCESS/FAILED badge, instead of competing with the .cell-stack icons. */
+     views stack the same, so a running hook looks identical. */
   .status-cell:has(.hook-phase),
-  .status-cell:has(.health-pill),
-  .status-cell:has(.retry-note),
-  .status-cell:has(.repeat-note),
-  .roster-status:has(.held-line),
-  .roster-status:has(.hook-phase),
-  .roster-status:has(.health-pill),
-  .roster-status:has(.outcome-strip),
-  .roster-status:has(.last-incident) { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+  .roster-status:has(.hook-phase) { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 
   /* Outcome strip: the roster row's mini-history — one dot per terminal audit
      record, oldest → newest so it reads as a timeline into the badge. Colours
@@ -3891,7 +3728,6 @@
     border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius);
     box-shadow: inset 3px 0 0 var(--accent); overflow: hidden;
   }
-  .event-row.hooks-open { box-shadow: inset 3px 0 0 var(--accent); }
   .hooks-panel .hooks-head { display: flex; align-items: center; gap: 9px; padding: 9px 16px;
     border-bottom: 1px solid var(--border); }
   .hooks-panel .hk-stack { font-weight: 600; font-size: 12px; }

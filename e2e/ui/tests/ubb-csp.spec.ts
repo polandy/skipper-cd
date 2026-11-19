@@ -56,7 +56,7 @@ test.describe("Maske BB: the app under its CSP", () => {
     skipper.setStackImage("web", "1.26");
     expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
     await expect(diffRow(page)).toHaveCount(1);
-    await diffRow(page).locator('[data-testid="files-pill"]').click();
+    await diffRow(page).locator('.stack-name').click();
     await expect(page.locator('[data-testid="diff-panel"]')).toHaveCount(1);
 
     await viewBtn(page, "stacks").click();

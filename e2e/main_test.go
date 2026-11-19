@@ -17,24 +17,27 @@ var skipperBin string
 
 // TestMain builds the real skipper binary once and shares it across tests.
 func TestMain(m *testing.M) {
+	os.Exit(run(m))
+}
+
+// run is TestMain's body so the deferred removal of the binary dir runs on every
+// exit path, a panicking test included.
+func run(m *testing.M) int {
 	dir, err := os.MkdirTemp("", "skipper-e2e-bin-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "e2e: create temp bin dir: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
+	defer os.RemoveAll(dir)
 
 	skipperBin = filepath.Join(dir, "skipper")
 	build := exec.Command("go", "build", "-o", skipperBin, "./cmd/skipper")
 	build.Dir = repoRoot()
 	if out, err := build.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "e2e: build skipper failed: %v\n%s", err, out)
-		os.RemoveAll(dir)
-		os.Exit(1)
+		return 1
 	}
-
-	code := m.Run()
-	os.RemoveAll(dir)
-	os.Exit(code)
+	return m.Run()
 }
 
 // repoRoot returns the repository root, derived from this file's location

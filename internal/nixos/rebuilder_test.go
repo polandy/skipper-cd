@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeUnitRunner records commands and scripts the transient-unit lifecycle that
@@ -155,7 +156,7 @@ func TestRebuild_StartsFireAndForgetTransientUnitThenReportsSuccess(t *testing.T
 	r := New(runner)
 	r.pollInterval = 0 // no real sleeping in tests
 
-	if err := r.Rebuild(context.Background(), dir, ".#host-a"); err != nil {
+	if err := r.Rebuild(context.Background(), dir, ".#host-a", time.Hour); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -201,7 +202,7 @@ func TestRebuild_ReturnsErrorWhenUnitFails(t *testing.T) {
 	r := New(runner)
 	r.pollInterval = 0
 
-	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a")
+	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour)
 	if err == nil {
 		t.Fatal("expected error when the rebuild unit ends failed")
 	}
@@ -215,8 +216,43 @@ func TestRebuild_ReturnsErrorWhenStartFails(t *testing.T) {
 	r := New(runner)
 	r.pollInterval = 0
 
-	if err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a"); err == nil {
+	if err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour); err == nil {
 		t.Fatal("expected error when systemd-run fails to start the unit")
+	}
+}
+
+// TestRebuild_BoundsTheUnitRuntime proves the timeout is enforced by systemd on
+// the unit itself, so it holds even while skipper restarts during the switch.
+func TestRebuild_BoundsTheUnitRuntime(t *testing.T) {
+	runner := &fakeUnitRunner{}
+	r := New(runner)
+	r.pollInterval = 0
+
+	if err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", 90*time.Minute); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	c := findCall(t, runner, "systemd-run")
+	if !slices.Contains(c.args, "--property=RuntimeMaxSec=5400") {
+		t.Errorf("expected --property=RuntimeMaxSec=5400 in args, got %v", c.args)
+	}
+	if i := slices.Index(c.args, "nixos-rebuild"); i < slices.Index(c.args, "--property=RuntimeMaxSec=5400") {
+		t.Errorf("the property must precede the command, got %v", c.args)
+	}
+}
+
+func TestRebuild_FailureNamesTheTimeoutKey(t *testing.T) {
+	runner := &fakeUnitRunner{activePolls: 1, unitFailed: true}
+	r := New(runner)
+	r.pollInterval = 0
+
+	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour)
+	if err == nil {
+		t.Fatal("expected error when the rebuild unit ends failed")
+	}
+	for _, want := range []string{"journalctl -u skipper-nixos-rebuild.service", "nixos_rebuild.timeout_seconds", "3600"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should name %s", err, want)
+		}
 	}
 }
 
@@ -235,7 +271,7 @@ func TestRebuild_AbandonsWaitOnContextCancel(t *testing.T) {
 	r := New(runner)
 	r.pollInterval = 0
 
-	err := r.Rebuild(ctx, t.TempDir(), ".#host-a")
+	err := r.Rebuild(ctx, t.TempDir(), ".#host-a", time.Hour)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled (abandoned wait), got %v", err)
 	}
