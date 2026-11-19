@@ -6,11 +6,8 @@ import type { Locator, Page } from '@playwright/test';
 // render as a solid alert chip rather than the smallest text in the column
 // (T3.14 — inverted hierarchy). See docs/dev/e2e-tests.md §4.33.
 //
-// Drives the real self-heal loop (like Maske K) so three badges surface in one
-// run — the startup `success`, a corrective `healed` (a first outage the
-// redeploy fixes), and the `heal_exhausted` give-up (a second one it cannot) — then asserts each carries a `.badge-ico` glyph and that the worst
-// state is an opaque (solid) fill, distinct from a dim badge. The colour read is
-// off the settled computed style, not a timed effect. Behaviour-only.
+// Drives the real self-heal loop (like Maske K): UAF1–UAF4 each assert one badge's
+// icon or fill, the colour off the settled computed style. Behaviour-only.
 
 const healthyApp = [{ Service: 'app', State: 'running', Health: 'healthy' }];
 const unhealthyApp = [{ Service: 'app', State: 'running', Health: 'unhealthy' }];
