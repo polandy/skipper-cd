@@ -345,7 +345,8 @@ UI suite reuses.
   `STUB_DOCKER_CANARY_HEALTH=unhealthy`): the same stack with
   `health_timeout_seconds: 1` runs `up --no-recreate --scale app=2`, then
   `stop -- canary` and `rm -- canary` and nothing else — the old container is
-  never stopped, no git-restore `up` — emits `rolled_back`, and the container table holds only `old`.
+  never stopped, no git-restore `up` — emits `rolled_back`, and the container
+  table holds only `old`.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
