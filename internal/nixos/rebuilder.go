@@ -101,7 +101,7 @@ func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string, timeout 
 		// needs skipper's PATH (git, nix, systemd tooling).
 		"--setenv=PATH=" + os.Getenv("PATH"),
 		// Enforced by systemd, so the bound holds while skipper restarts mid-switch.
-		fmt.Sprintf("--property=RuntimeMaxSec=%d", int64(timeout/time.Second)),
+		fmt.Sprintf("--property=RuntimeMaxSec=%d", wholeSeconds(timeout)),
 		"nixos-rebuild", "switch", "--flake", flake,
 	}
 	if err := r.runner.Run(ctx, repoDir, nil, "systemd-run", args...); err != nil {
@@ -124,7 +124,7 @@ func (r *Rebuilder) waitForUnit(ctx context.Context, unit string, timeout time.D
 		}
 		if !r.unitActive(unit) {
 			if r.unitFailed(unit) {
-				return fmt.Errorf("nixos-rebuild switch failed (see: journalctl -u %s); a rebuild running longer than nixos_rebuild.timeout_seconds (%d) is stopped", unit, int64(timeout/time.Second))
+				return fmt.Errorf("nixos-rebuild switch failed (see: journalctl -u %s); a rebuild running longer than nixos_rebuild.timeout_seconds (%d) is stopped", unit, wholeSeconds(timeout))
 			}
 			return nil
 		}
@@ -134,6 +134,11 @@ func (r *Rebuilder) waitForUnit(ctx context.Context, unit string, timeout time.D
 		case <-time.After(r.pollInterval):
 		}
 	}
+}
+
+// wholeSeconds is d as the integer seconds systemd and the config key use.
+func wholeSeconds(d time.Duration) int64 {
+	return int64(d / time.Second)
 }
 
 // unitActive reports whether the unit is still activating or running.

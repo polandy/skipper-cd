@@ -23,7 +23,7 @@ nixos_rebuild:
 | `enabled` | bool | no | `true` | Set to `false` to temporarily disable without removing the section. When the section is present and `enabled` is omitted, it defaults to `true`. Omitting the entire `nixos_rebuild` section disables the feature. |
 | `flake` | string | yes | — | Flake reference passed to `nixos-rebuild switch --flake <flake>` (e.g. `.#myhost`). Without a configuration name (`.` or `.#`) the host name is used, as `nixos-rebuild` does. |
 | `change_detection` | string | no | `derivation` | What decides that a rebuild is due: `derivation` (the host's system derivation changed) or `files` (any `*.nix` file or `flake.lock` changed). See [Change detection](#change-detection). |
-| `timeout_seconds` | int | no | `3600` | Maximum runtime of the rebuild. systemd stops the rebuild unit once it has run this long, also while skipper-cd itself restarts; the rebuild then counts as failed and is retried on the next sync. `command_timeout_seconds` does not apply to the rebuild. Must be ≥ 0. |
+| `timeout_seconds` | int | no | `3600` | Maximum runtime of the rebuild. systemd stops the rebuild unit once it has run this long, also while skipper-cd itself restarts; the rebuild then counts as failed and is retried on the next sync. `command_timeout_seconds` does not apply to the rebuild. `0` means the default; negative values are rejected. |
 
 **Important:** The skipper-cd systemd service must run as root for `nixos-rebuild` to work. The NixOS rebuild runs **before** any Docker stack deployments. If the rebuild fails, all Docker stack deploys are aborted to prevent deploying against a potentially broken system.
 
