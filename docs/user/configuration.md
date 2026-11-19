@@ -333,7 +333,7 @@ The rollback itself is verified through the same gate: its `up` also runs with `
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. |
+| `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. Keep it below `command_timeout_seconds`: the gated `up` runs under that ceiling and is killed before a longer wait ends (a startup warning flags it). |
 | `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
 
 > **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Stacks with `on_demand_containers` are excluded from the automatic gate for this reason; for a deliberate one-shot container on a non-on-demand stack, set `deploy_health_check: false` to opt out (even if the compose file has a `healthcheck:`), or model the one-shot as a [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependency.
