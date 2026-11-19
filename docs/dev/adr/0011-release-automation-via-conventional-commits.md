@@ -33,3 +33,19 @@ without a personal access token.
   run CI; the commits it contains were already tested on `main`.
 - Manual `v*` tags keep working (docker.yml still triggers on tag push),
   but should no longer be needed.
+
+## Amendment (2026-11-19): a release image ships only after CI passed on its tag
+
+release-please now runs with a PAT, so its `v*` tag triggers `docker.yml`
+directly (the dispatch above is gone). Until now that build ran whatever the
+tag pointed at, green or red. `docker.yml` now first calls the whole CI
+workflow (`ci.yml`, `workflow_call`) on the tag, Trivy scan included, and
+`build-and-push` runs only if every CI job succeeded. A manual `workflow_dispatch`
+against a tag takes the same gate. Feature-branch image builds stay ungated
+on purpose: they exist to try a branch on a host, and their PR runs CI anyway.
+
+Rejected: waiting for `main`'s own CI run on the tagged commit (polling or
+`workflow_run`). `ci.yml` cancels an in-progress run when the next commit lands
+on `main`, so the run a release depends on can vanish. A `workflow_run` trigger
+also races release-please, which may create the tag after CI completed.
+Rerunning CI on the tag costs one extra full run per release and is deterministic.
