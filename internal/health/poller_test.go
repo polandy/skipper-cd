@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -42,7 +43,7 @@ func dockerHost(containers ...fakeContainer) *fakeOutputter {
 		switch args[0] {
 		case "ps":
 			for _, c := range containers {
-				fmt.Fprintf(&b, "%s\t%s\n", c.ID, c.Image)
+				fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%s\n", c.ID, c.Image, c.WorkingDir, c.Service, c.Name)
 			}
 		case "inspect":
 			for _, id := range args[len(inspectArgs):] {
@@ -266,28 +267,35 @@ func TestPoller_UnknownWhenInspectFailsWithoutOutput(t *testing.T) {
 	}
 }
 
-func TestPoller_ContainerRemovedBeforeInspectIsDroppedNotUnknown(t *testing.T) {
-	// A container removed between ps and inspect (a deploy recreating it) fails
-	// inspect for that ID alone; the others are still printed.
-	host := dockerHost(healthyIn("/repo/app", "app"))
+func TestPoller_ContainerMissingFromInspectIsUnknownNotDropped(t *testing.T) {
+	// A container listed but absent from the inspect output (removed in between,
+	// or a template docker could not execute for it) is unread, not stopped.
+	host := dockerHost(healthyIn("/repo/app", "app"), healthyIn("/repo/app", "worker"))
 	out := &fakeOutputter{fn: func(args []string) ([]byte, error) {
-		if args[0] == "ps" {
-			return []byte("/repo/app/app\t\ngone\t\n"), nil
+		if args[0] == "inspect" {
+			b, _ := host.fn(append(slices.Clone(args[:len(inspectArgs)]), "/repo/app/app"))
+			return b, errors.New("Error: No such object: /repo/app/worker")
 		}
-		b, _ := host.fn(args)
-		return b, errors.New("Error: No such object: gone")
+		return host.fn(args)
 	}}
 
 	got := pollStacks(out, appStack).Stacks["app"]
-	if got.Status != Healthy || len(got.Services) != 1 {
-		t.Errorf("got %+v, want the surviving container healthy", got)
+	if got.Status != Unknown {
+		t.Errorf("stack status = %q, want unknown", got.Status)
+	}
+	want := []ServiceHealth{
+		{Name: "app", State: "running", Health: "healthy", Status: Healthy},
+		{Name: "worker", Status: Unknown},
+	}
+	if !reflect.DeepEqual(got.Services, want) {
+		t.Errorf("services:\n got %+v\nwant %+v", got.Services, want)
 	}
 }
 
 func TestPoller_UnknownOnMalformedOutput(t *testing.T) {
 	out := &fakeOutputter{fn: func(args []string) ([]byte, error) {
 		if args[0] == "ps" {
-			return []byte("id1\timg\n"), nil
+			return []byte("id1\timg\t/repo/app\tapp\tapp\n"), nil
 		}
 		return []byte("id1\tnot enough columns\n"), nil
 	}}

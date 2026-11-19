@@ -174,9 +174,10 @@ func driftedServices(sh health.StackHealth) []events.DriftedService {
 // precedence the health package uses (any unhealthy, then starting, then
 // healthy, else stopped). A stack made up entirely of idle on-demand containers
 // counts as healthy — nothing to heal. With no per-service detail (a fully-down
-// stack reports none) it falls back to the rolled-up status unchanged.
+// stack reports none) or a rollup of unknown (a container could not be read)
+// it returns the rolled-up status unchanged.
 func selfHealStatus(sh health.StackHealth) health.Status {
-	if len(sh.Services) == 0 {
+	if len(sh.Services) == 0 || sh.Status == health.Unknown {
 		return sh.Status
 	}
 	var anyStarting, anyHealthy, anyStopped, anyRelevant bool

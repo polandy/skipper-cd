@@ -23,7 +23,7 @@ inside `Status`.
 One poll makes two docker calls, whatever the stack count:
 
 1. `docker ps --all --no-trunc --filter label=com.docker.compose.project.working_dir
-   --filter label=com.docker.compose.oneoff=False --format '{{.ID}}\t{{.Image}}'`
+   --filter label=com.docker.compose.oneoff=False --format '{{.ID}}\t{{.Image}}\t…'` (see the amendment)
    lists every compose service container, stopped ones included and one-off
    `compose run` containers excluded — the set `compose ps --all` shows. The
    image is taken from this listing because it is the field compose ps reports
@@ -50,8 +50,8 @@ Failure handling:
   reports `unknown` for that tick, as one failed per-stack call did for its stack
   before. Malformed output is treated the same.
 - Inspect fails but printed rows: a container was removed between the two calls.
-  The rows are used and the missing container is simply absent, which is what a
-  compose ps a moment later would have shown.
+  The rows are used and the missing container reports `unknown` (see the
+  amendment).
 - No containers: no inspect call. No stacks: no docker call.
 
 Plain docker does not interpolate `${VAR}`, so the poll no longer needs the
@@ -85,3 +85,25 @@ plumbing are removed.
 - **Subscribe to `docker events`.** No polling at all, but a long-lived stream
   through the run-to-completion `Runner`, plus a resync path for missed events —
   more moving parts than two cheap calls per interval.
+
+## Amendment (2026-11-20): `{{.ID}}`, and a listed container inspect skips is `unknown`
+
+The shipped inspect template began with `{{.Id}}`. The docker CLI executes an
+inspect template against its typed container struct first, whose field is
+`ID`; `.Id` fails there, so the CLI falls back to the raw JSON map with
+`missingkey=error`, where `{{if .State.Health}}` errors for every container
+without a healthcheck and that container prints no line. A stack of only
+healthcheck-less services then parsed as zero lines, rolled up `stopped`, and
+self-heal could fire a corrective `up` on a healthy stack; in mixed stacks the
+sidecars vanished from the per-service panel.
+
+- The column is `{{.ID}}`; a unit test executes the template against a mirror
+  of the typed struct, so a field that only exists in the JSON fails it.
+- The listing also carries the working_dir and service labels and the name, so
+  a container inspect printed nothing for is kept as an unread line with status
+  `unknown` instead of being dropped. Any unread line makes the stack `unknown`
+  — the same "no verdict" a failed poll gives, so a template or daemon problem
+  can never read as `stopped`. A container removed between the two calls now
+  shows `unknown` for one tick instead of disappearing.
+- Self-heal takes an `unknown` stack's status as is rather than re-rolling its
+  services, which would have read the readable ones as a verdict.

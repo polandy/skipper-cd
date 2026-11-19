@@ -265,6 +265,46 @@ func TestEngine_IgnoresStartingAndUnknown(t *testing.T) {
 	}
 }
 
+// unknownWith is a stack the poller could not fully read: one container
+// inspect printed nothing for beside the given one.
+func unknownWith(st health.Status) health.Snapshot {
+	return health.Snapshot{Stacks: map[string]health.StackHealth{"web": {
+		Status: health.Unknown,
+		Services: []health.ServiceHealth{
+			{Name: "app", Status: st},
+			{Name: "worker", Status: health.Unknown},
+		},
+	}}}
+}
+
+func TestEngine_IgnoresAnUnknownStackWhateverItsServicesSay(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	eng := newEngine(h, clk, 1, 3, 0, nil)
+
+	eng.Observe(context.Background(), unknownWith(health.Unhealthy))
+	if len(h.calls) != 0 {
+		t.Fatalf("a partly unread stack must never trigger a heal, got %v", h.calls)
+	}
+	eng.Observe(context.Background(), snap("web", health.Unhealthy))
+	if len(h.calls) != 1 {
+		t.Fatalf("expected the fully read unhealthy stack to heal, got %v", h.calls)
+	}
+}
+
+func TestEngine_UnknownStackIsNoRecovery(t *testing.T) {
+	h := &fakeHealer{ran: true}
+	clk := &clock{t: time.Unix(1000, 0)}
+	eng := newEngine(h, clk, 1, 1, 0, nil)
+
+	eng.Observe(context.Background(), snap("web", health.Unhealthy))
+	eng.Observe(context.Background(), unknownWith(health.Healthy))
+	eng.Observe(context.Background(), snap("web", health.Unhealthy))
+	if len(h.calls) != 1 {
+		t.Fatalf("an unknown read must not reset the exhausted breaker, got %d heals", len(h.calls))
+	}
+}
+
 func TestEngine_SkippedHealDoesNotConsumeBudget(t *testing.T) {
 	h := &fakeHealer{ran: false} // deploy already in progress → skipped
 	clk := &clock{t: time.Unix(1000, 0)}
