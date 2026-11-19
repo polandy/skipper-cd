@@ -3,7 +3,6 @@ import { createServer, type AddressInfo } from "node:net";
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createHmac } from "node:crypto";
 import {
-  mkdtempSync,
   mkdirSync,
   writeFileSync,
   appendFileSync,
@@ -11,9 +10,9 @@ import {
   existsSync,
   readFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, basename, dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { workspaces } from "./tempdirs";
 
 // This is the Node twin of the Go E2E harness (e2e/harness_test.go): it runs the
 // real skipper binary against a local git origin and a stub docker on PATH, so
@@ -97,12 +96,12 @@ export function repoRoot(): string {
   return join(__dirname, "..", "..", "..");
 }
 
-/** skipperBinPath is where globalSetup builds (and the harness launches) the binary. */
+/** skipperBinPath is the binary the harness launches: SKIPPER_E2E_BIN, which
+ *  globalSetup points at a per-run temp dir unless the caller supplied one. */
 export function skipperBinPath(): string {
-  return (
-    process.env.SKIPPER_E2E_BIN ||
-    join(tmpdir(), "skipper-ui-e2e-bin", "skipper")
-  );
+  const bin = process.env.SKIPPER_E2E_BIN;
+  if (!bin) throw new Error("SKIPPER_E2E_BIN is unset: globalSetup did not run");
+  return bin;
 }
 
 /** buildVersion is the semver globalSetup injects via -ldflags, mirroring
@@ -434,7 +433,7 @@ async function scaffoldWorkspace(opts: StartOptions): Promise<Workspace> {
   const stackIcons = opts.stackIcons ?? {};
   const initialCompose = opts.initialCompose ?? {};
   const author = opts.commitAuthor ?? defaultIdentity;
-  const base = mkdtempSync(join(tmpdir(), "skipper-ui-e2e-"));
+  const base = workspaces.create("skipper-ui-e2e-");
   const origin = join(base, "origin");
   const repoDir = join(base, "state", "repo");
   const stateDir = join(base, "state");
@@ -801,6 +800,8 @@ export class Skipper {
   private readonly spawnEnv: NodeJS.ProcessEnv;
   private readonly peerServers: Server[];
   private readonly registryServer: Server | null;
+  /** base is the temp tree dispose() removes. */
+  readonly base: string;
   private proc: ChildProcess;
   private out = "";
 
@@ -822,8 +823,10 @@ export class Skipper {
     spawnEnv: NodeJS.ProcessEnv;
     peerServers: Server[];
     registryServer: Server | null;
+    base: string;
     proc: ChildProcess;
   }) {
+    this.base = init.base;
     this.baseURL = init.baseURL;
     this.metricsURL = init.metricsURL;
     this.stacksBaseDir = init.stacksBaseDir;
@@ -865,12 +868,18 @@ export class Skipper {
    *  the first throw. */
   static async start(opts: StartOptions = {}): Promise<Skipper> {
     const ws = await scaffoldWorkspace(opts);
-    for (let attempt = 1; ; attempt++) {
-      try {
-        return await Skipper.launch(opts, ws);
-      } catch (err) {
-        if (attempt >= MAX_LAUNCH_ATTEMPTS || !isStolenPort(err)) throw err;
+    try {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          return await Skipper.launch(opts, ws);
+        } catch (err) {
+          if (attempt >= MAX_LAUNCH_ATTEMPTS || !isStolenPort(err)) throw err;
+        }
       }
+    } catch (err) {
+      ws.registryServer?.close();
+      workspaces.remove(ws.base);
+      throw err;
     }
   }
 
@@ -947,6 +956,7 @@ export class Skipper {
       spawnEnv,
       peerServers,
       registryServer: ws.registryServer,
+      base,
       proc,
     });
     try {
@@ -1280,6 +1290,16 @@ export class Skipper {
     );
     this.proc.kill("SIGKILL");
     await exited;
+  }
+
+  /** dispose stops the process and removes the temp tree; stop() alone keeps it
+   *  because relaunch() reuses the config. */
+  async dispose(): Promise<void> {
+    try {
+      await this.stop();
+    } finally {
+      workspaces.remove(this.base);
+    }
   }
 
   /** relaunch respawns skipper on the same config and ports (after stop()), so

@@ -243,6 +243,23 @@ these, never on text/CSS. Minimum set:
 - Chrome: `view-toggle`, `view-options` (+ `time-mode`), `theme-toggle`,
   `conn-indicator` (+ `data-state`), `deploy-indicator`.
 
+### Temp dirs never outlive the run
+
+Anything a test, script or CI helper creates under the OS temp dir is removed on
+success, failure and interrupt — a leak exhausts `/tmp`'s inodes for every other
+job on the host.
+
+- Go tests use `t.TempDir()`; `e2e`'s `TestMain` builds the binary into a dir its
+  deferred removal clears on every exit path.
+- Playwright: `fixtures/tempdirs.ts` (`TempDirs`) records every dir it creates.
+  The `skipper` fixture calls `dispose()` in a `finally` and then fails the test
+  if `workspaces.leaked()` is non-empty; `globalSetup` builds the binary into a
+  per-run dir that its returned teardown removes; `ue-pwa` removes its updated
+  binary in `afterAll`. `fixtures/tempdirs.test.ts` (run by `make ui-unit`)
+  proves removal after a success and after a forced failure.
+- `scripts/ui-preview.mjs` removes its tree on `exit` and on SIGINT/SIGTERM/SIGHUP;
+  `make ui-preview-smoke` runs it with a fresh `TMPDIR` and fails if anything is left.
+
 ## 4. Test cases (Given/When/Then)
 
 ### 4.1 Pipeline (Go, `//go:build e2e`)

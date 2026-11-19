@@ -1,9 +1,8 @@
 import { test, expect } from '../fixtures/test';
 import { buildCommit, buildVersion, repoRoot, type Skipper } from '../fixtures/harness';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
+import { TempDirs } from '../fixtures/tempdirs';
 import type { Page } from '@playwright/test';
 
 // Maske E: PWA update banner. See docs/dev/e2e-tests.md §4.6 and ADR-0023.
@@ -28,6 +27,7 @@ const NEW_LABEL = `v${UPDATED_VERSION} · ${UPDATED_COMMIT}`;
 // and docker-free (the startup deploy loop is empty).
 test.use({ startOptions: { stacks: [] } });
 
+const binDirs = new TempDirs();
 let updatedBin = '';
 let goAvailable = true;
 
@@ -43,9 +43,8 @@ test.beforeAll(() => {
     goAvailable = false;
     return;
   }
-  // Worker-indexed path so parallel workers never write the same output file.
-  updatedBin = join(tmpdir(), 'skipper-ui-e2e-bin', `skipper-updated-${process.env.TEST_WORKER_INDEX ?? '0'}`);
-  mkdirSync(dirname(updatedBin), { recursive: true });
+  // Own dir per worker, removed in afterAll.
+  updatedBin = join(binDirs.create('skipper-ui-e2e-updated-'), 'skipper');
   execFileSync(
     'go',
     [
@@ -60,6 +59,8 @@ test.beforeAll(() => {
     { cwd: repoRoot(), stdio: 'inherit' },
   );
 });
+
+test.afterAll(() => binDirs.removeAll());
 
 /** Waits until a service worker controls the page — the precondition for the
  *  banner (a new worker only prompts when one already controls the page). */

@@ -44,7 +44,7 @@ vendor-check:
 # (internal/ui/static/app-helpers.js, app-render.js) via
 # the Node built-in runner — no build step, no deps.
 ui-unit:
-	node --test internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js
+	node --test internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js e2e/ui/fixtures/tempdirs.test.ts
 
 # Prettier/ESLint for the embedded UI's plain-script JS (app-stream.js, app-state.js, app-chrome.js, app-panels.js, app-detail.js, app-hosts.js, app-roster.js, app-deploys.js, app-autosync.js, app-logs.js, app-clog.js,
 # app-render.js, app-helpers.js, app-prepaint.js, the .test.js files, sw.js). Dev-only npm devDependencies, scoped to
@@ -109,8 +109,12 @@ ui-preview:
 
 # Boot the seeded preview, assert it serves and still produces its spread of
 # deploy outcomes, then clean up. Run in CI as skipper's startup smoke test.
+# TMPDIR points at a fresh dir that must be empty again afterwards: a leaked
+# temp dir fails the run instead of filling /tmp.
 ui-preview-smoke:
-	node scripts/ui-preview.mjs --smoke
+	@d=$$(mktemp -d) && trap 'rm -rf "$$d"' EXIT; \
+	TMPDIR=$$d node scripts/ui-preview.mjs --smoke || exit 1; \
+	test -z "$$(ls -A "$$d")" || { echo "ui-preview left temp files:"; ls -A "$$d"; exit 1; }
 
 ## --- ui-icons (not a CI job) ----------------------------------------------
 # Rasterise the PWA icon PNGs from their SVG sources after redrawing the mark.
