@@ -38,6 +38,29 @@ case " $* " in
     ;;
 esac
 
+# Zero-downtime rollout (ADR-0040): STUB_DOCKER_ROLLOUT_FILE is the service's
+# container table, one `compose ps` JSON object per line. The first plain `up`
+# starts "old", a `--scale` up adds a healthy "canary", `rm -- <id>` drops one.
+if [ -n "$STUB_DOCKER_ROLLOUT_FILE" ]; then
+  table=$STUB_DOCKER_ROLLOUT_FILE
+  case " $* " in
+    *" ps --format json "*)
+      cat "$table" 2>/dev/null
+      exit 0
+      ;;
+    *" --scale "*)
+      printf '{"ID":"canary","Service":"app","State":"running","Health":"healthy"}\n' >> "$table"
+      ;;
+    *" up "*)
+      [ -s "$table" ] || printf '{"ID":"old","Service":"app","State":"running","Health":"healthy"}\n' > "$table"
+      ;;
+    " rm -- "*)
+      grep -v "\"ID\":\"$3\"" "$table" > "$table.tmp"
+      mv "$table.tmp" "$table"
+      ;;
+  esac
+fi
+
 if [ -n "$STUB_DOCKER_UI" ]; then
   # Orphan detection (ADR-0036): `volume ls` / `ps -a` answered from a shared
   # listing (setOrphans/setVolumes). Matched before the compose `ps` case: `ps -a`

@@ -174,6 +174,9 @@ binary):
     `deploying` state can be observed, then released.
   - `STUB_DOCKER_ECHO=<line>` → print `<line>` to stdout on `up`, so the
     captured child-process output reaches the log ring (drives the `cmd-prefix`).
+  - `STUB_DOCKER_ROLLOUT_FILE=<path>` → a rollout service's container table,
+    answered to `compose ps --format json`: the first plain `up` starts `old`, a
+    `--scale` up adds a healthy `canary`, `rm -- <id>` drops one (P24).
 - **Failure attachments.** A failed test attaches the instance's stdout/stderr
   (`skipper-output`) *and* the UI's own diagnostics (`ui-notes`, read from
   `window.__uiNotes`). Both are collected **after** the test finishes, never
@@ -332,6 +335,12 @@ UI suite reuses.
   `rolled_back` and raises `skipper_stack_held{stack}` = 1 with exactly three
   `up -d` (startup, deploy, rollback); a second webhook for the same commit
   emits `held` and runs no further `up`.
+- **P24 — A rollout cuts over without a gap** (ADR-0040,
+  `STUB_DOCKER_ROLLOUT_FILE`): a stack with `rollout: {services: [app]}` whose
+  service is routed by Traefik labels (no host port, a `healthcheck:`) starts
+  with a plain `up`; a pushed image bump then runs exactly `up --no-recreate
+  --scale app=2`, `stop -- old` and `rm -- old`, in that order, and reports
+  `success` (never `rolled_back`).
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2258,6 +2267,7 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P21** | `TestE2E_RevertReleasesHeldChange` | `pipeline_test.go` |
 | **P22** | `TestE2E_RevertKeepsHoldWhenConvergeFails` | `pipeline_test.go` |
 | **P23** | `TestE2E_FailedPostDeployHookHoldsChange` | `pipeline_test.go` |
+| **P24** | `TestE2E_RolloutCutoverDrainsOldAfterCanary` | `pipeline_test.go` |
 
 ### 6.2 UI (Playwright)
 
