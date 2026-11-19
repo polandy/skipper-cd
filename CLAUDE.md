@@ -44,7 +44,8 @@ Lightweight Docker Compose CD tool in Go. Receives Git push webhooks (Gitea/GitH
 - `internal/orphans` — classifies running compose projects the discovered stack set no longer accounts for (ADR-0036); the optional prune acts only on the orphaned class
 - `internal/applink` — best-effort Traefik hostnames per stack from live container labels, for the Stacks-view app link (docs/dev/traefik-app-links-spec.md)
 - `internal/icons` — resolves and disk-caches stack icons: repo override file, then slug override, then name match against an external icon set (docs/dev/service-icons-spec.md)
-- `internal/logbuf` — bounded in-memory log ring with live fan-out behind `/api/logs`; fed by a slog tee handler, so it must never call slog itself
+- `internal/logbuf` — bounded in-memory log ring with live fan-out behind `/api/logs`; fed by a slog tee handler, so it must never call slog itself; every entry passes through `internal/redact` before it is stored (ADR-0070)
+- `internal/redact` — masks secrets out of published text: values of secret-keyed env entries the run resolved, plus URL credentials. Applied in `Deployer.emit` (event error + diffs) and the logbuf ring; the console keeps the full text
 - `internal/prettylog` — the `pretty` console `log_format` handler (ADR-0042)
 - `internal/fsatomic` — atomic file writes (temp file + rename, file and directory fsync) for every persisted file
 - `internal/safego` — goroutines that recover from a panic instead of crashing the process

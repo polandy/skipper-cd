@@ -20,7 +20,7 @@ func (d *Deployer) LogComposeInvocation(cfg *config.Config, name string) (dir st
 		return "", nil, nil, false, err
 	}
 	run := newStackRun(stack, cfg.StacksBaseDir, baseEnv)
-	env, err = run.resolveEnv()
+	env, err = d.resolveEnv(run)
 	if err != nil {
 		return "", nil, nil, false, err
 	}
