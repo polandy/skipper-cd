@@ -90,6 +90,11 @@ nixosConfigurations.myhost = lib.nixosSystem {
 
 The module creates the state directory at `/var/lib/skipper`, adds `git`, `docker`, and `docker-compose` to the service `PATH`, and runs skipper-cd as a hardened systemd service under the `root` user (Docker socket access via `SupplementaryGroups = [ "docker" ]`). The Docker parts are dropped with `docker.enable = false`.
 
+The sandbox depends on `nixosRebuild`:
+
+- Off (the default): read-only system (`ProtectSystem=strict`, only `stateDir` writable), no home directories, no device nodes, no kernel tunables, modules, logs or cgroup writes, no new namespaces, a `@system-service` system call filter and only Unix, IP and netlink sockets.
+- On: relaxed, since nix evaluates the system as `root` against the local store, which needs a writable `/nix` and its own build namespaces. The rebuild itself runs in a transient unit outside this sandbox.
+
 ### Service Options
 
 | Option | Type | Default | Description |
@@ -97,9 +102,9 @@ The module creates the state directory at `/var/lib/skipper`, adds `git`, `docke
 | `enable` | bool | `false` | Enable the skipper-cd systemd service. |
 | `package` | package | — | The skipper-cd derivation to use. |
 | `configFile` | path | — | Absolute path to `skipper.yml`. |
-| `stateDir` | string | `/var/lib/skipper` | Directory for deploy state and the repository clone. |
+| `stateDir` | string | `/var/lib/skipper` | The directory the service may write: deploy state and the repository clone. skipper keeps its state next to `repo_dir`, so when you change it also set `repo_dir: <stateDir>/repo` in `skipper.yml`. A path under `/var/lib` becomes the unit's `StateDirectory`; any other path is created by `systemd-tmpfiles` (`0700`, `root`). |
 | `docker.enable` | bool | `true` | Whether the host runs Docker Compose stacks. Set `false` on a host that only uses skipper-cd for `nixos_rebuild`: the service then neither requires `docker.service` nor joins the `docker` group, and the Docker CLI is left off its `PATH`. See [Host Without Docker](#host-without-docker). |
-| `nixosRebuild` | bool | `false` | Set when `nixos_rebuild` is configured in `skipper.yml`. Relaxes the systemd sandboxing so `nixos-rebuild` can run. |
+| `nixosRebuild` | bool | `false` | Set when `nixos_rebuild` is configured in `skipper.yml`. Relaxes the systemd sandboxing so `nixos-rebuild` can run (see above). |
 | `stopTimeout` | string | `15min` | systemd `TimeoutStopSec`. On shutdown skipper-cd waits for an in-flight deploy to finish; keep this longer than a typical deploy run or systemd will kill the service mid-deploy. |
 | `autoRecover` | bool | `true` | Install a timer that restarts the service whenever it is in a `failed` state, self-healing a self-update whose stop was force-killed. An intentional `systemctl stop` (unit goes `inactive`, not `failed`) is left alone. |
 | `recoverInterval` | string | `2min` | How often the `autoRecover` timer checks for a failed service. Ignored when `autoRecover` is `false`. |
