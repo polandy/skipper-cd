@@ -8,6 +8,9 @@ import type { Page } from "@playwright/test";
 // fails, up#3 rollback ok) holds its change: the roster row carries the held
 // chip, and its detail panel a retry button. The retry deploys the same change once more (up#4
 // succeeds), and the next roster snapshot drops the chip.
+// A pushed revert puts the inputs back at the recorded ones: the run converges
+// with one plain up (up#4) and releases the hold, or keeps it when that up
+// fails (STUB_DOCKER_FAIL_NTH_UP=2,4; ADR-0068).
 // Behaviour-only (no snapshot).
 
 const stacksBtn = (page: Page) =>
@@ -118,5 +121,56 @@ test.describe("Maske AZ: held change", () => {
       )
     ).join("\n");
     expect(notes).toContain("retry: requesting web");
+  });
+});
+
+test.describe("Maske AZ: a revert releases the hold", () => {
+  test.use({
+    startOptions: {
+      stacks: ["web"],
+      stubEnv: { STUB_DOCKER_FAIL_NTH_UP: "2" },
+    },
+  });
+
+  // UAZ3 — a pushed revert drops the chip and the retry button without a retry.
+  test("UAZ3: a pushed revert releases the held chip", async ({
+    page,
+    skipper,
+  }) => {
+    await holdAChange(page, skipper);
+
+    skipper.revertLastCommit();
+    expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
+
+    await expect(heldChip(page)).toHaveCount(0);
+    await expect(retryBtn(page)).toHaveCount(0);
+  });
+});
+
+test.describe("Maske AZ: a revert whose converge fails", () => {
+  test.use({
+    startOptions: {
+      stacks: ["web"],
+      stubEnv: { STUB_DOCKER_FAIL_NTH_UP: "2,4" },
+    },
+  });
+
+  // UAZ4 — the converge up fails: the failure is reported (positive signal) and
+  // the chip stays.
+  test("UAZ4: a failed converge keeps the held chip", async ({
+    page,
+    skipper,
+  }) => {
+    await holdAChange(page, skipper);
+
+    skipper.revertLastCommit();
+    expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
+
+    await page
+      .locator('[data-testid="view-toggle"] button[data-view="deploys"]')
+      .click();
+    await expect(deployRow(page, "failed")).toHaveCount(1);
+    await stacksBtn(page).click();
+    await expect(heldChip(page)).toBeVisible();
   });
 });

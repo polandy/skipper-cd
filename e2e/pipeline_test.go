@@ -387,6 +387,73 @@ func TestE2E_HeldChangeWaitsForRetry(t *testing.T) {
 	}
 }
 
+// TestE2E_RevertReleasesHeldChange (P21): reverting a held change puts the
+// stack's inputs back at the recorded ones, so the run converges the containers
+// with one plain `up` and releases the hold (ADR-0068). Stub ups: startup #1,
+// the failing deploy #2, its rollback #3, the converge #4.
+func TestE2E_RevertReleasesHeldChange(t *testing.T) {
+	s := startSkipperEnv(t, map[string]string{"STUB_DOCKER_FAIL_NTH_UP": "2"}, "web")
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	s.setStackImage("web", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "rolled_back")
+	s.waitFor("the hold to be raised", func() bool {
+		v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return ok && v == 1
+	})
+	upsAfterRollback := s.dockerUps("web")
+
+	s.revertLastCommit()
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("revert webhook status = %d, want 202", code)
+	}
+	s.waitFor("the hold to be released", func() bool {
+		_, held := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return !held
+	})
+	if got := s.dockerUps("web"); got != upsAfterRollback+1 {
+		t.Errorf("a revert converges with exactly one up; web ups = %d, want %d", got, upsAfterRollback+1)
+	}
+}
+
+// TestE2E_RevertKeepsHoldWhenConvergeFails (P22): the converge up of a revert
+// fails (stub up #4), so the stack reports `failed` and stays held for the next
+// tick to retry (ADR-0068).
+func TestE2E_RevertKeepsHoldWhenConvergeFails(t *testing.T) {
+	s := startSkipperEnv(t, map[string]string{"STUB_DOCKER_FAIL_NTH_UP": "2,4"}, "web")
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	s.setStackImage("web", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "rolled_back")
+	s.waitFor("the hold to be raised", func() bool {
+		v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return ok && v == 1
+	})
+	upsAfterRollback := s.dockerUps("web")
+
+	s.revertLastCommit()
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("revert webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "failed")
+	if got := s.dockerUps("web"); got != upsAfterRollback+1 {
+		t.Errorf("web ups = %d, want %d (the failed converge)", got, upsAfterRollback+1)
+	}
+	if v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`); !ok || v != 1 {
+		t.Errorf("skipper_stack_held{web} = %v (ok=%v), want 1: a failed converge keeps the hold", v, ok)
+	}
+}
+
 // TestE2E_FailedBuildNamesItsCause (P14): a failed build's event carries the
 // cause from BuildKit's stderr, not only the exit status (ADR-0063). The stub
 // fails the first two builds with an elapsed stamp that differs per call; both
