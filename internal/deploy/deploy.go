@@ -85,8 +85,7 @@ type Config struct {
 	// abandoned.
 	ShutdownCtx context.Context
 
-	// Secrets collects the secret env values the run reads and masks them,
-	// with URL credentials, out of every event; nil masks URL credentials only.
+	// Secrets collects the run's secret env values and masks them out of every event (ADR-0070).
 	Secrets *redact.Secrets
 
 	// EventSink is invoked on every deploy status change; nil disables event
@@ -360,8 +359,7 @@ func (r stackRun) resolveEnv() ([]string, error) {
 	return env, nil
 }
 
-// resolveEnv is run.resolveEnv that also registers the environment's secret
-// values for masking, so a command echoing one cannot publish it.
+// resolveEnv is run.resolveEnv that also registers the env's secret values for masking.
 func (d *Deployer) resolveEnv(run stackRun) ([]string, error) {
 	env, err := run.resolveEnv()
 	if err == nil && d.secrets != nil {

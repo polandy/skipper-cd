@@ -29,9 +29,14 @@ for URL credentials. It is applied where text leaves skipper:
 
 The set is filled where env is resolved for a compose call, hook or log read
 (`Deployer.resolveEnv`): the vars file, the stack's env files and the process
-environment. A value is registered only when its key names a secret (`PASS`,
-`SECRET`, `TOKEN`, `KEY`, `CRED`, `AUTH`, `PRIVATE`, `SALT`, `DSN`, any case)
-and it is at least 4 characters long. Values are never removed, so a rotated
+environment. A value is registered only when one of its key's
+`_`-separated words names a secret (contains `PASS`, `SECRET`, `TOKEN`, `CRED`,
+`PRIVATE`, `SALT`, `DSN`, or ends in `KEY` or `AUTH`, any case) and the value is
+at least 6 characters long and not a number or switch (`true`, `enabled`, …).
+Every registered value is masked in *all* published text, so a plain value
+under a lookalike key (`KEYCLOAK_URL`, `GIT_AUTHOR_NAME`, `SMTP_AUTH=true`) would
+blank out unrelated words everywhere; the word rule and the value filter exist
+for that. Values are never removed, so a rotated
 secret stays masked for the life of the process. URL userinfo in any text is
 masked the way `git.RedactURL` masks `repo_url`: a password always, a lone
 username (an access token) except on `ssh://`.
@@ -41,8 +46,8 @@ username (an access token) except on `ssh://`.
 - The console (journal) keeps the full text. It is the operator's own surface,
   readable only by those who can read the env files anyway, and the one place
   left to debug a masked line.
-- A secret under a key the pattern misses (`DB=postgres://…` aside, whose
-  password the URL rule catches) is not masked.
+- A secret under a key the rule misses is not masked, unless it is a URL
+  password, which the URL rule catches.
 - A secret is masked only after the first run read it, so output from before
   that (startup, the first sync) is covered by the URL rule alone.
 - `/api/container-logs` streams the containers' own output and is not masked;

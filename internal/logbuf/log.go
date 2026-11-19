@@ -112,8 +112,7 @@ func New(capacity int) *Log {
 	}
 }
 
-// RedactWith makes every later entry pass its message and attr values
-// through redact before it is stored or streamed.
+// RedactWith passes every later entry's message and attr values through redact before storing it.
 func (l *Log) RedactWith(redact func(string) string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

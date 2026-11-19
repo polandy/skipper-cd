@@ -35,11 +35,28 @@ func TestAddEnv_MasksValuesOfSecretKeysOnly(t *testing.T) {
 		"Github_Secret=abcdef",
 		"IMAGE_TAG=1.2.3-alpine",
 		"PORT=8080",
-		"SHORT_KEY=abc", // under minSecretLen: masking it would mangle unrelated text
+		"SHORT_KEY=abcde", // under minSecretLen: masking it would mangle unrelated text
 		"NOEQUALS",
 	})
-	in := "auth hunter2hunter2 tok-123456 abcdef failed for nginx:1.2.3-alpine on 8080 abc"
-	want := "auth *** *** *** failed for nginx:1.2.3-alpine on 8080 abc"
+	in := "auth hunter2hunter2 tok-123456 abcdef failed for nginx:1.2.3-alpine on 8080 abcde"
+	want := "auth *** *** *** failed for nginx:1.2.3-alpine on 8080 abcde"
+	if got := s.Text(in); got != want {
+		t.Errorf("Text = %q, want %q", got, want)
+	}
+}
+
+func TestAddEnv_SkipsLookalikeKeysAndPlainValues(t *testing.T) {
+	s := New()
+	s.AddEnv([]string{
+		"GIT_AUTHOR_NAME=Andy Pollari",    // AUTH inside a word, not a credential
+		"KEYCLOAK_URL=https://kc.example", // KEY starts a word, not a key
+		"SMTP_AUTH=enabled",               // a switch, not a secret
+		"API_KEY_ROTATE_DAYS=900000",      // a number
+		"BASICAUTH=user-pass-pair",        // a word ending in AUTH
+		"OIDC_CLIENTKEY=client-key-value", // a word ending in KEY
+	})
+	in := "Andy Pollari https://kc.example enabled 900000 user-pass-pair client-key-value"
+	want := "Andy Pollari https://kc.example enabled 900000 *** ***"
 	if got := s.Text(in); got != want {
 		t.Errorf("Text = %q, want %q", got, want)
 	}
@@ -47,7 +64,7 @@ func TestAddEnv_MasksValuesOfSecretKeysOnly(t *testing.T) {
 
 func TestAddEnv_LongestSecretMaskedFirst(t *testing.T) {
 	s := New()
-	s.AddEnv([]string{"A_TOKEN=abcd", "B_TOKEN=abcdefgh"})
+	s.AddEnv([]string{"A_TOKEN=abcdef", "B_TOKEN=abcdefgh"})
 	if got, want := s.Text("x abcdefgh y"), "x *** y"; got != want {
 		t.Errorf("Text = %q, want %q", got, want)
 	}

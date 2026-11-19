@@ -174,8 +174,7 @@ func (d *Deployer) repoRelativePaths(files []string) []string {
 	return out
 }
 
-// publishedDiffs returns a copy of the diff map re-keyed to repo-relative
-// paths, with known secrets masked; nil in, nil out.
+// publishedDiffs re-keys diffs to repo-relative paths and masks secrets; nil in, nil out.
 func (d *Deployer) publishedDiffs(diffs map[string]string) map[string]string {
 	if diffs == nil {
 		return nil

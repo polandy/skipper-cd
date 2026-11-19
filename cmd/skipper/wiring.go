@@ -90,7 +90,7 @@ func (v stackViews) order() []string { return deploy.RunOrder(v.cfg, v.effective
 // setupLogging installs the process-wide slog handler for the configured
 // log_format, writing to out. With the UI enabled, all slog output (and, via
 // the returned sink, child process output) is teed into an in-memory ring
-// served live at /api/logs with secrets masked. Config load already rejected clear errors;
+// served live at /api/logs, secrets masked (ADR-0070). Config load already rejected clear errors;
 // cfg.Warnings are valid-but-suspicious setups worth flagging — logged first,
 // before any other startup line, so they are the first thing an operator sees.
 func setupLogging(cfg *config.Config, out io.Writer, secrets *redact.Secrets) (*logbuf.Log, command.LineSink) {

@@ -453,7 +453,7 @@ The `vars_file` and every `env_files` entry use the same format, and a file that
 - Keys that change how skipper runs `docker compose` and hooks are reserved and rejected: `PATH`, `HOME`, `BASH_ENV`, `ENV`, `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH` and any `LD_*`. Set those in the service's own environment instead.
 - At most 1 MB per file.
 - In a deploy's diff — the web UI, the deploy history and the log — these files show their keys only: every value is replaced by `***`, so a rotated secret is not displayed. A removed stack's diff masks every file but its compose file the same way.
-- A value whose key names a secret (contains `PASS`, `SECRET`, `TOKEN`, `KEY`, `CRED`, `AUTH`, `PRIVATE`, `SALT` or `DSN`, any case) and is at least 4 characters long is also masked as `***` wherever a command prints it: in a deploy's error, its notifications and history, and the web UI's log. Credentials in a URL (`https://user:xxxxx@…`, `https://xxxxx@…`) are masked the same way. The console log keeps the full text.
+- A value whose key names a secret is also masked as `***` wherever a command prints it: in a deploy's error, its notifications and history, and the web UI's log. Credentials in a URL (`https://user:xxxxx@…`, `https://xxxxx@…`) are masked the same way. The console log keeps the full text. A key names a secret when one of its `_`-separated words contains `PASS`, `SECRET`, `TOKEN`, `CRED`, `PRIVATE`, `SALT` or `DSN`, or ends in `KEY` or `AUTH` (any case): `DB_PASSWORD` and `API_KEY` count, `KEYCLOAK_URL` and `GIT_AUTHOR_NAME` do not. Values shorter than 6 characters, numbers and switches (`true`, `off`, `enabled`, …) are never masked.
 
 ### File limits
 

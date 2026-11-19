@@ -185,8 +185,7 @@ func TestDeployStack_FailedHookEventNamesTheCause(t *testing.T) {
 	}
 }
 
-// A command that echoes a secret from an env file, or a credentialed URL, must
-// not publish it through the event (and with it history, audit and notify).
+// An echoed env-file secret or URL credential must not reach the event (history, audit, notify).
 func TestDeployStack_FailureCauseMasksSecrets(t *testing.T) {
 	baseDir, _ := hookStackDir(t, "db")
 	envFile := filepath.Join(t.TempDir(), "db.env")
