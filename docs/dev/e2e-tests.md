@@ -327,6 +327,11 @@ UI suite reuses.
 - **P22 — A failed converge keeps the hold** (ADR-0068,
   `STUB_DOCKER_FAIL_NTH_UP=2,4`): the revert's converge `up` fails, SSE `failed`
   is emitted and `skipper_stack_held{stack}` stays 1.
+- **P23 — A failing `post_deploy` hook holds the change** (ADR-0062): with every
+  `up` succeeding, a pushed change whose `post_deploy` hook fails emits SSE
+  `rolled_back` and raises `skipper_stack_held{stack}` = 1 with exactly three
+  `up -d` (startup, deploy, rollback); a second webhook for the same commit
+  emits `held` and runs no further `up`.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2005,6 +2010,11 @@ Behaviour-only (no snapshot).
 - **UAZ4 — A failed converge keeps the hold.** With `STUB_DOCKER_FAIL_NTH_UP:
   '2,4'` the revert's converge fails: the Deploys view shows a `failed` row (the
   positive signal) and the Stacks row keeps `held-chip`.
+- **UAZ5 — A failing `post_deploy` hook holds the change.** Every `up` succeeds;
+  the stack's `post_deploy` hook (`[ ! -f "$SKIPPER_E2E_HOOK_HOLD" ]`) passes at
+  startup and fails once the test creates the hook-hold file. The pushed change
+  rolls back and the Stacks row carries `held-chip`, with the retry button in
+  its detail panel.
 
 ### 4.54 UI — Maske BA: a change that failed before it started backs off, then is held (ADR-0064)
 
@@ -2247,6 +2257,7 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P20** | `TestE2E_BootstrapRunSkipsPull` | `pipeline_test.go` |
 | **P21** | `TestE2E_RevertReleasesHeldChange` | `pipeline_test.go` |
 | **P22** | `TestE2E_RevertKeepsHoldWhenConvergeFails` | `pipeline_test.go` |
+| **P23** | `TestE2E_FailedPostDeployHookHoldsChange` | `pipeline_test.go` |
 
 ### 6.2 UI (Playwright)
 
@@ -2487,6 +2498,7 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UAZ2** | a refused retry shows why and re-enables the button | `uaz-held-change.spec.ts` |
 | **UAZ3** | a pushed revert releases the held chip | `uaz-held-change.spec.ts` |
 | **UAZ4** | a failed converge keeps the held chip | `uaz-held-change.spec.ts` |
+| **UAZ5** | a failing post_deploy hook holds the change | `uaz-held-change.spec.ts` |
 | **UBA1** | backoff names the attempts and the next try, then turns into held | `uba-backoff-change.spec.ts` |
 | **UBB1** | headers are set and no view trips the policy | `ubb-csp.spec.ts` |
 | **UBC1** | a healthy stack opens on Containers, a parked one on Triggers | `ubc-stack-detail.spec.ts` |

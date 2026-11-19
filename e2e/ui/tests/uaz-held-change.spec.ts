@@ -11,6 +11,7 @@ import type { Page } from "@playwright/test";
 // A pushed revert puts the inputs back at the recorded ones: the run converges
 // with one plain up (up#4) and releases the hold, or keeps it when that up
 // fails (STUB_DOCKER_FAIL_NTH_UP=2,4; ADR-0068).
+// A failing post_deploy hook holds its change like a failed up (UAZ5).
 // Behaviour-only (no snapshot).
 
 const stacksBtn = (page: Page) =>
@@ -172,5 +173,40 @@ test.describe("Maske AZ: a revert whose converge fails", () => {
     await expect(deployRow(page, "failed")).toHaveCount(1);
     await stacksBtn(page).click();
     await expect(heldChip(page)).toBeVisible();
+  });
+});
+
+// A post_deploy hook that passes until the test creates the hook-hold file, so
+// the startup deploy settles and the pushed change is the one that fails.
+const FAILING_POST_HOOK = `stacks:
+  web:
+    hooks:
+      post_deploy:
+        - '[ ! -f "$SKIPPER_E2E_HOOK_HOLD" ]'
+`;
+
+test.describe("Maske AZ: a failing post_deploy hook", () => {
+  test.use({
+    startOptions: {
+      stacks: ["web"],
+      discovery: { repoConfig: FAILING_POST_HOOK },
+    },
+  });
+
+  // UAZ5 — every up succeeds; the hook alone rolls the change back and holds it.
+  test("UAZ5: a failing post_deploy hook holds the change", async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await expect(deployRow(page, "success")).toHaveCount(1); // startup settled
+    skipper.releaseHook();
+    skipper.setStackImage("web", "1.26");
+    expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
+    await expect(deployRow(page, "rolled_back")).toHaveCount(1);
+    await stacksBtn(page).click();
+    await expect(heldChip(page)).toBeVisible();
+    await rosterRow(page).click();
+    await expect(retryBtn(page)).toBeEnabled();
   });
 });
