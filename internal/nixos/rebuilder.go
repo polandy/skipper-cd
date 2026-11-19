@@ -71,6 +71,8 @@ func HashFiles(repoDir string) (map[string]string, error) {
 
 // Rebuild runs `nixos-rebuild switch --flake <flake>` from repoDir inside a
 // fire-and-forget transient systemd unit, then polls the unit to completion.
+// systemd stops the unit once it has run for timeout, which then reports as a
+// failed rebuild.
 //
 // The rebuild must NOT stay a child of the skipper process. The switch it runs
 // restarts skipper-cd.service; were skipper still holding a `systemd-run --wait`
@@ -82,7 +84,7 @@ func HashFiles(repoDir string) (map[string]string, error) {
 // independently in system.slice and survives skipper being restarted by its
 // own switch. Rebuild then watches the unit via `systemctl is-active` exit
 // codes — no client in skipper's cgroup, no deadlock.
-func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string) error {
+func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string, timeout time.Duration) error {
 	unit := rebuildUnit + ".service"
 	// Clear a prior run's lingering failed unit so the fixed name is free to
 	// reuse (a successful run's unit is garbage-collected automatically).
@@ -98,12 +100,14 @@ func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string) error {
 		// Transient units start with a minimal environment; nixos-rebuild
 		// needs skipper's PATH (git, nix, systemd tooling).
 		"--setenv=PATH=" + os.Getenv("PATH"),
+		// Enforced by systemd, so the bound holds while skipper restarts mid-switch.
+		fmt.Sprintf("--property=RuntimeMaxSec=%d", int64(timeout/time.Second)),
 		"nixos-rebuild", "switch", "--flake", flake,
 	}
 	if err := r.runner.Run(ctx, repoDir, nil, "systemd-run", args...); err != nil {
 		return fmt.Errorf("start nixos-rebuild unit: %w", err)
 	}
-	return r.waitForUnit(ctx, unit)
+	return r.waitForUnit(ctx, unit, timeout)
 }
 
 // waitForUnit polls the transient rebuild unit until it is no longer active,
@@ -111,7 +115,7 @@ func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string) error {
 // only, so it needs no output capture. The status probes use a background
 // context (not ctx): a probe must still resolve the unit's outcome even as
 // shutdown cancels ctx — the abandon decision is made explicitly against ctx.
-func (r *Rebuilder) waitForUnit(ctx context.Context, unit string) error {
+func (r *Rebuilder) waitForUnit(ctx context.Context, unit string, timeout time.Duration) error {
 	for {
 		if ctx.Err() != nil {
 			// Shutdown (or timeout): the switch is likely restarting skipper.
@@ -120,7 +124,7 @@ func (r *Rebuilder) waitForUnit(ctx context.Context, unit string) error {
 		}
 		if !r.unitActive(unit) {
 			if r.unitFailed(unit) {
-				return fmt.Errorf("nixos-rebuild switch failed (see: journalctl -u %s)", unit)
+				return fmt.Errorf("nixos-rebuild switch failed (see: journalctl -u %s); a rebuild running longer than nixos_rebuild.timeout_seconds (%d) is stopped", unit, int64(timeout/time.Second))
 			}
 			return nil
 		}
