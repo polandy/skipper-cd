@@ -96,8 +96,8 @@ type Config struct {
 	// OnSnapshot, when set, receives every fresh snapshot in addition to Publish.
 	// It is self-heal's feed; it runs on the poller goroutine, so a consumer that
 	// blocks (e.g. taking the deploy mutex) delays the next tick, which is the
-	// intended serialization.
-	OnSnapshot func(Snapshot)
+	// intended serialization. ctx is the poll's, so work it starts ends with the poller.
+	OnSnapshot func(ctx context.Context, snap Snapshot)
 	// Now is the clock PollIfStale measures against; nil means time.Now.
 	Now func() time.Time
 }
@@ -114,7 +114,7 @@ type Poller struct {
 	interval       time.Duration
 	hasSubscribers func() bool
 	alwaysPoll     bool
-	onSnapshot     func(Snapshot)
+	onSnapshot     func(context.Context, Snapshot)
 	now            func() time.Time
 
 	last       atomic.Pointer[Snapshot]
@@ -220,7 +220,7 @@ func (p *Poller) pollOnce(ctx context.Context) {
 		p.publish(snap)
 	}
 	if p.onSnapshot != nil {
-		p.onSnapshot(snap)
+		p.onSnapshot(ctx, snap)
 	}
 }
 

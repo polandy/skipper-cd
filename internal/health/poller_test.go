@@ -336,7 +336,7 @@ func TestPoller_TickAlwaysPollsWhenAlwaysPollSet(t *testing.T) {
 		Interval:       time.Hour,
 		HasSubscribers: func() bool { return false },
 		AlwaysPoll:     true,
-		OnSnapshot:     func(Snapshot) { snaps++ },
+		OnSnapshot:     func(context.Context, Snapshot) { snaps++ },
 	})
 
 	p.tick(context.Background())
@@ -352,12 +352,30 @@ func TestPoller_OnSnapshotReceivesEveryPoll(t *testing.T) {
 		Outputter:  out,
 		Stacks:     func() []StackRef { return []StackRef{appStack} },
 		Interval:   time.Hour,
-		OnSnapshot: func(s Snapshot) { got = s },
+		OnSnapshot: func(_ context.Context, s Snapshot) { got = s },
 	})
 
 	p.pollOnce(context.Background())
 	if got.Stacks["app"].Status != Healthy {
 		t.Errorf("OnSnapshot did not receive the fresh snapshot, got %+v", got)
+	}
+}
+
+func TestPoller_OnSnapshotRunsUnderThePollContext(t *testing.T) {
+	out := dockerHost(healthyIn("/repo/app", "app"))
+	ctx, cancel := context.WithCancel(context.Background())
+	var got context.Context
+	p := New(Config{
+		Outputter:  out,
+		Stacks:     func() []StackRef { return []StackRef{appStack} },
+		Interval:   time.Hour,
+		OnSnapshot: func(c context.Context, _ Snapshot) { got = c },
+	})
+
+	p.pollOnce(ctx)
+	cancel()
+	if got == nil || got.Err() == nil {
+		t.Fatal("OnSnapshot context is not the poll context: cancelling the poll left it live")
 	}
 }
 
