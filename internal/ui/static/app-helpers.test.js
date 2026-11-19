@@ -732,6 +732,29 @@ test('hostFilterActive: only a strict non-empty subset lights the control', () =
   assert.equal(h.hostFilterActive(1, 1), false); // single host, all selected
 });
 
+test('hostReachability: an unreachable host carries a visible label, a reachable one only its dot', () => {
+  assert.deepEqual(h.hostReachability({ self: true }), {
+    dot: 'up',
+    label: '',
+    title: 'this host',
+  });
+  assert.deepEqual(h.hostReachability({ reachable: true }), {
+    dot: 'up',
+    label: '',
+    title: 'reachable',
+  });
+  assert.deepEqual(h.hostReachability({ reachable: false, stale: true }), {
+    dot: 'stale',
+    label: 'last-known',
+    title: 'unreachable — showing last-known',
+  });
+  assert.deepEqual(h.hostReachability({ reachable: false }), {
+    dot: 'down',
+    label: 'unreachable',
+    title: 'unreachable',
+  });
+});
+
 test('reconcileHostFilter: restores a saved subset against the current host set', () => {
   assert.equal(h.reconcileHostFilter(null, ['host-a', 'host-b']), null); // nothing saved
   assert.equal(h.reconcileHostFilter([], ['host-a', 'host-b']), null); // nothing saved

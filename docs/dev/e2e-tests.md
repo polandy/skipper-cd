@@ -1028,7 +1028,9 @@ unit-tested (`app-helpers.test.js`).
   `hosts-all-btn` ("Select all") restores every host.
 - **UV4 — Offline peer flagged, not blanked.** The unreachable `host-c` gives the
   control the `has-offline` state and shows the `host-stale-banner` naming it; in
-  the drawer `host-c`'s reachability dot reads `down` and `host-b`'s reads `up`, a
+  the drawer `host-c`'s reachability dot reads `down` beside the visible
+  `host-reach` label `unreachable` (also in the row's `aria-label`) and `host-b`'s
+  dot reads `up` with no label, a
   peer carries an "open its own UI" `host-link` and `self` does not.
 - **UV5 — Merged roster.** The Stacks view lists local and peer stacks together,
   host-tagged; a peer `roster-row` shows its status badge and host chip but no

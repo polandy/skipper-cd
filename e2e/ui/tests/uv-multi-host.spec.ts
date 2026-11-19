@@ -151,6 +151,11 @@ test('UV4: an unreachable peer shows the offline banner and a down dot', async (
   await hostsBtn(page).click();
   await expect(page.locator('[data-testid="host-row"][data-host="host-c"] .host-dot')).toHaveClass(/down/);
   await expect(page.locator('[data-testid="host-row"][data-host="host-b"] .host-dot')).toHaveClass(/up/);
+  // The state is visible text, not only the dot's title; a reachable host has none.
+  const hostC = page.locator('[data-testid="host-row"][data-host="host-c"]');
+  await expect(hostC.locator('[data-testid="host-reach"]')).toHaveText('unreachable');
+  await expect(hostC).toHaveAttribute('aria-label', 'host-c, unreachable');
+  await expect(page.locator('[data-testid="host-row"][data-host="host-b"] [data-testid="host-reach"]')).toHaveCount(0);
   // A peer offers an "open its own UI" link; self does not.
   await expect(page.locator('[data-testid="host-row"][data-host="host-b"] [data-testid="host-link"]')).toHaveCount(1);
   await expect(page.locator('[data-testid="host-row"][data-host="host-a"] [data-testid="host-link"]')).toHaveCount(0);
