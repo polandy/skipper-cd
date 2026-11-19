@@ -1,15 +1,13 @@
 import { test, expect } from '../fixtures/test';
+import type { Skipper } from '../fixtures/harness';
 import type { Locator, Page } from '@playwright/test';
 
 // Maske AF: status badges lead with an icon, and the two worst terminal states
 // render as a solid alert chip rather than the smallest text in the column
 // (T3.14 — inverted hierarchy). See docs/dev/e2e-tests.md §4.33.
 //
-// Drives the real self-heal loop (like Maske K) so three badges surface in one
-// run — the startup `success`, a corrective `healed` (a first outage the
-// redeploy fixes), and the `heal_exhausted` give-up (a second one it cannot) — then asserts each carries a `.badge-ico` glyph and that the worst
-// state is an opaque (solid) fill, distinct from a dim badge. The colour read is
-// off the settled computed style, not a timed effect. Behaviour-only.
+// Drives the real self-heal loop (like Maske K): UAF1–UAF4 each assert one badge's
+// icon or fill, the colour off the settled computed style. Behaviour-only.
 
 const healthyApp = [{ Service: 'app', State: 'running', Health: 'healthy' }];
 const unhealthyApp = [{ Service: 'app', State: 'running', Health: 'unhealthy' }];
@@ -44,49 +42,77 @@ test.describe('UAF: status badges carry icons; worst states are solid', () => {
     },
   });
 
-  test('every badge leads with an icon and heal_exhausted is a solid chip', async ({
+  const successBadgeOf = (page: Page): Locator =>
+    webRow(page, 'success').first().locator('[data-testid="status-badge"]');
+
+  // An outage the one permitted redeploy cannot fix trips the breaker.
+  async function exhaust(skipper: Skipper): Promise<void> {
+    const ups = skipper.dockerUps('web');
+    skipper.setStackHealth('web', unhealthyApp);
+    await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(ups)).toPass();
+  }
+
+  test('UAF1: the success badge carries a leading icon and keeps its text', async ({
     page,
     skipper,
   }) => {
     await page.goto(`${skipper.baseURL}/`);
+    const badge = successBadgeOf(page);
+    await expect(badge).toBeVisible();
+    await expect(badge.locator('svg.badge-ico')).toHaveCount(1);
+    await expect(badge).toHaveText('success');
+  });
 
-    // UAF1 — the startup `success` badge carries a leading icon; the svg adds no
-    // text, so the label is unchanged.
-    const success = webRow(page, 'success').first();
-    await expect(success).toBeVisible();
-    const successBadge = success.locator('[data-testid="status-badge"]');
-    await expect(successBadge.locator('svg.badge-ico')).toHaveCount(1);
-    await expect(successBadge).toHaveText('success');
+  // A budget of two keeps a poll that lands between the redeploy and the
+  // recovery from exhausting the breaker before the heal is seen.
+  test.describe('after a heal', () => {
+    test.use({
+      startOptions: {
+        stacks: ['web'],
+        healthPoll: 1,
+        selfHeal: true,
+        selfHealMinUnhealthyPolls: 1,
+        selfHealCooldownSeconds: 1,
+        selfHealMaxAttempts: 2,
+        initialHealth: { web: healthyApp },
+      },
+    });
 
-    // The stack turns unhealthy → one corrective redeploy → it recovers, which
-    // is what makes that redeploy a heal (ADR-0029 amendment).
-    let ups = skipper.dockerUps('web');
-    skipper.setStackHealth('web', unhealthyApp);
-    await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(ups)).toPass();
-    skipper.setStackHealth('web', healthyApp);
+    test('UAF2: the healed badge also leads with an icon', async ({ page, skipper }) => {
+      await page.goto(`${skipper.baseURL}/`);
+      const ups = skipper.dockerUps('web');
+      skipper.setStackHealth('web', unhealthyApp);
+      await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(ups)).toPass();
+      skipper.setStackHealth('web', healthyApp);
+      const healed = webRow(page, 'healed').first();
+      await expect(healed).toBeVisible();
+      await expect(healed.locator('[data-testid="status-badge"] svg.badge-ico')).toHaveCount(1);
+    });
+  });
 
-    // UAF2 — the `healed` badge also leads with an icon.
-    const healed = webRow(page, 'healed').first();
-    await expect(healed).toBeVisible();
-    await expect(healed.locator('[data-testid="status-badge"] svg.badge-ico')).toHaveCount(1);
-
-    // A second outage the one permitted redeploy cannot fix trips the breaker.
-    ups = skipper.dockerUps('web');
-    skipper.setStackHealth('web', unhealthyApp);
-    await expect(() => expect(skipper.dockerUps('web')).toBeGreaterThan(ups)).toPass();
-
-    // UAF3 — the worst terminal state: a warning icon, both stacked label lines,
-    // and a SOLID fill — the loudest chip, reversing the old 9px shrink (T3.14).
+  test('UAF3: heal_exhausted is a two-line chip with a warning icon', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await exhaust(skipper);
     const exhausted = webRow(page, 'heal_exhausted').first();
     await expect(exhausted).toBeVisible();
-    const exhaustedBadge = exhausted.locator('[data-testid="status-badge"]');
-    await expect(exhaustedBadge.locator('svg.badge-ico')).toHaveCount(1);
-    await expect(exhaustedBadge).toContainText('self-heal');
-    await expect(exhaustedBadge).toContainText('failed');
-    await expect(exhaustedBadge.locator('.badge-lbl span')).toHaveCount(2);
+    const badge = exhausted.locator('[data-testid="status-badge"]');
+    await expect(badge.locator('svg.badge-ico')).toHaveCount(1);
+    await expect(badge).toContainText('self-heal');
+    await expect(badge).toContainText('failed');
+    await expect(badge.locator('.badge-lbl span')).toHaveCount(2);
+  });
 
-    // UAF4 — the worst-state chip is opaque; a dim badge (success) is translucent.
-    expect(await bgAlpha(exhaustedBadge)).toBeCloseTo(1, 2);
-    expect(await bgAlpha(successBadge)).toBeLessThan(0.9);
+  test('UAF4: the heal_exhausted fill is opaque while a dim badge is translucent', async ({
+    page,
+    skipper,
+  }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    const dim = successBadgeOf(page);
+    await expect(dim).toBeVisible();
+    await exhaust(skipper);
+    const exhausted = webRow(page, 'heal_exhausted').first();
+    await expect(exhausted).toBeVisible();
+    expect(await bgAlpha(exhausted.locator('[data-testid="status-badge"]'))).toBeCloseTo(1, 2);
+    expect(await bgAlpha(dim)).toBeLessThan(0.9);
   });
 });

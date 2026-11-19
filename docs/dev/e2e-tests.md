@@ -2339,7 +2339,10 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UAC3** | the caret flips while the popover is open | `uac-view-caret.spec.ts` |
 | **UAC4** | switching views leaves no button stuck aria-expanded | `uac-view-caret.spec.ts` |
 | **UAE7** | tablet — an over-long name ellipsises instead of taking a line | `uae-roster-identity.spec.ts` |
-| **UAF** | status badges carry icons; worst states are solid | `uaf-status-icons.spec.ts` |
+| **UAF1** | success badge carries an icon | `uaf-status-icons.spec.ts` |
+| **UAF2** | healed badge carries an icon | `uaf-status-icons.spec.ts` |
+| **UAF3** | heal_exhausted is a two-line chip with a warning icon | `uaf-status-icons.spec.ts` |
+| **UAF4** | heal_exhausted is opaque, a dim badge translucent | `uaf-status-icons.spec.ts` |
 | **UAG1** | a fresh browser shows the banner and control captions | `uag-header-tour.spec.ts` |
 | **UAG2** | Got it dismisses the tour and it stays gone after reload | `uag-header-tour.spec.ts` |
 | **UAG3** | Esc dismisses the tour and returns focus to the header | `uag-header-tour.spec.ts` |
@@ -2372,7 +2375,8 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UAL3** | deploy-history and deploy-detail SHAs link to the same forge | `ual-commit-links.spec.ts` |
 | **UAL4** | a peer row links its commit to the peer own forge | `ual-commit-links.spec.ts` |
 | **UAL5** | without a forge the SHA stays plain text | `ual-commit-links.spec.ts` |
-| **UAM** | a refused autosync write is announced | `uam-autosync-write-failure.spec.ts` |
+| **UAM1** | a refusing server is announced, switch keeps server state | `uam-autosync-write-failure.spec.ts` |
+| **UAM2** | a request that never arrives is announced | `uam-autosync-write-failure.spec.ts` |
 | **UAN1** | font-swap layout stability | `uan-font-fallback.spec.ts` |
 | **UAO1** | a roster row chip carries the amber marker for a newer tag | `uao-update-check.spec.ts` |
 | **UAO2** | the containers panel carries per-service markers and the head summary | `uao-update-check.spec.ts` |
@@ -2446,8 +2450,6 @@ The title is the case's test or `describe` title; the spec files sit in
 - **In §4, not in the suite:** UH6, UL1, UM2–UM4, UN2, UX1 (retired, noted in §4)
   and UT5, UT6 (moved to UB8–UB10). UB3 (sort toggle) is also gone from the
   suite although §4 and the Logs-view intro still name it.
-- **No per-case ID in the test title:** UAF and UAM each run as one test under a
-  single ID; §4 names UAF1–UAF4 and UAM1–UAM2.
 - **Not e2e, by decision:**
 
 | Requirement | Where it is covered |
