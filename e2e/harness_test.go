@@ -48,6 +48,7 @@ type skipper struct {
 	metricsURL string // http://127.0.0.1:<metrics_port>
 	stacks     []string
 	dependsOn  map[string][]string // per-stack depends_on edges (ADR-0032); optional
+	stackCfg   map[string]string   // raw extra YAML lines per stack override (e.g. deploy_health_check); optional
 	stubEnv    map[string]string   // extra env for the stub docker (fail/hold scripting)
 	extraCfg   string              // raw top-level YAML appended to skipper.yml
 
@@ -217,6 +218,7 @@ func (s *skipper) writeConfig(base string) string {
 		if deps := s.dependsOn[name]; len(deps) > 0 {
 			fmt.Fprintf(&b, "    depends_on: [%s]\n", strings.Join(quoteAll(deps), ", "))
 		}
+		b.WriteString(s.stackCfg[name])
 	}
 	if s.extraCfg != "" {
 		b.WriteString(s.extraCfg)

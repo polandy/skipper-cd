@@ -301,6 +301,11 @@ UI suite reuses.
   `skipper_stack_held`; two retries are the second and third failures, after
   which the gauge is `1` and a webhook again builds nothing; a push that fixes
   the Dockerfile deploys (`success`) and the gauge is deleted.
+- **P16 — A failing health probe rolls back unhealthy** (ADR-0022): a stack with
+  `deploy_health_check: {url, timeout_seconds: 1}` deploys while a local probe
+  server answers 2xx; once it answers `503`, a pushed change fails the gate, the
+  rollback reruns it and fails too → SSE `rolled_back_unhealthy` (never
+  `rolled_back`), with exactly three `up -d` (startup, deploy, rollback).
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
