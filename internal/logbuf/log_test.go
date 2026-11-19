@@ -120,26 +120,29 @@ func TestLog_UnsubscribeStopsDelivery(t *testing.T) {
 	}
 }
 
-func TestLog_SlowSubscriberDropsInsteadOfBlocking(t *testing.T) {
+// A subscriber a full buffer behind is closed instead of silently missing
+// entries; Append never blocks on it, and the buffered entries drain first.
+func TestLog_ClosesLaggingSubscriber(t *testing.T) {
 	l := New(600)
 	ch, unsub := l.Subscribe()
 	defer unsub()
 
-	// Overfill the subscriber buffer (size 256); Append must not block.
-	appendN(l, 300)
+	appendN(l, subscriberBuffer+1)
 
-	count := 0
-	for {
-		select {
-		case <-ch:
-			count++
-		default:
-			if count != 256 {
-				t.Errorf("expected 256 buffered entries, got %d", count)
-			}
-			return
+	for i := range subscriberBuffer {
+		if _, ok := <-ch; !ok {
+			t.Fatalf("channel closed after %d entries, want %d buffered first", i, subscriberBuffer)
 		}
 	}
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Fatal("channel delivered an entry beyond its buffer, want closed")
+		}
+	default:
+		t.Fatal("lagging subscriber's channel is still open, want closed")
+	}
+	unsub() // must not panic after the close
 }
 
 func TestLog_ChildLineRecordsCmdAndStreamAttrs(t *testing.T) {

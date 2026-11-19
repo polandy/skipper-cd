@@ -278,12 +278,17 @@ var AllStateNames = []string{
 }
 
 // Broadcaster fans out values of type T to all connected subscribers.
-// Sends are non-blocking: slow subscribers have values dropped.
+// Sends are non-blocking: a subscriber that falls a full buffer behind is
+// closed, so its reader reconnects and resyncs instead of silently missing
+// values.
 type Broadcaster[T any] struct {
-	mu   sync.RWMutex
+	mu   sync.Mutex
 	subs map[uint64]chan T
 	next uint64
 }
+
+// subscriberBuffer is the per-subscriber channel buffer.
+const subscriberBuffer = 16
 
 // NewBroadcaster creates a ready-to-use deploy-event Broadcaster.
 func NewBroadcaster() *Broadcaster[DeployEvent] { return newBroadcaster[DeployEvent]() }
@@ -296,10 +301,10 @@ func newBroadcaster[T any]() *Broadcaster[T] {
 }
 
 // Subscribe returns a channel that receives broadcast values and an
-// unsubscribe function. The channel is buffered (16) so slow readers
-// miss values rather than blocking the broadcaster.
+// unsubscribe function. The channel is buffered; a reader that lets it fill
+// has it closed (after the buffered values) and must resubscribe.
 func (b *Broadcaster[T]) Subscribe() (<-chan T, func()) {
-	ch := make(chan T, 16)
+	ch := make(chan T, subscriberBuffer)
 	b.mu.Lock()
 	id := b.next
 	b.next++
@@ -317,20 +322,22 @@ func (b *Broadcaster[T]) Subscribe() (<-chan T, func()) {
 // connected. It lets a producer skip work that no one is watching — e.g. the
 // stack-health poller idles while no UI client is subscribed (ADR-0027).
 func (b *Broadcaster[T]) HasSubscribers() bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	return len(b.subs) > 0
 }
 
-// Publish sends a value to all subscribers. Non-blocking: if a
-// subscriber's buffer is full the value is dropped for that subscriber.
+// Publish sends a value to all subscribers. Non-blocking: a subscriber whose
+// buffer is full is closed and removed rather than handed a gap.
 func (b *Broadcaster[T]) Publish(event T) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	for _, ch := range b.subs {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for id, ch := range b.subs {
 		select {
 		case ch <- event:
 		default:
+			close(ch)
+			delete(b.subs, id)
 		}
 	}
 }

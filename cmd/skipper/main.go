@@ -167,6 +167,7 @@ func main() {
 	// nixos-rebuild wait when it fires (ADR-0014).
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	var loops bgLoops // the signalCtx-bound loops, joined at shutdown
 
 	repoSync := git.NewRepoSync(cfg.RepoURL, cfg.RepoDir, cfg.Branch, timeout, sink)
 	repoReader := git.NewRepoReader(repoSync.RepoDir(), timeout, sink)
@@ -200,7 +201,7 @@ func main() {
 	}
 	var notifierSink func(events.DeployEvent)
 	if notifier.Enabled() {
-		safego.Go("notifier", func() { notifier.Run(signalCtx) })
+		loops.Go("notifier", func() { notifier.Run(signalCtx) })
 		notifierSink = notifier.Notify
 		slog.Info("notifications enabled", "targets", len(cfg.Notifications))
 	}
@@ -305,7 +306,7 @@ func main() {
 			// update's marker clears now, not at the next 6h tick (ADR-0054).
 			// No-op runs (the 5-minute reconcile) skip without registry traffic.
 			if updChecker != nil {
-				safego.Go("update-check-nudge", func() { updChecker.RunOnceIfChanged(signalCtx) })
+				loops.Go("update-check-nudge", func() { updChecker.RunOnceIfChanged(signalCtx) })
 			}
 		},
 		StackSetSink: asPublisher.publishStacks,
@@ -317,11 +318,11 @@ func main() {
 	// Start the health poller only now that the deployer exists: its snapshot
 	// feed may drive a self-heal, which redeploys through the deployer.
 	if hl.poller != nil {
-		safego.Go("health-poller", func() { hl.poller.Run(signalCtx) })
+		loops.Go("health-poller", func() { hl.poller.Run(signalCtx) })
 	}
 	// Same for the update checker: it reads the deployer's running images.
 	if updChecker != nil {
-		safego.Go("update-check", func() { updChecker.Run(signalCtx) })
+		loops.Go("update-check", func() { updChecker.Run(signalCtx) })
 	}
 	asPublisher.publish() // initialize the gauges
 
@@ -334,7 +335,7 @@ func main() {
 	// headless. A tick is skipped while a deploy is already in flight.
 	if interval := *cfg.ReconcileIntervalSeconds; interval > 0 {
 		loop := reconcile.New(time.Duration(interval)*time.Second, deployReconciler{deployer, cfg})
-		safego.Go("reconcile", func() { loop.Run(signalCtx) })
+		loops.Go("reconcile", func() { loop.Run(signalCtx) })
 		slog.Info("periodic reconcile enabled", "interval_seconds", interval)
 	}
 
@@ -346,7 +347,7 @@ func main() {
 		loop := peers.NewLoop(uiw.peerRegistry,
 			time.Duration(*cfg.RuntimeHealthPollIntervalSeconds)*time.Second,
 			func(s peers.State) { stateB.Publish(events.StateEvent{Name: events.StatePeers, Data: s}) })
-		safego.Go("peers-fanin", func() { loop.Run(signalCtx) })
+		loops.Go("peers-fanin", func() { loop.Run(signalCtx) })
 		slog.Info("multi-host fan-in enabled", "peers", len(cfg.Peers), "poll_interval_seconds", int(loop.Interval()/time.Second))
 	}
 
@@ -422,11 +423,13 @@ func main() {
 		slog.Warn("metrics server shutdown", "err", err)
 	}
 
-	// The ctx-bound background loops (notifier, health poller, reconciler,
-	// peer fan-in) are cancelled by signalCtx but deliberately not joined:
-	// deploys are the only work that must not be cut short and WaitIdle above
-	// covers those, and every state write goes through fsatomic, so a loop
-	// killed mid-write leaves the previous file rather than a truncated one.
+	// The ctx-bound loops are already cancelled by signalCtx; joining them reaps
+	// their in-flight commands so no `docker` child outlives skipper.
+	loopsCtx, cancelLoops := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancelLoops()
+	if err := loops.Wait(loopsCtx); err != nil {
+		slog.Warn("background loops did not stop in time", "err", err)
+	}
 	slog.Info("skipper-cd stopped")
 	if failed {
 		os.Exit(1)

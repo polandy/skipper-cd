@@ -63,30 +63,63 @@ func TestBroadcaster_UnsubscribeStopsDelivery(t *testing.T) {
 	}
 }
 
-func TestBroadcaster_NonBlockingOnSlowSubscriber(t *testing.T) {
+// A subscriber that falls a full buffer behind is closed rather than silently
+// missing values, so its reader can reconnect and resync (the SSE client
+// resumes via Last-Event-ID). The buffered values still drain before the close.
+func TestBroadcaster_ClosesLaggingSubscriber(t *testing.T) {
 	b := NewBroadcaster()
 	ch, unsub := b.Subscribe()
 	defer unsub()
 
-	// Fill the buffer (size 16).
-	for i := range 20 {
+	for i := range subscriberBuffer + 1 {
 		b.Publish(DeployEvent{ID: int64(i), Stack: "test"})
 	}
 
-	// Should have received 16 (buffer size), rest dropped.
-	count := 0
-	for {
-		select {
-		case <-ch:
-			count++
-		default:
-			goto done
+	for i := range subscriberBuffer {
+		evt, ok := <-ch
+		if !ok {
+			t.Fatalf("channel closed after %d values, want %d buffered first", i, subscriberBuffer)
+		}
+		if evt.ID != int64(i) {
+			t.Fatalf("value %d has ID %d, want %d", i, evt.ID, i)
 		}
 	}
-done:
-	if count != 16 {
-		t.Errorf("expected 16 buffered events, got %d", count)
+	assertClosed(t, ch)
+	if b.HasSubscribers() {
+		t.Error("a closed lagging subscriber must be removed")
 	}
+}
+
+func TestBroadcaster_LaggingSubscriberDoesNotAffectOthers(t *testing.T) {
+	b := NewBroadcaster()
+	slow, unsubSlow := b.Subscribe()
+	defer unsubSlow()
+	fast, unsubFast := b.Subscribe()
+	defer unsubFast()
+
+	for i := range subscriberBuffer + 1 {
+		b.Publish(DeployEvent{ID: int64(i)})
+		<-fast
+	}
+	b.Publish(DeployEvent{ID: 99})
+
+	if evt := <-fast; evt.ID != 99 {
+		t.Errorf("the keeping-up subscriber got ID %d, want 99", evt.ID)
+	}
+	for range subscriberBuffer {
+		<-slow
+	}
+	assertClosed(t, slow)
+}
+
+func TestBroadcaster_UnsubscribeAfterLagIsSafe(t *testing.T) {
+	b := NewBroadcaster()
+	_, unsub := b.Subscribe()
+	for range subscriberBuffer + 1 {
+		b.Publish(DeployEvent{})
+	}
+	unsub() // must not panic or close twice
+	unsub()
 }
 
 func TestSSEPayload_StripsDiffsAndSetsHasDiffs(t *testing.T) {
@@ -219,5 +252,18 @@ func TestSSEPayload_KeepsFileChanges(t *testing.T) {
 
 	if len(payload.FileChanges) != 1 || payload.FileChanges[0].Services[0] != "mealie-restic" {
 		t.Fatalf("expected FileChanges preserved in SSE payload, got %+v", payload.FileChanges)
+	}
+}
+
+// assertClosed fails unless ch is closed and drained; it never blocks.
+func assertClosed[T any](t *testing.T, ch <-chan T) {
+	t.Helper()
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Fatal("channel delivered a value beyond its buffer, want closed")
+		}
+	default:
+		t.Fatal("lagging subscriber's channel is still open, want closed")
 	}
 }

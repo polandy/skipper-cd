@@ -23,7 +23,8 @@ const sseKeepaliveInterval = 30 * time.Second
 // Server-Sent Events. On connect it subscribes to the live broadcasters,
 // replays deploy history, then sends the current UI state (autosync, stacks,
 // health, …) as one event per state name, then streams live deploy and state
-// events. Supports Last-Event-ID for reconnection of the deploy history.
+// events. Supports Last-Event-ID for reconnection of the deploy history. A
+// subscription that lags ends the stream, which makes the client reconnect.
 //
 // Subscribing and replaying are one ordered operation: both subscriptions are
 // established before the history snapshot and the state baseline are read, so
@@ -112,7 +113,10 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 			select {
 			case <-ctx.Done():
 				return
-			case evt := <-dch:
+			case evt, ok := <-dch:
+				if !ok {
+					return // lagged: the client reconnects and resumes via Last-Event-ID
+				}
 				if evt.ID <= lastSentID {
 					continue // already sent by the replay, or seen pre-resume
 				}
@@ -121,7 +125,10 @@ func SSEHandler(deployB *events.Broadcaster[events.DeployEvent], stateB *events.
 					return
 				}
 				flusher.Flush()
-			case se := <-sch: // sch is nil (blocks forever) when no state broadcaster
+			case se, ok := <-sch: // sch is nil (blocks forever) when no state broadcaster
+				if !ok {
+					return // lagged: the reconnect resends the state baseline
+				}
 				if err := writeSSEState(w, se); err != nil {
 					return
 				}
