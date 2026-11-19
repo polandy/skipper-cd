@@ -32,6 +32,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/peers"
 	"github.com/polandy/skipper-cd/internal/prettylog"
 	"github.com/polandy/skipper-cd/internal/reconcile"
+	"github.com/polandy/skipper-cd/internal/redact"
 	"github.com/polandy/skipper-cd/internal/roster"
 	"github.com/polandy/skipper-cd/internal/safego"
 	"github.com/polandy/skipper-cd/internal/ui"
@@ -136,7 +137,8 @@ func main() {
 		slog.Error("failed to load config", "path", *configPath, "err", err)
 		os.Exit(1)
 	}
-	logRing, sink := setupLogging(cfg, os.Stderr)
+	secrets := redact.New()
+	logRing, sink := setupLogging(cfg, os.Stderr, secrets)
 
 	timeout := time.Duration(cfg.CommandTimeoutSeconds) * time.Second
 
@@ -257,7 +259,8 @@ func main() {
 		os.Exit(1) //nolint:gocritic // exitAfterDefer: as above — only stop() is pending, nothing is serving yet
 	}
 	deployer := deploy.New(deploy.Config{
-		Runner: command.NewShellRunnerWithSink(timeout, sink),
+		Runner:  command.NewShellRunnerWithSink(timeout, sink),
+		Secrets: secrets,
 		// Rollout reads container state via `docker compose ps`; a plain
 		// (non-sink) runner captures its stdout (ADR-0040).
 		Outputter:    command.NewShellRunner(timeout),

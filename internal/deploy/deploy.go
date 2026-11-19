@@ -18,6 +18,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/metrics"
+	"github.com/polandy/skipper-cd/internal/redact"
 )
 
 // CommitReader retrieves git commit information from the repository.
@@ -83,6 +84,9 @@ type Config struct {
 	// graceful shutdown (ADR-0014). nil means rebuild waits are never
 	// abandoned.
 	ShutdownCtx context.Context
+
+	// Secrets collects the run's secret env values and masks them out of every event (ADR-0070).
+	Secrets *redact.Secrets
 
 	// EventSink is invoked on every deploy status change; nil disables event
 	// tracking.
@@ -173,6 +177,7 @@ type Deployer struct {
 	stateDir         string
 	shutdownCtx      context.Context
 	eventSink        func(events.DeployEvent)
+	secrets          *redact.Secrets
 	autosync         *autosync.Controller
 	queue            *autosync.Queue
 	postRunHook      func()
@@ -245,6 +250,7 @@ func New(cfg Config) *Deployer {
 		stateDir:               stateDir,
 		shutdownCtx:            cfg.ShutdownCtx,
 		eventSink:              cfg.EventSink,
+		secrets:                cfg.Secrets,
 		autosync:               cfg.Autosync,
 		queue:                  cfg.Queue,
 		postRunHook:            cfg.PostRunHook,
@@ -351,6 +357,15 @@ func (r stackRun) resolveEnv() ([]string, error) {
 		env = append(env, envVars...)
 	}
 	return env, nil
+}
+
+// resolveEnv is run.resolveEnv that also registers the env's secret values for masking.
+func (d *Deployer) resolveEnv(run stackRun) ([]string, error) {
+	env, err := run.resolveEnv()
+	if err == nil && d.secrets != nil {
+		d.secrets.AddEnv(env)
+	}
+	return env, err
 }
 
 // isPaused reports whether autosync is currently not effective for the stack.

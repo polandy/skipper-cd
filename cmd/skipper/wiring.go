@@ -12,6 +12,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/healthwatch"
 	"github.com/polandy/skipper-cd/internal/logbuf"
 	"github.com/polandy/skipper-cd/internal/orphans"
+	"github.com/polandy/skipper-cd/internal/redact"
 	"github.com/polandy/skipper-cd/internal/selfheal"
 )
 
@@ -89,14 +90,15 @@ func (v stackViews) order() []string { return deploy.RunOrder(v.cfg, v.effective
 // setupLogging installs the process-wide slog handler for the configured
 // log_format, writing to out. With the UI enabled, all slog output (and, via
 // the returned sink, child process output) is teed into an in-memory ring
-// served live at /api/logs. Config load already rejected clear errors;
+// served live at /api/logs, secrets masked (ADR-0070). Config load already rejected clear errors;
 // cfg.Warnings are valid-but-suspicious setups worth flagging — logged first,
 // before any other startup line, so they are the first thing an operator sees.
-func setupLogging(cfg *config.Config, out io.Writer) (*logbuf.Log, command.LineSink) {
+func setupLogging(cfg *config.Config, out io.Writer, secrets *redact.Secrets) (*logbuf.Log, command.LineSink) {
 	var logRing *logbuf.Log
 	logHandler := newLogHandler(cfg.LogFormat, out)
 	if *cfg.UIEnabled {
 		logRing = logbuf.New(logbuf.DefaultCapacity)
+		logRing.RedactWith(secrets.Text)
 		logHandler = logbuf.NewHandler(logHandler, logRing)
 	}
 	slog.SetDefault(slog.New(logHandler))

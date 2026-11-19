@@ -1,6 +1,7 @@
 package logbuf
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -324,5 +325,20 @@ func TestLog_RunSummaryWithOutcomeIsPinned(t *testing.T) {
 	}
 	if !found {
 		t.Error("a run summary carrying a rollback must survive eviction")
+	}
+}
+
+func TestLog_RedactsMessageAndAttrs(t *testing.T) {
+	l := New(10)
+	l.RedactWith(func(s string) string { return strings.ReplaceAll(s, "hunter2", "***") })
+	l.Append(time.Now(), "ERROR", "login hunter2 failed", map[string]string{"err": "bad hunter2"})
+	l.ChildLine("docker", "stderr", "echo hunter2", "web")
+
+	got := l.Entries()
+	if got[0].Msg != "login *** failed" || got[0].Attrs["err"] != "bad ***" {
+		t.Errorf("slog entry not redacted: %+v", got[0])
+	}
+	if got[1].Msg != "echo ***" || got[1].Attrs["stack"] != "web" {
+		t.Errorf("child line not redacted: %+v", got[1])
 	}
 }

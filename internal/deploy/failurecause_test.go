@@ -12,6 +12,7 @@ import (
 	"github.com/polandy/skipper-cd/internal/command"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
+	"github.com/polandy/skipper-cd/internal/redact"
 )
 
 // readTail loads a recorded stderr tail from testdata.
@@ -181,5 +182,29 @@ func TestDeployStack_FailedHookEventNamesTheCause(t *testing.T) {
 	}
 	if !strings.HasSuffix(got.Error, "exit status 1: pg_dump: error: connection to server failed: Connection refused") {
 		t.Errorf("event error = %q, want it to end with the hook's error line", got.Error)
+	}
+}
+
+// An echoed env-file secret or URL credential must not reach the event (history, audit, notify).
+func TestDeployStack_FailureCauseMasksSecrets(t *testing.T) {
+	baseDir, _ := hookStackDir(t, "db")
+	envFile := filepath.Join(t.TempDir(), "db.env")
+	writeFile(t, envFile, "DB_PASSWORD=hunter2hunter2\nDB_HOST=postgres\n")
+	const backup = "pg_dump > /backup/pre.sql"
+	runner := &recordingRunner{failFn: func(_ string, args []string) error {
+		if slices.Contains(args, backup) {
+			return &command.ExitError{Err: errors.New("exit status 1"), Tail: []string{"error: auth hunter2hunter2 rejected by postgres://app:pw@postgres/app"}}
+		}
+		return nil
+	}}
+	var got events.DeployEvent
+	d := New(Config{Runner: runner, Secrets: redact.New(), EventSink: func(e events.DeployEvent) { got = e }})
+
+	stack := config.Stack{Name: "db", EnvFiles: []string{envFile}, Hooks: config.Hooks{PreDeploy: []string{backup}}}
+	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err == nil {
+		t.Fatal("expected the failed hook to fail the deploy")
+	}
+	if !strings.HasSuffix(got.Error, "exit status 1: error: auth *** rejected by postgres://app:xxxxx@postgres/app") {
+		t.Errorf("event error = %q, want the password and URL credential masked", got.Error)
 	}
 }

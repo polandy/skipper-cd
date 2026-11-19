@@ -61,9 +61,9 @@ func (d *Deployer) emit(status events.Status, stack string, duration time.Durati
 		Stack:        stack,
 		Status:       status,
 		DurationMs:   duration.Milliseconds(),
-		Error:        errMsg,
+		Error:        d.secrets.Text(errMsg),
 		ChangedFiles: d.repoRelativePaths(cs.files),
-		Diffs:        d.repoRelativeDiffs(cs.diffs),
+		Diffs:        d.publishedDiffs(cs.diffs),
 		Commits:      cs.commits,
 		ImageChanges: cs.imageChanges,
 		FileChanges:  cs.fileChanges,
@@ -174,15 +174,14 @@ func (d *Deployer) repoRelativePaths(files []string) []string {
 	return out
 }
 
-// repoRelativeDiffs returns a copy of the diff map re-keyed to repo-relative
-// paths for display; nil in, nil out.
-func (d *Deployer) repoRelativeDiffs(diffs map[string]string) map[string]string {
+// publishedDiffs re-keys diffs to repo-relative paths and masks secrets; nil in, nil out.
+func (d *Deployer) publishedDiffs(diffs map[string]string) map[string]string {
 	if diffs == nil {
 		return nil
 	}
 	out := make(map[string]string, len(diffs))
 	for path, diff := range diffs {
-		out[d.repoRelative(path)] = diff
+		out[d.repoRelative(path)] = d.secrets.Text(diff)
 	}
 	return out
 }
