@@ -306,6 +306,10 @@ UI suite reuses.
   server answers 2xx; once it answers `503`, a pushed change fails the gate, the
   rollback reruns it and fails too → SSE `rolled_back_unhealthy` (never
   `rolled_back`), with exactly three `up -d` (startup, deploy, rollback).
+- **P17 — The deploy gate is inferred from a compose `healthcheck:`** (ADR-0046):
+  with no `deploy_health_check`, a pushed compose that gains a `healthcheck:`
+  deploys with `up --wait` (the startup `up` has none), while a sibling stack
+  without one never gets `--wait`.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a

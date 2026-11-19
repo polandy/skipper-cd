@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -194,6 +195,47 @@ func TestE2E_HealthProbeFailureRollsBackUnhealthy(t *testing.T) {
 	if es.has("web", "rolled_back") {
 		t.Fatal("a rollback that is still unhealthy must not also report rolled_back")
 	}
+}
+
+// TestE2E_InferredHealthGateWaitsForCompose (P17): a stack with no
+// deploy_health_check whose compose gains a `healthcheck:` has its deploy `up`
+// gated with `--wait`; a sibling stack without one is not gated (ADR-0046).
+func TestE2E_InferredHealthGateWaitsForCompose(t *testing.T) {
+	s := startSkipper(t, "web", "api")
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	healthy := "services:\n  app:\n    image: nginx:1.26\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n"
+	writeFile(t, filepath.Join(s.origin, "web", "docker-compose.yml"), healthy)
+	git(t, s.origin, "commit", "-am", "web gains a healthcheck")
+	s.setStackImage("api", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	s.waitFor("both stacks redeployed", func() bool {
+		return s.dockerUps("web") >= 2 && s.dockerUps("api") >= 2
+	})
+
+	if got := s.upsWithWait("web"); got != 1 {
+		t.Errorf("web `up --wait` calls = %d, want 1 (the deploy, not the startup)", got)
+	}
+	if got := s.upsWithWait("api"); got != 0 {
+		t.Errorf("api has no healthcheck; `up --wait` calls = %d, want 0", got)
+	}
+}
+
+// upsWithWait counts the stub's recorded `up` invocations for a stack that
+// carry `--wait`.
+func (s *skipper) upsWithWait(stack string) int {
+	n := 0
+	for _, line := range s.dockerLogLines() {
+		cwd, args, ok := strings.Cut(line, "\t")
+		if ok && filepath.Base(cwd) == stack && strings.Contains(" "+args+" ", " up ") && strings.Contains(args, "--wait") {
+			n++
+		}
+	}
+	return n
 }
 
 // TestE2E_HeldChangeWaitsForRetry (P13): a change whose new version failed
