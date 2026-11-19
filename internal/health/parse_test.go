@@ -6,20 +6,25 @@ import (
 )
 
 func TestParseList(t *testing.T) {
-	ids, images := parseList([]byte("abc\tnginx:1.27\n\ndef\tsha256:0123\r\nghi\n"))
+	ids, listing := parseList([]byte("abc\tnginx:1.27\t/srv/app\tweb\tapp-web-1\n\ndef\tsha256:0123\t/srv/app\tdb\tapp-db-1\r\nghi\n"))
 
 	if want := []string{"abc", "def", "ghi"}; !reflect.DeepEqual(ids, want) {
 		t.Errorf("ids = %v, want %v", ids, want)
 	}
-	if images["abc"] != "nginx:1.27" || images["def"] != "sha256:0123" || images["ghi"] != "" {
-		t.Errorf("images = %v", images)
+	want := map[string]listed{
+		"abc": {Image: "nginx:1.27", WorkingDir: "/srv/app", Service: "web", Name: "app-web-1"},
+		"def": {Image: "sha256:0123", WorkingDir: "/srv/app", Service: "db", Name: "app-db-1"},
+		"ghi": {},
+	}
+	if !reflect.DeepEqual(listing, want) {
+		t.Errorf("listing = %+v\nwant %+v", listing, want)
 	}
 }
 
 func TestParseInspect_ReadsComposeLabelsAndState(t *testing.T) {
 	out := "abc\t/srv/app/\tweb\t/app-web-1\trunning\thealthy\t0\n"
 
-	got, err := parseInspect([]byte(out), map[string]string{"abc": "nginx:1.27"})
+	got, err := parseInspect([]byte(out), map[string]listed{"abc": {Image: "nginx:1.27", WorkingDir: "/srv/app"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -64,6 +69,26 @@ func TestParseInspect_SortsEachProjectByContainerName(t *testing.T) {
 	}
 	if lines := got["/d"]; len(lines) != 2 || lines[0].Name != "p-a-1" || lines[1].Name != "p-b-1" {
 		t.Errorf("got %+v, want p-a-1 before p-b-1", lines)
+	}
+}
+
+func TestParseInspect_KeepsAListedContainerWithoutInspectLineAsUnread(t *testing.T) {
+	out := "abc\t/srv/app\tweb\t/app-web-1\trunning\t\t0\n"
+	listing := map[string]listed{
+		"abc": {WorkingDir: "/srv/app"},
+		"def": {Image: "postgres:16", WorkingDir: "/srv/app/", Service: "db", Name: "app-db-1"},
+	}
+
+	got, err := parseInspect([]byte(out), listing)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []psLine{
+		{Service: "db", Name: "app-db-1", Image: "postgres:16", unread: true},
+		{Service: "web", Name: "app-web-1", State: "running"},
+	}
+	if !reflect.DeepEqual(got["/srv/app"], want) {
+		t.Errorf("got %+v\nwant %+v", got["/srv/app"], want)
 	}
 }
 
@@ -137,6 +162,11 @@ func TestRollup(t *testing.T) {
 			name:  "unhealthy dominates starting",
 			lines: []psLine{{Service: "a", State: "running", Health: "starting"}, {Service: "b", State: "running", Health: "unhealthy"}},
 			want:  Unhealthy,
+		},
+		{
+			name:  "unknown when any container was not read, even beside an unhealthy one",
+			lines: []psLine{{Service: "a", State: "running", Health: "unhealthy"}, {Service: "b", unread: true}},
+			want:  Unknown,
 		},
 		{
 			name:  "stopped when there are no containers",

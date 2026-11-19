@@ -108,9 +108,9 @@ case " $* " in
     esac
     exit 0 ;;
   *" label=com.docker.compose.project.working_dir "*)
-    cat "$STUB_PS_DIR"/health-*.tsv 2>/dev/null | cut -f1,8
+    cat "$STUB_PS_DIR"/health-*.tsv 2>/dev/null | awk -F'\\t' -v OFS='\\t' '{ n = $4; sub("^/", "", n); print $1, $8, $2, $3, n }'
     exit 0 ;;
-  *" inspect --format {{.Id}}"*)
+  *" inspect --format {{.ID}}"*)
     cat "$STUB_PS_DIR"/health-*.tsv 2>/dev/null | cut -f1-7
     exit 0 ;;
   *" volume "*)

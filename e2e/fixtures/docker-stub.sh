@@ -29,10 +29,10 @@ health_table() {
 }
 case " $* " in
   *" label=com.docker.compose.project.working_dir "*)
-    health_table | cut -f1,8
+    health_table | awk -F'\t' -v OFS='\t' '{ n = $4; sub("^/", "", n); print $1, $8, $2, $3, n }'
     exit 0
     ;;
-  *" inspect --format {{.Id}}"*)
+  *" inspect --format {{.ID}}"*)
     health_table | cut -f1-7
     exit 0
     ;;
