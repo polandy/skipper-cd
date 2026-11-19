@@ -59,7 +59,10 @@ func LogsSSEHandler(log *logbuf.Log) http.Handler {
 			select {
 			case <-ctx.Done():
 				return
-			case e := <-ch:
+			case e, ok := <-ch:
+				if !ok {
+					return // lagged: the client reconnects and resumes via Last-Event-ID
+				}
 				if e.ID <= lastSent {
 					continue
 				}

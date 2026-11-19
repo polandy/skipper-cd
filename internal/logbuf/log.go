@@ -113,7 +113,8 @@ func New(capacity int) *Log {
 
 // Append stores an entry (assigning the next ID), evicts the oldest entry
 // beyond capacity, and publishes to all subscribers. Publishing is
-// non-blocking: slow subscribers have entries dropped.
+// non-blocking: a subscriber whose buffer is full is closed and removed, so
+// its reader reconnects and resyncs instead of missing entries.
 func (l *Log) Append(t time.Time, level, msg string, attrs map[string]string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -132,10 +133,12 @@ func (l *Log) Append(t time.Time, level, msg string, attrs map[string]string) {
 		}
 	}
 
-	for _, ch := range l.subs {
+	for id, ch := range l.subs {
 		select {
 		case ch <- e:
 		default:
+			close(ch)
+			delete(l.subs, id)
 		}
 	}
 }
@@ -185,7 +188,8 @@ func (l *Log) EntriesAfter(afterID int64) []Entry {
 
 // Subscribe returns a buffered channel of live entries and an unsubscribe
 // function. Subscribing and then snapshotting via Entries sees every entry
-// at least once; consumers dedupe overlap by ID.
+// at least once; consumers dedupe overlap by ID. A reader that lets the
+// buffer fill has the channel closed and must resubscribe.
 func (l *Log) Subscribe() (<-chan Entry, func()) {
 	ch := make(chan Entry, subscriberBuffer)
 	l.mu.Lock()
