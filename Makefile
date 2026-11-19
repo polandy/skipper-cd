@@ -2,11 +2,11 @@
 # Enter the dev shell first (`nix develop`) so every tool is on PATH, then run
 # `make ci` for the daemon-free jobs, or a single target below. Each target
 # maps 1:1 to a CI job so a green `make ci` predicts a green pipeline.
-.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps e2e-ui-lint ui-icons
+.PHONY: ci build vet fmt test vendor-check ui-unit ui-fmt ui-lint e2e e2e-ui lint govulncheck docs docker-build ui-preview ui-preview-smoke docs-screenshots check-host-colors check-playwright-pin check-baselines check-no-sleeps check-action-pins e2e-ui-lint ui-icons
 
 # Everything CI runs that does NOT need a docker daemon. `docker-build` is left
 # out on purpose (see its note) — run it separately when dockerd is up.
-ci: test vendor-check ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps e2e-ui-lint lint govulncheck e2e docs e2e-ui ui-preview-smoke
+ci: test vendor-check check-action-pins ui-fmt ui-lint ui-unit check-host-colors check-playwright-pin check-no-sleeps e2e-ui-lint lint govulncheck e2e docs e2e-ui ui-preview-smoke
 
 ## --- test job -------------------------------------------------------------
 # The Go packages of this module. `./...` also descends into the gitignored npm
@@ -157,6 +157,13 @@ check-playwright-pin:
 # The CI job calls the script directly: the Playwright container ships no make.
 check-baselines:
 	@scripts/check-baselines.sh
+
+## --- check-action-pins (part of the test job) ----------------------------
+# Every workflow action pinned to a commit SHA and every Dockerfile base image
+# to a digest: a moved tag would otherwise inherit the release PAT and the
+# registry push rights.
+check-action-pins:
+	@scripts/check-action-pins.sh
 
 ## --- check-no-sleeps (part of the ui-unit job) ----------------------------
 # Keeps the Playwright suite free of fixed waits: a waitForTimeout passes on a
