@@ -3,8 +3,11 @@
 package e2e
 
 import (
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -153,6 +156,43 @@ func TestE2E_RollbackOnFailedUp(t *testing.T) {
 
 	if got := s.dockerUps("web"); got < 3 {
 		t.Fatalf("expected initial + rollback up (>= 3 total), got %d", got)
+	}
+}
+
+// TestE2E_HealthProbeFailureRollsBackUnhealthy (P16): a stack whose
+// deploy_health_check URL stops answering 2xx fails the gate, is rolled back,
+// and the rollback's rerun of the same gate fails too → `rolled_back_unhealthy`.
+func TestE2E_HealthProbeFailureRollsBackUnhealthy(t *testing.T) {
+	var healthy atomic.Bool
+	healthy.Store(true)
+	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if !healthy.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	t.Cleanup(probe.Close)
+
+	s := newSkipper(t, nil, "", []string{"web"})
+	s.stackCfg = map[string]string{
+		"web": fmt.Sprintf("    deploy_health_check:\n      timeout_seconds: 1\n      url: %q\n", probe.URL),
+	}
+	s.bootstrap(t)
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	healthy.Store(false)
+	s.setStackImage("web", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "rolled_back_unhealthy")
+
+	if got := s.dockerUps("web"); got != 3 {
+		t.Fatalf("ups = %d, want startup + deploy + rollback = 3", got)
+	}
+	if es.has("web", "rolled_back") {
+		t.Fatal("a rollback that is still unhealthy must not also report rolled_back")
 	}
 }
 
