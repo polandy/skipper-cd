@@ -1300,6 +1300,17 @@ function hostFilterActive(selectedCount, totalCount) {
   return totalCount > 0 && selectedCount > 0 && selectedCount < totalCount;
 }
 
+// hostReachability is a Hosts-drawer row's reachability: the dot class, the
+// visible label (only when unreachable, so touch and screen readers get it too)
+// and the dot's hover title.
+function hostReachability(host) {
+  if (host.self) return { dot: 'up', label: '', title: 'this host' };
+  if (host.reachable) return { dot: 'up', label: '', title: 'reachable' };
+  if (host.stale)
+    return { dot: 'stale', label: 'last-known', title: 'unreachable — showing last-known' };
+  return { dot: 'down', label: 'unreachable', title: 'unreachable' };
+}
+
 // reconcileHostFilter resolves a saved Hosts-filter selection (loaded from
 // localStorage) against the current host set, returning null ("all hosts")
 // or the array of names to select. A saved host no longer present is
@@ -2305,6 +2316,7 @@ if (typeof module !== 'undefined' && module.exports) {
     hostMonogram,
     assignHostColors,
     hostFilterActive,
+    hostReachability,
     reconcileHostFilter,
     LOG_SEVERITY_FILTERS,
     DEFAULT_LOG_FILTERS,

@@ -143,6 +143,7 @@ module.exports = [
         assignHostColors: 'readonly',
         buildHostList: 'readonly',
         hostFilterActive: 'readonly',
+        hostReachability: 'readonly',
         reconcileHostFilter: 'readonly',
         rowClass: 'readonly',
         LINK_ICON: 'readonly',

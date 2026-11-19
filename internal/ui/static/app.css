@@ -2534,6 +2534,9 @@
   .host-dot.up { background: var(--h-healthy); }
   .host-dot.stale { background: var(--queued); }
   .host-dot.down { background: var(--danger); }
+  .hr-reach { font-size: 11px; white-space: nowrap; }
+  .hr-reach.stale { color: var(--queued); }
+  .hr-reach.down { color: var(--danger); }
   .host-link { color: var(--text-muted); display: inline-flex; }
   .host-link:hover { color: var(--accent); }
   .host-link svg { width: 15px; height: 15px; }

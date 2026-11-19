@@ -189,6 +189,7 @@ App.hosts = (function () {
     const list = document.getElementById('hosts-list');
     list.innerHTML = '';
     hosts.forEach(function (h) {
+      const reach = hostReachability(h);
       const row = document.createElement('div');
       row.className = 'host-row' + (isHostSelected(h.name) ? ' selected' : '');
       row.dataset.host = h.name;
@@ -198,17 +199,12 @@ App.hosts = (function () {
       row.setAttribute('role', 'checkbox');
       row.tabIndex = 0;
       row.setAttribute('aria-checked', String(isHostSelected(h.name)));
-      row.setAttribute('aria-label', h.name + (h.self ? ' (this host)' : ''));
+      row.setAttribute(
+        'aria-label',
+        h.name + (h.self ? ' (this host)' : '') + (reach.label ? ', ' + reach.title : ''),
+      );
       const slot = hostColors[h.name];
       const attr = slot === undefined ? '' : ' data-host-color="' + slot + '"';
-      const dotClass = h.self || h.reachable ? 'up' : h.stale ? 'stale' : 'down';
-      const dotTitle = h.self
-        ? 'this host'
-        : h.reachable
-          ? 'reachable'
-          : h.stale
-            ? 'unreachable — showing last-known'
-            : 'unreachable';
       const link =
         !h.self && h.url
           ? '<a class="host-link" href="' +
@@ -231,10 +227,17 @@ App.hosts = (function () {
         '</span></span>' +
         selfBadge +
         '</span>' +
+        (reach.label
+          ? '<span class="hr-reach ' +
+            reach.dot +
+            '" data-testid="host-reach">' +
+            reach.label +
+            '</span>'
+          : '') +
         '<span class="host-dot ' +
-        dotClass +
+        reach.dot +
         '" title="' +
-        escapeAttr(dotTitle) +
+        escapeAttr(reach.title) +
         '"></span>' +
         '<span class="host-link-slot">' +
         link +
