@@ -105,6 +105,23 @@ var (
 		Help: "Total number of deploy runs that waited for a running deploy to finish.",
 	})
 
+	// RunStartedTimestamp is the Unix time the deploy run that holds the deploy
+	// lock started, and 0 while no run is in progress: a run stuck in a hung
+	// command blocks every later deploy, and only this gauge makes that
+	// alertable (time() minus it).
+	RunStartedTimestamp = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "skipper_run_started_timestamp_seconds",
+		Help: "Unix timestamp the deploy run in progress started; 0 when no run is in progress.",
+	})
+
+	// StateSaveErrors counts failed writes of state.yaml. A failed save goes
+	// unnoticed otherwise: the run carries on, and the next start redeploys
+	// whatever the lost save would have recorded.
+	StateSaveErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "skipper_state_save_errors_total",
+		Help: "Total number of failed state.yaml writes.",
+	})
+
 	// DeploysQueued counts deploys deferred because autosync was paused, per
 	// stack (see docs/user/autosync.md).
 	DeploysQueued = promauto.NewCounterVec(prometheus.CounterOpts{

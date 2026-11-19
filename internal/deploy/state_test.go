@@ -9,6 +9,8 @@ import (
 
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/fsatomic"
+	"github.com/polandy/skipper-cd/internal/metrics"
+	dto "github.com/prometheus/client_model/go"
 )
 
 func TestSaveDeployState_RoundTripsAndLeavesNoTempFiles(t *testing.T) {
@@ -234,5 +236,47 @@ func TestDeployAllStacks_BootstrapRunSavesOnlyAtTheEnd(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(stateDir, stateFileName)); err != nil {
 		t.Errorf("the bootstrap run must still save at its end: %v", err)
+	}
+}
+
+func stateSaveErrors(t *testing.T) float64 {
+	t.Helper()
+	var m dto.Metric
+	if err := metrics.StateSaveErrors.Write(&m); err != nil {
+		t.Fatalf("read counter: %v", err)
+	}
+	return m.GetCounter().GetValue()
+}
+
+func TestSaveDeployState_CountsAFailedWrite(t *testing.T) {
+	// A file where the state dir should be makes every write fail.
+	stateDir := filepath.Join(t.TempDir(), "state")
+	if err := os.WriteFile(stateDir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := stateSaveErrors(t)
+
+	if err := saveDeployState(stateDir, newEmptyState()); err == nil {
+		t.Fatal("expected the save to fail")
+	}
+	state := newEmptyState()
+	cp := newStateCheckpoint(stateDir, state)
+	state.Stacks["web"] = stackFileHashes{"f": "h"}
+	if err := cp.save(state); err == nil {
+		t.Fatal("expected the checkpoint to fail")
+	}
+
+	if got := stateSaveErrors(t) - before; got != 2 {
+		t.Errorf("state save errors counted = %v, want 2", got)
+	}
+}
+
+func TestSaveDeployState_DoesNotCountASuccessfulWrite(t *testing.T) {
+	before := stateSaveErrors(t)
+	if err := saveDeployState(t.TempDir(), newEmptyState()); err != nil {
+		t.Fatal(err)
+	}
+	if got := stateSaveErrors(t) - before; got != 0 {
+		t.Errorf("state save errors counted = %v, want 0", got)
 	}
 }
