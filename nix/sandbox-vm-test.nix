@@ -55,8 +55,9 @@ pkgs.testers.runNixOSTest {
     )
 
     machine.succeed("systemctl start skipper-cd.service")
-    machine.wait_until_succeeds("docker ps --filter status=running --format '{{.Image}}' | grep -qx sandbox-probe:1")
-    machine.succeed("test -f /var/lib/skipper/state.yaml")
+    # The state entry is written after `up` returns, so the container is running once it exists.
+    machine.wait_until_succeeds("grep -q probe /var/lib/skipper/state.yaml")
+    machine.succeed("docker ps --filter status=running --format '{{.Image}}' | grep -qx sandbox-probe:1")
     machine.succeed("systemctl is-active skipper-cd.service")
 
     print(machine.succeed("systemd-analyze security --no-pager skipper-cd.service | tail -1"))
