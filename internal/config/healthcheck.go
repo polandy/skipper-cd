@@ -92,3 +92,13 @@ func validateHealthCheck(hc *HealthCheck) error {
 	}
 	return nil
 }
+
+// timeoutWarning flags a gate whose wait reaches commandTimeout: the gated
+// `up --wait` runs under command_timeout_seconds, so it is killed before the
+// wait can end and fails as a timeout instead of an unhealthy verdict.
+func (hc *HealthCheck) timeoutWarning(stack string, commandTimeout int) string {
+	if hc == nil || hc.IsDisabled() || hc.TimeoutSeconds < commandTimeout {
+		return ""
+	}
+	return fmt.Sprintf("stack %q: deploy_health_check.timeout_seconds (%d) is not below command_timeout_seconds (%d) — the gated up is killed before its wait ends; raise command_timeout_seconds above the gate timeout plus the time the up needs to start the containers, or lower deploy_health_check.timeout_seconds", stack, hc.TimeoutSeconds, commandTimeout)
+}
