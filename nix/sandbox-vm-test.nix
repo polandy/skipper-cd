@@ -1,6 +1,4 @@
-# VM test of the strict (non-nixosRebuild) sandbox: skipper-cd must still clone
-# a repo and bring a stack up through Docker, and its systemd exposure score
-# must stay at or below the threshold.
+# VM test: under the strict sandbox skipper-cd still clones and deploys, and its exposure stays under the threshold.
 { nixpkgs, system, module, package }:
 
 let
