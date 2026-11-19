@@ -2499,6 +2499,10 @@ already pins actions:
   git-lfs and uploads them as an artifact, which `e2e-ui` unpacks over the pointer
   files its in-container checkout wrote (ADR-0052).
 
+`make check-e2e-trace` (the `ui-unit` job) fails when a test-title ID (`UA1:` in
+Playwright, `TestP1_` in Go) has no `- **ID — …` case in this document or is used
+by two tests.
+
 A third job lives in `.github/workflows/docs.yml`, not here:
 
 - **screenshots**: renders the docs landing-page images (§5.1) in the same pinned

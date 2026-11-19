@@ -126,7 +126,7 @@ test.describe('UAA7: touch targets', () => {
       els.map((e) => Math.round(e.getBoundingClientRect().height)),
     );
 
-  test('UAA7: detail actions, tabs and the drawer close are 44px tall', async ({
+  test('detail actions, tabs and the drawer close are 44px tall', async ({
     page,
     skipper,
   }) => {
