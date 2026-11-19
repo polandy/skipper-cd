@@ -40,7 +40,8 @@ esac
 
 # Zero-downtime rollout (ADR-0040): STUB_DOCKER_ROLLOUT_FILE is the service's
 # container table, one `compose ps` JSON object per line. The first plain `up`
-# starts "old", a `--scale` up adds a healthy "canary", `rm -- <id>` drops one.
+# starts "old", a `--scale` up adds a "canary" (healthy unless
+# STUB_DOCKER_CANARY_HEALTH says otherwise), `rm -- <id>` drops one.
 if [ -n "$STUB_DOCKER_ROLLOUT_FILE" ]; then
   table=$STUB_DOCKER_ROLLOUT_FILE
   case " $* " in
@@ -49,7 +50,7 @@ if [ -n "$STUB_DOCKER_ROLLOUT_FILE" ]; then
       exit 0
       ;;
     *" --scale "*)
-      printf '{"ID":"canary","Service":"app","State":"running","Health":"healthy"}\n' >> "$table"
+      printf '{"ID":"canary","Service":"app","State":"running","Health":"%s"}\n' "${STUB_DOCKER_CANARY_HEALTH:-healthy}" >> "$table"
       ;;
     *" up "*)
       [ -s "$table" ] || printf '{"ID":"old","Service":"app","State":"running","Health":"healthy"}\n' > "$table"
