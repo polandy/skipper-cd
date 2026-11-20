@@ -60,7 +60,15 @@ func (c *Config) EffectiveUpdateCheck(stacks []Stack, name string) bool {
 }
 
 // validateUpdateCheck checks the optional update_check section.
-func validateUpdateCheck(uc *UpdateCheck) error {
+func (c *Config) validateUpdateCheck() error {
+	if err := c.UpdateCheck.validate(); err != nil {
+		return fmt.Errorf("update_check: %w", err)
+	}
+	return nil
+}
+
+// validate checks a present update_check section.
+func (uc *UpdateCheck) validate() error {
 	if uc == nil {
 		return nil
 	}

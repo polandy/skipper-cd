@@ -33,6 +33,9 @@ type heldEnv struct {
 	failPull bool
 	// clock is what the deployer reads as now; advance moves it.
 	clock time.Time
+	// heldAtEmit records, per emitted signal status, whether HeldStacks()
+	// already listed the stack when the event went out.
+	heldAtEmit map[events.Status]bool
 }
 
 func newHeldEnv(t *testing.T, stacks ...config.Stack) *heldEnv {
@@ -84,8 +87,17 @@ func (env *heldEnv) newDeployer(files map[string][]byte, repoDir string) *Deploy
 		CommitReader: &fakeCommitReader{files: files},
 		RepoDir:      repoDir,
 		StateDir:     env.stateDir,
-		EventSink:    func(e events.DeployEvent) { env.emitted = append(env.emitted, e) },
-		Now:          func() time.Time { return env.clock },
+		EventSink: func(e events.DeployEvent) {
+			env.emitted = append(env.emitted, e)
+			if e.Stack == "signal" {
+				if env.heldAtEmit == nil {
+					env.heldAtEmit = map[events.Status]bool{}
+				}
+				_, held := env.d.HeldStacks()["signal"]
+				env.heldAtEmit[e.Status] = held
+			}
+		},
+		Now: func() time.Time { return env.clock },
 	})
 }
 
@@ -159,6 +171,33 @@ func TestDeployAllStacks_HoldsChangeThatRolledBack(t *testing.T) {
 	}
 	if h.Status != events.StatusRolledBack || h.Since.IsZero() {
 		t.Errorf("held view = %+v, want status rolled_back and a since time", h)
+	}
+}
+
+// A reader reacting to the failure event (the UI's retry button) must already
+// see the hold, or its retry is rejected as "nothing held".
+func TestDeployAllStacks_PublishesHoldBeforeTheFailureEvent(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		failStart bool
+		failPull  bool
+		status    events.Status
+	}{
+		{"failed after start", true, false, events.StatusRolledBack},
+		{"failed before start", false, true, events.StatusFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newHeldEnv(t)
+			env.failStart, env.failPull = tc.failStart, tc.failPull
+			env.run("signal")
+			held, emitted := env.heldAtEmit[tc.status]
+			if !emitted {
+				t.Fatalf("no %s event emitted; emitted %v", tc.status, env.heldAtEmit)
+			}
+			if !held {
+				t.Errorf("HeldStacks() did not list signal when its %s event was emitted", tc.status)
+			}
+		})
 	}
 }
 

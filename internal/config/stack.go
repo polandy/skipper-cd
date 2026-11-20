@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/polandy/skipper-cd/internal/compose"
@@ -232,10 +233,85 @@ func cycleError(stuck []string) error {
 	return fmt.Errorf("depends_on cycle involving stacks: %s", strings.Join(stuck, ", "))
 }
 
-// validateHooks checks a stack's optional hooks section: no blank command
+// applyDefaults fills the stack's omitted project_directory from the host's
+// project_directory_base; shared by Load and LoadRepoStacks.
+func (s *Stack) applyDefaults(projectDirectoryBase string) {
+	if s.ProjectDirectory == "" && projectDirectoryBase != "" {
+		s.ProjectDirectory = filepath.Join(projectDirectoryBase, s.Name)
+	}
+}
+
+// applyStacksDefaults fills each host-config stack entry's omitted fields.
+func (c *Config) applyStacksDefaults() {
+	for i := range c.Stacks {
+		c.Stacks[i].applyDefaults(c.ProjectDirectoryBase)
+	}
+}
+
+// validateStacks checks the host config's stacks: list — each entry, unique
+// names, and (host-list mode only) depends_on.
+func (c *Config) validateStacks() error {
+	seen := make(map[string]struct{}, len(c.Stacks))
+	for i, s := range c.Stacks {
+		if s.Name == "" {
+			return fmt.Errorf("stacks[%d] has no name — add a name: field to this entry", i)
+		}
+		if IsReservedStackName(s.Name) {
+			return fmt.Errorf("stack name %q is reserved for skipper's internal use (%s) — rename this stack", s.Name, strings.Join(ReservedStackNames(), ", "))
+		}
+		if _, dup := seen[s.Name]; dup {
+			return fmt.Errorf("duplicate stack name %q — stack names must be unique, rename one of the two entries", s.Name)
+		}
+		seen[s.Name] = struct{}{}
+		if err := s.validate(c.StackDiscovery); err != nil {
+			return err
+		}
+	}
+	// Under discovery, c.Stacks is only the override subset; depends_on is
+	// validated against the full set at discovery (LoadRepoStacks), not here.
+	if c.StackDiscovery {
+		return nil
+	}
+	return validateStackDependencies(c.Stacks)
+}
+
+// validate checks one named host-config stack entry. Under discovery,
+// LoadRepoStacks resolves relative env_files/watch_dirs against stacks_base_dir;
+// host-list mode has no such step, so they must be absolute there.
+func (s Stack) validate(discovery bool) error {
+	// A relative project_directory would resolve against skipper's own process
+	// cwd, not the repo clone — silently wrong --project-directory.
+	if s.ProjectDirectory != "" && !filepath.IsAbs(s.ProjectDirectory) {
+		return fmt.Errorf("stack %q: project_directory %q must be an absolute path (start it with \"/\")", s.Name, s.ProjectDirectory)
+	}
+	if !discovery {
+		for j, f := range s.EnvFiles {
+			if !filepath.IsAbs(f) {
+				return fmt.Errorf("stack %q: env_files[%d] %q must be an absolute path (start it with \"/\")", s.Name, j, f)
+			}
+		}
+		for j, d := range s.WatchDirs {
+			if !filepath.IsAbs(d) {
+				return fmt.Errorf("stack %q: watch_dirs[%d] %q must be an absolute path (start it with \"/\")", s.Name, j, d)
+			}
+		}
+	}
+	if err := s.DeployHealthCheck.validate(); err != nil {
+		return fmt.Errorf("stack %q: deploy_health_check: %w", s.Name, err)
+	}
+	if err := s.Hooks.validate(); err != nil {
+		return fmt.Errorf("stack %q: hooks: %w", s.Name, err)
+	}
+	if err := s.Rollout.validate(); err != nil {
+		return fmt.Errorf("stack %q: rollout: %w", s.Name, err)
+	}
+	return nil
+}
+
+// validate checks a stack's optional hooks section: no blank command
 // lines (a whitespace-only entry is almost certainly a mistake) and a
 // non-negative timeout.
-func validateHooks(h Hooks) error {
+func (h Hooks) validate() error {
 	if h.TimeoutSeconds < 0 {
 		return fmt.Errorf("timeout_seconds must not be negative, got %d", h.TimeoutSeconds)
 	}
@@ -276,10 +352,10 @@ func ValidateRolloutServices(services []string, cf *compose.File) error {
 	return nil
 }
 
-// validateRollout checks what the config alone can decide; compose-dependent
+// validate checks what the config alone can decide; compose-dependent
 // checks (service exists, ports, healthcheck, container_name) run via
 // ValidateRolloutServices at discovery and at deploy time.
-func validateRollout(r *Rollout) error {
+func (r *Rollout) validate() error {
 	if r == nil {
 		return nil
 	}
