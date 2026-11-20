@@ -203,6 +203,15 @@ App.chrome = (function () {
         opener.focus({ preventScroll: true });
     }
   }
+  // trackDrawerSettle flips a .drawer's data-settled to "true" once its
+  // max-height transition ends open; its toggler resets it to "false" (T8).
+  function trackDrawerSettle(drawer) {
+    drawer.addEventListener('transitionend', function (e) {
+      if (e.target === drawer && e.propertyName === 'max-height') {
+        drawer.dataset.settled = String(drawer.classList.contains('open'));
+      }
+    });
+  }
   // trapFocus keeps Tab/Shift+Tab within an open dialog (wraps at the ends).
   function trapFocus(dialog) {
     dialog.addEventListener('keydown', function (e) {
@@ -879,6 +888,7 @@ App.chrome = (function () {
     registerSurface,
     closeOtherSurfaces,
     manageSurfaceFocus,
+    trackDrawerSettle,
     trapFocus,
     syncStackSearchBtn,
     applyView,

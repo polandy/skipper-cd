@@ -384,6 +384,7 @@ App.hosts = (function () {
     hostsDrawer.classList.toggle('open', open);
     hostsBtn.classList.toggle('open', open);
     hostsBtn.setAttribute('aria-expanded', String(open));
+    hostsDrawer.dataset.settled = 'false'; // geometry moves until the transition ends (trackDrawerSettle)
     App.chrome.manageSurfaceFocus(hostsDrawer, hostsBtn, open);
   }
 
@@ -408,6 +409,7 @@ App.hosts = (function () {
 
   // init wires the Hosts drawer — everything the block ran at load.
   function init() {
+    App.chrome.trackDrawerSettle(hostsDrawer);
     App.chrome.trapFocus(hostsDrawer);
 
     hostsBtn.addEventListener('click', function () {

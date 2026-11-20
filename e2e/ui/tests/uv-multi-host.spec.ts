@@ -58,6 +58,15 @@ const rowsFor = (page: Page, host: string) => page.locator(`[data-testid="deploy
 const stacksBtn = (page: Page) => page.locator('[data-testid="view-toggle"] button[data-view="stacks"]');
 const rosterFor = (page: Page, host: string) => page.locator(`[data-testid="roster-row"][data-host="${host}"]`);
 
+/** openHostsDrawer opens the Hosts drawer and waits out its open transition:
+ *  until data-settled the scroll box is still growing, so a click inside can
+ *  land on the row above its target (UI_SPEC.md, T8). */
+async function openHostsDrawer(page: Page) {
+  await hostsBtn(page).click();
+  await expect(drawer(page)).toHaveClass(/\bopen\b/);
+  await expect(drawer(page)).toHaveAttribute('data-settled', 'true');
+}
+
 // UV1 — the Hosts control appears and the merged feed interleaves peer deploys,
 // each row tagged with its host's colour dot.
 test('UV1: merged deploy feed shows peer rows with host dots', async ({ page, skipper }) => {
@@ -120,8 +129,7 @@ test('UV3: the Hosts drawer multi-select filters the feed', async ({ page, skipp
   await page.goto(`${skipper.baseURL}/`);
   await expect(rowsFor(page, 'host-b')).toHaveCount(2);
 
-  await hostsBtn(page).click();
-  await expect(drawer(page)).toHaveClass(/\bopen\b/);
+  await openHostsDrawer(page);
   // One row per host: self + 2 peers.
   await expect(page.locator('[data-testid="host-row"]')).toHaveCount(3);
 
@@ -231,7 +239,7 @@ test('UV7: the host filter persists across a reload', async ({ page, skipper }) 
   await expect(page.locator('[data-testid="hosts-btn"] #hosts-count')).toHaveText('1/3');
 
   // Clearing it ("Select all") also survives a reload — no stale narrow filter.
-  await hostsBtn(page).click();
+  await openHostsDrawer(page);
   await page.locator('[data-testid="hosts-all-btn"]').click();
   await expect(rowsFor(page, 'host-a').first()).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('hostFilter'))).toBeNull();

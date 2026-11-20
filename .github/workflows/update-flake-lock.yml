@@ -1,16 +1,5 @@
-# Dependabot cannot update Nix flake inputs, so a weekly job opens a PR
-# with a refreshed flake.lock instead.
-#
-# PRs created with the default GITHUB_TOKEN do not trigger CI runs — a GitHub
-# restriction on workflow-authored PRs, not a bug here. Close and reopen the PR
-# to get a real run, and only merge once it is green. The action states this in
-# every PR body it opens, so the instruction reaches whoever has to act on it
-# without being restated here; this note exists so the missing checks are not
-# read as a broken workflow.
-#
-# Lifting the restriction would mean granting a PAT or GitHub App token repo
-# write access as a long-lived secret. Not worth it for a weekly lockfile bump:
-# reopening a PR is cheaper than holding that credential.
+# Weekly flake.lock refresh PR, since Dependabot cannot update flake inputs.
+# A GITHUB_TOKEN-made PR gets no pull_request run, so the job dispatches CI on its branch (no PAT needed).
 name: Update flake.lock
 
 on:
@@ -18,10 +7,14 @@ on:
     - cron: "0 4 * * 1" # Mondays 04:00 UTC
   workflow_dispatch:
 
+env:
+  BRANCH: update_flake_lock_action
+
 jobs:
   update-flake-lock:
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
       pull-requests: write
     steps:
@@ -30,6 +23,21 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       - uses: DeterminateSystems/update-flake-lock@da03c0f078bc4b2c37ee4f7e072d34bf8f188bb3 # v29
+        id: update
         with:
+          branch: ${{ env.BRANCH }}
           pr-title: "chore(nix): update flake.lock"
           commit-msg: "chore(nix): update flake.lock"
+          pr-body: |
+            Automated changes by the [update-flake-lock](https://github.com/DeterminateSystems/update-flake-lock) GitHub Action.
+
+            ```
+            {{ env.GIT_COMMIT_MESSAGE }}
+            ```
+
+            CI is dispatched on this branch by the same workflow; merge once it is green.
+
+      - if: steps.update.outputs.pull-request-operation == 'created' || steps.update.outputs.pull-request-operation == 'updated'
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+        env:
+          GH_TOKEN: ${{ github.token }}

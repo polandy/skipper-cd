@@ -44,7 +44,7 @@ vendor-check:
 # (internal/ui/static/app-helpers.js, app-render.js) via
 # the Node built-in runner — no build step, no deps.
 # Coverage floors sit just under the measured totals; raise them as coverage grows.
-UI_UNIT_TESTS := internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js e2e/ui/fixtures/tempdirs.test.ts e2e/ui/fixtures/procgroup.test.ts
+UI_UNIT_TESTS := internal/ui/static/app-helpers.test.js internal/ui/static/app-render.test.js e2e/ui/fixtures/tempdirs.test.ts e2e/ui/fixtures/procgroup.test.ts e2e/ui/fixtures/launchretry.test.ts
 UI_COVERAGE_FLOORS := --test-coverage-lines=98 --test-coverage-branches=92 --test-coverage-functions=99
 ui-unit:
 	node --test --experimental-test-coverage --test-coverage-exclude='**/*.test.*' $(UI_COVERAGE_FLOORS) $(UI_UNIT_TESTS)

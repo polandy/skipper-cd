@@ -13,6 +13,7 @@ import {
 import { join, basename, dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { workspaces } from "./tempdirs";
+import { retryOnFreshWorkspace } from "./launchretry";
 import { killGroup } from "./procgroup";
 
 // This is the Node twin of the Go E2E harness (e2e/harness_test.go): it runs the
@@ -866,23 +867,20 @@ export class Skipper {
    *  connection draws from — so under parallel workers another process can
    *  steal one in that gap. The theft is detected deterministically (skipper
    *  exits with its bind error, a stub's listen rejects with EADDRINUSE) and
-   *  the launch is retried on fresh ports; any other failure propagates on
-   *  the first throw. */
+   *  the launch is retried on fresh ports and a fresh workspace, since the
+   *  failed instance may already have run its startup deploy into state.yaml;
+   *  any other failure propagates on the first throw. */
   static async start(opts: StartOptions = {}): Promise<Skipper> {
-    const ws = await scaffoldWorkspace(opts);
-    try {
-      for (let attempt = 1; ; attempt++) {
-        try {
-          return await Skipper.launch(opts, ws);
-        } catch (err) {
-          if (attempt >= MAX_LAUNCH_ATTEMPTS || !isStolenPort(err)) throw err;
-        }
-      }
-    } catch (err) {
-      ws.registryServer?.close();
-      workspaces.remove(ws.base);
-      throw err;
-    }
+    return retryOnFreshWorkspace(
+      () => scaffoldWorkspace(opts),
+      (ws) => Skipper.launch(opts, ws),
+      (ws) => {
+        ws.registryServer?.close();
+        workspaces.remove(ws.base);
+      },
+      MAX_LAUNCH_ATTEMPTS,
+      isStolenPort,
+    );
   }
 
   /** launch runs the port-dependent phases of start() once: reserve ports,

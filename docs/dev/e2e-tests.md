@@ -203,7 +203,10 @@ binary):
   deterministically (skipper exits with its bind error — `waitFor` fails fast
   on a dead process instead of spinning out its deadline — or a stub's listen
   rejects with `EADDRINUSE`) and relaunches on fresh ports, up to three
-  attempts; any other failure propagates immediately. `relaunch()` deliberately
+  attempts; any other failure propagates immediately. Each attempt also gets a
+  freshly scaffolded workspace (`retryOnFreshWorkspace`): skipper runs its
+  startup deploy before it binds the port, so a reused state dir would make
+  the relaunched instance skip every stack as unchanged. `relaunch()` deliberately
   keeps its ports (the browser's origin must survive), so it carries the
   residual risk.
 - **Fonts settle before interaction.** The `page` fixture awaits
@@ -212,7 +215,7 @@ binary):
   is the page's one late reflow, and a swap between Playwright computing a click
   point and dispatching it moves the target out from under the click (the UC11
   root cause — the queue empty-note wraps to a second line when JetBrains Mono
-  lands). Interacting with the autosync drawer additionally waits for its
+  lands). Interacting with the autosync or Hosts drawer additionally waits for its
   `data-settled` attribute (the open transition's end, see `UI_SPEC.md`).
 - **Lint** (`make e2e-ui-lint`): type-aware ESLint over the suite. The rule that
   earns it is `no-floating-promises` — a forgotten `await` on an assertion makes
