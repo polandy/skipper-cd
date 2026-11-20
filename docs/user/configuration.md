@@ -267,13 +267,13 @@ stacks:                     # optional — only the exceptions
 
 ## Health-check-gated rollback
 
-Without any gate, a rollback only happens when `docker compose up` itself fails. A deploy whose containers *start* but stay broken (crash-loop, 500s) would be marked successful. A `healthcheck:` in the compose file closes that gap automatically (see Stage 1 below); a `deploy_health_check` section in this config adds an HTTP probe on top, or tunes the timeout:
+Without any gate, a rollback only happens when `docker compose up` itself fails. A deploy whose containers *start* but stay broken (crash-loop, 500s) would be marked successful. A `healthcheck:` in the compose file closes that gap automatically (see Stage 1 below); a `deploy_health_check` section in this config adds an HTTP probe on top, or overrides the wait budget:
 
 ```yaml
 stacks:
   - name: whoami
     deploy_health_check:
-      timeout_seconds: 60                # optional, default: 60
+      timeout_seconds: 120               # optional, default: derived from the compose healthchecks
       url: http://localhost:8080/health  # optional HTTP probe
 ```
 
@@ -294,12 +294,20 @@ services:
       retries: 5
 ```
 
-As soon as any service in the stack's compose file declares a `healthcheck:`, skipper-cd applies this gate **automatically** — no `deploy_health_check` section needed in this config at all. `docker compose up` runs with `--wait --wait-timeout 60` (the default), so the `up` fails and the deploy rolls back unless every service reaches `running` (services without a healthcheck) or `healthy` (services with one). Requires Docker Compose v2.17+.
+As soon as any service in the stack's compose file declares a `healthcheck:`, skipper-cd applies this gate **automatically** — no `deploy_health_check` section needed in this config at all. After `docker compose up`, skipper-cd polls the containers until every service is `running` (services without a healthcheck) or `healthy` (services with one). A container that exits with code 0 counts as a finished one-shot, not a failure.
 
-Add an explicit `deploy_health_check` section only to change the default 60s timeout, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `deploy_health_check` itself.
+The wait ends in one of three ways:
 
-!!! warning "A healthcheck's first probe waits for `interval` — and can lose the race against the gate"
-    Docker runs a service's **first** health probe only after `interval` has elapsed. A healthcheck with `interval: 60s` and no `start_period`/`start_interval` therefore cannot prove health before the default 60-second wait budget expires — the first probe and the timeout fire in the same instant, and whether the deploy succeeds or rolls back is a coin flip, even though the container itself came up fine within seconds. The telltale symptom: a deploy is marked `rolled_back` with `docker compose up: exit status 1` (often as `dependency <service> failed to start` from a dependent container), and the **identical commit deploys cleanly on the next retry**. Before suspecting the new image, check the healthcheck timings. The fix is fast probing during startup only, which keeps the slow steady-state cadence:
+- **Ready** — the deploy succeeds.
+- **Decided failure** — a container turns `unhealthy` or exits with a non-zero code. The deploy rolls back (see below).
+- **Still starting when the budget runs out** — the deploy is marked `failed` and [held](#held-changes), but **not** rolled back: the new version may only be slow. The error says `still starting … not rolled back` and names the retry endpoint, `POST /api/stacks/<stack>/retry`, to release the hold once the stack is healthy.
+
+**The wait budget** is derived from the slowest healthcheck in the compose file: `start_period + (retries + 1) × interval + timeout`, using Docker's defaults for omitted fields (`interval: 30s`, `timeout: 30s`, `retries: 3`, no `start_period`), and never less than 60 seconds. An explicit `timeout_seconds` replaces the derived budget.
+
+Add an explicit `deploy_health_check` section only to set a fixed budget, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `deploy_health_check` itself.
+
+!!! tip "Keep startup fast to probe"
+    Docker runs a service's **first** health probe only after `interval` has elapsed, so a healthcheck with `interval: 60s` makes every deploy wait at least a minute. Fast probes while starting keep the slow steady-state cadence:
 
     ```yaml
     healthcheck:
@@ -309,11 +317,9 @@ Add an explicit `deploy_health_check` section only to change the default 60s tim
       start_interval: 5s   # fast probes while starting (Docker Engine 25+ / Compose 2.20+)
     ```
 
-    Alternatively, raise `timeout_seconds` comfortably above the largest `interval` in the stack — but that slows down every legitimate rollback by the same margin.
+**On-demand stacks are never auto-gated.** A stack with [`on_demand_containers`](#stack-fields) is stopped right after `up`, so skipper skips the automatic gate for it even when its compose file declares a `healthcheck:` — waiting would cold-start the on-demand container only for skipper to stop it again. No config is needed; set an explicit `deploy_health_check` only if you deliberately want a gate on such a stack.
 
-**On-demand stacks are never auto-gated.** A stack with [`on_demand_containers`](#stack-fields) is stopped right after `up`, so skipper skips the automatic gate for it even when its compose file declares a `healthcheck:` — `--wait` would cold-start the on-demand container only for skipper to stop it again, and a slow warm-up would time out into a spurious rollback. No config is needed; set an explicit `deploy_health_check` only if you deliberately want a gate on such a stack.
-
-**Opting out on any other stack.** To keep a compose `healthcheck:` (for external monitoring, `docker ps` status, or an orchestrator) *without* letting skipper `--wait` on it and roll back, set the scalar `deploy_health_check: false`. It overrides the automatic gate so the stack deploys with a plain `up`. The scalar `deploy_health_check: true` is the inverse — gate on at the defaults, equivalent to an empty `deploy_health_check: {}` mapping.
+**Opting out on any other stack.** To keep a compose `healthcheck:` (for external monitoring, `docker ps` status, or an orchestrator) *without* letting skipper wait on it and roll back, set the scalar `deploy_health_check: false`. It overrides the automatic gate so the stack deploys with a plain `up`. The scalar `deploy_health_check: true` is the inverse — gate on at the defaults, equivalent to an empty `deploy_health_check: {}` mapping.
 
 ```yaml
 stacks:
@@ -325,19 +331,19 @@ stacks:
 
 Only when `url` is set: after a successful `up`, skipper-cd GETs the URL every 2 seconds until it answers with a 2xx status; anything else for `timeout_seconds` fails the deploy. The probe runs **from the skipper-cd host**, so the URL must be reachable from there (a published port on `localhost`, or a routable address via a reverse proxy). Use it when the stack has no internal `healthcheck:` but does expose a reachable endpoint, or as an extra end-to-end check on top of stage 1.
 
-A failure in either stage triggers the regular rollback: the previous compose file is restored from the commit the stack last ran, the deploy is marked `rolled_back` (events, metrics and [notifications](#notifications) all see that status), and the change is [held](#held-changes) until a new push or a retry.
+A decided failure in either stage triggers the regular rollback: the previous compose file is restored from the commit the stack last ran, the deploy is marked `rolled_back` (events, metrics and [notifications](#notifications) all see that status), and the change is [held](#held-changes) until a new push or a retry.
 
-The rollback itself is verified through the same gate: its `up` also runs with `--wait`, and the HTTP probe (if configured) must pass again. So `rolled_back` guarantees the old version is actually healthy again. If the restored version *also* fails the gate — typically an environment problem such as a dead database or a broken secret — the deploy is marked **`rolled_back_unhealthy`** instead: the stack sits on the old compose file but needs attention *now*, because no version of it is verified healthy.
+The rollback itself is verified through the same gate: skipper waits for the restored containers too, and the HTTP probe (if configured) must pass again. So `rolled_back` guarantees the old version is actually healthy again.
+
+If the restored version is *also* unhealthy, the failure was probably not the new version's fault (a dead database, a broken secret, an overloaded host). skipper-cd then **rolls forward once**: it applies the new version again and runs the full gate. If that passes, the deploy succeeds. If it fails too, the deploy is marked **`rolled_back_unhealthy`** and held: no version of the stack is verified healthy, so it needs attention *now*. There is no roll-forward when the restored version was merely still starting, or when rollback is [disabled](#disabling-rollback).
 
 !!! warning "Rollback restores the compose file, not your data"
     A rollback only reverts the `docker-compose.yml` (image tag and config) to the last deployed commit — it does **not** roll back volumes, databases, or anything on disk. If the failed version already ran a **schema migration** or otherwise changed persistent data, the restored old image now runs against forward-migrated data. The health gate may still pass, so the stack looks `rolled_back` and healthy while being subtly broken — and many migrations can't be undone anyway. For stateful stacks, back up first with a [`pre_deploy` hook](#deploy-hooks) (e.g. `pg_dump`), and consider [disabling rollback](#disabling-rollback) so a failure fails loud instead of reverting over migrated data. See also [zero-downtime rollout](#zero-downtime-rollout) caveats for stacks that migrate on start.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `timeout_seconds` | int | no | `60` | Wait budget, used both as `--wait-timeout` for compose and as the HTTP probe deadline. Keep it below `command_timeout_seconds`: the gated `up` runs under that ceiling and is killed before a longer wait ends (a startup warning flags it). |
+| `timeout_seconds` | int | no | derived | Wait budget for the containers and deadline of the HTTP probe. Omitted or `0`: derived from the compose healthchecks as described above (at least 60). |
 | `url` | string | no | — | HTTP(S) URL probed **from the host** after a successful `up`; must answer 2xx within `timeout_seconds`. Omit to rely on the container's compose `healthcheck:` alone (the exposure-free path). |
-
-> **Note:** with `--wait`, a service that exits — even successfully — counts as a failure. Stacks with `on_demand_containers` are excluded from the automatic gate for this reason; for a deliberate one-shot container on a non-on-demand stack, set `deploy_health_check: false` to opt out (even if the compose file has a `healthcheck:`), or model the one-shot as a [`service_completed_successfully`](https://docs.docker.com/compose/how-tos/startup-order/) dependency.
 
 ## Disabling rollback
 
@@ -411,7 +417,7 @@ stacks:
   - name: dashboard
     rollout:
       services: [web]              # only these roll; every other service recreates in place
-      health_timeout_seconds: 60   # optional; default = deploy_health_check timeout, else 60
+      health_timeout_seconds: 60   # optional; default = the health gate's budget, else 60
       drain_seconds: 5             # optional; hold the old container this long after the new one is healthy
 ```
 

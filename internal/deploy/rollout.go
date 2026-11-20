@@ -47,9 +47,15 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 	// Non-rolled services first, so a rolled service's dependencies are up before
 	// its canary starts.
 	if nonRolled := cf.servicesExcept(rolled); len(nonRolled) > 0 {
-		upArgs := append(append(withHealthGate(run.stack.DeployHealthCheck, "up", "-d", "--remove-orphans"), "--"), nonRolled...)
+		upArgs := append([]string{"up", "-d", "--remove-orphans", "--"}, nonRolled...)
 		if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
+		}
+		if err := d.awaitReady(ctx, run, nonRolled...); err != nil {
+			if errors.Is(err, errStillStarting) {
+				return stillStartingError(run, err)
+			}
+			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
 		}
 	}
 

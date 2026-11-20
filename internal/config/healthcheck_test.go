@@ -21,8 +21,8 @@ stacks:
 	if hc == nil {
 		t.Fatal("expected deploy_health_check to be set")
 	}
-	if hc.TimeoutSeconds != 60 {
-		t.Errorf("expected default timeout_seconds 60, got %d", hc.TimeoutSeconds)
+	if hc.TimeoutSeconds != 0 {
+		t.Errorf("an omitted timeout_seconds must stay 0 (derived at deploy time), got %d", hc.TimeoutSeconds)
 	}
 	if hc.URL != "" {
 		t.Errorf("expected empty default url, got %q", hc.URL)
@@ -100,8 +100,8 @@ stacks:
 	if hc.IsDisabled() {
 		t.Errorf("expected deploy_health_check: true to be enabled, got disabled")
 	}
-	if hc.TimeoutSeconds != 60 {
-		t.Errorf("expected default timeout_seconds 60 for the enabled scalar, got %d", hc.TimeoutSeconds)
+	if hc.TimeoutSeconds != 0 {
+		t.Errorf("the enabled scalar must leave timeout_seconds 0 (derived at deploy time), got %d", hc.TimeoutSeconds)
 	}
 }
 

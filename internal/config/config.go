@@ -462,9 +462,6 @@ func Load(path string) (*Config, error) {
 		if cfg.Stacks[i].ProjectDirectory == "" && cfg.ProjectDirectoryBase != "" {
 			cfg.Stacks[i].ProjectDirectory = filepath.Join(cfg.ProjectDirectoryBase, cfg.Stacks[i].Name)
 		}
-		if hc := cfg.Stacks[i].DeployHealthCheck; hc != nil && !hc.IsDisabled() && hc.TimeoutSeconds == 0 {
-			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
-		}
 	}
 
 	if err := validateConfig(cfg); err != nil {

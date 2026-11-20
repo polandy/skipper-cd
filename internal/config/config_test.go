@@ -1077,45 +1077,21 @@ stacks:
 	}
 }
 
-func TestLoad_WarnsWhenHealthCheckTimeoutReachesCommandTimeout(t *testing.T) {
-	tests := []struct {
-		name     string
-		command  string
-		gate     string
-		wantWarn bool
-	}{
-		{"timeout above command timeout", "command_timeout_seconds: 300", "deploy_health_check:\n      timeout_seconds: 600", true},
-		{"timeout equal to command timeout", "command_timeout_seconds: 120", "deploy_health_check:\n      timeout_seconds: 120", true},
-		{"defaulted timeout above command timeout", "command_timeout_seconds: 30", "deploy_health_check: true", true},
-		{"timeout below command timeout", "command_timeout_seconds: 300", "deploy_health_check:\n      timeout_seconds: 120", false},
-		{"disabled gate", "command_timeout_seconds: 30", "deploy_health_check: false", false},
-		{"no gate", "command_timeout_seconds: 30", "", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			content := `
+// The gate's wait runs in skipper, outside any one command, so a long gate
+// timeout is no longer capped by command_timeout_seconds (ADR-0072).
+func TestLoad_NoWarningForHealthCheckTimeoutAboveCommandTimeout(t *testing.T) {
+	content := `
 repo_url: ssh://git@gitea.example.com/user/nixos.git
 stacks_base_dir: modules
 webhook_secret: secret123
-` + tt.command + `
+command_timeout_seconds: 300
 stacks:
   - name: gitea
-    ` + tt.gate + `
+    deploy_health_check:
+      timeout_seconds: 1500
 `
-			cfg := loadFromString(t, content)
-			var got []string
-			for _, w := range cfg.Warnings {
-				if strings.Contains(w, "deploy_health_check.timeout_seconds") {
-					got = append(got, w)
-				}
-			}
-			if tt.wantWarn && (len(got) != 1 || !strings.Contains(got[0], `stack "gitea"`)) {
-				t.Fatalf("expected one deploy_health_check timeout warning for gitea, got %v", cfg.Warnings)
-			}
-			if !tt.wantWarn && len(cfg.Warnings) != 0 {
-				t.Fatalf("expected no warnings, got %v", cfg.Warnings)
-			}
-		})
+	if cfg := loadFromString(t, content); len(cfg.Warnings) != 0 {
+		t.Fatalf("expected no warnings, got %v", cfg.Warnings)
 	}
 }
 

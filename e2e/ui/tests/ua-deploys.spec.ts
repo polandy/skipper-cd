@@ -109,14 +109,15 @@ test.describe('UA2: status badges', () => {
 
   test.describe('rolled_back_unhealthy', () => {
     // Startup up#1 succeeds (sets LastDeployedCommit); the health-gated deploy
-    // up#2 fails and the rollback up#3 — rerunning the same gate — fails too
-    // → rolled_back_unhealthy. The badge stacks its label on two lines
-    // ("rolled back" + "unhealthy" spans), hence the regex.
+    // up#2 fails, the rollback up#3 — rerunning the same gate — fails too, and
+    // so does the one roll-forward up#4 → rolled_back_unhealthy. The badge
+    // stacks its label on two lines ("rolled back" + "unhealthy" spans), hence
+    // the regex.
     test.use({
       startOptions: {
         stacks: ['web'],
         healthCheck: ['web'],
-        stubEnv: { STUB_DOCKER_FAIL_NTH_UP: '2,3' },
+        stubEnv: { STUB_DOCKER_FAIL_NTH_UP: '2,3,4' },
       },
     });
 

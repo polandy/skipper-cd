@@ -143,8 +143,8 @@ type Config struct {
 	ProbeInterval time.Duration
 
 	// RolloutPollInterval is the pause between `docker compose ps` polls while
-	// waiting for a rollout canary to turn healthy (ADR-0040); 0 uses the
-	// 2-second default.
+	// waiting for a rollout canary (ADR-0040) or a gated deploy (ADR-0072) to
+	// turn ready; 0 uses the 2-second default.
 	RolloutPollInterval time.Duration
 
 	// RolloutTimeoutOverride forces the canary health-wait deadline; 0 derives

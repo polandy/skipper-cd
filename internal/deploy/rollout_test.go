@@ -448,8 +448,13 @@ func TestDeployStack_RolloutTakesCutoverPathAndSucceeds(t *testing.T) {
 	writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), rolloutCompose)
 
 	runner := &recordingRunner{}
-	runner.outputFn = func(call int, _ []string) ([]byte, error) {
-		if call == 0 {
+	canaryReads := 0
+	runner.outputFn = func(_ int, args []string) ([]byte, error) {
+		if isReadinessRead(args) {
+			return psArray(cl("db1", "db", ""), cl("new1", "web", "healthy")), nil
+		}
+		canaryReads++
+		if canaryReads == 1 {
 			return psArray(cl("old1", "web", "healthy")), nil
 		}
 		return psArray(cl("old1", "web", "healthy"), cl("new1", "web", "healthy")), nil

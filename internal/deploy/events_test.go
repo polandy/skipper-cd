@@ -763,7 +763,8 @@ func TestDeployStack_SuccessEventMarksTheHealthGate(t *testing.T) {
 			writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), tc.compose)
 
 			var successEvt *events.DeployEvent
-			d := New(Config{Runner: &recordingRunner{}, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
+			runner := &recordingRunner{}
+			d := New(Config{Runner: runner, Outputter: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
 				if e.Status == events.StatusSuccess {
 					successEvt = &e
 				}

@@ -60,7 +60,7 @@ Exact position in the per-stack deploy sequence (from `deployStackIfChanged`):
 pre_deploy hooks
   → pull (if images changed)
   → build (if Dockerfiles)
-  → up -d [--wait --wait-timeout]        ── health gate 1
+  → up -d + readiness wait (ADR-0072)   ── health gate 1
   → HTTP probe (if deploy_health_check.url)     ── health gate 2
   → post_deploy hooks
   → stop on-demand containers

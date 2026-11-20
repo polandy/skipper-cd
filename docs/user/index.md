@@ -33,7 +33,7 @@ New here? The **[Getting Started walkthrough](getting-started.md)** covers the w
 ## Features
 
 - **Deploys only what changed** — SHA-256 hashes of each stack's compose file, env files, watched dirs, and `build:` Dockerfiles are persisted; unchanged stacks are skipped.
-- **Automatic rollback** — if `docker compose up` fails, or an optional post-deploy health check (compose `--wait` and/or an HTTP probe) doesn't pass, skipper-cd restores the previous compose file from the last deployed Git commit ([details](configuration.md#health-check-gated-rollback)).
+- **Automatic rollback** — if `docker compose up` fails, or the containers turn unhealthy after the deploy (compose healthcheck and/or an HTTP probe), skipper-cd restores the previous compose file from the last deployed Git commit ([details](configuration.md#health-check-gated-rollback)).
 - **NixOS rebuilds** — optionally run `nixos-rebuild switch` before stack deploys when `.nix` files change, so one webhook updates both the host and its containers.
 - **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([details](autosync.md)).
 - **Periodic reconcile** — the convergence baseline: re-syncs and redeploys on a timer (default every 5 minutes) so each host catches up to the repo with or without a webhook ([details](configuration.md#periodic-reconcile)).

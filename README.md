@@ -33,7 +33,7 @@ New here? The **[Getting Started walkthrough](https://polandy.github.io/skipper-
 ## Features
 
 - **Deploys only what changed** — SHA-256 hashes of each stack's compose file, env files, watched dirs, and `build:` Dockerfiles are persisted; unchanged stacks are skipped.
-- **Automatic rollback** — if `docker compose up` fails, or an optional post-deploy health check (compose `--wait` and/or an HTTP probe) doesn't pass, skipper-cd restores the previous compose file from the last deployed Git commit ([docs](docs/user/configuration.md#health-check-gated-rollback)).
+- **Automatic rollback** — if `docker compose up` fails, or the containers turn unhealthy after the deploy (compose healthcheck and/or an HTTP probe), skipper-cd restores the previous compose file from the last deployed Git commit ([docs](docs/user/configuration.md#health-check-gated-rollback)).
 - **NixOS rebuilds** — optionally run `nixos-rebuild switch` before stack deploys when `.nix` files change, so one webhook updates both the host and its containers.
 - **Autosync & queue** — pause deploys globally or per stack; changes that arrive while paused are queued and applied when you resume ([docs](docs/user/autosync.md)).
 - **Web UI** — a single embedded page with live deploy status, live container logs, service icons, an event log, and installable as a PWA.

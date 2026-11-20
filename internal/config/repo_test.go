@@ -185,8 +185,8 @@ func TestLoadRepoStacks_AppliesOverrides(t *testing.T) {
 	if s.Icon != "nginx" || s.SelfHeal == nil || !*s.SelfHeal || len(s.OnDemandContainers) != 1 {
 		t.Errorf("overrides not applied: %+v", s)
 	}
-	if s.DeployHealthCheck == nil || s.DeployHealthCheck.TimeoutSeconds != 60 {
-		t.Errorf("deploy_health_check timeout not defaulted: %+v", s.DeployHealthCheck)
+	if s.DeployHealthCheck == nil || s.DeployHealthCheck.TimeoutSeconds != 0 {
+		t.Errorf("deploy_health_check: omitted timeout must stay 0 (derived at deploy time): %+v", s.DeployHealthCheck)
 	}
 }
 
@@ -447,6 +447,14 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	if withRollout := hashFor(t, &Stack{Rollout: &Rollout{Services: []string{"app"}}}); withRollout != base {
 		t.Error("ConfigHash must ignore rollout")
 	}
+	// An omitted timeout_seconds hashes as the 60 Load used to fill in, so the
+	// upgrade that stopped filling it in redeploys nothing (ADR-0072).
+	if omitted, legacy := hashFor(t, &Stack{DeployHealthCheck: &HealthCheck{}}), hashFor(t, &Stack{DeployHealthCheck: &HealthCheck{TimeoutSeconds: 60}}); omitted != legacy {
+		t.Error("ConfigHash must hash an omitted timeout_seconds like the former default 60")
+	}
+	if withTimeout := hashFor(t, &Stack{DeployHealthCheck: &HealthCheck{TimeoutSeconds: 600}}); withTimeout == hashFor(t, &Stack{DeployHealthCheck: &HealthCheck{}}) {
+		t.Error("ConfigHash must still change with an explicit timeout_seconds")
+	}
 	// autosync is a runtime toggle (ADR-0043) → never hashed.
 	if withAutosync := hashFor(t, &Stack{Autosync: boolPtr(false)}); withAutosync != base {
 		t.Error("ConfigHash must ignore autosync")
@@ -461,7 +469,7 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	if withUpdateCheck := hashFor(t, &Stack{UpdateCheck: boolPtr(false)}); withUpdateCheck != base {
 		t.Error("ConfigHash must ignore update_check")
 	}
-	// deploy_health_check shapes the deploy (--wait gate) → hashed. An explicit
+	// deploy_health_check shapes the deploy (readiness gate) → hashed. An explicit
 	// off-switch (ADR-0049) must hash distinctly from absence, so toggling it
 	// deploys the stack once under the new gate policy.
 	if withDisabled := hashFor(t, &Stack{DeployHealthCheck: &HealthCheck{Enabled: boolPtr(false)}}); withDisabled == base {

@@ -227,7 +227,7 @@ real backend):
 | `deploying` | `STUB_DOCKER_HOLD_UP` set → row stays `deploying` until released |
 | `failed` | first deploy of a stack, `STUB_DOCKER_FAIL_ON=up` (no prior commit → rollback unavailable → `failed`) |
 | `rolled_back` | one successful deploy first (sets `LastDeployedCommit`), then a change with `STUB_DOCKER_FAIL_NTH_UP=1` (initial `up` fails, rollback `up` succeeds) |
-| `rolled_back_unhealthy` | like `rolled_back`, but the stack has a `deploy_health_check:` section and `STUB_DOCKER_FAIL_NTH_UP` lists the deploy **and** rollback `up` (e.g. `2,3` counting the startup deploy) — the health-gated rollback `up` fails too |
+| `rolled_back_unhealthy` | like `rolled_back`, but the stack has a `deploy_health_check:` section and `STUB_DOCKER_FAIL_NTH_UP` lists the deploy, rollback **and** roll-forward `up` (e.g. `2,3,4` counting the startup deploy) — the health-gated rollback `up` fails, and so does the one roll-forward |
 | `queued` | pause autosync (config-as-code or `POST /api/autosync`), then commit + webhook |
 
 **Selector prerequisite (`data-testid`).** The UI has stable `id`s but no
@@ -304,18 +304,20 @@ UI suite reuses.
   `skipper_stack_held`; two retries are the second and third failures, after
   which the gauge is `1` and a webhook again builds nothing; a push that fixes
   the Dockerfile deploys (`success`) and the gauge is deleted.
-- **P16 — A failing health probe rolls back unhealthy** (ADR-0022): a stack with
-  `deploy_health_check: {url, timeout_seconds: 1}` deploys while a local probe
-  server answers 2xx; once it answers `503`, a pushed change fails the gate, the
-  rollback reruns it and fails too → SSE `rolled_back_unhealthy` (never
-  `rolled_back`), with exactly three `up -d` (startup, deploy, rollback).
-- **P17 — The deploy gate is inferred from a compose `healthcheck:`** (ADR-0046):
-  with no `deploy_health_check`, a pushed compose that gains a `healthcheck:`
-  deploys with `up --wait` (the startup `up` has none), while a sibling stack
-  without one never gets `--wait`.
+- **P16 — A failing health probe rolls back unhealthy** (ADR-0022, ADR-0072): a
+  stack with `deploy_health_check: {url, timeout_seconds: 1}` deploys while a
+  local probe server answers 2xx; once it answers `503`, a pushed change fails
+  the gate, the rollback reruns it and fails too, and so does the one
+  roll-forward → SSE `rolled_back_unhealthy` (never `rolled_back`), with exactly
+  four `up -d` (startup, deploy, rollback, roll-forward).
+- **P17 — The deploy gate is inferred from a compose `healthcheck:`** (ADR-0046,
+  ADR-0072): with no `deploy_health_check`, a pushed compose that gains a
+  `healthcheck:` is followed by skipper's own readiness read (`compose ps
+  --all`; the startup deploy has none), while a sibling stack without one is
+  never read; no `up` carries compose's `--wait`.
 - **P18 — `deploy_health_check: false` suppresses the inferred gate** (ADR-0049):
   with that key on a stack, a pushed compose that gains a `healthcheck:` still
-  deploys with a plain `up -d` (no `--wait`), unlike P17.
+  deploys with a plain `up -d` and no readiness read, unlike P17.
 - **P19 — `rollback: false` leaves the failure held** (ADR-0050,
   `STUB_DOCKER_FAIL_NTH_UP=2`): with that key on a stack, a pushed change whose
   `up` fails emits SSE `failed` (never `rolled_back`), runs exactly two `up -d`

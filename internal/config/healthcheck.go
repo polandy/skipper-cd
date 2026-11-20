@@ -11,10 +11,10 @@ import (
 // decoding that lets `deploy_health_check: false` disable it, and its validation.
 
 // HealthCheck configures the optional post-deploy health gate of a stack.
-// When present, `docker compose up` runs with --wait so it fails when the
-// services' compose healthchecks do not turn healthy in time, and an optional
-// HTTP probe additionally verifies the stack from the outside. Either failure
-// triggers the regular rollback path (ADR-0004, ADR-0022).
+// When present, skipper waits after `docker compose up` until the services'
+// compose healthchecks decide: unhealthy or a non-zero exit rolls the deploy
+// back, a wait that runs out still starting holds it (ADR-0072). An optional
+// HTTP probe additionally verifies the stack from the outside (ADR-0022).
 //
 // In YAML deploy_health_check accepts either a mapping (the fields below) or a
 // boolean scalar (ADR-0049): `false` explicitly disables the gate — overriding
@@ -29,9 +29,9 @@ type HealthCheck struct {
 	// toggling the opt-out redeploys the stack. See IsDisabled.
 	Enabled *bool `yaml:"enabled,omitempty"`
 
-	// TimeoutSeconds bounds the wait: it is passed as --wait-timeout to
-	// docker compose up and is also the deadline of the HTTP probe.
-	// Defaults to 60.
+	// TimeoutSeconds bounds skipper's wait for the containers to turn ready
+	// and is also the deadline of the HTTP probe. 0 (omitted) derives it from
+	// the compose healthchecks' own timing (internal/deploy, ADR-0072).
 	TimeoutSeconds int `yaml:"timeout_seconds"`
 
 	// URL, when set, is HTTP-GET-probed after a successful up until it
@@ -70,14 +70,16 @@ func (hc *HealthCheck) IsDisabled() bool {
 	return hc != nil && hc.Enabled != nil && !*hc.Enabled
 }
 
-// DefaultHealthCheckTimeoutSeconds is applied when a deploy_health_check
-// section is present without an explicit timeout_seconds, and by
-// internal/deploy's automatic gate for a stack that declares no
-// deploy_health_check but whose compose file has one (ADR-0046).
-const DefaultHealthCheckTimeoutSeconds = 60
+// MinHealthCheckTimeoutSeconds is the floor of a gate timeout derived from the
+// compose healthchecks, and the timeout of a gate with no healthcheck to
+// derive from (ADR-0072).
+const MinHealthCheckTimeoutSeconds = 60
+
+// legacyDefaultHealthCheckTimeoutSeconds is what Load filled into an omitted
+// timeout_seconds before the timeout was derived; ConfigHash keeps hashing it.
+const legacyDefaultHealthCheckTimeoutSeconds = 60
 
 // validateHealthCheck checks a stack's optional deploy_health_check section.
-// TimeoutSeconds has already been defaulted in Load.
 func validateHealthCheck(hc *HealthCheck) error {
 	if hc == nil {
 		return nil
@@ -91,14 +93,4 @@ func validateHealthCheck(hc *HealthCheck) error {
 		}
 	}
 	return nil
-}
-
-// timeoutWarning flags a gate whose wait reaches commandTimeout: the gated
-// `up --wait` runs under command_timeout_seconds, so it is killed before the
-// wait can end and fails as a timeout instead of an unhealthy verdict.
-func (hc *HealthCheck) timeoutWarning(stack string, commandTimeout int) string {
-	if hc == nil || hc.IsDisabled() || hc.TimeoutSeconds < commandTimeout {
-		return ""
-	}
-	return fmt.Sprintf("stack %q: deploy_health_check.timeout_seconds (%d) is not below command_timeout_seconds (%d) — the gated up is killed before its wait ends; raise command_timeout_seconds above the gate timeout plus the time the up needs to start the containers, or lower deploy_health_check.timeout_seconds", stack, hc.TimeoutSeconds, commandTimeout)
 }

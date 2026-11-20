@@ -228,8 +228,9 @@ export interface StartOptions {
    *  child-process output reaches the log ring). */
   stubEnv?: Record<string, string>;
   /** Stacks that get a `deploy_health_check:` section (timeout_seconds: 1, no url):
-   *  their `up`s run with --wait and a failing rollback `up` drives
-   *  `rolled_back_unhealthy`. The stub ignores the flags, so no real waiting. */
+   *  skipper waits for their containers after each `up` (the stub lists none,
+   *  so no real waiting), and a failing rollback `up` drives
+   *  `rolled_back_unhealthy` once the roll-forward `up` fails too. */
   healthCheck?: string[];
   /**
    * How ready the instance must be before start() resolves:

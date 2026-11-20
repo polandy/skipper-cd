@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/polandy/skipper-cd/internal/regularfile"
 )
@@ -116,5 +117,51 @@ func TestParse_RejectsFileOverLimit(t *testing.T) {
 
 	if _, err := Parse(path); !errors.Is(err, regularfile.ErrTooLarge) {
 		t.Fatalf("err = %v, want ErrTooLarge", err)
+	}
+}
+
+func TestReadinessBudget_DerivesFromHealthcheckTiming(t *testing.T) {
+	ten := 10
+	tests := []struct {
+		name string
+		hc   *Healthcheck
+		want time.Duration
+	}{
+		{"nil healthcheck", nil, 0},
+		{"docker defaults", &Healthcheck{}, 30*time.Second + 4*30*time.Second},
+		{"nextcloud timing", &Healthcheck{StartPeriod: "60s", Interval: "2m", Timeout: "30s", Retries: &ten}, 60*time.Second + 11*2*time.Minute + 30*time.Second},
+		{"unparsable falls back to the default", &Healthcheck{Interval: "soon", Timeout: "5s"}, 4*30*time.Second + 5*time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.hc.ReadinessBudget(); got != tt.want {
+				t.Errorf("ReadinessBudget() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFile_ReadinessBudget_TakesTheLongestService(t *testing.T) {
+	path := write(t, `services:
+  db:
+    image: postgres:17
+    healthcheck:
+      interval: 5s
+      timeout: 5s
+      retries: 2
+  app:
+    image: nextcloud:35
+    healthcheck:
+      start_period: 1m
+      interval: 10s
+  sidecar:
+    image: busybox
+`)
+	f, err := Parse(path)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got, want := f.ReadinessBudget(), time.Minute+4*10*time.Second+30*time.Second; got != want {
+		t.Errorf("ReadinessBudget() = %s, want %s", got, want)
 	}
 }
