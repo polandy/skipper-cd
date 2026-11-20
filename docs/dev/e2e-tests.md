@@ -375,6 +375,14 @@ UI suite reuses.
 - **P31 — Updates do not notify by default** (ADR-0054): same setup without
   `notify`; the gauge `skipper_updates_available` reaches 1 (the check ran) and
   nothing is POSTed.
+- **P32 — `allowed_hosts` guards the UI, not the core routes** (ADR-0067): with
+  `allowed_hosts: [skipper.example]`, `GET /` and `GET /api/audit` answer 200
+  for that Host and 421 for `evil.example`, while `/healthz` stays 200 and an
+  unsigned `POST /webhook` gets 401 (the handler, not the Host guard) under the
+  foreign Host.
+- **P33 — An unknown config key fails startup** (ADR-0043): a `skipper.yml`
+  with `no_such_setting: true` makes the binary exit 1 and name the key in its
+  output.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2309,6 +2317,8 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P29** | `TestE2E_NotifiesRollbackToGenericTarget` | `notifications_test.go` |
 | **P30** | `TestE2E_UpdateCheckNotifiesNewerTag` | `updatecheck_test.go` |
 | **P31** | `TestE2E_UpdateCheckDoesNotNotifyByDefault` | `updatecheck_test.go` |
+| **P32** | `TestE2E_AllowedHostsGuardUIButNotWebhookOrHealthz` | `config_test.go` |
+| **P33** | `TestE2E_UnknownConfigKeyFailsStartup` | `config_test.go` |
 
 ### 6.2 UI (Playwright)
 
