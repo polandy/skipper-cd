@@ -802,6 +802,7 @@ App.deploys = (function () {
       document.getElementById('deploy-filter-empty-q').textContent = q;
     }
     renderDeployStatusChips();
+    detail.relayout(); // a side panel follows its row out of view
     scheduleRefold();
   }
 
@@ -1033,56 +1034,62 @@ App.deploys = (function () {
 
     // Files panel — open/close as full-width sibling below the row.
     // When diffs are available, shows a diff panel; otherwise shows file list.
-    tbody.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
-    tbody.addEventListener('keydown', function (e) {
-      detail.rowKeydown(VIEW, e);
+    // The side column holds the open detail on a wide screen; it takes the
+    // list's delegation so the panel works the same in either place.
+    [tbody, document.getElementById('deploy-side')].forEach(function (host) {
+      host.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
+      host.addEventListener('keydown', function (e) {
+        detail.rowKeydown(VIEW, e);
+      });
+      host.addEventListener('click', onListClick);
     });
+  }
 
-    tbody.addEventListener('click', function (e) {
-      const fold = e.target.closest('.fold-row');
-      if (fold) {
-        toggleFold(fold);
-        return;
-      }
-      if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
-      // Host chip: quick-filter the merged view to this row's host (toggle). Before
-      // any panel logic so a tap on the chip never also opens the row's diff panel.
-      const hostChip = e.target.closest('.host-mono');
-      if (hostChip) {
-        const r = hostChip.closest('[data-host]');
-        if (r) toggleHostFilterTo(r.dataset.host);
-        return;
-      }
+  // onListClick is the click delegation of the deploy list and its side column.
+  function onListClick(e) {
+    const fold = e.target.closest('.fold-row');
+    if (fold) {
+      toggleFold(fold);
+      return;
+    }
+    if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
+    // Host chip: quick-filter the merged view to this row's host (toggle). Before
+    // any panel logic so a tap on the chip never also opens the row's diff panel.
+    const hostChip = e.target.closest('.host-mono');
+    if (hostChip) {
+      const r = hostChip.closest('[data-host]');
+      if (r) toggleHostFilterTo(r.dataset.host);
+      return;
+    }
 
-      // Diff panel collapse/expand controls (per-file header, multi-commit pill).
-      if (App.logs.handleDiffToggle(e.target)) return;
+    // Diff panel collapse/expand controls (per-file header, multi-commit pill).
+    if (App.logs.handleDiffToggle(e.target)) return;
 
-      // The deploy detail's head and verdict actions; its tabs are its own.
-      const act = e.target.closest('.detail-panel [data-action]');
-      if (act) {
-        deployPanelAction(act);
-        return;
-      }
-      if (e.target.closest('.detail-panel')) return;
+    // The deploy detail's head and verdict actions; its tabs are its own.
+    const act = e.target.closest('.detail-panel [data-action]');
+    if (act) {
+      deployPanelAction(act);
+      return;
+    }
+    if (e.target.closest('.detail-panel')) return;
 
-      // Retry note: open the rollback this success supersedes. Before the files
-      // logic so a tap never also opens the row's own diff panel.
-      const retry = e.target.closest('.retry-note');
-      if (retry) {
-        openRollbackFor(retry.closest('.event-row'), retry.dataset.rollbackId);
-        return;
-      }
-      // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
-      const hookLog = e.target.closest('.hook-log-btn');
-      if (hookLog) {
-        App.clog.openHookLog(hookLog, hookLog.dataset.hookLog);
-        return;
-      }
+    // Retry note: open the rollback this success supersedes. Before the files
+    // logic so a tap never also opens the row's own diff panel.
+    const retry = e.target.closest('.retry-note');
+    if (retry) {
+      openRollbackFor(retry.closest('.event-row'), retry.dataset.rollbackId);
+      return;
+    }
+    // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
+    const hookLog = e.target.closest('.hook-log-btn');
+    if (hookLog) {
+      App.clog.openHookLog(hookLog, hookLog.dataset.hookLog);
+      return;
+    }
 
-      // Anywhere else on the row: the deploy detail.
-      const row = e.target.closest('.event-row');
-      if (row) detail.toggle(VIEW, row, DETAIL_TAB.deploy, { tab: null });
-    });
+    // Anywhere else on the row: the deploy detail.
+    const row = e.target.closest('.event-row');
+    if (row) detail.toggle(VIEW, row, DETAIL_TAB.deploy, { tab: null });
   }
   // deployPanelAction runs a deploy detail's head or verdict action.
   function deployPanelAction(act) {

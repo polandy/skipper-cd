@@ -302,6 +302,8 @@
       <span id="host-stale-text"></span>
     </div>
     <div class="attention-band" id="attention-band" data-testid="attention-band" hidden></div>
+    <div class="detail-layout">
+    <div class="detail-list">
     <div class="event-list-header sheet-head">
       <span>Stack</span>
       <span>Result</span>
@@ -310,6 +312,9 @@
     </div>
     <div class="event-list sheet-body" id="tbody"></div>
     <div class="filter-empty" id="deploy-filter-empty" data-testid="deploy-filter-empty">No stack matches &ldquo;<span id="deploy-filter-empty-q"></span>&rdquo;.</div>
+    </div>
+    <aside class="detail-side" id="deploy-side" data-testid="detail-side" data-detail-view="deploys" aria-label="Deploy detail"></aside>
+    </div>
   </div>
 
   <div class="disabled-stacks" id="disabled-stacks" data-testid="disabled-stacks" title="Parked with disabled: true in the repo skipper.yaml — not deployed, not health-checked.">
@@ -325,6 +330,8 @@
       <button class="stack-filter-clear" id="roster-filter-clear" data-testid="roster-filter-clear" type="button" aria-label="Clear filter">&times;</button>
     </div>
     <div class="status-filter" id="roster-update-filter" data-testid="roster-update-filter" role="group" aria-label="Filter stacks by available update"></div>
+    <div class="detail-layout">
+    <div class="detail-list">
     <div class="roster-list-header sheet-head">
       <span>Stack</span>
       <span>Health</span>
@@ -334,6 +341,9 @@
     <div class="roster-list sheet-body" id="roster-list" data-testid="roster-list"></div>
     <div class="filter-empty" id="roster-filter-empty" data-testid="roster-filter-empty">No stack matches &ldquo;<span id="roster-filter-empty-q"></span>&rdquo;.</div>
     <div class="roster-empty" id="roster-empty" data-testid="roster-empty">No stacks to show.</div>
+    </div>
+    <aside class="detail-side" id="roster-side" data-testid="detail-side" data-detail-view="stacks" aria-label="Stack detail"></aside>
+    </div>
   </div>
 
   <div class="orphans" id="orphans" data-testid="orphans">

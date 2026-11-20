@@ -113,13 +113,13 @@ App.hosts = (function () {
   // into the local rows by timestamp. Local rows and their panels are never
   // touched; an open peer detail re-opens on its rebuilt row.
   function renderPeerRows() {
-    const peerOpen = !!tbody.querySelector('.detail-panel.peer-panel');
+    const openRow = App.detail.openRow(DETAIL_VIEW.deploys);
+    const peerOpen = !!openRow && openRow.classList.contains('peer-row');
     tbody.querySelectorAll('.peer-row, .detail-panel.peer-panel').forEach(function (r) {
       r.remove();
     });
-    if (!S.peersSnap) return;
     const items = [];
-    (S.peersSnap.peers || []).forEach(function (p) {
+    ((S.peersSnap && S.peersSnap.peers) || []).forEach(function (p) {
       (p.deploys || []).forEach(function (rec) {
         if (rec.status === 'skipped') return; // an unchanged stack is not shown, as locally
         items.push({ rec: rec, host: p.name, stale: !!p.stale });
@@ -293,6 +293,7 @@ App.hosts = (function () {
 
     hostHideRows(tbody);
     hostHideRows(roster);
+    App.detail.relayout();
     App.deploys.scheduleRefold();
     App.chrome.renderUpdateBadge(); // a host taken out of view takes its updates with it
 

@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures/test';
+import { detailHome } from '../fixtures/stack-detail';
 
 // Maske I: deploy detail commit facts + row binding. See
 // docs/dev/e2e-tests.md §4.10.
@@ -50,11 +51,7 @@ test.describe('UI2: row binding', () => {
     await expect(panel(page)).toHaveCount(1);
     await expect(panel(page)).toHaveAttribute('data-status', 'success');
     await expect(diffRow(page)).toHaveClass(/audit-open/);
-    // The panel is the row's direct sibling, so the left bar is unbroken.
-    const siblingTestid = await diffRow(page).evaluate(
-      (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
-    );
-    expect(siblingTestid).toBe('detail-panel');
+    expect(await detailHome(diffRow(page))).toBe('side');
 
     // The head's close button closes it like a second click would.
     await panel(page).locator('[data-testid="detail-close"]').click();

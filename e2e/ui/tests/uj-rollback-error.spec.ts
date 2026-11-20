@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures/test';
+import { detailHome } from '../fixtures/stack-detail';
 
 // Maske J: rolled-back deploy detail — verdict before diff. See
 // docs/dev/e2e-tests.md §4.11.
@@ -30,8 +31,8 @@ test.describe('Maske J: rolled-back deploy detail', () => {
   };
 
   // UJ1 — no error box rides the list: the row stays closed until clicked, then
-  // its detail is the row's direct sibling and carries the row's status.
-  test('UJ1: the detail opens on click as the row’s direct sibling', async ({ page, skipper }) => {
+  // its detail opens in the side column and carries the row's status.
+  test('UJ1: the detail opens on click for its row', async ({ page, skipper }) => {
     const row = await rollBack(page, skipper);
 
     await expect(panel(page)).toHaveCount(0);
@@ -39,10 +40,7 @@ test.describe('Maske J: rolled-back deploy detail', () => {
     await expect(panel(page)).toBeVisible();
     await expect(panel(page)).toHaveAttribute('data-status', 'rolled_back');
     await expect(row).toHaveClass(/audit-open/);
-    const sibling = await row.evaluate(
-      (r) => r.nextElementSibling?.getAttribute('data-testid') ?? null,
-    );
-    expect(sibling).toBe('detail-panel');
+    expect(await detailHome(row)).toBe('side');
   });
 
   // UJ2 — the rolled-back event carries a diff; the detail shows the rollback

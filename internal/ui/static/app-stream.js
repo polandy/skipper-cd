@@ -90,10 +90,10 @@ App.stream = (function () {
     });
     // The roster row has no hooks control; the pulse rides the open detail
     // panel's Hooks action.
-    const rlist = document.getElementById('roster-list');
-    if (rlist && isDeploying(hr.stack)) {
+    const sv = document.getElementById('stacks-view');
+    if (sv && isDeploying(hr.stack)) {
       const rb = Array.from(
-        rlist.querySelectorAll('.detail-panel:not(.peer-panel) [data-action="hooks"]'),
+        sv.querySelectorAll('.detail-panel:not(.peer-panel) [data-action="hooks"]'),
       ).find(function (x) {
         return x.dataset.hooksStack === hr.stack;
       });

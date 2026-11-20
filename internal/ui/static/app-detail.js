@@ -4,7 +4,9 @@
 // detail tracks the row and the pane's nodes by reference rather than by DOM
 // position, so a panel wedged between them (the container-logs panel) never
 // strands it, and a view that rebuilds its rows re-applies the selection by
-// key (reapply). Panes are rendered inline, right after their row.
+// key (reapply). A pane renders inline, right after its row, or — on a wide
+// screen — in its view's side column beside the list (ADR-0073), and moves
+// between the two when the width crosses the breakpoint.
 //
 // A pane is registered once per DETAIL_TAB: openClass marks the row open (it
 // drives the bound status bar), build(row, slot, opts) fills the pane through
@@ -14,8 +16,13 @@
 // Loads after app-panels.js and before every view. Attached as App.detail.
 App.detail = (function () {
   const panes = {};
-  // view → { sel, row, opts, nodes }; nodes are the pane's elements after row.
+  // view → { sel, row, opts, nodes }; nodes are the pane's elements.
   const open = {};
+  // Keep in step with the .detail-layout breakpoint in app.css.
+  const wide = window.matchMedia('(min-width: 1200px)');
+  wide.addEventListener('change', relayout);
+  // The view filters' row classes; an inline pane wears its row's.
+  const ROW_HIDDEN = ['filtered-out', 'host-hidden'];
 
   function registerPane(tab, pane) {
     panes[tab] = pane;
@@ -27,6 +34,56 @@ App.detail = (function () {
   function entryFor(view) {
     const e = open[view];
     return e && e.row.isConnected ? e : null;
+  }
+
+  // sideFor is view's side column, the wide-screen home of its open pane.
+  function sideFor(view) {
+    return document.querySelector('.detail-side[data-detail-view="' + view + '"]');
+  }
+
+  // place puts entry's nodes where the current width wants them — moving
+  // them only when they change place, so focus and scroll survive — and shows
+  // the side column only while it holds them and their row is not filtered out.
+  function place(view, entry) {
+    const side = sideFor(view);
+    const nodes = entry.nodes;
+    const beside = !!side && wide.matches;
+    const inSide = nodes.length > 0 && nodes[0].parentElement === side;
+    if (beside && !inSide) side.append.apply(side, nodes);
+    if (!beside && (inSide || (nodes.length > 0 && !nodes[0].isConnected))) {
+      entry.row.after.apply(entry.row, nodes);
+      ROW_HIDDEN.forEach(function (c) {
+        const hidden = entry.row.classList.contains(c);
+        nodes.forEach(function (n) {
+          n.classList.toggle(c, hidden);
+        });
+      });
+    }
+    const shown = beside && nodes.length > 0 && getComputedStyle(entry.row).display !== 'none';
+    if (side) side.parentElement.classList.toggle('side-open', shown);
+  }
+
+  // relayout re-places every open detail — after a resize across the
+  // breakpoint, or after a filter showed or hid rows.
+  function relayout() {
+    Object.keys(open).forEach(function (view) {
+      const e = entryFor(view);
+      if (e) place(view, e);
+    });
+  }
+
+  function unplace(view, entry) {
+    entry.nodes.forEach(function (n) {
+      n.remove();
+    });
+    const side = sideFor(view);
+    if (side) side.parentElement.classList.remove('side-open');
+  }
+
+  // openRow is the row view's detail is open on, or null.
+  function openRow(view) {
+    const e = entryFor(view);
+    return e ? e.row : null;
   }
 
   // isOpen reports whether row has its detail open in view — on tab, or on
@@ -53,7 +110,7 @@ App.detail = (function () {
   }
 
   // slotFor is the handle a pane builder fills its entry through. set()
-  // replaces the pane's nodes in place after the row; once the entry is no
+  // replaces the pane's nodes in place; once the entry is no
   // longer the open one (closed, or replaced while a fetch ran) both live()
   // and set() report that, so a late fetch never resurrects a closed pane.
   function slotFor(view, entry) {
@@ -68,7 +125,7 @@ App.detail = (function () {
           n.remove();
         });
         entry.nodes = [].concat(nodes);
-        entry.row.after.apply(entry.row, entry.nodes);
+        place(view, entry);
       },
     };
   }
@@ -88,9 +145,7 @@ App.detail = (function () {
     const focusWasInPane = e.nodes.some(function (n) {
       return n.contains(document.activeElement);
     });
-    e.nodes.forEach(function (n) {
-      n.remove();
-    });
+    unplace(view, e);
     const pane = panes[e.sel.tab];
     e.row.classList.remove(pane.openClass);
     setExpanded(e.row, false);
@@ -150,6 +205,7 @@ App.detail = (function () {
     const e = open[view];
     if (!e) return;
     delete open[view];
+    unplace(view, e); // a side pane outlives the rebuilt list
     const row = Array.prototype.find.call(rows, function (r) {
       return detailMatchesRow(e.sel, r.dataset);
     });
@@ -175,6 +231,8 @@ App.detail = (function () {
   return {
     registerPane,
     isOpen,
+    openRow,
+    relayout,
     show,
     toggle,
     close,
