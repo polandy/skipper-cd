@@ -432,6 +432,7 @@ stacks:
 - **Failure is zero-downtime too:** if the new container never turns healthy, skipper removes it and leaves the old one serving. The deploy is reported as `rolled_back`.
 - `rollout` is **not** hash-tracked: switching a service to/from rollout does not itself redeploy.
 - On a service's first-ever deploy (nothing running yet) there is no gap to avoid, so it comes up with a plain `up`.
+- While a service cuts over, the web UI shows it under the stack's `deploying` badge, e.g. `rolling web (1/2)`.
 
 ## `vars_file`
 

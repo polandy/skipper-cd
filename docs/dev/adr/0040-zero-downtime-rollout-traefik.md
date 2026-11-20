@@ -1,6 +1,6 @@
 # ADR-0040: Zero-downtime rollout (Traefik), opt-in per service
 
-Status: accepted (backend implemented; UI deploying sub-label pending)
+Status: accepted (implemented, with the UI deploying sub-label)
 Date: 2026-07-19
 
 ## Context

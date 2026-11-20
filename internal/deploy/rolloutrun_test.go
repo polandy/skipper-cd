@@ -96,3 +96,47 @@ func TestRollout_NoSinkRecordsNoRolloutRun(t *testing.T) {
 		t.Errorf("no sink: state must stay zero, got %+v", d.CurrentRolloutRun())
 	}
 }
+
+// probeCommitReader records the rolling state the moment the rollback reads the
+// restored compose file — the positive signal that the rollback leg ran.
+type probeCommitReader struct {
+	fakeCommitReader
+	d      *Deployer
+	atRead []RolloutRun
+}
+
+func (p *probeCommitReader) FileAtCommit(ctx context.Context, sha, path string) ([]byte, error) {
+	p.atRead = append(p.atRead, p.d.CurrentRolloutRun())
+	return p.fakeCommitReader.FileAtCommit(ctx, sha, path)
+}
+
+// A cutover failure that falls back to the git-restore rollback clears the
+// indicator first, so the rollback leg does not read as "rolling".
+func TestRollout_ClearsRolloutRunBeforeGitRestoreRollback(t *testing.T) {
+	cr := &probeCommitReader{}
+	d, runner, run := rolloutSetup(t, rolloutCompose, func(c *Config) {
+		c.RolloutRunSink = func(RolloutRun) {}
+		c.CommitReader = cr
+	})
+	cr.d = d
+	runner.errOnCommand = "--no-recreate" // the canary start fails → git-restore path
+	runner.outputFn = func(int, []string) ([]byte, error) {
+		return psArray(cl("old1", "web", "healthy")), nil
+	}
+	compose, err := parseComposeFile(run.composePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := newEmptyState()
+	state.LastDeployedCommit = "base1"
+
+	if err := d.rollout(context.Background(), run, compose, state); err == nil {
+		t.Fatal("expected the canary start failure to fail the rollout")
+	}
+	if len(cr.atRead) == 0 {
+		t.Fatal("the git-restore rollback never read the restored compose file")
+	}
+	if cr.atRead[0] != (RolloutRun{}) {
+		t.Errorf("rollback ran while the indicator still read %+v", cr.atRead[0])
+	}
+}
