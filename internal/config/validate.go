@@ -64,6 +64,7 @@ const (
 	LogFormatJSON   = "json"
 )
 
+//nolint:funlen // R-08
 func validateConfig(cfg *Config) error {
 	if cfg.RepoURL == "" {
 		return fmt.Errorf("repo_url is required")

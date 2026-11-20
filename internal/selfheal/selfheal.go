@@ -220,6 +220,7 @@ func (e *Engine) Reset(stack string) {
 	delete(e.states, stack)
 }
 
+//nolint:funlen // R-12
 func (e *Engine) evaluate(ctx context.Context, stack string, sh health.StackHealth) {
 	cat := classify(selfHealStatus(sh))
 	e.mu.Lock()

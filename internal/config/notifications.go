@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"net/url"
+
+	"github.com/polandy/skipper-cd/internal/events"
 )
 
 // Outbound notification targets (ADR-0020): their shape, the format and
@@ -51,19 +53,18 @@ const (
 	NotifyFormatNtfy    = "ntfy"
 )
 
-// Terminal deploy statuses accepted in NotificationTarget.On. They mirror the
-// terminal events.Status values without importing that package (config is the
-// lowest layer).
+// Terminal deploy statuses accepted in NotificationTarget.On: the terminal
+// events.Status values.
 const (
-	NotifyOnFailed              = "failed"
-	NotifyOnSuccess             = "success"
-	NotifyOnRolledBack          = "rolled_back"
-	NotifyOnRolledBackUnhealthy = "rolled_back_unhealthy"
+	NotifyOnFailed              = string(events.StatusFailed)
+	NotifyOnSuccess             = string(events.StatusSuccess)
+	NotifyOnRolledBack          = string(events.StatusRolledBack)
+	NotifyOnRolledBackUnhealthy = string(events.StatusRolledBackUnhealthy)
 	// NotifyOnHealExhausted fires when self-heal gave up on a stack it could not
 	// restore — the high-signal "a stack is down and I couldn't fix it" alarm
 	// (ADR-0029). Part of the default set, so a target with no explicit `on`
 	// reports it.
-	NotifyOnHealExhausted = "heal_exhausted"
+	NotifyOnHealExhausted = string(events.StatusHealExhausted)
 )
 
 // validateNotificationTarget checks a single notification target. Format and On

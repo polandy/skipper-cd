@@ -313,6 +313,7 @@ func TestDeployAllStacks_BacksOffThenHoldsFailureBeforeStart(t *testing.T) {
 // Its own stack name: the gauge is process-global and other tests hold signal.
 func TestDeployAllStacks_HeldGaugeOnlyForAHoldThatNeedsAnOperator(t *testing.T) {
 	const stack = "gauge-backoff"
+	metrics.StackHeld.DeleteLabelValues(stack) // process-global: a repeat run starts clean
 	env := newHeldEnv(t, config.Stack{Name: stack})
 	env.failPull = true
 	env.run(stack)

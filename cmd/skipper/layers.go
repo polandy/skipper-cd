@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/applink"
@@ -112,22 +111,13 @@ func buildProjectDirSyncer(cfg *config.Config, repoDir string, timeout time.Dura
 		return nil
 	}
 	// Load rejects the key without a base, so the base is set and absolute here.
-	if _, inside := relToDir(repoDir, cfg.ProjectDirectoryBase); inside {
+	if _, inside := deploy.RelToDir(repoDir, cfg.ProjectDirectoryBase); inside {
 		slog.Info("project_directory_sync has nothing to do: project_directory_base is inside the repo clone, which every sync already resets",
 			"project_directory_base", cfg.ProjectDirectoryBase, "repo_dir", repoDir)
 		return nil
 	}
 	slog.Info("project_directory checkout is fast-forwarded before each run", "dir", cfg.ProjectDirectoryBase)
 	return git.NewCheckout(cfg.ProjectDirectoryBase, timeout, sink)
-}
-
-// relToDir reports whether path lies inside base, and its relative form.
-func relToDir(base, path string) (string, bool) {
-	rel, err := filepath.Rel(base, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", false
-	}
-	return rel, true
 }
 
 // buildSelfHeal constructs the engine that automatically restores a stack the
