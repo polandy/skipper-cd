@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures/test';
+import { detailHome } from '../fixtures/stack-detail';
 import { visualSnapshot } from '../fixtures/snapshot';
 
 // Maske A: Deploys-View. See docs/dev/e2e-tests.md §4.2.
@@ -315,16 +316,13 @@ test.describe('UA7: row detail', () => {
     // No panel is shown until the row is clicked.
     await expect(filesPanel(page)).toHaveCount(0);
 
-    // First click opens the deploy detail directly after the row.
+    // First click opens the deploy detail, beside the list at this width.
     await rowOpener(page).click();
     await expect(filesPanel(page)).toHaveCount(1);
     await expect(filesPanel(page)).toBeVisible();
-    // It lists at least one changed file path and sits immediately below the row.
+    // It lists at least one changed file path.
     await expect(filesPanel(page).locator('.file-path').first()).toBeVisible();
-    const siblingTestid = await successRow(page).evaluate(
-      (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
-    );
-    expect(siblingTestid).toBe('detail-panel');
+    expect(await detailHome(successRow(page))).toBe('side');
     await expect(page.locator('[data-testid="detail-tab"][aria-selected="true"]')).toHaveAttribute('data-tab', 'changes');
 
     // Second click removes it again.
@@ -374,10 +372,7 @@ test.describe('UA8: diff panel', () => {
     await expect(diffPanel(page)).toHaveCount(1);
     await expect(diffPanel(page)).toBeVisible();
     await expect(page.locator('[data-testid="files-panel"]')).toHaveCount(0);
-    const siblingTestid = await diffRow(page).evaluate(
-      (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
-    );
-    expect(siblingTestid).toBe('detail-panel');
+    expect(await detailHome(diffRow(page))).toBe('side');
     await expect(page.locator('[data-testid="detail-panel"] [data-testid="diff-panel"]')).toHaveCount(1);
 
     // The image bump renders as a deleted and an added line (colour-classified),
@@ -420,11 +415,8 @@ test.describe('UA9: error detail', () => {
     await expect(panel(page)).toHaveCount(0);
     await failedRow(page).click();
 
-    // The detail belongs to the failed row: it is the row's next sibling.
-    const siblingTestid = await failedRow(page).evaluate(
-      (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
-    );
-    expect(siblingTestid).toBe('detail-panel');
+    // The detail belongs to the failed row.
+    expect(await detailHome(failedRow(page))).toBe('side');
     await expect(panel(page)).toHaveAttribute('data-stack', 'web');
 
     // The verdict names the failed phase and comes before the facts and tabs.

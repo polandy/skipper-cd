@@ -278,7 +278,7 @@ finalised.
 | 2 | `refactor(ui)` | `App.detail` selection model + `app-detail.js`; panels become panes; still rendered inline as today's card | no pixel change; Deploys keeps one open detail at a time, as Stacks already did |
 | 3 | `feat(ui)` | Detail panel for **Stacks**: header with labelled actions, verdict, facts, tabs; history rows use `badgeHTML` (a visible change, so not in PR 1); row loses glyphs, status-cell stack, Commit column | Stacks view |
 | 4 | `feat(ui)` | Detail panel for **Deploys**: Changes/Error/Containers/History tabs; row → 4 tracks; error strip (and its `--ec` map), `⋯` menu, pills removed | Deploys view |
-| 5 | `feat(ui)` | Side-panel placement ≥ 1200 px, phone sheet, Escape/focus, live refresh; ADR for "side panel instead of bound panels" (a real tradeoff) | both views |
+| 5 | `feat(ui)` | Side-panel placement ≥ 1200 px, phone sheet, Escape/focus, live refresh; ADR for "side panel instead of bound panels" (a real tradeoff). Step 1, the side panel with ADR-0073, is done; the phone sheet and live refresh follow | both views |
 | 6 | `feat(ui)` *(optional)* | URL hash deep link to a selection | — |
 
 PR 1 and 2 are refactors with zero intended pixel change, which makes them

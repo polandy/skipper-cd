@@ -136,6 +136,18 @@ are the same health, history and change-detection panels without their own card
 chrome. Answer first, evidence below: the panel opens on the tab that explains
 the row's state. See `internal/ui/UI_SPEC.md` § Stack detail panel.
 
+### Beside the list (≥ 1200 px)
+
+On a wide screen the open detail leaves the sheet and sits in a **side column**
+to the right of its list, with the same panel and content. The list narrows to
+a 470 px column of identity + status (what the panel repeats comes off the row),
+and the side column draws the sheet's border and radius on the sunken ground,
+so it reads as the same surface split in two rather than a card floating over
+it. It is sticky under the header and scrolls on its own. Nothing is drawn
+while no detail is open: the list keeps its full width. Below 1200 px the
+detail is the bound panel above. See `internal/ui/UI_SPEC.md` § Detail
+placement and ADR-0073.
+
 ## Time
 
 Relative by default (`Xs ago`). A **shared time-mode toggle** lives in each

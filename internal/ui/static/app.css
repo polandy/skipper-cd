@@ -3397,6 +3397,40 @@
     overflow-wrap: anywhere;
   }
 
+  /* ─── DETAIL BESIDE THE LIST ─── */
+  /* On a wide screen the open detail sits in a side column instead of under
+     its row (ADR-0073): the list narrows to name + status, the panel takes the
+     rest and stays in view while the list scrolls. Below the breakpoint the
+     column is never filled. The breakpoint is mirrored in app-detail.js. */
+  .detail-side { display: none; }
+  @media (min-width: 1200px) {
+    .detail-layout.side-open {
+      --row-cols: minmax(0, 1fr) auto;
+      display: grid;
+      grid-template-columns: minmax(0, 470px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    /* Deploys keep Stack · Result; Stacks keep Stack · Health and the last
+       deploy's badge, without its time and commit. */
+    #stacks-view .side-open { --row-cols: minmax(0, 1fr) auto auto; }
+    .side-open .col-version, .side-open .cell-when, .side-open .roster-when, .side-open .roster-sha,
+    .side-open .sheet-head > :nth-child(3), #deploy-table .side-open .sheet-head > :nth-child(4) { display: none; }
+    .side-open .detail-side {
+      display: block;
+      position: sticky;
+      top: 68px;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sheet);
+      background: var(--bg-sunken);
+    }
+    /* The list's open row is the binding; the inline accent bar would only
+       repeat it down the column's edge. */
+    .detail-side .detail-panel { box-shadow: none; }
+  }
+
   /* ─── RESPONSIVE ─── */
   /* Tablet/narrow desktop: not every read-out fits, so both views drop their
      least essential one and keep Version/Change on the row's first line, in

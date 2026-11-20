@@ -78,8 +78,8 @@ asserting **behaviour + visual snapshots**.
 > driven by a health poller scripted through the stub docker's `ps` output. **Mask I** (§4.10) covers the diff panel's commit
 > metadata in the deploy detail — **UI1** (Commit fact), **UI2** (row/panel
 > binding), **UI3** (Commits tab for a multi-commit range) — driven by webhook image bumps. **Mask
-> J** (§4.11) covers the rolled-back deploy detail — **UJ1** (opens on click as
-> the row's sibling), **UJ2** (diff carried on the rolled-back event, the
+> J** (§4.11) covers the rolled-back deploy detail — **UJ1** (opens on click for
+> its row), **UJ2** (diff carried on the rolled-back event, the
 > rollback verdict before it) — driven by a failing `up` that rolls back. **Mask K**
 > (§4.12) covers self-heal — **UK1** (a degraded stack is restored, `healed`
 > row), **UK2** (a stack that stays unhealthy exhausts into `heal_exhausted`) —
@@ -432,7 +432,8 @@ UI suite reuses.
   `stack-icon`; a stack whose icon 404s falls back to the monogram chip (no
   broken image).
 - **UA7 — Row detail.** For an event with `changed_files`, clicking the row
-  opens its deploy detail (`detail-panel`, the row's direct sibling) on its
+  opens its deploy detail (`detail-panel`, in the side column at the suite's
+  1280 px) on its
   Changes tab with the `files-panel`; clicking again closes it.
 - **UA8 — Diff panel.** For a `has_diffs` event, clicking the row fetches
   `/api/events/{id}/diffs` and renders `diff-panel` inside the deploy detail with
@@ -808,7 +809,7 @@ Behaviour-only (no snapshot).
   `web` with a `success` badge, and its Commit fact shows the 7-char short SHA
   and the subject (`bump web to 1.26`), loaded lazily with the diff.
 - **UI2 — Row binding.** Opening the detail marks the row `audit-open`, the panel
-  carries `data-status="success"` and is the row's direct sibling; the head's
+  carries `data-status="success"` and sits in the side column; the head's
   `detail-close` closes it and clears the row.
 - **UI3 — Multi-commit range.** Two commits before a single deploy put the
   newest (`bump web to 1.27`) in the Commit fact and add a Commits tab counting
@@ -823,7 +824,7 @@ Behaviour-only (no snapshot).
 
 - **UJ1 — Opens on click.** No error box rides the list: the rolled-back row
   stays closed until clicked, then its deploy detail (`data-status="rolled_back"`)
-  is the row's direct sibling and the row is `audit-open`.
+  sits in the side column and the row is `audit-open`.
 - **UJ2 — Verdict before diff.** The rolled-back event reports its diff, so the
   row is `data-has-diffs="1"`; clicking it opens one deploy detail whose
   verdict (`Rolled back to app 1.25`, naming `docker compose up`) precedes the
@@ -862,7 +863,7 @@ never split across two panels. Behaviour-only (no snapshot).
   row; deploy rows no longer carry a health pill.
 - **UL2 — Across rows.** With two stacks bumped in one run, opening `api`'s row
   while `web`'s deploy detail is open closes it: `web` loses
-  `audit-open`, one deploy detail remains, and it is `api`'s direct sibling.
+  `audit-open`, one deploy detail remains, and it is `api`'s, in the side column.
 
 ### 4.14 UI — Maske M: per-stack deploy history (ADR-0033)
 
@@ -2275,6 +2276,35 @@ the table, so the label stays observable with no wall-clock race. Behaviour-only
   `rollout-phase` anywhere (the rolled_back row is the positive signal; the Go
   path is P25).
 
+### 4.59 UI — Maske BF: the detail beside the list (ADR-0073)
+
+At a viewport of 1200 px or wider an open detail sits in its view's side
+column (`detail-side`), right of a list narrowed to the rows' identity and
+status; below that it stays inline right after its row
+([UI_SPEC](../../internal/ui/UI_SPEC.md#detail-placement)). The suite's
+default 1280 px viewport is in side mode, so the masks that check a detail's
+binding assert it there (`detailHome` in `fixtures/stack-detail.ts`); the
+inline placement is asserted here at 1100 px and on the phone (UD). A resize
+fires the breakpoint's `matchMedia` change, which re-places the open detail
+before the assertion reads it. Behaviour-only (no snapshot).
+
+- **UBF1 — Deploys, wide.** At 1280 px the deploy detail opens in the side
+  column, to the right of its row; the row keeps its status and hides its When
+  cell, which returns once the head's close button closes the detail.
+- **UBF2 — Deploys, narrower.** At 1100 px the detail is the row's next sibling
+  and the side column is empty.
+- **UBF3 — Stacks, wide.** The roster detail opens in the Stacks side column;
+  the row keeps its last-deploy badge and hides its time and Version cell.
+- **UBF4 — Resize.** An open detail moves from the side column to inline and
+  back as the viewport crosses 1200 px, staying open on its row.
+- **UBF5 — Controls from the side.** Escape inside the side panel closes it and
+  focuses the row's toggle; the head's Jump action lands on the Stacks detail,
+  again in the side column.
+- **UBF6 — A filtered-out detail crosses the breakpoint.** At 1100 px a roster
+  filter hides the open row and its inline panel; widened to 1280 px the panel
+  sits in the side column, still hidden; clearing the filter shows it there,
+  beside the list.
+
 ### 5.1 Docs screenshots — rendered, never committed
 
 The two images the docs landing page embeds
@@ -2432,7 +2462,7 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UI1** | commit facts | `ui-diff-commit.spec.ts` |
 | **UI2** | row binding | `ui-diff-commit.spec.ts` |
 | **UI3** | multi-commit range | `ui-diff-commit.spec.ts` |
-| **UJ1** | the detail opens on click as the row’s direct sibling | `uj-rollback-error.spec.ts` |
+| **UJ1** | the detail opens on click for its row | `uj-rollback-error.spec.ts` |
 | **UJ2** | the rollback verdict comes before the diff, in one panel | `uj-rollback-error.spec.ts` |
 | **UK1** | self-heal restores a degraded stack | `uk-selfheal.spec.ts` |
 | **UK2** | self-heal gives up after repeated failures | `uk-selfheal.spec.ts` |
@@ -2614,6 +2644,12 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UBD3** | a name filter that hides the rows takes the fold line with them | `ubd-deploy-fold.spec.ts` |
 | **UBE1** | the rolling sub-label names the rolled service in both views and clears | `ube-rollout-phase.spec.ts` |
 | **UBE2** | a failed cutover settles as rolled_back with no label | `ube-rollout-phase.spec.ts` |
+| **UBF1** | at 1280 px the deploy detail opens beside the list | `ubf-side-panel.spec.ts` |
+| **UBF2** | at 1100 px the deploy detail opens under its row | `ubf-side-panel.spec.ts` |
+| **UBF3** | at 1280 px the Stacks detail opens beside the roster | `ubf-side-panel.spec.ts` |
+| **UBF4** | a resize moves the open detail between side and inline | `ubf-side-panel.spec.ts` |
+| **UBF5** | Jump and Escape work from the side panel | `ubf-side-panel.spec.ts` |
+| **UBF6** | a detail filtered out inline shows in the side column once the filter clears | `ubf-side-panel.spec.ts` |
 
 ### 6.3 Known gaps
 

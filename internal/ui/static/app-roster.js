@@ -152,7 +152,8 @@ App.roster = (function () {
   // for the deploy feed. An open peer panel is rebuilt from the new snapshot.
   function refreshPeerRosterRows() {
     const list = document.getElementById('roster-list');
-    const peerOpen = !!list.querySelector('.detail-panel.peer-panel');
+    const openRow = detail.openRow(VIEW);
+    const peerOpen = !!openRow && openRow.classList.contains('peer-row');
     list.querySelectorAll('.roster-row.peer-row, .detail-panel.peer-panel').forEach(function (r) {
       r.remove();
     });
@@ -163,6 +164,7 @@ App.roster = (function () {
 
   // ── Stacks view: click-a-row-for-history + search (mirrors the deploys filter) ──
   const rosterList = document.getElementById('roster-list');
+  const stacksView = document.getElementById('stacks-view');
   const rosterFilterWrap = document.getElementById('roster-filter-wrap');
   const rosterFilter = document.getElementById('roster-filter');
   const rosterFilterClear = document.getElementById('roster-filter-clear');
@@ -181,7 +183,7 @@ App.roster = (function () {
   // app links changed — app_links updates on the health-poll cadence, far more
   // often than the 'stacks' snapshot that rebuilds the panel.
   function updateAppLinks() {
-    const panel = rosterList.querySelector('.detail-panel:not(.peer-panel)');
+    const panel = stacksView.querySelector('.detail-panel:not(.peer-panel)');
     if (!panel || panel.dataset.links === linksKey(panel.dataset.stack, '')) return;
     const c = detailContext(panel.dataset.stack, '');
     if (!c) return;
@@ -434,6 +436,7 @@ App.roster = (function () {
     }
     renderRosterUpdateChip();
     App.chrome.renderUpdateBadge();
+    detail.relayout(); // a side panel follows its row out of view
   }
   // Re-run after the roster re-renders (a new snapshot) so new stacks obey it too.
   function refilterRoster() {
@@ -534,71 +537,76 @@ App.roster = (function () {
     return updatePresetActive(rosterUpdatesOnly, rosterFilter.value);
   }
 
+  // onListClick is the click delegation of the roster list and its side column.
+  function onListClick(e) {
+    if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
+
+    // Host chip: quick-filter the merged view to this row's host (toggle). Before
+    // the panel logic so it works on every row's chip and on the panel head's.
+    const hostChip = e.target.closest('.host-mono');
+    if (hostChip) {
+      const r = hostChip.closest('[data-host]');
+      if (r) toggleHostFilterTo(r.dataset.host);
+      return;
+    }
+
+    // Panel head and verdict actions. Tabs and Hooks are the panel's own listener.
+    const act = e.target.closest('[data-action]');
+    if (act) {
+      switch (act.dataset.action) {
+        case 'jump':
+          App.chrome.jumpToStack(act.dataset.jumpView, act.dataset.jumpStack);
+          break;
+        case 'close':
+          detail.close(VIEW);
+          break;
+        case 'logs':
+          App.clog.toggle(act);
+          break;
+        case 'app':
+          // A single link is an anchor that navigates on its own.
+          if (act.tagName === 'BUTTON') toggleAppLinkPopover(act.closest('.link-wrap'));
+          break;
+      }
+      return;
+    }
+    if (e.target.closest('.link-pop a')) {
+      closeAppLinkPopover();
+      return;
+    }
+    // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
+    const hookLog = e.target.closest('.hook-log-btn');
+    if (hookLog) {
+      App.clog.openHookLog(hookLog, hookLog.dataset.hookLog);
+      return;
+    }
+    // Retry a held change (ADR-0062), the held verdict's action.
+    const retryB = e.target.closest('.retry-btn');
+    if (retryB) {
+      retryHeld(retryB);
+      return;
+    }
+    // Container logs of one service, on a Containers tab line (ADR-0037).
+    const clogB = e.target.closest('.clog-btn');
+    if (clogB) {
+      App.clog.toggle(clogB);
+      return;
+    }
+    const row = e.target.closest('.roster-row');
+    if (!row || !rosterList.contains(row)) return;
+    toggleRosterDetail(row, DETAIL_TAB.overview);
+  }
   // init wires the roster list, the search bar and the stacks type-to-search —
   // everything the view ran at load.
   function init() {
-    rosterList.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
-    rosterList.addEventListener('keydown', function (e) {
-      detail.rowKeydown(VIEW, e);
-    });
-
-    rosterList.addEventListener('click', function (e) {
-      if (e.target.closest('.sha-link')) return; // the commit link opens the forge; no panel toggle
-
-      // Host chip: quick-filter the merged view to this row's host (toggle). Before
-      // the panel logic so it works on every row's chip and on the panel head's.
-      const hostChip = e.target.closest('.host-mono');
-      if (hostChip) {
-        const r = hostChip.closest('[data-host]');
-        if (r) toggleHostFilterTo(r.dataset.host);
-        return;
-      }
-
-      // Panel head and verdict actions. Tabs and Hooks are the panel's own listener.
-      const act = e.target.closest('[data-action]');
-      if (act) {
-        switch (act.dataset.action) {
-          case 'jump':
-            App.chrome.jumpToStack(act.dataset.jumpView, act.dataset.jumpStack);
-            break;
-          case 'close':
-            detail.close(VIEW);
-            break;
-          case 'logs':
-            App.clog.toggle(act);
-            break;
-          case 'app':
-            // A single link is an anchor that navigates on its own.
-            if (act.tagName === 'BUTTON') toggleAppLinkPopover(act.closest('.link-wrap'));
-            break;
-        }
-        return;
-      }
-      if (e.target.closest('.link-pop a')) {
-        closeAppLinkPopover();
-        return;
-      }
-      // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
-      const hookLog = e.target.closest('.hook-log-btn');
-      if (hookLog) {
-        App.clog.openHookLog(hookLog, hookLog.dataset.hookLog);
-        return;
-      }
-      // Retry a held change (ADR-0062), the held verdict's action.
-      const retryB = e.target.closest('.retry-btn');
-      if (retryB) {
-        retryHeld(retryB);
-        return;
-      }
-      // Container logs of one service, on a Containers tab line (ADR-0037).
-      const clogB = e.target.closest('.clog-btn');
-      if (clogB) {
-        App.clog.toggle(clogB);
-        return;
-      }
-      const row = e.target.closest('.roster-row');
-      if (!row || !rosterList.contains(row)) return;
-      toggleRosterDetail(row, DETAIL_TAB.overview);
+    // The side column holds the open detail on a wide screen; it takes the
+    // list's delegation so the panel works the same in either place.
+    [rosterList, document.getElementById('roster-side')].forEach(function (host) {
+      host.addEventListener('keydown', hostChipKeydown); // T2.10 keyboard host chip
+      host.addEventListener('keydown', function (e) {
+        detail.rowKeydown(VIEW, e);
+      });
+      host.addEventListener('click', onListClick);
     });
 
     // Chip click: the single updates-only toggle.

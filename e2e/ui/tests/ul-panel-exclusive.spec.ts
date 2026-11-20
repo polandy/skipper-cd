@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures/test';
+import { detailHome } from '../fixtures/stack-detail';
 
 // Maske L: one open detail per deploy table. See docs/dev/e2e-tests.md §4.13.
 //
@@ -32,9 +33,6 @@ test.describe('UL2: a panel on another row closes the open one', () => {
     await expect(changed('api')).toHaveClass(/audit-open/);
     await expect(changed('web')).not.toHaveClass(/audit-open/);
     await expect(diffPanel).toHaveCount(1);
-    const sibling = await changed('api').evaluate(
-      (r) => r.nextElementSibling?.getAttribute('data-testid') ?? null,
-    );
-    expect(sibling).toBe('detail-panel');
+    expect(await detailHome(changed('api'))).toBe('side');
   });
 });
