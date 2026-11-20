@@ -22,7 +22,7 @@ the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
 > Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
-> pipeline harness and P1–P29 (§4.1) exist under `e2e/` behind the `e2e` build tag,
+> pipeline harness and P1–P31 (§4.1) exist under `e2e/` behind the `e2e` build tag,
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
@@ -368,6 +368,13 @@ UI suite reuses.
 - **P29 — A rollback is notified** (ADR-0020, `STUB_DOCKER_FAIL_NTH_UP=2`): the
   failed deploy POSTs one `rolled_back` payload, no `failed`, and no second
   `success` beyond the startup one.
+- **P30 — A newer tag is notified** (ADR-0054): `web` runs `<loopback
+  registry>/app:1.0` and the local registry lists `1.1`; with
+  `update_check.notify: true` one `"type": "update"` payload (`latest: 1.1`) is
+  POSTed to the generic target.
+- **P31 — Updates do not notify by default** (ADR-0054): same setup without
+  `notify`; the gauge `skipper_updates_available` reaches 1 (the check ran) and
+  nothing is POSTed.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2300,6 +2307,8 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P27** | `TestE2E_NotifiesSuccessToGenericTarget` | `notifications_test.go` |
 | **P28** | `TestE2E_NotifiesFailureToGenericTarget` | `notifications_test.go` |
 | **P29** | `TestE2E_NotifiesRollbackToGenericTarget` | `notifications_test.go` |
+| **P30** | `TestE2E_UpdateCheckNotifiesNewerTag` | `updatecheck_test.go` |
+| **P31** | `TestE2E_UpdateCheckDoesNotNotifyByDefault` | `updatecheck_test.go` |
 
 ### 6.2 UI (Playwright)
 
