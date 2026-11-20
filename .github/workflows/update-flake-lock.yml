@@ -1,13 +1,5 @@
-# Dependabot cannot update Nix flake inputs, so a weekly job opens a PR
-# with a refreshed flake.lock instead.
-#
-# A PR pushed with GITHUB_TOKEN triggers no pull_request run (a GitHub rule
-# against workflow recursion), but workflow_dispatch is exempt from that rule.
-# So the job dispatches CI on the bot branch itself; its checks land on the
-# head commit and show on the PR. Only merge once they are green.
-#
-# A PAT or GitHub App token would also lift the rule, but holds repo write
-# access as a long-lived secret; the dispatch needs no credential at all.
+# Weekly flake.lock refresh PR, since Dependabot cannot update flake inputs.
+# A GITHUB_TOKEN-made PR gets no pull_request run, so the job dispatches CI on its branch (no PAT needed).
 name: Update flake.lock
 
 on:

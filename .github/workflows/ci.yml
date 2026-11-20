@@ -10,8 +10,7 @@ on:
   pull_request:
   # docker.yml runs the whole suite on a release tag before it publishes.
   workflow_call:
-  # update-flake-lock.yml dispatches it on its bot branch, whose PR gets no
-  # pull_request run.
+  # update-flake-lock.yml dispatches it, since its bot PR gets no pull_request run.
   workflow_dispatch:
 
 # One in-flight run per ref; a new push cancels the superseded one.
