@@ -190,9 +190,9 @@ test.describe('Maske BF: the detail panel as a phone sheet', () => {
     expect(await page.evaluate(() => scrollY)).toBe(scrolled);
   });
 
-  // UBF8 — the Deploys detail takes the same sheet; Escape closes it and hands
-  // the focus back to the row's toggle.
-  test('UBF8: on a phone the deploy sheet closes on Escape', async ({ page, skipper }) => {
+  // UBF8 — the Deploys detail takes the same sheet, which takes the focus off
+  // the covered row; Escape closes it and hands the focus back to the toggle.
+  test('UBF8: on a phone the deploy sheet takes the focus and closes on Escape', async ({ page, skipper }) => {
     await page.setViewportSize(PHONE);
     await page.goto(`${skipper.baseURL}/`);
     const row = deployRow(page, 's01');
@@ -200,8 +200,8 @@ test.describe('Maske BF: the detail panel as a phone sheet', () => {
     await toggle.click();
     await expect(sidePanels(page, 'deploys')).toHaveCount(1);
     expect(await coversViewport(page, 's01')).toBe(true);
+    await expect(panel(page, 's01')).toBeFocused();
 
-    await panel(page, 's01').locator('[data-testid="detail-close"]').focus();
     await page.keyboard.press('Escape');
     await expect(panel(page, 's01')).toHaveCount(0);
     await expect(toggle).toBeFocused();

@@ -3443,7 +3443,7 @@
       overscroll-behavior: contain;
       background: var(--bg-sunken);
     }
-    .detail-side .detail-panel { box-shadow: none; animation: none; min-height: 100%; }
+    .detail-side .detail-panel { box-shadow: none; animation: none; min-height: 100%; outline: none; }
     .detail-side .dp-head {
       position: sticky; top: 0; z-index: 1;
       background: var(--bg-sunken);

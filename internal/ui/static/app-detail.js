@@ -51,7 +51,8 @@ App.detail = (function () {
     const nodes = entry.nodes;
     const toSide = !!side && (wide.matches || phone.matches);
     const inSide = nodes.length > 0 && nodes[0].parentElement === side;
-    if (toSide && !inSide) side.append.apply(side, nodes);
+    const moveToSide = toSide && !inSide;
+    if (moveToSide) side.append.apply(side, nodes);
     if (!toSide && (inSide || (nodes.length > 0 && !nodes[0].isConnected))) {
       entry.row.after.apply(entry.row, nodes);
       ROW_HIDDEN.forEach(function (c) {
@@ -63,6 +64,17 @@ App.detail = (function () {
     }
     const shown = toSide && nodes.length > 0 && getComputedStyle(entry.row).display !== 'none';
     if (side) side.parentElement.classList.toggle('side-open', shown);
+    if (moveToSide && shown && phone.matches) focusSheet(nodes);
+  }
+
+  // focusSheet moves the focus off the covered row onto the panel, which outlives its re-renders.
+  function focusSheet(nodes) {
+    const inside = nodes.some(function (n) {
+      return n.contains(document.activeElement);
+    });
+    if (inside) return;
+    nodes[0].tabIndex = -1;
+    nodes[0].focus({ preventScroll: true });
   }
 
   // relayout re-places every open detail — after a resize across the

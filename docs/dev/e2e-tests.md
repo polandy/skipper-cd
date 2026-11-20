@@ -2309,8 +2309,9 @@ before the assertion reads it. Behaviour-only (no snapshot).
   scrolled to a low row, which opens its detail as a sheet covering the
   viewport and the header; wheeling over the sheet leaves the page's `scrollY`
   alone, and close returns to the same `scrollY` with the row in view.
-- **UBF8 — Deploys, phone sheet.** The deploy detail takes the same sheet;
-  Escape inside it closes it and focuses the row's toggle.
+- **UBF8 — Deploys, phone sheet.** The deploy detail takes the same sheet and
+  the focus moves onto the panel; Escape closes it and focuses the row's
+  toggle.
 - **UBF9 — Resize from the phone.** Widening to 1100 px moves the open sheet
   inline under its row; narrowing again turns it back into the sheet.
 
@@ -2660,7 +2661,7 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UBF5** | Jump and Escape work from the side panel | `ubf-side-panel.spec.ts` |
 | **UBF6** | a detail filtered out inline shows in the side column once the filter clears | `ubf-side-panel.spec.ts` |
 | **UBF7** | on a phone the Stacks detail is a sheet and close keeps the scroll | `ubf-side-panel.spec.ts` |
-| **UBF8** | on a phone the deploy sheet closes on Escape | `ubf-side-panel.spec.ts` |
+| **UBF8** | on a phone the deploy sheet takes the focus and closes on Escape | `ubf-side-panel.spec.ts` |
 | **UBF9** | a resize moves the open detail between sheet and inline | `ubf-side-panel.spec.ts` |
 
 ### 6.3 Known gaps

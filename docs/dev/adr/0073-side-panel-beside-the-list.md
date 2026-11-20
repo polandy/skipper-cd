@@ -86,6 +86,9 @@ over the list** (plan §3.4).
   (`overflow: hidden` on the body of the view that holds it), so its scroll
   offset is untouched and close returns to the list exactly where it was. The
   sheet scrolls on its own, with `overscroll-behavior: contain`.
+- **The sheet takes the focus.** Placing the panel in it focuses the panel
+  itself, since the focused row toggle is now covered. Not its close button:
+  a pane re-renders its contents, which would drop a focused child.
 - **A resize re-places it** like the side column: crossing 700 px moves an
   open detail between sheet and inline without closing it.
 - **Rejected: inline on a phone, as before.** A detail taller than the screen
