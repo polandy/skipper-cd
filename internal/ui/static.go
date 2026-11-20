@@ -149,7 +149,7 @@ func ServiceWorkerHandler(b BuildInfo) http.Handler {
 		shell[i] = "  '" + p + "',"
 	}
 	body := strings.ReplaceAll(string(data), "__VERSION__", b.CacheID())
-	out := []byte(strings.ReplaceAll(body, "  __APP_SHELL_SCRIPTS__", strings.Join(shell, "\n")))
+	out := []byte(strings.ReplaceAll(body, "  '__APP_SHELL_SCRIPTS__',", strings.Join(shell, "\n")))
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")

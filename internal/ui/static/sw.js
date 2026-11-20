@@ -20,7 +20,7 @@ const CACHE = 'skipper-shell-__VERSION__';
 const SHELL = [
   '/',
   '/app.css',
-  __APP_SHELL_SCRIPTS__
+  '__APP_SHELL_SCRIPTS__',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
