@@ -10,7 +10,7 @@ export async function openStackDetail(page: Page, stack: string, tab?: string) {
 }
 
 // detailHome reports where row's open detail sits: 'inline' right after the
-// row, 'side' in its view's side column (a viewport of 1200 px or wider), or
+// row, 'side' in its view's side column (≥ 1200 px, or the ≤ 700 px sheet), or
 // null when neither holds it.
 export async function detailHome(row: Locator): Promise<'inline' | 'side' | null> {
   return row.evaluate((r) => {
