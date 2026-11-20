@@ -97,7 +97,7 @@ func (env *heldEnv) newDeployer(files map[string][]byte, repoDir string) *Deploy
 				env.heldAtEmit[e.Status] = held
 			}
 		},
-		Now:          func() time.Time { return env.clock },
+		Now: func() time.Time { return env.clock },
 	})
 }
 
