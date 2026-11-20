@@ -13,14 +13,9 @@ import (
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/command"
+	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 )
-
-// DefaultRepoDir is the local clone directory used when repo_dir is omitted.
-// config.Load applies it up front so stacks_base_dir can be resolved against
-// the effective clone path; NewRepoSync keeps the same fallback for callers
-// that construct a RepoSync directly.
-const DefaultRepoDir = "/var/lib/skipper/repo"
 
 // RepoSync keeps a local clone of a remote Git repository up to date.
 type RepoSync struct {
@@ -34,7 +29,7 @@ type RepoSync struct {
 // timeout. A non-nil sink additionally receives git's output line by line.
 func NewRepoSync(repoURL, repoDir, branch string, commandTimeout time.Duration, sink command.LineSink) *RepoSync {
 	if repoDir == "" {
-		repoDir = DefaultRepoDir
+		repoDir = config.DefaultRepoDir
 	}
 	return &RepoSync{runner: command.NewShellRunnerWithSink(commandTimeout, sink), repoURL: repoURL, repoDir: repoDir, branch: branch}
 }

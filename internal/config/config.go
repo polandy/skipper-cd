@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/polandy/skipper-cd/internal/git"
+	"github.com/polandy/skipper-cd/internal/repourl"
 	"gopkg.in/yaml.v3"
 )
 
@@ -243,7 +243,7 @@ func (c *Config) EffectiveRepoWebURL() string {
 	if c.RepoWebURL != "" {
 		return strings.TrimRight(c.RepoWebURL, "/")
 	}
-	return git.WebURL(c.RepoURL)
+	return repourl.WebURL(c.RepoURL)
 }
 
 // StackByName returns the configured stack with the given name.
@@ -353,6 +353,10 @@ func (c *Config) applyDefaults() {
 	c.HealthWatch.applyDefaults()
 	c.applyStacksDefaults()
 }
+
+// DefaultRepoDir is the local clone directory used when repo_dir is omitted;
+// git.NewRepoSync keeps the same fallback.
+const DefaultRepoDir = "/var/lib/skipper/repo"
 
 // ReservedStackName is used as the state/event key for NixOS rebuild hashes
 // (mirrored as deploy.NixosStateKey) and must not collide with a configured

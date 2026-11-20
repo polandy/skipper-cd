@@ -5,8 +5,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
-
-	"github.com/polandy/skipper-cd/internal/git"
 )
 
 // The deploy repo and how skipper follows it: where it comes from, where the
@@ -25,7 +23,7 @@ func (c *Config) applySourceDefaults() {
 	if c.RepoDir == "" {
 		// Applied here (not just downstream in internal/git) so stacks_base_dir
 		// resolves against the effective clone path.
-		c.RepoDir = git.DefaultRepoDir
+		c.RepoDir = DefaultRepoDir
 	}
 	if c.Branch == "" {
 		c.Branch = defaultBranch
@@ -53,7 +51,7 @@ func (c *Config) validateSource() error {
 	// repo_dir is used verbatim for git clone/pull; a relative value would
 	// resolve against skipper's own process cwd, not the intended location.
 	if !filepath.IsAbs(c.RepoDir) {
-		return fmt.Errorf("repo_dir %q must be an absolute path (start it with \"/\"), or leave it empty to use the default %s", c.RepoDir, git.DefaultRepoDir)
+		return fmt.Errorf("repo_dir %q must be an absolute path (start it with \"/\"), or leave it empty to use the default %s", c.RepoDir, DefaultRepoDir)
 	}
 	// repo_web_url becomes the href of every commit link in the UI, so a value
 	// the browser would not follow as a web page (or would follow into a
