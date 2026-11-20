@@ -26,6 +26,7 @@ type fakeUnitRunner struct {
 
 	unitShow    string // `systemctl show` stdout for the ended unit
 	journal     string // `journalctl` stdout for the unit's invocation
+	outputErr   error  // fails every output read
 	outputCalls []runCall
 }
 
@@ -66,6 +67,9 @@ func (r *fakeUnitRunner) Run(_ context.Context, dir string, _ []string, name str
 // its journal.
 func (r *fakeUnitRunner) Output(_ context.Context, dir string, name string, args ...string) ([]byte, error) {
 	r.outputCalls = append(r.outputCalls, runCall{dir: dir, name: name, args: args})
+	if r.outputErr != nil {
+		return nil, r.outputErr
+	}
 	switch name {
 	case "systemctl":
 		return []byte(r.unitShow), nil
@@ -350,6 +354,21 @@ func TestRebuild_OtherExitStatusesStayARebuildFailure(t *testing.T) {
 				t.Errorf("expected a systemctl show read, got %v", runner.outputCalls)
 			}
 		})
+	}
+}
+
+func TestRebuild_UnreadableUnitStatusStaysARebuildFailure(t *testing.T) {
+	runner := &fakeUnitRunner{activePolls: 1, unitFailed: true, unitShow: "ExecMainStatus=4\n", outputErr: errors.New("systemctl show failed")}
+	r := New(runner, runner)
+	r.pollInterval = 0
+
+	err := r.Rebuild(context.Background(), t.TempDir(), ".#host-a", time.Hour)
+
+	if err == nil || errors.Is(err, ErrActivatedUnitsFailed) {
+		t.Fatalf("expected a plain rebuild failure, got %v", err)
+	}
+	if len(runner.outputCalls) != 1 {
+		t.Errorf("expected exactly the status read, got %v", runner.outputCalls)
 	}
 }
 

@@ -1,6 +1,6 @@
 # ADR-0015: Revert nix hashes when a rebuild fails and skipper survives
 
-Status: accepted
+Status: accepted; amended by ADR-0071 (a switch that activated with failed units is not reverted)
 Date: 2026-07-11
 
 ## Context
