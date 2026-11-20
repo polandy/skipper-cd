@@ -312,9 +312,10 @@ func main() {
 				loops.Go("update-check-nudge", func() { updChecker.RunOnceIfChanged(signalCtx) })
 			}
 		},
-		StackSetSink: asPublisher.publishStacks,
-		RunPlanSink:  uiw.runPlanSink,
-		HookRunSink:  uiw.hookRunSink,
+		StackSetSink:   asPublisher.publishStacks,
+		RunPlanSink:    uiw.runPlanSink,
+		HookRunSink:    uiw.hookRunSink,
+		RolloutRunSink: uiw.rolloutRunSink,
 	})
 	ref.set(deployer)
 

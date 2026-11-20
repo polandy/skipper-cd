@@ -149,6 +149,15 @@ App.panels = (function () {
     return phase;
   }
 
+  // The rolling sub-label, styled like the hook phase it shares the slot with.
+  function rolloutPhaseNode(rr) {
+    const phase = document.createElement('span');
+    phase.className = 'rollout-phase';
+    phase.dataset.testid = 'rollout-phase';
+    phase.innerHTML = rolloutPhaseHTML(rr);
+    return phase;
+  }
+
   function iconURL(stack) {
     return '/api/icons/' + encodeURIComponent(stack);
   }
@@ -419,6 +428,7 @@ App.panels = (function () {
     fetchDiffs,
     createHooksPanel,
     hookPhaseNode,
+    rolloutPhaseNode,
     populateIcon,
     createAuditPanel,
     createWatchedPanel,

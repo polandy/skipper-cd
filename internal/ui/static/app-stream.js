@@ -1,5 +1,5 @@
 // app-stream.js — the SSE stream: the /api/events connection, the state
-// dispatcher that writes App.state (applyState / applyPeers / applyHookRun),
+// dispatcher that writes App.state (applyState / applyPeers / applyRunPhase),
 // the offline notice and the stream wake-up. The last file of cutting the app
 // script by view (ADR-0035 amendment); attaches its API as App.stream and,
 // at the bottom, runs the bootstrap — the ordered init() calls that start the
@@ -36,48 +36,62 @@ App.stream = (function () {
   const hosts = App.hosts;
   const { schedulePeerReflow } = hosts;
   const panels = App.panels;
-  const { createLoadError, hookPhaseNode } = panels;
+  const { createLoadError, hookPhaseNode, rolloutPhaseNode } = panels;
   const loadingState = document.getElementById('loading-state');
   const connDot = document.getElementById('conn-dot');
   const connText = document.getElementById('conn-text');
 
-  // Paint the running-hook phase + pulse the badge on the stack's row in both
-  // views; clear it when S.hookRunSnap has no stack.
-  function applyHookRun() {
-    document.querySelectorAll('.hook-phase').forEach(function (n) {
+  // The stack's live deploying status cells: the newest Deploys row and the
+  // roster row, each only while it shows the deploying state.
+  function deployingCells(stack) {
+    const cells = [];
+    const drow = Array.from(
+      document.getElementById('tbody').querySelectorAll('.event-row[data-stack]'),
+    ).find(function (r) {
+      return r.dataset.stack === stack;
+    });
+    if (drow && drow.dataset.status === 'deploying') {
+      const cell = drow.querySelector('.status-cell');
+      if (cell) cells.push(cell);
+    }
+    const rlist = document.getElementById('roster-list');
+    if (rlist && isDeploying(stack)) {
+      const rrow = Array.from(
+        rlist.querySelectorAll('.roster-row[data-stack]:not(.peer-row)'),
+      ).find(function (r) {
+        return r.dataset.stack === stack;
+      });
+      const rcell = rrow && rrow.querySelector('.roster-status');
+      if (rcell) cells.push(rcell);
+    }
+    return cells;
+  }
+
+  // Paint the deploying row's sub-step in both views — the running hook (plus
+  // the Hooks action pulse) or the rolled service — from S.hookRunSnap and
+  // S.rolloutRunSnap; cleared when neither names a stack.
+  function applyRunPhase() {
+    document.querySelectorAll('.hook-phase, .rollout-phase').forEach(function (n) {
       n.remove();
     });
     document.querySelectorAll('[data-hook-active]').forEach(function (b) {
       b.removeAttribute('data-hook-active');
     });
+    const rr = S.rolloutRunSnap;
+    if (rr && rr.stack) {
+      deployingCells(rr.stack).forEach(function (cell) {
+        cell.appendChild(rolloutPhaseNode(rr));
+      });
+    }
     const hr = S.hookRunSnap;
     if (!hr || !hr.stack) return;
-
-    // Deploys view: the stack's newest row while deploying.
-    const drow = Array.from(
-      document.getElementById('tbody').querySelectorAll('.event-row[data-stack]'),
-    ).find(function (r) {
-      return r.dataset.stack === hr.stack;
+    deployingCells(hr.stack).forEach(function (cell) {
+      cell.appendChild(hookPhaseNode(hr));
     });
-    if (drow && drow.dataset.status === 'deploying') {
-      const cell = drow.querySelector('.status-cell');
-      if (cell) cell.appendChild(hookPhaseNode(hr));
-    }
-
-    // Stacks view: the roster row while it shows the live deploying state.
+    // The roster row has no hooks control; the pulse rides the open detail
+    // panel's Hooks action.
     const rlist = document.getElementById('roster-list');
     if (rlist && isDeploying(hr.stack)) {
-      const rrow = Array.from(
-        rlist.querySelectorAll('.roster-row[data-stack]:not(.peer-row)'),
-      ).find(function (r) {
-        return r.dataset.stack === hr.stack;
-      });
-      if (rrow) {
-        const rcell = rrow.querySelector('.roster-status');
-        if (rcell) rcell.appendChild(hookPhaseNode(hr));
-      }
-      // The roster row has no hooks control; the pulse rides the open detail
-      // panel's Hooks action.
       const rb = Array.from(
         rlist.querySelectorAll('.detail-panel:not(.peer-panel) [data-action="hooks"]'),
       ).find(function (x) {
@@ -133,7 +147,11 @@ App.stream = (function () {
         break;
       case 'hookrun':
         S.hookRunSnap = d || {};
-        applyHookRun();
+        applyRunPhase();
+        break;
+      case 'rolloutrun':
+        S.rolloutRunSnap = d || {};
+        applyRunPhase();
         break;
       case 'health':
         S.healthSnap = (d && d.stacks) || {};
@@ -241,7 +259,7 @@ App.stream = (function () {
       const evt = JSON.parse(e.data);
       handleEvent(evt, false);
       refilterDeploys();
-      applyHookRun(); // a settled row's status cell was re-rendered
+      applyRunPhase(); // a settled row's status cell was re-rendered
       schedulePeerReflow(); // re-slot peer rows below/among the just-inserted local row
       if (chrome.activeView() === 'stacks') refreshRosterRow(evt.stack); // reflect in-flight/settled state live
     });
@@ -260,6 +278,7 @@ App.stream = (function () {
       'queue',
       'upcoming',
       'hookrun',
+      'rolloutrun',
       'health',
       'healthwatch',
       'stacks',
@@ -311,7 +330,7 @@ App.stream = (function () {
     window.addEventListener('online', resumeStreams);
   }
 
-  return { init, connect, streamIsOpen, applyHookRun, clearOfflineNotice };
+  return { init, connect, streamIsOpen, applyRunPhase, clearOfflineNotice };
 })();
 
 // ── Bootstrap ── the start sequence, in the order the blocks ran when they

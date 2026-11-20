@@ -231,7 +231,8 @@ Minimal, reusing existing surfaces (no new streaming machinery), read-only:
    phase, e.g. `rolling web (1/2)`, driven by the same UI-sink-gated lightweight
    snapshot pattern as the hooks `hookrun` / `upcoming` run-plan snapshots
    (published only with a UI sink → costs nothing headless). Plain `deploying`
-   during pull/build as today.
+   during pull/build as today. *Built:* the `rolloutrun` snapshot and the
+   `rollout-phase` sub-label (UI_SPEC.md § Rolling service).
 2. **Roster badge (optional, follow-up).** A small "rollout" marker on the
    stack cell for stacks with a `rollout` block, panel listing the rolled
    services — mirrors the hooks badge. Can ship in a later increment.

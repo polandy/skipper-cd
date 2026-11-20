@@ -123,6 +123,10 @@ type Config struct {
 	// the zero value when a phase finishes. nil disables publishing (UI off).
 	HookRunSink func(HookRun)
 
+	// RolloutRunSink receives the service a rollout is cutting over, and the
+	// zero value when the rollout ends. nil disables publishing (UI off).
+	RolloutRunSink func(RolloutRun)
+
 	// LastOutcome returns a stack's newest terminal audit outcome plus that
 	// outcome's event ID (0 when the event has left the bounded history). A
 	// success event consults it to mark itself as the retry of a rollback
@@ -184,6 +188,7 @@ type Deployer struct {
 	stackSetSink     func()
 	runPlanSink      func(RunPlan)
 	hookRunSink      func(HookRun)
+	rolloutRunSink   func(RolloutRun)
 	lastOutcome      func(stack string) (events.Status, int64, bool)
 	prober           *httpHealthProber
 
@@ -208,15 +213,16 @@ type Deployer struct {
 	projectDirErrors *configErrorLog
 
 	// Read/written from any goroutine without holding mu.
-	nextEventID      atomic.Int64
-	lastSyncErr      atomic.Pointer[syncOutcome]                  // nil until the first run
-	currentRunPlan   atomic.Pointer[RunPlan]                      // latest published plan, for late joiners
-	currentHookRun   atomic.Pointer[HookRun]                      // latest published hook-run state, for late joiners
-	discoveredStacks atomic.Pointer[config.RepoStacks]            // stack-discovery result, nil when stacks are listed explicitly
-	projectDirs      atomic.Pointer[map[string]string]            // recorded stack→project-dir, for orphan detection
-	trackedFiles     atomic.Pointer[map[string][]string]          // recorded stack→hashed input paths, for the roster
-	runningImagesNow atomic.Pointer[map[string]map[string]string] // recorded stack→service→running image, for the update check
-	heldNow          atomic.Pointer[map[string]HeldStack]         // stacks whose change is held (ADR-0062), for the roster and the retry endpoint
+	nextEventID       atomic.Int64
+	lastSyncErr       atomic.Pointer[syncOutcome]                  // nil until the first run
+	currentRunPlan    atomic.Pointer[RunPlan]                      // latest published plan, for late joiners
+	currentHookRun    atomic.Pointer[HookRun]                      // latest published hook-run state, for late joiners
+	currentRolloutRun atomic.Pointer[RolloutRun]                   // latest published rollout state, for late joiners
+	discoveredStacks  atomic.Pointer[config.RepoStacks]            // stack-discovery result, nil when stacks are listed explicitly
+	projectDirs       atomic.Pointer[map[string]string]            // recorded stack→project-dir, for orphan detection
+	trackedFiles      atomic.Pointer[map[string][]string]          // recorded stack→hashed input paths, for the roster
+	runningImagesNow  atomic.Pointer[map[string]map[string]string] // recorded stack→service→running image, for the update check
+	heldNow           atomic.Pointer[map[string]HeldStack]         // stacks whose change is held (ADR-0062), for the roster and the retry endpoint
 
 	retryMu       sync.Mutex
 	retryRequests map[string]bool // held stacks an operator asked to retry, consumed by the next run
@@ -257,6 +263,7 @@ func New(cfg Config) *Deployer {
 		stackSetSink:           cfg.StackSetSink,
 		runPlanSink:            cfg.RunPlanSink,
 		hookRunSink:            cfg.HookRunSink,
+		rolloutRunSink:         cfg.RolloutRunSink,
 		lastOutcome:            cfg.LastOutcome,
 		prober:                 newHealthProber(cfg.ProbeClient, cfg.ProbeInterval),
 		rolloutPollInterval:    cfg.RolloutPollInterval,

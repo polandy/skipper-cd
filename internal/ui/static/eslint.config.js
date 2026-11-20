@@ -100,6 +100,7 @@ module.exports = [
         healthClass: 'readonly',
         healthHistoryHTML: 'readonly',
         hookPhaseHTML: 'readonly',
+        rolloutPhaseHTML: 'readonly',
         updateCheckMetaHTML: 'readonly',
         watchedPanelHTML: 'readonly',
       },

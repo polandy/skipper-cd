@@ -300,6 +300,7 @@ func (s stateSnapshot) collect() []events.StateEvent {
 		{Name: events.StateQueue, Data: as.queue.View(as.order())},
 		{Name: events.StateUpcoming, Data: s.deployer.CurrentRunPlan()},
 		{Name: events.StateHookRun, Data: s.deployer.CurrentHookRun()},
+		{Name: events.StateRolloutRun, Data: s.deployer.CurrentRolloutRun()},
 		{Name: events.StateStacks, Data: roster.BuildState(s.stacks(), s.deployer.CurrentDisabledStacks(), s.auditLog, s.deployer.CurrentTrackedFiles(), s.repo, s.currentUpdates()).WithHeld(rosterHeld(s.deployer.HeldStacks()))},
 	}
 	if s.healthPoller != nil {

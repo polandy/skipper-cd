@@ -36,13 +36,14 @@ import (
 // The zero value (UI disabled) leaves every field nil; consumers gate on that,
 // exactly as they would on the individual nil subsystems.
 type uiLayer struct {
-	history      *events.History
-	broadcaster  *events.Broadcaster[events.DeployEvent]
-	stateB       *events.Broadcaster[events.StateEvent]
-	startEventID int64
-	runPlanSink  func(deploy.RunPlan)
-	hookRunSink  func(deploy.HookRun)
-	peerRegistry *peers.Registry
+	history        *events.History
+	broadcaster    *events.Broadcaster[events.DeployEvent]
+	stateB         *events.Broadcaster[events.StateEvent]
+	startEventID   int64
+	runPlanSink    func(deploy.RunPlan)
+	hookRunSink    func(deploy.HookRun)
+	rolloutRunSink func(deploy.RolloutRun)
+	peerRegistry   *peers.Registry
 }
 
 // buildUILayer constructs the UI-only subsystems, resuming event IDs after the
@@ -66,6 +67,9 @@ func buildUILayer(cfg *config.Config, stateDir string) uiLayer {
 	}
 	l.hookRunSink = func(h deploy.HookRun) {
 		stateB.Publish(events.StateEvent{Name: events.StateHookRun, Data: h})
+	}
+	l.rolloutRunSink = func(r deploy.RolloutRun) {
+		stateB.Publish(events.StateEvent{Name: events.StateRolloutRun, Data: r})
 	}
 	// Multi-host fan-in (ADR-0048): when peers are configured, the primary
 	// reads each peer's `/api/v1` surface and merges it into one UI. The poll

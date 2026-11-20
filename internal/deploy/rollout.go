@@ -60,7 +60,9 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 	}
 
 	timeout := d.rolloutTimeout(run.stack)
-	for _, service := range rc.Services {
+	defer d.publishRolloutRun(RolloutRun{}) // clear the indicator, pass or fail
+	for i, service := range rc.Services {
+		d.publishRolloutRun(RolloutRun{Stack: run.stack.Name, Service: service, Index: i + 1, Total: len(rc.Services)})
 		if err := d.rollService(ctx, run, service, timeout); err != nil {
 			if errors.Is(err, errCanaryUnhealthy) {
 				// Old version never stopped serving → rolled_back, no git-restore.

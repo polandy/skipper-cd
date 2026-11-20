@@ -262,6 +262,9 @@ const (
 	// StateHookRun is the hook a deploy is currently executing, zero when none
 	// (ADR-0038).
 	StateHookRun = "hookrun"
+	// StateRolloutRun is the service a rollout is cutting over, zero when none
+	// (ADR-0040).
+	StateRolloutRun = "rolloutrun"
 	// StatePeers is the merged multi-host read model — the primary's own label
 	// plus each configured peer's reachability and last-known read data
 	// (ADR-0048). Present only when peers are configured.
@@ -273,7 +276,7 @@ const (
 // peers — are only present when their component is enabled). Used to size the
 // snapshot map and to assert coverage in tests.
 var AllStateNames = []string{
-	StateAutosync, StateQueue, StateStacks, StateUpcoming, StateHookRun,
+	StateAutosync, StateQueue, StateStacks, StateUpcoming, StateHookRun, StateRolloutRun,
 	StateHealth, StateHealthWatch, StateOrphans, StateAppLinks, StatePeers,
 }
 
