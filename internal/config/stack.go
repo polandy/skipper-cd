@@ -256,6 +256,9 @@ func (c *Config) validateStacks() error {
 		if s.Name == "" {
 			return fmt.Errorf("stacks[%d] has no name — add a name: field to this entry", i)
 		}
+		if IsReservedStackName(s.Name) {
+			return fmt.Errorf("stack name %q is reserved for skipper's internal use (%s) — rename this stack", s.Name, strings.Join(ReservedStackNames(), ", "))
+		}
 		if _, dup := seen[s.Name]; dup {
 			return fmt.Errorf("duplicate stack name %q — stack names must be unique, rename one of the two entries", s.Name)
 		}
@@ -276,9 +279,6 @@ func (c *Config) validateStacks() error {
 // LoadRepoStacks resolves relative env_files/watch_dirs against stacks_base_dir;
 // host-list mode has no such step, so they must be absolute there.
 func (s Stack) validate(discovery bool) error {
-	if IsReservedStackName(s.Name) {
-		return fmt.Errorf("stack name %q is reserved for skipper's internal use (%s) — rename this stack", s.Name, strings.Join(ReservedStackNames(), ", "))
-	}
 	// A relative project_directory would resolve against skipper's own process
 	// cwd, not the repo clone — silently wrong --project-directory.
 	if s.ProjectDirectory != "" && !filepath.IsAbs(s.ProjectDirectory) {
