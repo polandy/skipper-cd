@@ -92,3 +92,27 @@ test('UY2: clicking the peer container log button again closes the panel', async
   await btn.click();
   await expect(page.locator('[data-testid="clog-panel"]')).toHaveCount(0);
 });
+
+// UY3 — a peers poll rebuilds the open peer panel; the log panel moves into the
+// rebuilt one instead of vanishing with the old.
+test('UY3: the peer log panel survives the peers poll rebuilding its row', async ({ page, skipper }) => {
+  await page.goto(`${skipper.baseURL}/`);
+
+  await openPeerContainers(page, 'gitea');
+  const peerPanel = page.locator('[data-testid="stacks-view"] [data-testid="detail-panel"][data-host="host-b"]');
+  await peerPanel.locator('[data-testid="health-service"]').first().locator('[data-testid="clog-btn"]').click();
+  await expect(page.locator('[data-testid="clog-body"]')).toContainText('web ready');
+
+  // Mark the panel the log opened in; the next peers publish replaces it with an unmarked one.
+  await peerPanel.evaluate((el) => {
+    el.dataset.e2eBeforePoll = '1';
+  });
+  const rebuilt = page.locator(
+    '[data-testid="stacks-view"] [data-testid="detail-panel"][data-host="host-b"]:not([data-e2e-before-poll])',
+  );
+  await expect(rebuilt).toHaveCount(1);
+
+  await expect(rebuilt.locator('[data-testid="clog-panel"]')).toBeVisible();
+  await expect(rebuilt.locator('[data-testid="clog-body"]')).toContainText('web ready');
+  await expect(rebuilt.locator('[data-testid="clog-btn"].on')).toHaveCount(1);
+});

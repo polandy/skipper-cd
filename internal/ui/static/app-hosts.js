@@ -134,6 +134,7 @@ App.hosts = (function () {
       App.deploys.insertRowByTime(createPeerRow(it.rec, it.host, it.stale), it.rec.timestamp);
     });
     if (peerOpen) App.detail.reapply(DETAIL_VIEW.deploys, tbody.querySelectorAll('.peer-row'));
+    App.clog.reattach();
   }
 
   // setLeadingChip replaces (or clears) a stack cell's leading host chip in place.

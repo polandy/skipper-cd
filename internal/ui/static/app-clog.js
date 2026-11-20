@@ -35,6 +35,7 @@ App.clog = (function () {
     query = '',
     tail = 200;
   let fsHolder = null; // marks the panel's row spot while it is fullscreen in <body>
+  let scope = null; // the view the panel was opened in, where reattach looks for its button
 
   function toBottom() {
     if (body) body.scrollTop = body.scrollHeight;
@@ -417,6 +418,51 @@ App.clog = (function () {
     }
   }
 
+  const VIEW_ROOTS = '#deploy-table, #stacks-view';
+
+  // In a Stacks detail panel the logs open under the verdict, keeping the head in view.
+  function anchorFor(button) {
+    const dpanel = button.closest('.detail-panel');
+    return (
+      button.closest('.hp-svc') ||
+      (dpanel && dpanel.querySelector('.dp-verdict')) ||
+      button.closest('.event-row') ||
+      button.closest('.roster-row') ||
+      button
+    );
+  }
+
+  // buttonFor finds the open key's container-log button among scope's re-rendered rows.
+  function buttonFor() {
+    const want = key.split('\n');
+    return Array.prototype.find.call(
+      scope.querySelectorAll('[data-clog-stack]:not(.hook-log-btn)'),
+      function (b) {
+        return (
+          (b.dataset.clogHost || '') === want[0] &&
+          b.dataset.clogStack === want[1] &&
+          (b.dataset.clogService || '') === want[2]
+        );
+      },
+    );
+  }
+
+  // reattach moves a log panel a row rebuild dropped under its new button, or closes it when none is left.
+  function reattach() {
+    if (!panel || mode !== 'container') return;
+    const spot = fsHolder || panel;
+    if (spot.isConnected) return;
+    const next = buttonFor();
+    if (!next) {
+      close();
+      return;
+    }
+    btn.classList.remove('on');
+    btn = next;
+    btn.classList.add('on');
+    anchorFor(next).after(spot);
+  }
+
   function open(button, stack, service, host) {
     const newKey = (host || '') + '\n' + stack + '\n' + (service || '');
     if (key === newKey) {
@@ -434,17 +480,9 @@ App.clog = (function () {
     paused = false;
     query = '';
     btn.classList.add('on');
+    scope = button.closest(VIEW_ROOTS) || document;
     panel = buildPanel(scopeText());
-    // In a Stacks detail panel the logs open under the verdict, so the head
-    // and the verdict that sent the reader there stay in view.
-    const dpanel = button.closest('.detail-panel');
-    const anchor =
-      button.closest('.hp-svc') ||
-      (dpanel && dpanel.querySelector('.dp-verdict')) ||
-      button.closest('.event-row') ||
-      button.closest('.roster-row') ||
-      button;
-    anchor.after(panel);
+    anchorFor(button).after(panel);
     body = panel.querySelector('.clog-body');
     wire();
     connect();
@@ -499,6 +537,7 @@ App.clog = (function () {
     }
     body = null;
     key = null;
+    scope = null;
     query = '';
     mode = 'container';
     curHost = '';
@@ -552,6 +591,7 @@ App.clog = (function () {
       openHookLog(button, stack);
     },
     close: close,
+    reattach: reattach,
     escape: function () {
       if (panel && panel.classList.contains('clog-fullscreen')) {
         fullscreen(false);

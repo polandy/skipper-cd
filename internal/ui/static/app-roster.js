@@ -93,6 +93,7 @@ App.roster = (function () {
     // has something new to say (a history record, a commit) — so the selection
     // re-opens on its rebuilt row, from the new snapshot.
     detail.reapply(VIEW, list.querySelectorAll('.roster-row'));
+    App.clog.reattach();
     applyHostFilter(); // dots + host filtering on the rebuilt roster
     refilterRoster(); // a re-render replaces the rows; re-apply any active filter
     App.stream.applyRunPhase(); // re-paint a running hook or rollout phase on the rebuilt roster rows
@@ -157,6 +158,7 @@ App.roster = (function () {
     });
     renderPeerRosterRows(list);
     if (peerOpen) detail.reapply(VIEW, list.querySelectorAll('.roster-row.peer-row'));
+    App.clog.reattach();
   }
 
   // ── Stacks view: click-a-row-for-history + search (mirrors the deploys filter) ──
