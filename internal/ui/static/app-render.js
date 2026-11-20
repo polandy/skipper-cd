@@ -299,18 +299,18 @@ function renderCommitHead(commits, repoBase) {
 // peer's records are relayed verbatim, so anything else is untrusted: it gets
 // the neutral badge-unknown class and its label is escaped.
 const BADGE_STATUSES = [
-  'deploying',
-  'success',
-  'failed',
-  'skipped',
-  'rolled_back',
-  'rolled_back_unhealthy',
-  'queued',
-  'healed',
-  'heal_exhausted',
-  'blocked',
-  'held',
-  'removed',
+  STATUS.DEPLOYING,
+  STATUS.SUCCESS,
+  STATUS.FAILED,
+  STATUS.SKIPPED,
+  STATUS.ROLLED_BACK,
+  STATUS.ROLLED_BACK_UNHEALTHY,
+  STATUS.QUEUED,
+  STATUS.HEALED,
+  STATUS.HEAL_EXHAUSTED,
+  STATUS.BLOCKED,
+  STATUS.HELD,
+  STATUS.REMOVED,
 ];
 
 function badgeHTML(status) {
@@ -318,21 +318,21 @@ function badgeHTML(status) {
   const cls = `badge badge-${known ? status : 'unknown'}`;
   // deploying keeps its animated spinner as the leading glyph; every other
   // status gets an icon from statusIcon (T3.14).
-  if (status === 'deploying')
+  if (status === STATUS.DEPLOYING)
     return `<span class="${cls}" data-testid="status-badge"><span class="spinner"></span>deploying</span>`;
   const icon = statusIcon(status);
-  if (status === 'rolled_back_unhealthy') {
+  if (status === STATUS.ROLLED_BACK_UNHEALTHY) {
     // The worst terminal state: a warning icon on a solid danger fill (T3.14)
     // — the loudest chip in the status column, not the smallest. The label
     // still stacks two lines (one line overflows the column), wrapped in
     // .badge-lbl so the badge stays a row for the leading icon.
     return `<span class="${cls}" data-testid="status-badge">${icon}<span class="badge-lbl"><span>rolled back</span><span>unhealthy</span></span></span>`;
   }
-  if (status === 'heal_exhausted') {
+  if (status === STATUS.HEAL_EXHAUSTED) {
     // Same solid two-line treatment as rolled_back_unhealthy (ADR-0029, T3.14).
     return `<span class="${cls}" data-testid="status-badge">${icon}<span class="badge-lbl"><span>self-heal</span><span>failed</span></span></span>`;
   }
-  const label = status === 'rolled_back' ? 'rolled back' : escapeHtml(status);
+  const label = status === STATUS.ROLLED_BACK ? 'rolled back' : escapeHtml(status);
   return `<span class="${cls}" data-testid="status-badge">${icon}${label}</span>`;
 }
 
@@ -700,7 +700,7 @@ function rosterVersionCellHTML(stack, health, disabled, updates) {
 // last terminal badge, followed by the held chip when the stack's change is
 // held. Retrying a held change is the detail verdict's action, not the row's.
 function rosterStatusHTML(entry, deploying) {
-  if (deploying) return badgeHTML('deploying');
+  if (deploying) return badgeHTML(STATUS.DEPLOYING);
   if (entry.disabled) return `<span class="roster-flag">disabled</span>`;
   if (!entry.last_status) return `<span class="roster-flag">never deployed</span>`;
   return badgeHTML(entry.last_status) + heldChipHTML(entry.name, entry.held);
@@ -745,7 +745,7 @@ function heldChipHTML(stack, held) {
       '.';
   }
   const label = backoff ? 'backoff' : 'held';
-  return `<span class="held-line"><span class="held-chip" data-testid="held-chip" title="${escapeAttr(title)}">${statusIcon('held')}${label}</span></span>`;
+  return `<span class="held-line"><span class="held-chip" data-testid="held-chip" title="${escapeAttr(title)}">${statusIcon(STATUS.HELD)}${label}</span></span>`;
 }
 
 // rosterHealthHTML is a Stacks row's Health cell: the stack's live health as
@@ -760,9 +760,9 @@ function rosterHealthHTML(health) {
 // outcomeLabel says a terminal status in words for the strip tooltips and the
 // last-incident line — same phrasing as the badges.
 function outcomeLabel(status) {
-  if (status === 'rolled_back') return 'rolled back';
-  if (status === 'rolled_back_unhealthy') return 'rolled back · unhealthy';
-  if (status === 'heal_exhausted') return 'self-heal failed';
+  if (status === STATUS.ROLLED_BACK) return 'rolled back';
+  if (status === STATUS.ROLLED_BACK_UNHEALTHY) return 'rolled back · unhealthy';
+  if (status === STATUS.HEAL_EXHAUSTED) return 'self-heal failed';
   return status;
 }
 
@@ -812,16 +812,16 @@ function lastIncidentHTML(incident, nowMs) {
 // first, so the chips a triage reaches for lead the row. A status outside the
 // list (a future addition) still renders, sorted alphabetically after these.
 const DEPLOY_STATUS_ORDER = [
-  'failed',
-  'rolled_back_unhealthy',
-  'rolled_back',
-  'heal_exhausted',
-  'healed',
-  'success',
-  'deploying',
-  'queued',
-  'blocked',
-  'removed',
+  STATUS.FAILED,
+  STATUS.ROLLED_BACK_UNHEALTHY,
+  STATUS.ROLLED_BACK,
+  STATUS.HEAL_EXHAUSTED,
+  STATUS.HEALED,
+  STATUS.SUCCESS,
+  STATUS.DEPLOYING,
+  STATUS.QUEUED,
+  STATUS.BLOCKED,
+  STATUS.REMOVED,
 ];
 
 // deployStatusChipsHTML renders the status-filter chip row under the Deploys

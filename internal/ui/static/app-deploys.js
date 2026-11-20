@@ -335,7 +335,7 @@ App.deploys = (function () {
     if (evt.has_diffs) row.dataset.hasDiffs = '1';
 
     // A healed row applied no change; others stash theirs for the live view-options toggle.
-    if (evt.status !== 'healed') {
+    if (evt.status !== STATUS.HEALED) {
       stashChanges(row, evt);
     }
     // Rendered from the stash, like the settle path below: one source for the
@@ -474,7 +474,7 @@ App.deploys = (function () {
     // it is never rendered (skipped events are live-only, never in history).
     // A held one repeats the failure row already shown every tick; the roster
     // carries the standing hold (ADR-0062).
-    if (evt.status === 'skipped' || evt.status === 'held') return;
+    if (evt.status === STATUS.SKIPPED || evt.status === STATUS.HELD) return;
 
     showTable();
 
@@ -483,7 +483,7 @@ App.deploys = (function () {
     // never announces the backlog. (T2.8)
     App.chrome.announceOutcome(deployAnnouncement(evt.status, evt.stack));
 
-    if (evt.status === 'queued' || evt.status === 'blocked') {
+    if (evt.status === STATUS.QUEUED || evt.status === STATUS.BLOCKED) {
       // Both are pending, leave-dirty states re-emitted every sync/reconcile
       // tick (queued = autosync paused; blocked = a failed depends_on
       // dependency, ADR-0032). Collapse repeats into one live row per stack,
@@ -499,7 +499,7 @@ App.deploys = (function () {
     removeQueuedRow(evt.stack);
     const prev = supersededRow(evt);
 
-    if (evt.status === 'deploying') {
+    if (evt.status === STATUS.DEPLOYING) {
       const row = createRow(evt, isHistory);
       tbody.insertBefore(row, tbody.firstChild);
       replaceRow(prev, row);
@@ -509,10 +509,10 @@ App.deploys = (function () {
     }
 
     if (
-      (evt.status === 'success' ||
-        evt.status === 'failed' ||
-        evt.status === 'rolled_back' ||
-        evt.status === 'rolled_back_unhealthy') &&
+      (evt.status === STATUS.SUCCESS ||
+        evt.status === STATUS.FAILED ||
+        evt.status === STATUS.ROLLED_BACK ||
+        evt.status === STATUS.ROLLED_BACK_UNHEALTHY) &&
       deployingRows[evt.stack]
     ) {
       const existing = deployingRows[evt.stack];

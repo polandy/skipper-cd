@@ -2755,3 +2755,10 @@ test('tabKeyIndex ignores every other key and a tab outside the strip', () => {
   assert.equal(h.tabKeyIndex('ArrowDown', 0, 3), -1);
   assert.equal(h.tabKeyIndex('ArrowRight', -1, 3), -1);
 });
+
+test('STATUS mirrors the events.Status constants and is frozen', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../events/events.go'), 'utf8');
+  const goValues = [...src.matchAll(/^\s*Status\w+\s+Status = "(\w+)"/gm)].map((m) => m[1]);
+  assert.deepEqual(Object.values(h.STATUS).sort(), goValues.sort());
+  assert.ok(Object.isFrozen(h.STATUS));
+});

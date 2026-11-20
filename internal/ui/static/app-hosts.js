@@ -121,7 +121,7 @@ App.hosts = (function () {
     const items = [];
     ((S.peersSnap && S.peersSnap.peers) || []).forEach(function (p) {
       (p.deploys || []).forEach(function (rec) {
-        if (rec.status === 'skipped') return; // an unchanged stack is not shown, as locally
+        if (rec.status === STATUS.SKIPPED) return; // an unchanged stack is not shown, as locally
         items.push({ rec: rec, host: p.name, stale: !!p.stale });
       });
     });

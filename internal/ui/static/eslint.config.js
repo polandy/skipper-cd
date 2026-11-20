@@ -15,6 +15,7 @@ module.exports = [
     languageOptions: {
       sourceType: 'script',
       globals: {
+        STATUS: 'readonly',
         ...globals.browser,
         App: 'readonly',
         makeReconnector: 'readonly',
@@ -60,6 +61,7 @@ module.exports = [
     languageOptions: {
       sourceType: 'script',
       globals: {
+        STATUS: 'readonly',
         ...globals.browser,
         App: 'readonly',
         makeSurfaceRegistry: 'readonly',
@@ -136,6 +138,7 @@ module.exports = [
     languageOptions: {
       sourceType: 'script',
       globals: {
+        STATUS: 'readonly',
         ...globals.browser,
         App: 'readonly',
         DETAIL_VIEW: 'readonly',
@@ -212,6 +215,7 @@ module.exports = [
     languageOptions: {
       sourceType: 'script',
       globals: {
+        STATUS: 'readonly',
         ...globals.browser,
         App: 'readonly',
         DETAIL_TAB: 'readonly',
@@ -353,6 +357,7 @@ module.exports = [
     languageOptions: {
       sourceType: 'script',
       globals: {
+        STATUS: 'readonly',
         module: 'readonly',
         require: 'readonly',
         // app-helpers.js constants it uses
@@ -396,6 +401,27 @@ module.exports = [
         waitedSince: 'readonly',
         watchedSummary: 'readonly',
       },
+    },
+  },
+  {
+    // Event statuses are compared through STATUS (app-helpers.js), never as
+    // bare strings.
+    files: ['app-*.js'],
+    ignores: ['app-*.test.js'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'BinaryExpression[operator=/^[!=]==$/] > Literal[value=/^(deploying|success|failed|skipped|rolled_back|rolled_back_unhealthy|queued|healed|heal_exhausted|blocked|held|removed)$/]',
+          message: 'Compare against STATUS.<NAME> (app-helpers.js), not a bare status string.',
+        },
+        {
+          selector:
+            'SwitchCase > Literal.test[value=/^(deploying|success|failed|skipped|rolled_back|rolled_back_unhealthy|queued|healed|heal_exhausted|blocked|held|removed)$/]',
+          message: 'Case on STATUS.<NAME> (app-helpers.js), not a bare status string.',
+        },
+      ],
     },
   },
   {
