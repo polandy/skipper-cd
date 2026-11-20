@@ -76,3 +76,25 @@ func TestParseReference_Empty(t *testing.T) {
 		t.Fatal("ParseReference(\"\") should fail")
 	}
 }
+
+func TestParseReference_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		in      string
+		wantErr string
+	}{
+		// A registry host with nothing after the slash names no repository.
+		{"example.com/", `image reference "example.com/" has no repository`},
+		{"localhost/", `image reference "localhost/" has no repository`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			_, err := ParseReference(tt.in)
+			if err == nil {
+				t.Fatalf("ParseReference(%q) succeeded, want an error", tt.in)
+			}
+			if err.Error() != tt.wantErr {
+				t.Errorf("err = %q, want %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}

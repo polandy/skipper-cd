@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,6 +57,73 @@ func TestDockerConfigCredentials_MissingOrBroken(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if _, _, ok := DockerConfigCredentials(path)("ghcr.io"); ok {
 				t.Error("expected anonymous for", name)
+			}
+		})
+	}
+}
+
+func TestDockerConfigCredentials_MalformedAuthEntries(t *testing.T) {
+	// A single unusable entry means anonymous, not an error — the host is
+	// simply asked without credentials.
+	tests := []struct {
+		name   string
+		config string
+	}{
+		{
+			name:   "auth blob is not base64",
+			config: `{"auths":{"ghcr.io":{"auth":"%%%not-base64"}}}`,
+		},
+		{
+			name: "auth blob decodes without a user:pass colon",
+			config: fmt.Sprintf(`{"auths":{"ghcr.io":{"auth":%q}}}`,
+				base64.StdEncoding.EncodeToString([]byte("justauser"))),
+		},
+		{
+			name:   "entry has neither auth nor username",
+			config: `{"auths":{"ghcr.io":{}}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, _, ok := DockerConfigCredentials(writeDockerConfig(t, tt.config))("ghcr.io"); ok {
+				t.Error("expected anonymous for", tt.name)
+			}
+		})
+	}
+}
+
+func TestDockerConfigPath(t *testing.T) {
+	tests := []struct {
+		name         string
+		dockerConfig string
+		home         string
+		want         string
+	}{
+		{
+			name:         "DOCKER_CONFIG wins",
+			dockerConfig: "/custom/docker",
+			home:         "/home/me",
+			want:         "/custom/docker/config.json",
+		},
+		{
+			name: "defaults to the home directory",
+			home: "/home/me",
+			want: "/home/me/.docker/config.json",
+		},
+		{
+			// No home directory gives no path — the caller reports that
+			// instead of guessing a config location.
+			name: "no home means no path",
+			home: "",
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DOCKER_CONFIG", tt.dockerConfig)
+			t.Setenv("HOME", tt.home)
+			if got := DockerConfigPath(); got != tt.want {
+				t.Errorf("DockerConfigPath() = %q, want %q", got, tt.want)
 			}
 		})
 	}
