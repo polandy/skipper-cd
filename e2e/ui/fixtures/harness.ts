@@ -13,6 +13,7 @@ import {
 import { join, basename, dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { workspaces } from "./tempdirs";
+import { killGroup } from "./procgroup";
 
 // This is the Node twin of the Go E2E harness (e2e/harness_test.go): it runs the
 // real skipper binary against a local git origin and a stub docker on PATH, so
@@ -937,6 +938,7 @@ export class Skipper {
     const proc = spawn(skipperBinPath(), ["-config", cfgPath], {
       env: spawnEnv,
       stdio: ["ignore", "pipe", "pipe"],
+      detached: true, // own process group, so stop() reaches skipper's children too
     });
 
     const s = new Skipper({
@@ -1280,7 +1282,8 @@ export class Skipper {
    *  test. Graceful shutdown is a backend concern covered by the Go pipeline
    *  tests; here we only need the process gone and its ports freed, fast. An
    *  abrupt drop is also the more faithful signal for the reconnect cases
-   *  (UD2/UE): the SSE stream is cut immediately instead of lingering. */
+   *  (UD2/UE): the SSE stream is cut immediately instead of lingering. The
+   *  kill takes skipper's whole process group, children included. */
   async stop(): Promise<void> {
     this.registryServer?.close();
     for (const server of this.peerServers) {
@@ -1290,11 +1293,12 @@ export class Skipper {
       server.close();
     }
     this.peerServers.length = 0;
-    if (this.proc.exitCode !== null || this.proc.signalCode !== null) return;
-    const exited = new Promise<void>((res) =>
-      this.proc.once("exit", () => res()),
-    );
-    this.proc.kill("SIGKILL");
+    const exited =
+      this.proc.exitCode !== null || this.proc.signalCode !== null
+        ? Promise.resolve()
+        : new Promise<void>((res) => this.proc.once("exit", () => res()));
+    // The whole group, even after skipper exited: an orphaned stub docker or hook would write into the removed tree.
+    await killGroup(this.proc.pid!);
     await exited;
   }
 
@@ -1319,6 +1323,7 @@ export class Skipper {
       spawn(bin, ["-config", this.cfgPath], {
         env: this.spawnEnv,
         stdio: ["ignore", "pipe", "pipe"],
+        detached: true,
       }),
     );
     await this.waitHealthy();

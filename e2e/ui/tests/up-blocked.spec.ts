@@ -73,6 +73,8 @@ test.describe('UP2: the cause line sits under the stack name', () => {
 
     const blocked = page.locator('[data-testid="deploy-row"][data-stack="app"][data-status="blocked"]');
     await expect(blocked).toHaveCount(1);
+    // The entrance scales the row, which shrinks the rect clipped() compares against.
+    await expect(blocked).not.toHaveClass(/\bnew-row\b/);
 
     const name = blocked.locator('.stack-name');
     const cause = blocked.locator('[data-testid="cause-line"]');

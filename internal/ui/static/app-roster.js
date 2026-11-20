@@ -93,6 +93,7 @@ App.roster = (function () {
     // has something new to say (a history record, a commit) — so the selection
     // re-opens on its rebuilt row, from the new snapshot.
     detail.reapply(VIEW, list.querySelectorAll('.roster-row'));
+    App.clog.reattach();
     applyHostFilter(); // dots + host filtering on the rebuilt roster
     refilterRoster(); // a re-render replaces the rows; re-apply any active filter
     App.stream.applyRunPhase(); // re-paint a running hook or rollout phase on the rebuilt roster rows
@@ -157,6 +158,7 @@ App.roster = (function () {
     });
     renderPeerRosterRows(list);
     if (peerOpen) detail.reapply(VIEW, list.querySelectorAll('.roster-row.peer-row'));
+    App.clog.reattach();
   }
 
   // ── Stacks view: click-a-row-for-history + search (mirrors the deploys filter) ──
@@ -192,6 +194,14 @@ App.roster = (function () {
   // refreshPeerRosterRows), so a health change — or the first poll after the
   // roster rendered — shows without a full re-render, which at poll cadence
   // would tear down and refetch an open panel (see renderRoster).
+  // paintCell rewrites a cell only when its markup changed, so a health poll leaves a steady row's nodes in place.
+  const paintedHTML = new WeakMap();
+  function paintCell(cell, html) {
+    if (paintedHTML.get(cell) === html) return;
+    paintedHTML.set(cell, html);
+    cell.innerHTML = html;
+  }
+
   function updateRosterHealth() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function (row) {
       if (row.classList.contains('disabled')) return;
@@ -200,13 +210,12 @@ App.roster = (function () {
       // The versions ride the health snapshot, so the cell is refreshed here
       // rather than only at render — on connect the roster arrives first.
       if (verCell)
-        verCell.innerHTML = rosterVersionInnerHTML(
-          row.dataset.stack,
-          h,
-          stackUpdatesFor(row.dataset.stack, ''),
+        paintCell(
+          verCell,
+          rosterVersionInnerHTML(row.dataset.stack, h, stackUpdatesFor(row.dataset.stack, '')),
         );
       const healthCell = row.querySelector('.roster-health');
-      if (healthCell) healthCell.innerHTML = rosterHealthHTML(h);
+      if (healthCell) paintCell(healthCell, rosterHealthHTML(h));
       // Keep the row's health marker (drives the severity bar + tint) in sync
       // in place — no re-sort, so a row never jumps out from under an open panel.
       if (h && h.status) row.dataset.health = h.status;

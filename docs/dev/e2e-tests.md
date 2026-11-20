@@ -186,6 +186,15 @@ binary):
   subscribed to while it runs: attaching a console or network listener is itself
   enough to change the timing of a race, which is how the UC11 investigation
   repeatedly lost its own flake (T8).
+- **Teardown kills the whole process group.** Each skipper starts as the
+  leader of its own process group, and `stop()` SIGKILLs the group and waits
+  until no member is left running (`fixtures/procgroup.ts`). Killing only
+  skipper orphaned a stub `docker` or hook that kept writing into the temp tree
+  while it was removed (`ENOTEMPTY` in the leak check). Zombies don't count: a
+  container whose PID 1 does not reap keeps them forever.
+- **No retries.** `retries` is 0 everywhere, CI included: a test that fails
+  only sometimes is missing a deterministic seam, and a re-run would hide it.
+  A failed test keeps its trace (`retain-on-failure`).
 - **Stolen ports retry the launch.** The harness reserves ports by binding
   port 0 and releasing again, so between the release and skipper's (or a peer
   stub's) own bind another process can take the port — they come from the same
@@ -1230,6 +1239,9 @@ forward. Behaviour-only.
   fills with the peer's log lines, forwarded frame-by-frame through the proxy.
 - **UY2 — Toggle closed.** A second click on the same peer `clog-btn` closes the
   panel, like a local container log.
+- **UY3 — Survives the peers poll.** Every peers poll rebuilds the open peer
+  panel; the open `clog-panel` moves into the rebuilt panel, still streaming and
+  with its `clog-btn` still marked on, instead of vanishing with the old one.
 
 ### 4.27 UI — Maske Z: Unhealthy-stack visibility (ADR-0027 extension)
 
@@ -2469,6 +2481,7 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UX4** | peer containers show the healthwatch timeline | `ux-peer-health.spec.ts` |
 | **UY1** | a peer container log button streams the peer log through the proxy | `uy-peer-logs.spec.ts` |
 | **UY2** | clicking the peer container log button again closes the panel | `uy-peer-logs.spec.ts` |
+| **UY3** | the peer log panel survives the peers poll rebuilding its row | `uy-peer-logs.spec.ts` |
 | **UZ1** | header beacon counts unhealthy stacks | `uz-unhealthy-visibility.spec.ts` |
 | **UZ2** | attention band jumps to the stack | `uz-unhealthy-visibility.spec.ts` |
 | **UZ3** | cross-view presence and recovery | `uz-unhealthy-visibility.spec.ts` |

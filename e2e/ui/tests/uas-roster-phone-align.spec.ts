@@ -34,6 +34,32 @@ async function rect(loc: ReturnType<Page["locator"]>) {
   return box!;
 }
 
+type Box = { x: number; y: number; width: number; height: number };
+
+// Rectangles of a roster row and its parts ('' is the row itself), read in one
+// page task: a health poll or snapshot rebuilds the row, so parts read one call
+// apart can come from two different rows, or from one already detached.
+async function rowRects(
+  page: Page,
+  stack: string,
+  parts: string[],
+): Promise<Box[]> {
+  await expect(rosterRow(page, stack)).toBeVisible();
+  return page.evaluate(
+    ([rowSel, sels]) => {
+      const row = document.querySelector(rowSel);
+      if (!row) throw new Error(`no ${rowSel}`);
+      return sels.map((sel) => {
+        const el = sel ? row.querySelector(sel) : row;
+        if (!el) throw new Error(`no ${sel} in ${rowSel}`);
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      });
+    },
+    [`[data-testid="roster-row"][data-stack="${stack}"]`, parts] as const,
+  );
+}
+
 async function openStacksView(page: Page): Promise<void> {
   await page
     .locator('[data-testid="view-toggle"] button[data-view="stacks"]')
@@ -103,11 +129,14 @@ test.describe("Maske AS: the Stacks row lines up on a phone", () => {
     skipper,
   }) => {
     await rollBackThenRetry(page, skipper);
-    const row = rosterRow(page, "web");
-
-    const pill = await rect(row.locator('[data-testid="health-pill"]'));
-    const badge = await rect(row.locator('[data-testid="status-badge"]'));
-    const last = await rect(row.locator(".roster-last"));
+    await expect(
+      rosterRow(page, "web").locator('[data-testid="health-pill"]'),
+    ).toBeVisible();
+    const [pill, badge, last] = await rowRects(page, "web", [
+      '[data-testid="health-pill"]',
+      '[data-testid="status-badge"]',
+      ".roster-last",
+    ]);
 
     expect(badge.y).toBeGreaterThanOrEqual(pill.y + pill.height);
     expect(
@@ -125,9 +154,12 @@ test.describe("Maske AS: the Stacks row lines up on a phone", () => {
     await rollBackThenRetry(page, skipper);
     const row = rosterRow(page, "web");
 
-    const version = await rect(row.locator(".col-version"));
-    const badge = await rect(row.locator('[data-testid="status-badge"]'));
-    const rowBox = await rect(row);
+    await expect(row.locator(".col-version")).toBeVisible();
+    const [version, badge, rowBox] = await rowRects(page, "web", [
+      ".col-version",
+      '[data-testid="status-badge"]',
+      "",
+    ]);
 
     expect(version.width).toBeGreaterThan(60);
     expect(version.x + version.width).toBeLessThanOrEqual(badge.x);
@@ -224,12 +256,14 @@ test.describe("Maske AS: a long version chip keeps its change whole", () => {
     skipper.setStackImage("web", "30.0.3-alpine-hardened-build");
     expect(await skipper.sendWebhook("refs/heads/main")).toBe(202);
 
-    // Until the redeploy settles, .first() is the startup row's single-token chip.
-    const successRows = page.locator(
-      '[data-testid="deploy-row"][data-stack="web"][data-status="success"]',
-    );
-    await expect(successRows).toHaveCount(2);
-    const chip = successRows.first().locator(".tag-delta");
+    // The bump row by what it shows, not by position: the startup row's chip has no old tag.
+    const bumpRow = page
+      .locator(
+        '[data-testid="deploy-row"][data-stack="web"][data-status="success"]',
+      )
+      .filter({ has: page.locator(".tag-delta .td-old") });
+    await expect(bumpRow).toHaveCount(1);
+    const chip = bumpRow.locator(".tag-delta");
     await expect(chip).toBeVisible();
 
     const box = await rect(chip);
@@ -238,9 +272,9 @@ test.describe("Maske AS: a long version chip keeps its change whole", () => {
 
     // The label really is in the clipped case — otherwise the assertions below
     // would hold trivially and prove nothing.
-    expect(
-      await label.evaluate((el) => el.scrollWidth > el.clientWidth),
-    ).toBe(true);
+    expect(await label.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(
+      true,
+    );
 
     // One line, and the change ends inside the chip.
     expect(box.height).toBeLessThan(group.height * 1.5);
