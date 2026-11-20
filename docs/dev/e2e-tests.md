@@ -1622,7 +1622,7 @@ cell to link there.
 Behaviour-only (no snapshot): the link is an attribute change, and the URL
 building itself (trailing slashes, a missing base or SHA, a non-http(s) base
 that must never reach an `href`) is covered by the `app-helpers` unit layer
-(`commitURL`) and, server-side, by `git.WebURL`.
+(`commitURL`) and, server-side, by `repourl.WebURL`.
 
 ### 4.40 UI — Maske AM: A refused autosync write is announced
 

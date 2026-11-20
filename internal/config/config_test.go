@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/polandy/skipper-cd/internal/config"
-	"github.com/polandy/skipper-cd/internal/git"
 	"github.com/polandy/skipper-cd/internal/uitheme"
 )
 
@@ -172,8 +171,8 @@ stacks:
 	if err != nil {
 		t.Fatalf("omitting both project_directory and stacks_base_dir should be allowed: %v", err)
 	}
-	if cfg.StacksBaseDir != git.DefaultRepoDir {
-		t.Errorf("expected stacks_base_dir to resolve to the repo root %q, got %q", git.DefaultRepoDir, cfg.StacksBaseDir)
+	if cfg.StacksBaseDir != config.DefaultRepoDir {
+		t.Errorf("expected stacks_base_dir to resolve to the repo root %q, got %q", config.DefaultRepoDir, cfg.StacksBaseDir)
 	}
 }
 
@@ -843,15 +842,15 @@ func TestLoad_AcceptsAbsoluteRepoDir(t *testing.T) {
 
 func TestLoad_AcceptsOmittedRepoDir(t *testing.T) {
 	cfg := loadFromString(t, minimalConfig)
-	if cfg.RepoDir != git.DefaultRepoDir {
-		t.Errorf("expected repo_dir to default to %q, got %q", git.DefaultRepoDir, cfg.RepoDir)
+	if cfg.RepoDir != config.DefaultRepoDir {
+		t.Errorf("expected repo_dir to default to %q, got %q", config.DefaultRepoDir, cfg.RepoDir)
 	}
 }
 
 func TestLoad_ResolvesRelativeStacksBaseDirAgainstDefaultRepoDir(t *testing.T) {
 	// minimalConfig omits repo_dir and sets stacks_base_dir: modules.
 	cfg := loadFromString(t, minimalConfig)
-	if want := filepath.Join(git.DefaultRepoDir, "modules"); cfg.StacksBaseDir != want {
+	if want := filepath.Join(config.DefaultRepoDir, "modules"); cfg.StacksBaseDir != want {
 		t.Errorf("expected stacks_base_dir %q, got %q", want, cfg.StacksBaseDir)
 	}
 }
