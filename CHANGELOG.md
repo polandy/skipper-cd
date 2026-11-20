@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.34.0](https://github.com/polandy/skipper-cd/compare/v0.33.0...v0.34.0) (2026-11-20)
+
+
+### Features
+
+* **deploy:** own the readiness wait and derive its budget from the healthcheck ([#439](https://github.com/polandy/skipper-cd/issues/439)) ([094fc25](https://github.com/polandy/skipper-cd/commit/094fc25ce8c6028dbfb5982bf87f4f20678c5e34))
+
+
+### Bug Fixes
+
+* **health:** inspect containers with {{.ID}} and report an unread container as unknown ([#436](https://github.com/polandy/skipper-cd/issues/436)) ([d74dd2a](https://github.com/polandy/skipper-cd/commit/d74dd2a2a6956f9709cf945f6e731a540ec63037))
+* **nixos:** treat an activation with failed units as applied, not as a failed rebuild ([#438](https://github.com/polandy/skipper-cd/issues/438)) ([b1ab46a](https://github.com/polandy/skipper-cd/commit/b1ab46a2f76b45d5f176edcabdd61acd3a277647))
+
 ## [0.33.0](https://github.com/polandy/skipper-cd/compare/v0.32.0...v0.33.0) (2026-11-19)
 
 
