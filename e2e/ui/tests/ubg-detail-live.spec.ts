@@ -8,7 +8,8 @@ import { openStackDetail } from '../fixtures/stack-detail';
 // The health poller runs every second over the stub's scripted container state
 // (skipper.setStackHealth). A detail opened before a health change shows the
 // change in place, staying open on the same panel element (UBG1, UBG2), and a
-// re-render keeps the focus on the control that had it (UBG3). The roster row
+// re-render keeps the focus on the control that had it (UBG3) and an open
+// container log open (UBG4). The roster row
 // of a second stack proves a snapshot landed before the panel opened.
 // Behaviour-only (no snapshot).
 
@@ -66,6 +67,22 @@ test.describe('Maske BG: an open detail follows the live state', () => {
     skipper.setStackHealth('web', degraded);
     await expect(hp).toHaveAttribute('data-health', 'unhealthy');
     await expect(tab).toBeFocused();
+  });
+
+  // UBG4 — a re-render keeps an open container log open under its new button.
+  test('UBG4: a live re-render keeps the open container log', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/`);
+    await openStackDetail(page, 'web', 'containers');
+    const hp = panel(page, 'web').locator('[data-testid="health-panel"]');
+    await expect(hp).toHaveAttribute('data-health', 'healthy');
+    await hp.locator('[data-testid="health-service"]').first().locator('[data-testid="clog-btn"]').click();
+    const log = page.locator('[data-testid="clog-panel"]');
+    await expect(log).toBeVisible();
+
+    skipper.setStackHealth('web', degraded);
+    await expect(hp).toHaveAttribute('data-health', 'unhealthy');
+    await expect(log).toBeVisible();
+    await expect(panel(page, 'web').locator('[data-testid="clog-panel"]')).toHaveCount(1);
   });
 });
 

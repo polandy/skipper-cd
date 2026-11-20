@@ -98,6 +98,7 @@ App.roster = (function () {
     refilterRoster(); // a re-render replaces the rows; re-apply any active filter
     App.stream.applyRunPhase(); // re-paint a running hook or rollout phase on the rebuilt roster rows
     App.chrome.renderUpdateBadge(); // the badge counts these rows, so it follows them
+    openPendingLink();
   }
 
   // renderPeerRosterRows appends every peer's stacks to the roster, one row each
@@ -160,6 +161,7 @@ App.roster = (function () {
     renderPeerRosterRows(list);
     if (peerOpen) detail.reapply(VIEW, list.querySelectorAll('.roster-row.peer-row'));
     App.clog.reattach();
+    openPendingLink();
   }
 
   // ── Stacks view: click-a-row-for-history + search (mirrors the deploys filter) ──
@@ -400,6 +402,7 @@ App.roster = (function () {
         inputs = panelInputs(c, next);
         showTab(panel, c, tabs, next);
         App.stream.applyRunPhase(); // the head was re-rendered — re-mark a running hook
+        syncDeepLink();
       });
       panel.addEventListener('keydown', function (e) {
         detail.tabKeydown(panel, e);
@@ -419,13 +422,58 @@ App.roster = (function () {
   // showDetail opens a stack's Stacks detail on host ('' or the self host for
   // a local stack) — where the Deploys detail's Show in Stacks lands.
   function showDetail(stack, host, tab) {
-    const want = host || S.selfHost;
-    const row = Array.prototype.find.call(rosterList.querySelectorAll('.roster-row'), function (r) {
-      return r.dataset.stack === stack && (r.dataset.host || S.selfHost) === want;
-    });
+    const row = findRow(stack, host);
     if (!row || detail.isOpen(VIEW, row, tab)) return;
     detail.show(VIEW, row, DETAIL_TAB.overview, { tab: tab });
     refilterRoster();
+  }
+
+  function findRow(stack, host) {
+    const want = host || S.selfHost;
+    return Array.prototype.find.call(rosterList.querySelectorAll('.roster-row'), function (r) {
+      return r.dataset.stack === stack && (r.dataset.host || S.selfHost) === want;
+    });
+  }
+
+  // ── Deep link (docs/dev/ui-redesign-plan.md Q5) ──
+  let pendingLink = null; // a linked stack whose row has not arrived yet
+
+  // syncDeepLink mirrors the open Stacks detail (tab only if non-default) into the hash, without a history entry.
+  function syncDeepLink() {
+    if (pendingLink) return; // the hash still names what is about to open
+    const row = detail.openRow(VIEW);
+    const panel = stacksView.querySelector('.detail-panel');
+    let hash = '';
+    if (row && panel && App.chrome.activeView() === VIEW) {
+      const host = row.classList.contains('peer-row') ? row.dataset.host : '';
+      const c = detailContext(row.dataset.stack, host);
+      const tab = panel.dataset.tab;
+      const pinned = c && tab !== resolveTab(c, stackTabs(c.entry, c.health));
+      hash = stackDeepLink({ host: host, stack: row.dataset.stack, tab: pinned ? tab : '' });
+    }
+    if (hash === location.hash) return;
+    history.replaceState(history.state, '', hash || location.pathname + location.search);
+  }
+
+  // followDeepLink switches to Stacks for a #stacks/ hash and opens its stack, now or once the row arrives.
+  function followDeepLink() {
+    const link = parseStackDeepLink(location.hash);
+    if (!link) return;
+    pendingLink = link;
+    App.chrome.switchView(VIEW);
+    clearRosterFilter(true); // a leftover query could hide the landing row
+    openPendingLink();
+  }
+
+  function openPendingLink() {
+    if (!pendingLink) return;
+    const link = pendingLink;
+    const row = findRow(link.stack, link.host);
+    if (!row) return;
+    pendingLink = null;
+    showDetail(link.stack, link.host, link.tab || undefined);
+    App.chrome.flashRow(row);
+    syncDeepLink();
   }
 
   // countRosterUpdates counts the roster rows a registry update is waiting on,
@@ -638,6 +686,13 @@ App.roster = (function () {
   // init wires the roster list, the search bar and the stacks type-to-search —
   // everything the view ran at load.
   function init() {
+    detail.onChange(function (view) {
+      if (view !== VIEW) return;
+      pendingLink = null; // a selection of the viewer's own wins over a waiting link
+      syncDeepLink();
+    });
+    window.addEventListener('hashchange', followDeepLink);
+
     // The side column holds the open detail on a wide screen; it takes the
     // list's delegation so the panel works the same in either place.
     [rosterList, document.getElementById('roster-side')].forEach(function (host) {
@@ -722,6 +777,8 @@ App.roster = (function () {
     refreshPeerRosterRows,
     refilterRoster,
     showDetail,
+    syncDeepLink,
+    followDeepLink,
     updateAppLinks,
     updateRosterHealth,
     refreshRosterRow,

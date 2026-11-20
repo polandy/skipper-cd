@@ -113,6 +113,32 @@ function detailMatchesRow(sel, row) {
   );
 }
 
+// stackDeepLink is the hash naming a Stacks detail: #stacks/[<peer host>/]<stack>[?tab=<tab>].
+function stackDeepLink(link) {
+  let h = '#' + DETAIL_VIEW.stacks + '/';
+  if (link.host) h += encodeURIComponent(link.host) + '/';
+  h += encodeURIComponent(link.stack);
+  if (link.tab) h += '?tab=' + encodeURIComponent(link.tab);
+  return h;
+}
+
+// parseStackDeepLink reads a stackDeepLink hash into { host, stack, tab } ('' when absent), else null.
+function parseStackDeepLink(hash) {
+  const m = /^#stacks\/([^/?]+)(?:\/([^/?]+))?(?:\?tab=([^&]+))?$/.exec(hash || '');
+  if (!m) return null;
+  try {
+    const a = decodeURIComponent(m[1]);
+    const b = m[2] === undefined ? '' : decodeURIComponent(m[2]);
+    return {
+      host: b ? a : '',
+      stack: b || a,
+      tab: m[3] ? decodeURIComponent(m[3]) : '',
+    };
+  } catch {
+    return null; // a malformed %-escape
+  }
+}
+
 // classifyDiffLine maps a unified-diff line to its CSS class (meta/hunk/add/del).
 function classifyDiffLine(line) {
   if (
@@ -2254,6 +2280,8 @@ if (typeof module !== 'undefined' && module.exports) {
     tabKeyIndex,
     detailSelection,
     detailMatchesRow,
+    stackDeepLink,
+    parseStackDeepLink,
     classifyDiffLine,
     shortSHA,
     commitURL,

@@ -27,6 +27,19 @@ App.detail = (function () {
   // The view filters' row classes; an inline pane wears its row's.
   const ROW_HIDDEN = ['filtered-out', 'host-hidden'];
 
+  const listeners = [];
+
+  // onChange calls fn(view) when view's selection opens, closes or moves — not on a rebuild's re-open.
+  function onChange(fn) {
+    listeners.push(fn);
+  }
+
+  function changed(view) {
+    listeners.forEach(function (fn) {
+      fn(view);
+    });
+  }
+
   function registerPane(tab, pane) {
     panes[tab] = pane;
   }
@@ -110,7 +123,12 @@ App.detail = (function () {
 
   // show opens row's tab pane in view, replacing whatever the view had open.
   function show(view, row, tab, opts) {
-    close(view);
+    drop(view);
+    openEntry(view, row, tab, opts);
+    changed(view);
+  }
+
+  function openEntry(view, row, tab, opts) {
     const entry = {
       sel: detailSelection(view, row.dataset, tab),
       row: row,
@@ -204,8 +222,13 @@ App.detail = (function () {
   // close closes view's open detail, if any. Focus inside the removed pane
   // goes back to the row's toggle rather than being lost to the page.
   function close(view) {
+    if (drop(view)) changed(view);
+  }
+
+  // drop closes view's open detail silently and reports whether one was open.
+  function drop(view) {
     const e = open[view];
-    if (!e) return;
+    if (!e) return false;
     delete open[view];
     const focusWasInPane = e.nodes.some(function (n) {
       return n.contains(document.activeElement);
@@ -217,6 +240,7 @@ App.detail = (function () {
     if (pane.onClose) pane.onClose(e.row);
     const toggle = e.row.querySelector('.row-toggle');
     if (focusWasInPane && toggle) toggle.focus();
+    return true;
   }
 
   function setExpanded(row, expanded) {
@@ -274,7 +298,8 @@ App.detail = (function () {
     const row = Array.prototype.find.call(rows, function (r) {
       return detailMatchesRow(e.sel, r.dataset);
     });
-    if (row) show(view, row, e.sel.tab, e.opts);
+    if (row) openEntry(view, row, e.sel.tab, e.opts);
+    else changed(view);
   }
 
   // tabKeydown moves a detail panel's tab selection by keyboard (tabKeyIndex):
@@ -295,6 +320,7 @@ App.detail = (function () {
 
   return {
     registerPane,
+    onChange,
     isOpen,
     openRow,
     relayout,

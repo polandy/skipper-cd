@@ -2050,6 +2050,41 @@ test('detailMatchesRow finds the selected row again after a rebuild', () => {
   assert.equal(h.detailMatchesRow(null, { stack: 'web' }), false);
 });
 
+test('stackDeepLink names a local or peer stack and its tab', () => {
+  assert.equal(h.stackDeepLink({ host: '', stack: 'web' }), '#stacks/web');
+  assert.equal(
+    h.stackDeepLink({ host: 'nuc', stack: 'web', tab: 'history' }),
+    '#stacks/nuc/web?tab=history',
+  );
+  assert.equal(h.stackDeepLink({ host: '', stack: 'a b/c' }), '#stacks/a%20b%2Fc');
+});
+
+test('parseStackDeepLink reads back what stackDeepLink writes', () => {
+  const links = [
+    { host: '', stack: 'web', tab: '' },
+    { host: 'nuc', stack: 'web', tab: '' },
+    { host: '', stack: 'web', tab: 'containers' },
+    { host: 'host-b', stack: 'a b/c', tab: 'hooks' },
+  ];
+  for (const link of links) assert.deepEqual(h.parseStackDeepLink(h.stackDeepLink(link)), link);
+});
+
+test('parseStackDeepLink rejects any other hash', () => {
+  for (const hash of [
+    '',
+    '#',
+    '#stacks',
+    '#stacks/',
+    '#deploys/web',
+    '#stacks/a/b/c',
+    '#stacks/%E0%A4%A',
+    'stacks/web',
+  ]) {
+    assert.equal(h.parseStackDeepLink(hash), null, hash);
+  }
+  assert.equal(h.parseStackDeepLink(undefined), null);
+});
+
 test('stackDefaultTab opens where the row needs attention', () => {
   const cases = [
     [{ name: 'a', disabled: true, last_status: 'success' }, 'triggers'],

@@ -298,6 +298,7 @@ App.chrome = (function () {
       App.logs.renderLogWindow();
     }
     if (activeView === 'stacks') App.roster.renderRoster();
+    App.roster.syncDeepLink(); // the hash names a Stacks selection only while Stacks is up
     renderUpdateBadge(); // its .active state is view-dependent (Stacks only)
     syncStackSearchBtn(); // the trigger is view-aware + logs-hidden (T3.11)
   }
@@ -337,12 +338,7 @@ App.chrome = (function () {
   // `.filtered-out` (display: none) — switched to, but invisible and with no
   // indication why.
   function jumpToStack(targetView, stack) {
-    if (targetView !== activeView) {
-      activeView = targetView;
-      localStorage.setItem('activeView', activeView);
-      setViewOptions(false);
-      applyView();
-    }
+    switchView(targetView);
     if (targetView === 'stacks') App.roster.clearRosterFilter(true);
     else App.deploys.clearDeployFilter(true);
     const escaped = window.CSS && CSS.escape ? CSS.escape(stack) : stack;
@@ -354,6 +350,15 @@ App.chrome = (function () {
         : document.getElementById('tbody').querySelector(`.event-row[data-stack="${escaped}"]`);
     if (!target) return;
     flashRow(target);
+  }
+
+  // switchView makes targetView the active (and remembered) view.
+  function switchView(targetView) {
+    if (targetView === activeView) return;
+    activeView = targetView;
+    localStorage.setItem('activeView', activeView);
+    setViewOptions(false);
+    applyView();
   }
 
   // flashRow scrolls a row into view and flashes the accent jump highlight —
@@ -894,6 +899,7 @@ App.chrome = (function () {
     applyView,
     setViewOptions,
     jumpToStack,
+    switchView,
     flashRow,
     renderIncidentBadge,
     renderUpdateBadge,
