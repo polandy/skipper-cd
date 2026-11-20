@@ -46,24 +46,26 @@ func (r *Rebuilder) activatedWithFailedUnits(unit string) (*UnitsFailedError, bo
 	if r.out == nil {
 		return nil, false
 	}
-	// Background context: the outcome must resolve even as shutdown cancels the run.
-	ctx := context.Background()
-	show, err := r.out.Output(ctx, "", "systemctl", "show", "-p", "ExecMainStatus", "-p", "InvocationID", unit)
-	if err != nil {
-		return nil, false
-	}
-	props := parseProperties(string(show))
+	props := parseProperties(r.readOutput("systemctl", "show", "-p", "ExecMainStatus", "-p", "InvocationID", unit))
 	if props["ExecMainStatus"] != switchUnitsFailedStatus {
 		return nil, false
 	}
 	failed := &UnitsFailedError{Unit: unit}
 	if id := props["InvocationID"]; id != "" {
-		journal, err := r.out.Output(ctx, "", "journalctl", "_SYSTEMD_INVOCATION_ID="+id, "-n", journalTailLines, "--no-pager", "-o", "cat")
-		if err == nil {
-			failed.Units = parseFailedUnits(string(journal))
-		}
+		failed.Units = parseFailedUnits(r.readOutput("journalctl", "_SYSTEMD_INVOCATION_ID="+id, "-n", journalTailLines, "--no-pager", "-o", "cat"))
 	}
 	return failed, true
+}
+
+// readOutput returns a command's stdout, or "" when it fails: an unreadable
+// post-mortem leaves the failure unclassified. A background context resolves
+// the outcome even as shutdown cancels the run.
+func (r *Rebuilder) readOutput(name string, args ...string) string {
+	out, err := r.out.Output(context.Background(), "", name, args...)
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }
 
 // parseProperties parses `systemctl show` Key=Value lines.
