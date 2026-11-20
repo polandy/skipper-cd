@@ -329,9 +329,10 @@ func TestE2E_StillStartingHoldsWithoutRollback(t *testing.T) {
 			t.Errorf("failed event error %q lacks %q", msg, want)
 		}
 	}
-	if v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`); !ok || v != 1 {
-		t.Errorf("skipper_stack_held{web} = %v (ok=%v), want 1", v, ok)
-	}
+	s.waitFor("the change to be held", func() bool {
+		v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return ok && v == 1
+	})
 
 	container("healthy")
 	successes := es.count("web", "success") // the startup deploy's
