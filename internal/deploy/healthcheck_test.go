@@ -102,8 +102,11 @@ func TestResolveHealthCheck_ExplicitConfigWins(t *testing.T) {
 	cf := mustParseCompose(t, path)
 
 	got := resolveHealthCheck(config.Stack{DeployHealthCheck: explicit}, cf)
-	if got != explicit {
-		t.Errorf("expected the explicit deploy_health_check to be returned unchanged, got %+v", got)
+	if got == nil || *got != *explicit {
+		t.Errorf("expected the explicit deploy_health_check to be used as given, got %+v", got)
+	}
+	if got == explicit {
+		t.Error("expected a copy, so the stack's own field stays unresolved for ConfigHash")
 	}
 }
 
@@ -117,11 +120,45 @@ func TestResolveHealthCheck_AutoDetectsFromComposeHealthcheck(t *testing.T) {
 	if got == nil {
 		t.Fatal("expected an automatic deploy_health_check, got nil")
 	}
-	if got.TimeoutSeconds != config.DefaultHealthCheckTimeoutSeconds {
-		t.Errorf("expected default timeout %d, got %d", config.DefaultHealthCheckTimeoutSeconds, got.TimeoutSeconds)
+	// Docker's default timing: 4×30s interval + 30s timeout.
+	if got.TimeoutSeconds != 150 {
+		t.Errorf("expected the derived timeout 150, got %d", got.TimeoutSeconds)
 	}
 	if got.URL != "" {
 		t.Errorf("expected no URL probe on an automatic gate, got %q", got.URL)
+	}
+}
+
+func TestResolveHealthCheck_TimeoutBudget(t *testing.T) {
+	healthcheck := func(timing string) string {
+		return "services:\n  app:\n    image: nginx:1.26\n    healthcheck:\n      test: [\"CMD\", \"true\"]\n" + timing
+	}
+	tests := []struct {
+		name     string
+		compose  string
+		explicit *config.HealthCheck
+		want     int
+	}{
+		{"short timing is floored", healthcheck("      interval: 5s\n"), nil, config.MinHealthCheckTimeoutSeconds},
+		{"docker defaults", healthcheck(""), nil, 150}, // 4×30s + 30s
+		{"slow start derives", healthcheck("      start_period: 10m\n      interval: 30s\n      timeout: 10s\n      retries: 3\n"), nil, 730},
+		{"sub-second rounds up", healthcheck("      start_period: 60500ms\n      interval: 1s\n      timeout: 1s\n      retries: 1\n"), nil, 64},
+		{"explicit timeout wins", healthcheck("      start_period: 10m\n"), &config.HealthCheck{TimeoutSeconds: 45}, 45},
+		{"explicit mapping without timeout derives", healthcheck("      start_period: 10m\n"), &config.HealthCheck{URL: "http://x/"}, 750},
+		{"explicit gate without compose healthcheck", composeWithImage("nginx:1.26"), &config.HealthCheck{}, config.MinHealthCheckTimeoutSeconds},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "docker-compose.yml")
+			writeFile(t, path, tt.compose)
+			got := resolveHealthCheck(config.Stack{DeployHealthCheck: tt.explicit}, mustParseCompose(t, path))
+			if got == nil || got.TimeoutSeconds != tt.want {
+				t.Fatalf("expected timeout %d, got %+v", tt.want, got)
+			}
+			if tt.explicit != nil && tt.explicit.TimeoutSeconds == 0 && got == tt.explicit {
+				t.Error("expected the stack's own field left unresolved")
+			}
+		})
 	}
 }
 
@@ -161,7 +198,7 @@ func TestResolveHealthCheck_OnDemandStackExplicitGateStillWins(t *testing.T) {
 
 	explicit := &config.HealthCheck{TimeoutSeconds: 30}
 	stack := config.Stack{OnDemandContainers: []string{"app"}, DeployHealthCheck: explicit}
-	if got := resolveHealthCheck(stack, cf); got != explicit {
+	if got := resolveHealthCheck(stack, cf); got == nil || *got != *explicit {
 		t.Errorf("expected the explicit gate to win over on-demand suppression, got %+v", got)
 	}
 }
@@ -222,25 +259,33 @@ func upCalls(calls []runCall) []runCall {
 	return ups
 }
 
-func TestDeployStack_UpWaitsForHealthWhenConfigured(t *testing.T) {
+func TestDeployStack_GatedDeployWaitsForReadiness(t *testing.T) {
 	baseDir := makeBaseWithStack(t)
 
 	runner := &recordingRunner{}
-	d := New(Config{Runner: runner, StateDir: t.TempDir()})
+	d := New(Config{Runner: runner, Outputter: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	assertReadinessWaitedWithoutComposeWait(t, runner)
+}
+
+// assertReadinessWaitedWithoutComposeWait checks that skipper read the
+// containers' state itself after one plain up (ADR-0072).
+func assertReadinessWaitedWithoutComposeWait(t *testing.T, runner *recordingRunner) {
+	t.Helper()
 	ups := upCalls(runner.calls)
 	if len(ups) != 1 {
 		t.Fatalf("expected exactly 1 up call, got %d", len(ups))
 	}
-	for _, want := range []string{"--wait", "--wait-timeout", "45"} {
-		if !slices.Contains(ups[0].args, want) {
-			t.Errorf("expected up args to contain %q, got %v", want, ups[0].args)
-		}
+	if slices.Contains(ups[0].args, "--wait") {
+		t.Errorf("expected no compose --wait, got %v", ups[0].args)
+	}
+	if len(readinessReads(runner.outputCalls)) == 0 {
+		t.Error("expected a readiness read of the containers")
 	}
 }
 
@@ -248,7 +293,7 @@ func TestDeployStack_NoWaitFlagsWithoutHealthCheck(t *testing.T) {
 	baseDir := makeBaseWithStack(t)
 
 	runner := &recordingRunner{}
-	d := New(Config{Runner: runner, StateDir: t.TempDir()})
+	d := New(Config{Runner: runner, Outputter: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack"}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -262,22 +307,14 @@ func TestDeployStack_AutoDetectsHealthCheckFromComposeHealthcheck(t *testing.T) 
 	baseDir := makeBaseWithHealthcheckStack(t)
 
 	runner := &recordingRunner{}
-	d := New(Config{Runner: runner, StateDir: t.TempDir()})
+	d := New(Config{Runner: runner, Outputter: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack"} // no deploy_health_check declared
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	ups := upCalls(runner.calls)
-	if len(ups) != 1 {
-		t.Fatalf("expected exactly 1 up call, got %d", len(ups))
-	}
-	for _, want := range []string{"--wait", "--wait-timeout", "60"} {
-		if !slices.Contains(ups[0].args, want) {
-			t.Errorf("expected up args to contain %q, got %v", want, ups[0].args)
-		}
-	}
+	assertReadinessWaitedWithoutComposeWait(t, runner)
 }
 
 func TestDeployStack_ExplicitDisableSkipsAutoGate(t *testing.T) {
@@ -286,7 +323,7 @@ func TestDeployStack_ExplicitDisableSkipsAutoGate(t *testing.T) {
 	baseDir := makeBaseWithHealthcheckStack(t)
 
 	runner := &recordingRunner{}
-	d := New(Config{Runner: runner, StateDir: t.TempDir()})
+	d := New(Config{Runner: runner, Outputter: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{Enabled: boolPtr(false)}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -298,11 +335,11 @@ func TestDeployStack_ExplicitDisableSkipsAutoGate(t *testing.T) {
 
 func TestDeployStack_OnDemandStackSkipsAutoGate(t *testing.T) {
 	// The compose file has a healthcheck: but the stack is on-demand, so no
-	// gate is applied and up runs without --wait (ADR-0049).
+	// gate is applied and no readiness wait runs (ADR-0049).
 	baseDir := makeBaseWithHealthcheckStack(t)
 
 	runner := &recordingRunner{}
-	d := New(Config{Runner: runner, StateDir: t.TempDir()})
+	d := New(Config{Runner: runner, Outputter: runner, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", OnDemandContainers: []string{"mystack-app"}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -313,25 +350,12 @@ func TestDeployStack_OnDemandStackSkipsAutoGate(t *testing.T) {
 }
 
 func TestDeployStack_ExplicitHealthCheckOverridesAutoDetect(t *testing.T) {
-	baseDir := makeBaseWithHealthcheckStack(t)
+	env := newReadinessEnv(t)
+	env.health(func(int) containerLine { return appContainer("running", "starting", 0) })
 
-	runner := &recordingRunner{}
-	d := New(Config{Runner: runner, StateDir: t.TempDir()})
-
-	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
-	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	ups := upCalls(runner.calls)
-	if len(ups) != 1 {
-		t.Fatalf("expected exactly 1 up call, got %d", len(ups))
-	}
-	if !slices.Contains(ups[0].args, "45") {
-		t.Errorf("expected the explicit timeout 45 to win over the default, got %v", ups[0].args)
-	}
-	if slices.Contains(ups[0].args, "60") {
-		t.Errorf("did not expect the auto-detected default timeout, got %v", ups[0].args)
+	err := env.deploy(t, config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}})
+	if err == nil || !strings.Contains(err.Error(), "still starting after 45s") {
+		t.Errorf("expected the explicit 45s to bound the wait, got %v", err)
 	}
 }
 
@@ -349,7 +373,7 @@ func TestDeployStack_AutoDetectedHealthCheckFailureTriggersRollback(t *testing.T
 	// The first "up" (the deploy under the auto-detected gate) fails; the
 	// rollback's own "up" (second call) succeeds.
 	failingOnce := &failUpCallsRunner{errs: map[int]error{1: fmt.Errorf("compose up: services never turned healthy")}}
-	d := New(Config{Runner: failingOnce, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
+	d := New(Config{Runner: failingOnce, Outputter: failingOnce, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack"} // no deploy_health_check declared, auto-detected from compose
 	state := &persistedState{
@@ -372,7 +396,7 @@ func TestDeployStack_HealthProbePassKeepsDeploy(t *testing.T) {
 
 	runner := &recordingRunner{}
 	doer := &fakeDoer{statuses: []int{200}}
-	d := New(Config{Runner: runner, StateDir: t.TempDir(), ProbeClient: doer, ProbeInterval: time.Millisecond})
+	d := New(Config{Runner: runner, Outputter: runner, StateDir: t.TempDir(), ProbeClient: doer, ProbeInterval: time.Millisecond})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",
@@ -399,7 +423,7 @@ func TestDeployStack_NoProbeWithoutURL(t *testing.T) {
 
 	runner := &recordingRunner{}
 	doer := &fakeDoer{statuses: []int{500}}
-	d := New(Config{Runner: runner, StateDir: t.TempDir(), ProbeClient: doer, ProbeInterval: time.Millisecond})
+	d := New(Config{Runner: runner, Outputter: runner, StateDir: t.TempDir(), ProbeClient: doer, ProbeInterval: time.Millisecond})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 1}}
 	if err := d.deployStackIfChanged(context.Background(), stack, baseDir, "", nil, newEmptyState()); err != nil {
@@ -414,9 +438,10 @@ func TestDeployStack_NoProbeWithoutURL(t *testing.T) {
 // (the second up call) runs, simulating an old version that comes back
 // healthy after the rollback.
 type rollbackHealsRunner struct {
-	calls []runCall
-	doer  *fakeDoer
-	ups   int
+	calls       []runCall
+	outputCalls []runCall
+	doer        *fakeDoer
+	ups         int
 }
 
 func (r *rollbackHealsRunner) Run(_ context.Context, dir string, _ []string, name string, args ...string) error {
@@ -428,6 +453,11 @@ func (r *rollbackHealsRunner) Run(_ context.Context, dir string, _ []string, nam
 		}
 	}
 	return nil
+}
+
+func (r *rollbackHealsRunner) Output(_ context.Context, dir string, name string, args ...string) ([]byte, error) {
+	r.outputCalls = append(r.outputCalls, runCall{dir: dir, name: name, args: args})
+	return nil, nil
 }
 
 func TestDeployStack_HealthProbeFailureRollsBack(t *testing.T) {
@@ -446,6 +476,7 @@ func TestDeployStack_HealthProbeFailureRollsBack(t *testing.T) {
 	runner := &rollbackHealsRunner{doer: doer}
 	d := New(Config{
 		Runner:        runner,
+		Outputter:     runner,
 		CommitReader:  cr,
 		RepoDir:       baseDir,
 		StateDir:      t.TempDir(),
@@ -476,16 +507,16 @@ func TestDeployStack_HealthProbeFailureRollsBack(t *testing.T) {
 		t.Errorf("expected 'health check' in error, got: %v", err)
 	}
 
-	// The failed deploy up plus the rollback up; the rollback up runs through
-	// the same health gate.
+	// The failed deploy up plus the rollback up; the rollback runs through the
+	// same health gate, its readiness wait included.
 	ups := upCalls(runner.calls)
 	if len(ups) != 2 {
 		t.Fatalf("expected 2 up calls (deploy + rollback), got %d", len(ups))
 	}
-	for _, want := range []string{"--wait", "--wait-timeout", "1"} {
-		if !slices.Contains(ups[1].args, want) {
-			t.Errorf("expected rollback up args to contain %q, got %v", want, ups[1].args)
-		}
+	if !slices.ContainsFunc(runner.outputCalls, func(c runCall) bool {
+		return isReadinessRead(c.args) && slices.ContainsFunc(c.args, func(a string) bool { return strings.Contains(a, "skipper-restored-") })
+	}) {
+		t.Errorf("expected a readiness read of the restored version, got %v", runner.outputCalls)
 	}
 	if state.Stacks["mystack"]["old"] != "oldhash" {
 		t.Error("state must not be updated after a rolled-back deploy")
@@ -501,9 +532,9 @@ func TestDeployStack_RollbackUpStillUnhealthyWrapsErrRollbackUnhealthy(t *testin
 			"old-sha:" + composePath: []byte(composeWithImage("nginx:1.25")),
 		},
 	}
-	// Every up fails: the deploy up --wait and the rollback up --wait alike.
+	// Every up fails: the deploy, rollback and roll-forward up alike.
 	runner := &recordingRunner{errOnCommand: "up"}
-	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
+	d := New(Config{Runner: runner, Outputter: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 45}}
 	state := &persistedState{
@@ -543,6 +574,7 @@ func TestDeployStack_RollbackProbeFailureWrapsErrRollbackUnhealthy(t *testing.T)
 	doer := &fakeDoer{statuses: []int{500}}
 	d := New(Config{
 		Runner:        runner,
+		Outputter:     runner,
 		CommitReader:  cr,
 		RepoDir:       baseDir,
 		StateDir:      t.TempDir(),
@@ -569,9 +601,9 @@ func TestDeployStack_RollbackProbeFailureWrapsErrRollbackUnhealthy(t *testing.T)
 	if errors.Is(err, ErrRolledBack) {
 		t.Errorf("expected error NOT wrapping ErrRolledBack when the rollback stays unhealthy, got: %v", err)
 	}
-	// The failed deploy up plus the rollback up (which itself succeeded).
-	if got := len(upCalls(runner.calls)); got != 2 {
-		t.Errorf("expected 2 up calls (deploy + rollback), got %d", got)
+	// The failed deploy up, the rollback up and the one roll-forward up.
+	if got := len(upCalls(runner.calls)); got != 3 {
+		t.Errorf("expected 3 up calls (deploy + rollback + roll-forward), got %d", got)
 	}
 }
 
@@ -583,7 +615,7 @@ func TestDeployStack_HealthProbeFailureRollbackAlsoFails(t *testing.T) {
 	// No commitReader: the rollback cannot fetch the old compose file.
 	runner := &recordingRunner{}
 	doer := &fakeDoer{statuses: []int{500}}
-	d := New(Config{Runner: runner, StateDir: t.TempDir(), ProbeClient: doer, ProbeInterval: 50 * time.Millisecond})
+	d := New(Config{Runner: runner, Outputter: runner, StateDir: t.TempDir(), ProbeClient: doer, ProbeInterval: 50 * time.Millisecond})
 
 	stack := config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{
 		TimeoutSeconds: 1, URL: "http://localhost:8080/health",

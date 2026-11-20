@@ -38,6 +38,18 @@ case " $* " in
     ;;
 esac
 
+# Readiness wait (ADR-0072): STUB_DOCKER_READINESS_FILE, when it exists,
+# answers `compose ps --all` (one JSON object per line); otherwise the read is
+# empty, which skipper takes as ready.
+if [ -n "$STUB_DOCKER_READINESS_FILE" ] && [ -f "$STUB_DOCKER_READINESS_FILE" ]; then
+  case " $* " in
+    *" ps --all "*)
+      cat "$STUB_DOCKER_READINESS_FILE"
+      exit 0
+      ;;
+  esac
+fi
+
 # Zero-downtime rollout (ADR-0040): STUB_DOCKER_ROLLOUT_FILE is the service's
 # container table, one `compose ps` JSON object per line. The first plain `up`
 # starts "old", a `--scale` up adds a "canary" (healthy unless

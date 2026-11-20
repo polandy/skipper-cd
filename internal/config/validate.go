@@ -38,14 +38,11 @@ func collectWarnings(cfg *Config) []string {
 		}
 	}
 
-	// command_timeout_seconds is the hard ceiling of every command, so a hook or
-	// gate timeout at or above it never has its intended effect.
+	// command_timeout_seconds is the hard ceiling of every command, so a hook
+	// timeout above it never has its intended effect.
 	for _, s := range cfg.Stacks {
 		if s.Hooks.TimeoutSeconds > cfg.CommandTimeoutSeconds {
 			warnings = append(warnings, fmt.Sprintf("stack %q: hooks.timeout_seconds (%d) exceeds command_timeout_seconds (%d) — the hook is capped to the lower value; raise command_timeout_seconds or lower hooks.timeout_seconds", s.Name, s.Hooks.TimeoutSeconds, cfg.CommandTimeoutSeconds))
-		}
-		if w := s.DeployHealthCheck.timeoutWarning(s.Name, cfg.CommandTimeoutSeconds); w != "" {
-			warnings = append(warnings, w)
 		}
 	}
 

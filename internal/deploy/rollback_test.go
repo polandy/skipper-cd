@@ -93,6 +93,10 @@ func (r *failUpCallsRunner) Run(_ context.Context, _ string, _ []string, _ strin
 	return nil
 }
 
+func (r *failUpCallsRunner) Output(context.Context, string, string, ...string) ([]byte, error) {
+	return nil, nil
+}
+
 func TestDeployStack_RollbackAlsoFailsPreservesUnderlyingError(t *testing.T) {
 	baseDir := t.TempDir()
 	stackDir := filepath.Join(baseDir, "mystack")

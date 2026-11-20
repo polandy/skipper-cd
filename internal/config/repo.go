@@ -121,9 +121,6 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 		if stack.ProjectDirectory == "" && projectDirectoryBase != "" {
 			stack.ProjectDirectory = filepath.Join(projectDirectoryBase, name)
 		}
-		if hc := stack.DeployHealthCheck; hc != nil && !hc.IsDisabled() && hc.TimeoutSeconds == 0 {
-			hc.TimeoutSeconds = DefaultHealthCheckTimeoutSeconds
-		}
 
 		hcErr := validateHealthCheck(stack.DeployHealthCheck)
 		hookErr := validateHooks(stack.Hooks)
@@ -290,11 +287,23 @@ func stackConfigHash(s Stack) string {
 		EnvFiles:           s.EnvFiles,
 		WatchDirs:          s.WatchDirs,
 		OnDemandContainers: s.OnDemandContainers,
-		DeployHealthCheck:  s.DeployHealthCheck,
+		DeployHealthCheck:  hashedHealthCheck(s.DeployHealthCheck),
 	})
 	if err != nil {
 		// Marshaling a plain struct cannot fail; guard anyway.
 		return fmt.Sprintf("marshal-error:%v", err)
 	}
 	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+// hashedHealthCheck is the gate as ConfigHash sees it: an omitted
+// timeout_seconds hashes as the 60 that Load used to fill in, so upgrading
+// skipper does not redeploy every stack with a deploy_health_check.
+func hashedHealthCheck(hc *HealthCheck) *HealthCheck {
+	if hc == nil || hc.TimeoutSeconds != 0 || hc.IsDisabled() {
+		return hc
+	}
+	hashed := *hc
+	hashed.TimeoutSeconds = legacyDefaultHealthCheckTimeoutSeconds
+	return &hashed
 }
