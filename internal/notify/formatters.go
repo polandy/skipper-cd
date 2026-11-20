@@ -34,9 +34,13 @@ type signalFormatter struct {
 }
 
 func (f signalFormatter) Format(ctx context.Context, ev events.DeployEvent) (*http.Request, error) {
+	return f.post(ctx, renderMessage(f.prefix, ev))
+}
+
+func (f signalFormatter) post(ctx context.Context, message string) (*http.Request, error) {
 	url := strings.TrimRight(f.base, "/") + "/v2/send"
 	body := map[string]any{
-		"message":    renderMessage(f.prefix, ev),
+		"message":    message,
 		"number":     f.number,
 		"recipients": f.recipients,
 	}
@@ -73,11 +77,13 @@ func jsonPost(ctx context.Context, url string, payload any, headers map[string]s
 // then the body on the next line. A non-empty prefix is prepended as
 // "[<prefix>] " to label the sending host/instance.
 func renderMessage(prefix string, ev events.DeployEvent) string {
-	m := composeDeploy(ev)
-	msg := m.Title
-	if prefix != "" {
-		msg = "[" + prefix + "] " + msg
-	}
+	return renderCompact(prefix, composeDeploy(ev))
+}
+
+// renderCompact is a compact message as one text: the prefixed title, then
+// the body on the next line.
+func renderCompact(prefix string, m compactMessage) string {
+	msg := prefixed(prefix, m.Title)
 	if m.Body != "" {
 		msg += "\n" + m.Body
 	}

@@ -258,7 +258,8 @@ inside a long list of successes. So the digest becomes the deliberately boring
 channel, and anything that is not fine leaves it and arrives alone — including
 when both happen in one run, which then sends two messages by design.
 
-The flush trigger is the **run boundary** (`PostRunHook`), not a wall-clock
+The flush trigger is the **run boundary** (`RunEndHook`, which unlike
+`PostRunHook` also fires on an aborted run), not a wall-clock
 interval. A timed window was considered and rejected: it has no relationship to
 the cause (two pushes merge, one run splits), it adds latency that buys nothing
 once co-delivery with alarms is rejected, and it cannot be tested without an

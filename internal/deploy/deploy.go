@@ -105,6 +105,11 @@ type Config struct {
 	// saved), e.g. to publish autosync/queue snapshots and refresh gauges.
 	PostRunHook func()
 
+	// RunEndHook runs once when a deploy run ends by any path — after
+	// PostRunHook on a completed run, and also on a run aborted before it
+	// (vars_file, nixos phase, stack discovery), which PostRunHook never sees.
+	RunEndHook func()
+
 	// StackSetSink runs as soon as a run has resolved the effective stack set
 	// from the repo (stack-discovery mode only), before any stack deploys. The
 	// set is unknown until then, so without this the UI's roster — and with it
@@ -185,6 +190,7 @@ type Deployer struct {
 	autosync         *autosync.Controller
 	queue            *autosync.Queue
 	postRunHook      func()
+	runEndHook       func()
 	stackSetSink     func()
 	runPlanSink      func(RunPlan)
 	hookRunSink      func(HookRun)
@@ -260,6 +266,7 @@ func New(cfg Config) *Deployer {
 		autosync:               cfg.Autosync,
 		queue:                  cfg.Queue,
 		postRunHook:            cfg.PostRunHook,
+		runEndHook:             cfg.RunEndHook,
 		stackSetSink:           cfg.StackSetSink,
 		runPlanSink:            cfg.RunPlanSink,
 		hookRunSink:            cfg.HookRunSink,
@@ -529,6 +536,9 @@ func (d *Deployer) WaitIdle() {
 // deploys on failure), then deploys every changed stack in dependency order.
 // Callers serialize on SyncAndDeployAll — this method does not lock itself.
 func (d *Deployer) DeployAllStacks(ctx context.Context, cfg *config.Config) {
+	if d.runEndHook != nil {
+		defer d.runEndHook()
+	}
 	baseEnv, err := BaseEnv(cfg.VarsFile)
 	if err != nil {
 		slog.Error("could not load vars_file, aborting", "err", err)

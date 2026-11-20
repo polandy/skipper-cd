@@ -136,6 +136,18 @@ health_watch:
 	}
 }
 
+func TestLoad_HealthWatchRejectsDigest(t *testing.T) {
+	_, err := loadStringToConfig(t, minimalConfig+`
+health_watch:
+  targets:
+    - url: https://ntfy.example.com/skipper
+      digest: per_run
+`)
+	if err == nil || !strings.Contains(err.Error(), "digest is not valid for health_watch targets") {
+		t.Fatalf("expected an error rejecting digest:, got %v", err)
+	}
+}
+
 func TestLoad_HealthWatchValidatesTargetsLikeNotifications(t *testing.T) {
 	_, err := loadStringToConfig(t, minimalConfig+`
 health_watch:

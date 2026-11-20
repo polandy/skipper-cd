@@ -1,6 +1,6 @@
 # skipper-cd Notification Digest — Specification
 
-Status: proposed — not implemented. The decision is recorded as the 2026-08-05
+Status: implemented (`internal/notify/digest.go`). The decision is recorded as the 2026-08-05
 amendment to [ADR-0020](adr/0020-outbound-deploy-notifications.md), whose
 original contract this replaces ("one terminal event, one message"); this
 document is the behavioural detail behind it.
@@ -67,13 +67,15 @@ re-opening the reasoning above, not just adding a key.
 
 ### The run boundary
 
-`Deployer.PostRunHook` already runs once at the end of every run, after state is
-saved, and is where `runTally` flushes the `run complete` log line. The digest
-flushes at the same point.
+`Deployer.PostRunHook` runs once at the end of every completed run, after state
+is saved, and is where `runTally` flushes the `run complete` log line. The digest
+flushes at the run's end too, through its own `Deployer.RunEndHook`
+(`Notifier.EndRun`): deferred in `DeployAllStacks`, it fires right after
+`PostRunHook` on a completed run and also on every aborted one (see below).
 
 **Ordering matters and is not free.** Events reach the notifier through a
 buffered channel consumed by a background worker (ADR-0020: never on the deploy
-path), while `PostRunHook` is called on the deploy goroutine. A direct
+path), while the run-end hook is called on the deploy goroutine. A direct
 `Notifier.FlushRun()` method call would race the worker: a success still sitting
 in the queue would be flushed into the *next* run's digest.
 
@@ -90,7 +92,11 @@ for its counts. Both abort *before* any stack deploys, so no success can be
 buffered at that point and no digest can be misattributed to a later run. The
 implementation must not rely on that being true forever: the buffer is keyed to
 the run that filled it, and a run that ends by any path flushes or discards its
-own buffer rather than leaving it for the next one.
+own buffer rather than leaving it for the next one. That is why the flush rides
+`RunEndHook`, which fires on every path out of `DeployAllStacks` — the vars_file,
+nixos-phase and discovery aborts included — rather than `PostRunHook`. (A
+self-restart reconcile emits a `_nixos` success before a later rebuild may
+abort the run, so the case is real, not hypothetical.)
 
 On shutdown, the existing best-effort drain flushes a partial digest for the
 in-flight run within the same deadline — a run's successes are never silently
@@ -108,17 +114,19 @@ The digest shape is used from two successes upward.
 
 ## Message shape
 
-Signal format, the 16:04 run as the worked example:
+Signal format, the 16:04 run as the worked example. The wording follows the
+compact single-stack messages (`compact.go`), which are German:
 
 ```
-[nuc] ✅ 16 stacks deployed (2m54s)
-  apc-monitor, authelia, changedetection, crowdsec, duckdns, gitea, homepage,
-  immich, mealie, monitoring, nextcloud, nodered, paperless, signal-api,
-  syncthing, vaultwarden
-  ✓ 14 verified by a health gate
-  • immich/server: v3.0.2 → v3.0.3
-  • nextcloud/app: 30-apache@ab12… → 30-apache@cd34…
+[nuc] 16 Stacks deployt (2m54s)
+apc-monitor, authelia, changedetection, crowdsec, duckdns, gitea, homepage, immich, mealie, monitoring, nextcloud, nodered, paperless, signal-api, syncthing, vaultwarden
+✓ 14 mit Health-Gate geprüft
+• immich/server: v3.0.2 → v3.0.3
+• nextcloud/app: ab12cd3 → cd34ef5
 ```
+
+`ntfy` carries the same title and body (title header, low priority,
+`white_check_mark` tag, no `Click` link).
 
 Rules:
 
@@ -127,26 +135,26 @@ Rules:
   the sum of per-stack durations, which would overstate a run's cost.
 - **Names** — every stack, comma-separated, sorted. Knowing *which* stacks moved
   is the reason to read the message at all, so this list is not truncated.
-- **Health gate** — one aggregate line, `✓ N verified by a health gate`, omitted
+- **Health gate** — one aggregate line, `✓ N mit Health-Gate geprüft`, omitted
   when `N` is 0. It reports how many of the run's successes were gated, and
   deliberately does **not** read as "N of M passed": an ungated stack did not
-  fail a gate, it has none. Per-stack `✓ health gate passed` lines
-  (`renderHealthGate`) are dropped in digest mode — sixteen identical ticks
-  carry no information the count does not.
+  fail a gate, it has none. There is no per-stack gate line — sixteen
+  identical ticks carry no information the count does not.
 - **Image changes** — only for stacks whose image reference actually moved,
   prefixed `<stack>/<service>` because the stack name is no longer in the
-  headline. Same `versionTokens` reduction as today, so a version reads
+  headline. Same `classifyChanges` reduction as a single message, so a version reads
   identically in a digest, a single message and the UI. Capped at
-  `maxDigestImageLines` (10) with a trailing `• +N more` — this is the one
+  `maxDigestImageLines` (10) with a trailing `• +N weitere` — this is the one
   unbounded part of the message and a run that rewrites every tag must not
   produce a wall of text.
 
 The `generic` format posts one body per digest rather than per event:
 `{"kind": "run_digest", "stacks": [...], "events": [...]}`, carrying the full
-buffered `DeployEvent` array so a downstream consumer loses nothing. Rendering a
-digest is a second method on the provider seam (`Formatter` gains
-`FormatDigest`, or a sibling `DigestFormatter` interface) — a new provider stays
-one type, as ADR-0020 intended.
+buffered `DeployEvent` array (stripped like a single event's payload) so a
+downstream consumer loses nothing, plus `"overflow": N` when the buffer
+overflowed. Rendering a digest is a second method on the provider seam
+(`Formatter.FormatDigest`) — a new provider stays one type, as ADR-0020
+intended.
 
 ## Configuration
 
@@ -175,10 +183,13 @@ and a note in `docs/user/configuration.md`.
 
 No interval key exists in any spelling. See [The unit is the run](#the-unit-is-the-run-not-an-interval).
 
+`digest` belongs to deploy notifications only: a `health_watch` target that sets
+it is rejected at load, since health alerts are never batched.
+
 ### NixOS module
 
-`services.skipper-cd.notifications.*.digest`, an enum of `per_run` / `off`,
-default `per_run`, written straight through into `skipper.yml`.
+Nothing to add: the module takes the whole `skipper.yml` as `configFile` and
+has no per-key notification options, so `digest` is set in that file.
 
 ## Metrics
 
@@ -186,8 +197,9 @@ Unchanged counters. `skipper_notifications_sent_total{format,outcome}` counts
 one send per digest, which is the point — the metric measures delivered
 messages, and the whole feature is about there being fewer of them.
 
-The buffer is bounded like the queue it rides in. Overflow degrades the digest
-(`• +N more`) rather than dropping a stack silently: a message that under-reports
+The buffer is bounded like the queue it rides in (`maxDigestEvents`, four times
+the queue). Overflow degrades the digest (the stack count includes the overflow
+and the name list ends in `+N weitere`) rather than dropping a stack silently: a message that under-reports
 without saying so is worse than a long one.
 
 ## Testing
@@ -201,7 +213,7 @@ without saying so is worse than a long one.
   never inherits the first run's buffer.
 - **Rendering** — table tests on the digest string: name list sorted and
   complete, gate count aggregated and omitted at 0, image lines capped with
-  `+N more`, span computed from the earliest start rather than summed
+  `+N weitere`, span computed from the earliest start rather than summed
   durations.
 - **`internal/config`** — `digest` defaulting and enum validation, per target.
 

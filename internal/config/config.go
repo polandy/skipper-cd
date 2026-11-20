@@ -403,6 +403,9 @@ func Load(path string) (*Config, error) {
 		if len(t.On) == 0 {
 			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted}
 		}
+		if t.Digest == "" {
+			t.Digest = NotifyDigestPerRun
+		}
 	}
 	if cfg.UITheme == "" {
 		cfg.UITheme = uitheme.ThemeCatppuccin
