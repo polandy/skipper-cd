@@ -867,21 +867,6 @@ function rosterUpdateChipHTML(count, active) {
   );
 }
 
-// retryNoteHTML pairs a success row with the rollback it supersedes
-// (follows_rollback on the event — UI_SPEC.md "Rollback linkage"): a small
-// rollback-tinted note under the badge, so the success names the rollback it
-// redeems instead of papering over it. A real button: activating it jumps to
-// the rollback's own row when still rendered, else opens the row's
-// deploy-history panel (the click handler's job). data-rollback-id rides along
-// when the rollback event is still in the bounded history.
-function retryNoteHTML(ev) {
-  if (!ev || !ev.follows_rollback) return '';
-  const id = ev.rollback_event_id
-    ? ` data-rollback-id="${escapeAttr(String(ev.rollback_event_id))}"`
-    : '';
-  return `<button type="button" class="retry-note" data-testid="retry-note"${id} title="This success redeploys a change that was rolled back — open the rollback">↺ after rollback</button>`;
-}
-
 // repeatNoteHTML marks a row whose outcome collapsed a run of identical
 // repeats (ADR-0056) — a standing failure re-emitted on every reconcile tick is
 // one record carrying the count, so the row says "×199" where it used to print
@@ -1551,8 +1536,9 @@ const VERDICT_GLYPH = Object.freeze({
 // verdictHTML renders the verdict lines (stackVerdict, app-helpers.js) with
 // their one action each: Retry once on a held change — only with
 // opts.canRetry, since a peer's panel is read-only, and with an empty live
-// region (retry-msg) that names a refusal — and Logs of the service
-// an unhealthy line names (through opts.logHost for a peer).
+// region (retry-msg) that names a refusal — Logs of the service an unhealthy
+// line names (through opts.logHost for a peer), and Open rollback on a retry
+// after a rollback.
 function verdictHTML(lines, stack, opts) {
   const o = opts || {};
   const body = lines
@@ -1562,6 +1548,9 @@ function verdictHTML(lines, stack, opts) {
       if (l.action && l.action.kind === 'retry' && o.canRetry) {
         action = `<button type="button" class="retry-btn" data-testid="retry-btn" data-retry-stack="${escapeAttr(stack)}">Retry once</button>`;
         msg = '<div class="dp-v-msg" role="status" data-testid="retry-msg"></div>';
+      } else if (l.action && l.action.kind === 'rollback') {
+        const id = l.action.id ? ` data-rollback-id="${escapeAttr(l.action.id)}"` : '';
+        action = detailActionHTML('rollback', 'rollback-link', id, '↺', 'Open rollback');
       } else if (l.action && l.action.kind === 'logs') {
         const host = o.logHost ? ` data-clog-host="${escapeAttr(o.logHost)}"` : '';
         action = detailActionHTML(
@@ -1879,7 +1868,6 @@ if (typeof module !== 'undefined' && module.exports) {
     outcomeLabel,
     outcomeStripHTML,
     lastIncidentHTML,
-    retryNoteHTML,
     repeatNoteHTML,
     DEPLOY_STATUS_ORDER,
     deployStatusChipsHTML,

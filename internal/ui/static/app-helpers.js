@@ -2172,12 +2172,25 @@ function deployOutcomeVerdict(evt, ctx) {
 
 // deployVerdict answers, in plain sentences, how one deploy ended: its phase
 // and cause, whether the change is held, what blocks or queues it — and, for
-// a repeated outcome, since when. A success needs no verdict. ctx carries
+// a repeated outcome, since when. A success needs no verdict unless it retries
+// a rollback, which it names (UI_SPEC.md "Rollback linkage"). ctx carries
 // what the event does not: queueReason (stack|global) of a queued change.
 function deployVerdict(evt, ctx) {
   const lines = [];
   const outcome = deployOutcomeVerdict(evt, ctx || {});
   if (outcome) lines.push(outcome);
+  if (evt.follows_rollback) {
+    lines.push(
+      verdictLine(
+        'after_rollback',
+        'rollback',
+        'Retry after a rollback.',
+        'This success redeploys a change that was rolled back.',
+        '',
+        { kind: 'rollback', id: evt.rollback_event_id ? String(evt.rollback_event_id) : '' },
+      ),
+    );
+  }
   if ((evt.repeat_count || 0) >= 2) {
     lines.push(
       verdictLine(

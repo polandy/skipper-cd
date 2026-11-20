@@ -362,7 +362,7 @@ App.chrome = (function () {
   }
 
   // flashRow scrolls a row into view and flashes the accent jump highlight —
-  // shared by the cross-view jump and the retry note's rollback landing.
+  // shared by the cross-view jump and the Open rollback landing.
   function flashRow(target) {
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.remove('jump-target');

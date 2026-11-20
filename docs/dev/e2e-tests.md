@@ -1751,10 +1751,11 @@ startup `up` succeeds, the deploy's `up` fails, the rollback `up` succeeds →
 surface keeps the rollback readable
 ([UI_SPEC](../../internal/ui/UI_SPEC.md#rollback-linkage)):
 
-- **UAQ1 — Retry note.** The retry's success row (and only it) carries the
-  `↺ after rollback` note with the rollback's event id; activating it flashes
-  the rollback's own row (`.jump-target`). The pairing reads in both
-  directions instead of the success papering over the rollback.
+- **UAQ1 — Retry verdict.** The retry's success detail opens with the
+  `after_rollback` verdict line; its Open rollback action (`rollback-link`)
+  carries the rollback's event id and flashes the rollback's own row
+  (`.jump-target`). The pairing reads in both directions instead of the
+  success papering over the rollback.
 - **UAQ2 — Status filter.** The Deploys filter bar's status chips carry
   per-status counts, narrow the log to the selected statuses (`1/3` count) and
   clear together with the query on Escape. The chip click lands from a focused
@@ -2623,7 +2624,7 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UAP1** | stops promising a connection and offers a retry | `uap-stream-offline.spec.ts` |
 | **UAP2** | the retry reconnects in place, with no reload | `uap-stream-offline.spec.ts` |
 | **UAP3** | a reachable server never shows the notice | `uap-stream-offline.spec.ts` |
-| **UAQ1** | the retry note pairs the success with its rollback | `uaq-rollback-visibility.spec.ts` |
+| **UAQ1** | the retry's detail pairs the success with its rollback | `uaq-rollback-visibility.spec.ts` |
 | **UAQ2** | status chips narrow the deploy log and Esc clears them | `uaq-rollback-visibility.spec.ts` |
 | **UAQ3** | the incident badge toggles the pre-filtered Deploys view | `uaq-rollback-visibility.spec.ts` |
 | **UAQ4** | outcome strip and last-incident line in the detail panel | `uaq-rollback-visibility.spec.ts` |

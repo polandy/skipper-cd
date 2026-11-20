@@ -348,7 +348,7 @@ App.deploys = (function () {
       ts: evt.timestamp,
       absolute: S.absoluteTime,
       version: delta,
-      state: badgeHTML(evt.status) + retryNoteHTML(evt) + repeatNoteHTML(evt),
+      state: badgeHTML(evt.status) + repeatNoteHTML(evt),
       durationMs: evt.duration_ms,
       commit: '',
       repoBase: S.repoWebURL,
@@ -525,7 +525,7 @@ App.deploys = (function () {
       // The terminal event alone knows whether this success retries a rollback,
       // so the note lands as the row settles (like the Version column below).
       existing.querySelector('.status-cell').innerHTML =
-        badgeHTML(evt.status) + retryNoteHTML(evt) + repeatNoteHTML(evt);
+        badgeHTML(evt.status) + repeatNoteHTML(evt);
       existing.querySelector('.cell-when').outerHTML = deployWhenHTML({
         ts: evt.timestamp,
         absolute: S.absoluteTime,
@@ -843,12 +843,12 @@ App.deploys = (function () {
     applyDeployFilter();
   }
 
-  // openRollbackFor is the retry note's target (UI_SPEC.md "Rollback
+  // openRollbackFor is the Open rollback verdict action (UI_SPEC.md "Rollback
   // linkage"): flash the superseded rollback's own row while its event is
-  // still rendered, else open the stack's history in Stacks — the durable
-  // record the rollback always keeps.
-  function openRollbackFor(row, rollbackId) {
-    if (rollbackId) {
+  // still rendered (local only: event ids are per host), else open the stack's
+  // history in Stacks — the durable record the rollback always keeps.
+  function openRollbackFor(stack, host, rollbackId) {
+    if (rollbackId && host === S.selfHost) {
       const escaped = window.CSS && CSS.escape ? CSS.escape(rollbackId) : rollbackId;
       const target = tbody.querySelector(`.event-row:not(.peer-row)[data-event-id="${escaped}"]`);
       if (target) {
@@ -856,7 +856,7 @@ App.deploys = (function () {
         return;
       }
     }
-    if (row) showInStacks(row.dataset.stack, row.dataset.host, STACK_TAB.history);
+    showInStacks(stack, host, STACK_TAB.history);
   }
 
   // ── Deploys table click delegation (row panels) ──
@@ -1073,13 +1073,6 @@ App.deploys = (function () {
     }
     if (e.target.closest('.detail-panel')) return;
 
-    // Retry note: open the rollback this success supersedes. Before the files
-    // logic so a tap never also opens the row's own diff panel.
-    const retry = e.target.closest('.retry-note');
-    if (retry) {
-      openRollbackFor(retry.closest('.event-row'), retry.dataset.rollbackId);
-      return;
-    }
     // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
     const hookLog = e.target.closest('.hook-log-btn');
     if (hookLog) {
@@ -1103,6 +1096,9 @@ App.deploys = (function () {
         break;
       case 'logs':
         App.clog.toggle(act);
+        break;
+      case 'rollback':
+        openRollbackFor(panel.dataset.stack, panel.dataset.host, act.dataset.rollbackId);
         break;
     }
   }

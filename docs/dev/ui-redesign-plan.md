@@ -277,7 +277,7 @@ finalised.
 | 1 | `refactor(ui)` | One pure row renderer for deploy/roster/peer rows (`tableRowHTML`); one grid variable (`--row-cols`); `--st` token map replacing `--sc/--dc/--ac/--oc` | none (baselines unchanged — that is the test) |
 | 2 | `refactor(ui)` | `App.detail` selection model + `app-detail.js`; panels become panes; still rendered inline as today's card | no pixel change; Deploys keeps one open detail at a time, as Stacks already did |
 | 3 | `feat(ui)` | Detail panel for **Stacks**: header with labelled actions, verdict, facts, tabs; history rows use `badgeHTML` (a visible change, so not in PR 1); row loses glyphs, status-cell stack, Commit column | Stacks view |
-| 4 | `feat(ui)` | Detail panel for **Deploys**: Changes/Error/Containers/History tabs; row → 4 tracks; error strip (and its `--ec` map), `⋯` menu, pills removed | Deploys view |
+| 4 | `feat(ui)` | Detail panel for **Deploys**: Changes/Error/Containers/History tabs; row → 4 tracks; error strip (and its `--ec` map), `⋯` menu, pills removed. Done, the retry note last (now the verdict's Open rollback) | Deploys view |
 | 5 | `feat(ui)` | Side-panel placement ≥ 1200 px, phone sheet, Escape/focus, live refresh; ADR for "side panel instead of bound panels" (a real tradeoff). Done: the side panel with ADR-0073, the phone sheet (its amendment) and the live refresh | both views |
 | 6 | `feat(ui)` *(optional)* | URL hash deep link to a selection. Done for the Stacks detail only (Q5) | address bar |
 
