@@ -101,6 +101,13 @@ App.stream = (function () {
     }
   }
 
+  // refreshDetail re-renders the open details on stack (all when omitted)
+  // and re-marks a running hook on a re-rendered head.
+  function refreshDetail(stack) {
+    App.detail.refresh(stack);
+    applyRunPhase();
+  }
+
   // EventSource auto-reconnects after a transient drop (readyState CONNECTING),
   // but a *fatal* stream error — a non-2xx response or a bad content-type — puts
   // it in CLOSED for good and it never retries. Without our own retry the
@@ -147,7 +154,7 @@ App.stream = (function () {
         break;
       case 'hookrun':
         S.hookRunSnap = d || {};
-        applyRunPhase();
+        refreshDetail();
         break;
       case 'rolloutrun':
         S.rolloutRunSnap = d || {};
@@ -157,6 +164,7 @@ App.stream = (function () {
         S.healthSnap = (d && d.stacks) || {};
         updateRosterHealth();
         renderHealthAttention(); // beacon + band read the same snapshot
+        refreshDetail();
         break;
       case 'healthwatch':
         S.healthwatchSnap = (d && d.stacks) || {};
@@ -170,6 +178,7 @@ App.stream = (function () {
         renderDisabledStacks();
         renderRoster();
         renderIncidentBadge();
+        refreshDetail();
         break;
       case 'app_links':
         S.appLinksSnap = (d && d.stacks) || {};
@@ -259,9 +268,9 @@ App.stream = (function () {
       const evt = JSON.parse(e.data);
       handleEvent(evt, false);
       refilterDeploys();
-      applyRunPhase(); // a settled row's status cell was re-rendered
       schedulePeerReflow(); // re-slot peer rows below/among the just-inserted local row
       if (chrome.activeView() === 'stacks') refreshRosterRow(evt.stack); // reflect in-flight/settled state live
+      refreshDetail(evt.stack); // also re-paints the settled row's run phase
     });
 
     // End-of-replay marker (T4.17): the deploy history has finished replaying.

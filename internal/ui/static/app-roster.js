@@ -313,12 +313,41 @@ App.roster = (function () {
 
   // showTab points the panel's head, tab strip and pane at tab. Hooks is a
   // pseudo-tab the head's Hooks action toggles; it selects no strip tab.
-  function showTab(panel, c, tabs, tab) {
+  // body, when given, is kept instead of building the pane anew.
+  function showTab(panel, c, tabs, tab, body) {
     panel.dataset.tab = tab;
     renderHead(panel, c, tab);
     panel.querySelector('.dp-tabs').outerHTML = tabsHTML(tabs, tab, STACK_DETAIL_ID);
     panel.querySelector('.dp-pane').outerHTML = tabPaneHTML(tabs, tab, STACK_DETAIL_ID, 'Hooks');
-    panel.querySelector('.dp-pane').appendChild(paneBody(c, tab));
+    panel.querySelector('.dp-pane').appendChild(body || paneBody(c, tab));
+  }
+
+  // fillPanel renders the whole Stacks detail of c into panel on tab.
+  function fillPanel(panel, c, tabs, tab, body) {
+    panel.innerHTML =
+      '<div class="dp-head"></div>' +
+      verdictHTML(stackVerdict(c.entry, c.health, c.updates), c.stack, {
+        canRetry: !c.peer,
+        logHost: c.host,
+      }) +
+      stackFactsHTML(c.entry, c.health, c.updates, {
+        repoBase: c.peer ? c.peer.base : S.repoWebURL,
+        nowMs: Date.now(),
+      }) +
+      '<div class="dp-tabs"></div><div class="dp-pane"></div>';
+    showTab(panel, c, tabs, tab, body);
+  }
+
+  // panelInputs is what a Stacks detail renders from, so a live refresh that
+  // changes none of it leaves the panel (and its focus and scroll) alone.
+  function panelInputs(c, tab) {
+    return JSON.stringify([
+      c.entry,
+      c.health,
+      c.updates,
+      appLinksMapFor(c.host)[c.stack] || [],
+      tab,
+    ]);
   }
 
   // The Stacks detail: a row's head, verdict, facts and one tab — local rows
@@ -328,27 +357,36 @@ App.roster = (function () {
     openClass: 'audit-open',
     build: function (row, slot, opts) {
       const host = row.classList.contains('peer-row') ? row.dataset.host : '';
-      const c = detailContext(row.dataset.stack, host);
+      let c = detailContext(row.dataset.stack, host);
       if (!c) return;
-      const tabs = stackTabs(c.entry, c.health);
+      let tabs = stackTabs(c.entry, c.health);
       const panel = document.createElement('div');
       panel.className = 'detail-panel' + (host ? ' peer-panel' : '');
       panel.dataset.testid = 'detail-panel';
       panel.dataset.stack = c.stack;
       panel.dataset.host = host || S.selfHost;
-      panel.innerHTML =
-        '<div class="dp-head"></div>' +
-        verdictHTML(stackVerdict(c.entry, c.health, c.updates), c.stack, {
-          canRetry: !c.peer,
-          logHost: host,
-        }) +
-        stackFactsHTML(c.entry, c.health, c.updates, {
-          repoBase: c.peer ? c.peer.base : S.repoWebURL,
-          nowMs: Date.now(),
-        }) +
-        '<div class="dp-tabs"></div><div class="dp-pane"></div>';
       opts.tab = resolveTab(c, tabs, opts.tab);
-      showTab(panel, c, tabs, opts.tab);
+      fillPanel(panel, c, tabs, opts.tab);
+      let inputs = panelInputs(c, opts.tab);
+      // A live update re-renders from the new snapshots; the History pane
+      // keeps its fetched records (the 'stacks' snapshot after a run reapplies).
+      slot.onRefresh(function () {
+        const fresh = detailContext(c.stack, host);
+        if (!fresh) return;
+        const freshTabs = stackTabs(fresh.entry, fresh.health);
+        const tab = resolveTab(fresh, freshTabs, opts.tab);
+        const next = panelInputs(fresh, tab);
+        if (next === inputs) return;
+        const keep =
+          tab === opts.tab && tab === STACK_TAB.history
+            ? panel.querySelector('.dp-pane').firstElementChild
+            : null;
+        c = fresh;
+        tabs = freshTabs;
+        opts.tab = tab;
+        inputs = next;
+        fillPanel(panel, c, tabs, tab, keep);
+      });
       panel.addEventListener('click', function (e) {
         const tabBtn = e.target.closest('.dp-tab');
         const hooksBtn = e.target.closest('[data-action="hooks"]');
@@ -359,6 +397,7 @@ App.roster = (function () {
         else next = DETAIL_TAB.hooks;
         if (opts.tab !== DETAIL_TAB.hooks) opts.lastTab = opts.tab;
         opts.tab = next;
+        inputs = panelInputs(c, next);
         showTab(panel, c, tabs, next);
         App.stream.applyRunPhase(); // the head was re-rendered — re-mark a running hook
       });

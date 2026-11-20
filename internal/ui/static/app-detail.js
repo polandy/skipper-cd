@@ -10,7 +10,8 @@
 //
 // A pane is registered once per DETAIL_TAB: openClass marks the row open (it
 // drives the bound status bar), build(row, slot, opts) fills the pane through
-// slot.set(nodes) — now or after a fetch, while slot.live() — and the optional
+// slot.set(nodes) — now or after a fetch, while slot.live() — and may hand
+// slot.onRefresh(fn) the re-render a live update runs (refresh); the optional
 // onClose(row) undoes what build put on the row. Each view registers its own.
 //
 // Loads after app-panels.js and before every view. Attached as App.detail.
@@ -141,7 +142,57 @@ App.detail = (function () {
         entry.nodes = [].concat(nodes);
         place(view, entry);
       },
+      onRefresh: function (fn) {
+        entry.refresh = fn;
+      },
     };
+  }
+
+  // refresh re-renders every open local detail on stack (every one when stack
+  // is omitted) from the current snapshots; a peer's detail follows its own
+  // snapshot through reapply. Focus inside a re-rendered panel lands on the
+  // same control, else on the panel.
+  function refresh(stack) {
+    Object.keys(open).forEach(function (view) {
+      const e = entryFor(view);
+      if (!e || !e.refresh || e.row.classList.contains('peer-row')) return;
+      if (stack && e.sel.stack !== stack) return;
+      const was = focusKey(e.nodes);
+      e.refresh();
+      if (was !== null && open[view] === e) refocus(e.nodes, was);
+    });
+  }
+
+  // focusKey names the focused control inside nodes by a selector that finds
+  // it again after a re-render; null when the focus is elsewhere.
+  function focusKey(nodes) {
+    const a = document.activeElement;
+    const inside = nodes.some(function (n) {
+      return n.contains(a);
+    });
+    if (!inside) return null;
+    if (a.dataset.tab) return '.dp-tab[data-tab="' + a.dataset.tab + '"]';
+    if (a.dataset.action) return '[data-action="' + a.dataset.action + '"]';
+    return '';
+  }
+
+  function refocus(nodes, key) {
+    const kept = nodes.some(function (n) {
+      return n.contains(document.activeElement);
+    });
+    if (kept) return;
+    let target = null;
+    if (key) {
+      nodes.some(function (n) {
+        target = n.querySelector(key);
+        return !!target;
+      });
+    }
+    if (!target && nodes.length) {
+      target = nodes[0];
+      target.tabIndex = -1;
+    }
+    if (target) target.focus({ preventScroll: true });
   }
 
   // toggle opens row's tab pane, or closes it when it is the one open.
@@ -253,6 +304,7 @@ App.detail = (function () {
     closeIf,
     rebind,
     reapply,
+    refresh,
     tabKeydown,
     rowKeydown,
   };

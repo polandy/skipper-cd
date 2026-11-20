@@ -2315,6 +2315,25 @@ before the assertion reads it. Behaviour-only (no snapshot).
 - **UBF9 — Resize from the phone.** Widening to 1100 px moves the open sheet
   inline under its row; narrowing again turns it back into the sheet.
 
+### 4.60 UI — Maske BG: an open detail follows the live state
+
+An open detail re-renders in place on a live update
+([UI_SPEC](../../internal/ui/UI_SPEC.md#expandable-panels)). The health poller
+runs every second over the stub's scripted container state
+(`setStackHealth`); each test tags the open panel element, so an in-place
+re-render is told apart from a closed and reopened panel. Behaviour-only (no
+snapshot).
+
+- **UBG1 — Stacks, Containers tab.** A detail open on Containers for a healthy
+  one-service stack shows the stack unhealthy with two services once the
+  health changes, on the same panel and tab.
+- **UBG2 — Deploys, Logs action.** A stack seeded with no containers opens its
+  deploy detail without Logs, after a second stack's health marker proves a
+  snapshot landed; once the stack reports a container the same panel gains
+  Logs.
+- **UBG3 — Focus.** A focused Containers tab stays focused across the
+  re-render a health change triggers.
+
 ### 5.1 Docs screenshots — rendered, never committed
 
 The two images the docs landing page embeds
@@ -2663,6 +2682,9 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UBF7** | on a phone the Stacks detail is a sheet and close keeps the scroll | `ubf-side-panel.spec.ts` |
 | **UBF8** | on a phone the deploy sheet takes the focus and closes on Escape | `ubf-side-panel.spec.ts` |
 | **UBF9** | a resize moves the open detail between sheet and inline | `ubf-side-panel.spec.ts` |
+| **UBG1** | the open Containers tab shows a health change | `ubg-detail-live.spec.ts` |
+| **UBG2** | the open deploy detail picks up a health change | `ubg-detail-live.spec.ts` |
+| **UBG3** | a live re-render keeps the focused tab focused | `ubg-detail-live.spec.ts` |
 
 ### 6.3 Known gaps
 
