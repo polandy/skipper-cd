@@ -2300,6 +2300,10 @@ before the assertion reads it. Behaviour-only (no snapshot).
 - **UBF5 — Controls from the side.** Escape inside the side panel closes it and
   focuses the row's toggle; the head's Jump action lands on the Stacks detail,
   again in the side column.
+- **UBF6 — A filtered-out detail crosses the breakpoint.** At 1100 px a roster
+  filter hides the open row and its inline panel; widened to 1280 px the panel
+  sits in the side column, still hidden; clearing the filter shows it there,
+  beside the list.
 
 ### 5.1 Docs screenshots — rendered, never committed
 
@@ -2645,6 +2649,7 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UBF3** | at 1280 px the Stacks detail opens beside the roster | `ubf-side-panel.spec.ts` |
 | **UBF4** | a resize moves the open detail between side and inline | `ubf-side-panel.spec.ts` |
 | **UBF5** | Jump and Escape work from the side panel | `ubf-side-panel.spec.ts` |
+| **UBF6** | a detail filtered out inline shows in the side column once the filter clears | `ubf-side-panel.spec.ts` |
 
 ### 6.3 Known gaps
 

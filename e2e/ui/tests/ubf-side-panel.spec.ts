@@ -7,7 +7,8 @@ import type { Locator, Page } from '@playwright/test';
 // At ≥1200 px an open detail sits in the view's side column, right of a list
 // narrowed to name + status (UBF1, UBF3); below that it stays inline under its
 // row (UBF2); a resize moves the open detail between the two without closing it
-// (UBF4); and the panel's own actions and Escape work from the side (UBF5).
+// (UBF4), also while a filter hides its row (UBF6); and the panel's own actions
+// and Escape work from the side (UBF5).
 // Behaviour-only (no snapshot).
 
 const WIDE = { width: 1280, height: 800 };
@@ -117,5 +118,30 @@ test.describe('Maske BF: the detail panel beside the list', () => {
     await panel(page, 'web').locator('[data-testid="jump-btn"]').click();
     await expect(page.locator('[data-testid="stacks-view"]')).toBeVisible();
     await expect(sidePanels(page, 'stacks').and(panel(page, 'web'))).toHaveCount(1);
+  });
+
+  // UBF6 — a detail hidden inline with its filtered-out row crosses into the
+  // side column hidden, and shows there once the filter clears.
+  test('UBF6: a detail filtered out inline shows in the side column once the filter clears', async ({
+    page,
+    skipper,
+  }) => {
+    await page.setViewportSize(NARROW);
+    await page.goto(`${skipper.baseURL}/`);
+    await page.locator('[data-testid="view-toggle"] button[data-view="stacks"]').click();
+    await rosterRow(page, 'api').click();
+    await expect(panel(page, 'api')).toBeVisible();
+
+    await page.locator('[data-testid="stack-search-btn"]').click();
+    await page.locator('[data-testid="roster-filter"]').fill('web');
+    await expect(panel(page, 'api')).toBeHidden();
+
+    await page.setViewportSize(WIDE);
+    await expect(sidePanels(page, 'stacks')).toHaveCount(1);
+    await expect(panel(page, 'api')).toBeHidden();
+
+    await page.locator('[data-testid="roster-filter"]').fill('');
+    await expect(panel(page, 'api')).toBeVisible();
+    expect(await besideList(page, 'api', rosterRow(page, 'api'))).toBe(true);
   });
 });
