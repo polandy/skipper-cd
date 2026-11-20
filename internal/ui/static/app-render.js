@@ -1201,6 +1201,13 @@ function hookPhaseHTML(hr) {
   );
 }
 
+// rolloutPhaseHTML renders the rolling chip shown on a deploying row while a
+// zero-downtime rollout cuts a service over; numbered only among several.
+function rolloutPhaseHTML(rr) {
+  const n = rr.total > 1 ? ' (' + rr.index + '/' + rr.total + ')' : '';
+  return `<span class="hk-dot"></span>rolling ${escapeHtml(rr.service)}${n}`;
+}
+
 // logLineHTML renders one log line's spans. Child-process output (level `cmd`)
 // gets a command prefix instead of a level badge and carries no attrs blob —
 // its message is already the raw output.
@@ -1895,6 +1902,7 @@ if (typeof module !== 'undefined' && module.exports) {
     diffContentHTML,
     diffPanelHTML,
     hookPhaseHTML,
+    rolloutPhaseHTML,
     logLineHTML,
     logDiffBlockHTML,
     auditRowsHTML,

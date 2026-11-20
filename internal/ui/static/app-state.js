@@ -89,6 +89,10 @@ window.App = {
     // stacks snapshot.
     hookRunSnap: {},
 
+    // The service a zero-downtime rollout is cutting over ({} when none) from
+    // the rolloutrun SSE snapshot (ADR-0040).
+    rolloutRunSnap: {},
+
     // peersSnap is the 'peers' state payload
     // ({self, peers:[{name,url,reachable,stale,last_seen,state,deploys}]}) or
     // null on a single-host instance with no peers configured — in which case

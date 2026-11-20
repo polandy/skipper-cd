@@ -35,7 +35,7 @@ func TestBuildUILayer_DisabledLeavesEveryFieldNil(t *testing.T) {
 	if l.history != nil || l.broadcaster != nil || l.stateB != nil || l.peerRegistry != nil {
 		t.Errorf("expected every subsystem nil with the UI off, got %+v", l)
 	}
-	if l.deploySink() != nil || l.runPlanSink != nil || l.hookRunSink != nil {
+	if l.deploySink() != nil || l.runPlanSink != nil || l.hookRunSink != nil || l.rolloutRunSink != nil {
 		t.Error("expected no sinks with the UI off")
 	}
 }
@@ -111,8 +111,9 @@ func TestUILayer_LookAheadSinksPublishStateEvents(t *testing.T) {
 
 	l.runPlanSink(deploy.RunPlan{})
 	l.hookRunSink(deploy.HookRun{})
+	l.rolloutRunSink(deploy.RolloutRun{})
 
-	for _, want := range []string{events.StateUpcoming, events.StateHookRun} {
+	for _, want := range []string{events.StateUpcoming, events.StateHookRun, events.StateRolloutRun} {
 		select {
 		case e := <-ch:
 			if e.Name != want {

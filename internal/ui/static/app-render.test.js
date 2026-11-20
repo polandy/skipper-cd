@@ -1062,6 +1062,18 @@ test('hookPhaseHTML carries the stack on its log button', () => {
   assert.match(html, /class="clog-btn hook-log-btn"/);
 });
 
+test('rolloutPhaseHTML names the service and numbers it only among several', () => {
+  const one = r.rolloutPhaseHTML({ stack: 'app', service: 'web', index: 1, total: 1 });
+  assert.match(one, /rolling web$/);
+  const many = r.rolloutPhaseHTML({ stack: 'app', service: 'web', index: 1, total: 2 });
+  assert.match(many, /rolling web \(1\/2\)$/);
+});
+
+test('rolloutPhaseHTML escapes the service name', () => {
+  const html = r.rolloutPhaseHTML({ stack: 'app', service: '<b>x', index: 1, total: 1 });
+  assert.ok(!html.includes('<b>'), `raw markup leaked: ${html}`);
+});
+
 test('logLineHTML gives child-process output a cmd prefix, not a level badge', () => {
   const html = r.logLineHTML({
     time: '2026-07-28T10:00:00Z',

@@ -95,7 +95,7 @@ App.roster = (function () {
     detail.reapply(VIEW, list.querySelectorAll('.roster-row'));
     applyHostFilter(); // dots + host filtering on the rebuilt roster
     refilterRoster(); // a re-render replaces the rows; re-apply any active filter
-    App.stream.applyHookRun(); // re-paint a running hook's phase on the rebuilt roster rows
+    App.stream.applyRunPhase(); // re-paint a running hook or rollout phase on the rebuilt roster rows
     App.chrome.renderUpdateBadge(); // the badge counts these rows, so it follows them
   }
 
@@ -184,7 +184,7 @@ App.roster = (function () {
     const c = detailContext(panel.dataset.stack, '');
     if (!c) return;
     renderHead(panel, c, panel.dataset.tab);
-    App.stream.applyHookRun(); // the head was re-rendered — re-mark a running hook
+    App.stream.applyRunPhase(); // the head was re-rendered — re-mark a running hook
   }
 
   // updateRosterHealth patches each local roster row's Health and Version cells
@@ -356,13 +356,13 @@ App.roster = (function () {
         if (opts.tab !== DETAIL_TAB.hooks) opts.lastTab = opts.tab;
         opts.tab = next;
         showTab(panel, c, tabs, next);
-        App.stream.applyHookRun(); // the head was re-rendered — re-mark a running hook
+        App.stream.applyRunPhase(); // the head was re-rendered — re-mark a running hook
       });
       panel.addEventListener('keydown', function (e) {
         detail.tabKeydown(panel, e);
       });
       slot.set(panel);
-      App.stream.applyHookRun(); // a panel opened mid-hook carries the pulse at once
+      App.stream.applyRunPhase(); // a panel opened mid-hook carries the pulse at once
     },
   });
 
@@ -516,7 +516,7 @@ App.roster = (function () {
     });
     const cell = row.querySelector('.roster-status');
     if (entry && cell) cell.innerHTML = rosterStatusHTML(entry, App.deploys.isDeploying(name));
-    App.stream.applyHookRun(); // the cell was replaced — re-paint a running hook's phase
+    App.stream.applyRunPhase(); // the cell was replaced — re-paint a running hook or rollout phase
   }
 
   // The three questions the header chrome asks the filter — kept as calls so

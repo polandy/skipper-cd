@@ -59,19 +59,31 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 		}
 	}
 
-	timeout := d.rolloutTimeout(run.stack)
-	for _, service := range rc.Services {
+	service, err := d.rollServices(ctx, run, rc.Services, d.rolloutTimeout(run.stack))
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, errCanaryUnhealthy) {
+		// Old version never stopped serving → rolled_back, no git-restore.
+		metrics.DeployRollbacks.WithLabelValues(run.stack.Name).Inc()
+		return fmt.Errorf("rollout %q: %w (%w)%w", service, err, ErrRolledBack, errNewVersionMark)
+	}
+	// Unknown state mid-cutover → git-restore rollback for a defined one.
+	return d.rollBackFailedDeploy(ctx, run, state, "rollout "+service, err)
+}
+
+// rollServices cuts the services over in order, publishing which one rolls, and
+// stops at the first failure, returning that service. The indicator is cleared
+// before it returns, so a rollback that follows does not read as rolling.
+func (d *Deployer) rollServices(ctx context.Context, run stackRun, services []string, timeout time.Duration) (string, error) {
+	defer d.publishRolloutRun(RolloutRun{})
+	for i, service := range services {
+		d.publishRolloutRun(RolloutRun{Stack: run.stack.Name, Service: service, Index: i + 1, Total: len(services)})
 		if err := d.rollService(ctx, run, service, timeout); err != nil {
-			if errors.Is(err, errCanaryUnhealthy) {
-				// Old version never stopped serving → rolled_back, no git-restore.
-				metrics.DeployRollbacks.WithLabelValues(run.stack.Name).Inc()
-				return fmt.Errorf("rollout %q: %w (%w)%w", service, err, ErrRolledBack, errNewVersionMark)
-			}
-			// Unknown state mid-cutover → git-restore rollback for a defined one.
-			return d.rollBackFailedDeploy(ctx, run, state, "rollout "+service, err)
+			return service, err
 		}
 	}
-	return nil
+	return "", nil
 }
 
 // rollService cuts one service to its new version with no serving gap: a canary
