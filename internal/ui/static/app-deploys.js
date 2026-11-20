@@ -1157,7 +1157,7 @@ App.deploys = (function () {
       const host = row.dataset.host;
       const logHost = peer ? host : '';
       const repoBase = peer ? repoWebURLFor(host) : S.repoWebURL;
-      const health = healthMapFor(logHost)[evt.stack];
+      let health = healthMapFor(logHost)[evt.stack];
       const d = {
         diffs: null,
         commits: [],
@@ -1174,6 +1174,9 @@ App.deploys = (function () {
       panel.dataset.host = peer ? host : S.selfHost;
       panel.dataset.status = evt.status;
 
+      // shown is the markup last rendered, so a refresh that changes nothing
+      // leaves the panel (and its focus and scroll) alone.
+      let shown = '';
       const render = function () {
         const tabs = deployTabs(evt, { commits: d.commits.length });
         const offered = function (t) {
@@ -1182,8 +1185,7 @@ App.deploys = (function () {
           });
         };
         if (!offered(opts.tab)) opts.tab = tabs.length ? tabs[0].id : null;
-        panel.dataset.tab = opts.tab || '';
-        panel.innerHTML = deployPanelHTML(evt, {
+        const html = deployPanelHTML(evt, {
           host: hostChip(host),
           logs: !!(health && health.services && health.services.length),
           logHost: logHost,
@@ -1194,13 +1196,17 @@ App.deploys = (function () {
           queueReason: pendingReason(evt.stack),
           tab: opts.tab,
         });
+        const loadError = opts.tab === DEPLOY_TAB.changes && d.error;
+        const paneHTML = loadError ? '' : deployPaneHTML(opts.tab, evt, d);
+        const next = html + '\0' + (loadError ? d.error : paneHTML);
+        if (next === shown) return;
+        shown = next;
+        panel.dataset.tab = opts.tab || '';
+        panel.innerHTML = html;
         populateIcon(panel.querySelector('.dp-head .stack-icon'), evt.stack);
         const pane = panel.querySelector('.dp-pane');
-        if (opts.tab === DEPLOY_TAB.changes && d.error) {
-          pane.appendChild(createLoadError(d.error, loadDiff));
-        } else {
-          pane.innerHTML = deployPaneHTML(opts.tab, evt, d);
-        }
+        if (loadError) pane.appendChild(createLoadError(d.error, loadDiff));
+        else pane.innerHTML = paneHTML;
       };
 
       // loadDiff fetches the diff once; Retry re-runs it.
@@ -1240,6 +1246,10 @@ App.deploys = (function () {
         detail.tabKeydown(panel, e);
       });
 
+      slot.onRefresh(function () {
+        health = healthMapFor(logHost)[evt.stack];
+        render();
+      });
       slot.set(panel);
       const hasDiff = peer ? !!evt.id && changedFileCount(evt) > 0 : !!evt.has_diffs;
       if (hasDiff) loadDiff();
