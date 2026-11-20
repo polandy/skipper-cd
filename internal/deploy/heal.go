@@ -67,7 +67,7 @@ func (d *Deployer) HealStack(ctx context.Context, cfg *config.Config, stackName 
 	defer cleanup()
 
 	slog.Info("self-heal: restoring stack to its deployed version", "stack", stack.Name, "drift", len(drift), "restored_from", commit)
-	// A plain up — no --wait/health gate, no rollback (see the doc comment).
+	// A plain up — no readiness wait/health gate, no rollback (see the doc comment).
 	if err := d.runDockerCompose(ctx, run, "up", "-d", "--remove-orphans"); err != nil {
 		return true, fmt.Errorf("self-heal up %q: %w", stack.Name, err)
 	}

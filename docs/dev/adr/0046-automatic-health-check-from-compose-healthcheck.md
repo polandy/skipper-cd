@@ -1,6 +1,6 @@
 # ADR-0046: Automatic health_check gate from the compose file's own healthcheck
 
-Status: accepted
+Status: accepted; amended by ADR-0072 (the inferred gate's timeout is derived from the healthcheck timing, not a fixed 60s)
 Date: 2026-07-21
 
 ## Context

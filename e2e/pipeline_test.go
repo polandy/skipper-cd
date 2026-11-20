@@ -196,7 +196,8 @@ func TestE2E_RollbackDisabledLeavesFailureHeld(t *testing.T) {
 
 // TestE2E_HealthProbeFailureRollsBackUnhealthy (P16): a stack whose
 // deploy_health_check URL stops answering 2xx fails the gate, is rolled back,
-// and the rollback's rerun of the same gate fails too → `rolled_back_unhealthy`.
+// the rollback's rerun of the same gate fails too, and so does the one
+// roll-forward (ADR-0072) → `rolled_back_unhealthy`.
 func TestE2E_HealthProbeFailureRollsBackUnhealthy(t *testing.T) {
 	var healthy atomic.Bool
 	healthy.Store(true)
@@ -223,18 +224,19 @@ func TestE2E_HealthProbeFailureRollsBackUnhealthy(t *testing.T) {
 	}
 	es.waitEvent("web", "rolled_back_unhealthy")
 
-	if got := s.dockerUps("web"); got != 3 {
-		t.Fatalf("ups = %d, want startup + deploy + rollback = 3", got)
+	if got := s.dockerUps("web"); got != 4 {
+		t.Fatalf("ups = %d, want startup + deploy + rollback + roll-forward = 4", got)
 	}
 	if es.has("web", "rolled_back") {
 		t.Fatal("a rollback that is still unhealthy must not also report rolled_back")
 	}
 }
 
-// TestE2E_InferredHealthGateWaitsForCompose (P17): a stack with no
-// deploy_health_check whose compose gains a `healthcheck:` has its deploy `up`
-// gated with `--wait`; a sibling stack without one is not gated (ADR-0046).
-func TestE2E_InferredHealthGateWaitsForCompose(t *testing.T) {
+// TestE2E_InferredHealthGateWaitsForReadiness (P17): a stack with no
+// deploy_health_check whose compose gains a `healthcheck:` has its deploy
+// gated — skipper reads the containers' state after the `up` (ADR-0046,
+// ADR-0072); a sibling stack without one is not gated.
+func TestE2E_InferredHealthGateWaitsForReadiness(t *testing.T) {
 	s := startSkipper(t, "web", "api")
 
 	es := s.openEvents()
@@ -251,16 +253,19 @@ func TestE2E_InferredHealthGateWaitsForCompose(t *testing.T) {
 		return s.dockerUps("web") >= 2 && s.dockerUps("api") >= 2
 	})
 
-	if got := s.upsWithWait("web"); got != 1 {
-		t.Errorf("web `up --wait` calls = %d, want 1 (the deploy, not the startup)", got)
+	if got := s.readinessReads("web"); got != 1 {
+		t.Errorf("web readiness reads = %d, want 1 (the deploy, not the startup)", got)
 	}
-	if got := s.upsWithWait("api"); got != 0 {
-		t.Errorf("api has no healthcheck; `up --wait` calls = %d, want 0", got)
+	if got := s.readinessReads("api"); got != 0 {
+		t.Errorf("api has no healthcheck; readiness reads = %d, want 0", got)
+	}
+	if got := s.dockerCalls("web", "--wait"); got != 0 {
+		t.Errorf("compose --wait calls = %d, want 0: skipper owns the wait", got)
 	}
 }
 
 // TestE2E_DisabledHealthGateSkipsWait (P18): `deploy_health_check: false`
-// keeps the deploy `up` ungated even though the compose declares a
+// keeps the deploy ungated even though the compose declares a
 // `healthcheck:` (ADR-0049); the counter-check is P17, where the same compose
 // change without the key is gated.
 func TestE2E_DisabledHealthGateSkipsWait(t *testing.T) {
@@ -282,9 +287,58 @@ func TestE2E_DisabledHealthGateSkipsWait(t *testing.T) {
 	if got := s.dockerUps("web"); got != 2 {
 		t.Fatalf("ups = %d, want startup + deploy = 2", got)
 	}
-	if got := s.upsWithWait("web"); got != 0 {
-		t.Errorf("`up --wait` calls = %d, want 0 with deploy_health_check: false", got)
+	if got := s.readinessReads("web"); got != 0 {
+		t.Errorf("readiness reads = %d, want 0 with deploy_health_check: false", got)
 	}
+}
+
+// TestE2E_StillStartingHoldsWithoutRollback (P26): a gated deploy whose
+// container is still starting when the budget runs out is `failed` and held,
+// never rolled back, and names the retry endpoint (ADR-0072); once the container
+// is healthy, a retry deploys it. STUB_DOCKER_READINESS_FILE is written only
+// after the startup run, which therefore reads ready.
+func TestE2E_StillStartingHoldsWithoutRollback(t *testing.T) {
+	readiness := filepath.Join(t.TempDir(), "readiness.json")
+	s := newSkipper(t, map[string]string{"STUB_DOCKER_READINESS_FILE": readiness}, "", []string{"web"})
+	s.stackCfg = map[string]string{"web": "    deploy_health_check:\n      timeout_seconds: 1\n"}
+	s.bootstrap(t)
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	container := func(health string) {
+		writeFile(t, readiness,
+			`{"ID":"c1","Name":"web-app-1","Service":"app","State":"running","Health":"`+health+`"}`+"\n")
+	}
+	container("starting")
+	s.setStackImage("web", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "failed")
+
+	if got := s.dockerUps("web"); got != 2 {
+		t.Fatalf("ups = %d, want startup + deploy = 2 (no rollback, no roll-forward)", got)
+	}
+	if es.has("web", "rolled_back") || es.has("web", "rolled_back_unhealthy") {
+		t.Fatal("an undecided wait must never roll back")
+	}
+	msg := strings.Join(es.errors("web", "failed"), "\n")
+	for _, want := range []string{"still starting", "not rolled back", "POST /api/stacks/web/retry"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("failed event error %q lacks %q", msg, want)
+		}
+	}
+	if v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`); !ok || v != 1 {
+		t.Errorf("skipper_stack_held{web} = %v (ok=%v), want 1", v, ok)
+	}
+
+	container("healthy")
+	successes := es.count("web", "success") // the startup deploy's
+	if code := s.postRetry("web"); code != http.StatusAccepted {
+		t.Fatalf("retry status = %d, want 202", code)
+	}
+	es.waitEventCount("web", "success", successes+1)
 }
 
 // TestE2E_BootstrapRunSkipsPull (P20): the first run against an empty state
@@ -328,13 +382,14 @@ func TestE2E_BootstrapRunSkipsPull(t *testing.T) {
 	}
 }
 
-// upsWithWait counts the stub's recorded `up` invocations for a stack that
-// carry `--wait`.
-func (s *skipper) upsWithWait(stack string) int {
+// readinessReads counts the stub's recorded `compose ps --all` reads for a
+// stack — the deploy gate's readiness wait (the running-image read is
+// `ps --format json --all`).
+func (s *skipper) readinessReads(stack string) int {
 	n := 0
 	for _, line := range s.dockerLogLines() {
 		cwd, args, ok := strings.Cut(line, "\t")
-		if ok && filepath.Base(cwd) == stack && strings.Contains(" "+args+" ", " up ") && strings.Contains(args, "--wait") {
+		if ok && filepath.Base(cwd) == stack && strings.Contains(" "+args+" ", " ps --all ") {
 			n++
 		}
 	}

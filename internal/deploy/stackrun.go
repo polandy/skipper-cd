@@ -245,34 +245,55 @@ func (d *Deployer) applyStack(ctx context.Context, prep stackPrep, state *persis
 	// zero downtime (ADR-0040) — new container alongside old, wait healthy, drain
 	// old — while every other service recreates in place; rollout() handles its
 	// own rollback and wraps the outcome. Without it, the plain in-place recreate.
-	if stack.Rollout != nil {
+	// A roll-forward (errRolledForward) already verified the new version.
+	if err := d.applyNewVersion(ctx, run, compose, state); err != nil && !errors.Is(err, errRolledForward) {
+		return err
+	}
+
+	d.stopOnDemandContainers(ctx, stack, compose)
+	return nil
+}
+
+// applyNewVersion brings the new version up and verifies it, through the
+// rollback path on a decided failure; a readiness wait that ran out undecided
+// is held instead (ADR-0072).
+func (d *Deployer) applyNewVersion(ctx context.Context, run stackRun, compose *composeFile, state *persistedState) error {
+	if run.stack.Rollout != nil {
 		if err := d.rollout(ctx, run, compose, state); err != nil {
 			return err
 		}
 	} else {
 		// --remove-orphans removes containers for services deleted from docker-compose.yml.
-		// First health gate: withHealthGate adds --wait when the stack is gated.
-		upArgs := withHealthGate(stack.DeployHealthCheck, "up", "-d", "--remove-orphans")
-		if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
+		if err := d.runDockerCompose(ctx, run, "up", "-d", "--remove-orphans"); err != nil {
 			return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
 		}
 	}
-
-	// Second health gate: the optional HTTP probe.
-	if err := d.probeHealthURL(ctx, stack.DeployHealthCheck); err != nil {
-		return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
+	stage, err := d.verifyNewVersion(ctx, run)
+	if err == nil {
+		return nil
 	}
-
-	// post_deploy hooks validate the new version from outside compose (a smoke
-	// test, a migration). A failure takes the same rollback path as a health
-	// probe failure, even without a deploy_health_check (ADR-0038): the hook is itself a
-	// user-authored health gate.
-	if err := d.runHooks(ctx, run, hookPhasePost, stack.Hooks.PostDeploy); err != nil {
-		return d.rollBackFailedDeploy(ctx, run, state, "post_deploy hook", err)
+	if errors.Is(err, errStillStarting) {
+		return stillStartingError(run, err)
 	}
+	return d.rollBackFailedDeploy(ctx, run, state, stage, err)
+}
 
-	d.stopOnDemandContainers(ctx, stack, compose)
-	return nil
+// verifyNewVersion runs the gates an applied new version must pass: the
+// readiness wait and the optional HTTP probe (deploy_health_check, ADR-0022,
+// ADR-0072), then the post_deploy hooks — themselves a user-authored health
+// gate, even without a deploy_health_check (ADR-0038). It returns the failing
+// stage for the error text.
+func (d *Deployer) verifyNewVersion(ctx context.Context, run stackRun) (stage string, err error) {
+	if err := d.awaitReady(ctx, run); err != nil {
+		return "health check", err
+	}
+	if err := d.probeHealthURL(ctx, run.stack.DeployHealthCheck); err != nil {
+		return "health check", err
+	}
+	if err := d.runHooks(ctx, run, hookPhasePost, run.stack.Hooks.PostDeploy); err != nil {
+		return "post_deploy hook", err
+	}
+	return "", nil
 }
 
 // stopOnDemandContainers stops the stack's on_demand_containers, which an up

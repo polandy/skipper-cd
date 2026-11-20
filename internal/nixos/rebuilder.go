@@ -30,12 +30,13 @@ const defaultPollInterval = 2 * time.Second
 // Rebuilder runs nixos-rebuild when nix files change.
 type Rebuilder struct {
 	runner       command.Runner
+	out          Outputter // reads a failed unit's exit status; nil reports every failure alike
 	pollInterval time.Duration
 }
 
-// New creates a Rebuilder with the given command runner.
-func New(runner command.Runner) *Rebuilder {
-	return &Rebuilder{runner: runner, pollInterval: defaultPollInterval}
+// New creates a Rebuilder with the given command runner and output reader.
+func New(runner command.Runner, out Outputter) *Rebuilder {
+	return &Rebuilder{runner: runner, out: out, pollInterval: defaultPollInterval}
 }
 
 // HashFiles walks repoDir and returns SHA-256 hashes for all *.nix files
@@ -111,8 +112,9 @@ func (r *Rebuilder) Rebuild(ctx context.Context, repoDir, flake string, timeout 
 }
 
 // waitForUnit polls the transient rebuild unit until it is no longer active,
-// then reports success or failure. It reads state from `systemctl` exit codes
-// only, so it needs no output capture. The status probes use a background
+// then reports success or failure — ErrActivatedUnitsFailed when the switch
+// applied but left units failed. It polls `systemctl` exit codes and reads
+// output only after a failure. The status probes use a background
 // context (not ctx): a probe must still resolve the unit's outcome even as
 // shutdown cancels ctx — the abandon decision is made explicitly against ctx.
 func (r *Rebuilder) waitForUnit(ctx context.Context, unit string, timeout time.Duration) error {
@@ -124,6 +126,9 @@ func (r *Rebuilder) waitForUnit(ctx context.Context, unit string, timeout time.D
 		}
 		if !r.unitActive(unit) {
 			if r.unitFailed(unit) {
+				if failed, ok := r.activatedWithFailedUnits(unit); ok {
+					return failed
+				}
 				return fmt.Errorf("nixos-rebuild switch failed (see: journalctl -u %s); a rebuild running longer than nixos_rebuild.timeout_seconds (%d) is stopped", unit, wholeSeconds(timeout))
 			}
 			return nil

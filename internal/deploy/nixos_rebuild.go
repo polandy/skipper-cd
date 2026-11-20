@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -22,7 +23,8 @@ const NixosStateKey = config.ReservedStackName
 // mode (ADR-0065). The new entry is persisted to state *before* the rebuild,
 // because the rebuild may restart the skipper-cd service (killing this
 // process); pre-saving avoids a redundant rebuild on restart.
-// Returns false when the phase failed and all stack deploys must abort.
+// Returns false when the phase failed and all stack deploys must abort; a
+// switch that applied but left units failed is reported and does not abort.
 func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config, state *persistedState) bool {
 	startTime := time.Now()
 
@@ -128,6 +130,19 @@ func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config
 			slog.Warn("shutdown during nixos-rebuild: the rebuild keeps running in its transient unit; stack deploys abort and reconcile on the next sync", "err", err)
 			return false
 		}
+		if errors.Is(err, nixos.ErrActivatedUnitsFailed) {
+			// The configuration applied, so keep the pre-saved hashes: rebuilding
+			// again cannot fix the units, and a unit waiting on a stack needs the
+			// stack phase to run (ADR-0071).
+			slog.Error("nixos-rebuild activated the new configuration but units failed; continuing with the stack deploys", "err", err)
+			state.clearNixOSRebuildInFlight()
+			if err := saveDeployState(d.stateDir, state); err != nil {
+				slog.Error("could not save deploy state", "err", err)
+			}
+			metrics.DeployErrors.WithLabelValues(NixosStateKey).Inc()
+			d.emit(events.StatusFailed, NixosStateKey, time.Since(startTime), err.Error(), cs)
+			return true
+		}
 		// A genuine rebuild failure while skipper is still alive: revert the
 		// pre-saved hashes so the next sync retries, instead of silently recording
 		// a rebuild that never applied as done, and clear the in-flight marker so
@@ -186,7 +201,7 @@ func (d *Deployer) runNixOSRebuild(ctx context.Context, rebuild *config.NixOSReb
 		defer cancel()
 		defer context.AfterFunc(d.shutdownCtx, cancel)()
 	}
-	return nixos.New(d.runner).Rebuild(ctx, d.repoDir, rebuild.Flake, rebuild.Timeout())
+	return nixos.New(d.runner, d.outputter).Rebuild(ctx, d.repoDir, rebuild.Flake, rebuild.Timeout())
 }
 
 func (d *Deployer) shutdownRequested() bool {

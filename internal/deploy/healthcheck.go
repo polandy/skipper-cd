@@ -5,21 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/polandy/skipper-cd/internal/config"
 )
-
-// withHealthGate appends the deploy gate to an `up` argument list: --wait makes
-// the up itself fail unless the services' compose healthchecks turn healthy in
-// time (ADR-0022). An ungated stack gets its args back unchanged.
-func withHealthGate(hc *config.HealthCheck, args ...string) []string {
-	if hc == nil {
-		return args
-	}
-	return append(args, "--wait", "--wait-timeout", strconv.Itoa(hc.TimeoutSeconds))
-}
 
 // probeHealthURL runs the gate's optional HTTP probe, which verifies the stack
 // from the outside after a successful up (ADR-0022). A stack without a gate or
@@ -33,23 +22,21 @@ func (d *Deployer) probeHealthURL(ctx context.Context, hc *config.HealthCheck) e
 	return d.prober.waitHealthy(ctx, hc.URL, time.Duration(hc.TimeoutSeconds)*time.Second)
 }
 
-// resolveHealthCheck returns the stack's effective deploy gate. An explicit
-// deploy_health_check wins: a mapping is returned unchanged, and the scalar
-// deploy_health_check: false (ADR-0049) suppresses any gate — the one way to
-// keep a compose healthcheck: for external monitoring without letting skipper
-// --wait on it.
+// resolveHealthCheck returns the stack's effective deploy gate, a copy whose
+// TimeoutSeconds is resolved (readinessTimeoutSeconds), so the stack's own
+// field stays unresolved for ConfigHash. An explicit deploy_health_check wins:
+// a mapping is used as given, and the scalar deploy_health_check: false
+// (ADR-0049) suppresses any gate — the one way to keep a compose healthcheck:
+// for external monitoring without letting skipper wait on it.
 //
 // With no explicit config, the gate is inferred:
 //   - A stack with on_demand_containers gets NO gate, even if its compose file
 //     declares a healthcheck: — skipper stops those containers right after up,
-//     so `up --wait` would cold-start them only to be stopped again, and a slow
-//     warm-up would time out into a spurious rollback (ADR-0049). An operator
+//     so waiting would cold-start them only to be stopped again, and a slow
+//     warm-up would time out into a spurious failure (ADR-0049). An operator
 //     who really wants a gate here must set deploy_health_check explicitly.
 //   - Otherwise, when the compose file declares a healthcheck: for at least one
-//     service, an automatic gate applies at the default timeout with no URL
-//     probe: the service already opted into a Docker healthcheck, so skipper's
-//     --wait + rollback gate (ADR-0022) applies without a redundant
-//     deploy_health_check: {} per stack (ADR-0046).
+//     service, an automatic gate applies with no URL probe (ADR-0046).
 //   - A stack with no compose healthcheck anywhere, or whose compose file
 //     failed to parse, stays ungated.
 func resolveHealthCheck(stack config.Stack, cf *composeFile) *config.HealthCheck {
@@ -57,7 +44,9 @@ func resolveHealthCheck(stack config.Stack, cf *composeFile) *config.HealthCheck
 		if explicit.IsDisabled() {
 			return nil
 		}
-		return explicit
+		resolved := *explicit
+		resolved.TimeoutSeconds = readinessTimeoutSeconds(explicit.TimeoutSeconds, cf)
+		return &resolved
 	}
 	if len(stack.OnDemandContainers) > 0 {
 		return nil
@@ -65,7 +54,21 @@ func resolveHealthCheck(stack config.Stack, cf *composeFile) *config.HealthCheck
 	if cf == nil || !cf.hasHealthcheck() {
 		return nil
 	}
-	return &config.HealthCheck{TimeoutSeconds: config.DefaultHealthCheckTimeoutSeconds}
+	return &config.HealthCheck{TimeoutSeconds: readinessTimeoutSeconds(0, cf)}
+}
+
+// readinessTimeoutSeconds is the gate's budget: an explicit timeout_seconds,
+// else what the compose healthchecks' own timing needs (ADR-0072), never
+// below config.MinHealthCheckTimeoutSeconds.
+func readinessTimeoutSeconds(explicit int, cf *composeFile) int {
+	if explicit > 0 {
+		return explicit
+	}
+	derived := 0
+	if cf != nil {
+		derived = int((cf.ReadinessBudget() + time.Second - 1) / time.Second)
+	}
+	return max(derived, config.MinHealthCheckTimeoutSeconds)
 }
 
 // HTTPDoer is the minimal HTTP client surface the deploy_health_check probe
@@ -80,8 +83,8 @@ const defaultProbeInterval = 2 * time.Second
 
 // httpHealthProber GET-polls a URL until it answers 2xx, retrying every
 // interval until a deadline expires. It implements the optional second stage
-// of a stack's deploy_health_check gate (ADR-0022); the first stage is docker
-// compose up --wait.
+// of a stack's deploy_health_check gate (ADR-0022); the first stage is the
+// readiness wait (awaitReady).
 type httpHealthProber struct {
 	doer     HTTPDoer
 	interval time.Duration

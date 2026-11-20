@@ -22,7 +22,7 @@ the real backend** so those breaks fail CI. Coverage spans all four UI masks,
 asserting **behaviour + visual snapshots**.
 
 > Status: **Go layer landed; Playwright UI project scaffolded, UA1 green.** The Go
-> pipeline harness and P1–P28 (§4.1) exist under `e2e/` behind the `e2e` build tag,
+> pipeline harness and P1–P29 (§4.1) exist under `e2e/` behind the `e2e` build tag,
 > with a dedicated `e2e` CI job (§7). The UI product-code prerequisites are done and
 > recorded in `UI_SPEC.md`: the `data-testid` set (§3) and the embedded self-hosted
 > fonts (§5). The Playwright project (`e2e/ui/`) is scaffolded — a Node twin of the
@@ -177,6 +177,9 @@ binary):
   - `STUB_DOCKER_ROLLOUT_FILE=<path>` → a rollout service's container table,
     answered to `compose ps --format json`: the first plain `up` starts `old`, a
     `--scale` up adds a `canary` (healthy, or `STUB_DOCKER_CANARY_HEALTH`), `rm -- <id>` drops one (P24, P25).
+  - `STUB_DOCKER_READINESS_FILE=<path>` → once the file exists, answers the
+    readiness wait's `compose ps --all` with its JSON lines; absent, the read is
+    empty and counts as ready (P26).
 - **Failure attachments.** A failed test attaches the instance's stdout/stderr
   (`skipper-output`) *and* the UI's own diagnostics (`ui-notes`, read from
   `window.__uiNotes`). Both are collected **after** the test finishes, never
@@ -227,7 +230,7 @@ real backend):
 | `deploying` | `STUB_DOCKER_HOLD_UP` set → row stays `deploying` until released |
 | `failed` | first deploy of a stack, `STUB_DOCKER_FAIL_ON=up` (no prior commit → rollback unavailable → `failed`) |
 | `rolled_back` | one successful deploy first (sets `LastDeployedCommit`), then a change with `STUB_DOCKER_FAIL_NTH_UP=1` (initial `up` fails, rollback `up` succeeds) |
-| `rolled_back_unhealthy` | like `rolled_back`, but the stack has a `deploy_health_check:` section and `STUB_DOCKER_FAIL_NTH_UP` lists the deploy **and** rollback `up` (e.g. `2,3` counting the startup deploy) — the health-gated rollback `up` fails too |
+| `rolled_back_unhealthy` | like `rolled_back`, but the stack has a `deploy_health_check:` section and `STUB_DOCKER_FAIL_NTH_UP` lists the deploy, rollback **and** roll-forward `up` (e.g. `2,3,4` counting the startup deploy) — the health-gated rollback `up` fails, and so does the one roll-forward |
 | `queued` | pause autosync (config-as-code or `POST /api/autosync`), then commit + webhook |
 
 **Selector prerequisite (`data-testid`).** The UI has stable `id`s but no
@@ -304,18 +307,20 @@ UI suite reuses.
   `skipper_stack_held`; two retries are the second and third failures, after
   which the gauge is `1` and a webhook again builds nothing; a push that fixes
   the Dockerfile deploys (`success`) and the gauge is deleted.
-- **P16 — A failing health probe rolls back unhealthy** (ADR-0022): a stack with
-  `deploy_health_check: {url, timeout_seconds: 1}` deploys while a local probe
-  server answers 2xx; once it answers `503`, a pushed change fails the gate, the
-  rollback reruns it and fails too → SSE `rolled_back_unhealthy` (never
-  `rolled_back`), with exactly three `up -d` (startup, deploy, rollback).
-- **P17 — The deploy gate is inferred from a compose `healthcheck:`** (ADR-0046):
-  with no `deploy_health_check`, a pushed compose that gains a `healthcheck:`
-  deploys with `up --wait` (the startup `up` has none), while a sibling stack
-  without one never gets `--wait`.
+- **P16 — A failing health probe rolls back unhealthy** (ADR-0022, ADR-0072): a
+  stack with `deploy_health_check: {url, timeout_seconds: 1}` deploys while a
+  local probe server answers 2xx; once it answers `503`, a pushed change fails
+  the gate, the rollback reruns it and fails too, and so does the one
+  roll-forward → SSE `rolled_back_unhealthy` (never `rolled_back`), with exactly
+  four `up -d` (startup, deploy, rollback, roll-forward).
+- **P17 — The deploy gate is inferred from a compose `healthcheck:`** (ADR-0046,
+  ADR-0072): with no `deploy_health_check`, a pushed compose that gains a
+  `healthcheck:` is followed by skipper's own readiness read (`compose ps
+  --all`; the startup deploy has none), while a sibling stack without one is
+  never read; no `up` carries compose's `--wait`.
 - **P18 — `deploy_health_check: false` suppresses the inferred gate** (ADR-0049):
   with that key on a stack, a pushed compose that gains a `healthcheck:` still
-  deploys with a plain `up -d` (no `--wait`), unlike P17.
+  deploys with a plain `up -d` and no readiness read, unlike P17.
 - **P19 — `rollback: false` leaves the failure held** (ADR-0050,
   `STUB_DOCKER_FAIL_NTH_UP=2`): with that key on a stack, a pushed change whose
   `up` fails emits SSE `failed` (never `rolled_back`), runs exactly two `up -d`
@@ -347,13 +352,20 @@ UI suite reuses.
   `stop -- canary` and `rm -- canary` and nothing else — the old container is
   never stopped, no git-restore `up` — emits `rolled_back`, and the container
   table holds only `old`.
-- **P26 — A success is notified** (ADR-0020): with a `generic` notification
+- **P26 — A still-starting container is held, not rolled back** (ADR-0072,
+  `STUB_DOCKER_READINESS_FILE`): with `deploy_health_check.timeout_seconds: 1`
+  and the container scripted `starting`, a pushed bump emits `failed` whose
+  error says `still starting`, `not rolled back` and names
+  `POST /api/stacks/web/retry`; no rollback or roll-forward `up` runs and
+  `skipper_stack_held{web}` is 1. Once the container reads `healthy`, a retry
+  deploys it (`success`).
+- **P27 — A success is notified** (ADR-0020): with a `generic` notification
   target at a local recorder, the startup deploy and a pushed image bump each
   POST a `success` payload for `web`.
-- **P27 — A failure is notified** (ADR-0020, `STUB_DOCKER_FAIL_NTH_UP=2`): with
+- **P28 — A failure is notified** (ADR-0020, `STUB_DOCKER_FAIL_NTH_UP=2`): with
   `rollback: false`, the failed deploy POSTs one `failed` payload carrying the
   error and no `rolled_back`.
-- **P28 — A rollback is notified** (ADR-0020, `STUB_DOCKER_FAIL_NTH_UP=2`): the
+- **P29 — A rollback is notified** (ADR-0020, `STUB_DOCKER_FAIL_NTH_UP=2`): the
   failed deploy POSTs one `rolled_back` payload, no `failed`, and no second
   `success` beyond the startup one.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
@@ -2284,9 +2296,10 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P23** | `TestE2E_FailedPostDeployHookHoldsChange` | `pipeline_test.go` |
 | **P24** | `TestE2E_RolloutCutoverDrainsOldAfterCanary` | `pipeline_test.go` |
 | **P25** | `TestE2E_RolloutUnhealthyCanaryKeepsOldContainer` | `pipeline_test.go` |
-| **P26** | `TestE2E_NotifiesSuccessToGenericTarget` | `notifications_test.go` |
-| **P27** | `TestE2E_NotifiesFailureToGenericTarget` | `notifications_test.go` |
-| **P28** | `TestE2E_NotifiesRollbackToGenericTarget` | `notifications_test.go` |
+| **P26** | `TestE2E_StillStartingHoldsWithoutRollback` | `pipeline_test.go` |
+| **P27** | `TestE2E_NotifiesSuccessToGenericTarget` | `notifications_test.go` |
+| **P28** | `TestE2E_NotifiesFailureToGenericTarget` | `notifications_test.go` |
+| **P29** | `TestE2E_NotifiesRollbackToGenericTarget` | `notifications_test.go` |
 
 ### 6.2 UI (Playwright)
 

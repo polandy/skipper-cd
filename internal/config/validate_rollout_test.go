@@ -8,7 +8,7 @@ import (
 )
 
 func TestValidateRolloutServices(t *testing.T) {
-	healthy := compose.Service{Image: "nginx:1.25", Healthcheck: map[string]any{"test": "true"}}
+	healthy := compose.Service{Image: "nginx:1.25", Healthcheck: &compose.Healthcheck{}}
 	fileWith := func(svc compose.Service) *compose.File {
 		return &compose.File{Services: map[string]compose.Service{"web": svc}}
 	}
@@ -21,8 +21,8 @@ func TestValidateRolloutServices(t *testing.T) {
 		wantSubstr string
 	}{
 		{"unknown service", fileWith(healthy), []string{"api"}, true, "is not defined"},
-		{"published ports", fileWith(compose.Service{Image: "nginx:1.25", Ports: []any{"8080:80"}, Healthcheck: map[string]any{"test": "true"}}), []string{"web"}, true, "publishes host ports"},
-		{"container_name", fileWith(compose.Service{Image: "nginx:1.25", ContainerName: "web", Healthcheck: map[string]any{"test": "true"}}), []string{"web"}, true, "container_name"},
+		{"published ports", fileWith(compose.Service{Image: "nginx:1.25", Ports: []any{"8080:80"}, Healthcheck: &compose.Healthcheck{}}), []string{"web"}, true, "publishes host ports"},
+		{"container_name", fileWith(compose.Service{Image: "nginx:1.25", ContainerName: "web", Healthcheck: &compose.Healthcheck{}}), []string{"web"}, true, "container_name"},
 		{"no healthcheck", fileWith(compose.Service{Image: "nginx:1.25"}), []string{"web"}, true, "no healthcheck"},
 		{"valid", fileWith(healthy), []string{"web"}, false, ""},
 	}

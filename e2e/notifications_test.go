@@ -54,7 +54,7 @@ func startNotified(t *testing.T, stubEnv map[string]string, stackCfg string) (*s
 	return s, rec
 }
 
-// P26 — A successful deploy is POSTed to the generic target with the event
+// P27 — A successful deploy is POSTed to the generic target with the event
 // payload (ADR-0020).
 func TestE2E_NotifiesSuccessToGenericTarget(t *testing.T) {
 	s, rec := startNotified(t, nil, "")
@@ -65,7 +65,7 @@ func TestE2E_NotifiesSuccessToGenericTarget(t *testing.T) {
 	}
 }
 
-// P27 — A failed deploy that is not rolled back (`rollback: false`) is POSTed
+// P28 — A failed deploy that is not rolled back (`rollback: false`) is POSTed
 // as `failed` and carries the error.
 func TestE2E_NotifiesFailureToGenericTarget(t *testing.T) {
 	s, rec := startNotified(t, map[string]string{"STUB_DOCKER_FAIL_NTH_UP": "2"}, "    rollback: false\n")
@@ -80,7 +80,7 @@ func TestE2E_NotifiesFailureToGenericTarget(t *testing.T) {
 	}
 }
 
-// P28 — A rolled-back deploy is POSTed as `rolled_back`, never as `failed`.
+// P29 — A rolled-back deploy is POSTed as `rolled_back`, never as `failed`.
 func TestE2E_NotifiesRollbackToGenericTarget(t *testing.T) {
 	s, rec := startNotified(t, map[string]string{"STUB_DOCKER_FAIL_NTH_UP": "2"}, "")
 	s.waitFor("rolled_back notification", func() bool { return rec.countStatus("rolled_back") == 1 })

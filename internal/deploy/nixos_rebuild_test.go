@@ -518,3 +518,111 @@ func TestDeployAllStacks_PassesNixOSRebuildTimeoutToTheUnit(t *testing.T) {
 	}
 	t.Fatalf("expected a nixos-rebuild unit to start, got calls=%v", runner.calls)
 }
+
+// failedUnitRunner models a rebuild unit that ended failed with exit status
+// mainStatus; everything else behaves like recordingRunner.
+type failedUnitRunner struct {
+	recordingRunner
+	mainStatus string
+}
+
+func (r *failedUnitRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) error {
+	if name == "systemctl" && len(args) > 0 && args[0] == "is-failed" {
+		r.calls = append(r.calls, runCall{dir: dir, name: name, args: args, env: env})
+		return nil // exit 0 == unit is in failed state
+	}
+	return r.recordingRunner.Run(ctx, dir, env, name, args...)
+}
+
+func (r *failedUnitRunner) Output(ctx context.Context, dir string, name string, args ...string) ([]byte, error) {
+	switch name {
+	case "systemctl":
+		r.outputCalls = append(r.outputCalls, runCall{dir: dir, name: name, args: args})
+		return []byte("ExecMainStatus=" + r.mainStatus + "\nInvocationID=0f3e\n"), nil
+	case "journalctl":
+		r.outputCalls = append(r.outputCalls, runCall{dir: dir, name: name, args: args})
+		return []byte("warning: the following units failed: nextcloud-oidc-provider.service\n"), nil
+	}
+	return r.recordingRunner.Output(ctx, dir, name, args...)
+}
+
+// A switch that activated the new configuration but left units failed (exit
+// status 4) is applied: rebuilding again cannot help, and aborting the stack
+// phase deadlocks a host unit that waits on a stack (ADR-0071). Any other
+// failed status still reverts the hashes and aborts.
+func TestDeployAllStacks_RebuildWithFailedUnitsKeepsHashesAndDeploysStacks(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		mainStatus   string
+		wantApplied  bool
+		wantInFailed string
+	}{
+		{name: "units failed after activation", mainStatus: "4", wantApplied: true, wantInFailed: "nextcloud-oidc-provider.service"},
+		{name: "switch did not apply", mainStatus: "1", wantApplied: false, wantInFailed: "nixos-rebuild switch failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			writeFile(t, filepath.Join(baseDir, "flake.nix"), "{ }")
+			stackDir := filepath.Join(baseDir, "modules", "gitea")
+			if err := os.MkdirAll(stackDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(stackDir, "docker-compose.yml"), composeWithImage("nginx:1.25"))
+
+			stateDir := t.TempDir()
+			runner := &failedUnitRunner{mainStatus: tc.mainStatus}
+			var nixEvents []events.DeployEvent
+			d := New(Config{
+				Runner:    runner,
+				Outputter: runner,
+				RepoDir:   baseDir,
+				StateDir:  stateDir,
+				EventSink: func(e events.DeployEvent) {
+					if e.Stack == NixosStateKey {
+						nixEvents = append(nixEvents, e)
+					}
+				},
+			})
+			enabled := true
+			cfg := &config.Config{
+				RepoURL:       "ssh://git@example.com/repo.git",
+				StacksBaseDir: filepath.Join(baseDir, "modules"),
+				Stacks:        []config.Stack{{Name: "gitea"}},
+				NixOSRebuild:  &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a", ChangeDetection: config.NixOSChangeDetectionFiles},
+			}
+
+			d.DeployAllStacks(context.Background(), cfg)
+
+			if len(nixEvents) != 1 || nixEvents[0].Status != events.StatusFailed || !strings.Contains(nixEvents[0].Error, tc.wantInFailed) {
+				t.Fatalf("expected one _nixos failed event naming %q, got %+v", tc.wantInFailed, nixEvents)
+			}
+			state, err := loadPersistedDeployState(stateDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kept := len(state.hashesFor(NixosStateKey)) > 0; kept != tc.wantApplied {
+				t.Errorf("_nixos hashes kept = %v, want %v", kept, tc.wantApplied)
+			}
+			if len(state.NixOSRebuildInFlight) != 0 {
+				t.Errorf("expected the in-flight marker cleared, got %v", state.NixOSRebuildInFlight)
+			}
+			if deployed := slices.ContainsFunc(runner.calls, func(c runCall) bool {
+				return c.name == "docker" && slices.Contains(c.args, "up")
+			}); deployed != tc.wantApplied {
+				t.Errorf("stack phase reached = %v, want %v; calls=%v", deployed, tc.wantApplied, runner.calls)
+			}
+
+			// The next sync rebuilds again only when the switch did not apply.
+			d.DeployAllStacks(context.Background(), cfg)
+			attempts := 0
+			for _, c := range runner.calls {
+				if c.name == "systemd-run" && slices.Contains(c.args, "nixos-rebuild") {
+					attempts++
+				}
+			}
+			if wantAttempts := map[bool]int{true: 1, false: 2}[tc.wantApplied]; attempts != wantAttempts {
+				t.Errorf("rebuild attempts over two syncs = %d, want %d", attempts, wantAttempts)
+			}
+		})
+	}
+}

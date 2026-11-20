@@ -36,6 +36,11 @@ var ErrNewVersionFailed = errors.New("new version failed after it started")
 // text is what the event, the UI and the notification show.
 var errNewVersionMark error = silentMark{ErrNewVersionFailed}
 
+// errRolledForward marks a deploy whose rollback came up unhealthy and whose
+// one roll-forward to the new version then passed every gate (ADR-0072): the
+// new version runs verified, so the caller records it as a success.
+var errRolledForward = errors.New("rolled forward to the new version")
+
 // silentMark is an error with no text of its own that unwraps to target.
 type silentMark struct{ target error }
 
@@ -63,7 +68,16 @@ func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, state
 	if rbErr := d.rollbackStack(ctx, run, state); rbErr != nil {
 		if errors.Is(rbErr, ErrRollbackUnhealthy) {
 			slog.Error("rollback ran but the restored version is still unhealthy", "stack", run.stack.Name, "err", rbErr)
-			return fmt.Errorf("%s: %w (%w)%w", stage, cause, rbErr, errNewVersionMark)
+			if errors.Is(rbErr, errStillStarting) {
+				return fmt.Errorf("%s: %w (%w)%w", stage, cause, rbErr, errNewVersionMark)
+			}
+			fwdErr := d.rollForward(ctx, run)
+			if fwdErr == nil {
+				slog.Warn("rolled forward: the new version passed its gates on the second try", "stack", run.stack.Name, "first_failure", cause)
+				return fmt.Errorf("%s: %w (%w)", stage, cause, errRolledForward)
+			}
+			slog.Error("roll-forward to the new version failed too", "stack", run.stack.Name, "err", fwdErr)
+			return fmt.Errorf("%s: %w (%w; roll-forward also failed: %w)%w", stage, cause, rbErr, fwdErr, errNewVersionMark)
 		}
 		slog.Error("rollback failed", "stack", run.stack.Name, "err", rbErr)
 		return fmt.Errorf("%s: %w (rollback also failed: %w)%w", stage, cause, rbErr, errNewVersionMark)
@@ -77,9 +91,9 @@ func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, state
 // a failed docker compose up. It retrieves the old compose file from the
 // stack's own base commit (ADR-0061) and
 // runs docker compose up with it. With a deploy_health_check configured the rollback
-// reruns the same gate (--wait plus the optional HTTP probe) so a restored
-// version that stays unhealthy is reported, not assumed good; those failures
-// wrap ErrRollbackUnhealthy.
+// reruns the same gate (the readiness wait plus the optional HTTP probe) so a
+// restored version that stays unhealthy is reported, not assumed good; those
+// failures wrap ErrRollbackUnhealthy.
 func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persistedState) error {
 	base := state.baseCommitFor(run.stack.Name)
 	if d.commitReader == nil || base == "" {
@@ -93,15 +107,32 @@ func (d *Deployer) rollbackStack(ctx context.Context, run stackRun, state *persi
 	defer cleanup()
 
 	slog.Info("rolling back with previous compose file", "stack", run.stack.Name, "commit", base)
-	upArgs := withHealthGate(run.stack.DeployHealthCheck, "up", "-d")
-	if err := d.runDockerCompose(ctx, rbRun, upArgs...); err != nil {
+	if err := d.runDockerCompose(ctx, rbRun, "up", "-d"); err != nil {
 		if run.stack.DeployHealthCheck != nil {
 			return fmt.Errorf("restored version did not come up healthy: %w (%w)", err, ErrRollbackUnhealthy)
 		}
 		return err
 	}
+	if err := d.awaitReady(ctx, rbRun); err != nil {
+		return fmt.Errorf("restored version did not come up healthy: %w (%w)", err, ErrRollbackUnhealthy)
+	}
 	if err := d.probeHealthURL(ctx, run.stack.DeployHealthCheck); err != nil {
 		return fmt.Errorf("restored version failed the health probe: %w (%w)", err, ErrRollbackUnhealthy)
+	}
+	return nil
+}
+
+// rollForward reapplies the new version once after its rollback came up
+// unhealthy too (ADR-0072): neither version is verified, and the new one may
+// only have needed longer. A plain up — a rollout's zero-downtime cutover has
+// nothing healthy left to protect — then the same gates as the first try.
+func (d *Deployer) rollForward(ctx context.Context, run stackRun) error {
+	slog.Warn("rolling forward to the new version once", "stack", run.stack.Name)
+	if err := d.runDockerCompose(ctx, run, "up", "-d", "--remove-orphans"); err != nil {
+		return fmt.Errorf("docker compose up: %w", err)
+	}
+	if stage, err := d.verifyNewVersion(ctx, run); err != nil {
+		return fmt.Errorf("%s: %w", stage, err)
 	}
 	return nil
 }

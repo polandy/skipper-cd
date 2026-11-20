@@ -1,6 +1,6 @@
 # ADR-0022: Health-check-gated rollback
 
-Status: accepted
+Status: accepted; amended by ADR-0072 (skipper owns the readiness wait instead of `compose --wait`; only a decided failure rolls back)
 Date: 2026-07-14
 
 ## Context

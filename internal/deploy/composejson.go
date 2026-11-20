@@ -21,6 +21,8 @@ type containerLine struct {
 	State   string `json:"State"`
 	Health  string `json:"Health"`
 	Image   string `json:"Image"`
+	// ExitCode tells a finished one-shot (0) from a crashed container.
+	ExitCode int `json:"ExitCode"`
 }
 
 // parseComposeJSON parses the output of a `docker compose … --format json` read
