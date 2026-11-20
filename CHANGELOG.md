@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.35.0](https://github.com/polandy/skipper-cd/compare/v0.34.0...v0.35.0) (2026-11-20)
+
+
+### Features
+
+* **notify:** send a run's successes as one digest message ([#452](https://github.com/polandy/skipper-cd/issues/452)) ([517c12f](https://github.com/polandy/skipper-cd/commit/517c12f3d7b5b6a4b0db387c0e9d3cc30420ec7f))
+* **ui:** link the open Stacks detail through the URL hash ([#451](https://github.com/polandy/skipper-cd/issues/451)) ([c26dc83](https://github.com/polandy/skipper-cd/commit/c26dc83a686e8e6dbbf19990bea9f89c1b71c7a0))
+* **ui:** name a rollback retry in the deploy detail, not on the row ([#457](https://github.com/polandy/skipper-cd/issues/457)) ([e30826a](https://github.com/polandy/skipper-cd/commit/e30826ab3d37cdbe9f496adc06f272617e5c5c42))
+* **ui:** re-render an open detail on a live health, stacks, hookrun or deploy event ([#450](https://github.com/polandy/skipper-cd/issues/450)) ([9ce5743](https://github.com/polandy/skipper-cd/commit/9ce5743446ab51f53066a1e07e9f68caa5131b70))
+* **ui:** show the detail panel as a full-screen sheet on a phone ([#449](https://github.com/polandy/skipper-cd/issues/449)) ([348f03d](https://github.com/polandy/skipper-cd/commit/348f03df55076294baddc93991b821af409e10be))
+* **ui:** show the detail panel beside the list on wide screens ([#448](https://github.com/polandy/skipper-cd/issues/448)) ([bc3242e](https://github.com/polandy/skipper-cd/commit/bc3242eab291a8e5e7d460ab33fe7d44657cd14a))
+* **ui:** show the rolled service as a sub-label on a deploying row ([#443](https://github.com/polandy/skipper-cd/issues/443)) ([120707c](https://github.com/polandy/skipper-cd/commit/120707ca7b0266a05b3adea6d80e12f57717297f))
+
 ## [0.34.0](https://github.com/polandy/skipper-cd/compare/v0.33.0...v0.34.0) (2026-11-20)
 
 
