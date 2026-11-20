@@ -51,6 +51,7 @@ type skipper struct {
 	stackCfg   map[string]string   // raw extra YAML lines per stack override (e.g. deploy_health_check); optional
 	stubEnv    map[string]string   // extra env for the stub docker (fail/hold scripting)
 	extraCfg   string              // raw top-level YAML appended to skipper.yml
+	updateCfg  string              // body of the update_check section; default is disabled
 	seedFiles  map[string]string   // origin-relative files written (over the default compose) into the initial commit; optional
 
 	proc   *exec.Cmd
@@ -220,7 +221,11 @@ func (s *skipper) writeConfig(base string) string {
 	fmt.Fprintf(&b, "command_timeout_seconds: 30\n")
 	// Update check (ADR-0054) off: it is on by default, and a test host must
 	// not resolve its fake image references against real registries.
-	fmt.Fprintf(&b, "update_check:\n  interval_seconds: 0\n")
+	updateCfg := s.updateCfg
+	if updateCfg == "" {
+		updateCfg = "  interval_seconds: 0\n"
+	}
+	fmt.Fprintf(&b, "update_check:\n%s", updateCfg)
 	fmt.Fprintf(&b, "icons:\n  cache_dir: %q\n", filepath.Join(base, "icons"))
 	fmt.Fprintf(&b, "stacks:\n")
 	for _, name := range s.stacks {
