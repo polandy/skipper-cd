@@ -395,6 +395,10 @@ UI suite reuses.
 - **P33 — An unknown config key fails startup** (ADR-0043): a `skipper.yml`
   with `no_such_setting: true` makes the binary exit 1 and name the key in its
   output.
+- **P34 — A run's successes are one digest** (notification-digest-spec): with
+  a `generic` target and stacks `api` and `web`, the startup run POSTs one
+  `"kind": "run_digest"` payload listing `[api web]` with both events, and no
+  single `success` payload.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2427,6 +2431,7 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P31** | `TestE2E_UpdateCheckDoesNotNotifyByDefault` | `updatecheck_test.go` |
 | **P32** | `TestE2E_AllowedHostsGuardUIButNotWebhookOrHealthz` | `config_test.go` |
 | **P33** | `TestE2E_UnknownConfigKeyFailsStartup` | `config_test.go` |
+| **P34** | `TestE2E_NotifiesRunSuccessesAsOneDigest` | `notifications_test.go` |
 
 ### 6.2 UI (Playwright)
 

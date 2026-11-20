@@ -521,6 +521,8 @@ Only terminal statuses are ever delivered: `failed`, `success`, `rolled_back`, `
 
 The message of a failed deploy names the cause, not only the exit status: when `build`, `pull`, `up` or a deploy hook fails, the error ends with the line the failing command printed to stderr that explains it — for a failed `RUN` step, the step's first error line plus BuildKit's verdict, e.g. `docker compose build: exit status 1: E: Unable to correct problems, you have held broken packages. — process "/bin/sh -c apt-get …" did not complete successfully: exit code: 100`. Colours, progress output and per-run timestamps are removed and the text is capped, so the same failure always reads the same. The same text appears in the Deploys view and the audit log.
 
+By default a run's successes arrive as **one message per run** (see [Run digest](#run-digest)); every failure, rollback and `heal_exhausted` is still sent on its own, the moment it happens.
+
 Delivery is **fire-and-forget**: sending runs in the background with its own 10-second per-request timeout, never blocking or delaying a deploy. A failed or slow target is logged and dropped — there is no retry queue, so a notification can be lost if the target is down. For guaranteed history, read the persisted events or scrape metrics instead.
 
 ```yaml
@@ -531,6 +533,7 @@ notifications:
     number: "+491234567890"           # sender (required for signal)
     recipients: ["+491234567890"]     # recipients (required for signal)
     prefix: host-a                    # optional; message becomes "[host-a] …"
+    # digest: per_run                 # default; `off` sends one message per successful stack
     # on:  defaults to [failed, success, rolled_back, rolled_back_unhealthy, heal_exhausted]
 
   # A second, independent target for failures only.
@@ -561,8 +564,29 @@ app, immich-machine-learning (openvino)
 - Versions are the ones the containers **actually ran** (recorded after each successful deploy), not the compose references. Registry and repository are dropped; only the tags are shown.
 - A tag suffix both sides share (`v3.4.0-openvino` → `v3.4.1-openvino`) goes in parentheses behind the container name, and containers with the same version change share one line.
 - The digest (7 characters) is shown only when the tag is unchanged. A container that switched to a different image keeps both references in full; a new container shows its tag, a removed one `entfernt`.
-- No timestamp, duration or health-gate line: the receiving app shows the time, and the `generic` payload carries `health_gated`.
+- No timestamp, duration or health-gate line in a single-stack message: the receiving app shows the time, and the `generic` payload carries `health_gated`. The [run digest](#run-digest) has both, once per run.
 - A first-time deploy after upgrading skipper has no recorded baseline and still compares compose references; from the next deploy on the delta is the real one.
+
+### Run digest
+
+With `digest: per_run` (the default) a target receives a run's successes as one message when the run ends, instead of one per stack:
+
+```
+16 Stacks deployt (2m54s)
+apc-monitor, authelia, changedetection, crowdsec, duckdns, gitea, homepage, immich, mealie, monitoring, nextcloud, nodered, paperless, signal-api, syncthing, vaultwarden
+✓ 14 mit Health-Gate geprüft
+• immich/server: v3.0.2 → v3.0.3
+• nextcloud/app: ab12cd3 → cd34ef5
+```
+
+- The title counts the stacks and gives the run's wall-clock time, from the first deploy's start to the end of the run.
+- Every stack is named, sorted. The `✓` line counts the stacks verified by a deploy health gate and is left out when there are none.
+- One `•` line per image that moved, as `<stack>/<container>`, reduced like a single message; at most 10, then `• +N weitere`.
+- A run with exactly one success sends the ordinary single-stack message; a run with none sends nothing.
+- Failures are never held back: a run in which one stack fails and others succeed sends the failure first, as it happens, and the digest of the successes at the end — the digest does not repeat the failure.
+- `ntfy` sends the digest at `low` priority without a `Click` link. `generic` posts one body per run: `{"kind": "run_digest", "stacks": [...], "events": [...]}` with each event as a single notification would carry it.
+- On shutdown, the successes of the run still in progress are sent as a partial digest.
+- `digest: off` sends every success as its own message, the moment it happens — the choice for a `generic` target that feeds a log or dashboard.
 
 The `ntfy` format publishes the title as the `Title` header and the body as plain text. The status is the `Tags` header (`white_check_mark` / `x`) and the `Priority` header (`low` on success, `high` on any failure), not emoji in the text. On a success whose new image comes from `ghcr.io/<owner>/<name>`, a `Click` header links `https://github.com/<owner>/<name>/releases/tag/<new tag>` (assumes the package is named like its repository); other registries set none. `headers` are applied last, so they can override any of these.
 
@@ -577,6 +601,7 @@ The `ntfy` format publishes the title as the `Title` header and the body as plai
 | `headers` | map | no | — | Static HTTP headers added to the request. Only meaningful for `generic` and `ntfy` (e.g. an auth token). |
 | `number` | string | for `signal` | — | Signal sender number. Required for `format: signal`, rejected on any other format. |
 | `recipients` | list | for `signal` | — | Signal recipient numbers (non-empty). Required for `format: signal`, rejected on any other format. |
+| `digest` | string | no | `per_run` | `per_run` sends a run's successes as one [digest](#run-digest) at the end of the run; `off` sends one message per success. Failures are always sent individually. |
 
 ### Formats
 
@@ -707,7 +732,7 @@ health_watch:                      # cadence = runtime_health_poll_interval_seco
   debounce_polls: 2                # consecutive confirmations before a change is accepted
   attribution_window_seconds: 300  # transitions this soon after a deploy are marked deploy-correlated
   alert_cooldown_seconds: 1800     # rate limit for repeat alerts of one service; 0 = off
-  targets:                         # optional; same fields as notifications targets, but no `on:`
+  targets:                         # optional; same fields as notifications targets, but no `on:` or `digest:`
     - format: signal
       url: http://localhost:8020
       number: "+491234567890"

@@ -313,6 +313,8 @@ func main() {
 				loops.Go("update-check-nudge", func() { updChecker.RunOnceIfChanged(signalCtx) })
 			}
 		},
+		// Flushes the run's digest of successes; fires on aborted runs too.
+		RunEndHook:     notifier.EndRun,
 		StackSetSink:   asPublisher.publishStacks,
 		RunPlanSink:    uiw.runPlanSink,
 		HookRunSink:    uiw.hookRunSink,

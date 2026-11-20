@@ -201,7 +201,7 @@ func TestNotifier_DrainDeliversQueued(t *testing.T) {
 
 	n.Notify(events.DeployEvent{Stack: "a", Status: events.StatusFailed})
 	n.Notify(events.DeployEvent{Stack: "b", Status: events.StatusFailed})
-	n.drain(n.handle)
+	n.drainThen(n.handleItem, nil)
 
 	if doer.count() != 2 {
 		t.Fatalf("drain should deliver all queued events, got %d", doer.count())

@@ -96,6 +96,9 @@ func (hw *HealthWatch) validate() error {
 		if len(t.On) > 0 {
 			return fmt.Errorf("targets[%d]: on is not valid for health_watch targets", i)
 		}
+		if t.Digest != "" {
+			return fmt.Errorf("targets[%d]: digest is not valid for health_watch targets; health alerts are always sent one by one", i)
+		}
 		if err := t.validate(); err != nil {
 			return fmt.Errorf("targets[%d]: %w", i, err)
 		}

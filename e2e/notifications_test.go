@@ -95,3 +95,44 @@ func TestE2E_NotifiesRollbackToGenericTarget(t *testing.T) {
 		t.Errorf("success notifications = %d, want only the startup one", n)
 	}
 }
+
+// countKind returns how many recorded payloads carry the given kind.
+func (r *alertRecorder) countKind(kind string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, a := range r.alerts {
+		if a["kind"] == kind {
+			n++
+		}
+	}
+	return n
+}
+
+// P34 — A run's successes reach the generic target as one digest payload
+// (docs/dev/notification-digest-spec.md).
+func TestE2E_NotifiesRunSuccessesAsOneDigest(t *testing.T) {
+	rec := newAlertRecorder(t)
+	extraCfg := fmt.Sprintf("notifications:\n  - format: generic\n    url: %q\n", rec.server.URL)
+	s := newSkipper(t, nil, extraCfg, []string{"api", "web"})
+	s.bootstrap(t)
+	s.waitFor("run digest notification", func() bool { return rec.countKind("run_digest") == 1 })
+
+	// The digest flushes after the run's events, so a per-stack success would already be here.
+	if n := rec.countStatus("success"); n != 0 {
+		t.Errorf("a digested run must not also POST single successes, got %d", n)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for _, a := range rec.alerts {
+		if a["kind"] != "run_digest" {
+			continue
+		}
+		if got := fmt.Sprint(a["stacks"]); got != "[api web]" {
+			t.Errorf("digest stacks = %s, want [api web]", got)
+		}
+		if evs, _ := a["events"].([]any); len(evs) != 2 {
+			t.Errorf("digest events = %d, want 2", len(evs))
+		}
+	}
+}

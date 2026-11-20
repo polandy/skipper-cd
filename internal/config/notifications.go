@@ -44,6 +44,11 @@ type NotificationTarget struct {
 	// Recipients are the Signal recipient numbers ("signal" format only,
 	// non-empty).
 	Recipients []string `yaml:"recipients"`
+
+	// Digest batches a run's successes into one message: "per_run" (the
+	// default) or "off" for one message per terminal event. Deploy
+	// notifications only. See docs/dev/notification-digest-spec.md.
+	Digest string `yaml:"digest"`
 }
 
 // Notification format values for NotificationTarget.Format.
@@ -51,6 +56,12 @@ const (
 	NotifyFormatSignal  = "signal"
 	NotifyFormatGeneric = "generic"
 	NotifyFormatNtfy    = "ntfy"
+)
+
+// Digest modes for NotificationTarget.Digest.
+const (
+	NotifyDigestPerRun = "per_run"
+	NotifyDigestOff    = "off"
 )
 
 // Terminal deploy statuses accepted in NotificationTarget.On: the terminal
@@ -75,6 +86,9 @@ func (c *Config) applyNotificationsDefaults() {
 		t.applyDefaults()
 		if len(t.On) == 0 {
 			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted}
+		}
+		if t.Digest == "" {
+			t.Digest = NotifyDigestPerRun
 		}
 	}
 }
@@ -118,6 +132,12 @@ func (t NotificationTarget) validate() error {
 			return fmt.Errorf("unknown on value %q, must be one of %q, %q, %q, %q, %q",
 				s, NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted)
 		}
+	}
+
+	switch t.Digest {
+	case "", NotifyDigestPerRun, NotifyDigestOff:
+	default:
+		return fmt.Errorf("unknown digest value %q, must be %q or %q", t.Digest, NotifyDigestPerRun, NotifyDigestOff)
 	}
 
 	// Signal identity fields are required for and exclusive to the signal format.

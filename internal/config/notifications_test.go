@@ -28,6 +28,23 @@ notifications:
 	if strings.Join(got.On, ",") != strings.Join(want, ",") {
 		t.Errorf("expected default on %v, got %v", want, got.On)
 	}
+	if got.Digest != config.NotifyDigestPerRun {
+		t.Errorf("expected default digest %q, got %q", config.NotifyDigestPerRun, got.Digest)
+	}
+}
+
+func TestLoad_NotificationDigestOff(t *testing.T) {
+	cfg := loadFromString(t, `
+repo_url: ssh://git@gitea.example.com/user/nixos.git
+stacks_base_dir: modules
+stacks: []
+notifications:
+  - url: https://ntfy.example.com/skipper
+    digest: "off"
+`)
+	if got := cfg.Notifications[0].Digest; got != config.NotifyDigestOff {
+		t.Errorf("digest = %q, want %q", got, config.NotifyDigestOff)
+	}
 }
 
 func TestLoad_NotificationOnRolledBackUnhealthy(t *testing.T) {
@@ -110,6 +127,11 @@ func TestLoad_NotificationValidation(t *testing.T) {
 			name:    "unknown on value",
 			yaml:    "  - format: generic\n    url: https://example.com/x\n    on: [deploying]\n",
 			wantErr: `unknown on value "deploying"`,
+		},
+		{
+			name:    "unknown digest value",
+			yaml:    "  - format: generic\n    url: https://example.com/x\n    digest: hourly\n",
+			wantErr: `unknown digest value "hourly"`,
 		},
 		{
 			name:    "signal without number",

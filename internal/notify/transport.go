@@ -55,10 +55,16 @@ func (t *transport[T]) push(item T, attrs ...any) {
 // what is still buffered within one timeout and returns. Intended to run in
 // its own goroutine; the caller must not block shutdown on it (ADR-0014 ethos).
 func (t *transport[T]) run(ctx context.Context, handle func(context.Context, T)) {
+	t.runThen(ctx, handle, nil)
+}
+
+// runThen is run with a final step: after the shutdown drain, drained (if not
+// nil) runs within the same deadline.
+func (t *transport[T]) runThen(ctx context.Context, handle func(context.Context, T), drained func(context.Context)) {
 	for {
 		select {
 		case <-ctx.Done():
-			t.drain(handle)
+			t.drainThen(handle, drained)
 			return
 		case item := <-t.items:
 			handle(ctx, item)
@@ -66,7 +72,7 @@ func (t *transport[T]) run(ctx context.Context, handle func(context.Context, T))
 	}
 }
 
-func (t *transport[T]) drain(handle func(context.Context, T)) {
+func (t *transport[T]) drainThen(handle func(context.Context, T), drained func(context.Context)) {
 	ctx, cancel := context.WithTimeout(context.Background(), t.timeout)
 	defer cancel()
 	for {
@@ -74,6 +80,9 @@ func (t *transport[T]) drain(handle func(context.Context, T)) {
 		case item := <-t.items:
 			handle(ctx, item)
 		default:
+			if drained != nil {
+				drained(ctx)
+			}
 			return
 		}
 	}
