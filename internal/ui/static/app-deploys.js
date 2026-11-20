@@ -845,10 +845,10 @@ App.deploys = (function () {
 
   // openRollbackFor is the Open rollback verdict action (UI_SPEC.md "Rollback
   // linkage"): flash the superseded rollback's own row while its event is
-  // still rendered, else open the stack's history in Stacks — the durable
-  // record the rollback always keeps.
+  // still rendered (local only: event ids are per host), else open the stack's
+  // history in Stacks — the durable record the rollback always keeps.
   function openRollbackFor(stack, host, rollbackId) {
-    if (rollbackId) {
+    if (rollbackId && host === S.selfHost) {
       const escaped = window.CSS && CSS.escape ? CSS.escape(rollbackId) : rollbackId;
       const target = tbody.querySelector(`.event-row:not(.peer-row)[data-event-id="${escaped}"]`);
       if (target) {
