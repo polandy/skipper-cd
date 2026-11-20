@@ -203,7 +203,10 @@ binary):
   deterministically (skipper exits with its bind error — `waitFor` fails fast
   on a dead process instead of spinning out its deadline — or a stub's listen
   rejects with `EADDRINUSE`) and relaunches on fresh ports, up to three
-  attempts; any other failure propagates immediately. `relaunch()` deliberately
+  attempts; any other failure propagates immediately. Each attempt also gets a
+  freshly scaffolded workspace (`retryOnFreshWorkspace`): skipper runs its
+  startup deploy before it binds the port, so a reused state dir would make
+  the relaunched instance skip every stack as unchanged. `relaunch()` deliberately
   keeps its ports (the browser's origin must survive), so it carries the
   residual risk.
 - **Fonts settle before interaction.** The `page` fixture awaits
