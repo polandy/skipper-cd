@@ -28,8 +28,9 @@ injectable clock, until one of:
 - **ready**: every container is `running` and, if it has a healthcheck,
   `healthy`. A container that exited 0 is a finished one-shot and counts as
   ready.
-- **decided failure**: a container is `unhealthy`, or exited/dead with a
-  non-zero code. This goes through the usual rollback path.
+- **decided failure**: a container is `unhealthy`, exited/dead with a
+  non-zero code, or restarting after one (a crash loop). This goes through
+  the usual rollback path.
 - **undecided**: the budget runs out while a container is still starting
   (`errStillStarting`). The deploy is `failed` and held (it carries
   `errNewVersionMark`) and is **never rolled back**. The message says
@@ -37,7 +38,8 @@ injectable clock, until one of:
 
 **The budget comes from the healthcheck.** It is
 `start_period + (retries+1)·interval + timeout` of the slowest service, with
-Docker's defaults for omitted fields (30s interval, 30s timeout, 3 retries). It
+Docker's defaults for omitted or unreadable fields (30s interval, 30s
+timeout, 3 retries); an uninterpolated `${VAR}` never fails the parse. It
 is never below 60s. An explicit `timeout_seconds` replaces it. The derived
 value is also the HTTP probe deadline and the canary default of a rollout.
 

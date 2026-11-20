@@ -18,6 +18,7 @@ const (
 	containerStateRunning = "running"
 	containerStateExited  = "exited"
 	containerStateDead    = "dead"
+	containerRestarting   = "restarting"
 	containerHealthy      = "healthy"
 	containerUnhealthy    = "unhealthy"
 )
@@ -71,7 +72,8 @@ func (d *Deployer) awaitReady(ctx context.Context, run stackRun, services ...str
 
 // readinessOf decides one `compose ps` snapshot: a decided failure, or the
 // first container still waiting ("" when every container is ready). A
-// container that exited 0 is a finished one-shot, not a failure.
+// container that exited 0 is a finished one-shot, not a failure; one that
+// Docker restarts after a non-zero exit is crash-looping.
 func readinessOf(lines []containerLine) (waiting string, failure error) {
 	for _, c := range lines {
 		name := c.Name
@@ -86,6 +88,8 @@ func readinessOf(lines []containerLine) (waiting string, failure error) {
 			if c.ExitCode != 0 {
 				return "", fmt.Errorf("container %s exited with code %d", name, c.ExitCode)
 			}
+		case state == containerRestarting && c.ExitCode != 0:
+			return "", fmt.Errorf("container %s is restarting after exit code %d", name, c.ExitCode)
 		case state != containerStateRunning || (c.Health != "" && !strings.EqualFold(c.Health, containerHealthy)):
 			if waiting == "" {
 				waiting = fmt.Sprintf("container %s is %s", name, strings.ToLower(firstNonEmpty(c.Health, c.State)))

@@ -121,7 +121,6 @@ func TestParse_RejectsFileOverLimit(t *testing.T) {
 }
 
 func TestReadinessBudget_DerivesFromHealthcheckTiming(t *testing.T) {
-	ten := 10
 	tests := []struct {
 		name string
 		hc   *Healthcheck
@@ -129,8 +128,9 @@ func TestReadinessBudget_DerivesFromHealthcheckTiming(t *testing.T) {
 	}{
 		{"nil healthcheck", nil, 0},
 		{"docker defaults", &Healthcheck{}, 30*time.Second + 4*30*time.Second},
-		{"nextcloud timing", &Healthcheck{StartPeriod: "60s", Interval: "2m", Timeout: "30s", Retries: &ten}, 60*time.Second + 11*2*time.Minute + 30*time.Second},
+		{"nextcloud timing", &Healthcheck{StartPeriod: "60s", Interval: "2m", Timeout: "30s", Retries: "10"}, 60*time.Second + 11*2*time.Minute + 30*time.Second},
 		{"unparsable falls back to the default", &Healthcheck{Interval: "soon", Timeout: "5s"}, 4*30*time.Second + 5*time.Second},
+		{"interpolated retries falls back to the default", &Healthcheck{Retries: "${RETRIES:-5}"}, 30*time.Second + 4*30*time.Second},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -163,5 +163,24 @@ func TestFile_ReadinessBudget_TakesTheLongestService(t *testing.T) {
 	}
 	if got, want := f.ReadinessBudget(), time.Minute+4*10*time.Second+30*time.Second; got != want {
 		t.Errorf("ReadinessBudget() = %s, want %s", got, want)
+	}
+}
+
+// Compose interpolates variables before it reads a healthcheck, so a value
+// skipper cannot read must not make the whole file unparsable.
+func TestParse_InterpolatedHealthcheckTimingStillParses(t *testing.T) {
+	path := write(t, `services:
+  app:
+    image: nginx
+    healthcheck:
+      interval: ${INTERVAL:-10s}
+      retries: ${RETRIES:-5}
+`)
+	f, err := Parse(path)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !f.Services["app"].HasHealthcheck() {
+		t.Error("expected the healthcheck read")
 	}
 }

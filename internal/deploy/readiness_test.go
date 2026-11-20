@@ -160,6 +160,13 @@ func TestAwaitReady_ExitedNonZeroRollsBack(t *testing.T) {
 	}
 }
 
+func TestReadinessOf_RestartingAfterNonZeroExitIsAFailure(t *testing.T) {
+	_, failure := readinessOf([]containerLine{appContainer("restarting", "", 137)})
+	if failure == nil || !strings.Contains(failure.Error(), "restarting after exit code 137") {
+		t.Errorf("expected a crash loop decided as a failure, got %v", failure)
+	}
+}
+
 func TestReadinessOf_ExitedZeroIsAFinishedOneShot(t *testing.T) {
 	waiting, failure := readinessOf([]containerLine{appContainer("exited", "", 0)})
 	if waiting != "" || failure != nil {

@@ -299,7 +299,7 @@ As soon as any service in the stack's compose file declares a `healthcheck:`, sk
 The wait ends in one of three ways:
 
 - **Ready** — the deploy succeeds.
-- **Decided failure** — a container turns `unhealthy` or exits with a non-zero code. The deploy rolls back (see below).
+- **Decided failure** — a container turns `unhealthy`, or exits with a non-zero code (also when Docker keeps restarting it). The deploy rolls back (see below).
 - **Still starting when the budget runs out** — the deploy is marked `failed` and [held](#held-changes), but **not** rolled back: the new version may only be slow. The error says `still starting … not rolled back` and names the retry endpoint, `POST /api/stacks/<stack>/retry`, to release the hold once the stack is healthy.
 
 **The wait budget** is derived from the slowest healthcheck in the compose file: `start_period + (retries + 1) × interval + timeout`, using Docker's defaults for omitted fields (`interval: 30s`, `timeout: 30s`, `retries: 3`, no `start_period`), and never less than 60 seconds. An explicit `timeout_seconds` replaces the derived budget.

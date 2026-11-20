@@ -292,6 +292,55 @@ func TestE2E_DisabledHealthGateSkipsWait(t *testing.T) {
 	}
 }
 
+// TestE2E_StillStartingHoldsWithoutRollback (P26): a gated deploy whose
+// container is still starting when the budget runs out is `failed` and held,
+// never rolled back, and names the retry endpoint (ADR-0072); once the container
+// is healthy, a retry deploys it. STUB_DOCKER_READINESS_FILE is written only
+// after the startup run, which therefore reads ready.
+func TestE2E_StillStartingHoldsWithoutRollback(t *testing.T) {
+	readiness := filepath.Join(t.TempDir(), "readiness.json")
+	s := newSkipper(t, map[string]string{"STUB_DOCKER_READINESS_FILE": readiness}, "", []string{"web"})
+	s.stackCfg = map[string]string{"web": "    deploy_health_check:\n      timeout_seconds: 1\n"}
+	s.bootstrap(t)
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+
+	container := func(health string) {
+		writeFile(t, readiness,
+			`{"ID":"c1","Name":"web-app-1","Service":"app","State":"running","Health":"`+health+`"}`+"\n")
+	}
+	container("starting")
+	s.setStackImage("web", "1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "failed")
+
+	if got := s.dockerUps("web"); got != 2 {
+		t.Fatalf("ups = %d, want startup + deploy = 2 (no rollback, no roll-forward)", got)
+	}
+	if es.has("web", "rolled_back") || es.has("web", "rolled_back_unhealthy") {
+		t.Fatal("an undecided wait must never roll back")
+	}
+	msg := strings.Join(es.errors("web", "failed"), "\n")
+	for _, want := range []string{"still starting", "not rolled back", "POST /api/stacks/web/retry"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("failed event error %q lacks %q", msg, want)
+		}
+	}
+	if v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`); !ok || v != 1 {
+		t.Errorf("skipper_stack_held{web} = %v (ok=%v), want 1", v, ok)
+	}
+
+	container("healthy")
+	successes := es.count("web", "success") // the startup deploy's
+	if code := s.postRetry("web"); code != http.StatusAccepted {
+		t.Fatalf("retry status = %d, want 202", code)
+	}
+	es.waitEventCount("web", "success", successes+1)
+}
+
 // TestE2E_BootstrapRunSkipsPull (P20): the first run against an empty state
 // converges every stack without `pull` and builds without `--pull`, so no
 // floating tag moves unattended (ADR-0051); the next real change pulls again.

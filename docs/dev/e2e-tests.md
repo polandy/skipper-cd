@@ -177,6 +177,9 @@ binary):
   - `STUB_DOCKER_ROLLOUT_FILE=<path>` → a rollout service's container table,
     answered to `compose ps --format json`: the first plain `up` starts `old`, a
     `--scale` up adds a `canary` (healthy, or `STUB_DOCKER_CANARY_HEALTH`), `rm -- <id>` drops one (P24, P25).
+  - `STUB_DOCKER_READINESS_FILE=<path>` → once the file exists, answers the
+    readiness wait's `compose ps --all` with its JSON lines; absent, the read is
+    empty and counts as ready (P26).
 - **Failure attachments.** A failed test attaches the instance's stdout/stderr
   (`skipper-output`) *and* the UI's own diagnostics (`ui-notes`, read from
   `window.__uiNotes`). Both are collected **after** the test finishes, never
@@ -349,6 +352,13 @@ UI suite reuses.
   `stop -- canary` and `rm -- canary` and nothing else — the old container is
   never stopped, no git-restore `up` — emits `rolled_back`, and the container
   table holds only `old`.
+- **P26 — A still-starting container is held, not rolled back** (ADR-0072,
+  `STUB_DOCKER_READINESS_FILE`): with `deploy_health_check.timeout_seconds: 1`
+  and the container scripted `starting`, a pushed bump emits `failed` whose
+  error says `still starting`, `not rolled back` and names
+  `POST /api/stacks/web/retry`; no rollback or roll-forward `up` runs and
+  `skipper_stack_held{web}` is 1. Once the container reads `healthy`, a retry
+  deploys it (`success`).
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2277,6 +2287,7 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P23** | `TestE2E_FailedPostDeployHookHoldsChange` | `pipeline_test.go` |
 | **P24** | `TestE2E_RolloutCutoverDrainsOldAfterCanary` | `pipeline_test.go` |
 | **P25** | `TestE2E_RolloutUnhealthyCanaryKeepsOldContainer` | `pipeline_test.go` |
+| **P26** | `TestE2E_StillStartingHoldsWithoutRollback` | `pipeline_test.go` |
 
 ### 6.2 UI (Playwright)
 
