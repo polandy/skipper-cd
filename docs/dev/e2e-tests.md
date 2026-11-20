@@ -2166,6 +2166,17 @@ peer cases take their own. Behaviour-only (no snapshot).
   panel and sets `aria-expanded=true`; Escape from a tab closes it, resets
   `aria-expanded` and focuses the toggle; Enter reopens it and the close button
   (pressed by keyboard) hands the focus back to the toggle as well.
+- **UBC12 — The hash follows the detail.** Opening `api` writes
+  `#stacks/api`, choosing History adds `?tab=history`; the Deploys view clears
+  the hash and coming back restores it with the kept panel; closing clears it.
+- **UBC13 — A link opens its stack.** Loading `/#stacks/api?tab=history` lands
+  on the Stacks view with `api`'s panel on History; editing the hash to
+  `#stacks/wip?tab=nope` opens `wip` on its default Triggers tab and the hash
+  drops the unknown tab. Verified to fail without the bootstrap's
+  `followDeepLink` and without the `replaceState` write.
+- **UBC14 — A peer link waits for its row.** Loading `/#stacks/host-b/cache`
+  opens the peer panel (its `held` verdict the positive signal) once the peer
+  poll brings the row; UBC8 checks a click on it writes that hash.
 
 ## 5. Visual snapshot strategy
 
@@ -2668,6 +2679,9 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UBC9** | the arrow keys switch tabs and the pane names its tab | `ubc-stack-detail.spec.ts` |
 | **UBC10** | the Hooks pane is named and the strip stays reachable | `ubc-stack-detail.spec.ts` |
 | **UBC11** | a row opens by keyboard and Escape closes it | `ubc-stack-detail.spec.ts` |
+| **UBC12** | the hash follows the open detail and its tab | `ubc-stack-detail.spec.ts` |
+| **UBC13** | loading a link opens the stack it names | `ubc-stack-detail.spec.ts` |
+| **UBC14** | a peer link opens once the peer row arrives | `ubc-stack-detail.spec.ts` |
 | **UBD1** | six routine deploys fold into the newest row plus a fold line | `ubd-deploy-fold.spec.ts` |
 | **UBD2** | rows sit under a Today separator | `ubd-deploy-fold.spec.ts` |
 | **UBD3** | a name filter that hides the rows takes the fold line with them | `ubd-deploy-fold.spec.ts` |

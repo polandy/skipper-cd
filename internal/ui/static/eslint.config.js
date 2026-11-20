@@ -196,6 +196,8 @@ module.exports = [
         verdictHTML: 'readonly',
         rosterVersionCellHTML: 'readonly',
         rosterVersionInnerHTML: 'readonly',
+        stackDeepLink: 'readonly',
+        parseStackDeepLink: 'readonly',
       },
     },
     rules: {

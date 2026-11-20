@@ -279,7 +279,7 @@ finalised.
 | 3 | `feat(ui)` | Detail panel for **Stacks**: header with labelled actions, verdict, facts, tabs; history rows use `badgeHTML` (a visible change, so not in PR 1); row loses glyphs, status-cell stack, Commit column | Stacks view |
 | 4 | `feat(ui)` | Detail panel for **Deploys**: Changes/Error/Containers/History tabs; row → 4 tracks; error strip (and its `--ec` map), `⋯` menu, pills removed | Deploys view |
 | 5 | `feat(ui)` | Side-panel placement ≥ 1200 px, phone sheet, Escape/focus, live refresh; ADR for "side panel instead of bound panels" (a real tradeoff). Done: the side panel with ADR-0073, the phone sheet (its amendment) and the live refresh | both views |
-| 6 | `feat(ui)` *(optional)* | URL hash deep link to a selection | — |
+| 6 | `feat(ui)` *(optional)* | URL hash deep link to a selection. Done for the Stacks detail only (Q5) | address bar |
 
 PR 1 and 2 are refactors with zero intended pixel change, which makes them
 safe to land first and keeps 3–5 small. 3 and 4 can be reviewed side by side
@@ -316,7 +316,10 @@ open question takes the option this plan and the mockup already assume:
    view and the panel's Containers tab.
 4. **Columns**: Duration, Files and Commit fold into the Time cell as muted
    text.
-5. **Deep links**: stays PR 6, optional, decided after PR 5 has landed.
+5. **Deep links**: decided with andy on 2026-11-20, after PR 5 had landed: the
+   Stacks detail only (`#stacks/[<host>/]<stack>[?tab=]`). Stacks are stable
+   names, while a deploy's event id ages out of the bounded history, so a
+   Deploys link would go dead; `UI_SPEC.md` "Stack detail panel" has the rules.
 6. **Naming**: "Containers" in both views.
 7. **Hooks**: a header action opening a pane, as mocked — not a fifth tab.
 8. **This plan file**: merges to `main` with PR 1, so the decision lands

@@ -12,7 +12,8 @@ import type { Page } from '@playwright/test';
 // the stack (UBC5); the close button closes it (UBC6); a phone lays the facts in
 // two columns (UBC7); a peer's panel is read-only (UBC8); and the tab strip
 // follows the ARIA tabs pattern (UBC9, UBC10); a row opens and closes by
-// keyboard (UBC11). Behaviour-only (no snapshot).
+// keyboard (UBC11); the URL hash names the open detail and a loaded link opens
+// it (UBC12-UBC14). Behaviour-only (no snapshot).
 
 // web declares hooks and has an app link; api has neither; wip is parked.
 const HOOKS_CONFIG = `stacks:
@@ -256,6 +257,55 @@ test.describe('Maske BC: the Stacks detail panel', () => {
   });
 });
 
+// UBC12, UBC13 — the URL hash names the open Stacks detail, so the address bar
+// can be shared: it follows the selection, and loading it opens what it names.
+test.describe('Maske BC: the deep link', () => {
+  test.use({
+    startOptions: {
+      stacks: ['api', 'wip'],
+      discovery: { repoConfig: 'stacks:\n  wip:\n    disabled: true\n', disabled: ['wip'] },
+      healthPoll: 1,
+      initialHealth: { api: HEALTHY },
+    },
+  });
+
+  test('UBC12: the hash follows the open detail and its tab', async ({ page, skipper }) => {
+    const root = `${skipper.baseURL}/`;
+    await openStacks(page, skipper);
+    await rosterRow(page, 'api').click();
+    await expect(panel(page, 'api')).toHaveAttribute('data-tab', 'containers');
+    await expect(page).toHaveURL(`${root}#stacks/api`);
+
+    await tab(page, 'api', 'history').click();
+    await expect(page).toHaveURL(`${root}#stacks/api?tab=history`);
+
+    // Another view clears it; coming back restores the kept selection.
+    await page.locator('[data-testid="view-toggle"] button[data-view="deploys"]').click();
+    await expect(page).toHaveURL(root);
+    await stacksBtn(page).click();
+    await expect(panel(page, 'api')).toHaveAttribute('data-tab', 'history');
+    await expect(page).toHaveURL(`${root}#stacks/api?tab=history`);
+
+    await panel(page, 'api').locator('[data-testid="detail-close"]').click();
+    await expect(page.locator('[data-testid="detail-panel"]')).toHaveCount(0);
+    await expect(page).toHaveURL(root);
+  });
+
+  test('UBC13: loading a link opens the stack it names', async ({ page, skipper }) => {
+    const root = `${skipper.baseURL}/`;
+    await page.goto(`${root}#stacks/api?tab=history`);
+    await expect(page.locator('[data-testid="stacks-view"]')).toBeVisible();
+    await expect(panel(page, 'api')).toHaveAttribute('data-tab', 'history');
+    await expect(tab(page, 'api', 'history')).toHaveAttribute('aria-selected', 'true');
+
+    // A hash edited in place opens the new stack; an unknown tab falls back
+    // to the default, and the hash drops it.
+    await page.evaluate(() => (location.hash = '#stacks/wip?tab=nope'));
+    await expect(panel(page, 'wip')).toHaveAttribute('data-tab', 'triggers');
+    await expect(page).toHaveURL(`${root}#stacks/wip`);
+  });
+});
+
 // UBC2 — a held change opens on History, the record of what failed, with the
 // retry beside the verdict that names the hold (STUB_DOCKER_FAIL_NTH_UP=2:
 // up#1 startup ok, up#2 fails, up#3 rollback ok).
@@ -364,5 +414,14 @@ test.describe('Maske BC: a peer stack', () => {
     await expect(p.locator('[data-testid="retry-btn"]')).toHaveCount(0);
     await expect(p.locator('[data-testid="jump-btn"]')).toHaveCount(0);
     await expect(p.locator('[data-testid="detail-close"]')).toBeVisible();
+    await expect(page).toHaveURL(`${skipper.baseURL}/#stacks/host-b/cache`);
+  });
+
+  // UBC14 — a peer's link waits for the peer poll that brings its row.
+  test('UBC14: a peer link opens once the peer row arrives', async ({ page, skipper }) => {
+    await page.goto(`${skipper.baseURL}/#stacks/host-b/cache`);
+    const p = page.locator('[data-testid="detail-panel"].peer-panel[data-host="host-b"][data-stack="cache"]');
+    await expect(p.locator('.dp-v[data-kind="held"]')).toBeVisible();
+    await expect(page).toHaveURL(`${skipper.baseURL}/#stacks/host-b/cache`);
   });
 });

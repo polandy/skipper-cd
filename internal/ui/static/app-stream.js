@@ -361,6 +361,7 @@ App.stream = (function () {
   stream.init(); // the wake-up listeners
   logs.renderLogQuickChips(); // paint the persisted filter before the first lines land
   logs.applyFollow();
+  roster.followDeepLink(); // a #stacks/ link picks the view and its selection
   chrome.applyView();
   stream.connect();
   // The Logs view's document-level key handler keeps its place in line.
