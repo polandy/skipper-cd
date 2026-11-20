@@ -335,7 +335,7 @@ App.deploys = (function () {
     if (evt.has_diffs) row.dataset.hasDiffs = '1';
 
     // A healed row applied no change; others stash theirs for the live view-options toggle.
-    if (evt.status !== 'healed') {
+    if (evt.status !== STATUS.HEALED) {
       stashChanges(row, evt);
     }
     // Rendered from the stash, like the settle path below: one source for the
@@ -348,7 +348,7 @@ App.deploys = (function () {
       ts: evt.timestamp,
       absolute: S.absoluteTime,
       version: delta,
-      state: badgeHTML(evt.status) + retryNoteHTML(evt) + repeatNoteHTML(evt),
+      state: badgeHTML(evt.status) + repeatNoteHTML(evt),
       durationMs: evt.duration_ms,
       commit: '',
       repoBase: S.repoWebURL,
@@ -474,7 +474,7 @@ App.deploys = (function () {
     // it is never rendered (skipped events are live-only, never in history).
     // A held one repeats the failure row already shown every tick; the roster
     // carries the standing hold (ADR-0062).
-    if (evt.status === 'skipped' || evt.status === 'held') return;
+    if (evt.status === STATUS.SKIPPED || evt.status === STATUS.HELD) return;
 
     showTable();
 
@@ -483,7 +483,7 @@ App.deploys = (function () {
     // never announces the backlog. (T2.8)
     App.chrome.announceOutcome(deployAnnouncement(evt.status, evt.stack));
 
-    if (evt.status === 'queued' || evt.status === 'blocked') {
+    if (evt.status === STATUS.QUEUED || evt.status === STATUS.BLOCKED) {
       // Both are pending, leave-dirty states re-emitted every sync/reconcile
       // tick (queued = autosync paused; blocked = a failed depends_on
       // dependency, ADR-0032). Collapse repeats into one live row per stack,
@@ -499,7 +499,7 @@ App.deploys = (function () {
     removeQueuedRow(evt.stack);
     const prev = supersededRow(evt);
 
-    if (evt.status === 'deploying') {
+    if (evt.status === STATUS.DEPLOYING) {
       const row = createRow(evt, isHistory);
       tbody.insertBefore(row, tbody.firstChild);
       replaceRow(prev, row);
@@ -509,10 +509,10 @@ App.deploys = (function () {
     }
 
     if (
-      (evt.status === 'success' ||
-        evt.status === 'failed' ||
-        evt.status === 'rolled_back' ||
-        evt.status === 'rolled_back_unhealthy') &&
+      (evt.status === STATUS.SUCCESS ||
+        evt.status === STATUS.FAILED ||
+        evt.status === STATUS.ROLLED_BACK ||
+        evt.status === STATUS.ROLLED_BACK_UNHEALTHY) &&
       deployingRows[evt.stack]
     ) {
       const existing = deployingRows[evt.stack];
@@ -525,7 +525,7 @@ App.deploys = (function () {
       // The terminal event alone knows whether this success retries a rollback,
       // so the note lands as the row settles (like the Version column below).
       existing.querySelector('.status-cell').innerHTML =
-        badgeHTML(evt.status) + retryNoteHTML(evt) + repeatNoteHTML(evt);
+        badgeHTML(evt.status) + repeatNoteHTML(evt);
       existing.querySelector('.cell-when').outerHTML = deployWhenHTML({
         ts: evt.timestamp,
         absolute: S.absoluteTime,
@@ -843,12 +843,12 @@ App.deploys = (function () {
     applyDeployFilter();
   }
 
-  // openRollbackFor is the retry note's target (UI_SPEC.md "Rollback
+  // openRollbackFor is the Open rollback verdict action (UI_SPEC.md "Rollback
   // linkage"): flash the superseded rollback's own row while its event is
-  // still rendered, else open the stack's history in Stacks — the durable
-  // record the rollback always keeps.
-  function openRollbackFor(row, rollbackId) {
-    if (rollbackId) {
+  // still rendered (local only: event ids are per host), else open the stack's
+  // history in Stacks — the durable record the rollback always keeps.
+  function openRollbackFor(stack, host, rollbackId) {
+    if (rollbackId && host === S.selfHost) {
       const escaped = window.CSS && CSS.escape ? CSS.escape(rollbackId) : rollbackId;
       const target = tbody.querySelector(`.event-row:not(.peer-row)[data-event-id="${escaped}"]`);
       if (target) {
@@ -856,7 +856,7 @@ App.deploys = (function () {
         return;
       }
     }
-    if (row) showInStacks(row.dataset.stack, row.dataset.host, STACK_TAB.history);
+    showInStacks(stack, host, STACK_TAB.history);
   }
 
   // ── Deploys table click delegation (row panels) ──
@@ -1073,13 +1073,6 @@ App.deploys = (function () {
     }
     if (e.target.closest('.detail-panel')) return;
 
-    // Retry note: open the rollback this success supersedes. Before the files
-    // logic so a tap never also opens the row's own diff panel.
-    const retry = e.target.closest('.retry-note');
-    if (retry) {
-      openRollbackFor(retry.closest('.event-row'), retry.dataset.rollbackId);
-      return;
-    }
     // Hook-log icon: a .clog-btn, so match it before the container-logs handler.
     const hookLog = e.target.closest('.hook-log-btn');
     if (hookLog) {
@@ -1103,6 +1096,9 @@ App.deploys = (function () {
         break;
       case 'logs':
         App.clog.toggle(act);
+        break;
+      case 'rollback':
+        openRollbackFor(panel.dataset.stack, panel.dataset.host, act.dataset.rollbackId);
         break;
     }
   }

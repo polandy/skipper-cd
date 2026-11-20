@@ -1,4 +1,5 @@
-package git
+// Package repourl knows the forms of a Git remote URL — pure string work, no I/O.
+package repourl
 
 import (
 	"net/url"

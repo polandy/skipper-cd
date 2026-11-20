@@ -70,13 +70,13 @@ func (t *runTally) flush() map[events.Status]int {
 func logRunSummary(counts map[events.Status]int) {
 	slog.Info(prettylog.MsgRunComplete,
 		"deployed", counts[events.StatusSuccess],
-		"rolled_back", counts[events.StatusRolledBack],
-		"rolled_back_unhealthy", counts[events.StatusRolledBackUnhealthy],
-		"queued", counts[events.StatusQueued],
-		"blocked", counts[events.StatusBlocked],
-		"held", counts[events.StatusHeld],
-		"skipped", counts[events.StatusSkipped],
-		"removed", counts[events.StatusRemoved],
-		"failed", counts[events.StatusFailed],
+		string(events.StatusRolledBack), counts[events.StatusRolledBack],
+		string(events.StatusRolledBackUnhealthy), counts[events.StatusRolledBackUnhealthy],
+		string(events.StatusQueued), counts[events.StatusQueued],
+		string(events.StatusBlocked), counts[events.StatusBlocked],
+		string(events.StatusHeld), counts[events.StatusHeld],
+		string(events.StatusSkipped), counts[events.StatusSkipped],
+		string(events.StatusRemoved), counts[events.StatusRemoved],
+		string(events.StatusFailed), counts[events.StatusFailed],
 	)
 }

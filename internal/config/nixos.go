@@ -60,8 +60,8 @@ func (n *NixOSRebuild) ComparesDerivation() bool {
 	return n != nil && n.ChangeDetection != NixOSChangeDetectionFiles
 }
 
-// validateNixOSRebuild checks an enabled nixos_rebuild section.
-func validateNixOSRebuild(n *NixOSRebuild) error {
+// validate checks an enabled nixos_rebuild section.
+func (n *NixOSRebuild) validate() error {
 	if !n.IsEnabled() {
 		return nil
 	}

@@ -400,70 +400,10 @@
   </div>
 </main>
 
-<!-- Pure, DOM-free helpers, extracted so a node --test unit layer can import
-     them without a build step (ADR-0035). Loaded first, so the app script below
-     calls them as globals by bare name. See internal/ui/static/app-helpers.js. -->
-<script src="/app-helpers.js"></script>
-<!-- Pure HTML-string renderers (commit links, version chips, diff header),
-     extracted so the node --test unit layer can exercise them (ADR-0035
-     amendment). Loaded after app-helpers.js, whose functions they call as
-     globals. See internal/ui/static/app-render.js. -->
-<script src="/app-render.js"></script>
-<!-- The App namespace and the shared snapshot store the views read, plus the
-     per-host resolvers over it (ADR-0035 amendment: the app is cut into plain
-     script files by view, sharing state through one namespace object). Loaded
-     after the pure layers it binds to, before every view file. See
-     internal/ui/static/app-state.js. -->
-<script src="/app-state.js"></script>
-<!-- The app chrome: announcements, the surface registry and focus management,
-     header controls, theme, view switching, badges and beacon, PWA prompt — cut
-     out of the app script (ADR-0035 amendment); attaches itself as App.chrome
-     and is wired by the app's first init call, so every view can register its
-     surfaces with it. See internal/ui/static/app-chrome.js. -->
-<script src="/app-chrome.js"></script>
-<!-- The per-stack detail panels every view opens (diff, files, heal, history,
-     health, hooks, watched) and the row affordances that open them (⋯ menu,
-     app-link popover, icons), cut out of the app script (ADR-0035 amendment);
-     attaches itself as App.panels, before every view that uses it. See
-     internal/ui/static/app-panels.js. -->
-<script src="/app-panels.js"></script>
-<!-- The row detail selection (App.detail): which row of a table view has its
-     detail open and on which pane, re-applied after a view rebuilds its rows.
-     Loaded after app-panels.js, whose shared panes it registers, and before
-     every view. See internal/ui/static/app-detail.js. -->
-<script src="/app-detail.js"></script>
-<!-- The multi-host surface (ADR-0048): peer rows, host chips and colours, the
-     Hosts drawer and filter, the peer detail panel — cut out of the app script
-     (ADR-0035 amendment); attaches itself as App.hosts and is wired by the app's
-     init call. See internal/ui/static/app-hosts.js. -->
-<script src="/app-hosts.js"></script>
-<!-- The Stacks view: roster, peer roster rows, disabled strip, row card and the
-     stack search — cut out of the app script (ADR-0035 amendment); attaches
-     itself as App.roster and is wired by the app's init call. See
-     internal/ui/static/app-roster.js. -->
-<script src="/app-roster.js"></script>
-<!-- The Deploys view: table and rows, run drawer, event ingest, filters and
-     the orphans section — cut out of the app script (ADR-0035 amendment);
-     attaches itself as App.deploys and is wired by the app's init call. See
-     internal/ui/static/app-deploys.js. -->
-<script src="/app-deploys.js"></script>
-<!-- The autosync control and drawer (ADR-0016), cut out of the app script by
-     view (ADR-0035 amendment); attaches itself as App.autosync and is wired by
-     the app's init call. See internal/ui/static/app-autosync.js. -->
-<script src="/app-autosync.js"></script>
-<!-- The Logs view (stream buffer, window, quick filters, follow, inline
-     controls), cut out of the app script by view (ADR-0035 amendment);
-     attaches itself as App.logs and is wired by the app's two init calls.
-     See internal/ui/static/app-logs.js. -->
-<script src="/app-logs.js"></script>
-<!-- The container-logs panel (ADR-0037), the first view file cut out of the app
-     script (ADR-0035 amendment); attaches itself as App.clog. Loaded after
-     app-state.js, before the stream. See internal/ui/static/app-clog.js. -->
-<script src="/app-clog.js"></script>
-<!-- The SSE stream dispatcher and the bootstrap, the last file of the app
-     script cut by view (ADR-0035 amendment); attaches itself as App.stream and
-     runs the ordered init() sequence that starts the app, so it loads last.
-     See internal/ui/static/app-stream.js. -->
-<script src="/app-stream.js"></script>
+<!-- The app's plain scripts, in load order (ADR-0035 amendment): the pure layers
+     (app-helpers, app-render), the App store, the view files, and the SSE
+     dispatcher with the bootstrap last. Rendered from appScripts in
+     internal/ui/static.go. -->
+__APP_SCRIPTS__
 </body>
 </html>

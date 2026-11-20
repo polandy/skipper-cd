@@ -58,6 +58,23 @@ function rosterLastDeploy(entry, deploying) {
   };
 }
 
+// STATUS is the deploy-event status vocabulary (events.Status in
+// internal/events); compare against it, never against a bare string.
+const STATUS = Object.freeze({
+  DEPLOYING: 'deploying',
+  SUCCESS: 'success',
+  FAILED: 'failed',
+  SKIPPED: 'skipped',
+  ROLLED_BACK: 'rolled_back',
+  ROLLED_BACK_UNHEALTHY: 'rolled_back_unhealthy',
+  QUEUED: 'queued',
+  HEALED: 'healed',
+  HEAL_EXHAUSTED: 'heal_exhausted',
+  BLOCKED: 'blocked',
+  HELD: 'held',
+  REMOVED: 'removed',
+});
+
 // DETAIL_VIEW names the table views that open a row's detail; each keeps its
 // own selection (App.detail, docs/dev/ui-redesign-plan.md §3.6).
 const DETAIL_VIEW = Object.freeze({ deploys: 'deploys', stacks: 'stacks' });
@@ -333,9 +350,9 @@ function imageDelta(oldRef, newRef) {
 // statusText renders a deploy status as the short label shown on the diff
 // panel's echo pill (mirrors badge wording without the stacked layout).
 function statusText(status) {
-  if (status === 'rolled_back') return 'rolled back';
-  if (status === 'rolled_back_unhealthy') return 'rolled back · unhealthy';
-  if (status === 'heal_exhausted') return 'self-heal · failed';
+  if (status === STATUS.ROLLED_BACK) return 'rolled back';
+  if (status === STATUS.ROLLED_BACK_UNHEALTHY) return 'rolled back · unhealthy';
+  if (status === STATUS.HEAL_EXHAUSTED) return 'self-heal · failed';
   return status || '';
 }
 
@@ -377,9 +394,9 @@ function statusIcon(status) {
 // auditStatusLabel spells the two stacked-badge statuses on one line — the
 // history rows are compact, so the two-line badge wording is flattened here.
 function auditStatusLabel(status) {
-  if (status === 'rolled_back') return 'rolled back';
-  if (status === 'rolled_back_unhealthy') return 'rolled back · unhealthy';
-  if (status === 'heal_exhausted') return 'self-heal failed';
+  if (status === STATUS.ROLLED_BACK) return 'rolled back';
+  if (status === STATUS.ROLLED_BACK_UNHEALTHY) return 'rolled back · unhealthy';
+  if (status === STATUS.HEAL_EXHAUSTED) return 'self-heal failed';
   return status;
 }
 
@@ -741,13 +758,13 @@ function discoveredDetail(attrs) {
 // count is left out entirely: a line that is six sevenths `=0` reports nothing.
 const RUN_OUTCOMES = [
   ['deployed', 'deployed', 'ok'],
-  ['rolled_back', 'rolled back', 'roll'],
-  ['rolled_back_unhealthy', 'rolled back · unhealthy', 'bad'],
-  ['queued', 'queued', 'warn'],
-  ['blocked', 'blocked', 'warn'],
-  ['held', 'held', 'warn'],
-  ['skipped', 'skipped', ''],
-  ['failed', 'failed', 'bad'],
+  [STATUS.ROLLED_BACK, 'rolled back', 'roll'],
+  [STATUS.ROLLED_BACK_UNHEALTHY, 'rolled back · unhealthy', 'bad'],
+  [STATUS.QUEUED, 'queued', 'warn'],
+  [STATUS.BLOCKED, 'blocked', 'warn'],
+  [STATUS.HELD, 'held', 'warn'],
+  [STATUS.SKIPPED, 'skipped', ''],
+  [STATUS.FAILED, 'failed', 'bad'],
 ];
 
 // runCompleteNarrative summarises a run, taking its glyph and tone from the
@@ -1464,7 +1481,7 @@ function clogStreamStatus(readyState) {
 // The "unchanged since" claim is only made after a clean deploy. A stack whose
 // last outcome was failed/queued/blocked has a change *pending*, so saying
 // nothing changed since then would be exactly backwards.
-const WATCHED_SETTLED = ['success', 'healed'];
+const WATCHED_SETTLED = [STATUS.SUCCESS, STATUS.HEALED];
 
 // UNCHANGED_SINCE opens the settled lead, immediately followed by the commit.
 // watchedLeadHTML finds that commit by this prefix to turn it into a link, so
@@ -1493,7 +1510,12 @@ function watchedSummary(status, commit, count, disabled) {
 }
 
 // AUDIT_BAD_STATUSES are the terminal outcomes that went wrong.
-const AUDIT_BAD_STATUSES = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
+const AUDIT_BAD_STATUSES = [
+  STATUS.FAILED,
+  STATUS.ROLLED_BACK,
+  STATUS.ROLLED_BACK_UNHEALTHY,
+  STATUS.HEAL_EXHAUSTED,
+];
 
 // AUDIT_FOLD_NOUN names what a folded run contains, so the summary line reads
 // as a sentence rather than "9 × success". Always plural: a run is never one
@@ -1615,7 +1637,7 @@ function foldAuditRecords(records) {
 // DEPLOY_FOLD_STATUSES are the outcomes the Deploys list may fold: routine
 // convergence only. Incidents, pending (queued/blocked) and live rows never
 // fold, so nothing that needs a look hides behind a fold line.
-const DEPLOY_FOLD_STATUSES = ['success', 'healed'];
+const DEPLOY_FOLD_STATUSES = [STATUS.SUCCESS, STATUS.HEALED];
 
 // foldDeployRows finds the runs of routine deploys the Deploys list folds.
 // rows are the visible rows newest first ({stack, host, status, kind, key,
@@ -1719,13 +1741,13 @@ function deployDayLabel(ts, nowMs) {
 function deployAnnouncement(status, stack) {
   if (!stack) return null;
   const phrase = {
-    success: 'deployed successfully',
-    healed: 'self-healed',
-    failed: 'deploy failed',
-    rolled_back: 'deploy failed, rolled back',
-    rolled_back_unhealthy: 'rolled back, still unhealthy',
-    heal_exhausted: 'self-heal failed',
-    removed: 'removed from the deploy set',
+    [STATUS.SUCCESS]: 'deployed successfully',
+    [STATUS.HEALED]: 'self-healed',
+    [STATUS.FAILED]: 'deploy failed',
+    [STATUS.ROLLED_BACK]: 'deploy failed, rolled back',
+    [STATUS.ROLLED_BACK_UNHEALTHY]: 'rolled back, still unhealthy',
+    [STATUS.HEAL_EXHAUSTED]: 'self-heal failed',
+    [STATUS.REMOVED]: 'removed from the deploy set',
   }[status];
   return phrase ? stack + ' ' + phrase : null;
 }
@@ -1795,7 +1817,7 @@ function stackDefaultTab(entry) {
   if (entry.disabled) return STACK_TAB.triggers;
   if (entry.held) return STACK_TAB.history;
   if (!entry.last_status) return STACK_TAB.triggers;
-  if (AUDIT_BAD_STATUSES.indexOf(entry.last_status) !== -1 || entry.last_status === 'healed') {
+  if (AUDIT_BAD_STATUSES.indexOf(entry.last_status) !== -1 || entry.last_status === STATUS.HEALED) {
     return STACK_TAB.history;
   }
   return STACK_TAB.containers;
@@ -1932,10 +1954,10 @@ function heldVerdict(held) {
   let text;
   if (held.attempts) {
     text = 'failed ' + held.attempts + ' times before it started and is held.';
-  } else if (held.status === 'rolled_back') {
+  } else if (held.status === STATUS.ROLLED_BACK) {
     tone = 'rollback';
     text = 'failed and was rolled back; the previous version is running.';
-  } else if (held.status === 'rolled_back_unhealthy') {
+  } else if (held.status === STATUS.ROLLED_BACK_UNHEALTHY) {
     text = 'failed and was rolled back, but the restored version is unhealthy too.';
   } else {
     text = 'failed after it started and was not rolled back.';
@@ -1959,7 +1981,7 @@ function outcomeVerdict(entry) {
       'The last deploy' + commit + ' was rolled back, but the restored version is unhealthy.',
     heal_exhausted: 'Self-heal gave up: the containers kept drifting.',
   }[status];
-  return verdictLine('failed', status === 'rolled_back' ? 'rollback' : 'danger', '', text);
+  return verdictLine('failed', status === STATUS.ROLLED_BACK ? 'rollback' : 'danger', '', text);
 }
 
 // settledVerdict is the all-clear line: healthy (or healed) and unchanged
@@ -1967,7 +1989,7 @@ function outcomeVerdict(entry) {
 function settledVerdict(entry, healthy) {
   const since =
     UNCHANGED_SINCE + (entry.last_commit ? shortSHA(entry.last_commit) : 'the last deploy') + '.';
-  if (entry.last_status === 'healed') {
+  if (entry.last_status === STATUS.HEALED) {
     return verdictLine(
       'healed',
       'ok',
@@ -1998,6 +2020,8 @@ const BEFORE_START_STAGE = /^(docker compose (?:pull|build)|pre_deploy hook|roll
 const ROLLED_BACK_SUFFIX = ' (rolled back to previous version)';
 const ROLLBACK_UNHEALTHY = / \((restored version .*) \(rolled back but still unhealthy\)\)$/;
 const ROLLBACK_FAILED = / \(rollback also failed: (.*)\)$/;
+// ROLLBACK_OUTCOME_FAILED is deployFailure's rollback outcome, not an event status.
+const ROLLBACK_OUTCOME_FAILED = 'failed';
 const EXIT_STATUS_PREFIX = /^exit status \d+: /;
 
 // deployFailure splits a deploy error into the stage that failed, its
@@ -2016,7 +2040,7 @@ function deployFailure(error) {
     restored = m[1];
     rest = rest.slice(0, m.index);
   } else if ((m = rest.match(ROLLBACK_FAILED))) {
-    rollback = 'failed';
+    rollback = ROLLBACK_OUTCOME_FAILED;
     restored = m[1];
     rest = rest.slice(0, m.index);
   }
@@ -2062,16 +2086,16 @@ const DEPLOY_BLOCKED = /^dependency (.+) failed this run$/;
 // deployRowCause is the line under a deploy row's name; queueReason comes from the queue snapshot.
 function deployRowCause(status, error, queueReason) {
   switch (status) {
-    case 'failed':
-    case 'rolled_back':
-    case 'rolled_back_unhealthy':
+    case STATUS.FAILED:
+    case STATUS.ROLLED_BACK:
+    case STATUS.ROLLED_BACK_UNHEALTHY:
       return error ? failedAt(deployFailure(error)) : '';
-    case 'blocked': {
+    case STATUS.BLOCKED: {
       if (queueReason) return queueReason;
       const dep = (error || '').match(DEPLOY_BLOCKED);
       return dep ? 'blocked by ' + dep[1] : error || 'blocked';
     }
-    case 'queued': {
+    case STATUS.QUEUED: {
       const scope = { stack: ' for this stack', global: ' for every stack' }[queueReason] || '';
       return 'autosync paused' + scope;
     }
@@ -2088,7 +2112,7 @@ const DEPLOY_HELD = 'The change is held. ' + HELD_RELEASE;
 function deployOutcomeVerdict(evt, ctx) {
   const f = deployFailure(evt.error);
   switch (evt.status) {
-    case 'failed': {
+    case STATUS.FAILED: {
       const head = f.phase ? 'Failed at ' + f.phase + '.' : 'Failed.';
       let sub = '';
       if (!f.phase) {
@@ -2096,14 +2120,14 @@ function deployOutcomeVerdict(evt, ctx) {
       } else if (f.beforeStart) {
         sub =
           'Nothing was touched; the running version stays. skipper retries after a backoff and holds the change after the third failure.';
-      } else if (f.rollback === 'failed') {
+      } else if (f.rollback === ROLLBACK_OUTCOME_FAILED) {
         sub = 'The rollback failed too: ' + f.restored + '. ' + DEPLOY_HELD;
       } else {
         sub = 'The new containers are left running. ' + DEPLOY_HELD;
       }
       return verdictLine('failed', 'danger', head, f.cause, sub);
     }
-    case 'rolled_back':
+    case STATUS.ROLLED_BACK:
       return verdictLine(
         'rolled_back',
         'rollback',
@@ -2114,7 +2138,7 @@ function deployOutcomeVerdict(evt, ctx) {
           '. ' +
           DEPLOY_HELD,
       );
-    case 'rolled_back_unhealthy':
+    case STATUS.ROLLED_BACK_UNHEALTHY:
       return verdictLine(
         'rolled_back',
         'danger',
@@ -2122,7 +2146,7 @@ function deployOutcomeVerdict(evt, ctx) {
         failedAt(f),
         (f.restored ? f.restored + '. ' : '') + DEPLOY_HELD,
       );
-    case 'blocked': {
+    case STATUS.BLOCKED: {
       const dep = (evt.error || '').match(DEPLOY_BLOCKED);
       if (!dep) return verdictLine('blocked', 'warn', 'Not deployed.', evt.error || '');
       return verdictLine(
@@ -2133,7 +2157,7 @@ function deployOutcomeVerdict(evt, ctx) {
         'It deploys with the next run once ' + dep[1] + ' succeeds.',
       );
     }
-    case 'queued': {
+    case STATUS.QUEUED: {
       const scope = { stack: ' for this stack', global: ' for every stack' }[ctx.queueReason] || '';
       return verdictLine(
         'queued',
@@ -2143,7 +2167,7 @@ function deployOutcomeVerdict(evt, ctx) {
         'Resume autosync to apply this change.',
       );
     }
-    case 'healed': {
+    case STATUS.HEALED: {
       const names = driftNames(evt.heal_drift);
       return verdictLine(
         'healed',
@@ -2152,7 +2176,7 @@ function deployOutcomeVerdict(evt, ctx) {
         'No git change, so there is no diff.',
       );
     }
-    case 'heal_exhausted': {
+    case STATUS.HEAL_EXHAUSTED: {
       const names = driftNames(evt.heal_drift);
       return verdictLine(
         'healed',
@@ -2163,7 +2187,7 @@ function deployOutcomeVerdict(evt, ctx) {
           : 'The containers kept drifting after repeated restarts.',
       );
     }
-    case 'held':
+    case STATUS.HELD:
       return verdictLine('held', 'danger', 'Held.', evt.error || '', HELD_RELEASE);
     default:
       return null;
@@ -2172,12 +2196,25 @@ function deployOutcomeVerdict(evt, ctx) {
 
 // deployVerdict answers, in plain sentences, how one deploy ended: its phase
 // and cause, whether the change is held, what blocks or queues it — and, for
-// a repeated outcome, since when. A success needs no verdict. ctx carries
+// a repeated outcome, since when. A success needs no verdict unless it retries
+// a rollback, which it names (UI_SPEC.md "Rollback linkage"). ctx carries
 // what the event does not: queueReason (stack|global) of a queued change.
 function deployVerdict(evt, ctx) {
   const lines = [];
   const outcome = deployOutcomeVerdict(evt, ctx || {});
   if (outcome) lines.push(outcome);
+  if (evt.follows_rollback) {
+    lines.push(
+      verdictLine(
+        'after_rollback',
+        'rollback',
+        'Retry after a rollback.',
+        'This success redeploys a change that was rolled back.',
+        '',
+        { kind: 'rollback', id: evt.rollback_event_id ? String(evt.rollback_event_id) : '' },
+      ),
+    );
+  }
   if ((evt.repeat_count || 0) >= 2) {
     lines.push(
       verdictLine(
@@ -2204,7 +2241,7 @@ function changedFileCount(evt) {
 function deployTabs(evt, o) {
   const tabs = [];
   const drift = evt.heal_drift || [];
-  if (evt.status === 'healed' || evt.status === 'heal_exhausted') {
+  if (evt.status === STATUS.HEALED || evt.status === STATUS.HEAL_EXHAUSTED) {
     if (drift.length) {
       tabs.push({ id: DEPLOY_TAB.drift, label: 'Drift', count: drift.length, bad: false });
     }
@@ -2263,6 +2300,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fullTime,
     timeLabelPair,
     rosterLastDeploy,
+    STATUS,
     DETAIL_VIEW,
     DETAIL_TAB,
     STACK_TAB,

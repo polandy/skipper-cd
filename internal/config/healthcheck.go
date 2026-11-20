@@ -79,8 +79,8 @@ const MinHealthCheckTimeoutSeconds = 60
 // timeout_seconds before the timeout was derived; ConfigHash keeps hashing it.
 const legacyDefaultHealthCheckTimeoutSeconds = 60
 
-// validateHealthCheck checks a stack's optional deploy_health_check section.
-func validateHealthCheck(hc *HealthCheck) error {
+// validate checks a stack's optional deploy_health_check section.
+func (hc *HealthCheck) validate() error {
 	if hc == nil {
 		return nil
 	}

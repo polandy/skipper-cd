@@ -17,6 +17,8 @@ linters:
     # both silent, both currently clean, so enabling them keeps it that way.
     - nilerr
     - bodyclose
+    # Function size: stops the next 100-line function from growing unnoticed.
+    - funlen
   # gosec is NOT enabled. Its 23 findings here are overwhelmingly its known
   # false-positive profile for this kind of tool: G204 "subprocess launched
   # with variable" is literally what skipper does (docker compose with a stack
@@ -24,6 +26,10 @@ linters:
   # it usable would need a suppression list longer than its signal, and the one
   # class that does matter — unchecked errors — is already covered by errcheck.
   settings:
+    funlen:
+      lines: 100
+      statements: 60
+      ignore-comments: true
     errcheck:
       exclude-functions:
         # Idiomatic deferred cleanup where the error is meaningless:
@@ -33,6 +39,9 @@ linters:
         - os.Remove
   exclusions:
     rules:
+      # Table-driven tests are long by construction.
+      - path: _test\.go
+        linters: [funlen]
       # In a test the signature is dictated, not chosen — by `testing` for a
       # Test* function, and by the interface a fake implements for the rest —
       # so an unused parameter there says nothing about the code.

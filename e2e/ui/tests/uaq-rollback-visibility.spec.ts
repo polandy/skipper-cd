@@ -9,7 +9,7 @@ import type { Page } from "@playwright/test";
 // startup success, a deploy that rolls back (STUB_DOCKER_FAIL_NTH_UP=2:
 // up#1 startup ok, up#2 fails, up#3 rollback ok), then a successful retry
 // (up#4) — and asserts each surface keeps the rollback readable:
-// the retry note pairing (UAQ1), the Deploys status filter (UAQ2), the header
+// the retry's verdict naming the rollback (UAQ1), the Deploys status filter (UAQ2), the header
 // incident badge landing on the pre-filtered view (UAQ3), the detail panel's
 // outcome strip + last-incident line (UAQ4) — kept while a deploy is in flight
 // (UAQ7) — and the Logs severity threshold that
@@ -51,28 +51,28 @@ test.describe("Maske AQ: rollback visibility after the fact", () => {
     },
   });
 
-  // UAQ1 — the retry's success row names the rollback it supersedes: a retry
-  // note on the newest row only, carrying the rollback's event id; activating
-  // it lands on (flashes) the rollback's own row.
-  test("UAQ1: the retry note pairs the success with its rollback", async ({
+  // UAQ1 — the retry's success names the rollback it supersedes in its detail
+  // verdict (the row stays calm), carrying the rollback's event id; Open
+  // rollback lands on (flashes) the rollback's own row.
+  test("UAQ1: the retry's detail pairs the success with its rollback", async ({
     page,
     skipper,
   }) => {
     await rollBackThenRetry(page, skipper);
 
-    const notes = page.locator('[data-testid="retry-note"]');
-    await expect(notes).toHaveCount(1);
-    // On the retry (the newest success), not the startup success.
-    const noteRow = page.locator(
-      '[data-testid="deploy-row"]:has([data-testid="retry-note"])',
-    );
-    await expect(noteRow).toHaveAttribute("data-status", "success");
+    // Newest first: the retry, not the startup success.
+    await deployRow(page, "success").first().click();
+    const panel = page.locator('[data-testid="detail-panel"][data-kind="deploy"]');
+    await expect(
+      panel.locator('[data-testid="detail-verdict"] .dp-v[data-kind="after_rollback"]'),
+    ).toBeVisible();
+    const link = panel.locator('[data-testid="rollback-link"]');
     const rollbackId = await deployRow(page, "rolled_back").getAttribute(
       "data-event-id",
     );
-    await expect(notes).toHaveAttribute("data-rollback-id", rollbackId!);
+    await expect(link).toHaveAttribute("data-rollback-id", rollbackId!);
 
-    await notes.click();
+    await link.click();
     await expect(deployRow(page, "rolled_back")).toHaveClass(/jump-target/);
   });
 

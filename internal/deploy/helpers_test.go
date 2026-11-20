@@ -21,7 +21,6 @@ type recordingRunner struct {
 	calls        []runCall
 	errOnCommand string
 	failFn       func(dir string, args []string) error // optional per-call failure hook, e.g. to fail one stack's up
-	delay        time.Duration                         // optional delay per call for concurrency tests
 
 	// onRunStart, when set, is called at the entry of every Run call — a
 	// deterministic seam for tests that must know a deploy goroutine has
@@ -46,9 +45,6 @@ type runCall struct {
 func (r *recordingRunner) Run(_ context.Context, dir string, env []string, name string, args ...string) error {
 	if r.onRunStart != nil {
 		r.onRunStart(args)
-	}
-	if r.delay > 0 {
-		time.Sleep(r.delay)
 	}
 	r.calls = append(r.calls, runCall{dir: dir, name: name, args: args, env: env})
 	// The nixos-rebuild runs fire-and-forget and is polled via `systemctl

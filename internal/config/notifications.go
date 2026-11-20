@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"net/url"
+
+	"github.com/polandy/skipper-cd/internal/events"
 )
 
 // Outbound notification targets (ADR-0020): their shape, the format and
@@ -62,24 +64,54 @@ const (
 	NotifyDigestOff    = "off"
 )
 
-// Terminal deploy statuses accepted in NotificationTarget.On. They mirror the
-// terminal events.Status values without importing that package (config is the
-// lowest layer).
+// Terminal deploy statuses accepted in NotificationTarget.On: the terminal
+// events.Status values.
 const (
-	NotifyOnFailed              = "failed"
-	NotifyOnSuccess             = "success"
-	NotifyOnRolledBack          = "rolled_back"
-	NotifyOnRolledBackUnhealthy = "rolled_back_unhealthy"
+	NotifyOnFailed              = string(events.StatusFailed)
+	NotifyOnSuccess             = string(events.StatusSuccess)
+	NotifyOnRolledBack          = string(events.StatusRolledBack)
+	NotifyOnRolledBackUnhealthy = string(events.StatusRolledBackUnhealthy)
 	// NotifyOnHealExhausted fires when self-heal gave up on a stack it could not
 	// restore — the high-signal "a stack is down and I couldn't fix it" alarm
 	// (ADR-0029). Part of the default set, so a target with no explicit `on`
 	// reports it.
-	NotifyOnHealExhausted = "heal_exhausted"
+	NotifyOnHealExhausted = string(events.StatusHealExhausted)
 )
 
-// validateNotificationTarget checks a single notification target. Format and On
-// have already been defaulted in Load.
-func validateNotificationTarget(t NotificationTarget) error {
+// applyNotificationsDefaults fills every deploy notification target's omitted
+// format and on.
+func (c *Config) applyNotificationsDefaults() {
+	for i := range c.Notifications {
+		t := &c.Notifications[i]
+		t.applyDefaults()
+		if len(t.On) == 0 {
+			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted}
+		}
+		if t.Digest == "" {
+			t.Digest = NotifyDigestPerRun
+		}
+	}
+}
+
+// validateNotifications checks every deploy notification target.
+func (c *Config) validateNotifications() error {
+	for i, t := range c.Notifications {
+		if err := t.validate(); err != nil {
+			return fmt.Errorf("notifications[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// applyDefaults fills the omitted format; shared by deploy and health targets.
+func (t *NotificationTarget) applyDefaults() {
+	if t.Format == "" {
+		t.Format = NotifyFormatGeneric
+	}
+}
+
+// validate checks a single notification target; defaults are applied first.
+func (t NotificationTarget) validate() error {
 	switch t.Format {
 	case NotifyFormatSignal, NotifyFormatGeneric, NotifyFormatNtfy:
 	default:

@@ -2383,6 +2383,18 @@ test('deployVerdict: a success or a running deploy needs no verdict', () => {
   assert.deepEqual(h.deployVerdict({ status: 'skipped' }), []);
 });
 
+test('deployVerdict: a retry after a rollback names the rollback it supersedes', () => {
+  const v = h.deployVerdict({ status: 'success', follows_rollback: true, rollback_event_id: 42 });
+  assert.equal(v.length, 1);
+  assert.equal(v[0].kind, 'after_rollback');
+  assert.equal(v[0].tone, 'rollback');
+  assert.equal(v[0].head, 'Retry after a rollback.');
+  assert.deepEqual(v[0].action, { kind: 'rollback', id: '42' });
+  // An evicted rollback still links: to the stack's history instead.
+  const evicted = h.deployVerdict({ status: 'success', follows_rollback: true });
+  assert.deepEqual(evicted[0].action, { kind: 'rollback', id: '' });
+});
+
 test('deployVerdict: a failure after start names phase and cause and says it is held', () => {
   const v = h.deployVerdict({
     status: 'failed',
@@ -2742,4 +2754,11 @@ test('tabKeyIndex ignores every other key and a tab outside the strip', () => {
   assert.equal(h.tabKeyIndex('Enter', 0, 3), -1);
   assert.equal(h.tabKeyIndex('ArrowDown', 0, 3), -1);
   assert.equal(h.tabKeyIndex('ArrowRight', -1, 3), -1);
+});
+
+test('STATUS mirrors the events.Status constants and is frozen', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../events/events.go'), 'utf8');
+  const goValues = [...src.matchAll(/^\s*Status\w+\s+Status = "(\w+)"/gm)].map((m) => m[1]);
+  assert.deepEqual(Object.values(h.STATUS).sort(), goValues.sort());
+  assert.ok(Object.isFrozen(h.STATUS));
 });

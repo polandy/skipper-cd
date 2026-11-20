@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/polandy/skipper-cd/internal/uitheme"
 )
 
 var (
@@ -18,7 +20,7 @@ var (
 // shell must carry no inline script and no on*= handler attribute — either
 // would be refused by the browser and silently break the page.
 func TestIndexHTML_HasNoInlineScript(t *testing.T) {
-	body := readStatic(t, "static/index.html")
+	body := renderedIndex(t)
 	tags := scriptTag.FindAllString(body, -1)
 	if len(tags) == 0 {
 		t.Fatal("index.html loads no script at all — the regexp no longer matches")
@@ -33,25 +35,9 @@ func TestIndexHTML_HasNoInlineScript(t *testing.T) {
 	}
 }
 
-// Every script the shell loads is cached by the service worker, or the app
-// does not start offline.
-func TestIndexHTML_ScriptsAreInServiceWorkerShell(t *testing.T) {
-	body := readStatic(t, "static/index.html")
-	sw := readStatic(t, "static/sw.js")
-	for _, tag := range scriptTag.FindAllString(body, -1) {
-		m := scriptSrcAttr.FindStringSubmatch(tag)
-		if m == nil {
-			continue
-		}
-		if !strings.Contains(sw, "'"+m[1]+"'") {
-			t.Errorf("%s is loaded by index.html but missing from the service worker SHELL", m[1])
-		}
-	}
-}
-
-func TestAppPrepaintJSHandler_ServesJS(t *testing.T) {
+func TestScriptHandler_PrepaintAppliesThemeOverride(t *testing.T) {
 	rec := httptest.NewRecorder()
-	AppPrepaintJSHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/app-prepaint.js", nil))
+	ScriptHandler(prepaintScript).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/app-prepaint.js", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -67,11 +53,9 @@ func TestAppPrepaintJSHandler_ServesJS(t *testing.T) {
 	}
 }
 
-func readStatic(t *testing.T, name string) string {
+func renderedIndex(t *testing.T) string {
 	t.Helper()
-	data, err := staticFS.ReadFile(name)
-	if err != nil {
-		t.Fatalf("reading %s: %v", name, err)
-	}
-	return string(data)
+	rec := httptest.NewRecorder()
+	IndexHandler(uitheme.ThemeCatppuccin, false).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	return rec.Body.String()
 }

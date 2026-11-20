@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/autosync"
 	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/events"
 	"github.com/polandy/skipper-cd/internal/nixos"
@@ -624,5 +625,107 @@ func TestDeployAllStacks_RebuildWithFailedUnitsKeepsHashesAndDeploysStacks(t *te
 				t.Errorf("rebuild attempts over two syncs = %d, want %d", attempts, wantAttempts)
 			}
 		})
+	}
+}
+
+// A paused _nixos queues the change without rebuilding or pre-saving its hashes,
+// and still lets the stack deploys run this pass.
+func TestRebuildNixOS_PausedQueuesWithoutRebuilding(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "flake.nix"), "{ }")
+
+	runner := &recordingRunner{}
+	q := autosync.NewQueue()
+	var nixStatuses []events.Status
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir(), Autosync: autosync.NewController(off(), nil), Queue: q,
+		EventSink: func(e events.DeployEvent) {
+			if e.Stack == NixosStateKey {
+				nixStatuses = append(nixStatuses, e.Status)
+			}
+		}})
+	state := newEmptyState()
+
+	enabled := true
+	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a", ChangeDetection: config.NixOSChangeDetectionFiles}}
+
+	if ok := d.rebuildNixOSIfChanged(context.Background(), cfg, state); !ok {
+		t.Fatal("a paused _nixos must not abort the stack deploys")
+	}
+	if !slices.Equal(nixStatuses, []events.Status{events.StatusQueued}) {
+		t.Errorf("want one queued _nixos event, got %v", nixStatuses)
+	}
+	if nixosRebuildCalled(runner.calls) {
+		t.Error("a paused _nixos must not rebuild")
+	}
+	if len(state.hashesFor(NixosStateKey)) != 0 || len(state.NixOSRebuildInFlight) != 0 {
+		t.Error("a paused _nixos must not pre-save hashes or mark a rebuild in flight")
+	}
+	if q.Count() != 1 {
+		t.Errorf("queue count = %d, want 1", q.Count())
+	}
+}
+
+// A reconciled interrupted rebuild with nothing new to apply emits only the
+// reconciled success, not an extra skipped event.
+func TestRebuildNixOS_ReconcileWithoutChangeEmitsNoSkipped(t *testing.T) {
+	baseDir := t.TempDir()
+	nixFile := filepath.Join(baseDir, "flake.nix")
+	writeFile(t, nixFile, "{ }")
+
+	var nixStatuses []events.Status
+	d := New(Config{Runner: &recordingRunner{}, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
+		if e.Stack == NixosStateKey {
+			nixStatuses = append(nixStatuses, e.Status)
+		}
+	}})
+	currentHashes, _ := nixos.HashFiles(baseDir)
+	state := newEmptyState()
+	state.recordStack(NixosStateKey, currentHashes)
+	state.markNixOSRebuildInFlight([]string{nixFile})
+
+	enabled := true
+	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a", ChangeDetection: config.NixOSChangeDetectionFiles}}
+
+	d.rebuildNixOSIfChanged(context.Background(), cfg, state)
+
+	if !slices.Equal(nixStatuses, []events.Status{events.StatusSuccess}) {
+		t.Errorf("want only the reconciled success, got %v", nixStatuses)
+	}
+}
+
+// A change that arrived after the interrupted rebuild is rebuilt fresh once the
+// interrupted one is reconciled.
+func TestRebuildNixOS_ReconcileThenRebuildsANewerChange(t *testing.T) {
+	baseDir := t.TempDir()
+	nixFile := filepath.Join(baseDir, "flake.nix")
+	writeFile(t, nixFile, "{ }")
+
+	runner := &recordingRunner{}
+	var nixStatuses []events.Status
+	d := New(Config{Runner: runner, RepoDir: baseDir, StateDir: t.TempDir(), EventSink: func(e events.DeployEvent) {
+		if e.Stack == NixosStateKey {
+			nixStatuses = append(nixStatuses, e.Status)
+		}
+	}})
+	interruptedHashes, _ := nixos.HashFiles(baseDir)
+	state := newEmptyState()
+	state.recordStack(NixosStateKey, interruptedHashes)
+	state.markNixOSRebuildInFlight([]string{nixFile})
+	writeFile(t, nixFile, "{ newer = true; }")
+
+	enabled := true
+	cfg := &config.Config{NixOSRebuild: &config.NixOSRebuild{Enabled: &enabled, Flake: ".#host-a", ChangeDetection: config.NixOSChangeDetectionFiles}}
+
+	if ok := d.rebuildNixOSIfChanged(context.Background(), cfg, state); !ok {
+		t.Fatal("the fresh rebuild succeeded, the run must not abort")
+	}
+	if !slices.Equal(nixStatuses, []events.Status{events.StatusSuccess, events.StatusSuccess}) {
+		t.Errorf("want the reconciled success then the fresh rebuild's success, got %v", nixStatuses)
+	}
+	if !nixosRebuildCalled(runner.calls) {
+		t.Error("a change after the interrupted rebuild must rebuild")
+	}
+	if len(state.NixOSRebuildInFlight) != 0 {
+		t.Error("the completed fresh rebuild must clear the in-flight marker")
 	}
 }

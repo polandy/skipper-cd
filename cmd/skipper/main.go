@@ -123,6 +123,7 @@ func short(sha string) string {
 	return hexPart
 }
 
+//nolint:funlen // R-01
 func main() {
 	configPath := flag.String("config", "/etc/skipper/skipper.yml", "path to the skipper.yml config file")
 	validate := flag.Bool("validate", false, "validate the config file (and the discovered stack set, when the repo clone exists) and exit: 0 = valid, 1 = invalid")

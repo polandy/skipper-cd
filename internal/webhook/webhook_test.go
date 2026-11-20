@@ -70,7 +70,7 @@ func TestHandler_RejectsBodyReadFailure(t *testing.T) {
 	if body := rec.Body.String(); !strings.Contains(body, "failed to read request body") {
 		t.Errorf("expected 'failed to read request body' in response, got %q", body)
 	}
-	trigger.assertNotTriggered(t)
+	trigger.assertNotTriggered(t, rec)
 }
 
 func TestHandler_RejectsRequestWithoutSecret(t *testing.T) {
@@ -86,7 +86,7 @@ func TestHandler_RejectsRequestWithoutSecret(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", rec.Code)
 	}
-	trigger.assertNotTriggered(t)
+	trigger.assertNotTriggered(t, rec)
 }
 
 func TestHandler_AcceptsRequestWithValidSignature(t *testing.T) {
@@ -172,12 +172,18 @@ func (f *fakeTrigger) assertTriggered(t *testing.T) {
 	}
 }
 
-func (f *fakeTrigger) assertNotTriggered(t *testing.T) {
+// assertNotTriggered proves the handler returned without starting a deploy:
+// anything but 202 is an early return before the goroutine is spawned, so no
+// timing window is needed.
+func (f *fakeTrigger) assertNotTriggered(t *testing.T, rec *httptest.ResponseRecorder) {
 	t.Helper()
+	if rec.Code == http.StatusAccepted {
+		t.Fatal("expected deploy NOT to be triggered, handler answered 202")
+	}
 	select {
 	case <-f.called:
 		t.Fatal("expected deploy NOT to be triggered")
-	case <-time.After(50 * time.Millisecond):
+	default:
 	}
 }
 
@@ -208,7 +214,7 @@ func TestHandler_IgnoresPushToOtherBranch(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 for ignored branch, got %d", rec.Code)
 	}
-	trigger.assertNotTriggered(t)
+	trigger.assertNotTriggered(t, rec)
 }
 
 func TestHandler_TriggersDeployWhenPayloadHasNoRef(t *testing.T) {

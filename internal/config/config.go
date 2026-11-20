@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
-	"github.com/polandy/skipper-cd/internal/git"
-	"github.com/polandy/skipper-cd/internal/uitheme"
+	"github.com/polandy/skipper-cd/internal/repourl"
 	"gopkg.in/yaml.v3"
 )
 
@@ -245,7 +243,7 @@ func (c *Config) EffectiveRepoWebURL() string {
 	if c.RepoWebURL != "" {
 		return strings.TrimRight(c.RepoWebURL, "/")
 	}
-	return git.WebURL(c.RepoURL)
+	return repourl.WebURL(c.RepoURL)
 }
 
 // StackByName returns the configured stack with the given name.
@@ -274,20 +272,6 @@ func stackFlag(stacks []Stack, name string, override func(Stack) *bool, def bool
 	return def
 }
 
-// SelfHealEnabled reports whether self-heal is effective for the named stack:
-// the per-stack override when set, otherwise the global default (off when
-// unset). An unknown name falls back to the global default.
-func (c *Config) SelfHealEnabled(name string) bool {
-	return c.EffectiveSelfHeal(c.Stacks, name)
-}
-
-// EffectiveSelfHeal is SelfHealEnabled over an explicit stack set. Callers in
-// stack-discovery mode pass the discovered stacks, which carry the host
-// config's per-stack overrides merged in (ADR-0043).
-func (c *Config) EffectiveSelfHeal(stacks []Stack, name string) bool {
-	return stackFlag(stacks, name, func(s Stack) *bool { return s.SelfHeal }, c.SelfHeal != nil && *c.SelfHeal)
-}
-
 // RollbackEnabled reports whether automatic rollback is effective for the named
 // stack: the per-stack override when set, otherwise the global default, which
 // is on unless explicitly disabled. An unknown name falls back to the global
@@ -303,42 +287,27 @@ func (c *Config) EffectiveRollback(stacks []Stack, name string) bool {
 	return stackFlag(stacks, name, func(s Stack) *bool { return s.Rollback }, c.Rollback == nil || *c.Rollback)
 }
 
-// SelfHealActive reports whether self-heal is effective for at least one stack.
-// When true the health poller must run headless (not UI/subscriber-gated) so
-// self-heal sees degradation on an unattended host (ADR-0029). In
-// stack-discovery mode the stack set is unknown at startup, so activation
-// follows the global flag alone; a per-stack self_heal: true with the global
-// off is not supported there (documented in docs/user/configuration.md).
-func (c *Config) SelfHealActive() bool {
-	if c.StackDiscovery {
-		return c.SelfHeal != nil && *c.SelfHeal
-	}
-	for _, s := range c.Stacks {
-		if c.SelfHealEnabled(s.Name) {
-			return true
-		}
-	}
-	return false
-}
-
-// IconsConfig configures how the web UI resolves and caches stack icons.
-type IconsConfig struct {
-	// CacheDir is the on-disk directory where fetched icons are cached.
-	// Defaults to /var/lib/skipper/icons. Must be absolute — checked at Load.
-	CacheDir string `yaml:"cache_dir"`
-
-	// SourceURL is the icon-set base URL; icons are fetched from
-	// SourceURL/<slug>.svg. Defaults to the dashboard-icons CDN.
-	SourceURL string `yaml:"source_url"`
-}
-
 // Load reads and validates the configuration file at the given path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
+	cfg, err := decode(data)
+	if err != nil {
+		return nil, err
+	}
+	cfg.applyDefaults()
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
+	cfg.resolveStacksBaseDir()
+	cfg.Warnings = collectWarnings(cfg)
+	return cfg, nil
+}
 
+// decode parses data strictly into a Config carrying the pre-decode defaults.
+func decode(data []byte) (*Config, error) {
 	// Retired keys are checked before decoding so an un-migrated config is told
 	// what its setting is called now, rather than getting the generic
 	// unknown-key error the strict decode below would produce.
@@ -350,10 +319,7 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	cfg := &Config{
-		Port:        8080,
-		MetricsPort: 9120,
-	}
+	cfg := newConfig()
 	// KnownFields rejects keys the config has no field for. A typo (env_file
 	// for env_files) or a key left over from an older version would otherwise
 	// be dropped in silence, and skipper would run with a setting the operator
@@ -374,119 +340,23 @@ func Load(path string) (*Config, error) {
 	if yaml.Unmarshal(data, &probe) == nil && probe.StackDiscovery == nil {
 		cfg.StackDiscovery = true
 	}
-
-	if cfg.RepoDir == "" {
-		// Applied up front (not just downstream in internal/git) so stacks_base_dir
-		// can be resolved against the effective clone path below.
-		cfg.RepoDir = git.DefaultRepoDir
-	}
-	if cfg.CommandTimeoutSeconds == 0 {
-		cfg.CommandTimeoutSeconds = 300
-	}
-	if cfg.Branch == "" {
-		cfg.Branch = "main"
-	}
-	if cfg.LogFormat == "" {
-		cfg.LogFormat = LogFormatPretty
-	}
-	if cfg.Icons.CacheDir == "" {
-		cfg.Icons.CacheDir = defaultIconCacheDir
-	}
-	if cfg.Icons.SourceURL == "" {
-		cfg.Icons.SourceURL = defaultIconSourceURL
-	}
-	for i := range cfg.Notifications {
-		t := &cfg.Notifications[i]
-		if t.Format == "" {
-			t.Format = NotifyFormatGeneric
-		}
-		if len(t.On) == 0 {
-			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted}
-		}
-		if t.Digest == "" {
-			t.Digest = NotifyDigestPerRun
-		}
-	}
-	if cfg.UITheme == "" {
-		cfg.UITheme = uitheme.ThemeCatppuccin
-	}
-	if cfg.HostName == "" {
-		// Default the self-identity label to the OS hostname so the merged
-		// multi-host UI (ADR-0048) has a stable name without extra config; an
-		// explicit host_name overrides it.
-		if h, err := os.Hostname(); err == nil {
-			cfg.HostName = h
-		}
-	}
-	if cfg.UIEnabled == nil {
-		d := true
-		cfg.UIEnabled = &d
-	}
-	if cfg.RuntimeHealthPollIntervalSeconds == nil {
-		d := defaultRuntimeHealthPollIntervalSeconds
-		cfg.RuntimeHealthPollIntervalSeconds = &d
-	}
-	if cfg.ReconcileIntervalSeconds == nil {
-		d := defaultReconcileIntervalSeconds
-		cfg.ReconcileIntervalSeconds = &d
-	}
-	if cfg.SelfHealMinUnhealthyPolls == 0 {
-		cfg.SelfHealMinUnhealthyPolls = defaultSelfHealMinUnhealthyPolls
-	}
-	if cfg.SelfHealMaxAttempts == 0 {
-		cfg.SelfHealMaxAttempts = defaultSelfHealMaxAttempts
-	}
-	if cfg.SelfHealCooldownSeconds == nil {
-		// Only an omitted field takes the default — an explicit 0 disables
-		// the cooldown.
-		d := defaultSelfHealCooldownSeconds
-		cfg.SelfHealCooldownSeconds = &d
-	}
-	if hw := cfg.HealthWatch; hw != nil {
-		if hw.DebouncePolls == 0 {
-			hw.DebouncePolls = defaultHealthWatchDebouncePolls
-		}
-		if hw.AttributionWindowSeconds == 0 {
-			hw.AttributionWindowSeconds = defaultHealthWatchAttributionWindowSeconds
-		}
-		if hw.AlertCooldownSeconds == nil {
-			// Only an omitted field takes the default — an explicit 0 is the
-			// off switch for the cooldown.
-			d := defaultHealthWatchAlertCooldownSeconds
-			hw.AlertCooldownSeconds = &d
-		}
-		for i := range hw.Targets {
-			if hw.Targets[i].Format == "" {
-				hw.Targets[i].Format = NotifyFormatGeneric
-			}
-		}
-	}
-	for i := range cfg.Stacks {
-		if cfg.Stacks[i].ProjectDirectory == "" && cfg.ProjectDirectoryBase != "" {
-			cfg.Stacks[i].ProjectDirectory = filepath.Join(cfg.ProjectDirectoryBase, cfg.Stacks[i].Name)
-		}
-	}
-
-	if err := validateConfig(cfg); err != nil {
-		return nil, err
-	}
-
-	// stacks_base_dir is relative to the repo clone (repo_dir); resolve it to an
-	// absolute path once validation has accepted the raw value, so every
-	// downstream consumer keeps joining it verbatim. An empty value resolves to
-	// the repo root itself.
-	cfg.StacksBaseDir = filepath.Join(cfg.RepoDir, cfg.StacksBaseDir)
-
-	cfg.Warnings = collectWarnings(cfg)
 	return cfg, nil
 }
 
-// Defaults for the icons section. SourceURL is the icon-set root; icons are
-// fetched from <source_url>/<format>/<slug>.<format> (svg, then png, webp).
-const (
-	defaultIconCacheDir  = "/var/lib/skipper/icons"
-	defaultIconSourceURL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons"
-)
+// applyDefaults fills every omitted field, section by section.
+func (c *Config) applyDefaults() {
+	c.applySourceDefaults()
+	c.applyServerDefaults()
+	c.Icons.applyDefaults()
+	c.applyNotificationsDefaults()
+	c.applySelfHealDefaults()
+	c.HealthWatch.applyDefaults()
+	c.applyStacksDefaults()
+}
+
+// DefaultRepoDir is the local clone directory used when repo_dir is omitted;
+// git.NewRepoSync keeps the same fallback.
+const DefaultRepoDir = "/var/lib/skipper/repo"
 
 // ReservedStackName is used as the state/event key for NixOS rebuild hashes
 // (mirrored as deploy.NixosStateKey) and must not collide with a configured
@@ -517,28 +387,3 @@ func IsReservedStackName(name string) bool {
 // ReservedStackNames returns the pseudo-stack keys, for error messages that
 // need to list them.
 func ReservedStackNames() []string { return slices.Clone(reservedStackNames) }
-
-// defaultRuntimeHealthPollIntervalSeconds is the UI stack-health poll cadence applied
-// when runtime_health_poll_interval_seconds is omitted (ADR-0027). An explicit 0
-// disables the health view.
-const defaultRuntimeHealthPollIntervalSeconds = 30
-
-// defaultReconcileIntervalSeconds is the git sync + deploy cadence applied when
-// reconcile_interval_seconds is omitted (ADR-0028). On by default so skipper
-// self-corrects a missed webhook out of the box; an explicit 0 disables it.
-const defaultReconcileIntervalSeconds = 300
-
-// Defaults for the self-heal pacing constants, applied when the corresponding
-// field is omitted (ADR-0029). Self-heal itself is off unless self_heal is
-// set true globally or per stack.
-const (
-	defaultSelfHealMinUnhealthyPolls = 3
-	defaultSelfHealMaxAttempts       = 3
-	defaultSelfHealCooldownSeconds   = 60
-)
-
-// TCP port bounds for the webhook/UI and metrics listeners.
-const (
-	minPort = 1
-	maxPort = 65535
-)

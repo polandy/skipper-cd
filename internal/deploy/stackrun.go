@@ -71,6 +71,7 @@ func (d *Deployer) prepareStackRun(ctx context.Context, stack config.Stack, base
 	}, nil
 }
 
+//nolint:funlen // R-02
 func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) (err error) {
 	prep, err := d.prepareStackRun(ctx, stack, baseDir, varsFile, baseEnv)
 	if err != nil {
@@ -166,7 +167,6 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 		if err == nil {
 			return
 		}
-		d.emitDeployFailure(stack.Name, time.Since(deployStart), err, cs)
 		switch {
 		case errors.Is(err, ErrNewVersionFailed):
 			state.hold(stack.Name, heldChange{Fingerprint: fingerprint, Since: d.now(), Status: failureStatus(err), Commit: newestCommit(cs)})
@@ -176,6 +176,9 @@ func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack,
 			h := state.recordPreStartFailure(stack.Name, fingerprint, deployStart, d.now(), newestCommit(cs))
 			logPreStartFailure(stack.Name, h)
 		}
+		// Published before the event, so a retry reacting to it finds the hold.
+		d.publishHeld(state)
+		d.emitDeployFailure(stack.Name, time.Since(deployStart), err, cs)
 	}()
 	metrics.DeploysTriggered.WithLabelValues(stack.Name).Inc()
 

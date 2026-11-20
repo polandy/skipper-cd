@@ -41,12 +41,46 @@ const (
 	defaultHealthWatchAlertCooldownSeconds     = 1800
 )
 
-// validateHealthWatch checks the optional health_watch section. Defaults have
-// already been applied in Load.
-func validateHealthWatch(hw *HealthWatch) error {
+// applyDefaults fills the omitted fields of a present health_watch section.
+func (hw *HealthWatch) applyDefaults() {
 	if hw == nil {
+		return
+	}
+	if hw.DebouncePolls == 0 {
+		hw.DebouncePolls = defaultHealthWatchDebouncePolls
+	}
+	if hw.AttributionWindowSeconds == 0 {
+		hw.AttributionWindowSeconds = defaultHealthWatchAttributionWindowSeconds
+	}
+	if hw.AlertCooldownSeconds == nil {
+		// Only an omitted field takes the default — an explicit 0 is the
+		// off switch for the cooldown.
+		d := defaultHealthWatchAlertCooldownSeconds
+		hw.AlertCooldownSeconds = &d
+	}
+	for i := range hw.Targets {
+		hw.Targets[i].applyDefaults()
+	}
+}
+
+// validateHealthWatch checks the optional health_watch section. Like
+// self-heal, the watchdog rides the health poll cadence and runs headless, so
+// it needs a positive poll interval even with the UI off (ADR-0031).
+func (c *Config) validateHealthWatch() error {
+	if c.HealthWatch == nil {
 		return nil
 	}
+	if err := c.HealthWatch.validate(); err != nil {
+		return fmt.Errorf("health_watch: %w", err)
+	}
+	if !c.healthPollEnabled() {
+		return fmt.Errorf("health_watch requires runtime_health_poll_interval_seconds > 0 (it drives the watch cadence)")
+	}
+	return nil
+}
+
+// validate checks a present health_watch section; defaults are applied first.
+func (hw *HealthWatch) validate() error {
 	if hw.DebouncePolls < 1 {
 		return fmt.Errorf("debounce_polls must be >= 1, got %d", hw.DebouncePolls)
 	}
@@ -65,7 +99,7 @@ func validateHealthWatch(hw *HealthWatch) error {
 		if t.Digest != "" {
 			return fmt.Errorf("targets[%d]: digest is not valid for health_watch targets; health alerts are always sent one by one", i)
 		}
-		if err := validateNotificationTarget(t); err != nil {
+		if err := t.validate(); err != nil {
 			return fmt.Errorf("targets[%d]: %w", i, err)
 		}
 	}

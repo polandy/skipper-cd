@@ -362,7 +362,7 @@ App.chrome = (function () {
   }
 
   // flashRow scrolls a row into view and flashes the accent jump highlight —
-  // shared by the cross-view jump and the retry note's rollback landing.
+  // shared by the cross-view jump and the Open rollback landing.
   function flashRow(target) {
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.remove('jump-target');
@@ -387,7 +387,12 @@ App.chrome = (function () {
   // S.incidentsSnap (declared with the other 'stacks' snapshot state above),
   // re-filtered against the window on the client clock (the 30s tick), and
   // lands on the Deploys view with the bad-outcome status chips pre-selected.
-  const BAD_OUTCOME_STATUSES = ['failed', 'rolled_back', 'rolled_back_unhealthy', 'heal_exhausted'];
+  const BAD_OUTCOME_STATUSES = [
+    STATUS.FAILED,
+    STATUS.ROLLED_BACK,
+    STATUS.ROLLED_BACK_UNHEALTHY,
+    STATUS.HEAL_EXHAUSTED,
+  ];
   const incidentBadge = document.getElementById('incident-badge');
   const incidentBadgeCount = document.getElementById('incident-badge-count');
 
