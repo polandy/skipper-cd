@@ -113,9 +113,7 @@ function detailMatchesRow(sel, row) {
   );
 }
 
-// stackDeepLink is the URL hash naming a Stacks detail: #stacks/<stack>, or
-// #stacks/<host>/<stack> for a peer's (host '' is local), with ?tab=<tab> when
-// a tab is given.
+// stackDeepLink is the hash naming a Stacks detail: #stacks/[<peer host>/]<stack>[?tab=<tab>].
 function stackDeepLink(link) {
   let h = '#' + DETAIL_VIEW.stacks + '/';
   if (link.host) h += encodeURIComponent(link.host) + '/';
@@ -124,8 +122,7 @@ function stackDeepLink(link) {
   return h;
 }
 
-// parseStackDeepLink reads a stackDeepLink hash back into { host, stack, tab }
-// (host and tab '' when absent), or null for any other hash.
+// parseStackDeepLink reads a stackDeepLink hash into { host, stack, tab } ('' when absent), else null.
 function parseStackDeepLink(hash) {
   const m = /^#stacks\/([^/?]+)(?:\/([^/?]+))?(?:\?tab=([^&]+))?$/.exec(hash || '');
   if (!m) return null;

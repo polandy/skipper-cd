@@ -29,8 +29,7 @@ App.detail = (function () {
 
   const listeners = [];
 
-  // onChange calls fn(view) whenever view's selection opens, closes or moves
-  // to another row — not when a rebuild re-opens the same one.
+  // onChange calls fn(view) when view's selection opens, closes or moves — not on a rebuild's re-open.
   function onChange(fn) {
     listeners.push(fn);
   }
@@ -226,8 +225,7 @@ App.detail = (function () {
     if (drop(view)) changed(view);
   }
 
-  // drop closes view's open detail without telling the listeners; it reports
-  // whether one was open.
+  // drop closes view's open detail silently and reports whether one was open.
   function drop(view) {
     const e = open[view];
     if (!e) return false;

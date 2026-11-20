@@ -257,8 +257,7 @@ test.describe('Maske BC: the Stacks detail panel', () => {
   });
 });
 
-// UBC12, UBC13 — the URL hash names the open Stacks detail, so the address bar
-// can be shared: it follows the selection, and loading it opens what it names.
+// UBC12, UBC13 — the URL hash follows the open Stacks detail, and loading it opens what it names.
 test.describe('Maske BC: the deep link', () => {
   test.use({
     startOptions: {
@@ -298,8 +297,7 @@ test.describe('Maske BC: the deep link', () => {
     await expect(panel(page, 'api')).toHaveAttribute('data-tab', 'history');
     await expect(tab(page, 'api', 'history')).toHaveAttribute('aria-selected', 'true');
 
-    // A hash edited in place opens the new stack; an unknown tab falls back
-    // to the default, and the hash drops it.
+    // An edited hash opens the new stack; an unknown tab falls back to the default and leaves the hash.
     await page.evaluate(() => (location.hash = '#stacks/wip?tab=nope'));
     await expect(panel(page, 'wip')).toHaveAttribute('data-tab', 'triggers');
     await expect(page).toHaveURL(`${root}#stacks/wip`);

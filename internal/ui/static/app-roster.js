@@ -436,14 +436,9 @@ App.roster = (function () {
   }
 
   // ── Deep link (docs/dev/ui-redesign-plan.md Q5) ──
-  // The URL hash names the open Stacks detail (stackDeepLink), so the address
-  // bar can be shared or bookmarked; a hash whose row has not arrived yet waits
-  // in pendingLink for the snapshot that brings it.
-  let pendingLink = null;
+  let pendingLink = null; // a linked stack whose row has not arrived yet
 
-  // syncDeepLink writes the open Stacks detail into the hash, its tab only
-  // when the viewer moved off the default, and clears it when none is open or
-  // another view is up. replaceState: a selection is not a history entry.
+  // syncDeepLink mirrors the open Stacks detail (tab only if non-default) into the hash, without a history entry.
   function syncDeepLink() {
     if (pendingLink) return; // the hash still names what is about to open
     const row = detail.openRow(VIEW);
@@ -460,8 +455,7 @@ App.roster = (function () {
     history.replaceState(history.state, '', hash || location.pathname + location.search);
   }
 
-  // followDeepLink switches to Stacks for a #stacks/ hash and opens the stack
-  // it names, now or once its row arrives.
+  // followDeepLink switches to Stacks for a #stacks/ hash and opens its stack, now or once the row arrives.
   function followDeepLink() {
     const link = parseStackDeepLink(location.hash);
     if (!link) return;
