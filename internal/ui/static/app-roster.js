@@ -194,14 +194,6 @@ App.roster = (function () {
   // refreshPeerRosterRows), so a health change — or the first poll after the
   // roster rendered — shows without a full re-render, which at poll cadence
   // would tear down and refetch an open panel (see renderRoster).
-  // paintCell rewrites a cell only when its markup changed, so a health poll leaves a steady row's nodes in place.
-  const paintedHTML = new WeakMap();
-  function paintCell(cell, html) {
-    if (paintedHTML.get(cell) === html) return;
-    paintedHTML.set(cell, html);
-    cell.innerHTML = html;
-  }
-
   function updateRosterHealth() {
     rosterList.querySelectorAll('.roster-row[data-stack]:not(.peer-row)').forEach(function (row) {
       if (row.classList.contains('disabled')) return;
@@ -210,12 +202,13 @@ App.roster = (function () {
       // The versions ride the health snapshot, so the cell is refreshed here
       // rather than only at render — on connect the roster arrives first.
       if (verCell)
-        paintCell(
-          verCell,
-          rosterVersionInnerHTML(row.dataset.stack, h, stackUpdatesFor(row.dataset.stack, '')),
+        verCell.innerHTML = rosterVersionInnerHTML(
+          row.dataset.stack,
+          h,
+          stackUpdatesFor(row.dataset.stack, ''),
         );
       const healthCell = row.querySelector('.roster-health');
-      if (healthCell) paintCell(healthCell, rosterHealthHTML(h));
+      if (healthCell) healthCell.innerHTML = rosterHealthHTML(h);
       // Keep the row's health marker (drives the severity bar + tint) in sync
       // in place — no re-sort, so a row never jumps out from under an open panel.
       if (h && h.status) row.dataset.health = h.status;

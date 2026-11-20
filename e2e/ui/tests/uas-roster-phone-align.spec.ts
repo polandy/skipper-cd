@@ -272,9 +272,9 @@ test.describe("Maske AS: a long version chip keeps its change whole", () => {
 
     // The label really is in the clipped case — otherwise the assertions below
     // would hold trivially and prove nothing.
-    expect(await label.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(
-      true,
-    );
+    expect(
+      await label.evaluate((el) => el.scrollWidth > el.clientWidth),
+    ).toBe(true);
 
     // One line, and the change ends inside the chip.
     expect(box.height).toBeLessThan(group.height * 1.5);
