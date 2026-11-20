@@ -57,7 +57,8 @@ func TestExecStreamer_ContextCancelStops(t *testing.T) {
 	}()
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		_ = err
 	case <-time.After(5 * time.Second):
 		t.Fatal("stream did not stop promptly after context cancel")
 	}

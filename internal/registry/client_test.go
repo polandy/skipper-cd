@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -327,3 +328,391 @@ func TestCheckRealm_RejectsUnrelatedDomains(t *testing.T) {
 type doerFunc func(*http.Request) (*http.Response, error)
 
 func (f doerFunc) Do(r *http.Request) (*http.Response, error) { return f(r) }
+
+// fakeStep is one scripted answer: a response, or a transport error, or both
+// (the error wins, as it does for a real Doer).
+type fakeStep struct {
+	resp *http.Response
+	err  error
+}
+
+// fakeResp builds a well-formed response without a server.
+func fakeResp(code int, header http.Header, body string) *http.Response {
+	if header == nil {
+		header = http.Header{}
+	}
+	return &http.Response{
+		StatusCode: code,
+		Status:     fmt.Sprintf("%d %s", code, http.StatusText(code)),
+		Header:     header,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+// scriptedDoer answers each request with the next scripted step and records
+// every request it saw, so a test can assert how far a flow got.
+type scriptedDoer struct {
+	t     *testing.T
+	steps []fakeStep
+	reqs  []string
+}
+
+func (d *scriptedDoer) Do(r *http.Request) (*http.Response, error) {
+	d.t.Helper()
+	if len(d.reqs) >= len(d.steps) {
+		d.t.Errorf("unexpected request %d: %s %s", len(d.reqs)+1, r.Method, r.URL)
+		return nil, errors.New("script exhausted")
+	}
+	d.reqs = append(d.reqs, r.Method+" "+r.URL.String())
+	step := d.steps[len(d.reqs)-1]
+	return step.resp, step.err
+}
+
+// errReader is a response body that dies on the first read.
+type errReader struct{ err error }
+
+func (r errReader) Read([]byte) (int, error) { return 0, r.err }
+func (r errReader) Close() error             { return nil }
+
+// testClientOn runs against a scripted doer, plain HTTP like testClient.
+func testClientOn(t *testing.T, steps []fakeStep) (*Client, *scriptedDoer) {
+	t.Helper()
+	doer := &scriptedDoer{t: t, steps: steps}
+	c := New(doer, nil)
+	c.scheme = "http"
+	return c, doer
+}
+
+func TestTags_ErrorPaths(t *testing.T) {
+	const ref = "registry.example.com/app:1.0"
+	// The realm host shares the registry's site, so checkRealm lets it pass
+	// and the rows exercise what comes after it.
+	const realm = "http://auth.example.com/token"
+	challenged := func(v string) fakeStep {
+		return fakeStep{resp: fakeResp(http.StatusUnauthorized, http.Header{"Www-Authenticate": {v}}, "")} //nolint:bodyclose // the client under test closes it
+	}
+	token := func(body string) fakeStep { return fakeStep{resp: fakeResp(http.StatusOK, nil, body)} } //nolint:bodyclose // the client under test closes it
+
+	tests := []struct {
+		name     string
+		ref      string
+		steps    []fakeStep
+		wantErr  string   // substring of the expected error; "" expects success
+		wantReqs []string // "METHOD URL" per request the doer must see
+	}{
+		{
+			name:    "unparsable reference fails before any request",
+			ref:     "example.com/",
+			wantErr: `image reference "example.com/" has no repository`,
+		},
+		{
+			name:     "transport failure surfaces",
+			steps:    []fakeStep{{err: errors.New("dial tcp: connection refused")}},
+			wantErr:  "dial tcp: connection refused",
+			wantReqs: []string{"GET http://registry.example.com/v2/app/tags/list?n=1000"},
+		},
+		{
+			name:     "unsupported challenge scheme is not retried",
+			steps:    []fakeStep{challenged(`Digest realm="` + realm + `"`)},
+			wantErr:  "unsupported auth challenge",
+			wantReqs: []string{"GET http://registry.example.com/v2/app/tags/list?n=1000"},
+		},
+		{
+			name:     "bearer challenge without a realm is refused",
+			steps:    []fakeStep{challenged(`Bearer service="reg"`)},
+			wantErr:  "bearer challenge without realm",
+			wantReqs: []string{"GET http://registry.example.com/v2/app/tags/list?n=1000"},
+		},
+		{
+			name: "token endpoint error status surfaces",
+			steps: []fakeStep{
+				challenged(`Bearer realm="` + realm + `",service="other",scope="repository:app:pull"`),
+				fakeStep{resp: fakeResp(http.StatusInternalServerError, nil, "")}, //nolint:bodyclose // the client under test closes it
+			},
+			wantErr: "token endpoint returned 500 Internal Server Error",
+			wantReqs: []string{
+				"GET http://registry.example.com/v2/app/tags/list?n=1000",
+				"GET " + realm + "?scope=repository%3Aapp%3Apull&service=other",
+			},
+		},
+		{
+			name: "token request failing at transport surfaces",
+			steps: []fakeStep{
+				challenged(`Bearer realm="` + realm + `",service="reg"`),
+				{err: errors.New("dial tcp: no route to host")},
+			},
+			wantErr: "dial tcp: no route to host",
+			wantReqs: []string{
+				"GET http://registry.example.com/v2/app/tags/list?n=1000",
+				"GET " + realm + "?scope=repository%3Aapp%3Apull&service=reg",
+			},
+		},
+		{
+			name: "unparsable token body surfaces",
+			steps: []fakeStep{
+				challenged(`Bearer realm="` + realm + `"`),
+				token("not json"),
+			},
+			wantErr: "parse token response",
+			wantReqs: []string{
+				"GET http://registry.example.com/v2/app/tags/list?n=1000",
+				"GET " + realm + "?scope=repository%3Aapp%3Apull",
+			},
+		},
+		{
+			name: "token body without any token fails",
+			steps: []fakeStep{
+				challenged(`Bearer realm="` + realm + `"`),
+				token("{}"),
+			},
+			wantErr: "token endpoint returned no token",
+			wantReqs: []string{
+				"GET http://registry.example.com/v2/app/tags/list?n=1000",
+				"GET " + realm + "?scope=repository%3Aapp%3Apull",
+			},
+		},
+		{
+			name: "authenticated retry failing at transport surfaces",
+			steps: []fakeStep{
+				challenged(`Bearer realm="` + realm + `",service="reg"`),
+				token(`{"token":"tok"}`),
+				{err: errors.New("dial tcp: reset by peer")},
+			},
+			wantErr: "dial tcp: reset by peer",
+			wantReqs: []string{
+				"GET http://registry.example.com/v2/app/tags/list?n=1000",
+				"GET " + realm + "?scope=repository%3Aapp%3Apull&service=reg",
+				"GET http://registry.example.com/v2/app/tags/list?n=1000",
+			},
+		},
+		{
+			name:    "body dying mid-transfer surfaces as a parse error",
+			steps:   []fakeStep{{resp: &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{}, Body: errReader{err: errors.New("disk gone")}}}},
+			wantErr: "parse tags list: disk gone",
+			wantReqs: []string{
+				"GET http://registry.example.com/v2/app/tags/list?n=1000",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			useRef := ref
+			if tt.ref != "" {
+				useRef = tt.ref
+			}
+			c, doer := testClientOn(t, tt.steps)
+			_, err := c.Tags(context.Background(), useRef)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("Tags(%q) succeeded, want error containing %q", useRef, tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("err = %q, want it to contain %q", err.Error(), tt.wantErr)
+				}
+			} else if err == nil {
+				t.Fatalf("Tags(%q) succeeded, want an error", useRef)
+			}
+			if got, want := fmt.Sprint(doer.reqs), fmt.Sprint(tt.wantReqs); got != want {
+				t.Errorf("requests = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+func TestTags_TokenResponseFallsBackToAccessToken(t *testing.T) {
+	// Some registries name the token access_token; both spellings must work.
+	var calls int
+	c := New(doerFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		switch calls {
+		case 1:
+			return fakeResp(http.StatusUnauthorized, http.Header{
+				"Www-Authenticate": {`Bearer realm="http://auth.example.com/token"`},
+			}, ""), nil
+		case 2:
+			return fakeResp(http.StatusOK, nil, `{"access_token":"tok"}`), nil
+		default:
+			if got := r.Header.Get("Authorization"); got != "Bearer tok" {
+				t.Errorf("retry authorization = %q, want %q", got, "Bearer tok")
+			}
+			return fakeResp(http.StatusOK, nil, `{"tags":["1.0"]}`), nil
+		}
+	}), nil)
+	c.scheme = "http"
+
+	tags, err := c.Tags(context.Background(), "registry.example.com/app:1.0")
+	if err != nil {
+		t.Fatalf("Tags: %v", err)
+	}
+	if len(tags) != 1 || tags[0] != "1.0" {
+		t.Errorf("tags = %v, want [1.0]", tags)
+	}
+}
+
+func TestTags_DefaultScopeWhenChallengeOmitsIt(t *testing.T) {
+	// A challenge without a scope must default to pull on the challenged repo.
+	var scope string
+	var calls int
+	c := New(doerFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		switch calls {
+		case 1:
+			return fakeResp(http.StatusUnauthorized, http.Header{
+				"Www-Authenticate": {`Bearer realm="http://auth.example.com/token",service="reg"`},
+			}, ""), nil
+		case 2:
+			scope = r.URL.Query().Get("scope")
+			return fakeResp(http.StatusOK, nil, `{"token":"tok"}`), nil
+		default:
+			return fakeResp(http.StatusOK, nil, `{"tags":["1.0"]}`), nil
+		}
+	}), nil)
+	c.scheme = "http"
+
+	if _, err := c.Tags(context.Background(), "registry.example.com/app:1.0"); err != nil {
+		t.Fatalf("Tags: %v", err)
+	}
+	if scope != "repository:app:pull" {
+		t.Errorf("token request scope = %q, want %q", scope, "repository:app:pull")
+	}
+}
+
+func TestTags_PaginationEdges(t *testing.T) {
+	tests := []struct {
+		name     string
+		link     string
+		wantErr  string // "" expects success
+		wantTags []string
+		wantReqs int
+	}{
+		{
+			// A Link header without a <target> points nowhere: the first page
+			// is the whole answer rather than an error.
+			name:     "link header without a target ends the walk",
+			link:     `rel="next"`,
+			wantTags: []string{"1.0"},
+			wantReqs: 1,
+		},
+		{
+			name:     "unparsable link target fails the call",
+			link:     `<%zz>; rel="next"`,
+			wantErr:  "parse pagination link",
+			wantReqs: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls int
+			c := New(doerFunc(func(r *http.Request) (*http.Response, error) {
+				calls++
+				if calls > 1 {
+					return nil, errors.New("unexpected second page request")
+				}
+				return fakeResp(http.StatusOK, http.Header{"Link": {tt.link}}, `{"tags":["1.0"]}`), nil
+			}), nil)
+			c.scheme = "http"
+
+			tags, err := c.Tags(context.Background(), "registry.example.com/app:1.0")
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want it to contain %q", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("Tags: %v", err)
+			}
+			if got, want := fmt.Sprint(tags), fmt.Sprint(tt.wantTags); tt.wantErr == "" && got != want {
+				t.Errorf("tags = %s, want %s", got, want)
+			}
+			if calls != tt.wantReqs {
+				t.Errorf("requests = %d, want %d", calls, tt.wantReqs)
+			}
+		})
+	}
+}
+
+func TestManifestDigest_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		ref      string
+		steps    []fakeStep
+		wantErr  string
+		wantReqs []string
+	}{
+		{
+			name:    "unparsable reference fails before any request",
+			ref:     "example.com/",
+			wantErr: `image reference "example.com/" has no repository`,
+		},
+		{
+			name:     "http error status surfaces",
+			steps:    []fakeStep{{resp: fakeResp(http.StatusNotFound, nil, "")}}, //nolint:bodyclose // the client under test closes it
+			wantErr:  "registry returned 404 Not Found",
+			wantReqs: []string{"HEAD http://registry.example.com/v2/app/manifests/1.0"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ref := "registry.example.com/app:1.0"
+			if tt.ref != "" {
+				ref = tt.ref
+			}
+			c, doer := testClientOn(t, tt.steps)
+			_, err := c.ManifestDigest(context.Background(), ref)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("err = %v, want it to contain %q", err, tt.wantErr)
+			}
+			if got, want := fmt.Sprint(doer.reqs), fmt.Sprint(tt.wantReqs); got != want {
+				t.Errorf("requests = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+// schemeFor's HTTPS default cannot be exercised through Tags without dialing
+// a real registry, so it is asserted directly.
+func TestSchemeFor(t *testing.T) {
+	tests := []struct{ host, want string }{
+		{"registry.example.com", "https"},
+		{"registry.example.com:5000", "https"},
+		{"10.0.0.5", "https"},
+		{"localhost", "http"},
+		{"localhost:5000", "http"},
+		{"127.0.0.1", "http"},
+		{"[::1]:5000", "http"},
+	}
+	c := New(nil, nil)
+	for _, tt := range tests {
+		if got := c.schemeFor(tt.host); got != tt.want {
+			t.Errorf("schemeFor(%q) = %q, want %q", tt.host, got, tt.want)
+		}
+	}
+	// The explicit override wins over the host rules.
+	c.scheme = "http"
+	if got := c.schemeFor("registry.example.com"); got != "http" {
+		t.Errorf("forced scheme = %q, want http", got)
+	}
+}
+
+// The client builds every URL it sends itself, so the request-construction
+// error branch is only reachable here — the guard is what keeps a future
+// caller honest.
+func TestSend_UnparsableURLFails(t *testing.T) {
+	c := New(nil, nil)
+	resp, err := c.send(context.Background(), http.MethodGet, "://no-scheme", "", "")
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("expected an error for a URL the http package cannot parse")
+	}
+}
+
+// nextPageURL resolves against the page URL, which Tags always builds valid;
+// the guard must still refuse to continue on garbage.
+func TestNextPageURL_UnparsablePageURLFails(t *testing.T) {
+	resp := &http.Response{Header: http.Header{"Link": {`<next>; rel="next"`}}}
+	if _, err := nextPageURL(resp, "http://reg\x7f"); err == nil {
+		t.Fatal("expected an error for an unparsable page URL")
+	}
+}
