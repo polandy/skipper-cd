@@ -50,7 +50,7 @@ App.stream = (function () {
     ).find(function (r) {
       return r.dataset.stack === stack;
     });
-    if (drow && drow.dataset.status === 'deploying') {
+    if (drow && drow.dataset.status === STATUS.DEPLOYING) {
       const cell = drow.querySelector('.status-cell');
       if (cell) cells.push(cell);
     }
