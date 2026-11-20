@@ -1413,7 +1413,7 @@ test('a step line renders its ↳ marker — the only thing tying it to the line
   assert.match(html, />flake\.nix</);
 });
 
-// ── Rollback visibility: outcome strip, last incident, retry note ──
+// ── Rollback visibility: outcome strip, last incident ──
 
 test('outcomeStripHTML renders one dot per record, oldest → newest', () => {
   const now = Date.parse('2026-08-05T12:00:00Z');
@@ -1455,22 +1455,6 @@ test('lastIncidentHTML names the papered-over outcome with its age', () => {
   );
   // Absent field (server says the badge already covers it) renders nothing.
   assert.equal(r.lastIncidentHTML(null, now), '');
-});
-
-test('retryNoteHTML marks only a follows_rollback success, carrying the rollback id', () => {
-  const html = r.retryNoteHTML({ follows_rollback: true, rollback_event_id: 42 });
-  assert.match(html, /^<button /);
-  assert.match(html, /data-testid="retry-note"/);
-  assert.match(html, /data-rollback-id="42"/);
-  assert.match(html, /↺ after rollback/);
-  // An evicted rollback event drops the id but keeps the note — the history
-  // panel still holds the record.
-  const evicted = r.retryNoteHTML({ follows_rollback: true });
-  assert.match(evicted, /data-testid="retry-note"/);
-  assert.doesNotMatch(evicted, /data-rollback-id/);
-  // An ordinary success renders nothing.
-  assert.equal(r.retryNoteHTML({ status: 'success' }), '');
-  assert.equal(r.retryNoteHTML(null), '');
 });
 
 test('deployStatusChipsHTML renders one chip per present status, worst first, with counts', () => {
@@ -2074,6 +2058,18 @@ test('deployPanelHTML: a success has no verdict', () => {
   );
   assert.doesNotMatch(html, /detail-verdict/);
   assert.doesNotMatch(html, /data-tab="output"/);
+});
+
+test('deployPanelHTML: a retry after a rollback links the rollback from its verdict', () => {
+  const html = r.deployPanelHTML(
+    { ...FAILED_EVT, status: 'success', error: '', follows_rollback: true, rollback_event_id: 42 },
+    { nowMs: DEPLOY_NOW },
+  );
+  assert.match(html, /data-testid="detail-verdict"[\s\S]*Retry after a rollback\./);
+  assert.match(
+    html,
+    /<button class="dp-act" type="button" data-action="rollback" data-testid="rollback-link" data-rollback-id="42">[\s\S]*Open rollback/,
+  );
 });
 
 test('deployFactsHTML: Commit waits for the diff, Change lists every chip', () => {

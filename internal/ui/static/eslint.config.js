@@ -251,7 +251,6 @@ module.exports = [
         deployStatusChipsHTML: 'readonly',
         nextTrailHTML: 'readonly',
         repeatNoteHTML: 'readonly',
-        retryNoteHTML: 'readonly',
         runListHTML: 'readonly',
         runSummaryHTML: 'readonly',
       },

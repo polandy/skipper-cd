@@ -3749,18 +3749,8 @@
     color: var(--rollback);
   }
 
-  /* Retry note: pairs a success with the rollback it supersedes (the deploy
-     table's status cell; same tier as the incident line). Rendered as a real
-     button — it jumps to the rollback row or opens the history panel. */
-  .retry-note {
-    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
-    font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.2px;
-    color: var(--rollback); background: none; border: 0; padding: 0; cursor: pointer;
-  }
-  .retry-note:hover { text-decoration: underline; }
-
   /* Repeat marker (ADR-0056): one row standing for a run of identical repeated
-     outcomes. Same shape as the retry note beside it, in the muted tier — the
+     outcomes. Same shape as the incident line, in the muted tier — the
      count qualifies the outcome, it is not a second outcome — and carrying the
      fold line's ↻ so both readings of "more than one occurrence" look alike. */
   .repeat-note {
