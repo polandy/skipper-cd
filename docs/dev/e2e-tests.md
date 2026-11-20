@@ -2240,6 +2240,26 @@ clock.
 - **UBD3 — Filter before fold.** A name filter that matches nothing leaves no
   fold line on screen; the empty note is the positive signal that the filter ran.
 
+### 4.58 UI — Maske BE: the rolling sub-label of a zero-downtime rollout (ADR-0040)
+
+While a rollout cuts a service over, the `deploying` row carries a
+`rollout-phase` sub-label (`rolling app`), identically in the Deploys view and
+the Stacks roster ([UI_SPEC](../../internal/ui/UI_SPEC.md#rolling-service-live)).
+The stack is routed by Traefik labels with a `rollout:` override; the stub's
+container table (`STUB_DOCKER_ROLLOUT_FILE`) scripts the canary. A canary that
+reads `starting` parks the cutover in its health wait until the test rewrites
+the table, so the label stays observable with no wall-clock race. Behaviour-only
+(no snapshot).
+
+- **UBE1 — The label names the rolled service in both views.** A pushed bump
+  with a `starting` canary shows `rolling app` on the deploy row and, after a
+  switch to Stacks, on the roster row; once the canary reads `healthy` the
+  label is gone and the deploy settles as `success`.
+- **UBE2 — A failed cutover leaves no label.** A canary that stays `unhealthy`
+  (`health_timeout_seconds: 1`) ends as a `rolled_back` row with no
+  `rollout-phase` anywhere (the rolled_back row is the positive signal; the Go
+  path is P25).
+
 ### 5.1 Docs screenshots — rendered, never committed
 
 The two images the docs landing page embeds
@@ -2576,6 +2596,8 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UBD1** | six routine deploys fold into the newest row plus a fold line | `ubd-deploy-fold.spec.ts` |
 | **UBD2** | rows sit under a Today separator | `ubd-deploy-fold.spec.ts` |
 | **UBD3** | a name filter that hides the rows takes the fold line with them | `ubd-deploy-fold.spec.ts` |
+| **UBE1** | the rolling sub-label names the rolled service in both views and clears | `ube-rollout-phase.spec.ts` |
+| **UBE2** | a failed cutover settles as rolled_back with no label | `ube-rollout-phase.spec.ts` |
 
 ### 6.3 Known gaps
 
