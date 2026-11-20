@@ -2731,6 +2731,12 @@ already pins actions:
   `RUN_SNAPSHOTS=1` turns on the pixel compares against the committed baselines
   (§5). Uploads the Playwright HTML report + `test-results/` (traces and snapshot
   diffs) on failure.
+  Chromium starts with `--disable-gpu` (`playwright.config.ts`). Without it, the
+  headless shell's GPU process once crashed the whole browser with a SIGSEGV
+  after `SharedImageManager::ProduceMemory … non-existent mailbox` errors. The
+  worker's next test then failed in `browser.newContext` before its body ran.
+  The baselines render identically with the flag; they are software-rasterised
+  either way.
 
 - **baselines**: fetches the LFS-tracked visual baselines on a runner that has
   git-lfs and uploads them as an artifact, which `e2e-ui` unpacks over the pointer
