@@ -144,9 +144,16 @@ a 470 px column of identity + status (what the panel repeats comes off the row),
 and the side column draws the sheet's border and radius on the sunken ground,
 so it reads as the same surface split in two rather than a card floating over
 it. It is sticky under the header and scrolls on its own. Nothing is drawn
-while no detail is open: the list keeps its full width. Below 1200 px the
-detail is the bound panel above. See `internal/ui/UI_SPEC.md` § Detail
-placement and ADR-0073.
+while no detail is open: the list keeps its full width. Between 701 and
+1199 px the detail is the bound panel above. See `internal/ui/UI_SPEC.md`
+§ Detail placement and ADR-0073.
+
+### Over the list (≤ 700 px)
+
+On a phone the same side column is a **full-screen sheet** on the sunken
+ground, over the list and the header. The panel head sticks to its top with a
+hairline under it, so the close button never scrolls away. The list under it
+does not move, so closing the sheet lands on the row that opened it.
 
 ## Time
 

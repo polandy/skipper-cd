@@ -4,9 +4,9 @@
 // detail tracks the row and the pane's nodes by reference rather than by DOM
 // position, so a panel wedged between them (the container-logs panel) never
 // strands it, and a view that rebuilds its rows re-applies the selection by
-// key (reapply). A pane renders inline, right after its row, or — on a wide
-// screen — in its view's side column beside the list (ADR-0073), and moves
-// between the two when the width crosses the breakpoint.
+// key (reapply). A pane renders inline, right after its row, or in its view's
+// side column — beside the list on a wide screen, a full-screen sheet over it
+// on a phone (ADR-0073) — and moves when the width crosses a breakpoint.
 //
 // A pane is registered once per DETAIL_TAB: openClass marks the row open (it
 // drives the bound status bar), build(row, slot, opts) fills the pane through
@@ -18,9 +18,11 @@ App.detail = (function () {
   const panes = {};
   // view → { sel, row, opts, nodes }; nodes are the pane's elements.
   const open = {};
-  // Keep in step with the .detail-layout breakpoint in app.css.
+  // Keep in step with the .detail-side breakpoints in app.css.
   const wide = window.matchMedia('(min-width: 1200px)');
+  const phone = window.matchMedia('(max-width: 700px)');
   wide.addEventListener('change', relayout);
+  phone.addEventListener('change', relayout);
   // The view filters' row classes; an inline pane wears its row's.
   const ROW_HIDDEN = ['filtered-out', 'host-hidden'];
 
@@ -36,7 +38,7 @@ App.detail = (function () {
     return e && e.row.isConnected ? e : null;
   }
 
-  // sideFor is view's side column, the wide-screen home of its open pane.
+  // sideFor is view's side column, the wide-screen and phone home of its open pane.
   function sideFor(view) {
     return document.querySelector('.detail-side[data-detail-view="' + view + '"]');
   }
@@ -47,10 +49,10 @@ App.detail = (function () {
   function place(view, entry) {
     const side = sideFor(view);
     const nodes = entry.nodes;
-    const beside = !!side && wide.matches;
+    const toSide = !!side && (wide.matches || phone.matches);
     const inSide = nodes.length > 0 && nodes[0].parentElement === side;
-    if (beside && !inSide) side.append.apply(side, nodes);
-    if (!beside && (inSide || (nodes.length > 0 && !nodes[0].isConnected))) {
+    if (toSide && !inSide) side.append.apply(side, nodes);
+    if (!toSide && (inSide || (nodes.length > 0 && !nodes[0].isConnected))) {
       entry.row.after.apply(entry.row, nodes);
       ROW_HIDDEN.forEach(function (c) {
         const hidden = entry.row.classList.contains(c);
@@ -59,7 +61,7 @@ App.detail = (function () {
         });
       });
     }
-    const shown = beside && nodes.length > 0 && getComputedStyle(entry.row).display !== 'none';
+    const shown = toSide && nodes.length > 0 && getComputedStyle(entry.row).display !== 'none';
     if (side) side.parentElement.classList.toggle('side-open', shown);
   }
 

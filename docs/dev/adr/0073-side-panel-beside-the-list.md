@@ -27,8 +27,8 @@ its own.
   Result and drop Change and When. Stacks keep Stack, Health and the last
   deploy's badge, and drop Version and the time and commit. Everything dropped
   is in the open panel.
-- **Below 1200 px nothing changes.** The panel stays bound under its row, as
-  before. The phone sheet (≤ 700 px) is a later step of the same plan.
+- **Between 701 and 1199 px nothing changes.** The panel stays bound under
+  its row, as before. The phone sheet (≤ 700 px) is the amendment below.
 - **One breakpoint, two places that know it.** The CSS media query lays the
   grid out, and `matchMedia('(min-width: 1200px)')` in `app-detail.js` decides
   where the nodes go. A `change` event re-places an open detail, so a resize
@@ -71,3 +71,24 @@ its own.
 - The e2e suite runs at 1280 px by default, so masks that checked a panel's
   binding now assert where it sits (`detailHome`). Mask BF covers both
   placements and the resize between them.
+
+## Amendment 2026-11-20: the phone sheet
+
+At a viewport of 700 px or narrower the open detail is a **full-screen sheet
+over the list** (plan §3.4).
+
+- **The sheet is the same side column.** `place()` sends the nodes to the side
+  column when either `matchMedia` matches (`min-width: 1200px` or
+  `max-width: 700px`); only the CSS differs. At ≤ 700 px the column is
+  `position: fixed; inset: 0` above the header, and the panel head stays
+  sticky at its top, so close is always in reach.
+- **The list never moves.** While the sheet is open the page is locked
+  (`overflow: hidden` on the body of the view that holds it), so its scroll
+  offset is untouched and close returns to the list exactly where it was. The
+  sheet scrolls on its own, with `overscroll-behavior: contain`.
+- **A resize re-places it** like the side column: crossing 700 px moves an
+  open detail between sheet and inline without closing it.
+- **Rejected: inline on a phone, as before.** A detail taller than the screen
+  pushed the rest of the list away and its close button scrolled out of reach.
+  **Rejected: a separate sheet element.** It would duplicate the side
+  column's placement, filter and Escape handling for the same nodes.

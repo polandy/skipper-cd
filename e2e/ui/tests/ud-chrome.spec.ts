@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test';
 import { buildCommit, buildVersion } from '../fixtures/harness';
 import { visualSnapshot } from '../fixtures/snapshot';
-import { openStackDetail } from '../fixtures/stack-detail';
+import { detailHome, openStackDetail } from '../fixtures/stack-detail';
 
 // Deploy rows carry a relative time and a duration that vary run-to-run; mask
 // them out of any full-page screenshot (docs/dev/e2e-tests.md §5). The header
@@ -74,17 +74,14 @@ test.describe('UD4: responsive ≤700px', () => {
     // Snapshot: the compact mobile layout (§5 anchor), dynamic cells masked.
     await visualSnapshot(page, 'mobile-layout.png', { mask: pageMasks(page) });
 
-    // The row folds: the duration is hidden, yet tapping the row still
-    // toggles the deploy detail and its file list directly below it.
+    // The row folds: the duration is hidden, yet tapping the row still opens
+    // the deploy detail and its file list, as the phone sheet (Maske BF).
     await expect(duration(page)).toBeHidden();
     await expect(filesPanel(page)).toHaveCount(0);
     await successRow(page).locator('.stack-name').click();
     await expect(filesPanel(page)).toBeVisible();
-    const siblingTestid = await successRow(page).evaluate(
-      (row) => row.nextElementSibling?.getAttribute('data-testid') ?? null,
-    );
-    expect(siblingTestid).toBe('detail-panel');
-    await successRow(page).locator('.stack-name').click();
+    expect(await detailHome(successRow(page))).toBe('side');
+    await page.locator('[data-testid="detail-close"]').click();
     await expect(filesPanel(page)).toHaveCount(0);
   });
 

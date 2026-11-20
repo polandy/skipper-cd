@@ -3400,8 +3400,8 @@
   /* ─── DETAIL BESIDE THE LIST ─── */
   /* On a wide screen the open detail sits in a side column instead of under
      its row (ADR-0073): the list narrows to name + status, the panel takes the
-     rest and stays in view while the list scrolls. Below the breakpoint the
-     column is never filled. The breakpoint is mirrored in app-detail.js. */
+     rest and stays in view while the list scrolls. Between 701 and 1199 px the
+     column is never filled. The breakpoints are mirrored in app-detail.js. */
   .detail-side { display: none; }
   @media (min-width: 1200px) {
     .detail-layout.side-open {
@@ -3429,6 +3429,32 @@
     /* The list's open row is the binding; the inline accent bar would only
        repeat it down the column's edge. */
     .detail-side .detail-panel { box-shadow: none; }
+  }
+
+  /* On a phone the side column is a full-screen sheet over the list; the page
+     underneath is locked, so closing the sheet finds the list where it was. */
+  @media (max-width: 700px) {
+    .side-open .detail-side {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 250;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      background: var(--bg-sunken);
+    }
+    .detail-side .detail-panel { box-shadow: none; animation: none; min-height: 100%; }
+    .detail-side .dp-head {
+      position: sticky; top: 0; z-index: 1;
+      background: var(--bg-sunken);
+      border-bottom: 1px solid var(--border);
+    }
+    .detail-side .dp-verdict { margin-top: 12px; }
+    body:not(.view-stacks):not(.view-logs):has(#deploy-table .side-open),
+    body.view-stacks:has(#stacks-view .side-open) { overflow: hidden; }
+    /* The sheet sits in main, whose stacking context is below the header's. */
+    body:not(.view-stacks):not(.view-logs):has(#deploy-table .side-open) main,
+    body.view-stacks:has(#stacks-view .side-open) main { z-index: 300; }
   }
 
   /* ─── RESPONSIVE ─── */

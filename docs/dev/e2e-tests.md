@@ -647,7 +647,7 @@ UI suite reuses.
   (`documentElement.scrollWidth ≤ clientWidth`) and the `brand-name` wordmark is
   hidden; the **table** collapses to its two-line layout (name/time over
   change/result), the When cell's duration hides, and tapping a row with
-  changed files opens its deploy detail directly below it. The 1280px control asserts
+  changed files opens its deploy detail as the phone sheet (Maske BF). The 1280px control asserts
   the wordmark is visible with likewise no sideways scroll. *Snapshot: mobile
   layout.*
 - **UD8 — View-options popover.** The view-specific toggle (`time-mode`, shared
@@ -2276,15 +2276,16 @@ the table, so the label stays observable with no wall-clock race. Behaviour-only
   `rollout-phase` anywhere (the rolled_back row is the positive signal; the Go
   path is P25).
 
-### 4.59 UI — Maske BF: the detail beside the list (ADR-0073)
+### 4.59 UI — Maske BF: the detail beside the list and the phone sheet (ADR-0073)
 
 At a viewport of 1200 px or wider an open detail sits in its view's side
 column (`detail-side`), right of a list narrowed to the rows' identity and
-status; below that it stays inline right after its row
+status; between 701 and 1199 px it stays inline right after its row, and at
+700 px or narrower the side column is a full-screen sheet
 ([UI_SPEC](../../internal/ui/UI_SPEC.md#detail-placement)). The suite's
 default 1280 px viewport is in side mode, so the masks that check a detail's
 binding assert it there (`detailHome` in `fixtures/stack-detail.ts`); the
-inline placement is asserted here at 1100 px and on the phone (UD). A resize
+inline placement is asserted here at 1100 px. A resize
 fires the breakpoint's `matchMedia` change, which re-places the open detail
 before the assertion reads it. Behaviour-only (no snapshot).
 
@@ -2304,6 +2305,14 @@ before the assertion reads it. Behaviour-only (no snapshot).
   filter hides the open row and its inline panel; widened to 1280 px the panel
   sits in the side column, still hidden; clearing the filter shows it there,
   beside the list.
+- **UBF7 — Stacks, phone sheet.** At 390 px with 14 stacks the roster is
+  scrolled to a low row, which opens its detail as a sheet covering the
+  viewport and the header; wheeling over the sheet leaves the page's `scrollY`
+  alone, and close returns to the same `scrollY` with the row in view.
+- **UBF8 — Deploys, phone sheet.** The deploy detail takes the same sheet;
+  Escape inside it closes it and focuses the row's toggle.
+- **UBF9 — Resize from the phone.** Widening to 1100 px moves the open sheet
+  inline under its row; narrowing again turns it back into the sheet.
 
 ### 5.1 Docs screenshots — rendered, never committed
 
@@ -2650,6 +2659,9 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UBF4** | a resize moves the open detail between side and inline | `ubf-side-panel.spec.ts` |
 | **UBF5** | Jump and Escape work from the side panel | `ubf-side-panel.spec.ts` |
 | **UBF6** | a detail filtered out inline shows in the side column once the filter clears | `ubf-side-panel.spec.ts` |
+| **UBF7** | on a phone the Stacks detail is a sheet and close keeps the scroll | `ubf-side-panel.spec.ts` |
+| **UBF8** | on a phone the deploy sheet closes on Escape | `ubf-side-panel.spec.ts` |
+| **UBF9** | a resize moves the open detail between sheet and inline | `ubf-side-panel.spec.ts` |
 
 ### 6.3 Known gaps
 
