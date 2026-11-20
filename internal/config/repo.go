@@ -57,8 +57,6 @@ type RepoStacks struct {
 // skipper.yaml that is no longer read): the caller must not deploy anything.
 // StackErrors are entry-level: those stacks are excluded and reported, the
 // returned stacks are fine to deploy.
-//
-//nolint:funlen // R-08
 func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBase string) (RepoStacks, []StackError, error) {
 	discovered, err := discoverStackDirs(stacksBaseDir)
 	if err != nil {
@@ -102,47 +100,12 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 			disabled = append(disabled, name)
 			continue
 		}
-		envFiles, envErr := resolveRepoPaths(stacksBaseDir, ov.EnvFiles)
-		watchDirs, watchErr := resolveRepoPaths(stacksBaseDir, ov.WatchDirs)
-		stack := ov
-		stack.Name = name
-		stack.EnvFiles = envFiles
-		stack.WatchDirs = watchDirs
-		if stack.ProjectDirectory == "" && projectDirectoryBase != "" {
-			stack.ProjectDirectory = filepath.Join(projectDirectoryBase, name)
+		stack, err := discoveredStack(stacksBaseDir, name, ov, projectDirectoryBase, known)
+		if err != nil {
+			stackErrs = append(stackErrs, StackError{Stack: name, Err: err})
+			continue
 		}
-
-		hcErr := validateHealthCheck(stack.DeployHealthCheck)
-		hookErr := validateHooks(stack.Hooks)
-		rolloutErr := validateRollout(stack.Rollout)
-		// Parse the compose every sync so a broken compose or an unrollable
-		// rollout service is caught at discovery — rollout is not hash-tracked,
-		// so an edit alone would not otherwise trigger a redeploy that reveals it.
-		cf, composeErr := compose.Parse(filepath.Join(stacksBaseDir, name, compose.FileName))
-		if rolloutErr == nil && composeErr == nil && stack.Rollout != nil {
-			rolloutErr = ValidateRolloutServices(stack.Rollout.Services, cf)
-		}
-		depErr := invalidDependency(stack, known)
-		switch {
-		case strings.HasPrefix(name, "_"):
-			fail(name, "stack names starting with _ are reserved")
-		case envErr != nil:
-			fail(name, "env_files: %v", envErr)
-		case watchErr != nil:
-			fail(name, "watch_dirs: %v", watchErr)
-		case hcErr != nil:
-			fail(name, "deploy_health_check: %v", hcErr)
-		case hookErr != nil:
-			fail(name, "hooks: %v", hookErr)
-		case composeErr != nil:
-			fail(name, "%v", composeErr)
-		case rolloutErr != nil:
-			fail(name, "rollout: %v", rolloutErr)
-		case depErr != nil:
-			fail(name, "%v", depErr)
-		default:
-			stacks = append(stacks, stack)
-		}
+		stacks = append(stacks, stack)
 	}
 
 	stacks, cycleErrs := dropDependencyCycles(stacks)
@@ -154,6 +117,49 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 
 	sort.Slice(stackErrs, func(i, j int) bool { return stackErrs[i].Stack < stackErrs[j].Stack })
 	return RepoStacks{Stacks: stacks, Disabled: disabled, Discovered: discovered}, stackErrs, nil
+}
+
+// discoveredStack builds the stack discovered as name from its host-config
+// override and validates it against its compose file and the discovered set.
+func discoveredStack(stacksBaseDir, name string, ov Stack, projectDirectoryBase string, known map[string]bool) (Stack, error) {
+	envFiles, envErr := resolveRepoPaths(stacksBaseDir, ov.EnvFiles)
+	watchDirs, watchErr := resolveRepoPaths(stacksBaseDir, ov.WatchDirs)
+	stack := ov
+	stack.Name = name
+	stack.EnvFiles = envFiles
+	stack.WatchDirs = watchDirs
+	stack.applyDefaults(projectDirectoryBase)
+
+	hcErr := stack.DeployHealthCheck.validate()
+	hookErr := stack.Hooks.validate()
+	rolloutErr := stack.Rollout.validate()
+	// Parse the compose every sync so a broken compose or an unrollable
+	// rollout service is caught at discovery — rollout is not hash-tracked,
+	// so an edit alone would not otherwise trigger a redeploy that reveals it.
+	cf, composeErr := compose.Parse(filepath.Join(stacksBaseDir, name, compose.FileName))
+	if rolloutErr == nil && composeErr == nil && stack.Rollout != nil {
+		rolloutErr = ValidateRolloutServices(stack.Rollout.Services, cf)
+	}
+	depErr := invalidDependency(stack, known)
+	switch {
+	case strings.HasPrefix(name, "_"):
+		return Stack{}, fmt.Errorf("stack names starting with _ are reserved")
+	case envErr != nil:
+		return Stack{}, fmt.Errorf("env_files: %w", envErr)
+	case watchErr != nil:
+		return Stack{}, fmt.Errorf("watch_dirs: %w", watchErr)
+	case hcErr != nil:
+		return Stack{}, fmt.Errorf("deploy_health_check: %w", hcErr)
+	case hookErr != nil:
+		return Stack{}, fmt.Errorf("hooks: %w", hookErr)
+	case composeErr != nil:
+		return Stack{}, composeErr
+	case rolloutErr != nil:
+		return Stack{}, fmt.Errorf("rollout: %w", rolloutErr)
+	case depErr != nil:
+		return Stack{}, depErr
+	}
+	return stack, nil
 }
 
 // discoverStackDirs returns the names of the direct subdirectories of

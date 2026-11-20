@@ -67,9 +67,37 @@ const (
 	NotifyOnHealExhausted = string(events.StatusHealExhausted)
 )
 
-// validateNotificationTarget checks a single notification target. Format and On
-// have already been defaulted in Load.
-func validateNotificationTarget(t NotificationTarget) error {
+// applyNotificationsDefaults fills every deploy notification target's omitted
+// format and on.
+func (c *Config) applyNotificationsDefaults() {
+	for i := range c.Notifications {
+		t := &c.Notifications[i]
+		t.applyDefaults()
+		if len(t.On) == 0 {
+			t.On = []string{NotifyOnFailed, NotifyOnSuccess, NotifyOnRolledBack, NotifyOnRolledBackUnhealthy, NotifyOnHealExhausted}
+		}
+	}
+}
+
+// validateNotifications checks every deploy notification target.
+func (c *Config) validateNotifications() error {
+	for i, t := range c.Notifications {
+		if err := t.validate(); err != nil {
+			return fmt.Errorf("notifications[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// applyDefaults fills the omitted format; shared by deploy and health targets.
+func (t *NotificationTarget) applyDefaults() {
+	if t.Format == "" {
+		t.Format = NotifyFormatGeneric
+	}
+}
+
+// validate checks a single notification target; defaults are applied first.
+func (t NotificationTarget) validate() error {
 	switch t.Format {
 	case NotifyFormatSignal, NotifyFormatGeneric, NotifyFormatNtfy:
 	default:
