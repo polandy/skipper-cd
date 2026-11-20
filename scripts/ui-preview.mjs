@@ -101,6 +101,10 @@ case " $* " in
         f="$STUB_PS_DIR/$(basename "$(pwd)")-images.json"
         [ -f "$f" ] && cat "$f"
         exit 0 ;;
+      *" ps --all --format json "*)
+        # The deploy's readiness wait (ADR-0072): no output reads as ready,
+        # so a seeded unhealthy container stays a deployed-yet-unhealthy row.
+        exit 0 ;;
       *" ps "*)
         f="$STUB_PS_DIR/$(basename "$(pwd)").json"
         [ -f "$f" ] && cat "$f"
