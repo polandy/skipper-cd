@@ -2344,6 +2344,8 @@ snapshot).
   Logs.
 - **UBG3 — Focus.** A focused Containers tab stays focused across the
   re-render a health change triggers.
+- **UBG4 — Container log.** A service's log opened from the Containers tab
+  is still open, once, inside the panel after a health change re-renders it.
 
 ### 5.1 Docs screenshots — rendered, never committed
 
@@ -2699,6 +2701,7 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UBG1** | the open Containers tab shows a health change | `ubg-detail-live.spec.ts` |
 | **UBG2** | the open deploy detail picks up a health change | `ubg-detail-live.spec.ts` |
 | **UBG3** | a live re-render keeps the focused tab focused | `ubg-detail-live.spec.ts` |
+| **UBG4** | a live re-render keeps the open container log | `ubg-detail-live.spec.ts` |
 
 ### 6.3 Known gaps
 

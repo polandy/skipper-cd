@@ -105,6 +105,7 @@ App.stream = (function () {
   // and re-marks a running hook on a re-rendered head.
   function refreshDetail(stack) {
     App.detail.refresh(stack);
+    App.clog.reattach(); // an open log sat in the replaced nodes
     applyRunPhase();
   }
 
