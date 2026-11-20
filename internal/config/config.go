@@ -333,6 +333,8 @@ type IconsConfig struct {
 }
 
 // Load reads and validates the configuration file at the given path.
+//
+//nolint:funlen // R-08
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

@@ -71,6 +71,7 @@ func (d *Deployer) prepareStackRun(ctx context.Context, stack config.Stack, base
 	}, nil
 }
 
+//nolint:funlen // R-02
 func (d *Deployer) deployStackIfChanged(ctx context.Context, stack config.Stack, baseDir, varsFile string, baseEnv []string, state *persistedState) (err error) {
 	prep, err := d.prepareStackRun(ctx, stack, baseDir, varsFile, baseEnv)
 	if err != nil {

@@ -9,6 +9,8 @@ package logbuf
 import (
 	"sync"
 	"time"
+
+	"github.com/polandy/skipper-cd/internal/events"
 )
 
 // DefaultCapacity is the number of log lines kept in memory. It matches the
@@ -51,7 +53,9 @@ var outcomeMessages = map[string]bool{
 // reconcile's no-op line, one per tick — is routine and must not be pinned:
 // at that rate it would fill the small pinned set within hours and evict
 // exactly the outcomes the exemption exists to keep.
-var runOutcomeCounters = []string{"deployed", "failed", "rolled_back", "rolled_back_unhealthy"}
+var runOutcomeCounters = []string{
+	"deployed", string(events.StatusFailed), string(events.StatusRolledBack), string(events.StatusRolledBackUnhealthy),
+}
 
 // isPinnedOutcome reports whether a line is retained past ring eviction: any
 // terminal outcome line, except a run summary whose outcome counters are all

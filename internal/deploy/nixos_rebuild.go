@@ -25,6 +25,8 @@ const NixosStateKey = config.ReservedStackName
 // process); pre-saving avoids a redundant rebuild on restart.
 // Returns false when the phase failed and all stack deploys must abort; a
 // switch that applied but left units failed is reported and does not abort.
+//
+//nolint:funlen // R-09
 func (d *Deployer) rebuildNixOSIfChanged(ctx context.Context, cfg *config.Config, state *persistedState) bool {
 	startTime := time.Now()
 

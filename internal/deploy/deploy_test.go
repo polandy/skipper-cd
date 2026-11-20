@@ -564,8 +564,18 @@ func TestDeployStack_SkipsWhenVarsFileUnchanged(t *testing.T) {
 }
 
 func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
-	runner := &recordingRunner{delay: 10 * time.Millisecond}
-	syncer := &fakeRepoSyncer{}
+	runner := &recordingRunner{}
+	var active, maxActive atomic.Int32
+	syncer := &fakeRepoSyncer{onSync: func() {
+		n := active.Add(1)
+		defer active.Add(-1)
+		for {
+			m := maxActive.Load()
+			if n <= m || maxActive.CompareAndSwap(m, n) {
+				break
+			}
+		}
+	}}
 
 	d := New(Config{Runner: runner, Syncer: syncer, StateDir: t.TempDir()})
 
@@ -596,6 +606,9 @@ func TestSyncAndDeployAll_SerializesParallelCalls(t *testing.T) {
 	// Both goroutines ran sync — they should not have overlapped.
 	if syncer.called.Load() != 2 {
 		t.Errorf("expected syncer to be called 2 times, got %d", syncer.called.Load())
+	}
+	if maxActive.Load() != 1 {
+		t.Errorf("runs overlapped: max concurrent syncs = %d, want 1", maxActive.Load())
 	}
 }
 

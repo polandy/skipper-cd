@@ -57,6 +57,8 @@ type RepoStacks struct {
 // skipper.yaml that is no longer read): the caller must not deploy anything.
 // StackErrors are entry-level: those stacks are excluded and reported, the
 // returned stacks are fine to deploy.
+//
+//nolint:funlen // R-08
 func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBase string) (RepoStacks, []StackError, error) {
 	discovered, err := discoverStackDirs(stacksBaseDir)
 	if err != nil {
@@ -102,22 +104,10 @@ func LoadRepoStacks(stacksBaseDir string, overrides []Stack, projectDirectoryBas
 		}
 		envFiles, envErr := resolveRepoPaths(stacksBaseDir, ov.EnvFiles)
 		watchDirs, watchErr := resolveRepoPaths(stacksBaseDir, ov.WatchDirs)
-		stack := Stack{
-			Name:               name,
-			ProjectDirectory:   ov.ProjectDirectory,
-			EnvFiles:           envFiles,
-			WatchDirs:          watchDirs,
-			OnDemandContainers: ov.OnDemandContainers,
-			Icon:               ov.Icon,
-			Autosync:           ov.Autosync,
-			DeployHealthCheck:  ov.DeployHealthCheck,
-			SelfHeal:           ov.SelfHeal,
-			Rollback:           ov.Rollback,
-			UpdateCheck:        ov.UpdateCheck,
-			DependsOn:          ov.DependsOn,
-			Hooks:              ov.Hooks,
-			Rollout:            ov.Rollout,
-		}
+		stack := ov
+		stack.Name = name
+		stack.EnvFiles = envFiles
+		stack.WatchDirs = watchDirs
 		if stack.ProjectDirectory == "" && projectDirectoryBase != "" {
 			stack.ProjectDirectory = filepath.Join(projectDirectoryBase, name)
 		}

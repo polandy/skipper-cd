@@ -125,9 +125,9 @@ func failureStatus(err error) events.Status {
 	}
 }
 
-// relToRepo returns path relative to repoDir and whether it lies inside it.
-// An empty repoDir never matches.
-func relToRepo(repoDir, path string) (string, bool) {
+// RelToDir returns path relative to dir and whether it lies inside it. An empty
+// dir never matches.
+func RelToDir(repoDir, path string) (string, bool) {
 	if repoDir == "" {
 		return "", false
 	}
@@ -146,7 +146,7 @@ func (d *Deployer) insideRepo(path string) bool {
 	if d.repoDir == "" {
 		return true
 	}
-	_, inside := relToRepo(d.repoDir, path)
+	_, inside := RelToDir(d.repoDir, path)
 	return inside
 }
 
@@ -155,7 +155,7 @@ func (d *Deployer) insideRepo(path string) bool {
 // paths, but the UI has no notion of the repo dir. Paths outside the repo (or
 // when the repo dir is unknown) are returned unchanged.
 func (d *Deployer) repoRelative(path string) string {
-	if rel, inside := relToRepo(d.repoDir, path); inside {
+	if rel, inside := RelToDir(d.repoDir, path); inside {
 		return rel
 	}
 	return path
