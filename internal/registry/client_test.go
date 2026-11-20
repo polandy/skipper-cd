@@ -389,9 +389,9 @@ func TestTags_ErrorPaths(t *testing.T) {
 	// and the rows exercise what comes after it.
 	const realm = "http://auth.example.com/token"
 	challenged := func(v string) fakeStep {
-		return fakeStep{resp: fakeResp(http.StatusUnauthorized, http.Header{"Www-Authenticate": {v}}, "")}
+		return fakeStep{resp: fakeResp(http.StatusUnauthorized, http.Header{"Www-Authenticate": {v}}, "")} //nolint:bodyclose // the client under test closes it
 	}
-	token := func(body string) fakeStep { return fakeStep{resp: fakeResp(http.StatusOK, nil, body)} }
+	token := func(body string) fakeStep { return fakeStep{resp: fakeResp(http.StatusOK, nil, body)} } //nolint:bodyclose // the client under test closes it
 
 	tests := []struct {
 		name     string
@@ -427,7 +427,7 @@ func TestTags_ErrorPaths(t *testing.T) {
 			name: "token endpoint error status surfaces",
 			steps: []fakeStep{
 				challenged(`Bearer realm="` + realm + `",service="other",scope="repository:app:pull"`),
-				fakeStep{resp: fakeResp(http.StatusInternalServerError, nil, "")},
+				fakeStep{resp: fakeResp(http.StatusInternalServerError, nil, "")}, //nolint:bodyclose // the client under test closes it
 			},
 			wantErr: "token endpoint returned 500 Internal Server Error",
 			wantReqs: []string{
@@ -647,7 +647,7 @@ func TestManifestDigest_ErrorPaths(t *testing.T) {
 		},
 		{
 			name:     "http error status surfaces",
-			steps:    []fakeStep{{resp: fakeResp(http.StatusNotFound, nil, "")}},
+			steps:    []fakeStep{{resp: fakeResp(http.StatusNotFound, nil, "")}}, //nolint:bodyclose // the client under test closes it
 			wantErr:  "registry returned 404 Not Found",
 			wantReqs: []string{"HEAD http://registry.example.com/v2/app/manifests/1.0"},
 		},
@@ -701,7 +701,9 @@ func TestSchemeFor(t *testing.T) {
 // caller honest.
 func TestSend_UnparsableURLFails(t *testing.T) {
 	c := New(nil, nil)
-	if _, err := c.send(context.Background(), http.MethodGet, "://no-scheme", "", ""); err == nil {
+	resp, err := c.send(context.Background(), http.MethodGet, "://no-scheme", "", "")
+	if err == nil {
+		_ = resp.Body.Close()
 		t.Fatal("expected an error for a URL the http package cannot parse")
 	}
 }
