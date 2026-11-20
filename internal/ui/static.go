@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -11,8 +12,57 @@ import (
 // Each is served from the embedded FS through staticAsset, so a gzip-capable
 // client gets the pre-compressed body (compress.go).
 
-//go:embed static/index.html static/app.css static/app-stream.js static/app-state.js static/app-chrome.js static/app-panels.js static/app-detail.js static/app-hosts.js static/app-roster.js static/app-deploys.js static/app-autosync.js static/app-logs.js static/app-clog.js static/app-render.js static/app-helpers.js static/app-prepaint.js static/manifest.webmanifest static/sw.js static/icons static/fonts
+//go:embed static/index.html static/app.css static/app-*.js static/manifest.webmanifest static/sw.js static/icons static/fonts
 var staticFS embed.FS
+
+// prepaintScript is the blocking <head> script that applies a saved theme before
+// first paint, so the CSP can forbid inline script (ADR-0067). It lives in
+// index.html's head, outside appScripts.
+const prepaintScript = "app-prepaint"
+
+// appScripts is the one order of record for the app's plain scripts (without
+// .js): index.html loads them in this order, the service worker caches them,
+// and routes serve them. The pure layers come first, then the store, then the
+// views, then the SSE dispatcher/bootstrap last (ADR-0035 amendments).
+var appScripts = []string{
+	"app-helpers",
+	"app-render",
+	"app-state",
+	"app-chrome",
+	"app-panels",
+	"app-detail",
+	"app-hosts",
+	"app-roster",
+	"app-deploys",
+	"app-autosync",
+	"app-logs",
+	"app-clog",
+	"app-stream",
+}
+
+// Scripts returns the app script names in load order for route registration;
+// each is served at /<name>.js by ScriptHandler (as is the prepaint script).
+func Scripts() []string {
+	return slices.Clone(appScripts)
+}
+
+// scriptTags renders the <script> tags index.html loads, in load order.
+func scriptTags() string {
+	paths := scriptPaths(appScripts)
+	for i, p := range paths {
+		paths[i] = `<script src="` + p + `"></script>`
+	}
+	return strings.Join(paths, "\n")
+}
+
+// scriptPaths renders names as served paths ("/app-x.js"), in order.
+func scriptPaths(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = "/" + n + ".js"
+	}
+	return out
+}
 
 // IndexHandler serves the embedded UI HTML page, with the configured theme
 // (see internal/ui/theme.go) baked into the data-theme attribute, favicon and
@@ -38,6 +88,7 @@ func IndexHandler(theme string, themeSwitcher bool) http.Handler {
 	body = strings.ReplaceAll(body, "__FAVICON_URI__", faviconDataURI(theme))
 	body = strings.ReplaceAll(body, "__THEME_COLOR_DARK__", id.darkBase)
 	body = strings.ReplaceAll(body, "__THEME_COLOR_LIGHT__", id.lightBase)
+	body = strings.ReplaceAll(body, "__APP_SCRIPTS__", scriptTags())
 	asset := newStaticAsset("text/html; charset=utf-8", []byte(body))
 	return http.HandlerFunc(asset.ServeHTTP)
 }
@@ -93,246 +144,30 @@ func ServiceWorkerHandler(b BuildInfo) http.Handler {
 	if err != nil {
 		panic(err) // staticFS embeds static/sw.js at compile time, so this cannot fail.
 	}
-	body := []byte(strings.ReplaceAll(string(data), "__VERSION__", b.CacheID()))
+	shell := scriptPaths(append([]string{prepaintScript}, appScripts...))
+	for i, p := range shell {
+		shell[i] = "  '" + p + "',"
+	}
+	body := strings.ReplaceAll(string(data), "__VERSION__", b.CacheID())
+	out := []byte(strings.ReplaceAll(body, "  '__APP_SHELL_SCRIPTS__',", strings.Join(shell, "\n")))
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write(body)
+		_, _ = w.Write(out)
 	})
 }
 
-// AppHelpersHandler serves GET /app-helpers.js — the pure, DOM-free UI helper
-// functions extracted from the app shell (ADR-0035) so a node --test unit layer
-// can import them without a build step. The app shell loads this first and calls
-// the helpers as globals. Served no-cache so it stays in lockstep with the shell
-// it supports; the service worker caches it in the app shell for offline use.
-// Served via staticAsset, so a gzip-capable client gets the pre-compressed
-// body (see compress.go).
-func AppHelpersHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-helpers.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-helpers.js at compile time, so this cannot fail.
+// ScriptHandler serves GET /<name>.js for a name in appScripts or the prepaint
+// script. Served no-cache so it stays in lockstep with the shell; the service
+// worker caches it for offline use. Served via staticAsset, so a gzip-capable
+// client gets the pre-compressed body (see compress.go).
+func ScriptHandler(name string) http.Handler {
+	if name != prepaintScript && !slices.Contains(appScripts, name) {
+		panic("ui: unregistered script " + name)
 	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppRenderJSHandler serves GET /app-render.js — the pure HTML-string render
-// layer extracted from the app script so a node --test unit layer can exercise
-// it without a browser. The app shell loads it after app-helpers.js (whose
-// functions it calls as globals) and before app-stream.js. Served no-cache so it
-// stays in lockstep with the shell; the service worker caches it in the app
-// shell for offline use. Served via staticAsset, so a gzip-capable client gets
-// the pre-compressed body (see compress.go).
-func AppRenderJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-render.js")
+	data, err := staticFS.ReadFile("static/" + name + ".js")
 	if err != nil {
-		panic(err) // staticFS embeds static/app-render.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppStateJSHandler serves GET /app-state.js — the App namespace and the
-// shared snapshot store the view files read (ADR-0035 amendment). The app
-// shell loads it after app-helpers.js and app-render.js (whose resolve*
-// helpers it binds) and before app-stream.js. Served no-cache so it stays in
-// lockstep with the shell; the service worker caches it in the app shell for
-// offline use. Served via staticAsset, so a gzip-capable client gets the
-// pre-compressed body (see compress.go).
-func AppStateJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-state.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-state.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppChromeJSHandler serves GET /app-chrome.js — the app chrome (announcements,
-// surface registry and focus management, header controls, theme, view
-// switching, badges, PWA prompt), cut out of the app script by view (ADR-0035
-// amendment). The app shell loads it right after app-state.js and before the
-// view files. Served no-cache so it stays in lockstep with the shell; the
-// service worker caches it in the app shell for offline use. Served via
-// staticAsset, so a gzip-capable client gets the pre-compressed body (see
-// compress.go).
-func AppChromeJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-chrome.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-chrome.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppPanelsJSHandler serves GET /app-panels.js — the per-stack detail panels
-// and the row affordances that open them, shared by every view (ADR-0035
-// amendment). The app shell loads it after app-state.js and before the view
-// files. Served no-cache so it stays in lockstep with the shell; the service
-// worker caches it in the app shell for offline use. Served via staticAsset,
-// so a gzip-capable client gets the pre-compressed body (see compress.go).
-func AppPanelsJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-panels.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-panels.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppDetailJSHandler serves GET /app-detail.js — the row detail selection
-// (App.detail) every table view opens its panes through. The app shell loads it
-// after app-panels.js and before the view files. Served no-cache so it stays in
-// lockstep with the shell; the service worker caches it in the app shell for
-// offline use. Served via staticAsset, so a gzip-capable client gets the
-// pre-compressed body (see compress.go).
-func AppDetailJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-detail.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-detail.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppHostsJSHandler serves GET /app-hosts.js — the multi-host surface
-// (ADR-0048), cut out of the app script by view (ADR-0035 amendment). The app
-// shell loads it after app-detail.js and before app-stream.js. Served no-cache so it
-// stays in lockstep with the shell; the service worker caches it in the app
-// shell for offline use. Served via staticAsset, so a gzip-capable client gets
-// the pre-compressed body (see compress.go).
-func AppHostsJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-hosts.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-hosts.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppRosterJSHandler serves GET /app-roster.js — the Stacks view, cut out of
-// the app script by view (ADR-0035 amendment). The app shell loads it after
-// app-hosts.js and before app-stream.js. Served no-cache so it
-// stays in lockstep with the shell; the service worker caches it in the app
-// shell for offline use. Served via staticAsset, so a gzip-capable client gets
-// the pre-compressed body (see compress.go).
-func AppRosterJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-roster.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-roster.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppDeploysJSHandler serves GET /app-deploys.js — the Deploys view, cut out
-// of the app script by view (ADR-0035 amendment). The app shell loads it after
-// app-roster.js and before app-stream.js. Served no-cache so it
-// stays in lockstep with the shell; the service worker caches it in the app
-// shell for offline use. Served via staticAsset, so a gzip-capable client gets
-// the pre-compressed body (see compress.go).
-func AppDeploysJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-deploys.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-deploys.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppAutosyncJSHandler serves GET /app-autosync.js — the autosync control and
-// drawer (ADR-0016), cut out of the app script by view (ADR-0035 amendment).
-// The app shell loads it after app-state.js and before app-stream.js. Served no-cache
-// so it stays in lockstep with the shell; the service worker caches it in the
-// app shell for offline use. Served via staticAsset, so a gzip-capable client
-// gets the pre-compressed body (see compress.go).
-func AppAutosyncJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-autosync.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-autosync.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppLogsJSHandler serves GET /app-logs.js — the Logs view, cut out of the app
-// script by view (ADR-0035 amendment). The app shell loads it after
-// app-state.js and before app-stream.js. Served no-cache so it stays in lockstep with
-// the shell; the service worker caches it in the app shell for offline use.
-// Served via staticAsset, so a gzip-capable client gets the pre-compressed
-// body (see compress.go).
-func AppLogsJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-logs.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-logs.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppClogJSHandler serves GET /app-clog.js — the container-logs panel
-// (ADR-0037), the first view file cut out of the app script (ADR-0035
-// amendment). The app shell loads it after app-state.js and before app-stream.js.
-// Served no-cache so it stays in lockstep with the shell; the service worker
-// caches it in the app shell for offline use. Served via staticAsset, so a
-// gzip-capable client gets the pre-compressed body (see compress.go).
-func AppClogJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-clog.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-clog.js at compile time, so this cannot fail.
-	}
-	asset := newStaticAsset("text/javascript; charset=utf-8", data)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		asset.ServeHTTP(w, r)
-	})
-}
-
-// AppStreamJSHandler serves GET /app-stream.js — the SSE stream dispatcher and
-// the bootstrap, the last file of the app script cut by view (ADR-0035
-// amendment). The app shell loads it last: it imports every view's API at load
-// and runs the ordered init() sequence that starts the app. Served no-cache so
-// it stays in lockstep with the shell that loads it; the service worker caches
-// it in the app shell for offline use. Served via staticAsset, so a
-// gzip-capable client gets the pre-compressed body (see compress.go).
-func AppStreamJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-stream.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-stream.js at compile time, so this cannot fail.
+		panic(err) // staticFS embeds static/app-*.js at compile time, so this cannot fail.
 	}
 	asset := newStaticAsset("text/javascript; charset=utf-8", data)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -391,23 +226,5 @@ func FontsHandler() http.Handler {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		fileServer.ServeHTTP(w, r)
-	})
-}
-
-// AppPrepaintJSHandler serves GET /app-prepaint.js — the blocking <head>
-// script that applies a saved theme override and colour scheme before first
-// paint. It lives in its own file rather than inline so the CSP can forbid
-// inline script (ADR-0067). Served no-cache so it stays in lockstep with the
-// shell; the service worker caches it in the app shell for offline use. Too
-// small to gain from gzip, so it is written plain.
-func AppPrepaintJSHandler() http.Handler {
-	data, err := staticFS.ReadFile("static/app-prepaint.js")
-	if err != nil {
-		panic(err) // staticFS embeds static/app-prepaint.js at compile time, so this cannot fail.
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write(data)
 	})
 }

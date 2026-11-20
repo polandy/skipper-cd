@@ -176,3 +176,15 @@ renamed what was left — the SSE dispatcher that writes the store, and that
 bootstrap — to `static/app-stream.js` (`App.stream`, loaded last); `app.js` is
 gone, and the start sequence of the app is written down in one place.
 
+
+## Amendment — one script table (2026-11-20)
+
+The per-file handlers (`AppChromeJSHandler`, …) and their four registrations
+(embed list, routes, `index.html`, the service worker's `SHELL`) are replaced
+by the `appScripts` table in `static.go`, the one order of record. `embed`
+takes `static/app-*.js`, `ScriptHandler(name)` serves any registered name,
+`registerAppRoutes` loops over `Scripts()`, and `IndexHandler` and
+`ServiceWorkerHandler` render the `<script>` tags and the `SHELL` entries from
+it. A test pins the table to the `app-*.js` files on disk, so a view file
+nobody registered fails the build instead of silently not loading. The glob
+also embeds the `*.test.js` unit files (unserved); the cost is a few KB.
