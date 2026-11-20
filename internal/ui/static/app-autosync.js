@@ -317,11 +317,7 @@ App.autosync = (function () {
   // init wires the drawer's listeners, registers it as a surface and paints
   // the initial state — everything the block ran at load.
   function init() {
-    asDrawer.addEventListener('transitionend', function (e) {
-      if (e.target === asDrawer && e.propertyName === 'max-height') {
-        asDrawer.dataset.settled = String(asDrawer.classList.contains('open'));
-      }
-    });
+    App.chrome.trackDrawerSettle(asDrawer);
     App.chrome.trapFocus(asDrawer);
 
     asBtn.addEventListener('click', function () {

@@ -215,7 +215,7 @@ binary):
   is the page's one late reflow, and a swap between Playwright computing a click
   point and dispatching it moves the target out from under the click (the UC11
   root cause — the queue empty-note wraps to a second line when JetBrains Mono
-  lands). Interacting with the autosync drawer additionally waits for its
+  lands). Interacting with the autosync or Hosts drawer additionally waits for its
   `data-settled` attribute (the open transition's end, see `UI_SPEC.md`).
 - **Lint** (`make e2e-ui-lint`): type-aware ESLint over the suite. The rule that
   earns it is `no-floating-promises` — a forgotten `await` on an assertion makes
