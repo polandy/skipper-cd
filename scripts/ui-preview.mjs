@@ -202,6 +202,19 @@ async function repeated(stack, want) {
   }
   console.error(`[ui-preview] warning: ${stack} did not reach ×${want} in time; seeding continues`);
 }
+// sseEvents yields each frame of an SSE body as { event, data }.
+async function* sseEvents(body) {
+  const decoder = new TextDecoder();
+  let buf = '';
+  for await (const chunk of body) {
+    buf += decoder.decode(chunk, { stream: true });
+    for (let end; (end = buf.indexOf('\n\n')) >= 0; buf = buf.slice(end + 2)) {
+      const frame = buf.slice(0, end);
+      const event = frame.match(/^event: (.*)$/m)?.[1];
+      if (event) yield { event, data: frame.match(/^data: (.*)$/m)?.[1] };
+    }
+  }
+}
 async function healthy() {
   try {
     return (await fetch(`http://127.0.0.1:${PORT}/healthz`)).status === 200;
@@ -261,8 +274,8 @@ execFileSync(
 // The demo composes point these two images at it via the 127.0.0.1 host
 // prefix (a loopback registry is plain HTTP, like docker treats localhost
 // registries); the visible chips only ever show the tag, so the prefix does
-// not change what the UI renders. Everything else stays offline and is opted
-// out in the config below.
+// not change what the UI renders. Every other registry is unreachable (the
+// refused proxy skipper is started with).
 const NEXTCLOUD_REG_DIGEST = 'sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 const regTags = {
   'gitea/gitea': ['1.21.0', '1.22.3', '1.22.6', 'latest'],
@@ -670,8 +683,11 @@ writeFileSync(
   }),
 );
 
+// Offline: non-loopback requests (Docker Hub) fail at once — see docs/dev/ui-preview.md.
+const refused = 'http://127.0.0.1:1';
+const offline = { HTTPS_PROXY: refused, HTTP_PROXY: refused, NO_PROXY: '', no_proxy: '' };
 const proc = spawn(bin, ['-config', cfgPath], {
-  env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, STUB_PS_DIR: healthDir, STUB_FAIL_DIR: failDir },
+  env: { ...process.env, ...offline, PATH: `${stubDir}:${process.env.PATH}`, STUB_PS_DIR: healthDir, STUB_FAIL_DIR: failDir },
   stdio: ['ignore', 'inherit', 'inherit'],
 });
 proc.on('exit', (code) => {
@@ -897,18 +913,26 @@ if (SMOKE) {
   for (const want of ['success', 'rolled_back', 'failed', 'healed']) {
     if (!outcomes.has(want)) fail(`no stack ended up ${want} (got ${[...outcomes].join(', ')})`);
   }
-  // The version delta a bump must show (ADR-0053) — an empty Changes cell is a
-  // silent failure, so it is asserted rather than eyeballed. Read from the
-  // stream's replayed history, the only place image_changes is served.
+  // One stream: the replayed history up to `synced`, then stacks states until both update markers land.
   const replayed = [];
-  const stream = await fetch(`http://127.0.0.1:${PORT}/api/events`, { signal: AbortSignal.timeout(10_000) });
-  let buf = '';
-  for await (const chunk of stream.body) {
-    buf += Buffer.from(chunk).toString();
-    if (buf.includes('event: synced')) break; // end-of-replay marker
+  let updates = null;
+  try {
+    const stream = await fetch(`http://127.0.0.1:${PORT}/api/events`, { signal: AbortSignal.timeout(20_000) });
+    let replaying = true;
+    for await (const { event, data } of sseEvents(stream.body)) {
+      if (event === 'synced') replaying = false;
+      else if (replaying && event === 'deploy') replayed.push(JSON.parse(data));
+      else if (!replaying && event === 'stacks') {
+        updates = JSON.parse(data)?.updates?.stacks;
+        if (updates?.gitea?.server?.latest && updates?.nextcloud?.app?.rebuilt) break;
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'TimeoutError') throw err;
   }
-  await stream.body.cancel();
-  for (const m of buf.matchAll(/^event: deploy\ndata: (.*)$/gm)) replayed.push(JSON.parse(m[1]));
+
+  // The version delta a bump must show (ADR-0053) — an empty Changes cell is a
+  // silent failure, so it is asserted rather than eyeballed.
   const bumped = replayed.find(
     (e) => e.stack === 'nextcloud' && e.image_changes?.some((c) => c.service === 'app' && c.new?.includes('30.0.2')),
   );
@@ -923,15 +947,7 @@ if (SMOKE) {
   if (!reasons.some((r) => r.startsWith('blocked by'))) fail(`nothing is blocked (queue: ${reasons.join(', ')})`);
   if (!reasons.includes('stack')) fail(`nothing is paused per-stack (queue: ${reasons.join(', ')})`);
 
-  // The registry update check (ADR-0054): the post-run nudge is async, so wait
-  // for the snapshot to carry the two demo markers — an effect the seeded
-  // registry stub guarantees.
-  let updates = null;
-  for (let i = 0; i < 100; i++) {
-    updates = (await get('/api/v1/snapshot'))?.stacks?.updates?.stacks;
-    if (updates?.gitea?.server?.latest && updates?.nextcloud?.app?.rebuilt) break;
-    await sleep(200);
-  }
+  // The registry update check (ADR-0054), read from the stream above.
   if (updates?.gitea?.server?.latest !== '1.22.6') fail(`gitea update marker missing (got ${JSON.stringify(updates?.gitea)})`);
   if (updates?.nextcloud?.app?.rebuilt !== true) fail(`nextcloud rebuilt marker missing (got ${JSON.stringify(updates?.nextcloud)})`);
 
