@@ -80,7 +80,23 @@ and noisy for two badges; the e2e masks cover them.
 exits instead of serving: the roster has every declared stack, the audit-recorded
 outcomes include `success`, `rolled_back`, `failed` and `healed`, the pending
 registry holds one blocked and one per-stack-paused entry, and nextcloud's bump
-reports its app version delta. Non-zero on any miss.
+reports its app version delta, and the update check marks gitea's newer tag and
+nextcloud's rebuilt one. Non-zero on any miss.
+
+The two asynchronous results are read from one `/api/events` stream rather than
+polled: the replayed history up to `synced` carries the version delta, and the
+`stacks` state that follows (its baseline, then every republish after an update
+check) is read until it carries both update markers. The update check runs after
+each deploy run in the background, so this waits on the event that completes it.
+
+**The preview is offline by construction.** skipper is started with
+`HTTPS_PROXY`/`HTTP_PROXY` set to a refused port, so every non-loopback request
+fails at once; the registry stub and the peer are on loopback, which Go never
+proxies. Without it the update check asks Docker Hub about the `postgres`/`redis`
+services of the two demo stacks on every run, and a slow answer (each request may
+take up to 15 s to time out) leaves the markers missing when the smoke reads
+them. Those services now log an `update check failed … connection refused` line
+per check instead; that is expected.
 
 CI runs it on **every** push, with no path filter. It is skipper's startup smoke
 test first — nothing else asserts that the binary boots and serves with a
