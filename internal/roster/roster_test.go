@@ -45,6 +45,27 @@ func TestBuild_CarriesHookCommandsWhenDeclared(t *testing.T) {
 	}
 }
 
+func TestBuild_CarriesRolloutServicesWhenDeclared(t *testing.T) {
+	withRollout := config.Stack{Name: "web", Rollout: &config.Rollout{
+		Services:             []string{"web", "api"},
+		HealthTimeoutSeconds: 30, // deploy-time only — must not leak into the roster view
+	}}
+	got := Build([]config.Stack{withRollout, {Name: "traefik"}}, nil, historyFrom(nil), nil)
+
+	byName := map[string]Entry{}
+	for _, e := range got {
+		byName[e.Name] = e
+	}
+	if ro := byName["web"].Rollout; ro == nil {
+		t.Fatal("web should carry its rollout")
+	} else if len(ro.Services) != 2 || ro.Services[0] != "web" || ro.Services[1] != "api" {
+		t.Errorf("rollout view wrong: %+v", ro)
+	}
+	if byName["traefik"].Rollout != nil {
+		t.Error("a stack with no rollout must carry nil Rollout (omitted from JSON)")
+	}
+}
+
 func TestBuild_MergesLastOutcomePerStack(t *testing.T) {
 	ts := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
 	got := Build(

@@ -546,6 +546,15 @@ const HOOK_ICON =
 function hookCount(hooks) {
   return (hooks.pre_deploy || []).length + (hooks.post_deploy || []).length;
 }
+
+// Two exchanged arrows — a canary swapped in beside the old version.
+const ROLLOUT_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13l-3-3"/><path d="M20 15H7l3 3"/></svg>';
+// rolloutCount is how many services a stack's zero-downtime rollout cuts over
+// (ADR-0040); 0 when it declares none.
+function rolloutCount(rollout) {
+  return rollout && rollout.services ? rollout.services.length : 0;
+}
 // ── Table rows ──
 // One renderer for every row of both tables — local and peer, Deploys and
 // Stacks. The caller resolves the state-bound parts (host chip, per-host
@@ -1447,6 +1456,23 @@ const CLOSE_ICON =
 const JUMP_ICON =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M10.3 5.7l-1.4 3.2-3.2 1.4 1.4-3.2z" stroke-linejoin="round"/></svg>';
 
+// rolloutPanelHTML renders the panel a stack's Rollout badge opens: the
+// services its zero-downtime rollout cuts over (ADR-0040). Reuses the hooks
+// panel's bound frame so the two read as one component; pure, the DOM wrapper
+// is createRolloutPanel (app-panels.js).
+function rolloutPanelHTML(stack, rollout) {
+  const services = (rollout && rollout.services) || [];
+  const lines = services
+    .map(function (s) {
+      return `<div class="hooks-cmd" data-testid="rollout-service">${escapeHtml(s)}</div>`;
+    })
+    .join('');
+  return (
+    `<div class="hooks-head"><span class="hk-stack">${escapeHtml(stack)}</span><span class="hk-label">rollout services</span></div>` +
+    `<div class="hooks-group"><div class="hk-title">services<span class="hk-num">${services.length}</span></div>${lines}</div>`
+  );
+}
+
 // detailActionHTML is one labelled head button. attrs is the raw attribute
 // string the action's handler reads (already escaped by the caller).
 function detailActionHTML(action, testid, attrs, icon, label, extra) {
@@ -1473,11 +1499,12 @@ const JUMP_LABEL = Object.freeze({ deploys: 'Show in Deploys', stacks: 'Show in 
 
 // detailHeadHTML is the panel head: icon, name, host chip, badge and meta,
 // then the actions that apply, always in the order Open app · Logs · Hooks ·
-// Show in … · close. m: stack, host (chip HTML), badge (status badge HTML),
-// meta (age · duration text), links (app-link hostnames), logs (the stack runs
-// containers), logHost (a peer's name, so the logs stream through the
-// primary's proxy), hooks ({pre_deploy, post_deploy} or null), hooksOpen (the
-// Hooks pane is showing), jump (offer the jump), jumpView (its target view,
+// Rollout · Show in … · close. m: stack, host (chip HTML), badge (status badge
+// HTML), meta (age · duration text), links (app-link hostnames), logs (the
+// stack runs containers), logHost (a peer's name, so the logs stream through
+// the primary's proxy), hooks ({pre_deploy, post_deploy} or null), hooksOpen
+// (the Hooks pane is showing), rollout ({services} or null), rolloutOpen (the
+// Rollout pane is showing), jump (offer the jump), jumpView (its target view,
 // default deploys).
 function detailHeadHTML(m) {
   const stack = escapeAttr(m.stack);
@@ -1502,6 +1529,17 @@ function detailHeadHTML(m) {
       HOOK_ICON,
       'Hooks',
       `<span class="dp-n">${pre}+${post}</span>`,
+    );
+  }
+  if (rolloutCount(m.rollout) > 0) {
+    const n = rolloutCount(m.rollout);
+    actions += detailActionHTML(
+      'rollout',
+      'rollout-badge',
+      ` aria-pressed="${m.rolloutOpen ? 'true' : 'false'}" title="${escapeAttr(n + ' rollout service' + (n === 1 ? '' : 's'))}"`,
+      ROLLOUT_ICON,
+      'Rollout',
+      `<span class="dp-n">${n}</span>`,
     );
   }
   if (m.jump) {
@@ -1858,6 +1896,7 @@ if (typeof module !== 'undefined' && module.exports) {
     healthStripHTML,
     clogBtnHTML,
     hookCount,
+    rolloutCount,
     hostChipHTML,
     rosterVersionInnerHTML,
     rosterVersionCellHTML,
@@ -1891,6 +1930,7 @@ if (typeof module !== 'undefined' && module.exports) {
     diffPanelHTML,
     hookPhaseHTML,
     rolloutPhaseHTML,
+    rolloutPanelHTML,
     logLineHTML,
     logDiffBlockHTML,
     auditRowsHTML,

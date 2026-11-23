@@ -1814,6 +1814,45 @@ test("detailHeadHTML shows only the actions that apply, and routes a peer's logs
   assert.match(hooksOpen, /data-action="hooks"[^>]*aria-pressed="true"/);
 });
 
+test('detailHeadHTML offers a Rollout action for a stack that declares one', () => {
+  const html = r.detailHeadHTML({
+    stack: 'web',
+    logs: true,
+    hooks: { pre_deploy: ['a'] },
+    rollout: { services: ['web', 'api'] },
+  });
+  const actions = [...html.matchAll(/data-action="([a-z]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(actions, ['logs', 'hooks', 'rollout', 'close']);
+  assert.match(
+    html,
+    /data-action="rollout"[^>]*aria-pressed="false"[\s\S]*<span class="dp-n">2<\/span>/,
+  );
+});
+
+test('detailHeadHTML omits an empty rollout and marks the open pane pressed', () => {
+  const none = r.detailHeadHTML({ stack: 'web', rollout: { services: [] } });
+  assert.ok(!none.includes('data-action="rollout"'), 'an empty rollout must not render');
+  const open = r.detailHeadHTML({
+    stack: 'web',
+    rollout: { services: ['web'] },
+    rolloutOpen: true,
+  });
+  assert.match(open, /data-action="rollout"[^>]*aria-pressed="true"/);
+});
+
+test('rolloutPanelHTML lists the rolled services and escapes them', () => {
+  const html = r.rolloutPanelHTML('web', { services: ['web', '<b>api'] });
+  assert.match(html, /class="hk-label">rollout services</);
+  const names = [...html.matchAll(/data-testid="rollout-service">([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(names, ['web', '&lt;b&gt;api']);
+});
+
+test('rolloutCount counts the services and tolerates an absent rollout', () => {
+  assert.equal(r.rolloutCount({ services: ['a', 'b'] }), 2);
+  assert.equal(r.rolloutCount(null), 0);
+  assert.equal(r.rolloutCount({}), 0);
+});
+
 test('detailHeadHTML turns several app links into a popover button', () => {
   const html = r.detailHeadHTML({ stack: 'web', links: ['a.example.org', 'b.example.org'] });
   assert.match(html, /<button class="dp-act" type="button" data-action="app"[\s\S]*2 apps/);
