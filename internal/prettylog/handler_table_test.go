@@ -10,15 +10,22 @@ import (
 	"time"
 )
 
+// errDiskFull is the error failingWriter returns.
+var errDiskFull = errors.New("disk full")
+
+// fixedTime keeps the rendered timestamp deterministic.
+var fixedTime = time.Date(2026, 7, 20, 14, 32, 7, 0, time.UTC)
+
 // failingWriter makes Handle's write fail, so the error path is exercised
 // instead of the always-succeeding bytes.Buffer.
 type failingWriter struct{}
 
-func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+func (failingWriter) Write([]byte) (int, error) { return 0, errDiskFull }
 
 // TestHandler_RendersAnchoredMessages drives the exported handler through the
 // deploy-lifecycle messages that had no rendering test, asserting the narrated
-// body rather than a raw "key=value" fallback.
+// body ends the line, so neither a raw "key=value" fallback nor an extra tail
+// passes.
 func TestHandler_RendersAnchoredMessages(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -89,8 +96,8 @@ func TestHandler_RendersAnchoredMessages(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			newTestLogger(&buf, false).Info(tt.msg, tt.attrs...)
-			if !strings.Contains(buf.String(), tt.want) {
-				t.Errorf("render of %q = %q, want it to contain %q", tt.msg, buf.String(), tt.want)
+			if line := strings.TrimSuffix(buf.String(), "\n"); !strings.HasSuffix(line, tt.want) {
+				t.Errorf("render of %q = %q, want it to end with %q", tt.msg, line, tt.want)
 			}
 		})
 	}
@@ -124,6 +131,8 @@ func TestHandler_RunCompleteToneTable(t *testing.T) {
 
 // TestHandler_LevelGlyphTable drives a generic message at each level, calling
 // Handle directly so the Debug record is rendered despite Enabled filtering it.
+// It asserts the glyph in its position after the timestamp, since "·" also
+// appears as a separator elsewhere.
 func TestHandler_LevelGlyphTable(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -132,7 +141,7 @@ func TestHandler_LevelGlyphTable(t *testing.T) {
 	}{
 		{"error", slog.LevelError, ansiDanger + "✗" + ansiReset},
 		{"warn", slog.LevelWarn, ansiWarn + "▲" + ansiReset},
-		{"info", slog.LevelInfo, "·"},
+		{"info is uncoloured", slog.LevelInfo, "·"},
 		{"debug", slog.LevelDebug, ansiDim + "·" + ansiReset},
 	}
 	for _, tt := range tests {
@@ -140,11 +149,12 @@ func TestHandler_LevelGlyphTable(t *testing.T) {
 			var buf bytes.Buffer
 			h := New(&buf)
 			h.color = true
-			if err := h.Handle(context.Background(), recordAt(time.Now(), tt.level, "generic message")); err != nil {
+			if err := h.Handle(context.Background(), recordAt(fixedTime, tt.level, "generic message")); err != nil {
 				t.Fatalf("Handle: %v", err)
 			}
-			if !strings.Contains(buf.String(), tt.want) {
-				t.Errorf("glyph for %s = %q, want %q", tt.level, buf.String(), tt.want)
+			want := ansiDim + "14:32:07" + ansiReset + "  " + tt.want + " generic message\n"
+			if buf.String() != want {
+				t.Errorf("line for %s = %q, want %q", tt.level, buf.String(), want)
 			}
 		})
 	}
@@ -171,7 +181,7 @@ func TestHandler_GroupPrefixingTable(t *testing.T) {
 			for _, g := range tt.groups {
 				h = h.WithGroup(g)
 			}
-			rec := slog.NewRecord(time.Now(), slog.LevelInfo, "msg", 0)
+			rec := slog.NewRecord(fixedTime, slog.LevelInfo, "msg", 0)
 			rec.AddAttrs(tt.attr)
 			if err := h.Handle(context.Background(), rec); err != nil {
 				t.Fatalf("Handle: %v", err)
@@ -183,6 +193,8 @@ func TestHandler_GroupPrefixingTable(t *testing.T) {
 	}
 }
 
+// TestHandler_WithAttrsAndGroupReturnSelfWhenEmpty pins the no-op shortcut:
+// no attrs and an empty group name derive no new handler.
 func TestHandler_WithAttrsAndGroupReturnSelfWhenEmpty(t *testing.T) {
 	h := New(&bytes.Buffer{})
 	if h.WithAttrs(nil) != h {
@@ -193,14 +205,13 @@ func TestHandler_WithAttrsAndGroupReturnSelfWhenEmpty(t *testing.T) {
 	}
 }
 
+// TestHandler_HandleReturnsWriterError proves a failed write surfaces as the
+// writer's own error rather than being swallowed.
 func TestHandler_HandleReturnsWriterError(t *testing.T) {
 	h := New(failingWriter{})
-	err := h.Handle(context.Background(), recordAt(time.Now(), slog.LevelInfo, "boom"))
-	if err == nil {
-		t.Fatal("Handle = nil, want the writer's error")
-	}
-	if !strings.Contains(err.Error(), "disk full") {
-		t.Errorf("err = %v, want the writer's error", err)
+	err := h.Handle(context.Background(), recordAt(fixedTime, slog.LevelInfo, "boom"))
+	if !errors.Is(err, errDiskFull) {
+		t.Errorf("Handle = %v, want %v", err, errDiskFull)
 	}
 }
 

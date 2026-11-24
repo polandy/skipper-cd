@@ -2,6 +2,7 @@ package updatecheck
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -420,62 +421,79 @@ func TestNew_DefaultsTheClock(t *testing.T) {
 // zero-duration ticker (time.NewTicker panics on one). OnChange is the signal
 // the single run happened.
 func TestRun_NonPositiveIntervalRunsOnceAndReturns(t *testing.T) {
-	var runs int
-	c := New(Config{
-		Interval: 0,
-		Running:  func() map[string]map[string]string { return nil },
-		OnChange: func() { runs++ },
-	})
+	for _, interval := range []time.Duration{0, -time.Minute} {
+		t.Run(interval.String(), func(t *testing.T) {
+			var runs int
+			c := New(Config{
+				Interval: interval,
+				Running:  func() map[string]map[string]string { return nil },
+				OnChange: func() { runs++ },
+			})
 
-	c.Run(context.Background())
+			c.Run(context.Background())
 
-	if runs != 1 {
-		t.Fatalf("OnChange ran %d times, want exactly 1", runs)
+			if runs != 1 {
+				t.Fatalf("OnChange ran %d times, want exactly 1", runs)
+			}
+		})
 	}
 }
 
-// Every way checkService can refuse to make a claim, or fail outright.
+// Every way checkService can refuse to make a claim, or fail outright. The
+// recorded registry calls pin which step each case ends at.
 func TestCheckService_ErrorAndSkipPaths(t *testing.T) {
 	registryDown := errors.New("registry down")
+	isRegistryDown := func(err error) bool { return errors.Is(err, registryDown) }
+	isSyntaxErr := func(err error) bool {
+		var syntaxErr *json.SyntaxError
+		return errors.As(err, &syntaxErr)
+	}
+	isAnyErr := func(err error) bool { return err != nil }
 	inspectable := &fakeInspector{repoDigests: map[string]string{"redis:latest": `["redis@sha256:old"]`}}
 
 	tests := []struct {
-		name      string
-		ref       string
-		registry  *fakeRegistry
-		outputter Outputter
-		wantErr   bool
-		wantClaim bool
+		name            string
+		ref             string
+		registry        *fakeRegistry
+		outputter       Outputter
+		wantErr         func(error) bool
+		wantClaim       bool
+		wantTagCalls    int
+		wantDigestCalls int
 	}{
 		{
+			// No registry call proves it failed at parsing, before any lookup.
 			name:     "unparseable reference errors",
 			ref:      ":latest",
 			registry: &fakeRegistry{},
-			wantErr:  true,
+			wantErr:  isAnyErr,
 		},
 		{
-			name:     "tag listing failure errors",
-			ref:      "gitea/gitea:1.22.3",
-			registry: &fakeRegistry{err: registryDown},
-			wantErr:  true,
+			name:         "tag listing failure errors",
+			ref:          "gitea/gitea:1.22.3",
+			registry:     &fakeRegistry{err: registryDown},
+			wantErr:      isRegistryDown,
+			wantTagCalls: 1,
 		},
 		{
 			// A non-version tag skips the tag listing, so the registry error
 			// surfaces from the digest lookup instead.
-			name:      "manifest digest failure errors",
-			ref:       "redis:latest@40c2d6f1d8f0",
-			registry:  &fakeRegistry{err: registryDown},
-			outputter: inspectable,
-			wantErr:   true,
+			name:            "manifest digest failure errors",
+			ref:             "redis:latest@40c2d6f1d8f0",
+			registry:        &fakeRegistry{err: registryDown},
+			outputter:       inspectable,
+			wantErr:         isRegistryDown,
+			wantDigestCalls: 1,
 		},
 		{
 			// Positive control for the case below: same reference shape, but an
 			// outputter to compare against, so a moved digest is claimed.
-			name:      "moved digest is a rebuilt claim",
-			ref:       "redis:latest@40c2d6f1d8f0",
-			registry:  &fakeRegistry{digests: map[string]string{"redis:latest@40c2d6f1d8f0": "sha256:new"}},
-			outputter: inspectable,
-			wantClaim: true,
+			name:            "moved digest is a rebuilt claim",
+			ref:             "redis:latest@40c2d6f1d8f0",
+			registry:        &fakeRegistry{digests: map[string]string{"redis:latest@40c2d6f1d8f0": "sha256:new"}},
+			outputter:       inspectable,
+			wantClaim:       true,
+			wantDigestCalls: 1,
 		},
 		{
 			name:      "no outputter means no digest claim",
@@ -489,7 +507,7 @@ func TestCheckService_ErrorAndSkipPaths(t *testing.T) {
 			ref:       "redis:latest@40c2d6f1d8f0",
 			registry:  &fakeRegistry{},
 			outputter: &fakeInspector{repoDigests: map[string]string{"redis:latest": "not-json"}},
-			wantErr:   true,
+			wantErr:   isSyntaxErr,
 		},
 	}
 	for _, tt := range tests {
@@ -498,9 +516,15 @@ func TestCheckService_ErrorAndSkipPaths(t *testing.T) {
 
 			upd, _, err := c.checkService(context.Background(), tt.ref)
 
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("checkService(%q) err = nil, want an error", tt.ref)
+			if got := len(tt.registry.tagCalls); got != tt.wantTagCalls {
+				t.Errorf("checkService(%q) listed tags %d times, want %d", tt.ref, got, tt.wantTagCalls)
+			}
+			if got := len(tt.registry.digestCalls); got != tt.wantDigestCalls {
+				t.Errorf("checkService(%q) looked up digests %d times, want %d", tt.ref, got, tt.wantDigestCalls)
+			}
+			if tt.wantErr != nil {
+				if !tt.wantErr(err) {
+					t.Fatalf("checkService(%q) err = %v, not the expected error", tt.ref, err)
 				}
 				return
 			}

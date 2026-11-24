@@ -1141,6 +1141,13 @@ so no baseline shifts and no new snapshot is added.
   no hooks control; once its detail panel opens, the panel's `hooks-badge`
   action carries the pulse (`data-hook-active`) at once — a panel opened
   mid-hook must not wait for the next hookrun frame.
+- **UU5 — Hooks ↔ Rollout pseudo-tabs.** `web` declares hooks and a
+  `rollout` (its compose is rollout-eligible), so its head carries both
+  actions. From the Triggers tab, `hooks-badge` opens the `hooks-panel`;
+  `rollout-badge` then swaps it for the `rollout-panel` (`aria-pressed` moves
+  with it, the hash reads `?tab=rollout`); a second `rollout-badge` click
+  returns to Triggers, not to Hooks. Loading `#stacks/web?tab=rollout` opens
+  the rollout pane directly.
 
 ### 4.23 UI — Maske V: Multi-host federated UI (ADR-0048)
 
@@ -2548,6 +2555,7 @@ The title is the case's test or `describe` title; the spec files sit in
 | **UU2** | hook output attributed in the log | `uu-hooks.spec.ts` |
 | **UU3** | running-hook phase + inline log | `uu-hooks.spec.ts` |
 | **UU4** | running phase in the Stacks roster | `uu-hooks.spec.ts` |
+| **UU5** | hooks and rollout head actions switch panes; `?tab=rollout` deep link | `uu-hooks.spec.ts` |
 | **UV1** | merged deploy feed shows peer rows with host dots | `uv-multi-host.spec.ts` |
 | **UV2** | clicking a host dot filters to that host and toggles back | `uv-multi-host.spec.ts` |
 | **UV3** | the Hosts drawer multi-select filters the feed | `uv-multi-host.spec.ts` |

@@ -326,8 +326,12 @@ App.roster = (function () {
     panel.dataset.tab = tab;
     renderHead(panel, c, tab);
     panel.querySelector('.dp-tabs').outerHTML = tabsHTML(tabs, tab, STACK_DETAIL_ID);
-    const label = tab === DETAIL_TAB.rollout ? 'Rollout' : 'Hooks';
-    panel.querySelector('.dp-pane').outerHTML = tabPaneHTML(tabs, tab, STACK_DETAIL_ID, label);
+    panel.querySelector('.dp-pane').outerHTML = tabPaneHTML(
+      tabs,
+      tab,
+      STACK_DETAIL_ID,
+      PSEUDO_TAB_LABEL[tab],
+    );
     panel.querySelector('.dp-pane').appendChild(body || paneBody(c, tab));
   }
 
@@ -400,14 +404,10 @@ App.roster = (function () {
         const tabBtn = e.target.closest('.dp-tab');
         const paneBtn = e.target.closest('[data-action="hooks"], [data-action="rollout"]');
         if (!tabBtn && !paneBtn) return;
-        let next;
-        if (tabBtn) next = tabBtn.dataset.tab;
-        else {
-          const want = paneBtn.dataset.action; // a pseudo-tab: hooks or rollout
-          next = opts.tab === want ? resolveTab(c, tabs, opts.lastTab) : want;
-        }
-        if (opts.tab !== DETAIL_TAB.hooks && opts.tab !== DETAIL_TAB.rollout)
-          opts.lastTab = opts.tab;
+        const clicked = tabBtn ? tabBtn.dataset.tab : paneBtn.dataset.action;
+        const step = detailTabClick(opts.tab, opts.lastTab, clicked, !tabBtn);
+        const next = resolveTab(c, tabs, step.want);
+        opts.lastTab = step.lastTab;
         opts.tab = next;
         inputs = panelInputs(c, next);
         showTab(panel, c, tabs, next);

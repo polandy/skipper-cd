@@ -2050,6 +2050,42 @@ test('detailMatchesRow finds the selected row again after a rebuild', () => {
   assert.equal(h.detailMatchesRow(null, { stack: 'web' }), false);
 });
 
+test('detailTabClick switches between the hooks and rollout pseudo-tabs', () => {
+  const { hooks, rollout } = h.DETAIL_TAB;
+  const { history, triggers } = h.STACK_TAB;
+  // From a strip tab, a pseudo-tab opens and the strip tab is remembered.
+  assert.deepEqual(h.detailTabClick(history, '', hooks, true), { want: hooks, lastTab: history });
+  // One pseudo-tab to the other keeps the remembered strip tab, not the pseudo-tab.
+  assert.deepEqual(h.detailTabClick(hooks, history, rollout, true), {
+    want: rollout,
+    lastTab: history,
+  });
+  assert.deepEqual(h.detailTabClick(rollout, history, hooks, true), {
+    want: hooks,
+    lastTab: history,
+  });
+  // A second click on the open pseudo-tab returns to the strip tab.
+  assert.deepEqual(h.detailTabClick(rollout, history, rollout, true), {
+    want: history,
+    lastTab: history,
+  });
+  // A strip tab click goes there and remembers the tab it left.
+  assert.deepEqual(h.detailTabClick(triggers, history, history, false), {
+    want: history,
+    lastTab: triggers,
+  });
+  assert.deepEqual(h.detailTabClick(hooks, history, triggers, false), {
+    want: triggers,
+    lastTab: history,
+  });
+});
+
+test('PSEUDO_TAB_LABEL labels exactly the head-action panes', () => {
+  assert.deepEqual(h.PSEUDO_TAB_LABEL, { hooks: 'Hooks', rollout: 'Rollout' });
+  for (const tab of Object.values(h.STACK_TAB))
+    assert.equal(h.PSEUDO_TAB_LABEL[tab], undefined, tab);
+});
+
 test('stackDeepLink names a local or peer stack and its tab', () => {
   assert.equal(h.stackDeepLink({ host: '', stack: 'web' }), '#stacks/web');
   assert.equal(
@@ -2065,6 +2101,7 @@ test('parseStackDeepLink reads back what stackDeepLink writes', () => {
     { host: 'nuc', stack: 'web', tab: '' },
     { host: '', stack: 'web', tab: 'containers' },
     { host: 'host-b', stack: 'a b/c', tab: 'hooks' },
+    { host: '', stack: 'web', tab: 'rollout' },
   ];
   for (const link of links) assert.deepEqual(h.parseStackDeepLink(h.stackDeepLink(link)), link);
 });
