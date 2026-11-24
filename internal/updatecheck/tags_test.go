@@ -1,6 +1,9 @@
 package updatecheck
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestNewerTag_SameShapeOnly(t *testing.T) {
 	tests := []struct {
@@ -110,6 +113,37 @@ func TestNewerTag_SameShapeOnly(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := NewerTag(tt.running, tt.tags); got != tt.want {
 				t.Errorf("NewerTag(%q, %v) = %q, want %q", tt.running, tt.tags, got, tt.want)
+			}
+		})
+	}
+}
+
+// parseTagShape is what decides whether a tag may be compared at all, so its
+// edge shapes (non-numeric component, out-of-range component) matter.
+func TestParseTagShape(t *testing.T) {
+	tests := []struct {
+		tag  string
+		want tagShape
+		ok   bool
+	}{
+		{"1.2.3", tagShape{nums: []int{1, 2, 3}}, true},
+		{"v1.2", tagShape{prefix: "v", nums: []int{1, 2}}, true},
+		{"6.2-alpine", tagShape{nums: []int{6, 2}, suffix: "-alpine"}, true},
+		{"29", tagShape{nums: []int{29}}, true},
+		// A non-numeric component after a numeric one is the suffix, dot included.
+		{"1.2.alpine", tagShape{nums: []int{1, 2}, suffix: ".alpine"}, true},
+		{"latest", tagShape{}, false},
+		{"pg14", tagShape{}, false},
+		{"", tagShape{}, false},
+		// A component that overflows int is not version-shaped.
+		{"99999999999999999999", tagShape{}, false},
+		{"1.99999999999999999999", tagShape{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.tag, func(t *testing.T) {
+			got, ok := parseTagShape(tt.tag)
+			if ok != tt.ok || !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("parseTagShape(%q) = (%+v, %v), want (%+v, %v)", tt.tag, got, ok, tt.want, tt.ok)
 			}
 		})
 	}
