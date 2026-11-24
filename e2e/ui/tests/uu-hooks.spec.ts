@@ -141,3 +141,77 @@ test.describe('UU4: running phase in the Stacks roster', () => {
     skipper.releaseHook(); // let the held hook finish so the deploy settles and teardown is clean
   });
 });
+
+// web declares hooks and a rollout, so its head carries both pseudo-tab actions.
+const WEB_HOOKS_AND_ROLLOUT = `stacks:
+  web:
+    hooks:
+      pre_deploy:
+        - "echo starting backup"
+    rollout:
+      services: [app]
+`;
+
+const ROLLOUT_COMPOSE = `services:
+  app:
+    image: nginx:1.25
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.web.rule: Host(\`web.test\`)
+      traefik.http.services.web.loadbalancer.server.port: "80"
+    healthcheck:
+      test: ["CMD", "true"]
+`;
+
+// UU5 — the Hooks and Rollout head actions switch between their panes; a second
+// click on the open one returns to the strip tab left before, and ?tab=rollout
+// opens the rollout pane directly.
+test.describe('UU5: hooks and rollout pseudo-tabs', () => {
+  test.use({
+    startOptions: {
+      stacks: ['web'],
+      initialCompose: { web: ROLLOUT_COMPOSE },
+      discovery: { repoConfig: WEB_HOOKS_AND_ROLLOUT },
+    },
+  });
+
+  test('the head actions switch panes and the deep link opens Rollout', async ({ page, skipper }) => {
+    const root = `${skipper.baseURL}/`;
+    await page.goto(root);
+    await openStackDetail(page, 'web', 'triggers');
+    const detail = page.locator('[data-testid="stacks-view"] [data-testid="detail-panel"]');
+    const hooks = detail.locator('[data-testid="hooks-badge"]');
+    const rollout = detail.locator('[data-testid="rollout-badge"]');
+    const hooksPanel = detail.locator('[data-testid="hooks-panel"]');
+    const rolloutPanel = detail.locator('[data-testid="rollout-panel"]');
+    await expect(detail).toHaveAttribute('data-tab', 'triggers');
+
+    await hooks.click();
+    await expect(hooksPanel).toBeVisible();
+    await expect(hooks).toHaveAttribute('aria-pressed', 'true');
+    await expect(rollout).toHaveAttribute('aria-pressed', 'false');
+
+    await rollout.click();
+    await expect(rolloutPanel).toBeVisible();
+    await expect(hooksPanel).toHaveCount(0);
+    await expect(rolloutPanel.locator('[data-testid="rollout-service"]')).toHaveText(['app']);
+    await expect(rollout).toHaveAttribute('aria-pressed', 'true');
+    await expect(hooks).toHaveAttribute('aria-pressed', 'false');
+    await expect(page).toHaveURL(`${root}#stacks/web?tab=rollout`);
+
+    // Closing Rollout goes back to Triggers, not to the Hooks pane it replaced.
+    await rollout.click();
+    await expect(detail).toHaveAttribute('data-tab', 'triggers');
+    await expect(rolloutPanel).toHaveCount(0);
+    await expect(detail.locator('[data-testid="detail-tab"][data-tab="triggers"]')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+
+    await page.goto('about:blank');
+    await page.goto(`${root}#stacks/web?tab=rollout`);
+    await expect(detail).toHaveAttribute('data-tab', 'rollout');
+    await expect(rolloutPanel).toBeVisible();
+    await expect(rollout).toHaveAttribute('aria-pressed', 'true');
+  });
+});

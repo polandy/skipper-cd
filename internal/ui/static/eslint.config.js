@@ -176,6 +176,8 @@ module.exports = [
         App: 'readonly',
         DETAIL_TAB: 'readonly',
         DETAIL_VIEW: 'readonly',
+        PSEUDO_TAB_LABEL: 'readonly',
+        detailTabClick: 'readonly',
         ROW_KIND: 'readonly',
         rosterLastDeploy: 'readonly',
         tableRowHTML: 'readonly',

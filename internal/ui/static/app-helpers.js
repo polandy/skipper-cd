@@ -89,6 +89,22 @@ const DETAIL_TAB = Object.freeze({
   overview: 'overview',
 });
 
+// PSEUDO_TAB_LABEL names the Stacks-detail panes a head action toggles instead
+// of a strip tab; a tab missing here is a strip tab.
+const PSEUDO_TAB_LABEL = Object.freeze({
+  [DETAIL_TAB.hooks]: 'Hooks',
+  [DETAIL_TAB.rollout]: 'Rollout',
+});
+
+// detailTabClick is where a click on clicked (a strip tab, or a head action's
+// pseudo-tab when pseudo) leads from the open tab: { want, lastTab }. lastTab
+// remembers the last strip tab, so a second click on the open pseudo-tab
+// returns to it; the caller still resolves want against the offered tabs.
+function detailTabClick(open, lastTab, clicked, pseudo) {
+  const strip = PSEUDO_TAB_LABEL[open] ? lastTab : open;
+  return { want: pseudo && open === clicked ? strip : clicked, lastTab: strip };
+}
+
 // tabKeyIndex is where a key moves the focus along a strip of count tabs from
 // index (the ARIA tabs pattern: arrows wrap, Home/End jump), or -1 when the
 // key is not a tab-strip key.
@@ -2305,6 +2321,8 @@ if (typeof module !== 'undefined' && module.exports) {
     STATUS,
     DETAIL_VIEW,
     DETAIL_TAB,
+    PSEUDO_TAB_LABEL,
+    detailTabClick,
     STACK_TAB,
     stackDefaultTab,
     stackVerdict,

@@ -233,7 +233,7 @@ Minimal, reusing existing surfaces (no new streaming machinery), read-only:
    (published only with a UI sink → costs nothing headless). Plain `deploying`
    during pull/build as today. *Built:* the `rolloutrun` snapshot and the
    `rollout-phase` sub-label (UI_SPEC.md § Zero-downtime rollout).
-2. **Roster badge (optional, follow-up).** A small "rollout" marker on the
+2. **Roster badge.** A small "rollout" marker on the
    stack cell for stacks with a `rollout` block, panel listing the rolled
    services — mirrors the hooks badge. *Built:* the `rollout` roster-entry field
    and the `rollout-badge` head action + `rollout-panel` (UI_SPEC.md §
