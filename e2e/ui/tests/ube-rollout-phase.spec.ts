@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, expect } from "../fixtures/test";
@@ -36,6 +36,8 @@ const canary = (health: string) =>
 const tableDir = mkdtempSync(join(tmpdir(), "skipper-rollout-"));
 const heldTable = join(tableDir, "held.jsonl");
 const failedTable = join(tableDir, "failed.jsonl");
+// A worker that leaves this file and comes back reruns the hooks, not the module.
+test.beforeAll(() => mkdirSync(tableDir, { recursive: true }));
 test.afterAll(() => rmSync(tableDir, { recursive: true, force: true }));
 
 const phase = (p: import("@playwright/test").Page, scope: string) =>
