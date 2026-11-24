@@ -525,7 +525,7 @@ func TestDeployAllStacks_ShutdownDuringDeployIsNotAnAttempt(t *testing.T) {
 // a plain failed — but the new version did fail after it started, so the change
 // is held all the same.
 func TestDeployAllStacks_HoldsFailedStartWithRollbackDisabled(t *testing.T) {
-	env := newHeldEnv(t, config.Stack{Name: "signal", Rollback: off()})
+	env := newHeldEnv(t, config.Stack{Name: "signal", Rollback: rollbackPolicy(config.RollbackNever)})
 	env.failStart = true
 	statuses, _ := env.run("signal")
 	if !slices.Contains(statuses, events.StatusFailed) {

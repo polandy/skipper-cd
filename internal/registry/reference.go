@@ -7,14 +7,12 @@ package registry
 import (
 	"fmt"
 	"strings"
+
+	"github.com/polandy/skipper-cd/internal/imageref"
 )
 
 // dockerHubAPIHost is where the docker.io registry actually answers the v2 API.
 const dockerHubAPIHost = "registry-1.docker.io"
-
-// digestPrefix marks a value after "@" as a content digest, as opposed to the
-// short image id running_images appends to floating tags (ADR-0053).
-const digestPrefix = "sha256:"
 
 // Reference is a parsed image reference, normalized for API access: Host is
 // the registry endpoint to talk to, Repo the full repository path there
@@ -41,28 +39,18 @@ func ParseReference(s string) (Reference, error) {
 	if s == "" {
 		return Reference{}, fmt.Errorf("empty image reference")
 	}
-	ref := Reference{}
-
-	if name, after, ok := strings.Cut(s, "@"); ok {
-		if strings.HasPrefix(after, digestPrefix) {
-			ref.Digest = after
-		}
-		s = name
+	name, tag, digest := imageref.Split(s)
+	ref := Reference{Tag: tag, Digest: digest}
+	if ref.Tag == "" {
+		ref.Tag = imageref.DefaultTag
 	}
 
 	host := "docker.io"
-	rest := s
-	if first, remainder, ok := strings.Cut(s, "/"); ok &&
+	rest := name
+	if first, remainder, ok := strings.Cut(name, "/"); ok &&
 		(strings.ContainsAny(first, ".:") || first == "localhost") {
 		host = first
 		rest = remainder
-	}
-
-	// A tag colon can only appear after the last "/".
-	ref.Tag = "latest"
-	if i := strings.LastIndex(rest, ":"); i >= 0 && !strings.Contains(rest[i:], "/") {
-		ref.Tag = rest[i+1:]
-		rest = rest[:i]
 	}
 	if rest == "" {
 		return Reference{}, fmt.Errorf("image reference %q has no repository", s)

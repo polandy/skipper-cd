@@ -121,7 +121,7 @@ nixos_rebuild:
 | `self_heal_min_unhealthy_polls` | int | no | `3` | Consecutive degraded health polls a stack must show before self-heal acts (debounce), and consecutive healthy polls that end an outage. Must be ≥ 1. |
 | `self_heal_max_attempts` | int | no | `3` | Corrective redeploys per outage before self-heal gives up and reports `heal_exhausted`. Must be ≥ 1. |
 | `self_heal_cooldown_seconds` | int | no | `60` | Minimum gap between corrective redeploys of the same stack. Must be ≥ 0; an explicit `0` disables the cooldown. |
-| `rollback` | bool | no | `true` | Global default for whether a failed deploy is rolled back to the previous compose version. A per-stack `rollback` overrides it. Set `false` to make failures fail loud instead (see [Disabling rollback](#disabling-rollback)). |
+| `rollback` | bool or `patch_only` | no | `true` | Global default for whether a failed deploy is rolled back to the previous compose version. A per-stack `rollback` overrides it. Set `false` to make failures fail loud instead, or `patch_only` to roll back only patch-level image updates (see [Disabling rollback](#disabling-rollback)). |
 | `health_watch` | object | no | — | Own-stack health watchdog: detects per-service health transitions on the health poller's feed and alerts on failures/recoveries (see [Health watch](#health-watch)). Omit the section to disable. Requires `runtime_health_poll_interval_seconds` > 0. |
 | `host_name` | string | no | OS hostname | This instance's own label in the merged [multi-host](#multi-host) view. Only meaningful when other instances fan this one in, or when this one lists `peers`. |
 | `peers` | list | no | — | Other skipper instances whose read data this one fans into a single merged UI (see [Multi-host](#multi-host)). Each entry is `{ name, url }`. Omit for a single-host instance. |
@@ -191,7 +191,7 @@ Each entry under `stacks` configures one Docker Compose stack.
 | `autosync` | bool | no | *inherit* | Overrides the global `autosync` for this stack (in both directions). When unset, the stack follows the global setting. See [Autosync](autosync.md). |
 | `deploy_health_check` | section or bool | no | automatic if the compose file has a `healthcheck:` (except on-demand stacks) | Post-deploy health gate: when the stack does not become healthy after a deploy, it is rolled back to the previous version. Applied automatically at the default timeout when the compose file declares a `healthcheck:` — set this as a section to change the timeout or add an HTTP probe. A stack with `on_demand_containers` is never auto-gated. The scalar `false` explicitly disables the gate (keep a compose `healthcheck:` without gating on it); `true` enables it at the defaults. See [Health-check-gated rollback](#health-check-gated-rollback). |
 | `self_heal` | bool | no | *inherit* | Overrides the global `self_heal` for this stack (in both directions). When unset, the stack follows the global setting. See [Self-heal](#self-heal). |
-| `rollback` | bool | no | *inherit* | Overrides the global `rollback` for this stack (in both directions). When unset, the stack follows the global setting (on). Set `false` for a stateful stack that must not be reverted over forward-migrated data. See [Disabling rollback](#disabling-rollback). |
+| `rollback` | bool or `patch_only` | no | *inherit* | Overrides the global `rollback` for this stack (in every direction). When unset, the stack follows the global setting (on). Set `false` for a stateful stack that must not be reverted over forward-migrated data, or `patch_only` to still roll back patch-level image updates. See [Disabling rollback](#disabling-rollback). |
 | `update_check` | bool | no | `true` | Set `false` to exclude this stack from the registry [update check](#update-check) — for a stack meant to lag behind upstream, or whose registry is unreachable. Never hash-tracked. |
 | `depends_on` | list of strings | no | — | Names of other stacks that must deploy before this one. Entries must name defined stacks and the graph must be acyclic. See [Deploy ordering](#deploy-ordering). |
 | `hooks` | section | no | — | Shell commands run before (`pre_deploy`) and after (`post_deploy`) this stack's deploy — e.g. a database backup before it updates. Never hash-tracked. See [Deploy hooks](#deploy-hooks). |
@@ -364,6 +364,23 @@ When rollback is off and a deploy fails (`up`, health gate, or a `post_deploy` h
 - The change is [held](#held-changes): it waits for the next push or a retry, instead of being redeployed on every [reconcile](#periodic-reconcile). Reverting the change in Git brings the stack back to the last deployed version.
 
 This only disables the compose-file restore. Keep `deploy_health_check` alongside it if you still want failures **detected** and reported (just not reverted).
+
+### Rolling back patch updates only
+
+A patch bump rarely migrates data; a minor or major bump often does. `rollback: patch_only` keeps the rollback for the small steps and fails loud on the big ones:
+
+```yaml
+stacks:
+  - name: nextcloud
+    rollback: patch_only     # revert 1.2.3 -> 1.2.4, keep 1.2 -> 1.3 failed
+```
+
+skipper compares each service's image with the one the stack last deployed. The largest step across services decides:
+
+- **Rolled back:** no image changed (a config-only change), the same version tag with a different pinned digest (`app:1.2.3@sha256:…`), or a bump of the third or a later number (`1.2.3` → `1.2.4`).
+- **Left running and held, as with `false`:** a bump of the second number (`1.2` → `1.3`, minor) or the first (`15` → `16`, major), and anything that cannot be classified — a tag that is not a version (`latest`, a git SHA), a tag of another shape (`1.2` → `1.2.3`, `-alpine` → `-bookworm`), a new digest under a non-version tag, another image, an added or removed service, and any service with `build:`.
+
+The `failed` event says why the rollback was skipped, e.g. `rollback skipped: postgres 15 -> 16 is a major update`.
 
 ## Held changes
 

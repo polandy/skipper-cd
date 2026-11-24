@@ -98,7 +98,7 @@ var convergeUp = []string{"compose", "up", "-d", "--remove-orphans"}
 // must bring the containers back to the recorded version, not just release the
 // hold over a stack that still runs the failed one.
 func TestDeployAllStacks_RevertOfHeldChangeConvergesToRecordedVersion(t *testing.T) {
-	env := newHeldEnv(t, config.Stack{Name: "signal", Rollback: off()})
+	env := newHeldEnv(t, config.Stack{Name: "signal", Rollback: rollbackPolicy(config.RollbackNever)})
 	holdThenRevert(t, env)
 	from := len(env.runner.calls)
 	serveContainers(env, psHeldVersion, psRecorded, nil)

@@ -399,6 +399,11 @@ UI suite reuses.
   a `generic` target and stacks `api` and `web`, the startup run POSTs one
   `"kind": "run_digest"` payload listing `[api web]` with both events, and no
   single `success` payload.
+- **P35 — `rollback: patch_only` gates by the update level** (ADR-0074,
+  `STUB_DOCKER_FAIL_NTH_UP=2`): with that key on a stack, a failed patch bump
+  (`1.25.1 -> 1.25.2`) is `rolled_back` with three `up -d`, while a failed minor
+  bump (`1.25 -> 1.26`) emits `failed` naming `app 1.25 -> 1.26 is a minor
+  update`, runs exactly two `up -d`, and `skipper_stack_held{stack}` = 1.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2439,6 +2444,7 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P32** | `TestE2E_AllowedHostsGuardUIButNotWebhookOrHealthz` | `config_test.go` |
 | **P33** | `TestE2E_UnknownConfigKeyFailsStartup` | `config_test.go` |
 | **P34** | `TestE2E_NotifiesRunSuccessesAsOneDigest` | `notifications_test.go` |
+| **P35** | `TestE2E_RollbackPatchOnlyGatesByUpdateLevel` | `pipeline_test.go` |
 
 ### 6.2 UI (Playwright)
 

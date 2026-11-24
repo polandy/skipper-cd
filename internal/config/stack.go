@@ -68,13 +68,11 @@ type Stack struct {
 	SelfHeal *bool `yaml:"self_heal"`
 
 	// Rollback overrides the global rollback for this stack. nil means inherit
-	// the global setting (which defaults to on). When off, a failed deploy is
-	// not restored to the previous compose version: it is marked failed, the
-	// failed containers are left running for inspection, and the change stays
-	// pending. Use it for stateful stacks whose forward migrations make
-	// restoring the old image over migrated data unsafe. See ADR-0050. Never
+	// the global setting (which defaults to RollbackAlways). RollbackNever
+	// leaves a failed new version running and held; RollbackPatchOnly does so
+	// unless no image moved past a patch bump (ADR-0050, ADR-0074). Never
 	// hashed — a runtime failure policy, so toggling it does not itself redeploy.
-	Rollback *bool `yaml:"rollback"`
+	Rollback *RollbackPolicy `yaml:"rollback"`
 
 	// UpdateCheck overrides the global registry update check for this stack.
 	// nil means inherit (on whenever the check itself is enabled); false opts

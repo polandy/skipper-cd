@@ -1,6 +1,6 @@
 # ADR-0050: Per-stack (and global) rollback opt-out for stateful stacks
 
-Status: accepted
+Status: accepted; amended by ADR-0074 (`rollback: patch_only` gates the restore by the image update level)
 Date: 2026-07-25
 
 ## Context

@@ -194,6 +194,53 @@ func TestE2E_RollbackDisabledLeavesFailureHeld(t *testing.T) {
 	}
 }
 
+// TestE2E_RollbackPatchOnlyGatesByUpdateLevel (P35): with `rollback: patch_only`
+// a failed patch bump is restored, while a failed minor bump stays running and
+// held with the step named in the event error (ADR-0074).
+func TestE2E_RollbackPatchOnlyGatesByUpdateLevel(t *testing.T) {
+	tests := []struct {
+		name, from, to string
+		wantStatus     string
+		wantUps        int
+		wantReason     string
+	}{
+		{name: "patch bump rolls back", from: "1.25.1", to: "1.25.2", wantStatus: "rolled_back", wantUps: 3},
+		{name: "minor bump stays held", from: "1.25", to: "1.26", wantStatus: "failed", wantUps: 2,
+			wantReason: "rollback skipped: app 1.25 -> 1.26 is a minor update"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newSkipper(t, map[string]string{"STUB_DOCKER_FAIL_NTH_UP": "2"}, "", []string{"web"})
+			s.stackCfg = map[string]string{"web": "    rollback: patch_only\n"}
+			s.seedFiles = map[string]string{"web/docker-compose.yml": "services:\n  app:\n    image: nginx:" + tt.from + "\n"}
+			s.bootstrap(t)
+
+			es := s.openEvents()
+			es.awaitStreamReady("web")
+
+			s.setStackImage("web", tt.to)
+			if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+				t.Fatalf("webhook status = %d, want 202", code)
+			}
+			es.waitEvent("web", tt.wantStatus)
+
+			if got := s.dockerUps("web"); got != tt.wantUps {
+				t.Errorf("ups = %d, want %d", got, tt.wantUps)
+			}
+			if tt.wantReason == "" {
+				return
+			}
+			s.waitFor("the change to be held", func() bool {
+				v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+				return ok && v == 1
+			})
+			if errs := es.errors("web", "failed"); len(errs) != 1 || !strings.Contains(errs[0], tt.wantReason) {
+				t.Errorf("failed event errors = %q, want one naming %q", errs, tt.wantReason)
+			}
+		})
+	}
+}
+
 // TestE2E_HealthProbeFailureRollsBackUnhealthy (P16): a stack whose
 // deploy_health_check URL stops answering 2xx fails the gate, is rolled back,
 // the rollback's rerun of the same gate fails too, and so does the one

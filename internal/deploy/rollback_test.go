@@ -15,6 +15,8 @@ import (
 
 // --- rollback tests ---
 
+func rollbackPolicy(p config.RollbackPolicy) *config.RollbackPolicy { return &p }
+
 // selectiveErrRunner fails only on specific compose subcommands.
 type selectiveErrRunner struct {
 	calls       []runCall
@@ -242,7 +244,7 @@ func TestDeployStack_RollbackDisabled_NoRestoreOnUpFailure(t *testing.T) {
 	runner := &countingErrRunner{failOnNthUp: 1, upCount: &upCallCount}
 	d := New(Config{Runner: runner, CommitReader: cr, RepoDir: baseDir, StateDir: t.TempDir()})
 
-	stack := config.Stack{Name: "mystack", Rollback: boolPtr(false)}
+	stack := config.Stack{Name: "mystack", Rollback: rollbackPolicy(config.RollbackNever)}
 	state := &persistedState{
 		Stacks:             map[string]stackFileHashes{"mystack": {"old": "oldhash"}},
 		Images:             map[string]serviceImageByName{},
@@ -270,11 +272,11 @@ func TestDeployStack_RollbackDisabled_NoRestoreOnUpFailure(t *testing.T) {
 func TestDeployAllStacks_RollbackDisabled_EmitsFailedNotRolledBack(t *testing.T) {
 	tests := []struct {
 		name     string
-		global   *bool
-		perStack *bool
+		global   *config.RollbackPolicy
+		perStack *config.RollbackPolicy
 	}{
-		{name: "global off, per-stack inherit", global: boolPtr(false), perStack: nil},
-		{name: "global on, per-stack opt-out", global: boolPtr(true), perStack: boolPtr(false)},
+		{name: "global off, per-stack inherit", global: rollbackPolicy(config.RollbackNever), perStack: nil},
+		{name: "global on, per-stack opt-out", global: rollbackPolicy(config.RollbackAlways), perStack: rollbackPolicy(config.RollbackNever)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

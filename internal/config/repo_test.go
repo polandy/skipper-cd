@@ -213,13 +213,13 @@ func TestLoadRepoStacks_AppliesRollbackOverride(t *testing.T) {
 	repoDir := writeRepo(t, map[string]string{
 		"stacks/web/docker-compose.yml": minimalCompose,
 	})
-	overrides := []Stack{{Name: "web", Rollback: boolPtr(false)}}
+	overrides := []Stack{{Name: "web", Rollback: policyPtr(RollbackNever)}}
 
 	repo, stackErrs, err := LoadRepoStacks(filepath.Join(repoDir, "stacks"), overrides, "")
 	if err != nil || len(stackErrs) != 0 || len(repo.Stacks) != 1 {
 		t.Fatalf("LoadRepoStacks: err=%v stackErrs=%v stacks=%v", err, stackErrs, repo.Stacks)
 	}
-	if r := repo.Stacks[0].Rollback; r == nil || *r {
+	if r := repo.Stacks[0].Rollback; r == nil || *r != RollbackNever {
 		t.Errorf("Rollback override not applied: %+v", r)
 	}
 }
@@ -461,8 +461,10 @@ func TestLoadRepoStacks_ConfigHashTracksDeployInputsOnly(t *testing.T) {
 	}
 	// rollback is a runtime failure policy (ADR-0050) → never hashed; toggling
 	// the opt-out must not redeploy an otherwise-unchanged stack.
-	if withRollback := hashFor(t, &Stack{Rollback: boolPtr(false)}); withRollback != base {
-		t.Error("ConfigHash must ignore rollback")
+	for _, p := range []RollbackPolicy{RollbackNever, RollbackPatchOnly} {
+		if withRollback := hashFor(t, &Stack{Rollback: policyPtr(p)}); withRollback != base {
+			t.Errorf("ConfigHash must ignore rollback: %s", p)
+		}
 	}
 	// update_check is a display policy (ADR-0054) → never hashed; opting a
 	// stack out of the update check must not redeploy it.

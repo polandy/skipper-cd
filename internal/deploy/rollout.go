@@ -49,13 +49,13 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 	if nonRolled := cf.servicesExcept(rolled); len(nonRolled) > 0 {
 		upArgs := append([]string{"up", "-d", "--remove-orphans", "--"}, nonRolled...)
 		if err := d.runDockerCompose(ctx, run, upArgs...); err != nil {
-			return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
+			return d.rollBackFailedDeploy(ctx, run, cf, state, "docker compose up", err)
 		}
 		if err := d.awaitReady(ctx, run, nonRolled...); err != nil {
 			if errors.Is(err, errStillStarting) {
 				return stillStartingError(run, err)
 			}
-			return d.rollBackFailedDeploy(ctx, run, state, "health check", err)
+			return d.rollBackFailedDeploy(ctx, run, cf, state, "health check", err)
 		}
 	}
 
@@ -69,7 +69,7 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 		return fmt.Errorf("rollout %q: %w (%w)%w", service, err, ErrRolledBack, errNewVersionMark)
 	}
 	// Unknown state mid-cutover → git-restore rollback for a defined one.
-	return d.rollBackFailedDeploy(ctx, run, state, "rollout "+service, err)
+	return d.rollBackFailedDeploy(ctx, run, cf, state, "rollout "+service, err)
 }
 
 // rollServices cuts the services over in order, publishing which one rolls, and
