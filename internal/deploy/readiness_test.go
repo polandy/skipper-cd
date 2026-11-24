@@ -272,7 +272,7 @@ func TestAwaitReady_RollbackDisabledNeverRollsForward(t *testing.T) {
 	env := newReadinessEnv(t)
 	env.health(func(int) containerLine { return appContainer("running", "unhealthy", 0) })
 
-	err := env.deploy(t, config.Stack{Name: "mystack", Rollback: boolPtr(false)})
+	err := env.deploy(t, config.Stack{Name: "mystack", Rollback: rollbackPolicy(config.RollbackNever)})
 	if !errors.Is(err, ErrNewVersionFailed) || errors.Is(err, ErrRolledBack) || errors.Is(err, ErrRollbackUnhealthy) {
 		t.Fatalf("expected a plain held failure, got %v", err)
 	}

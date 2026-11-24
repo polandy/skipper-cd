@@ -268,7 +268,7 @@ func (d *Deployer) applyNewVersion(ctx context.Context, run stackRun, compose *c
 	} else {
 		// --remove-orphans removes containers for services deleted from docker-compose.yml.
 		if err := d.runDockerCompose(ctx, run, "up", "-d", "--remove-orphans"); err != nil {
-			return d.rollBackFailedDeploy(ctx, run, state, "docker compose up", err)
+			return d.rollBackFailedDeploy(ctx, run, compose, state, "docker compose up", err)
 		}
 	}
 	stage, err := d.verifyNewVersion(ctx, run)
@@ -278,7 +278,7 @@ func (d *Deployer) applyNewVersion(ctx context.Context, run stackRun, compose *c
 	if errors.Is(err, errStillStarting) {
 		return stillStartingError(run, err)
 	}
-	return d.rollBackFailedDeploy(ctx, run, state, stage, err)
+	return d.rollBackFailedDeploy(ctx, run, compose, state, stage, err)
 }
 
 // verifyNewVersion runs the gates an applied new version must pass: the

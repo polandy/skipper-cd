@@ -129,10 +129,10 @@ type Config struct {
 	// See docs/user/autosync.md.
 	Autosync *bool `yaml:"autosync"`
 
-	// Rollback is the global default for whether a failed deploy is rolled back
-	// to the previous compose version. nil means true (on). A per-stack Rollback
-	// overrides it. See RollbackEnabled and ADR-0050.
-	Rollback *bool `yaml:"rollback"`
+	// Rollback is the global default for when a failed deploy is rolled back to
+	// the previous compose version. nil means RollbackAlways. A per-stack
+	// Rollback overrides it. See RollbackPolicyFor, ADR-0050 and ADR-0074.
+	Rollback *RollbackPolicy `yaml:"rollback"`
 
 	// UpdateCheck configures the read-only registry update check (ADR-0054).
 	// Optional — omitting the section runs the check at the defaults (on,
@@ -256,11 +256,11 @@ func (c *Config) StackByName(name string) (Stack, bool) {
 	return Stack{}, false
 }
 
-// stackFlag resolves a per-stack boolean policy: the stack's own override when
-// it sets one, otherwise def. A name that is not in stacks falls back to def
+// stackFlag resolves a per-stack policy: the stack's own override when it sets
+// one, otherwise def. A name that is not in stacks falls back to def
 // too, so a removed or parked stack answers with the global default rather
 // than a stale override.
-func stackFlag(stacks []Stack, name string, override func(Stack) *bool, def bool) bool {
+func stackFlag[T any](stacks []Stack, name string, override func(Stack) *T, def T) T {
 	for _, s := range stacks {
 		if s.Name == name {
 			if v := override(s); v != nil {
@@ -270,21 +270,6 @@ func stackFlag(stacks []Stack, name string, override func(Stack) *bool, def bool
 		}
 	}
 	return def
-}
-
-// RollbackEnabled reports whether automatic rollback is effective for the named
-// stack: the per-stack override when set, otherwise the global default, which
-// is on unless explicitly disabled. An unknown name falls back to the global
-// default. See ADR-0050.
-func (c *Config) RollbackEnabled(name string) bool {
-	return c.EffectiveRollback(c.Stacks, name)
-}
-
-// EffectiveRollback is RollbackEnabled over an explicit stack set (see
-// EffectiveSelfHeal). The default is on: rollback happens unless a per-stack
-// or the global rollback is explicitly false.
-func (c *Config) EffectiveRollback(stacks []Stack, name string) bool {
-	return stackFlag(stacks, name, func(s Stack) *bool { return s.Rollback }, c.Rollback == nil || *c.Rollback)
 }
 
 // Load reads and validates the configuration file at the given path.

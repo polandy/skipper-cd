@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/polandy/skipper-cd/internal/config"
 	"github.com/polandy/skipper-cd/internal/metrics"
 )
 
@@ -48,19 +49,23 @@ func (m silentMark) Error() string { return "" }
 func (m silentMark) Unwrap() error { return m.target }
 
 // rollBackFailedDeploy handles a deploy that failed at the given stage ("docker
-// compose up" or "health check"): it attempts a rollback and wraps the outcome
-// so DeployAllStacks emits rolled_back on success, rolled_back_unhealthy when
-// the restored version also fails the health gate, and failed otherwise
-// (errors.Is on ErrRolledBack / ErrRollbackUnhealthy).
-func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, state *persistedState, stage string, cause error) error {
-	// Rollback opt-out (ADR-0050): when disabled for this stack, fail loud
-	// instead of restoring the previous compose version. The failed containers
-	// are left running for inspection, the deploy is marked failed, and the
-	// change stays pending so the next sync retries. For stateful stacks whose
-	// forward migrations make restoring the old image over migrated data unsafe.
-	if run.stack.Rollback != nil && !*run.stack.Rollback {
+// compose up" or "health check"): unless the stack's rollback policy skips the
+// restore (a held failed), it attempts a rollback and wraps the outcome so
+// DeployAllStacks emits rolled_back on success, rolled_back_unhealthy when the
+// restored version also fails the health gate, and failed otherwise (errors.Is
+// on ErrRolledBack / ErrRollbackUnhealthy).
+func (d *Deployer) rollBackFailedDeploy(ctx context.Context, run stackRun, compose *composeFile, state *persistedState, stage string, cause error) error {
+	// A skipped restore leaves the failed version running and held (ADR-0050).
+	switch rollbackPolicyOf(run.stack) {
+	case config.RollbackNever:
 		slog.Error(stage+" failed; automatic rollback is disabled for this stack, leaving the failed version running for inspection", "stack", run.stack.Name, "err", cause)
 		return fmt.Errorf("%s: %w%w", stage, cause, errNewVersionMark)
+	case config.RollbackPatchOnly:
+		// Restoring an older image over data a bigger update migrated (ADR-0074).
+		if reason := updateBeyondPatch(compose, state.imagesFor(run.stack.Name)); reason != "" {
+			slog.Error(stage+" failed; rollback skipped (rollback: patch_only), leaving the failed version running for inspection", "stack", run.stack.Name, "reason", reason, "err", cause)
+			return fmt.Errorf("%s: %w (rollback skipped: %s)%w", stage, cause, reason, errNewVersionMark)
+		}
 	}
 
 	slog.Error(stage+" failed, attempting rollback", "stack", run.stack.Name, "err", cause)

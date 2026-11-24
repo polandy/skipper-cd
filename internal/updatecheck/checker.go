@@ -1,3 +1,7 @@
+// Package updatecheck periodically compares what a stack's containers run
+// against what their registries offer, and reports the answer — in the UI and
+// as an optional notification. It is read-only: acting on an update stays a
+// git commit (ADR-0054, complementing ADR-0030's delegation to Renovate).
 package updatecheck
 
 import (
@@ -12,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/polandy/skipper-cd/internal/imageref"
 	"github.com/polandy/skipper-cd/internal/registry"
 )
 
@@ -247,12 +252,12 @@ func (c *Checker) checkService(ctx context.Context, ref string) (upd *ServiceUpd
 	}
 	result := ServiceUpdate{Running: parsed.Tag}
 
-	if _, versionShaped := parseTagShape(parsed.Tag); versionShaped {
+	if _, versionShaped := imageref.ParseShape(parsed.Tag); versionShaped {
 		tags, err := c.cfg.Registry.Tags(ctx, ref)
 		if err != nil {
 			return nil, "", err
 		}
-		if latest := NewerTag(parsed.Tag, tags); latest != "" {
+		if latest := imageref.NewerTag(parsed.Tag, tags); latest != "" {
 			result.Latest = latest
 			return &result, "tag:" + latest, nil
 		}
