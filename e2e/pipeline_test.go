@@ -840,6 +840,57 @@ func TestE2E_RolloutUnhealthyCanaryKeepsOldContainer(t *testing.T) {
 	}
 }
 
+// TestE2E_RolloutStillStartingCanaryIsKeptAndHeld (P36): a canary still
+// starting when health_timeout_seconds runs out is undecided (ADR-0072
+// amendment): it is neither stopped nor removed, the old container keeps
+// serving, and the deploy is `failed` and held — never `rolled_back` — with
+// the timeout's shortfall against the healthcheck budget named.
+func TestE2E_RolloutStillStartingCanaryIsKeptAndHeld(t *testing.T) {
+	s := newSkipper(t, nil, "", []string{"web"})
+	table := filepath.Join(s.base, "containers.jsonl")
+	s.stubEnv = map[string]string{"STUB_DOCKER_ROLLOUT_FILE": table, "STUB_DOCKER_CANARY_HEALTH": "starting"}
+	s.stackCfg = map[string]string{"web": "    rollout:\n      services: [app]\n      health_timeout_seconds: 1\n"}
+	s.seedFiles = map[string]string{"web/docker-compose.yml": traefikCompose("1.25")}
+	s.bootstrap(t)
+
+	es := s.openEvents()
+	es.awaitStreamReady("web")
+	startupCalls := len(s.dockerLogLines())
+
+	writeFile(t, filepath.Join(s.origin, "web", "docker-compose.yml"), traefikCompose("1.26"))
+	git(t, s.origin, "commit", "-am", "bump web to 1.26")
+	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
+		t.Fatalf("webhook status = %d, want 202", code)
+	}
+	es.waitEvent("web", "failed")
+
+	if es.has("web", "rolled_back") || es.has("web", "rolled_back_unhealthy") {
+		t.Fatal("an undecided canary must never report a rollback")
+	}
+	msg := strings.Join(es.errors("web", "failed"), "\n")
+	for _, want := range []string{
+		"still starting", "the canary keeps running beside the old version", "not rolled back",
+		"POST /api/stacks/web/retry", "rollout.health_timeout_seconds: 1 is below the compose healthcheck budget",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("failed event error %q lacks %q", msg, want)
+		}
+	}
+	for _, line := range s.dockerLogLines()[startupCalls:] {
+		_, args, _ := strings.Cut(line, "\t")
+		if strings.HasPrefix(args, "stop ") || strings.HasPrefix(args, "rm ") {
+			t.Errorf("no container may be stopped or removed, got %q", args)
+		}
+	}
+	if b, err := os.ReadFile(table); err != nil || !strings.Contains(string(b), `"ID":"old"`) || !strings.Contains(string(b), `"ID":"canary"`) {
+		t.Errorf("container table = %q (err=%v), want old and canary both kept", b, err)
+	}
+	s.waitFor("the change to be held", func() bool {
+		v, ok := metricValue(s.metricsBody(), `skipper_stack_held{stack="web"}`)
+		return ok && v == 1
+	})
+}
+
 // traefikCompose is a rollout-eligible compose file: routed by Traefik labels,
 // no host port, no container_name, and a healthcheck as the readiness signal.
 func traefikCompose(tag string) string {
