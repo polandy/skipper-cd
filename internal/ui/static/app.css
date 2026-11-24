@@ -3250,7 +3250,7 @@
      are content, not cards. The Containers head drops the stack name — the
      panel head already names it. */
   .dp-pane > .health-panel, .dp-pane > .audit-panel, .dp-pane > .watched-panel, .dp-pane > .hooks-panel,
-  .dp-pane > .diff-panel, .dp-pane > .files-list {
+  .dp-pane > .rollout-panel, .dp-pane > .diff-panel, .dp-pane > .files-list {
     background: none; box-shadow: none; border: 0; border-radius: 0; animation: none;
   }
   .dp-pane .health-panel .hp-head-who { display: none; }
@@ -3772,16 +3772,17 @@
   .hook-phase .clog-btn { width: 17px; height: 15px; }
   .hook-phase .clog-btn svg { width: 10px; height: 10px; }
 
-  /* Bound hooks panel (variant A, accent bar) listing the configured commands. */
-  .hooks-panel {
+  /* Bound hooks panel (variant A, accent bar) listing the configured commands;
+     the rollout panel reuses the same frame to list its services. */
+  .hooks-panel, .rollout-panel {
     margin: -2px 4px 8px; background: var(--bg-sunken);
     border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius);
     box-shadow: inset 3px 0 0 var(--accent); overflow: hidden;
   }
-  .hooks-panel .hooks-head { display: flex; align-items: center; gap: 9px; padding: 9px 16px;
+  .hooks-panel .hooks-head, .rollout-panel .hooks-head { display: flex; align-items: center; gap: 9px; padding: 9px 16px;
     border-bottom: 1px solid var(--border); }
-  .hooks-panel .hk-stack { font-weight: 600; font-size: 12px; }
-  .hooks-panel .hk-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+  .hooks-panel .hk-stack, .rollout-panel .hk-stack { font-weight: 600; font-size: 12px; }
+  .hooks-panel .hk-label, .rollout-panel .hk-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 1px; }
   .hooks-group { padding: 10px 16px; }
   .hooks-group + .hooks-group { border-top: 1px solid var(--border); }

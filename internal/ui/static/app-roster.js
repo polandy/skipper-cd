@@ -20,6 +20,7 @@ App.roster = (function () {
     createWatchedPanel,
     createHealthPanel,
     createHooksPanel,
+    createRolloutPanel,
   } = App.panels;
   const { hostChip, hostChipKeydown, applyHostFilter, toggleHostFilterTo } = App.hosts;
   const detail = App.detail;
@@ -270,6 +271,7 @@ App.roster = (function () {
     const offered = function (t) {
       return (
         (t === DETAIL_TAB.hooks && hookCount(c.entry.hooks || {}) > 0) ||
+        (t === DETAIL_TAB.rollout && rolloutCount(c.entry.rollout || {}) > 0) ||
         tabs.some(function (x) {
           return x.id === t;
         })
@@ -289,6 +291,8 @@ App.roster = (function () {
       logHost: c.host,
       hooks: c.entry.hooks,
       hooksOpen: tab === DETAIL_TAB.hooks,
+      rollout: c.entry.rollout,
+      rolloutOpen: tab === DETAIL_TAB.rollout,
       jump: !c.peer,
     });
     panel.dataset.links = linksKey(c.stack, c.host);
@@ -304,6 +308,8 @@ App.roster = (function () {
         return createAuditPanel(c.stack, c.peer);
       case DETAIL_TAB.hooks:
         return createHooksPanel(c.stack, c.peer ? c.entry.hooks : undefined);
+      case DETAIL_TAB.rollout:
+        return createRolloutPanel(c.stack, c.peer ? c.entry.rollout : undefined);
       default:
         return createWatchedPanel(c.stack, c.peer);
     }
@@ -313,14 +319,15 @@ App.roster = (function () {
   // keeps one detail open at a time.
   const STACK_DETAIL_ID = 'stack-detail';
 
-  // showTab points the panel's head, tab strip and pane at tab. Hooks is a
-  // pseudo-tab the head's Hooks action toggles; it selects no strip tab.
-  // body, when given, is kept instead of building the pane anew.
+  // showTab points the panel's head, tab strip and pane at tab. Hooks and
+  // Rollout are pseudo-tabs the head's actions toggle; they select no strip
+  // tab. body, when given, is kept instead of building the pane anew.
   function showTab(panel, c, tabs, tab, body) {
     panel.dataset.tab = tab;
     renderHead(panel, c, tab);
     panel.querySelector('.dp-tabs').outerHTML = tabsHTML(tabs, tab, STACK_DETAIL_ID);
-    panel.querySelector('.dp-pane').outerHTML = tabPaneHTML(tabs, tab, STACK_DETAIL_ID, 'Hooks');
+    const label = tab === DETAIL_TAB.rollout ? 'Rollout' : 'Hooks';
+    panel.querySelector('.dp-pane').outerHTML = tabPaneHTML(tabs, tab, STACK_DETAIL_ID, label);
     panel.querySelector('.dp-pane').appendChild(body || paneBody(c, tab));
   }
 
@@ -391,13 +398,16 @@ App.roster = (function () {
       });
       panel.addEventListener('click', function (e) {
         const tabBtn = e.target.closest('.dp-tab');
-        const hooksBtn = e.target.closest('[data-action="hooks"]');
-        if (!tabBtn && !hooksBtn) return;
+        const paneBtn = e.target.closest('[data-action="hooks"], [data-action="rollout"]');
+        if (!tabBtn && !paneBtn) return;
         let next;
         if (tabBtn) next = tabBtn.dataset.tab;
-        else if (opts.tab === DETAIL_TAB.hooks) next = resolveTab(c, tabs, opts.lastTab);
-        else next = DETAIL_TAB.hooks;
-        if (opts.tab !== DETAIL_TAB.hooks) opts.lastTab = opts.tab;
+        else {
+          const want = paneBtn.dataset.action; // a pseudo-tab: hooks or rollout
+          next = opts.tab === want ? resolveTab(c, tabs, opts.lastTab) : want;
+        }
+        if (opts.tab !== DETAIL_TAB.hooks && opts.tab !== DETAIL_TAB.rollout)
+          opts.lastTab = opts.tab;
         opts.tab = next;
         inputs = panelInputs(c, next);
         showTab(panel, c, tabs, next);

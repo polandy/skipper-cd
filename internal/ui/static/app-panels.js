@@ -116,6 +116,12 @@ App.panels = (function () {
     });
     return e && e.hooks ? e.hooks : null;
   }
+  function rolloutFor(stack) {
+    const e = S.rosterSnap.find(function (r) {
+      return r.name === stack;
+    });
+    return e && e.rollout ? e.rollout : null;
+  }
   // Bound panel (variant A) listing the configured commands, from the snapshot.
   // hooks is optional: a peer's panel passes the peer's roster entry hooks.
   function createHooksPanel(stack, hooks) {
@@ -136,6 +142,18 @@ App.panels = (function () {
       `<div class="hooks-head"><span class="hk-stack">${escapeHtml(stack)}</span><span class="hk-label">deploy hooks</span></div>` +
       group('pre_deploy', hooks.pre_deploy) +
       group('post_deploy', hooks.post_deploy);
+    return panel;
+  }
+
+  // createRolloutPanel is the panel a stack's Rollout badge opens: the services
+  // its zero-downtime rollout cuts over (ADR-0040). rollout is optional: a
+  // peer's panel passes the peer's roster entry rollout.
+  function createRolloutPanel(stack, rollout) {
+    rollout = rollout || rolloutFor(stack) || {};
+    const panel = document.createElement('div');
+    panel.className = 'rollout-panel bound';
+    panel.dataset.testid = 'rollout-panel';
+    panel.innerHTML = rolloutPanelHTML(stack, rollout);
     return panel;
   }
 
@@ -427,6 +445,7 @@ App.panels = (function () {
     createLoadError,
     fetchDiffs,
     createHooksPanel,
+    createRolloutPanel,
     hookPhaseNode,
     rolloutPhaseNode,
     populateIcon,

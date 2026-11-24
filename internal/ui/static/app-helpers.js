@@ -80,10 +80,12 @@ const STATUS = Object.freeze({
 const DETAIL_VIEW = Object.freeze({ deploys: 'deploys', stacks: 'stacks' });
 
 // DETAIL_TAB names the panes a row's detail can show: a deploy row's detail
-// (deploy) and the Stacks card (overview), whose hooks sub-pane rides it too.
+// (deploy) and the Stacks card (overview), whose hooks and rollout sub-panes
+// ride it too.
 const DETAIL_TAB = Object.freeze({
   deploy: 'deploy',
   hooks: 'hooks',
+  rollout: 'rollout',
   overview: 'overview',
 });
 

@@ -66,6 +66,10 @@ type Entry struct {
 	// Hooks carries the stack's deploy-hook command lines so the UI can show the
 	// badge + panel without a fetch (ADR-0038); nil when the stack has none.
 	Hooks *Hooks `json:"hooks,omitempty"`
+	// Rollout carries the stack's zero-downtime rollout services so the UI can
+	// show the badge + panel without a fetch (ADR-0040); nil when the stack has
+	// none.
+	Rollout *Rollout `json:"rollout,omitempty"`
 	// Watched lists the input files whose hashes decide whether this stack
 	// redeploys (Invariant 2), as recorded by its last successful deploy. It
 	// answers the roster's "why has nothing happened here" without reading
@@ -104,6 +108,12 @@ type Hooks struct {
 	PostDeploy []string `json:"post_deploy,omitempty"`
 }
 
+// Rollout is the roster view of a stack's zero-downtime rollout: just the
+// services it cuts over, no timeouts (the UI never shows them).
+type Rollout struct {
+	Services []string `json:"services,omitempty"`
+}
+
 // Build merges the effective stack set with per-stack outcomes into a
 // stable, sorted roster. stacks is the deploy set (disabled stacks are already
 // excluded from it, so disabled is merged in separately); history returns a
@@ -126,6 +136,9 @@ func Build(stacks []config.Stack, disabled []string, history func(name string) [
 		}
 		if len(s.Hooks.PreDeploy) > 0 || len(s.Hooks.PostDeploy) > 0 {
 			e.Hooks = &Hooks{PreDeploy: s.Hooks.PreDeploy, PostDeploy: s.Hooks.PostDeploy}
+		}
+		if s.Rollout != nil && len(s.Rollout.Services) > 0 {
+			e.Rollout = &Rollout{Services: s.Rollout.Services}
 		}
 		if watched != nil {
 			e.Watched, e.WatchedConfig = watched(s.Name)

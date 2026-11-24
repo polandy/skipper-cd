@@ -1,6 +1,6 @@
 # Feature Spec: Zero-Downtime Rollout (Traefik)
 
-Status: implemented (backend); UI deploying sub-label pending
+Status: implemented (backend + UI)
 Date: 2026-07-19
 
 ## Goal
@@ -232,14 +232,18 @@ Minimal, reusing existing surfaces (no new streaming machinery), read-only:
    snapshot pattern as the hooks `hookrun` / `upcoming` run-plan snapshots
    (published only with a UI sink → costs nothing headless). Plain `deploying`
    during pull/build as today. *Built:* the `rolloutrun` snapshot and the
-   `rollout-phase` sub-label (UI_SPEC.md § Rolling service).
+   `rollout-phase` sub-label (UI_SPEC.md § Zero-downtime rollout).
 2. **Roster badge (optional, follow-up).** A small "rollout" marker on the
    stack cell for stacks with a `rollout` block, panel listing the rolled
-   services — mirrors the hooks badge. Can ship in a later increment.
+   services — mirrors the hooks badge. *Built:* the `rollout` roster-entry field
+   and the `rollout-badge` head action + `rollout-panel` (UI_SPEC.md §
+   Zero-downtime rollout).
 
 Full surface + `data-testid`s go in `internal/ui/UI_SPEC.md` when the increment
 is built. E2E: a new mask asserting the rolling sub-label (behaviour) — no new
-visual baseline needed if the idle header is unchanged.
+visual baseline needed if the idle header is unchanged. The roster badge +
+services panel are covered by the `app-render` unit layer (the badge's presence
+and the service list) and the roster snapshot, so they need no mask.
 
 ## Decisions
 
