@@ -505,7 +505,7 @@ UI suite reuses.
   indicator, so a fatal error must recover silently. A `page.route` fulfils
   `/api/logs` with a 503 so the reconnect closes `EventSource` for good; after a
   kill/relaunch the pane resumes only if the page's own capped-backoff retry
-  re-opens the stream. Proven by the WARN-line count *growing* past the pre-drop
+  re-opens the stream. Proven by the rejected-webhook WARN-line count *growing* past the pre-drop
   line (the persisted old line alone would pass a mere presence check). Fails
   without the manual retry — the browser never comes back from CLOSED. The events
   twin is UD10.
