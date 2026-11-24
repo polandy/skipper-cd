@@ -207,11 +207,12 @@ type Deployer struct {
 
 	// mu serializes deploy runs (Invariant 7); the fields below it are only
 	// touched while it is held.
-	mu           sync.Mutex
-	plan         []string        // stacks planned to deploy this run, in order
-	bootstrapRun bool            // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
-	systemDrv    systemDrvCache  // last evaluated system derivation and its commit (ADR-0065)
-	configErrors *configErrorLog // entry-level config errors already reported, so an unchanged one stays quiet (ADR-0055)
+	mu             sync.Mutex
+	plan           []string        // stacks planned to deploy this run, in order
+	bootstrapRun   bool            // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
+	systemDrv      systemDrvCache  // last evaluated system derivation and its commit (ADR-0065)
+	unpinnedImages *configErrorLog // unpinned image references already warned about, per stack
+	configErrors   *configErrorLog // entry-level config errors already reported, so an unchanged one stays quiet (ADR-0055)
 	// projectDirErrors remembers the project_directory fast-forward's standing
 	// condition under the same report-once rule. Deliberately its own log:
 	// configErrors is cleared against each run's stack-error set, and this
@@ -278,6 +279,7 @@ func New(cfg Config) *Deployer {
 		rolloutDrainOverride:   cfg.RolloutDrainOverride,
 		syncRetryDelay:         cfg.SyncRetryDelay,
 		configErrors:           newConfigErrorLog(),
+		unpinnedImages:         newConfigErrorLog(),
 		projectDirErrors:       newConfigErrorLog(),
 	}
 	d.nextEventID.Store(cfg.StartEventID)
@@ -659,6 +661,7 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 	// so each carries its change context; we only track the outcome here.
 	gate := newDepGate()
 	d.reportConfigErrors(stackErrs)
+	d.warnUnpinnedImages(cfg.Stacks, cfg.StacksBaseDir)
 	for _, se := range stackErrs {
 		gate.record(se.Stack, depBlocked)
 	}
