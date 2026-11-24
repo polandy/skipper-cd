@@ -26,6 +26,8 @@ func TestUnpinnedImages_ReportsOnlyRegistryImagesWithoutDigest(t *testing.T) {
     image: example/app:latest
   plain:
     build: ./plain
+  templated:
+    image: caddy:${CADDY_TAG}
 `)
 	cf, err := parseComposeFile(filepath.Join(dir, "docker-compose.yml"))
 	if err != nil {
@@ -35,7 +37,7 @@ func TestUnpinnedImages_ReportsOnlyRegistryImagesWithoutDigest(t *testing.T) {
 	got := cf.unpinnedImages()
 
 	if len(got) != 1 || got["proxy"] != "caddy:2.8" {
-		t.Errorf("unpinnedImages = %v, want only proxy=caddy:2.8 (pinned, built and locally-built images excluded)", got)
+		t.Errorf("unpinnedImages = %v, want only proxy=caddy:2.8 (pinned, built, locally-built and interpolated images excluded)", got)
 	}
 }
 

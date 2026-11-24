@@ -21,11 +21,13 @@ const unpinnedWarningMessage = "image reference not pinned to a digest: a rollba
 
 // unpinnedImages returns the registry-pulled services whose image: carries no
 // digest. Built services and images a build: service produces are excluded:
-// they never come from a registry.
+// they never come from a registry. A reference with a variable is excluded too:
+// its digest may come from the interpolated value.
 func (cf *composeFile) unpinnedImages() serviceImageByName {
 	unpinned := make(serviceImageByName)
 	for _, name := range cf.pullableServices() {
-		if image := cf.Services[name].Image; !strings.Contains(image, digestMarker) {
+		image := cf.Services[name].Image
+		if !strings.Contains(image, digestMarker) && !strings.Contains(image, "$") {
 			unpinned[name] = image
 		}
 	}
