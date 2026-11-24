@@ -318,7 +318,11 @@ test('UB7: log stream reconnects after a fatal error and resumes live lines', as
   page,
   skipper,
 }) => {
-  const warnLines = page.locator('[data-testid="log-line"][data-level="WARN"]');
+  // Only the rejected-webhook lines: other WARN lines (e.g. the unpinned-image
+  // warning at startup) must not shift the count.
+  const warnLines = page
+    .locator('[data-testid="log-line"][data-level="WARN"]')
+    .filter({ hasText: 'invalid signature' });
 
   await page.goto(`${skipper.baseURL}/`);
   await page.locator('[data-testid="view-toggle"] button[data-view="logs"]').click();
