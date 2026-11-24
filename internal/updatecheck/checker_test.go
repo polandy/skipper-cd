@@ -403,3 +403,165 @@ func TestRunOnceIfChanged_FirstCallRuns(t *testing.T) {
 		t.Fatal("first RunOnceIfChanged must run (nothing was checked yet)")
 	}
 }
+
+// Now nil must be defaulted at construction, or RunOnce panics stamping
+// CheckedAt. A non-zero stamp is the positive signal that the default applied.
+func TestNew_DefaultsTheClock(t *testing.T) {
+	c := New(Config{Running: func() map[string]map[string]string { return nil }})
+
+	c.RunOnce(context.Background())
+
+	if c.Snapshot().CheckedAt.IsZero() {
+		t.Fatal("CheckedAt is zero; New did not default the clock")
+	}
+}
+
+// A non-positive interval must run once and return rather than block on a
+// zero-duration ticker (time.NewTicker panics on one). OnChange is the signal
+// the single run happened.
+func TestRun_NonPositiveIntervalRunsOnceAndReturns(t *testing.T) {
+	var runs int
+	c := New(Config{
+		Interval: 0,
+		Running:  func() map[string]map[string]string { return nil },
+		OnChange: func() { runs++ },
+	})
+
+	c.Run(context.Background())
+
+	if runs != 1 {
+		t.Fatalf("OnChange ran %d times, want exactly 1", runs)
+	}
+}
+
+// Every way checkService can refuse to make a claim, or fail outright.
+func TestCheckService_ErrorAndSkipPaths(t *testing.T) {
+	registryDown := errors.New("registry down")
+	inspectable := &fakeInspector{repoDigests: map[string]string{"redis:latest": `["redis@sha256:old"]`}}
+
+	tests := []struct {
+		name      string
+		ref       string
+		registry  *fakeRegistry
+		outputter Outputter
+		wantErr   bool
+		wantClaim bool
+	}{
+		{
+			name:     "unparseable reference errors",
+			ref:      ":latest",
+			registry: &fakeRegistry{},
+			wantErr:  true,
+		},
+		{
+			name:     "tag listing failure errors",
+			ref:      "gitea/gitea:1.22.3",
+			registry: &fakeRegistry{err: registryDown},
+			wantErr:  true,
+		},
+		{
+			// A non-version tag skips the tag listing, so the registry error
+			// surfaces from the digest lookup instead.
+			name:      "manifest digest failure errors",
+			ref:       "redis:latest@40c2d6f1d8f0",
+			registry:  &fakeRegistry{err: registryDown},
+			outputter: inspectable,
+			wantErr:   true,
+		},
+		{
+			// Positive control for the case below: same reference shape, but an
+			// outputter to compare against, so a moved digest is claimed.
+			name:      "moved digest is a rebuilt claim",
+			ref:       "redis:latest@40c2d6f1d8f0",
+			registry:  &fakeRegistry{digests: map[string]string{"redis:latest@40c2d6f1d8f0": "sha256:new"}},
+			outputter: inspectable,
+			wantClaim: true,
+		},
+		{
+			name:      "no outputter means no digest claim",
+			ref:       "redis:latest@40c2d6f1d8f0",
+			registry:  &fakeRegistry{},
+			outputter: nil,
+			wantClaim: false,
+		},
+		{
+			name:      "unparseable inspect output errors",
+			ref:       "redis:latest@40c2d6f1d8f0",
+			registry:  &fakeRegistry{},
+			outputter: &fakeInspector{repoDigests: map[string]string{"redis:latest": "not-json"}},
+			wantErr:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := New(Config{Registry: tt.registry, Outputter: tt.outputter})
+
+			upd, _, err := c.checkService(context.Background(), tt.ref)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("checkService(%q) err = nil, want an error", tt.ref)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("checkService(%q) unexpected error: %v", tt.ref, err)
+			}
+			if (upd != nil) != tt.wantClaim {
+				t.Errorf("checkService(%q) update = %+v, want a claim = %v", tt.ref, upd, tt.wantClaim)
+			}
+		})
+	}
+}
+
+func TestUpdateFor(t *testing.T) {
+	snap := &Snapshot{Stacks: map[string]map[string]ServiceUpdate{
+		"gitea": {"server": {Running: "1.22.3", Latest: "1.22.6"}},
+	}}
+	listed := ServiceUpdate{Running: "1.22.3", Latest: "1.22.6"}
+
+	tests := []struct {
+		name string
+		key  string
+		want ServiceUpdate
+		ok   bool
+	}{
+		{"listed key resolves", "gitea/server", listed, true},
+		{"unknown service is absent", "gitea/db", ServiceUpdate{}, false},
+		{"unknown stack is absent", "ghost/server", ServiceUpdate{}, false},
+		{"key without a separator is absent", "gitea", ServiceUpdate{}, false},
+		{"empty key is absent", "", ServiceUpdate{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := New(Config{})
+			got, ok := c.updateFor(snap, tt.key)
+			if ok != tt.ok || got != tt.want {
+				t.Errorf("updateFor(%q) = (%+v, %v), want (%+v, %v)", tt.key, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestRunningEqual(t *testing.T) {
+	base := map[string]map[string]string{"a": {"x": "img:1"}}
+
+	tests := []struct {
+		name string
+		a, b map[string]map[string]string
+		want bool
+	}{
+		{"equal maps", base, map[string]map[string]string{"a": {"x": "img:1"}}, true},
+		{"different stack count", base, map[string]map[string]string{}, false},
+		{"different stack name", base, map[string]map[string]string{"b": {"x": "img:1"}}, false},
+		{"different service", base, map[string]map[string]string{"a": {"y": "img:1"}}, false},
+		{"different image", base, map[string]map[string]string{"a": {"x": "img:2"}}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := runningEqual(tt.a, tt.b); got != tt.want {
+				t.Errorf("runningEqual(%v, %v) = %v, want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
