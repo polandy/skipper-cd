@@ -249,9 +249,8 @@ func TestE2E_InferredHealthGateWaitsForReadiness(t *testing.T) {
 	if code := s.sendWebhook("refs/heads/main"); code != http.StatusAccepted {
 		t.Fatalf("webhook status = %d, want 202", code)
 	}
-	s.waitFor("both stacks redeployed", func() bool {
-		return s.dockerUps("web") >= 2 && s.dockerUps("api") >= 2
-	})
+	es.waitEventCount("web", "success", 2)
+	es.waitEventCount("api", "success", 2)
 
 	if got := s.readinessReads("web"); got != 1 {
 		t.Errorf("web readiness reads = %d, want 1 (the deploy, not the startup)", got)
