@@ -16,10 +16,6 @@ import (
 // old container is untouched, so it is reported as rolled_back without a git-restore.
 var errCanaryUnhealthy = errors.New("canary did not become healthy")
 
-// defaultRolloutTimeoutSeconds is the canary health-wait deadline when no timeout
-// is configured.
-const defaultRolloutTimeoutSeconds = 60
-
 // defaultRolloutPollInterval is the pause between `docker compose ps` polls while
 // waiting for a canary to turn healthy (Config.RolloutPollInterval overrides it).
 const defaultRolloutPollInterval = 2 * time.Second
@@ -53,15 +49,18 @@ func (d *Deployer) rollout(ctx context.Context, run stackRun, cf *composeFile, s
 		}
 		if err := d.awaitReady(ctx, run, nonRolled...); err != nil {
 			if errors.Is(err, errStillStarting) {
-				return stillStartingError(run, err)
+				return stillStartingError(run, err, healthCheckShortfall(run.stack, cf))
 			}
 			return d.rollBackFailedDeploy(ctx, run, cf, state, "health check", err)
 		}
 	}
 
-	service, err := d.rollServices(ctx, run, rc.Services, d.rolloutTimeout(run.stack))
+	service, err := d.rollServices(ctx, run, rc.Services, d.rolloutTimeout(run.stack, cf))
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, errStillStarting) {
+		return stillStartingError(run, fmt.Errorf("rollout %q: %w; the canary keeps running beside the old version", service, err), rolloutShortfall(run.stack, cf))
 	}
 	if errors.Is(err, errCanaryUnhealthy) {
 		// Old version never stopped serving → rolled_back, no git-restore.
@@ -88,7 +87,8 @@ func (d *Deployer) rollServices(ctx context.Context, run stackRun, services []st
 
 // rollService cuts one service to its new version with no serving gap: a canary
 // alongside the old, wait healthy, drain the old. First deploy (nothing running)
-// is a plain up; an unhealthy canary is removed and wraps errCanaryUnhealthy.
+// is a plain up; an unhealthy canary is removed and wraps errCanaryUnhealthy, a
+// canary still starting at the timeout is kept and wraps errStillStarting.
 func (d *Deployer) rollService(ctx context.Context, run stackRun, service string, timeout time.Duration) error {
 	old, err := d.serviceContainers(ctx, run, service)
 	if err != nil {
@@ -110,6 +110,10 @@ func (d *Deployer) rollService(ctx context.Context, run stackRun, service string
 	}
 
 	newIDs, err := d.waitCanaryHealthy(ctx, run, service, oldIDs, timeout)
+	if errors.Is(err, errStillStarting) {
+		slog.Warn("rollout: canary still starting at the timeout, keeping it beside the old version", "stack", run.stack.Name, "service", service, "err", err)
+		return fmt.Errorf("%q: %w", service, err)
+	}
 	if err != nil {
 		slog.Warn("rollout: canary not healthy, removing it and keeping the old version", "stack", run.stack.Name, "service", service, "err", err)
 		d.removeContainers(ctx, run, newIDs)
@@ -132,27 +136,23 @@ func (d *Deployer) rollService(ctx context.Context, run stackRun, service string
 	return nil
 }
 
-// waitCanaryHealthy polls the service's containers until a container that is not
-// in oldIDs reports Health "healthy", or timeout elapses. It returns the new
-// (canary) container IDs it observed so the caller can remove them on failure.
+// waitCanaryHealthy polls the service's containers on the injected clock until
+// a container that is not in oldIDs reports Health "healthy". It returns the
+// canary IDs it observed so the caller can remove them, an error wrapping
+// errStillStarting when the timeout ends with a canary still starting
+// (ADR-0072), and any other error once a canary failed or none ever appeared.
 func (d *Deployer) waitCanaryHealthy(ctx context.Context, run stackRun, service string, oldIDs map[string]bool, timeout time.Duration) ([]string, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
+	deadline := d.now().Add(timeout)
 	interval := d.rolloutPollInterval
 	if interval <= 0 {
 		interval = defaultRolloutPollInterval
 	}
 
-	// lastErr explains *why* the wait ran out and rides into the returned error
-	// via %w; it is diagnosis, not classification. Deliberately not sentinels:
-	// all three causes — nothing ever started, a canary that stayed unhealthy,
-	// or docker being unreachable — lead the caller to the identical decision
-	// (leave the old container running, report rolled_back without a git
-	// restore), and it branches on errCanaryUnhealthy for that. Sentinels
-	// nothing tests against would be API surface without a reader.
+	// lastErr explains *why* the wait ran out and rides into the returned error;
+	// a docker read error keeps the last snapshot's verdict on starting.
 	var newIDs []string
 	lastErr := errors.New("no canary container appeared")
+	starting := false
 	for {
 		current, err := d.serviceContainers(ctx, run, service)
 		if err != nil {
@@ -162,16 +162,38 @@ func (d *Deployer) waitCanaryHealthy(ctx context.Context, run stackRun, service 
 			if anyHealthy(current, oldIDs) {
 				return newIDs, nil
 			}
-			if len(newIDs) > 0 {
-				lastErr = errors.New("canary not yet healthy")
+			waiting, failure := readinessOf(canaries(current, oldIDs))
+			if failure != nil {
+				return newIDs, fmt.Errorf("canary for %q failed: %w", service, failure)
 			}
+			starting = waiting != ""
+			if starting {
+				lastErr = errors.New(waiting)
+			}
+		}
+		if !d.now().Before(deadline) {
+			if starting {
+				return newIDs, fmt.Errorf("canary for %q %w after %s (%w)", service, errStillStarting, timeout, lastErr)
+			}
+			return newIDs, fmt.Errorf("canary for %q did not become healthy within %s: %w", service, timeout, lastErr)
 		}
 		select {
 		case <-ctx.Done():
-			return newIDs, fmt.Errorf("canary for %q did not become healthy within %s: %w", service, timeout, lastErr)
+			return newIDs, fmt.Errorf("canary for %q: %w", service, ctx.Err())
 		case <-time.After(interval):
 		}
 	}
+}
+
+// canaries returns the lines of containers not in oldIDs.
+func canaries(cs []containerLine, oldIDs map[string]bool) []containerLine {
+	var out []containerLine
+	for _, c := range cs {
+		if !oldIDs[c.ID] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // cleanupCanary removes any container of the service that is not in oldIDs,
@@ -230,9 +252,9 @@ func (d *Deployer) drainDelay(stack config.Stack) time.Duration {
 }
 
 // rolloutTimeout is the canary health-wait deadline: rollout.health_timeout_seconds,
-// else the stack's deploy_health_check timeout, else the default
-// (Config.RolloutTimeoutOverride wins).
-func (d *Deployer) rolloutTimeout(stack config.Stack) time.Duration {
+// else the stack's resolved deploy_health_check timeout, else the compose
+// healthcheck budget (Config.RolloutTimeoutOverride wins).
+func (d *Deployer) rolloutTimeout(stack config.Stack, cf *composeFile) time.Duration {
 	if d.rolloutTimeoutOverride > 0 {
 		return d.rolloutTimeoutOverride
 	}
@@ -241,7 +263,7 @@ func (d *Deployer) rolloutTimeout(stack config.Stack) time.Duration {
 		if hc := stack.DeployHealthCheck; hc != nil && hc.TimeoutSeconds > 0 {
 			secs = hc.TimeoutSeconds
 		} else {
-			secs = defaultRolloutTimeoutSeconds
+			secs = readinessTimeoutSeconds(0, cf)
 		}
 	}
 	return time.Duration(secs) * time.Second

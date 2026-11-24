@@ -48,7 +48,7 @@ stacks:
   - name: dashboard
     rollout:
       services: [web]              # only these roll; every other service recreates normally
-      health_timeout_seconds: 60   # optional; per rolled service; default = deploy_health_check timeout or 60
+      health_timeout_seconds: 60   # optional; per rolled service; default = deploy_health_check timeout, else the healthcheck budget
       drain_seconds: 5             # optional; wait after canary healthy before draining the old container
 ```
 
@@ -62,7 +62,8 @@ stacks:
   correct for databases and anything else that cannot run two instances.
 - `health_timeout_seconds` bounds how long skipper waits for a canary to turn
   healthy before treating the rollout as failed. It falls back to the stack's
-  `deploy_health_check.timeout_seconds` if set, else the shared default (60s).
+  resolved `deploy_health_check` timeout, else the compose healthcheck budget
+  (ADR-0072, at least 60s). A value below the budget logs a warning.
 
 ## Semantics
 
@@ -119,8 +120,8 @@ container.
 
 ### Failure = zero-downtime by construction
 
-If the canary never turns healthy within the timeout (step 3), skipper
-**removes the canary** (`docker stop`/`rm` the new container IDs, i.e. every
+If the canary turns unhealthy or exits non-zero (step 3, decided at once), or
+no canary appears within the timeout, skipper **removes the canary** (`docker stop`/`rm` the new container IDs, i.e. every
 container *not* in *old*) and leaves the old container untouched — it never
 stopped serving. The stack stays on its previous version with **no downtime even
 on failure**, which is strictly better than the recreate path's git-restore
@@ -133,6 +134,11 @@ needs no `--wait` restore leg). A failure of the docker/compose commands
 themselves mid-cutover (not a health timeout) that could leave the service in an
 unknown state falls through to the existing git-restore `rollBackFailedDeploy`
 path for that stack, so there is always a defined recovery.
+
+A canary still `starting` when the timeout runs out is undecided (ADR-0072
+amendment 2026-11-24): it is **kept** beside the old container, and the deploy
+is `failed` and held, never `rolled_back`. A retry rolls again: the kept canary
+counts as old and is drained with the original container.
 
 ### Compose-level validation
 
@@ -207,8 +213,7 @@ Table tests with the recording Runner + a fake `Output` returning canned
   removed and the new id survives.
 - **First deploy** (empty old set): plain `up -d --no-deps <svc>`, no scale, no
   stop/rm.
-- **Canary never healthy** (ps keeps returning `starting`/`unhealthy` until the
-  timeout): the canary id is `stop`+`rm`'d, the old id is **never** touched, the
+- **Canary unhealthy** (ps returns `unhealthy`): the canary id is `stop`+`rm`'d, the old id is **never** touched, the
   event is `rolled_back` via `ErrRolledBack`, no state save. (Safety-critical
   failure path — required per the repo's coverage principle.)
 - **Non-rolled + rolled mix**: non-rolled services get the plain

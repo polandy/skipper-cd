@@ -100,10 +100,14 @@ func readinessOf(lines []containerLine) (waiting string, failure error) {
 }
 
 // stillStartingError turns an undecided readiness wait into the deploy's
-// failure: held, never rolled back, with the way to release it once healthy.
-func stillStartingError(run stackRun, err error) error {
+// failure: held, never rolled back, with the way to release it once healthy
+// and the timeout shortfall that likely caused it, if any.
+func stillStartingError(run stackRun, err error, shortfall string) error {
 	slog.Error("deploy health check ran out while the new version is still starting; not rolling back", "stack", run.stack.Name, "err", err)
-	return fmt.Errorf("health check: %w; not rolled back — retry once it is healthy: POST /api/stacks/%s/retry%w", err, run.stack.Name, errNewVersionMark)
+	if shortfall != "" {
+		shortfall = "; " + shortfall
+	}
+	return fmt.Errorf("health check: %w; not rolled back — retry once it is healthy: POST /api/stacks/%s/retry%s%w", err, run.stack.Name, shortfall, errNewVersionMark)
 }
 
 func firstNonEmpty(a, b string) string {

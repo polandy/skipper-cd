@@ -90,3 +90,34 @@ running under that ceiling.
   no sleeps.
 - The Go e2e stub's empty `ps --all` output counts as ready. The UI e2e for
   `rolled_back_unhealthy` now fails the roll-forward `up` as well.
+
+## Amendment 2026-11-24: timeouts below the budget, and the undecided canary
+
+An explicit `deploy_health_check.timeout_seconds` or
+`rollout.health_timeout_seconds` below the derived budget turned a slow start
+into a held failure, or, for a canary, into a removed container reported as
+`rolled_back`, with nothing pointing at the timeout.
+
+- **Explicit still wins, but never silently.** Each run logs a warning per
+  stack, once per distinct finding, naming the key, the value, the budget and
+  what to set. The still-starting error carries the same text. The check runs
+  in the deploy run, not in config validation, so it covers both discovery and
+  a static `stacks:` list.
+- **The canary wait decides like `awaitReady`.** It runs on the injected clock.
+  An unhealthy or non-zero-exited canary fails at once and is removed
+  (`rolled_back`). A canary still starting at the timeout wraps
+  `errStillStarting`: it is **kept** beside the old container, and the deploy is
+  `failed` and held. Without a gate timeout and without
+  `rollout.health_timeout_seconds`, the canary waits the budget, not a fixed 60s.
+
+Rejected:
+
+- **Raise the effective timeout to max(explicit, budget).** The budget is the
+  worst case to a decided outcome, not the time to healthy. An operator who
+  knows a service starts fast may keep a short wait, and the hold already keeps
+  the containers running.
+- **Remove a still-starting canary.** It kills a version that may only be slow
+  and reports a rollback that never happened. Keeping it costs nothing in
+  serving: the proxy only routes to it once healthy, and the old container
+  stays. The price is two versions serving side by side until a retry or a new
+  push completes the cutover.

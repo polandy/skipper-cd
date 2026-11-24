@@ -64,11 +64,7 @@ func readinessTimeoutSeconds(explicit int, cf *composeFile) int {
 	if explicit > 0 {
 		return explicit
 	}
-	derived := 0
-	if cf != nil {
-		derived = int((cf.ReadinessBudget() + time.Second - 1) / time.Second)
-	}
-	return max(derived, config.MinHealthCheckTimeoutSeconds)
+	return max(budgetSeconds(cf), config.MinHealthCheckTimeoutSeconds)
 }
 
 // HTTPDoer is the minimal HTTP client surface the deploy_health_check probe

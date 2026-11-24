@@ -304,6 +304,8 @@ The wait ends in one of three ways:
 
 **The wait budget** is derived from the slowest healthcheck in the compose file: `start_period + (retries + 1) × interval + timeout`, using Docker's defaults for omitted fields (`interval: 30s`, `timeout: 30s`, `retries: 3`, no `start_period`), and never less than 60 seconds. An explicit `timeout_seconds` replaces the derived budget.
 
+An explicit `timeout_seconds` below the derived budget is kept, but a slow start then ends as *still starting* — a held failure — before the healthcheck could decide. skipper logs a warning naming the stack, the key, the value and the budget (once per change of the finding), and the held deploy's error names the same shortfall. Remove the key to wait the budget, or set it at least as high.
+
 Add an explicit `deploy_health_check` section only to set a fixed budget, or to add the stage 2 HTTP probe below — it always wins over the automatic gate. A stack with no compose `healthcheck:` anywhere stays ungated unless it sets `deploy_health_check` itself.
 
 !!! tip "Keep startup fast to probe"
@@ -434,7 +436,7 @@ stacks:
   - name: dashboard
     rollout:
       services: [web]              # only these roll; every other service recreates in place
-      health_timeout_seconds: 60   # optional; default = the health gate's budget, else 60
+      health_timeout_seconds: 60   # optional; default = the health gate's budget
       drain_seconds: 5             # optional; hold the old container this long after the new one is healthy
 ```
 
@@ -446,7 +448,9 @@ stacks:
 - Each rolled service must **name a service defined in the stack's `docker-compose.yml`**, **publish no host `ports:`** (two replicas would collide on the port — route it through the proxy), set no fixed **`container_name:`** (compose cannot scale a named container), and define a compose **`healthcheck:`** (the readiness signal). These are checked at deploy time, and in **stack-discovery mode** also at discovery — every sync, before any deploy — so a mistake surfaces in the Stacks view immediately (since `rollout` is not hash-tracked, an edit alone would otherwise not redeploy to reveal it).
 - **`drain_seconds`** waits that many seconds after the new container is healthy before removing the old one, so the proxy can start routing to the new container while the old is still up (the equivalent of `docker-rollout`'s `--wait-after-healthy`). With Traefik, adding a **retry** middleware to the service as well makes a cutover drop from seconds of `502`s (in-place recreate) to at most a single sub-second blip.
 - Only listed services roll. Everything else — databases, anything with a volume lock or a published port — recreates in place as usual.
-- **Failure is zero-downtime too:** if the new container never turns healthy, skipper removes it and leaves the old one serving. The deploy is reported as `rolled_back`.
+- **Failure is zero-downtime too:** if the new container turns `unhealthy` (or exits non-zero), skipper removes it at once and leaves the old one serving. The deploy is reported as `rolled_back`.
+- **A canary still starting when the timeout runs out** is not removed: it may only be slow. The deploy is marked `failed` and [held](#held-changes), the old container keeps serving, and the canary keeps running beside it — once healthy, the proxy serves both. Retry with `POST /api/stacks/<stack>/retry` to finish the cutover (it drains the old container and the earlier canary), or push a fix.
+- **`health_timeout_seconds`** defaults to the stack's health-gate timeout, else the [wait budget](#health-check-gated-rollback) derived from the compose healthchecks (at least 60 seconds). A value below that budget logs the same warning as a short `deploy_health_check.timeout_seconds`.
 - `rollout` is **not** hash-tracked: switching a service to/from rollout does not itself redeploy.
 - On a service's first-ever deploy (nothing running yet) there is no gap to avoid, so it comes up with a plain `up`.
 - While a service cuts over, the web UI shows it under the stack's `deploying` badge, e.g. `rolling web (1/2)`.
