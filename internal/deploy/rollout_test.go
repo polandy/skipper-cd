@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,7 +45,8 @@ func rolloutSetup(t *testing.T, composeYAML string, opts ...func(*Config)) (*Dep
 		Runner:                 runner,
 		Outputter:              runner,
 		StateDir:               t.TempDir(),
-		RolloutPollInterval:    time.Millisecond,
+		Now:                    steppingClock(10 * time.Millisecond),
+		RolloutPollInterval:    time.Nanosecond,
 		RolloutTimeoutOverride: 50 * time.Millisecond,
 	}
 	for _, opt := range opts {
@@ -54,6 +56,14 @@ func rolloutSetup(t *testing.T, composeYAML string, opts ...func(*Config)) (*Dep
 	stack := config.Stack{Name: "app", Rollout: &config.Rollout{Services: []string{"web"}}}
 	run := newStackRun(stack, baseDir, nil)
 	return d, runner, run
+}
+
+// steppingClock is a fake clock that moves forward by step on every reading,
+// so a wait deadline runs out after a known number of polls with no real waiting.
+func steppingClock(step time.Duration) func() time.Time {
+	var ticks atomic.Int64
+	start := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	return func() time.Time { return start.Add(time.Duration(ticks.Add(1)) * step) }
 }
 
 // cl builds a running compose ps line with the given id/service/health.
@@ -175,17 +185,17 @@ func TestRollService_FirstDeployPlainUp(t *testing.T) {
 
 func TestRollService_UnhealthyCanaryRemovedOldKept(t *testing.T) {
 	d, runner, run := rolloutSetup(t, rolloutCompose)
-	// The canary appears but never turns healthy.
+	// The canary appears but turns unhealthy.
 	runner.outputFn = func(call int, _ []string) ([]byte, error) {
 		if call == 0 {
 			return psArray(cl("old1", "web", "healthy")), nil
 		}
-		return psArray(cl("old1", "web", "healthy"), cl("new1", "web", "starting")), nil
+		return psArray(cl("old1", "web", "healthy"), cl("new1", "web", "unhealthy")), nil
 	}
 
 	err := d.rollService(context.Background(), run, "web", 30*time.Millisecond)
 	if err == nil {
-		t.Fatal("expected error when the canary never becomes healthy")
+		t.Fatal("expected error when the canary turns unhealthy")
 	}
 	if !errors.Is(err, errCanaryUnhealthy) {
 		t.Errorf("error must wrap errCanaryUnhealthy; got %v", err)
@@ -318,12 +328,23 @@ func TestRollService_DrainFailureDoesNotFailTheCutover(t *testing.T) {
 
 // --- rolloutTimeout: the canary health-wait deadline ---------------------------
 
+// slowHealthcheckCompose has a rollable web service whose healthcheck needs
+// 4×60s + 30s = 270s to decide.
+const slowHealthcheckCompose = `services:
+  web:
+    image: nginx:1.25
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 60s
+`
+
 func TestRolloutTimeout_FallbackChain(t *testing.T) {
 	tests := []struct {
 		name     string
 		override time.Duration
 		rollout  config.Rollout
 		hc       *config.HealthCheck
+		compose  string
 		want     time.Duration
 	}{
 		{
@@ -339,15 +360,21 @@ func TestRolloutTimeout_FallbackChain(t *testing.T) {
 			want:    90 * time.Second,
 		},
 		{
-			name:    "deploy_health_check without timeout falls through to the default",
+			name:    "without a gate timeout falls back to the healthcheck budget",
 			rollout: config.Rollout{Services: []string{"web"}},
-			hc:      &config.HealthCheck{},
-			want:    defaultRolloutTimeoutSeconds * time.Second,
+			compose: slowHealthcheckCompose,
+			want:    270 * time.Second,
 		},
 		{
-			name:    "defaults when nothing is configured",
+			name:    "never below the minimum gate timeout",
 			rollout: config.Rollout{Services: []string{"web"}},
-			want:    defaultRolloutTimeoutSeconds * time.Second,
+			compose: "services:\n  web:\n    image: nginx:1.25\n    healthcheck:\n      interval: 1s\n      timeout: 1s\n",
+			want:    config.MinHealthCheckTimeoutSeconds * time.Second,
+		},
+		{
+			name:    "without a compose file falls back to the minimum",
+			rollout: config.Rollout{Services: []string{"web"}},
+			want:    config.MinHealthCheckTimeoutSeconds * time.Second,
 		},
 		{
 			name:     "test override trumps everything",
@@ -360,12 +387,106 @@ func TestRolloutTimeout_FallbackChain(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			var cf *composeFile
+			if tc.compose != "" {
+				path := filepath.Join(t.TempDir(), "docker-compose.yml")
+				writeFile(t, path, tc.compose)
+				var err error
+				if cf, err = parseComposeFile(path); err != nil {
+					t.Fatal(err)
+				}
+			}
 			d := New(Config{Runner: &recordingRunner{}, StateDir: t.TempDir(), RolloutTimeoutOverride: tc.override})
 			stack := config.Stack{Name: "app", Rollout: &tc.rollout, DeployHealthCheck: tc.hc}
-			if got := d.rolloutTimeout(stack); got != tc.want {
+			if got := d.rolloutTimeout(stack, cf); got != tc.want {
 				t.Errorf("rolloutTimeout = %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+// startingCanary answers the first ps with the old container alone and every
+// later one with the canary still starting beside it.
+func startingCanary(call int, _ []string) ([]byte, error) {
+	if call == 0 {
+		return psArray(cl("old1", "web", "healthy")), nil
+	}
+	return psArray(cl("old1", "web", "healthy"), cl("new1", "web", "starting")), nil
+}
+
+func TestRollService_CanaryStillStartingAtTimeoutIsKept(t *testing.T) {
+	d, runner, run := rolloutSetup(t, rolloutCompose)
+	runner.outputFn = startingCanary
+
+	err := d.rollService(context.Background(), run, "web", 30*time.Millisecond)
+
+	if !errors.Is(err, errStillStarting) {
+		t.Fatalf("a canary still starting at the timeout must wrap errStillStarting; got %v", err)
+	}
+	if errors.Is(err, errCanaryUnhealthy) {
+		t.Errorf("a starting canary is undecided, not unhealthy; got %v", err)
+	}
+	if !strings.Contains(err.Error(), "container new1 is starting") {
+		t.Errorf("error should name the starting canary; got %v", err)
+	}
+	if dockerArgvMentions(runner.calls, "new1") || dockerArgvMentions(runner.calls, "old1") {
+		t.Errorf("neither the starting canary nor the old container may be stopped; docker calls=%v", dockerArgv(runner.calls))
+	}
+	if !dockerArgvContains(runner.calls, "compose", "up", "-d", "--no-deps", "--no-recreate", "--scale", "web=2", "--", "web") {
+		t.Errorf("expected the canary scale-up; docker calls=%v", dockerArgv(runner.calls))
+	}
+}
+
+func TestWaitCanaryHealthy_UnhealthyCanaryFailsWithoutWaitingOut(t *testing.T) {
+	d, runner, run := rolloutSetup(t, rolloutCompose)
+	runner.outputFn = func(int, []string) ([]byte, error) {
+		return psArray(cl("old1", "web", "healthy"), cl("new1", "web", "unhealthy")), nil
+	}
+
+	_, err := d.waitCanaryHealthy(context.Background(), run, "web", map[string]bool{"old1": true}, time.Hour)
+
+	if err == nil || errors.Is(err, errStillStarting) {
+		t.Fatalf("an unhealthy canary is a decided failure; got %v", err)
+	}
+	if got := len(runner.outputCalls); got != 1 {
+		t.Errorf("expected the wait to stop at the first unhealthy read, got %d reads", got)
+	}
+}
+
+func TestRollout_CanaryStillStartingHoldsWithoutRollback(t *testing.T) {
+	d, runner, run := rolloutSetup(t, slowHealthcheckCompose, func(c *Config) {
+		c.RolloutTimeoutOverride = 0
+		c.Now = steppingClock(10 * time.Second)
+	})
+	run.stack.Rollout.HealthTimeoutSeconds = 30
+	compose, err := parseComposeFile(run.composePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.outputFn = startingCanary
+
+	err = d.rollout(context.Background(), run, compose, newEmptyState())
+
+	if !errors.Is(err, ErrNewVersionFailed) {
+		t.Fatalf("a still-starting canary must hold the change (ErrNewVersionFailed); got %v", err)
+	}
+	if errors.Is(err, ErrRolledBack) || errors.Is(err, ErrRollbackUnhealthy) {
+		t.Errorf("an undecided canary must not report a rollback; got %v", err)
+	}
+	for _, want := range []string{
+		`canary for "web" still starting after 30s`,
+		"the canary keeps running beside the old version",
+		"not rolled back",
+		"POST /api/stacks/app/retry",
+		"rollout.health_timeout_seconds: 30 is below the compose healthcheck budget of 270s",
+		"set it to at least 270",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected %q in the error; got %v", want, err)
+		}
+	}
+	if dockerArgvMentions(runner.calls, "new1") || dockerArgvMentions(runner.calls, "old1") {
+		t.Errorf("no container may be stopped on an undecided canary; docker calls=%v", dockerArgv(runner.calls))
 	}
 }
 
@@ -413,12 +534,12 @@ func TestRollout_CanaryFailureWrapsErrRolledBack(t *testing.T) {
 		if call == 0 {
 			return psArray(cl("old1", "web", "healthy")), nil
 		}
-		return psArray(cl("old1", "web", "healthy"), cl("new1", "web", "starting")), nil
+		return psArray(cl("old1", "web", "healthy"), cl("new1", "web", "unhealthy")), nil
 	}
 
 	err = d.rollout(context.Background(), run, compose, newEmptyState())
 	if err == nil {
-		t.Fatal("expected error when the canary never becomes healthy")
+		t.Fatal("expected error when the canary turns unhealthy")
 	}
 	// A failed rollout leaves the stack on the old version — reported as
 	// rolled_back, with no git-restore leg (the old container never left).

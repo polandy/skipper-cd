@@ -208,6 +208,36 @@ func TestAwaitReady_StillStartingAtExpiryHoldsWithoutRollback(t *testing.T) {
 	}
 }
 
+func TestAwaitReady_StillStartingNamesTimeoutBelowBudget(t *testing.T) {
+	env := newReadinessEnv(t)
+	env.health(func(int) containerLine { return appContainer("running", "starting", 0) })
+
+	err := env.deploy(t, config.Stack{Name: "mystack", DeployHealthCheck: &config.HealthCheck{TimeoutSeconds: 30}})
+
+	if !errors.Is(err, ErrNewVersionFailed) || errors.Is(err, ErrRolledBack) {
+		t.Fatalf("expected a held failure without rollback, got %v", err)
+	}
+	// Docker's defaults: 4×30s interval + 30s timeout.
+	want := "deploy_health_check.timeout_seconds: 30 is below the compose healthcheck budget of 150s"
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("expected %q in the error, got %v", want, err)
+	}
+}
+
+func TestAwaitReady_StillStartingWithDerivedTimeoutNamesNoShortfall(t *testing.T) {
+	env := newReadinessEnv(t)
+	env.health(func(int) containerLine { return appContainer("running", "starting", 0) })
+
+	err := env.deploy(t, config.Stack{Name: "mystack"})
+
+	if !strings.Contains(err.Error(), "still starting after 2m30s") {
+		t.Fatalf("expected the derived 150s budget to run out, got %v", err)
+	}
+	if strings.Contains(err.Error(), "is below the compose healthcheck budget") {
+		t.Errorf("a derived timeout has no shortfall, got %v", err)
+	}
+}
+
 func TestAwaitReady_UnhealthyRollbackRollsForwardOnce(t *testing.T) {
 	env := newReadinessEnv(t)
 	env.health(func(read int) containerLine {

@@ -176,7 +176,7 @@ binary):
     captured child-process output reaches the log ring (drives the `cmd-prefix`).
   - `STUB_DOCKER_ROLLOUT_FILE=<path>` → a rollout service's container table,
     answered to `compose ps --format json`: the first plain `up` starts `old`, a
-    `--scale` up adds a `canary` (healthy, or `STUB_DOCKER_CANARY_HEALTH`), `rm -- <id>` drops one (P24, P25).
+    `--scale` up adds a `canary` (healthy, or `STUB_DOCKER_CANARY_HEALTH`), `rm -- <id>` drops one (P24, P25, P36).
   - `STUB_DOCKER_READINESS_FILE=<path>` → once the file exists, answers the
     readiness wait's `compose ps --all` with its JSON lines; absent, the read is
     empty and counts as ready (P26).
@@ -404,6 +404,13 @@ UI suite reuses.
   (`1.25.1 -> 1.25.2`) is `rolled_back` with three `up -d`, while a failed minor
   bump (`1.25 -> 1.26`) emits `failed` naming `app 1.25 -> 1.26 is a minor
   update`, runs exactly two `up -d`, and `skipper_stack_held{stack}` = 1.
+- **P36 — A still-starting canary is kept and held** (ADR-0072 amendment,
+  `STUB_DOCKER_CANARY_HEALTH=starting`): the P25 stack with
+  `health_timeout_seconds: 1` emits `failed` (never `rolled_back`) whose error
+  says `still starting`, that the canary keeps running, `not rolled back`, the
+  retry endpoint and the timeout's shortfall against the healthcheck budget; no
+  `stop`/`rm` runs, the container table holds `old` and `canary`, and
+  `skipper_stack_held{web}` = 1.
 - **P10 — Health watch journey** (ADR-0031, `STUB_DOCKER_HEALTH_FILE`): with a
   `health_watch` block and a local generic target, the baseline observation
   never alerts; flipping the stub's health table to `unhealthy` POSTs a
@@ -2445,6 +2452,7 @@ row, naming the file that runs it. §4 holds the Given/When/Then for each.
 | **P33** | `TestE2E_UnknownConfigKeyFailsStartup` | `config_test.go` |
 | **P34** | `TestE2E_NotifiesRunSuccessesAsOneDigest` | `notifications_test.go` |
 | **P35** | `TestE2E_RollbackPatchOnlyGatesByUpdateLevel` | `pipeline_test.go` |
+| **P36** | `TestE2E_RolloutStillStartingCanaryIsKeptAndHeld` | `pipeline_test.go` |
 
 ### 6.2 UI (Playwright)
 

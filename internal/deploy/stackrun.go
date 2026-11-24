@@ -276,7 +276,7 @@ func (d *Deployer) applyNewVersion(ctx context.Context, run stackRun, compose *c
 		return nil
 	}
 	if errors.Is(err, errStillStarting) {
-		return stillStartingError(run, err)
+		return stillStartingError(run, err, healthCheckShortfall(run.stack, compose))
 	}
 	return d.rollBackFailedDeploy(ctx, run, compose, state, stage, err)
 }

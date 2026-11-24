@@ -212,6 +212,7 @@ type Deployer struct {
 	bootstrapRun   bool            // nothing was recorded yet: converge without force-refreshing images (ADR-0051)
 	systemDrv      systemDrvCache  // last evaluated system derivation and its commit (ADR-0065)
 	unpinnedImages *configErrorLog // unpinned image references already warned about, per stack
+	shortTimeouts  *configErrorLog // timeouts below the healthcheck budget already warned about, per stack
 	configErrors   *configErrorLog // entry-level config errors already reported, so an unchanged one stays quiet (ADR-0055)
 	// projectDirErrors remembers the project_directory fast-forward's standing
 	// condition under the same report-once rule. Deliberately its own log:
@@ -280,6 +281,7 @@ func New(cfg Config) *Deployer {
 		syncRetryDelay:         cfg.SyncRetryDelay,
 		configErrors:           newConfigErrorLog(),
 		unpinnedImages:         newConfigErrorLog(),
+		shortTimeouts:          newConfigErrorLog(),
 		projectDirErrors:       newConfigErrorLog(),
 	}
 	d.nextEventID.Store(cfg.StartEventID)
@@ -662,6 +664,7 @@ func (d *Deployer) deployStacksGated(ctx context.Context, cfg *config.Config, ba
 	gate := newDepGate()
 	d.reportConfigErrors(stackErrs)
 	d.warnUnpinnedImages(cfg.Stacks, cfg.StacksBaseDir)
+	d.warnShortTimeouts(cfg.Stacks, cfg.StacksBaseDir)
 	for _, se := range stackErrs {
 		gate.record(se.Stack, depBlocked)
 	}
