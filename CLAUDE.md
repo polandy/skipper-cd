@@ -75,6 +75,12 @@ Three deliberate exceptions run real commands: `internal/command` tests (the pro
 
 **An absence assertion needs a positive signal.** A test claiming "X did *not* happen" (no deploy, no notification, no pull) is guaranteed false-green unless the code emits something that proves the decision point was reached — a recorded call list, a settled state, a counter. Assert against that signal, and prove the test can fail: run it against the unfixed build (or temporarily revert the guard) and see it go red.
 
+**Tests must fail for a wrong result.** Assert the specific error (`errors.Is` or the exact message), never just "an error". No assertion-free subtests, and no test that passes on an empty render or an empty result.
+
+**Walk the degenerate states before committing.** Empty input, default values and filters, the error path, multi-digit numbering (`2.10` vs `2.2`) and ranges: cover each that applies with a test.
+
+**Review discipline.** Apply every review suggestion or state why not — never ignore one. The first commit subject describes the whole branch (it becomes the PR title). A review says Ready only with no open finding, after checking whether the new tests could pass for a wrong result, what the change does in degenerate states, and that the PR title matches the whole diff.
+
 ## Engineering principles
 
 Priorities for all work in this repo:
