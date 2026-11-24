@@ -867,6 +867,7 @@ A minimal `renovate.json` for the deploy repo:
 ```
 
 - `docker:pinDigests` makes Renovate pin (and keep current) a `@sha256:…` digest on every image reference — the key that closes the mutable-tag gap.
+- skipper logs a warning for each stack whose registry `image:` references carry no `@sha256:` digest, naming the services and references — once, and again only when that set changes. Built services (`build:`) and images they produce are exempt. The warning is advisory: unpinned references still deploy.
 - The `docker-compose` manager covers `docker-compose.yml` / `compose.yaml` `image:` fields out of the box.
 - `automerge: true` lets low-risk updates merge without review, so the deploy is hands-off end to end. Drop it to keep every bump behind a reviewed PR — the merge still triggers the deploy either way.
 
