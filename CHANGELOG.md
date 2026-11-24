@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.36.0](https://github.com/polandy/skipper-cd/compare/v0.35.0...v0.36.0) (2026-11-24)
+
+
+### Features
+
+* **deploy:** gate rollback by the image update level (rollback: patch_only) ([#470](https://github.com/polandy/skipper-cd/issues/470)) ([cafd1dc](https://github.com/polandy/skipper-cd/commit/cafd1dcc6da823e9ba525636e28ed1b262ae0f5d))
+* **deploy:** warn about image references without a digest ([#471](https://github.com/polandy/skipper-cd/issues/471)) ([aee03f6](https://github.com/polandy/skipper-cd/commit/aee03f6684283a5f8b65201dc2b0f8364a2a3d38))
+* **ui:** add the rollout badge and services panel to the Stacks detail ([#466](https://github.com/polandy/skipper-cd/issues/466)) ([c509252](https://github.com/polandy/skipper-cd/commit/c50925282525955571e6569817b99413a87ca346))
+
+
+### Bug Fixes
+
+* **deploy:** guard skipper timeouts against the compose healthcheck budget ([#472](https://github.com/polandy/skipper-cd/issues/472)) ([7cf75a9](https://github.com/polandy/skipper-cd/commit/7cf75a975752341dde6b2e8da1e2445167a8fb6a))
+* **preview:** keep the smoke offline and read its async results from the event stream ([#462](https://github.com/polandy/skipper-cd/issues/462)) ([c39b661](https://github.com/polandy/skipper-cd/commit/c39b661d02e9d09e0fae4a368d9671d1855e7238))
+
 ## [0.35.0](https://github.com/polandy/skipper-cd/compare/v0.34.0...v0.35.0) (2026-11-20)
 
 
